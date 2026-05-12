@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# shepherd hook — session-open hygiene (conductor-cwd doctrine)
+#
+# Fires at SessionStart. Warns when the conductor HEAD has drifted off the
+# sprint branch or the cwd is inside a sub-worktree. Implements the three-
+# anchor verification from doctrines/conductor-cwd.md §Mandatory verification.
+#
+# Output: JSON additionalContext injected into Claude's context if any
+# warning fires; silent exit 0 when all checks pass.
+
+set -euo pipefail
+
+# Consume stdin (SessionStart payload — not needed for these checks)
+cat > /dev/null
+
+# Skip entirely if this project isn't running shepherd
+[[ -f ".claude/shepherd.toml" ]] || exit 0
+
+warnings=()
+
+# --- Anchor 1: HEAD must not be an agent/lane branch ---
+branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+if [[ "$branch" =~ ^(agent-|lane-) ]]; then
+  warnings+=("HEAD is on agent lane '$branch' (not sprint branch). Recover: git checkout <sprint_branch>")
+fi
+
+# --- Anchor 2: cwd must be the primary worktree (not a sub-worktree) ---
+git_dir=$(git rev-parse --git-dir 2>/dev/null || echo "")
+git_common=$(git rev-parse --git-common-dir 2>/dev/null || echo "")
+if [[ -n "$git_dir" && "$git_dir" != "$git_common" ]]; then
+  sprint_root=$(git rev-parse --git-common-dir 2>/dev/null | sed 's|/\.git$||; s|/.git$||')
+  warnings+=("cwd is inside a sub-worktree. Sprint root: $sprint_root — recover: cd $sprint_root")
+fi
+
+# --- Anchor 3: orphan worktrees from prior sprints (informational) ---
+wt_count=$(git worktree list --porcelain 2>/dev/null | grep -c "^worktree " || true)
+if [[ "${wt_count:-0}" -gt 1 ]]; then
+  warnings+=("$((wt_count - 1)) sub-worktree(s) active. Run 'git worktree list' to inspect; prune orphans with 'git worktree remove <path>'.")
+fi
+
+[[ ${#warnings[@]} -eq 0 ]] && exit 0
+
+# Build the context message
+msg="[shepherd] conductor-cwd hygiene alert (doctrines/conductor-cwd.md):"$'\n'
+for w in "${warnings[@]}"; do
+  msg+="  • $w"$'\n'
+done
+
+# Emit JSON — prefer jq, fall back to python3 (both are available in Claude Code envs)
+if command -v jq &>/dev/null; then
+  jq -n --arg ctx "$msg" '{"additionalContext": $ctx}'
+else
+  python3 -c "import json,sys; print(json.dumps({'additionalContext': sys.argv[1]}))" "$msg"
+fi
