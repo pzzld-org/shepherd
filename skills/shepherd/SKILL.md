@@ -1,7 +1,7 @@
 ---
 name: shepherd
 slug: shepherd
-version: 5.0.5
+version: 5.0.6
 description: |
   Sprint-by-sprint version-cycle conductor. Five-agent flock (engineer, critic,
   coder, auditor, worker) on a three-section sprint pipeline (§1 INTRODUCTION
@@ -280,7 +280,7 @@ The flock-level set lives in `flock.md` (13 items). Conductor-level lifters
 19. **Coder writes outside worktree** → silent dropped from cherry-pick (`doctrines/worktree-confinement.md`, v5.0.4).
 20. **Auditor runs gates from worktree** → FALSE-CRITICAL findings; halt with `WORKTREE-DRIFT` (`doctrines/auditor-readonly.md`, v5.0.4).
 21. **Same shared `.shepherd/ctx/*.md` across two lanes without partition rule** → cherry-pick conflicts (`doctrines/coder-brief-format-shared-artifacts.md`, v5.0.4).
-22. **Conductor `git switch`/`git checkout` to an `agent-*` lane branch** → HEAD drift; next commit lands on the lane branch, next `shctx worktree create-batch --from HEAD` propagates the wrong base, worktrees-within-worktrees nest (`doctrines/conductor-cwd.md` Ban 2 + Ban 3, v5.0.5). The conductor's HEAD MUST be `{sprint_branch}` (or `{patch_branch}`/`{main_branch}` during release plumbing) for the entire session. Inspect agent branches via `git -C <worktree-path>` only.
+22. **Conductor `git switch`/`git checkout` to an `agent-*` lane branch** → HEAD drift; next commit lands on the lane branch, next `shctx worktree create-batch --from HEAD` propagates the wrong base, worktrees-within-worktrees nest (`doctrines/conductor-cwd.md` Ban 2 + Ban 3, v5.0.6). The conductor's HEAD MUST be `{sprint_branch}` (or `{patch_branch}`/`{main_branch}` during release plumbing) for the entire session. Inspect agent branches via `git -C <worktree-path>` only.
 
 ---
 
@@ -310,7 +310,7 @@ For `:start` / `:autorun` / `:parallel`, sprint is inferred from current branch 
 | `references/seed-template.md` | Planter authoring or seed audit | Canonical seed shape (now includes graph-hint §7-bis) |
 | `references/agent-briefs.md` | Brief drafting | Copy-paste brief templates + grade cutoffs |
 | `doctrines/stage-graph.md` | First sprint-walk decision | Plan-IS-dispatch-contract principle (graph-as-discipline) |
-| `doctrines/conductor-cwd.md` | First worktree inspection | Conductor anchor discipline — cwd / HEAD / worktree all stay on sprint root; bans `cd`, `git switch <agent-branch>`, and `git worktree add` from inside a worktree (v5.0.3 + v5.0.5) |
+| `doctrines/conductor-cwd.md` | First worktree inspection | Conductor anchor discipline — cwd / HEAD / worktree all stay on sprint root; bans `cd`, `git switch <agent-branch>`, and `git worktree add` from inside a worktree (v5.0.3 + v5.0.6) |
 | `doctrines/gates-restoration.md` | Sprint opens with red gates | Run GATES-DISCOVERY before Lane 0; brief on full inventory, not narrow subset (v5.0.3) |
 | `doctrines/*.md` | Referenced by name throughout | Framework-intrinsic rules (subtract-don't-add, wrapper-must-earn, pattern-b-overlap, chain-repair, stage-graph, conductor-cwd, gates-restoration, ...) |
 | `${CLAUDE_PLUGIN_ROOT}/agents/<role>.md` | Each flock dispatch | Agent system prompt (injected into brief) |

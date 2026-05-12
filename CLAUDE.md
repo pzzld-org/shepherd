@@ -12,7 +12,7 @@ There is no build system. Plugin assets are markdown briefs, YAML frontmatter, a
 
 ## Repository layout
 
-```
+```bash
 .claude-plugin/
   plugin.json                  # shepherd plugin manifest (this repo IS the plugin)
   marketplace.json             # single-plugin marketplace; source = "."

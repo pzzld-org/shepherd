@@ -1,6 +1,6 @@
 {
   "name": "shepherd",
-  "version": "5.0.5",
+  "version": "5.0.6",
   "description": "Sprint-by-sprint version-cycle conductor. Five-agent flock (engineer, critic, coder, auditor, worker) on a three-section sprint pipeline (INTRODUCTION → BODY → CLOSE), the v4.2.0 Stage Graph, the v5.0.0 per-project SQLite context registry (.artifacts/root.db) backing /shepherd:ctx, and v5.0.4 multi-step automation pipelines (sync, ready, sprint open|wave|close, audit). v5.0.4 hardens the worktree contract end-to-end (shctx worktree create-batch + worktree-confinement doctrine + auditor sprint-root verification), adds shctx doctor diagnostics, gh-retry resilience for transient 504s, source-only SUBTRACT measurement via [gates.subtract_paths], a grading-rubric reference for traceable sprint grades, and role-tailored context injection that meaningfully reduces per-brief tokens. Includes a conductor-side DEDUP-GATE pre-flight (zero-tolerance for duplicate code, with SQL fast-path), mechanical skill auto-attachment per file scope, and an Opus-pinned planter that authors drift-resistant seeds. Project-agnostic — branch topology, gates, paths, and ledger discipline configured per-project via .claude/shepherd.toml.",
   "author": {
     "name": "FL03",
