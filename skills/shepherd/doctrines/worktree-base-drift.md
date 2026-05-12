@@ -89,6 +89,53 @@ A `BASE-DRIFT` halt is a brief-validity failure. The conductor either:
 In every other case, prefer `shctx worktree create-batch` + explicit
 `[WORKTREE-PATH]` + `[BASE-COMMIT-EXPECTED]`.
 
+## Canonical no-isolation workaround (v5.0.6)
+
+> Field origin: axiom v0.3.1-dev.8a, 2026-05-12 — `isolation: "worktree"` defaults
+> to `main` on every dispatch when the sprint is on a non-`main` branch. The
+> BASE-DRIFT halt fires correctly, but re-dispatching WITH isolation just repeats
+> the same failure. The canonical workaround is to dispatch WITHOUT isolation.
+
+When `isolation: "worktree"` consistently routes to `main` instead of the
+active sprint branch, the conductor switches to **no-isolation parallel
+dispatch** for the duration of that sprint:
+
+1. **Drop `isolation: "worktree"` entirely** from the Agent call.
+2. **Rely on file-disjoint `[FILE-SCOPE]` guarantees** — if the engineer's plan
+   produces strictly non-overlapping file scopes, parallel coders can work in
+   the same working tree without conflicts (last-write-wins is safe when there
+   is only ONE writer per file).
+3. **Remove `[WORKTREE]` and `[BASE-COMMIT-EXPECTED]` from the brief** — replace
+   with `[WORKING-TREE]` stating the sprint root path and the branch.
+4. **Coders `git add <their files>` and commit directly** to the sprint branch
+   (shared). Commits land in dispatch-completion order. The wave-gate runs after
+   all coders report back — ORDER OF COMMITS DOES NOT MATTER as long as scopes
+   are disjoint.
+5. **Add a single-line warning to the ENGINEER REPORT** in the dispatch message:
+   "No-isolation mode — extra care required on [FILE-SCOPE] disjointness; any
+   overlap is last-write-wins."
+
+**What you lose:**
+- The cherry-pick isolation barrier (two coders with accidental overlap → last-write-wins, not a conflict)
+- The `CONTEXT-INVENTORY STALE` detection (coder can't compare against a worktree-isolated HEAD snapshot)
+- The worktree-confinement enforcement from `doctrines/worktree-confinement.md`
+
+**What mitigates the loss:**
+- File-disjoint `[FILE-SCOPE]` guaranteed by the engineer's plan + conductor DEDUP-GATE pre-check
+- Post-merge `git diff --stat` verifies no unexpected files were touched
+- CLOSE-SWARM auditor `completeness` concern verifies real-work test and scope
+
+**Document the mode in the close report:**
+```markdown
+## Dispatch mode: no-isolation (worktree-base-drift workaround)
+Reason: `isolation:"worktree"` defaulted to `main` on all dispatch attempts.
+Risk mitigation: file-disjoint [FILE-SCOPE] verified at DEDUP-GATE; post-wave
+  `git diff --stat` reviewed; no overlap found.
+```
+
+This mode is the documented CANONICAL WORKAROUND until the Agent tool's
+`isolation: "worktree"` parameter respects the caller's current branch.
+
 ## See also
 
 - `conductor-cwd.md` — companion doctrine: never `cd` into a worktree.

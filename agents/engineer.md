@@ -174,7 +174,24 @@ From the registry, extract:
 - **Recurring halt codes** (same halt code in 2+ of last 3 sprints) → note in ENGINEER REPORT to the conductor for pre-dispatch verification.
 - **Clean-streak concerns** (0 CRITICAL/HIGH for 5+ consecutive sprints) → reduce plan emphasis on those concern areas; redirect depth to weaker concerns.
 
-**Mesh rows 11+** — project-doctrine extensions (read `[memory].project_doctrines/planter-mesh-extensions.md` if it exists; add rows accordingly).
+**Mesh row 11 — prior close-audit reports** (self-learning hook; per `doctrines/adaptation-loop.md`).
+
+```bash
+ls {paths.reports}/*-audit-*.md | sort | tail -3
+# Read each found file end-to-end
+```
+
+If no audit reports exist, skip and note "no prior audit reports yet" in the mesh summary.
+
+From each report, extract all findings flagged `HF-this-sprint: no` AND `carry: yes`. These are items the prior auditor identified as important enough to carry forward but insufficiently critical to hot-fix in-sprint. They represent the accumulated technical debt that the flock agreed to defer.
+
+- **Deferred-carry findings** → add each to the carry-forward checklist in this sprint's plan with source citation `(from audit {date}-{sprint}-audit)`.
+- **Recurring deferred findings** (same finding text or file across 2+ audit reports) → flag as `[CHRONIC-CANDIDATE]` in the plan and surface in ENGINEER REPORT.
+- **Code-quality pattern** (same concern cited in 3+ reports) → add a strengthened `[ACCEPTANCE]` criteria targeting that concern in every coder lane that touches the implicated files.
+
+This row is the bridge between the auditor's findings (written at close) and the next engineer's plan (written at mesh). It ensures deferred findings do not silently evaporate between sprints.
+
+**Mesh rows 12+** — project-doctrine extensions (read `[memory].project_doctrines/planter-mesh-extensions.md` if it exists; add rows accordingly).
 
 ### Mesh report shape
 
@@ -197,6 +214,7 @@ Author: @engineer · Date: <YYYY-MM-DD>
 | 8 | CLAUDE.md     | local read                       | Current state: ... |
 | 9 | carry-forward ledger | `<path>`                  | Chronic items: #... |
 | 10 | sprint-patterns | `{paths.ctx}/sprint-patterns.md` (last 5 entries) | Systemic risks: {list or none}. Recurring halts: {list or none}. Chronic candidates: {GH#s or none}. Clean streaks: {concern list or none}. |
+| 11 | prior audit reports | `{paths.reports}/*-audit-*.md` (last 3) | Deferred-carry findings: {count}. Chronic-candidates: {list or none}. Code-quality pattern: {list or none}. |
 
 ## Drift-risk items not in this sprint's seed
 
@@ -421,6 +439,7 @@ Before delivering the plan, verify every YES below:
 - [ ] Phase 0 mesh findings are reflected in lane decisions (not just summarized at the top)?
 - [ ] Drift-risk items from Phase 0 ledger sweep are explicitly listed (not silently absorbed)?
 - [ ] **Sprint-pattern registry consulted** (mesh row 10, if `{paths.ctx}/sprint-patterns.md` exists) — systemic risks and recurring halt codes reflected in lane decomposition or surfaced to conductor?
+- [ ] **Prior audit reports read** (mesh row 11, if any `{paths.reports}/*-audit-*.md` exist) — deferred-carry findings added to carry-forward checklist; recurring deferred findings flagged as `[CHRONIC-CANDIDATE]`?
 - [ ] **Stage Graph section is present and complete** — every required node (per `pipeline.md` §IV) is enumerated with `in_predicates`, `agents` (where applicable), `parallel_with` (Pattern B encoded), and `out_edges` (every branch point has an `on-hard-stop` edge)?
 - [ ] **Stage Graph references match wave decomposition** — every `WAVE-N-IMPL` node's lane count equals the corresponding wave's lane count in §"Wave composition"?
 - [ ] **Stage Graph encodes Pattern B** — every `WAVE-N-AUDIT` (N < last wave) has `parallel_with: [wave-(N+1)-impl]`?
@@ -509,6 +528,7 @@ You revise at most ONCE without main-chat intervention.
 - Chronic items surfaced: <count from ledger refresh>
 - Blocking uncertainties: <none | listed under "Open questions for critic">
 - Sprint-pattern signals: <systemic risks acted on | recurring halts flagged | none>
+- Prior-audit signals: <deferred-carry count added to plan | chronic-candidates flagged | none>
 - Agent ID + timestamp: <id> @ <ISO-8601>
 ```
 
