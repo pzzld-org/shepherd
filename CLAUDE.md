@@ -114,7 +114,7 @@ Shepherd is the *product* here, but this repo dogfoods its own ctx runtime. If y
 ## Versioning
 
 - Shepherd follows semver. MAJOR = closed-flock contract change. MINOR = new commands/doctrines/config keys. PATCH = dispatch logic / brief template fixes.
-- Tag format: `v{X}.{Y}.{Z}` (e.g. `v5.0.4`). Docker image is published via `.github/workflows/docker.yml` on `repository_dispatch` or manual trigger.
+- Tag format: `v{X}.{Y}.{Z}` (e.g. `v5.0.5`). Docker image is published via `.github/workflows/docker.yml` on `repository_dispatch` or manual trigger.
 - Version sources of truth (must move together): `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, `skills/shepherd/SKILL.md` frontmatter, `skills/context/SKILL.md` frontmatter, `README.md` header, `CHANGELOG.md`. `shctx release` plans the bump; review the dry-run before letting it execute.
 
 ## Repo invariants — v5.0.0 additions

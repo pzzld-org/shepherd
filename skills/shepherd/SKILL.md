@@ -1,7 +1,7 @@
 ---
 name: shepherd
 slug: shepherd
-version: 5.0.4
+version: 5.0.5
 description: |
   Sprint-by-sprint version-cycle conductor. Five-agent flock (engineer, critic,
   coder, auditor, worker) on a three-section sprint pipeline (§1 INTRODUCTION
@@ -150,6 +150,7 @@ The introduction does NOT produce code. It produces **alignment** — every acto
 
 **Conductor checklist:**
 - [ ] Session-start branch hygiene executed — orphan dev branches surfaced (`references/branching-model.md` §V.1)
+- [ ] Conductor anchor verified — `pwd` is the primary worktree, `git rev-parse --abbrev-ref HEAD` is `{sprint_branch}`, `git rev-parse --git-dir == --git-common-dir` (per `doctrines/conductor-cwd.md` "Mandatory verification"). HALT on any drift.
 - [ ] Verified seed at `{paths.plans}/{sprint_branch}.seed.md` (planter authored or main-chat-inline) — graph-hint section present (per `references/seed-template.md` §7-bis)
 - [ ] Dispatched @engineer with seed + prior close report + carry-forward GH#s + explicit instruction to run **Phase 0 mesh FIRST** + emit binding `## Stage Graph` per `pipeline.md` §XII
 - [ ] Plan returned at `{paths.plans}/{sprint_branch}.plan.md` with the seven bracketed sections per coder lane + Phase 0 mesh embedded at top + `## Stage Graph` YAML block
@@ -272,13 +273,14 @@ The flock-level set lives in `flock.md` (13 items). Conductor-level lifters
 12. `cargo` inside a coder dispatch → worktrees share parent `target/` (see `pipeline.md` §XV-bis); conductor runs the gate at sprint root.
 13. Off-graph dispatch → `STAGE-GRAPH-VIOLATION` per `doctrines/stage-graph.md`.
 14. Skipping the dev.0 canonical-types refresh → drift compounds across patches (`doctrines/zero-duplicate-tolerance.md`).
-15. `cd <worktree>` in conductor Bash → use `git -C <path>` (`doctrines/conductor-cwd.md`).
+15. `cd <worktree>` in conductor Bash → drifts cwd; use `git -C <path>` (`doctrines/conductor-cwd.md` Ban 1).
 16. Narrow-fix Lane 0 → run `GATES-DISCOVERY` first (`doctrines/gates-restoration.md`).
 17. Stale `[BASE-COMMIT-EXPECTED]` → coder halts with `BASE-DRIFT`; conductor re-creates worktree via `shctx worktree create-batch` (`doctrines/worktree-base-drift.md`).
 18. Stale carry-forward after lane closes → run `shctx close-lane <id>` mid-sprint (`doctrines/carry-forward-refresh.md`).
 19. **Coder writes outside worktree** → silent dropped from cherry-pick (`doctrines/worktree-confinement.md`, v5.0.4).
 20. **Auditor runs gates from worktree** → FALSE-CRITICAL findings; halt with `WORKTREE-DRIFT` (`doctrines/auditor-readonly.md`, v5.0.4).
 21. **Same shared `.shepherd/ctx/*.md` across two lanes without partition rule** → cherry-pick conflicts (`doctrines/coder-brief-format-shared-artifacts.md`, v5.0.4).
+22. **Conductor `git switch`/`git checkout` to an `agent-*` lane branch** → HEAD drift; next commit lands on the lane branch, next `shctx worktree create-batch --from HEAD` propagates the wrong base, worktrees-within-worktrees nest (`doctrines/conductor-cwd.md` Ban 2 + Ban 3, v5.0.5). The conductor's HEAD MUST be `{sprint_branch}` (or `{patch_branch}`/`{main_branch}` during release plumbing) for the entire session. Inspect agent branches via `git -C <worktree-path>` only.
 
 ---
 
@@ -308,7 +310,7 @@ For `:start` / `:autorun` / `:parallel`, sprint is inferred from current branch 
 | `references/seed-template.md` | Planter authoring or seed audit | Canonical seed shape (now includes graph-hint §7-bis) |
 | `references/agent-briefs.md` | Brief drafting | Copy-paste brief templates + grade cutoffs |
 | `doctrines/stage-graph.md` | First sprint-walk decision | Plan-IS-dispatch-contract principle (graph-as-discipline) |
-| `doctrines/conductor-cwd.md` | First worktree inspection | Conductor never `cd`'s — uses `git -C <path>` instead (v5.0.3) |
+| `doctrines/conductor-cwd.md` | First worktree inspection | Conductor anchor discipline — cwd / HEAD / worktree all stay on sprint root; bans `cd`, `git switch <agent-branch>`, and `git worktree add` from inside a worktree (v5.0.3 + v5.0.5) |
 | `doctrines/gates-restoration.md` | Sprint opens with red gates | Run GATES-DISCOVERY before Lane 0; brief on full inventory, not narrow subset (v5.0.3) |
 | `doctrines/*.md` | Referenced by name throughout | Framework-intrinsic rules (subtract-don't-add, wrapper-must-earn, pattern-b-overlap, chain-repair, stage-graph, conductor-cwd, gates-restoration, ...) |
 | `${CLAUDE_PLUGIN_ROOT}/agents/<role>.md` | Each flock dispatch | Agent system prompt (injected into brief) |
