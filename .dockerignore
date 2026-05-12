@@ -1,0 +1,18 @@
+# General
+
+*.log
+*.log.*
+
+*.tar
+*.tar.*
+
+*.zip
+*.zip.*
+
+# Language-specific
+
+### Rust
+**/target
+
+*.bk
+*.bk.*

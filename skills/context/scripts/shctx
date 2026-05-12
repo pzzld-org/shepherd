@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# /shepherd:ctx dispatcher.
+set -eu -o pipefail
+HERE="$(cd "$(dirname "$0")" && pwd)"
+export SHCTX_SKILL_ROOT="${SHCTX_SKILL_ROOT:-$(cd "$HERE/.." && pwd)}"
+source "$HERE/_lib.sh"
+
+usage() {
+  cat <<'EOF'
+shctx — shepherd context registry CLI
+
+Usage: shctx <subcommand> [args]
+
+Subcommands (atomic):
+  init [--shepherd|--artifacts]
+                          Scaffold per-project namespace, create root.db, register host project.
+                          Default namespace is .shepherd/ (v5.0.0+); pass --artifacts to opt into
+                          the legacy .artifacts/ namespace. Auto-detects existing dir if present.
+  status                  Row counts, refresh staleness, lock state, lint summary
+  doctor [--md|--json]    Diagnostic / pre-flight (v5.0.4): binaries, schema, lock, refresh staleness
+  refresh [--scope=…|--all]
+                          Rebuild caches (symbols|github|artifacts|all). --all is canonical (v5.0.4).
+  query <name> [--json|--md]
+                          Run a pre-baked named query
+  search <text> [--scope=…|--all] [--limit=N] [--md|--json]
+                          FTS5 full-text search over symbols + artifact content (v5.0.3).
+  inject <role>           Emit a [DB-CONTEXT] block for an agent brief
+  profile <list|show|enable|disable|sync> [args]
+  style <init|show|list|edit> [args]
+  mem <add|search|list|show|pin|unpin|rm> [args]
+  lock <show|acquire|release [--force]|reap> [args]
+  lint                    Naming-convention check
+  migrate                 Apply pending schema migrations
+  export <kind|--all> [--out=path]
+                          --all bundles every export kind to a directory (v5.0.4).
+  release [--dry-run] [--skip=tag,gh,bump,push]
+                          Algorithmic gear-cascade release pipeline.
+  handoff <create|list|show> [args]
+                          Standard sprint-handoff template + per-sprint document.
+  close-lane <lane-id> --sprint=<branch> [--issues=#a,#b] [--status=...] [--acceptance=<path>]
+                          Record a mid-sprint lane closure; auto-resolve carry-forward (v5.0.3).
+  worktree <list|create-batch|gc|merge> [args]
+                          Worktree hygiene + cherry-pick helper.
+                          create-batch (v5.0.4) pre-creates per-lane worktrees from sprint HEAD.
+
+Pipelines (multi-step automation, v5.0.4):
+  sync [--scope=…|--all] [--verbose]
+                          refresh → lint → status (one-shot context update)
+  ready [--shepherd|--artifacts] [--verbose]
+                          init → migrate → refresh --all → lint → doctor (first-time bootstrap)
+  sprint <open|wave|close> [args] [--verbose]
+                          open <branch>      lock + refresh --all + lint + status
+                          wave <id> [--all]  refresh github+artifacts + lint
+                          close <branch>     close-lanes + handoff + worktree gc + lock release
+  audit [--verbose]       lint → doctor → status (read-only validation)
+
+  help                    Print this message
+EOF
+}
+
+# Map hyphenated subcommands to their script filenames.
+script_for() {
+  case "$1" in
+    close-lane) echo "cmd_close-lane.sh" ;;
+    *)          echo "cmd_$1.sh" ;;
+  esac
+}
+
+cmd="${1:-help}"; shift || true
+case "$cmd" in
+  help|-h|--help) usage ;;
+  init|status|doctor|refresh|query|search|inject|profile|style|mem|lock|lint|migrate|export|release|handoff|worktree|close-lane|sync|ready|sprint|audit)
+    impl="$HERE/$(script_for "$cmd")"
+    if [[ ! -f "$impl" ]]; then
+      echo "ERROR: $cmd not yet implemented (missing $impl)" >&2; exit 2
+    fi
+    bash "$impl" "$@"
+    ;;
+  *)
+    echo "ERROR: unknown subcommand: $cmd" >&2
+    usage >&2
+    exit 1 ;;
+esac

@@ -1,0 +1,83 @@
+# Doctrines — language-agnostic by design
+
+The doctrines in this directory are **framework-intrinsic** rules about HOW shepherd orchestrates work. They are language-agnostic on purpose. They describe principles ("wrapper structs must earn their existence", "auditors are read-only", "every sprint runs Phase 0 mesh") without mandating any particular language's syntax, build tools, or testing convention.
+
+## The integration model
+
+Per-language details — the actual grep patterns, idioms, build commands, code-review preferences — DO NOT live in shepherd. They live in the appropriate per-language skill, loaded into every flock dispatch via the `[skills]` machinery in `shepherd.toml`.
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│                     shepherd (this plugin)                      │
+│  Doctrines  │  Flock dispatch   │  Phase 0 mesh   │  Pipeline   │
+│  (language- │   (language-      │  (language-     │  (language- │
+│   agnostic) │    agnostic)      │   agnostic)     │   agnostic) │
+└──────┬─────────────────────────────────────────────────────────┘
+       │
+       │ shepherd.toml [skills.by_domain] + [skills.detection]
+       │
+       ├─→  rust skill              (cargo, clippy, no_std/std/alloc, lifetimes, ownership)
+       ├─→  webassembly skill       (cargo-component, wit-bindgen, wasmtime)
+       ├─→  python skill            (uv, ruff, black, type-hints)
+       ├─→  typescript skill        (tsc, eslint, vitest, package.json)
+       ├─→  code-style skill        (per-language ledger of personal style preferences)
+       └─→  domain skills           (finance, polymarket, supabase, claude-api, ...)
+```
+
+When the conductor builds a coder brief, it walks `[skills.detection]` against the lane's file scope to pick which language + domain skills to inject into `[SKILLS]`. The doctrines speak in principles; the language skills supply the syntax.
+
+## What the doctrines own
+
+- WHEN to dispatch (Pattern B overlap, planter vs sprint pipeline, parallel-safety)
+- WHAT to enforce (SUBTRACT-DON'T-ADD, wrapper-must-earn, auditor read-only, issue-ledger awareness)
+- HOW the flock interacts with itself (engineer → critic → coder → auditor)
+- HOW seeds compose into plans into briefs into commits
+
+## What the doctrines DO NOT own
+
+- Language syntax (`pub struct`, `fn`, `impl`, `class`, `def`) — language skills
+- Build commands (`cargo check`, `npm test`, `pytest`) — `shepherd.toml [gates]`
+- Style preferences (4-space indent, snake_case vs camelCase) — `code-style` skill
+- Test framework choices (`cargo test`, `pytest`, `vitest`) — language skills
+- Linter configuration (clippy lints, eslint rules, ruff rules) — language skills
+
+## Wrapper-must-earn — language-agnostic example
+
+The principle:
+
+> A wrapper type that has no type-system-enforced invariant, no borrowed scope, no shared-allocation pattern, and no substantive trait/interface role IS A SMELL.
+
+This applies to:
+- Rust `pub struct Foo { params: P }` with single redirect method
+- TS `class Foo { constructor(public params: P) {} doThing() { params.doThing(); } }`
+- Python `class Foo:` with single attribute and pass-through methods
+- Go `type Foo struct { params P }` with single delegating method
+- Java `class Foo` with one field and pass-through
+
+Each language has its own grep pattern to detect the smell. Each language has its own preferred refactor (method-on-params, lifetime-borrow, shared-pointer wrapper). The DOCTRINE expresses the principle; the language skill provides the per-language detection grep and refactor pattern. The doctrine cites the language skill, doesn't duplicate it.
+
+## How to add new doctrines
+
+If a new framework-intrinsic rule emerges, write it here as a `.md` file. The rules:
+
+1. **Principle first.** State the rule abstractly. Don't lead with a code example.
+2. **No language syntax in the rule statement.** "Wrapper structs must earn their existence" — yes. "`pub struct Foo { params: P }` is a smell" — no, that's an example, demote to §Examples.
+3. **Cite per-language skills for implementation detail.** "See `rust` skill §wrappers for the per-language detection grep" beats inlining the grep.
+4. **Cross-reference other doctrines.** Doctrines reinforce each other; explicit links keep the system coherent.
+5. **Keep it under 200 lines.** If the rule needs 200+ lines to explain, it's probably two rules.
+
+## How to add new project doctrines
+
+Per-project doctrines that DRIFT beyond the framework's intrinsic rules live in `[memory].project_doctrines` (configured per-project, default `.claude/doctrines/`). Examples of project doctrines:
+
+- "Geo-block law — node process group pinned to yyz forever" (Axiom-specific, not a framework rule)
+- "BMS sigma-floor calibration — 7d window minimum" (Axiom-specific)
+- "ONNX models compile to WASI-NN, not native ort" (Axiom-specific)
+
+These get loaded by the conductor at session-open per `[hooks].on_every_dispatch`. They are NOT shepherd doctrines and don't belong in this directory.
+
+## See also
+
+- [`docs/integration.md`](../../../docs/integration.md) — how to wire your project's per-language skills
+- [`docs/customization.md`](../../../docs/customization.md) — adding project-specific doctrines
+- [`docs/configuration.md`](../../../docs/configuration.md) — `shepherd.toml [skills]` schema

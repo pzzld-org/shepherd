@@ -1,0 +1,10 @@
+# shepherd context registry — gitignored by default.
+# Remove these lines to commit the registry to the repo.
+root.db
+root.db-journal
+root.db-wal
+root.db-shm
+shepherd.lock
+project.json
+tmp/
+logs/

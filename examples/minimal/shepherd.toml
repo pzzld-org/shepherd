@@ -1,0 +1,54 @@
+# Minimal shepherd configuration — a generic project bootstrap.
+#
+# This is the smallest viable shepherd.toml. It assumes a Rust project
+# with the framework's mod-10 sprint convention and three canonical gates.
+#
+# For a fully-fleshed-out config, see ../axiom/shepherd.toml.
+# For the schema, see ../../docs/configuration.md.
+
+[project]
+name     = "my-project"
+language = "rust"             # rust | python | typescript | go | mixed
+
+[branching]
+patch_branch_pattern  = "v{X}.{Y}.{Z}"
+sprint_branch_pattern = "v{X}.{Y}.{Z}-dev.{N}"
+sprints_per_patch     = 10
+main_branch           = "main"
+release_tag_pattern   = "v{X}.{Y}.{Z}"
+
+[gates]
+check  = "cargo check --workspace"
+lint   = "cargo clippy --workspace -- -D warnings"
+format = "cargo fmt --all"
+
+[paths]
+plans   = ".artifacts/plans"
+reports = ".artifacts/reports"
+docs    = ".artifacts/docs"
+ctx     = ".artifacts/ctx"
+
+[skills]
+mandatory = ["code-style"]
+
+[skills.by_domain]
+rust = ["rust"]
+
+[skills.detection]
+rust = ["**/*.rs"]
+
+[mcp]
+github = true
+
+[cli]
+gh = true
+
+[ledger]
+phase_0_full_ledger      = true
+chronic_threshold_patches = 2
+
+[release]
+driver = "operator"
+
+[hooks]
+on_every_dispatch = ["code-style"]

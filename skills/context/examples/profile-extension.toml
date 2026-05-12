@@ -1,0 +1,7 @@
+# profile-extension.toml — example: append a security scan after every coder wave
+name = "post-wave-security"
+kind = "extension"
+[config]
+hook = "post-wave"
+command = "cargo audit"
+fail_on = "high"
