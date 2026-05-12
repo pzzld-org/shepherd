@@ -56,11 +56,21 @@ else
 fi
 
 # --- 2. namespace + project.json ---
-root="$(shctx_artifacts_root)"
+root="$(SHCTX_QUIET=1 shctx_artifacts_root)"
+repo="$(shctx_repo_root)"
 if [[ -d "$root" ]]; then
   add ok ns "namespace dir" "$root" ""
 else
   add fail ns "namespace dir" "missing" "run 'shctx init' or 'shctx ready'"
+fi
+
+# Dual-namespace conflict: both .shepherd/ and .artifacts/ exist.
+if [[ -d "$repo/.shepherd" && -d "$repo/.artifacts" ]]; then
+  active="$(basename "$root")"
+  unused="$( [[ "$active" == ".shepherd" ]] && echo ".artifacts" || echo ".shepherd" )"
+  add warn ns "namespace conflict" \
+    "both .shepherd/ and .artifacts/ exist; using $active/, $unused/ is unused" \
+    "remove $unused/ or run 'shctx init --$( echo "$unused" | tr -d '.' )' to switch"
 fi
 
 pjson="$(shctx_project_id_path)"

@@ -36,6 +36,9 @@ extra = [
 target_clean_threshold_gb = 20
 
 [paths]
+# Axiom was initialized before v5.0.0 and uses the legacy .artifacts/ namespace.
+# These paths must match the shctx namespace (`shctx doctor` reports a conflict
+# if they diverge). New projects should use .shepherd/ (the v5.0.0+ default).
 plans   = ".artifacts/plans"
 reports = ".artifacts/reports"
 docs    = ".artifacts/docs"

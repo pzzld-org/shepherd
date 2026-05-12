@@ -23,10 +23,14 @@ lint   = "cargo clippy --workspace -- -D warnings"
 format = "cargo fmt --all"
 
 [paths]
-plans   = ".artifacts/plans"
-reports = ".artifacts/reports"
-docs    = ".artifacts/docs"
-ctx     = ".artifacts/ctx"
+# Match the shctx namespace your project uses. Default (v5.0.0+) is .shepherd/.
+# If your project was initialized with `shctx init --artifacts`, use .artifacts/ here.
+# Running `shctx doctor` will report a conflict if these paths diverge from the
+# active shctx namespace.
+plans   = ".shepherd/plans"
+reports = ".shepherd/reports"
+docs    = ".shepherd/docs"
+ctx     = ".shepherd/ctx"
 
 [skills]
 mandatory = ["code-style"]
