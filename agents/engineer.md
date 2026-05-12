@@ -157,7 +157,24 @@ Read the "Current — v0.X.Y" section to confirm current deploy state, active ve
 
 Read `[ledger.carry_forward_file]`. Surface CHRONIC-flagged items prominently in the plan.
 
-**Mesh rows 10+** — project-doctrine extensions (read `[memory].project_doctrines/planter-mesh-extensions.md` if it exists; add rows accordingly).
+**Mesh row 10 — sprint pattern registry** (per `doctrines/adaptation-loop.md`).
+
+```bash
+# If shctx is available:
+shctx query sprint-patterns --last=5 --md
+# Fallback:
+cat {paths.ctx}/sprint-patterns.md | tail -200
+```
+
+If `{paths.ctx}/sprint-patterns.md` does not exist, skip this row and note "no pattern history yet" in the mesh summary. Do NOT create the file here — the completeness auditor creates it at sprint close.
+
+From the registry, extract:
+- **Systemic risk concerns** (same concern with 3+ HIGH/CRITICAL across 3+ sprints) → add a dedicated coder lane or strengthened `[ACCEPTANCE]` criteria targeting that concern in this sprint's plan.
+- **Chronic carry-forward candidates** (same GH# as carry-forward across 3+ sprints) → surface under "Drift-risk items not in this sprint's seed" even if the ledger hasn't applied the `chronic` label yet.
+- **Recurring halt codes** (same halt code in 2+ of last 3 sprints) → note in ENGINEER REPORT to the conductor for pre-dispatch verification.
+- **Clean-streak concerns** (0 CRITICAL/HIGH for 5+ consecutive sprints) → reduce plan emphasis on those concern areas; redirect depth to weaker concerns.
+
+**Mesh rows 11+** — project-doctrine extensions (read `[memory].project_doctrines/planter-mesh-extensions.md` if it exists; add rows accordingly).
 
 ### Mesh report shape
 
@@ -179,6 +196,7 @@ Author: @engineer · Date: <YYYY-MM-DD>
 | 7 | prior close   | `<path>`                         | Carry-forwards: ... |
 | 8 | CLAUDE.md     | local read                       | Current state: ... |
 | 9 | carry-forward ledger | `<path>`                  | Chronic items: #... |
+| 10 | sprint-patterns | `{paths.ctx}/sprint-patterns.md` (last 5 entries) | Systemic risks: {list or none}. Recurring halts: {list or none}. Chronic candidates: {GH#s or none}. Clean streaks: {concern list or none}. |
 
 ## Drift-risk items not in this sprint's seed
 
@@ -402,6 +420,7 @@ Before delivering the plan, verify every YES below:
 - [ ] No silent scope creep beyond what the seed authorized?
 - [ ] Phase 0 mesh findings are reflected in lane decisions (not just summarized at the top)?
 - [ ] Drift-risk items from Phase 0 ledger sweep are explicitly listed (not silently absorbed)?
+- [ ] **Sprint-pattern registry consulted** (mesh row 10, if `{paths.ctx}/sprint-patterns.md` exists) — systemic risks and recurring halt codes reflected in lane decomposition or surfaced to conductor?
 - [ ] **Stage Graph section is present and complete** — every required node (per `pipeline.md` §IV) is enumerated with `in_predicates`, `agents` (where applicable), `parallel_with` (Pattern B encoded), and `out_edges` (every branch point has an `on-hard-stop` edge)?
 - [ ] **Stage Graph references match wave decomposition** — every `WAVE-N-IMPL` node's lane count equals the corresponding wave's lane count in §"Wave composition"?
 - [ ] **Stage Graph encodes Pattern B** — every `WAVE-N-AUDIT` (N < last wave) has `parallel_with: [wave-(N+1)-impl]`?
@@ -489,6 +508,7 @@ You revise at most ONCE without main-chat intervention.
 - Carry-forwards covered: <count from handoff / count placed>
 - Chronic items surfaced: <count from ledger refresh>
 - Blocking uncertainties: <none | listed under "Open questions for critic">
+- Sprint-pattern signals: <systemic risks acted on | recurring halts flagged | none>
 - Agent ID + timestamp: <id> @ <ISO-8601>
 ```
 

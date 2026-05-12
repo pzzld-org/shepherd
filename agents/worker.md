@@ -142,6 +142,21 @@ BRIEF INVALID — missing/empty [SECTION]. Halting before execution.
 [FORMAT]        Table: branch | last_commit | recommendation | reason
 ```
 
+### Pattern 5 — Sprint pattern registry backfill
+
+Use when `{paths.ctx}/sprint-patterns.md` is absent or missing several sprints' entries (e.g., after installing the adaptation loop mid-patch-cycle).
+
+```
+[DELIVERABLE]   Read the last N close-time audit reports and synthesize one sprint-patterns.md entry
+                per missing sprint, appending in chronological order.
+[SOURCES]       {paths.reports}/*-close.md, {paths.reports}/*-audit-completeness.md
+[BUDGET]        15 min, 40 tool calls
+[FORMAT]        Append-mode write to {paths.ctx}/sprint-patterns.md (create with header if absent)
+[OUT-OF-SCOPE]  Do NOT modify source code. Do NOT create GH issues. Write only to sprint-patterns.md.
+```
+
+Note: this pattern is only needed for backfill. Going forward, the completeness auditor writes entries at each sprint close automatically (per `doctrines/adaptation-loop.md §II`).
+
 ---
 
 ## Output

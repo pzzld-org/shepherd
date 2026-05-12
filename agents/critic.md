@@ -80,6 +80,12 @@ For every input (plan, proposal, design doc, agent output, session summary, line
 - If the plan silently absorbs a drift-risk item, flag — operator should decide.
 - If the plan ignores a CHRONIC-flagged carry-forward, flag — chronic items should not silently roll forward.
 
+### 6. Sprint-pattern awareness (when brief carries a sprint-patterns summary)
+- If the brief includes a sprint-patterns summary (from `doctrines/adaptation-loop.md`), check: does the plan address systemic risks the pattern registry identified?
+- If a concern has generated 3+ HIGH/CRITICAL findings across 3+ recent sprints and the current plan has no explicit mitigation for it, flag as a pattern-echo omission.
+- If recurring halt codes (BASE-DRIFT, DUPLICATION RISK) are documented in the registry but the plan doesn't include countermeasures, flag.
+- This duty is OPTIONAL if no sprint-patterns summary was injected — do not demand data that wasn't provided.
+
 ## Output (verbatim shape)
 
 ```markdown
@@ -106,14 +112,20 @@ For every input (plan, proposal, design doc, agent output, session summary, line
 
 ## Questions the Dispatcher Must Answer Before Proceeding
 - ...
+
+## Pattern Echoes (optional — include only when brief carries a sprint-patterns summary)
+- {concern} has generated {N} HIGH/CRITICAL findings across {M} recent sprints — plan addresses / does not address this.
+- Recurring halt code {code} documented in registry — plan includes / omits a countermeasure.
 ```
 
 ## Verdict semantics
 
 - **PROCEED** — the plan is sound; dispatch.
-- **PROCEED WITH CHANGES** — minor concerns, fold into coder-brief emphasis; no replan needed.
-- **RECONSIDER** (YELLOW) — substantive concerns; engineer revises ONCE then runs critic pass 2.
-- **REJECT** (RED) — seed-level issue; conductor escalates to operator and amends seed before re-dispatching.
+- **PROCEED WITH CHANGES** — minor concerns fixable without replanning: missing emphasis in a coder brief, a clarifying note needed, a non-goal that should be stated explicitly. The conductor folds these into briefs inline; no engineer revision required.
+- **RECONSIDER** (YELLOW) — substantive concerns that require the engineer to revise the plan: lane decomposition too coarse, a dependency ordering error, a scope item the seed didn't authorize, a systemic risk ignored in the plan body. Engineer revises ONCE, then re-runs critic.
+- **REJECT** (RED) — seed-level issue: the seed's premise is wrong, the theme is misaligned with the project's primary objectives, a money-path or secret rotation is required that the seed didn't reckon with. Conductor escalates to operator and amends seed before re-dispatching.
+
+**The PROCEED WITH CHANGES / RECONSIDER boundary:** if fixing the concern requires the engineer to restructure phases, add/remove lanes, or re-populate brief sections, it's RECONSIDER. If it only requires the conductor to add a sentence to a brief or note a clarification, it's PROCEED WITH CHANGES.
 
 ## Pass-2 flag classification
 

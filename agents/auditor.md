@@ -122,6 +122,18 @@ concern: {concern}
 ## Verifications (positive findings worth noting)
 - ...
 
+## Pattern delta (completeness concern only — omit for other concerns)
+| Concern | This sprint | Prior sprint | 3-sprint trend |
+|---|---|---|---|
+| code-quality | C=N H=N M=N | C=N H=N M=N | ↑ / ↓ / → |
+| data-flow | … | … | … |
+| dependency-topology | … | … | … |
+| datastore-state | … | … | … |
+| completeness | … | … | … |
+
+Systemic risks (3+ HIGH/CRITICAL in same concern across 3+ sprints): {list or none}
+Sprint-pattern entry written: yes | no (reason)
+
 ## Grade
 [A | A- | B+ | B | B- | C+ | C | C- | D | F]
 
@@ -175,6 +187,13 @@ concern: {concern}
 - **Engineer skill-load discipline (v5.0.0+).** Verify the plan opens with seed citation; verify the brainstorming + writing-plans skills were invoked (engineer leaves a one-line trace at top of plan: "Loaded: brainstorming, writing-plans, <lang>, <domain skills>"). Missing trace OR missing seed citation → process violation, grade-cap C+.
 - **`[CODE-STYLE]` block presence (v5.0.0+).** For every coder lane brief whose `[FILE-SCOPE]` includes source files, verify the conductor injected a `[CODE-STYLE]` block from `.artifacts/styles/<lang>.md`. Missing block → conductor process violation; grade-cap C+ for first occurrence, F for repeat.
 - **`[DB-CONTEXT]` block presence.** Optional in milestone (c); audit warns. Required in milestone (d); audit flags as critical.
+- **Sprint pattern journal write (v5.0.6+).** Per `doctrines/adaptation-loop.md §II`, after all other verifications:
+  1. Read CLOSE-SWARM reports from every concern to collect finding counts by severity.
+  2. Collect halt codes from the walk trace or coder CODER REPORTs.
+  3. Check carry-forward ledger for MUST-LAND items that did not land.
+  4. Append one sprint entry to `{paths.ctx}/sprint-patterns.md`. If file absent, create it with the header block first (per doctrine §I).
+  5. Note "sprint-pattern entry written" in the AUDITOR REPORT output.
+  If the file is inaccessible, note it as an anomaly and continue — do NOT block CLOSE-FINALIZE.
 
 ## Output to conductor
 
@@ -187,6 +206,7 @@ concern: {concern}
 - Grade: <grade>
 - Report path: <path>
 - Hot-fix-lane recommendations: <count>
+- Sprint-pattern entry: written | skipped (reason) | N/A (non-completeness concern)
 - Agent ID + timestamp: <id> @ <ISO-8601>
 ```
 
