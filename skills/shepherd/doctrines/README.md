@@ -32,6 +32,7 @@ When the conductor builds a coder brief, it walks `[skills.detection]` against t
 - WHAT to enforce (SUBTRACT-DON'T-ADD, wrapper-must-earn, auditor read-only, issue-ledger awareness)
 - HOW the flock interacts with itself (engineer → critic → coder → auditor)
 - HOW seeds compose into plans into briefs into commits
+- HOW the system improves itself across a patch cycle (adaptation loop)
 
 ## What the doctrines DO NOT own
 
@@ -75,6 +76,30 @@ Per-project doctrines that DRIFT beyond the framework's intrinsic rules live in 
 - "ONNX models compile to WASI-NN, not native ort" (Axiom-specific)
 
 These get loaded by the conductor at session-open per `[hooks].on_every_dispatch`. They are NOT shepherd doctrines and don't belong in this directory.
+
+## Doctrine index
+
+| Doctrine | Principle |
+|---|---|
+| `adaptation-loop.md` | Self-improvement loop — sprint pattern registry written at close, read at mesh + seed time |
+| `auditor-readonly.md` | Auditors file findings; conductor dispatches fixes |
+| `carry-forward-refresh.md` | Chronic items labeled at sprint close; CRITICAL/HIGH cannot defer silently |
+| `chain-repair.md` | Mechanical seed drift verified + amended inline; substantive drift escalates |
+| `coder-brief-format-shared-artifacts.md` | Shared `.shepherd/ctx/*.md` files partitioned before dispatch to avoid cherry-pick conflicts |
+| `conductor-cwd.md` | Conductor anchor stays on sprint root; `cd <worktree>` and `git switch <agent-branch>` banned |
+| `context-registry.md` | SQLite registry backs DEDUP-GATE Layer 2; markdown fallback always available |
+| `gates-restoration.md` | Run GATES-DISCOVERY before Lane 0 when sprint opens with red gates |
+| `issue-ledger-awareness.md` | Phase 0 enumerates ALL open issues; tunnel vision is the documented failure |
+| `pattern-b-overlap.md` | WAVE-N-AUDIT and WAVE-(N+1)-IMPL fire in the same batch |
+| `seed-anchored-by-issues.md` | Every MUST-LAND lane cites a GH#; detail lives in the issue, not the seed |
+| `stage-graph.md` | The plan IS the dispatch contract; off-graph dispatch is a process violation |
+| `subtract-dont-add.md` | Every sprint ends net-negative; deletion is a constraint, not the job |
+| `use-mcp-not-cli.md` | Writes to shared systems use MCP; CLI for read-only enumeration |
+| `worker-patterns.md` | Bounded workers dispatched at Wave 1 START; main chat never idles on Monitor streams |
+| `worktree-base-drift.md` | Worktrees pre-created from sprint HEAD; coder halts on BASE-DRIFT |
+| `worktree-confinement.md` | All coder writes inside the worktree path |
+| `wrapper-must-earn.md` | Wrapper types justify with invariant / lifetime / shared-allocation / substantive-trait |
+| `zero-duplicate-tolerance.md` | DEDUP-GATE runs every grep before dispatch; coder-side halt is the fallback |
 
 ## See also
 

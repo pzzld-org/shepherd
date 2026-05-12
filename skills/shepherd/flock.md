@@ -214,20 +214,25 @@ After coder reports back (all coders in wave before rebase):
 git rebase claude-agent-<lane>-<short-hash>
 # Repeat per coder; resolve any conflicts inline
 
-# Four-step gate — sequential, on the sprint branch, after ALL rebases
-cargo check --workspace --features full          # bail early on compile errors
-cargo fmt --all                                   # normalize formatting first
-cargo fix --workspace --allow-dirty              # apply rustc machine-applicable fixes
-cargo clippy --fix --workspace --allow-dirty     # apply clippy machine-applicable fixes
+# Gate sequence — sequential, on the sprint branch, after ALL rebases
+# Commands come from shepherd.toml [gates]; examples below are Rust defaults.
+# Replace with {gates.format}, {gates.check}, {gates.lint} for your project.
+{gates.format}   # normalize formatting (e.g. cargo fmt --all, prettier --write, black .)
+{gates.check}    # bail early on compile/type errors (e.g. cargo check, tsc --noEmit)
+{gates.lint}     # static analysis (e.g. cargo clippy -D warnings, eslint, ruff check)
+# Language-specific auto-fix (optional, per language skill):
+#   Rust:   cargo fix --allow-dirty && cargo clippy --fix --allow-dirty
+#   TS/JS:  eslint --fix
+#   Python: ruff check --fix
 
-git add -A && git commit -m "fix(dev.N/wave-K): rebase + fmt + fix + clippy"
+git add -A && git commit -m "fix(dev.N/wave-K): rebase + gate"
 
 # Clean up
 git worktree remove .worktrees/<lane>
 git branch -d claude-agent-<lane>-<short-hash>
 ```
 
-**Coders run zero cargo invocations.** Worktrees share the workspace `target/` lock — parallel `cargo` calls WILL deadlock. The conductor runs the four-step gate above after ALL worktrees in a wave are rebased — 4 invocations, sequential, all by main chat. `--allow-dirty` is required because the working tree is dirty post-rebase before the gate commit fires.
+**Coders run zero build/compile/lint invocations.** Worktrees share the workspace build cache — parallel tool invocations CAN deadlock or produce false errors. The conductor runs the gate sequence above after ALL worktrees in a wave are rebased — sequential, all by main chat. The exact commands come from `shepherd.toml [gates]`; the framework does not hardcode language-specific tool names.
 
 **In-code rules** (auditor + critic enforce, coder system prompt encodes): per-language deprecation marker for migrations; explicit-panic stub for unfinished work; no in-code TODO/FIXME — use GH issue creation; per-language collection-type preference per `code-style:<language>.md`; tracing levels per project CLAUDE.md.
 
@@ -357,6 +362,7 @@ git branch -d claude-agent-<lane>-<short-hash>
 14. **Tunnel vision on current milestone** → Phase 0 must enumerate ALL open issues per `doctrines/issue-ledger-awareness.md`, not just the milestone the seed targets
 15. **Off-graph dispatch** → every Agent batch corresponds to a node in the plan's Stage Graph (per `doctrines/stage-graph.md`); mid-walk improvisation is a process violation
 16. **Stale `{paths.ctx}/canonical-types.md`** → every dev.0 fires the `CANONICAL-TYPES-REFRESH` worker; subsequent sprints' Phase 0 reads it FIRST
+17. **Missing sprint-pattern registry read at mesh time** → if `{paths.ctx}/sprint-patterns.md` exists, the engineer MUST read it as mesh row 10; skipping it means systemic risks accumulate silently (`doctrines/adaptation-loop.md`)
 
 ---
 
