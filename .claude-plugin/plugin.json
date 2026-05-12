@@ -1,6 +1,6 @@
 {
   "name": "shepherd",
-  "version": "5.0.7",
+  "version": "5.0.8",
   "description": "Sprint-by-sprint version-cycle conductor. Five-agent flock (engineer, critic, coder, auditor, worker) on a three-section sprint pipeline (INTRODUCTION → BODY → CLOSE). v5.0.6 adds: adaptation loop (sprint pattern registry — auditor writes at close, engineer reads at mesh, planter reads at seed); operator communication norms + session continuity protocol; language-agnostic gate references; axiom dev.8a field feedback (no-isolation workaround, HOTFIX-DYNAMIC stage type, structured gate output, work-bound-to-tracking + mid-flight-operator-amendment doctrines, W-A/B/D/E worker templates, engineer self-learning hook via prior audit reports); plugin hooks (session-open hygiene, git-commit guard, sprint-lock conflict warning). Project-agnostic — branch topology, gates, paths, and ledger discipline configured per-project via .claude/shepherd.toml.",
   "author": {
     "name": "FL03",

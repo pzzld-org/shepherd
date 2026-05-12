@@ -4,9 +4,15 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
-## v5.0.7 — unreleased
+## v5.0.8 — unreleased
 
 *Next patch — no changes yet.*
+
+---
+
+## v5.0.7 — 2026-05-12
+
+**Hotfix: hooks schema.** `hooks/hooks.json` was missing the top-level `"hooks"` wrapper key, causing plugin load failure (`expected record, received undefined`). All event handlers now correctly nested under `{"hooks": {...}}`. Version refs bumped across all five sources of truth.
 
 ---
 
