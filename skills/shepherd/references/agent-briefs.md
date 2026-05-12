@@ -230,6 +230,153 @@ Per `doctrines/subtract-dont-add.md` and `doctrines/issue-ledger-awareness.md`, 
 
 ---
 
+## Standard worker dispatches (Wave 1 START — fire in parallel with Wave 1 coders)
+
+These four worker patterns are general enough to be useful in almost every sprint. Dispatch them in the SAME batch as Wave 1 coders (per `flock.md §V.8` — workers are IO-bound and non-competing). Each brief follows the `@worker` contract from `agents/worker.md`.
+
+### W-A — Workspace test-surface audit
+
+Classifies all test files in the workspace into four buckets: `refreshed-this-sprint` (tests that touch lane-modified files), `stale` (tests for files untouched this sprint), `dead` (tests for deleted or unreachable code), `unaffected` (standard library / vendored tests that don't need attention). Useful for any sprint that touches > 3 files.
+
+```
+You are @worker. Bounded task; report a summary; do not stream updates.
+
+[ROLE] @worker — W-A workspace test-surface audit
+
+[DELIVERABLE]
+Classify every test file in the workspace into: refreshed-this-sprint
+(tests co-located with or covering files in {wave-1-file-scope-list}),
+stale (tests for untouched files), dead (tests for deleted/unreachable
+code), unaffected (vendored / stdlib). Report as a table.
+
+[SOURCES]
+- git diff {patch_branch}..HEAD --name-only (modified files this sprint)
+- rg "#\[cfg(test)\]|#\[test\]|def test_|def Test|it\(" --files-with-matches
+- git ls-files "*test*" "*spec*" "*bench*"
+
+[BUDGET]
+- Time: 10 min
+- Max tool calls: 30
+
+[FORMAT]
+Markdown table: file | bucket | coverage_of | note
+Write to {paths.reports}/{date}-w-a-test-surface.md
+
+[OUT-OF-SCOPE]
+- Do NOT modify any code, data, or config.
+- Do NOT run tests.
+- Do NOT dispatch other agents.
+```
+
+### W-B — Phase 0 mesh validation (MCP / CLI queries)
+
+Runs the heavy MCP and CLI queries the engineer couldn't do inline (large issue lists, deploy status, error monitoring). Returns receipts the engineer can reference in the plan. Useful in any sprint where the mesh surfaces are available (`[mcp]` + `[cli]` flags set).
+
+```
+You are @worker. Bounded task; report a summary; do not stream updates.
+
+[ROLE] @worker — W-B Phase 0 mesh validation
+
+[DELIVERABLE]
+Query the configured mesh surfaces and return structured receipts:
+GH open-issue count by milestone; Sentry error count last 48h;
+deploy status; last 5 PRs merged.
+
+[SOURCES]
+- mcp__plugin_github_github__list_issues (state=open, per_page=100)
+- mcp__plugin_sentry_sentry__search_events (last 48h) [if available]
+- fly status --app {project-name} [if available]
+- mcp__plugin_github_github__list_pull_requests (state=merged, per_page=5)
+
+[BUDGET]
+- Time: 15 min
+- Max tool calls: 20
+
+[FORMAT]
+Markdown table + summary paragraph. Write to
+{paths.reports}/{date}-w-b-mesh-validation.md
+
+[OUT-OF-SCOPE]
+- Do NOT modify any code, data, or config.
+- Do NOT dispatch other agents.
+```
+
+### W-D — Bulk GH issue triage + close script
+
+Walks every open GH issue, classifies each into `{blocking, closeable-now, tracking-future, non-issue}`, and writes a one-line closure rationale for every `closeable-now` issue. Generates a shell script the conductor reviews and runs to bulk-close stale issues. Useful at every sprint — issue ledgers accumulate "fixed but never closed" debt continuously.
+
+```
+You are @worker. Bounded task; report a summary; do not stream updates.
+
+[ROLE] @worker — W-D bulk GH issue triage
+
+[DELIVERABLE]
+Classify every open GH issue into: blocking-this-sprint (needs a coder
+lane), closeable-now (already addressed; just needs close), tracking-future
+(milestone out; keep open), non-issue (wontfix/rfc/design-question label).
+For every closeable-now issue, write a one-line closure rationale.
+Produce a shell script at {paths.reports}/{date}-w-d-bulk-close.sh that
+bulk-closes the closeable-now set.
+
+[SOURCES]
+- mcp__plugin_github_github__list_issues (state=open, per_page=500)
+- mcp__plugin_github_github__issue_read (per issue for ambiguous ones)
+- git log {patch_branch}..HEAD --oneline (to verify "fixed in current sprint")
+
+[BUDGET]
+- Time: 20 min
+- Max tool calls: 60
+
+[FORMAT]
+Markdown table + the .sh script. The script uses `gh issue close <N> --comment "<rationale>"`.
+Operator reviews + runs the script; worker does NOT close issues directly.
+
+[OUT-OF-SCOPE]
+- Do NOT close GH issues directly (produce the script only).
+- Do NOT modify any code, data, or config.
+- Do NOT dispatch other agents.
+```
+
+### W-E — Production diagnostic (on mesh-drift or operator regression amendment)
+
+Dispatched when Phase 0 mesh OR a mid-flight operator amendment reveals a production regression. Enumerates exact failure signals per symptom, cross-references Sentry and deploy logs, and proposes targeted HF coder briefs the conductor can fire. See `doctrines/mid-flight-operator-amendment.md §II Production regression` for the amendment protocol.
+
+```
+You are @worker. Bounded task; report a summary; do not stream updates.
+
+[ROLE] @worker — W-E production diagnostic
+
+[DELIVERABLE]
+For each regression symptom listed in [SOURCES.issues], enumerate:
+(a) exact error messages from Sentry / deploy logs (cite timestamps + counts),
+(b) the probable root cause,
+(c) a proposed targeted HF coder brief ([FILE-SCOPE] + [ACCEPTANCE]) to fix it.
+Return a structured report the conductor uses to dispatch HF coders.
+
+[SOURCES]
+- GH issues: {list of P0/P1 issue numbers from the operator amendment}
+- mcp__plugin_sentry_sentry__search_events (last 4h per symptom keyword)
+- mcp__plugin_sentry_sentry__search_issues
+- fly logs --app {project-name} -n 100
+- mcp__plugin_supabase_supabase__get_logs [if relevant]
+
+[BUDGET]
+- Time: 15 min
+- Max tool calls: 40
+
+[FORMAT]
+Markdown report: one section per issue. Include: symptom | error excerpt |
+probable cause | proposed HF scope.
+Write to {paths.reports}/{date}-w-e-prod-diagnostic.md
+
+[OUT-OF-SCOPE]
+- Do NOT modify any code, data, or config.
+- Do NOT close GH issues.
+- Do NOT dispatch other agents.
+```
+
+---
+
 ## Pattern B overlap dispatch (auditor + Wave N+1 coders, single batch)
 
 After Wave N gates pass, dispatch IN ONE MESSAGE:

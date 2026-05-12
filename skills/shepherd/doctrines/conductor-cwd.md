@@ -180,6 +180,33 @@ checks pass.
   patch, squash-merge to main) operate on project-managed branches, not
   agent lane branches. They are allowed and required.
 
+## HEAD advancement in no-isolation mode (v5.0.6 clarification)
+
+When coders are dispatched in **no-isolation mode** (per
+`worktree-base-drift.md §Canonical no-isolation workaround`), each coder
+commits directly to the sprint branch. The conductor's HEAD therefore
+advances as coders complete and commit.
+
+This is **not a violation** of the conductor anchor discipline. The anchor
+rule says conductor HEAD stays on `{sprint_branch}` — it does. It says
+nothing about HEAD being pinned to a specific SHA. HEAD-at-`{sprint_branch}`
+is the invariant; the specific commit it points to is expected to advance.
+
+**What to verify** (mandatory after each coder returns in no-isolation mode):
+
+```bash
+# HEAD still on sprint branch (not an agent-* branch)
+git rev-parse --abbrev-ref HEAD
+# Should return: {sprint_branch}
+
+# Check what landed
+git log --oneline -5
+```
+
+Do NOT verify HEAD SHA against `[BASE-COMMIT-EXPECTED]` (that field is only
+present in worktree-mode briefs). In no-isolation mode, simply verify the
+branch name and inspect the log.
+
 ## See also
 
 - `worktree-base-drift.md` — companion doctrine: agent worktrees must
