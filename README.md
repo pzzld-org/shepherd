@@ -31,7 +31,7 @@ shctx refresh --scope=all    # populate caches
 shctx status                 # verify
 ```
 
-See `plugins/shepherd/skills/context/SKILL.md` for the full CLI.
+See [`skills/context/SKILL.md`](skills/context/SKILL.md) for the full CLI.
 
 ### Per-language style files
 
@@ -45,7 +45,7 @@ shctx style show rust        # print the current rust style
 shctx style edit rust        # open in $EDITOR
 ```
 
-Bundled defaults ship at `plugins/shepherd/skills/context/styles/<lang>.md`; `shctx style init` copies them into the consumer project's `.artifacts/styles/`.
+Bundled defaults ship at [`skills/context/styles/<lang>.md`](skills/context/styles/); `shctx style init` copies them into the consumer project's `.artifacts/styles/`.
 
 ## What it is
 
@@ -84,26 +84,31 @@ Shepherd's answer:
 
 ## Install
 
-### Personal install (current user only)
+### From the Claude Code marketplace (recommended)
 
-```bash
-# From the agents repo
-cd /path/to/FL03/shepherd
-ln -s "$PWD/plugins/shepherd" ~/.claude/plugins/shepherd
+```text
+/plugin marketplace add fl03/shepherd
+/plugin install shepherd@fl03
 ```
 
-Or from the Claude Code plugin marketplace once published:
+This registers the self-hosted marketplace manifest at the repo root, then pulls in shepherd as a managed plugin. Subsequent updates flow through `/plugin update shepherd@fl03`.
+
+### Personal install via symlink (current user only)
 
 ```bash
-/plugin install shepherd
+# Clone once, then symlink the repo root into your user plugin directory.
+git clone https://github.com/FL03/shepherd.git ~/src/FL03/shepherd
+ln -s ~/src/FL03/shepherd ~/.claude/plugins/shepherd
 ```
 
-### Per-project install (checked into the repo)
+The repo root IS the plugin — `.claude-plugin/plugin.json` lives there.
+
+### Per-project pin (checked into the consumer repo)
 
 ```bash
-# From the project root
+# From the consumer project root
 mkdir -p .claude-plugin
-ln -s /path/to/FL03/shepherd/plugins/shepherd .claude-plugin/shepherd
+ln -s /path/to/FL03/shepherd .claude-plugin/shepherd
 ```
 
 ## Configure

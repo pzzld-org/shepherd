@@ -119,7 +119,7 @@ Five supporting lines every brief carries:
   [/DB-CONTEXT]
   ```
   Coder MUST cite at least one `[DB-CONTEXT]` row in `[CONTEXT-INVENTORY]` if the lane introduces a type that overlaps with an existing canonical concept.
-- **Auto-attach `[CODE-STYLE]` block (v5.0.0+).** For every language detected in `[FILE-SCOPE]`, the conductor reads `.artifacts/styles/<lang>.md` and prepends its content as a `[CODE-STYLE]` block in the brief. If the file is missing for a detected language, the conductor runs `shctx style init <lang>` first. The bundled `code-style` skill (`fl03-skills/skills/code-style/`) remains the universal ledger; `[CODE-STYLE]` is the project-specific override layer. Coders read both; project rules win on conflict.
+- **Auto-attach `[CODE-STYLE]` block (v5.0.0+).** For every language detected in `[FILE-SCOPE]`, the conductor reads `.artifacts/styles/<lang>.md` and prepends its content as a `[CODE-STYLE]` block in the brief. If the file is missing for a detected language, the conductor runs `shctx style init <lang>` first. The operator-installed `code-style` skill (separate plugin or user skill) remains the universal ledger; `[CODE-STYLE]` is the project-specific override layer. Coders read both; project rules win on conflict.
 
 #### Required-Skills Matrix (conductor MECHANICALLY populates `[SKILLS]` — never trusts engineer's list)
 

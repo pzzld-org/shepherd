@@ -159,7 +159,7 @@ done
 if [[ -n "$toml" ]]; then
   add ok config "shepherd.toml" "$toml" ""
 else
-  add warn config "shepherd.toml" "not found at standard paths" "create .claude/shepherd.toml — see plugins/shepherd/docs/configuration.md"
+  add warn config "shepherd.toml" "not found at standard paths" "create .claude/shepherd.toml — see docs/configuration.md"
 fi
 
 # --- emit ---

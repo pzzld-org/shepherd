@@ -1,4 +1,4 @@
--- plugins/shepherd/skills/context/schema/0001_init.sql
+-- skills/context/schema/0001_init.sql
 -- shepherd v5.0.0 baseline schema.
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;

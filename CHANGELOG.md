@@ -1,8 +1,6 @@
 # shepherd — changelog
 
-The `shepherd` plugin's per-version history. Format loosely based on [Keep a Changelog](https://keepachangelog.com/); follows [Semantic Versioning](https://semver.org/).
-
-Repo-level changelog covering both `shepherd` and `fl03-skills` lives at the [repo root](../../CHANGELOG.md).
+Per-version history for the `shepherd` plugin (this repo). Format loosely based on [Keep a Changelog](https://keepachangelog.com/); follows [Semantic Versioning](https://semver.org/).
 
 ---
 
