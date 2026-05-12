@@ -22,7 +22,7 @@ description: |
 >
 > Field origin: shepherd v5.0.1 conductor feedback (axiom v0.3.0-dev.4 XL),
 > §2.1 — `cd <worktree>` drifted cwd and conductor commits landed on lane
-> branches. v5.0.3 codified the cwd ban. v5.0.5 extends the doctrine to
+> branches. v5.0.3 codified the cwd ban. v5.0.6 extends the doctrine to
 > HEAD-state and worktree-nesting, after a follow-on field report that the
 > conductor's `git switch <agent-branch>` (for "inspection") produced
 > worktrees-within-worktrees state when the next `shctx worktree create-batch`
@@ -179,6 +179,33 @@ checks pass.
 - **Sprint-close branch operations** (cut next sprint, rebase-merge into
   patch, squash-merge to main) operate on project-managed branches, not
   agent lane branches. They are allowed and required.
+
+## HEAD advancement in no-isolation mode (v5.0.6 clarification)
+
+When coders are dispatched in **no-isolation mode** (per
+`worktree-base-drift.md §Canonical no-isolation workaround`), each coder
+commits directly to the sprint branch. The conductor's HEAD therefore
+advances as coders complete and commit.
+
+This is **not a violation** of the conductor anchor discipline. The anchor
+rule says conductor HEAD stays on `{sprint_branch}` — it does. It says
+nothing about HEAD being pinned to a specific SHA. HEAD-at-`{sprint_branch}`
+is the invariant; the specific commit it points to is expected to advance.
+
+**What to verify** (mandatory after each coder returns in no-isolation mode):
+
+```bash
+# HEAD still on sprint branch (not an agent-* branch)
+git rev-parse --abbrev-ref HEAD
+# Should return: {sprint_branch}
+
+# Check what landed
+git log --oneline -5
+```
+
+Do NOT verify HEAD SHA against `[BASE-COMMIT-EXPECTED]` (that field is only
+present in worktree-mode briefs). In no-isolation mode, simply verify the
+branch name and inspect the log.
 
 ## See also
 

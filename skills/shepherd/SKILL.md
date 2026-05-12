@@ -1,7 +1,7 @@
 ---
 name: shepherd
 slug: shepherd
-version: 5.0.5
+version: 5.0.6
 description: |
   Sprint-by-sprint version-cycle conductor. Five-agent flock (engineer, critic,
   coder, auditor, worker) on a three-section sprint pipeline (§1 INTRODUCTION
@@ -95,6 +95,8 @@ Agent({
 
 The flock is **closed**. Never dispatch outside these five — no `general-purpose`, `Explore`, `Plan`, `feature-dev:*`, `pr-review-toolkit:*`, `superpowers:*` agents (engineer's plan-skills load `superpowers:` from inside its own dispatch — that is not the conductor calling them). If a task doesn't fit a flock role, you handle it inline.
 
+**Inline vs. dispatch.** Handle inline (no Agent call): single Bash commands (git ops, worktree hygiene, gate runs), single-file reads for dispatch decisions, writing brief metadata and report frontmatter, one-shot MCP read lookups (verify a GH issue state, check deploy status). Escalate to the flock when: any task > 5 min of sustained observation → `@worker`; > 10 sequential MCP calls → `@worker`; production code changes → `@coder`; code-quality review → `@auditor`; plan authorship → `@engineer`; adversarial plan review → `@critic`. When in doubt between inline and `@worker`, dispatch the worker — the conductor's context is more valuable than a worker token.
+
 Per-agent triggers, brief contracts, parallel-safety rules, NEVER clauses: **`flock.md`**. Copy-paste templates: **`references/agent-briefs.md`**.
 
 ---
@@ -167,7 +169,7 @@ The body IS the Stage Graph walk. The conductor is no longer composing dispatche
 - [ ] Brief-Validity Checklist passed for every WAVE-IMPL node's coder briefs (in `flock.md` → @coder)
 - [ ] Each WAVE-IMPL node fires as a single Agent batch — zero file overlap across lanes; single primary-build-manifest writer (Cargo.toml / package.json / pyproject.toml / go.mod — whichever the project uses)
 - [ ] WORKER-IO nodes fire in the SAME batch as WAVE-1-IMPL (graph encodes `parallel_with: [wave-1-impl]`) — non-competing
-- [ ] WAVE-GATE node (conductor inline): coders each commit in their worktrees → rebase all into sprint branch → **four-step gate** (sequential): `cargo check --workspace --features full` → `cargo fmt --all` → `cargo fix --workspace --allow-dirty` → `cargo clippy --fix --workspace --allow-dirty` → commit `fix(dev.N/wave-K): rebase + fmt + fix + clippy`. Worktrees deleted. Auto-clean target dir if `[gates].target_clean_threshold_gb` exceeded.
+- [ ] WAVE-GATE node (conductor inline): coders each commit in their worktrees → rebase all into sprint branch → **gate sequence** (sequential): `{gates.format}` → `{gates.check}` → `{gates.lint}` → language-specific auto-fix if applicable (e.g., `cargo fix --allow-dirty && cargo clippy --fix --allow-dirty` for Rust; per the loaded language skill) → commit `fix(dev.N/wave-K): rebase + gate`. Worktrees deleted. Auto-clean target dir if `[gates].target_clean_threshold_gb` exceeded.
 - [ ] WAVE-N-AUDIT and WAVE-(N+1)-IMPL fire in the SAME batch (graph encodes `parallel_with` — Pattern B is structural, per `doctrines/pattern-b-overlap.md`)
 - [ ] HOTFIX subgraphs fire on `on-finding` edges from WAVE-AUDIT — < S patches, max 3 concurrent; each gets its own worktree; iteration cap (default 3) before HARD-STOP
 - [ ] Edge predicates evaluated honestly — never mark `on-pass` when a gate failed; never mark `on-no-finding` when CRITICAL was filed
@@ -207,6 +209,7 @@ Deletion counts toward SUBTRACT but NOT toward this quota.
   - **Rebase-merge** dev.N into patch; verify with `git log {patch_branch} --oneline | head -5`
   - **DELETE dev branch** (origin + local + prune) per `references/branching-model.md` §II.4
   - Next sprint branch cut + pushed (off the patch branch)
+- [ ] **Adaptation signal** (v5.0.6+): after CLOSE-FINALIZE and before PAUSE, check `{paths.ctx}/sprint-patterns.md` for trend alerts per `doctrines/adaptation-loop.md §V`. If any trend trigger fires (3+ same-concern CRITICAL/HIGH, 3+ same halt code, downward grade trend), surface a `[TREND]` alert to the operator. Takes < 1 min inline. Regardless of alert, the completeness auditor has already appended the sprint entry in CLOSE-SWARM.
 - [ ] **PAUSE** node fires under `/shepherd:start` (skipped under autorun); RELEASE node fires under sprint-through grant on dev.{last}
 
 ### Sprint impactfulness contract
@@ -280,11 +283,52 @@ The flock-level set lives in `flock.md` (13 items). Conductor-level lifters
 19. **Coder writes outside worktree** → silent dropped from cherry-pick (`doctrines/worktree-confinement.md`, v5.0.4).
 20. **Auditor runs gates from worktree** → FALSE-CRITICAL findings; halt with `WORKTREE-DRIFT` (`doctrines/auditor-readonly.md`, v5.0.4).
 21. **Same shared `.shepherd/ctx/*.md` across two lanes without partition rule** → cherry-pick conflicts (`doctrines/coder-brief-format-shared-artifacts.md`, v5.0.4).
-22. **Conductor `git switch`/`git checkout` to an `agent-*` lane branch** → HEAD drift; next commit lands on the lane branch, next `shctx worktree create-batch --from HEAD` propagates the wrong base, worktrees-within-worktrees nest (`doctrines/conductor-cwd.md` Ban 2 + Ban 3, v5.0.5). The conductor's HEAD MUST be `{sprint_branch}` (or `{patch_branch}`/`{main_branch}` during release plumbing) for the entire session. Inspect agent branches via `git -C <worktree-path>` only.
+22. **Conductor `git switch`/`git checkout` to an `agent-*` lane branch** → HEAD drift; next commit lands on the lane branch, next `shctx worktree create-batch --from HEAD` propagates the wrong base, worktrees-within-worktrees nest (`doctrines/conductor-cwd.md` Ban 2 + Ban 3, v5.0.6). The conductor's HEAD MUST be `{sprint_branch}` (or `{patch_branch}`/`{main_branch}` during release plumbing) for the entire session. Inspect agent branches via `git -C <worktree-path>` only.
 
 ---
 
-## VIII. Invocation
+## VIII. Operator communication norms
+
+The conductor is the operator's agent. Keep the operator informed without becoming verbose.
+
+**Mandatory surface moments:**
+- **Session start** — one-line status: current branch, where the sprint is in the pipeline, any anomalies found during orientation.
+- **Phase 0 mesh complete** — surface drift-risk items + carry-forward count before dispatching `@engineer`. One short paragraph.
+- **PLAN-GATE result** — verdict + key concerns (even GREEN warrants "critic cleared; N concerns folded into briefs").
+- **Each WAVE-GATE** — pass/fail + LOC delta if easily available.
+- **CLOSE-SWARM result** — grades per concern + any grade-cap reasons + trend alert (if triggered).
+- **PAUSE** — one-paragraph summary: what shipped, what carried forward, next sprint branch.
+
+**Status line format** (use at node completions during the walk):
+```
+[NODE] {node-id} → {outcome} | {one-sentence key finding}
+```
+
+**Communication rules:**
+- No silent proceeding on ambiguous signals — if a gate output has unexpected warnings, surface them and ask before marking on-pass.
+- No walls of text — each update fits on one screen; link reports rather than excerpting them.
+- No commentary on process steps that have no operator-relevant signal (e.g., don't narrate "running cargo fmt now").
+- Operator questions get direct answers before the next dispatch fires.
+
+---
+
+## IX. Session continuity (mid-sprint recovery)
+
+When a session opens on an existing sprint branch (partial progress), orient before taking any action:
+
+1. **Locate the plan**: `ls {paths.plans}/{sprint_branch}.plan.md` — read the `## Stage Graph` section and identify which nodes are enumerated.
+2. **Read the walk trace** (if it exists): `{paths.reports}/*{sprint_branch}*-walk.md` — the most recent append shows where the walk was last active.
+3. **Survey the sprint branch log**: `git log {patch_branch}..HEAD --oneline` — landed coder commits show which WAVE-IMPL nodes have completed and been rebased.
+4. **Check orphan worktrees**: `git worktree list` — if any `agent-*` worktrees exist, check each for committed (or uncommitted) state via `git -C <path> log --oneline -3`.
+5. **Reconstruct walk position** from steps 1–4 and report to operator before firing any node: "Re-oriented. Plan has N nodes. Based on git log + walk trace, nodes [X, Y, Z] are complete. Current position: [node-id]. Next eligible: [node-id]."
+
+Do NOT assume a prior session's batch completed cleanly. Do NOT assume orphan worktrees are stale. Verify, then proceed.
+
+The walk trace (optional, per `[stage_graph].walk_trace_enabled`) is the O(1) recovery artifact. Without it, recovery is O(N) via git log inspection — still reliable, just slower.
+
+---
+
+## X. Invocation
 
 | Command | Model | Action |
 |---------|-------|--------|
@@ -297,7 +341,7 @@ For `:start` / `:autorun` / `:parallel`, sprint is inferred from current branch 
 
 ---
 
-## IX. See also (file map)
+## XI. See also (file map)
 
 | File | Loaded when | Owns |
 |------|-------------|------|
@@ -310,9 +354,10 @@ For `:start` / `:autorun` / `:parallel`, sprint is inferred from current branch 
 | `references/seed-template.md` | Planter authoring or seed audit | Canonical seed shape (now includes graph-hint §7-bis) |
 | `references/agent-briefs.md` | Brief drafting | Copy-paste brief templates + grade cutoffs |
 | `doctrines/stage-graph.md` | First sprint-walk decision | Plan-IS-dispatch-contract principle (graph-as-discipline) |
-| `doctrines/conductor-cwd.md` | First worktree inspection | Conductor anchor discipline — cwd / HEAD / worktree all stay on sprint root; bans `cd`, `git switch <agent-branch>`, and `git worktree add` from inside a worktree (v5.0.3 + v5.0.5) |
+| `doctrines/conductor-cwd.md` | First worktree inspection | Conductor anchor discipline — cwd / HEAD / worktree all stay on sprint root; bans `cd`, `git switch <agent-branch>`, and `git worktree add` from inside a worktree (v5.0.3 + v5.0.6) |
 | `doctrines/gates-restoration.md` | Sprint opens with red gates | Run GATES-DISCOVERY before Lane 0; brief on full inventory, not narrow subset (v5.0.3) |
-| `doctrines/*.md` | Referenced by name throughout | Framework-intrinsic rules (subtract-don't-add, wrapper-must-earn, pattern-b-overlap, chain-repair, stage-graph, conductor-cwd, gates-restoration, ...) |
+| `doctrines/adaptation-loop.md` | After CLOSE-FINALIZE; at planter seed authorship; at @engineer mesh | Sprint pattern registry — self-improvement loop (v5.0.6); write protocol (completeness auditor), read protocol (engineer + planter), conductor trend surface |
+| `doctrines/*.md` | Referenced by name throughout | Framework-intrinsic rules (subtract-don't-add, wrapper-must-earn, pattern-b-overlap, chain-repair, stage-graph, conductor-cwd, gates-restoration, adaptation-loop, ...) |
 | `${CLAUDE_PLUGIN_ROOT}/agents/<role>.md` | Each flock dispatch | Agent system prompt (injected into brief) |
 | `${CLAUDE_PLUGIN_ROOT}/commands/<cmd>.md` | Slash-command fire | Slash-command behavior |
 | `${CLAUDE_PLUGIN_ROOT}/docs/configuration.md` | First invocation per session | shepherd.toml schema + defaults + validation |

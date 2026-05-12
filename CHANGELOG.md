@@ -4,7 +4,7 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
-## v5.0.5 — 2026-05-12
+## v5.0.6 — 2026-05-12
 
 **Single-plugin-repo migration + conductor anchor discipline.** Two
 independent threads:
@@ -17,7 +17,7 @@ independent threads:
    mode beyond the v5.0.3 cwd ban: the conductor's `git switch <agent-branch>`
    (for "inspection") and `git worktree add` from inside an existing
    worktree silently produced **worktrees-within-worktrees** state.
-   v5.0.5 codifies the broader anchor invariant.
+   v5.0.6 codifies the broader anchor invariant.
 
 ### Changed — doctrines
 

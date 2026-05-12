@@ -56,7 +56,8 @@ Every node in the graph is one of these types. The type determines the dispatch 
 | `LANE-CLOSE` | Conductor inline (`shctx close-lane <lane-id>`) — fires after each `WAVE-GATE` per lane | Conductor | carry-forward + dedup ledger auto-resolved (per v5.0.3 §2.7) |
 | `CANONICAL-TYPES-REFRESH` | Single `@worker` (bounded; non-competing) — fires at every dev.0 | @worker | refreshed `{paths.ctx}/canonical-types.md` |
 | `WAVE-AUDIT` | Parallel batch of M `@auditor` (concern-split, scoped to wave N) | @auditor | per-wave audit reports + GH findings |
-| `HOTFIX` | One or more `@coder` (≤ 3 concurrent, ≤ S each) | @coder | committed worktrees per finding |
+| `HOTFIX` | One or more `@coder` (≤ 3 concurrent, ≤ S each) — count pre-declared in plan | @coder | committed worktrees per finding |
+| `HOTFIX-DYNAMIC` | Variable-cardinality `@coder` batch — count derived from gate-error cluster analysis at runtime | @coder | committed worktrees; count not pre-declared |
 | `CLOSE-SWARM` | Parallel batch of 3–5 `@auditor` (concern-split, full sprint scope) | @auditor | close-time audit reports + grades + GH findings |
 | `CLOSE-FINALIZE` | Conductor inline | Conductor | close report + handoff + memory + rebase + DELETE dev branch + cut next |
 | `RELEASE` | Conditional on dev.{last}; runs per `[release].driver` | Conductor or CI | tag + GH release + next patch branch + dev.0 |
@@ -74,6 +75,35 @@ parallel_with  — list of node-ids that MUST fire in the same Agent batch (Patt
 agents         — list of {role, count, brief-ref} (empty for conductor-inline)
 out_edges      — list of {label, target-node-id}
 ```
+
+**HOTFIX-DYNAMIC cardinality.** Unlike `HOTFIX` (count pre-declared in plan), a
+`HOTFIX-DYNAMIC` node derives its coder count at walk-time from the gate-error
+cluster analysis:
+
+1. Run the gate with structured JSON output (`{gates.lint} --message-format=json
+   --keep-going > .shepherd/runs/w{N}-gate.json 2>&1` for tools that support it,
+   OR `{gates.lint} 2>&1 | tee .shepherd/runs/w{N}-gate.txt`).
+2. Parse errors and cluster by **file-disjoint scope**: each cluster becomes one
+   parallel HF coder lane.
+3. Dispatch all clusters in ONE Agent batch (same Wave-style parallel safety
+   rules as WAVE-IMPL — zero file overlap per lane).
+4. After all HF coders return, re-run the gate ONCE. If still failing, escalate
+   (cap at 3 HOTFIX iterations per gate).
+
+The Stage Graph YAML for a `HOTFIX-DYNAMIC` node:
+```yaml
+- id: hotfix-w1
+  type: HOTFIX-DYNAMIC
+  in_predicates: [{ predecessor: wave-1-gate, edge: on-fail }]
+  cardinality: "1..cluster_count"   # auto-derived at walk-time
+  per_instance_brief: hotfix-coder-template  # brief template, not per-lane
+  out_edges:
+    - { label: on-coder-complete, target: wave-1-gate-rerun }
+    - { label: on-hard-stop, target: hard-stop }    # > 3 iterations
+```
+
+This encodes HF-cascade parallelism structurally rather than requiring the
+engineer to pre-declare N specific HF lanes (which they cannot know at plan time).
 
 The plan section §"Stage Graph" enumerates every node. The conductor parses it at sprint open and walks it.
 
@@ -479,6 +509,83 @@ The `completeness` auditor verifies graph discipline at close:
 9. **dev.0 plan without CANONICAL-TYPES-REFRESH worker** — the workspace catalog at `{paths.ctx}/canonical-types.md` must be refreshed at every patch's dev.0; a plan that omits it ships stale catalog and produces duplicate-prone subsequent sprints.
 
 A graph that fails any of these checks gets a `STAGE-GRAPH-VIOLATION` finding and grade-caps at C+ (per `subtract-dont-add` precedent).
+
+---
+
+## XIII-bis. Structured gate output + parallel HF dispatch (v5.0.6)
+
+> Field origin: axiom v0.3.1-dev.8a, 2026-05-12. Three serialized HF waves
+> (HF-1 → HF-2 → HF-3) each unmasked a new error layer because the preceding
+> gate run short-circuited at the first compile error. All ~25 errors could have
+> surfaced upfront with a single `--keep-going` run; all three HF coders could
+> have fired as one parallel wave.
+
+### The problem with streaming gate output
+
+When a gate fails, two problems occur:
+1. **Short-circuit masking** — most compilers/linters stop at the first error
+   (or the first error in the DAG-blocking package). Downstream errors that would
+   have appeared are hidden until the upstream fix lands.
+2. **Blocking conductor context** — the gate command blocks for minutes; the
+   conductor context is consumed waiting for output rather than doing useful work.
+
+### Structured output pattern
+
+When `shepherd.toml [gates]` tools support JSON output mode, prefer it:
+
+```bash
+# Instead of streaming to terminal (blocks; short-circuits):
+{gates.lint}
+
+# Prefer structured output with full-depth scan:
+{gates.lint} --message-format=json --keep-going \
+  > .shepherd/runs/{wave}-{gate}.json 2>&1
+# (--keep-going flag requires build tool support; check language skill)
+```
+
+Parse the JSON without re-running:
+```bash
+# Language-agnostic: the language skill provides the exact jq / parsing recipe
+# Example (Rust / cargo):
+jq -r 'select(.reason == "compiler-message" and .message.level == "error") |
+       "\(.target.name)\t\(.message.spans[0].file_name):\(.message.spans[0].line_start)\t\(.message.message[:80])"' \
+  .shepherd/runs/{wave}-gate.json | sort -u
+```
+
+The result is a TSV table of `crate/module \t file:line \t message` — sortable
+by file, clusterizable by file-disjoint scope.
+
+### Cluster → parallel HF dispatch
+
+After parsing, group errors by file (or by file-disjoint cluster if multiple
+errors are in the same file):
+
+```
+cluster-A: crates/foo/src/bar.rs  (3 errors)
+cluster-B: crates/baz/src/lib.rs  crates/baz/src/util.rs  (6 errors)
+cluster-C: crates/qux/src/mod.rs  (12 errors)
+```
+
+Dispatch ONE @coder per cluster in a SINGLE Agent batch — this is a
+`HOTFIX-DYNAMIC` dispatch (§II above). Each coder gets `[FILE-SCOPE]` = its
+cluster's files; `[ACCEPTANCE]` = the specific error lines resolved.
+
+**Wall-clock impact:** 3 clusters dispatched in parallel vs 3 serial HF coders
+is typically a 3× reduction in wall-clock time from gate-red to gate-green.
+
+### Where to store runs
+
+`.shepherd/runs/` is the per-sprint run directory for structured gate output:
+
+```
+.shepherd/runs/
+  w1-gate.json          ← Wave 1 gate structured output
+  w1-hotfix-gate.json   ← Wave 1 HF wave re-gate
+  w2-gate.json          ← ...
+```
+
+Add `.shepherd/runs/*.json` to the project's `.gitignore` (or equivalent) —
+these are transient artifacts, not tracked state.
 
 ---
 

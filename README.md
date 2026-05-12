@@ -215,7 +215,7 @@ Shepherd follows semver:
 - **MINOR** bumps add new commands, new doctrines, new config keys (backward-compatible).
 - **PATCH** bumps fix bugs in dispatch logic, doctrines, brief templates.
 
-Current version: **5.0.5**
+Current version: **5.0.6**
 
 See [`CHANGELOG.md`](CHANGELOG.md) for the per-version history.
 

@@ -120,7 +120,7 @@ The 12-row default is project-extensible via `[memory].project_doctrines/planter
 | 9 | Prior handoff | most recent under `{paths.docs}/*-close-handoff.md` |
 | 10 | Project CLAUDE.md | "Current — v0.X.Y" section |
 | 11 | Carry-forward ledger | `[ledger.carry_forward_file]` |
-| 12 | Workspace knowledge silo | `{paths.ctx}/*.md` |
+| 12 | Workspace knowledge silo | `{paths.ctx}/*.md` (includes `canonical-types.md`, `sprint-patterns.md`) |
 
 ---
 
@@ -139,6 +139,19 @@ Update `[ledger.carry_forward_file]` with the disposition. If this file does not
 When planting `arc`, the carry-forward ledger is rebuilt from scratch by walking every CRITICAL/HIGH GH issue under `--milestone <patch_branch>` and placing it.
 
 Per `doctrines/carry-forward-refresh.md`, items crossing `[ledger.chronic_threshold_patches]` patch boundaries get the `chronic` label.
+
+### VI.A Sprint pattern registry (adaptation loop)
+
+If `{paths.ctx}/sprint-patterns.md` exists (created by the completeness auditor per `doctrines/adaptation-loop.md`), the planter reads it as part of mesh row 12. Act on the signal:
+
+| Pattern detected | Seed action |
+|---|---|
+| Same concern has 3+ HIGH/CRITICAL findings across 3+ recent sprints | Add an explicit mitigation lane in the relevant sprint seed; name the concern and the mitigation approach |
+| Same GH# unclosed as carry-forward across 3+ patches | Place as MUST-LAND CRITICAL in the earliest available sprint slot; do not defer a fourth time without an explicit operator signal in memory |
+| Same grade-cap reason repeating across 3+ sprints (e.g., real-work test failure, SUBTRACT violation) | Add an explicit guardrail or non-goal in the seed's scope section to preempt the pattern |
+| A concern has been CLEAN (0 CRITICAL/HIGH) for 5+ consecutive sprints | Reduce seed emphasis on that concern area; redirect planning depth toward the weaker concerns |
+
+If the file does not yet exist, skip this step and note "no pattern history yet" in the mesh report. The completeness auditor will create it at the end of the next sprint.
 
 ---
 
