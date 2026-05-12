@@ -4,6 +4,12 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v5.0.7 — unreleased
+
+*Next patch — no changes yet.*
+
+---
+
 ## v5.0.6 — 2026-05-12
 
 **Single-plugin-repo migration + conductor anchor discipline.** Two
@@ -71,6 +77,54 @@ independent threads:
 - `skills/context/tests/test_release.sh` — fixtures match the new bump
   targets.
 
+### Added — adaptation loop (self-improvement)
+
+- **`doctrines/adaptation-loop.md`** (new) — sprint pattern registry (`{paths.ctx}/sprint-patterns.md`): append-only, per-sprint. Write protocol: completeness auditor at CLOSE-SWARM. Read protocol: `@engineer` mesh row 10, `@planter` seed context. Conductor fires `[TREND]` alert at PAUSE when 3+ same-concern CRITICAL/HIGH across 3 consecutive sprints.
+- **`agents/engineer.md`** — mesh row 10 (sprint-pattern registry), four action triggers (systemic risks / chronic carry-forwards / recurring halts / clean-streak concerns), plan-quality bar item, ENGINEER REPORT field.
+- **`agents/engineer.md`** — mesh row 11 (prior close-audit reports self-learning hook): reads `{paths.reports}/*-audit-*.md`, surfaces `HF-this-sprint=no, carry=yes` findings into the carry-forward checklist; recurring deferred findings flagged `[CHRONIC-CANDIDATE]`.
+- **`agents/critic.md`** — §6 sprint-pattern awareness, Pattern Echoes output section, clarified PROCEED WITH CHANGES vs RECONSIDER boundary.
+- **`agents/auditor.md`** — completeness concern writes sprint-pattern journal entry (5-step); `## Pattern delta` report section.
+- **`agents/worker.md`** — Pattern 5: sprint pattern registry backfill brief template.
+- **`skills/shepherd/planter.md`** — mesh row 12 names `sprint-patterns.md`; §VI.A sprint-pattern seed-action table.
+
+### Added — operator communication + session continuity
+
+- **`skills/shepherd/SKILL.md` §VIII** — Operator communication norms: mandatory surface moments, status line format `[NODE] {node-id} → {outcome} | {one-sentence key finding}`, no-silent-proceeding rule, no walls-of-text rule.
+- **`skills/shepherd/SKILL.md` §IX** — Session continuity: 5-step mid-sprint recovery protocol (locate plan → read walk trace → survey git log → check orphan worktrees → reconstruct walk position).
+
+### Changed — language-agnostic gates
+
+- `skills/shepherd/SKILL.md` §III and `skills/shepherd/flock.md` — gate sequence now uses `{gates.format}`, `{gates.check}`, `{gates.lint}` from `shepherd.toml [gates]` instead of hardcoded `cargo` commands. Language-skill auto-fix note added.
+- `skills/shepherd/flock.md` — anti-pattern #17: missing sprint-pattern registry read at mesh time.
+
+### Added — doctrines (axiom dev.8a field feedback)
+
+- **`doctrines/work-bound-to-tracking.md`** (new) — every intentional gap in production code cites a GH issue number via a language-native stub primitive (`todo!("see #N")` / `throw new Error("TODO see #N")` / `raise NotImplementedError("see #N")` / `panic("TODO see #N")`). Enforcement: `@engineer` counts stubs at mesh, `@coder` must pair stub with GH issue, `@auditor` greps for naked TODO/FIXME/XXX/HACK.
+- **`doctrines/mid-flight-operator-amendment.md`** (new) — four amendment types (clarification, feature addition, production regression, architectural decision) with defined conductor responses; dispatcher-patch ledger at `{paths.ctx}/dispatcher-patches/{sprint_branch}-pc-{N}.md`; HARD-STOP triggers (secret rotation, north-star change, security rollback).
+- **`doctrines/_candidates/README.md`** (new) — promotion pipeline from project-specific memory to framework-intrinsic doctrine; candidate template with frontmatter; promotion checklist.
+- **`doctrines/worktree-base-drift.md`** — `§Canonical no-isolation workaround (v5.0.6)`: when `isolation:"worktree"` defaults to `main`, drop isolation entirely; rely on file-disjoint `[FILE-SCOPE]`; coders commit directly to sprint branch. Documents what you lose (cherry-pick barrier, worktree-confinement enforcement) and mitigations (disjoint plan + post-wave `git diff --stat`).
+- **`doctrines/conductor-cwd.md`** — `§HEAD advancement in no-isolation mode`: HEAD advancing as coders commit to the sprint branch is NOT a doctrine violation; the invariant is "HEAD stays on `{sprint_branch}`", not "HEAD stays pinned to dispatch-time SHA".
+
+### Added — pipeline stages + dispatch patterns
+
+- **`skills/shepherd/pipeline.md`** — `HOTFIX-DYNAMIC` stage type: variable-cardinality `@coder` batch derived from gate-error cluster analysis at walk-time (vs. pre-declared HOTFIX). Stage Graph YAML example included.
+- **`skills/shepherd/pipeline.md` §XIII-bis** — Structured gate output + parallel HF dispatch: `--message-format=json --keep-going` collects full error surface; errors parsed and clustered by file-disjoint scope; one `@coder` per cluster dispatched in a single batch. Gate JSON artifacts stored in `.shepherd/runs/`.
+
+### Added — standard worker dispatch templates
+
+- **`skills/shepherd/references/agent-briefs.md`** — W-A/B/D/E standard worker brief templates:
+  - **W-A** — test-surface audit (classify all tests into 4 buckets; 10 min, 30 calls)
+  - **W-B** — Phase 0 mesh validation (GH issues + Sentry + deploy status; 15 min, 20 calls)
+  - **W-D** — bulk GH issue triage + close script generation (20 min, 60 calls)
+  - **W-E** — production diagnostic for regression amendments (15 min, 40 calls)
+
+### Added — plugin hooks
+
+- **`hooks/hooks.json`** (new) — plugin-shipped hooks activating automatically on install; three guards:
+  - `SessionStart` → `session_open.sh`: verifies conductor HEAD is not on `agent-*`/`lane-*` branch and cwd is the primary worktree; warns on orphan sub-worktrees.
+  - `PreToolUse(Bash)` → `bash_guard.sh`: blocks `git commit` when HEAD is on an agent/lane branch (`permissionDecision: deny`).
+  - `PreToolUse(Write|Edit)` → `lock_guard.sh`: warns when `.artifacts/shepherd.lock` or `.shepherd/shepherd.lock` is held by a different session ID.
+
 ### Notes for upgraders
 
 - The doctrine extension is **behavioral**, not schema-level — no
@@ -82,6 +136,7 @@ independent threads:
   called out explicitly in the "When the rule does not apply" section.
 - The session-open verification adds three `git rev-parse` calls. Negligible
   cost; catches drift before it produces silent breakage.
+- **Hooks require jq or python3** in the shell environment at hook execution time. Both are standard on macOS and common Linux distributions.
 
 ---
 
