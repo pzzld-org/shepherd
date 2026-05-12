@@ -2,7 +2,7 @@
 
 Sprint-by-sprint version-cycle conductor. A production-grade orchestration framework that turns a single Claude Code session into a disciplined release engineer driving a closed five-agent flock through repeatable sprint pipelines.
 
-```
+```bash
 ┌──────────────────────────────────────────────────────────────────┐
 │  /shepherd:plant     Opus-pinned seed authorship (upstream)      │
 │  /shepherd:start     One sprint end-to-end, then PAUSE           │
@@ -52,7 +52,7 @@ Bundled defaults ship at `plugins/shepherd/skills/context/styles/<lang>.md`; `sh
 Shepherd is the framework. The conductor (main chat, Sonnet) writes seeds, dispatches a closed flock of five agents, runs gates, audits, and ties off — then pauses or loops or fans out depending on the command invoked.
 
 | Lane | Model | Mode | Job |
-|---|---|---|---|
+| ---- | ----- | ---- | --- |
 | `@engineer` | Opus | Single, once per sprint | Phase 0 mesh + sprint plan authorship |
 | `@critic` | Sonnet | Single, sequential gate | Adversarial review of plans, money-paths, merges |
 | `@coder` | Sonnet | Parallel waves | Implementation; one per disjoint file scope |
@@ -94,7 +94,7 @@ ln -s "$PWD/plugins/shepherd" ~/.claude/plugins/shepherd
 
 Or from the Claude Code plugin marketplace once published:
 
-```
+```bash
 /plugin install shepherd
 ```
 
@@ -153,7 +153,7 @@ A working example for the Axiom project lives at [`examples/axiom/shepherd.toml`
 
 ## Usage
 
-```
+```bash
 # Author seeds for upcoming sprints (Opus session required)
 /shepherd:plant
 /shepherd:plant dev.5
@@ -179,7 +179,7 @@ For first-time use:
 ## File map
 
 | Path | What it is |
-|---|---|
+| ---- | ---------- |
 | `.claude-plugin/plugin.json` | Plugin manifest |
 | `commands/{plant,start,autorun,parallel}.md` | The four slash commands |
 | `agents/{engineer,critic,coder,auditor,worker}.md` | Closed flock — agent system prompts |
