@@ -80,15 +80,14 @@ MAIN_BRANCH="main"
 #   yaml:  patches a YAML `version:` key (skill manifest).
 #   readme:patches the literal `Current version: **X.Y.Z**` line.
 VERSION_FILES=(
-  "plugins/shepherd/.claude-plugin/plugin.json:json"
-  "plugins/shepherd/skills/shepherd/SKILL.md:yaml"
-  "plugins/shepherd/skills/context/SKILL.md:yaml"
-  "plugins/fl03-skills/skills/shepherd/SKILL.md:yaml"
+  ".claude-plugin/plugin.json:json"
+  "skills/shepherd/SKILL.md:yaml"
+  "skills/context/SKILL.md:yaml"
   ".claude-plugin/marketplace.json:json"
-  "plugins/shepherd/README.md:readme"
+  "README.md:readme"
 )
 
-CHANGELOG_PATH="plugins/shepherd/CHANGELOG.md"
+CHANGELOG_PATH="CHANGELOG.md"
 
 # ---- helpers ----
 log()  { echo "shctx release: $*"; }

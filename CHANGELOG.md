@@ -1,8 +1,87 @@
 # shepherd — changelog
 
-The `shepherd` plugin's per-version history. Format loosely based on [Keep a Changelog](https://keepachangelog.com/); follows [Semantic Versioning](https://semver.org/).
+Per-version history for the `shepherd` plugin (this repo). Format loosely based on [Keep a Changelog](https://keepachangelog.com/); follows [Semantic Versioning](https://semver.org/).
 
-Repo-level changelog covering both `shepherd` and `fl03-skills` lives at the [repo root](../../CHANGELOG.md).
+---
+
+## v5.0.5 — 2026-05-12
+
+**Single-plugin-repo migration + conductor anchor discipline.** Two
+independent threads:
+
+1. **Repo isolation.** The plugin tree moved out of `plugins/shepherd/`
+   to the repo root in earlier commits; this release finishes the
+   migration so manifests, docs, the `shctx release` pipeline, and the
+   test suite all agree the repo IS the plugin.
+2. **Conductor anchor discipline.** Field feedback flagged a failure
+   mode beyond the v5.0.3 cwd ban: the conductor's `git switch <agent-branch>`
+   (for "inspection") and `git worktree add` from inside an existing
+   worktree silently produced **worktrees-within-worktrees** state.
+   v5.0.5 codifies the broader anchor invariant.
+
+### Changed — doctrines
+
+- **`doctrines/conductor-cwd.md` extended to anchor discipline.** Title
+  + scope broadened from "conductor cwd" to "conductor anchor (cwd +
+  HEAD + worktree context)". Three explicit bans with the correct
+  alternative for each:
+  - Ban 1 — `cd`/`pushd` into a worktree (the v5.0.3 cwd rule, preserved).
+  - Ban 2 — `git switch` / `git checkout` to an `agent-*` lane branch.
+    The conductor's HEAD MUST remain `{sprint_branch}` (or `{patch_branch}`/
+    `{main_branch}` during release plumbing). Inspect agent branches via
+    `git -C <worktree-path>` only.
+  - Ban 3 — `git worktree add` from inside a worktree. Always run from
+    the sprint root, or use `shctx worktree create-batch` which assumes it.
+  Mandatory three-check verification (`pwd` / `git rev-parse --abbrev-ref
+  HEAD` / `git rev-parse --git-dir == --git-common-dir`) added to the
+  doctrine and wired into the §1 INTRO conductor checklist.
+
+### Added — anti-pattern
+
+- **SKILL.md anti-pattern #22** — `Conductor git switch/git checkout to an
+  agent-* lane branch → HEAD drift → wrong-base worktrees → nesting`.
+  Cross-references `doctrines/conductor-cwd.md` Ban 2 + Ban 3.
+
+### Changed — anti-pattern
+
+- **SKILL.md anti-pattern #15** sharpened to specify the drift mode (cwd)
+  and link to `doctrines/conductor-cwd.md` Ban 1 — distinguishing it from
+  the new HEAD-drift case in #22.
+
+### Changed — repo isolation (single-plugin-repo migration finish)
+
+- `.claude-plugin/marketplace.json` — drop the `fl03-skills` entry;
+  shepherd `source` is now `.`; homepage URLs point at the repo root.
+- `.claude-plugin/plugin.json` — homepage URL fixed; the `.shepherd/root.db`
+  description typo corrected to `.artifacts/root.db`.
+- `CLAUDE.md` rewritten for the root-level layout (the repo *is* the
+  plugin; no more `plugins/shepherd/` prefix).
+- `README.md` install section now leads with `/plugin marketplace add
+  fl03/shepherd` and symlinks the repo root, not the old subpath.
+- `CHANGELOG.md` no longer claims to cover `fl03-skills` (which now lives
+  in its own repo).
+- `examples/axiom/CLAUDE-snippet.md` — plugin URL + version pin fixed.
+- `skills/shepherd/flock.md` — rephrased the `code-style` reference now
+  that `fl03-skills/skills/code-style/` lives outside this repo.
+- `skills/context/SKILL.md`, `skills/context/schema/0001_init.sql` —
+  doctrine + schema header comments updated to the new layout.
+- `skills/context/scripts/cmd_release.sh` — `VERSION_FILES` and
+  `CHANGELOG_PATH` rebuilt against the root-level manifest set.
+- `skills/context/scripts/cmd_doctor.sh` — config-doc pointer updated.
+- `skills/context/tests/test_release.sh` — fixtures match the new bump
+  targets.
+
+### Notes for upgraders
+
+- The doctrine extension is **behavioral**, not schema-level — no
+  migrations, no config changes, no breaking interface for consumer
+  `shepherd.toml` files. Conductors that already honored `conductor-cwd.md`
+  inherit Ban 2 + Ban 3 as the same intent, now explicit.
+- Subagents (coders, auditors, workers) **may continue to freely inhabit
+  worktrees**. The doctrine binds the conductor's session only; this is
+  called out explicitly in the "When the rule does not apply" section.
+- The session-open verification adds three `git rev-parse` calls. Negligible
+  cost; catches drift before it produces silent breakage.
 
 ---
 

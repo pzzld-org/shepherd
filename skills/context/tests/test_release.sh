@@ -6,15 +6,13 @@ SHCTX="$SHCTX_SKILL_ROOT/scripts/shctx"
 "$SHCTX" init >/dev/null
 
 # Seed the workspace with the version files so the bump-plan output exercises every format.
-mkdir -p plugins/shepherd/.claude-plugin plugins/shepherd/skills/shepherd \
-         plugins/shepherd/skills/context plugins/fl03-skills/skills/shepherd .claude-plugin
-echo '{"version":"0.0.0"}' > plugins/shepherd/.claude-plugin/plugin.json
+mkdir -p .claude-plugin skills/shepherd skills/context
+echo '{"version":"0.0.0"}' > .claude-plugin/plugin.json
 echo '{"version":"0.0.0"}' > .claude-plugin/marketplace.json
 printf -- '---\nname: x\nslug: x\nversion: 0.0.0\n---\n' \
-  | tee plugins/shepherd/skills/shepherd/SKILL.md \
-        plugins/shepherd/skills/context/SKILL.md \
-        plugins/fl03-skills/skills/shepherd/SKILL.md >/dev/null
-printf '# README\n\nCurrent version: **0.0.0**\n' > plugins/shepherd/README.md
+  | tee skills/shepherd/SKILL.md \
+        skills/context/SKILL.md >/dev/null
+printf '# README\n\nCurrent version: **0.0.0**\n' > README.md
 git add . && git commit -qm "seed version files"
 
 # ---- Mode A: lighter-pattern (patch branch, e.g. v5.0.0) ----
@@ -32,8 +30,8 @@ assert_contains "plan gh"        "$out" "gh release create v5.0.0"
 # Cascade: 5.0.0 → 5.0.1 (Z<9 increments Z).
 assert_contains "plan next patch branch" "$out" "git checkout -b v5.0.1"
 assert_contains "plan next dev branch"   "$out" "git checkout -b v5.0.1-dev.0"
-assert_contains "plan version bump"      "$out" "bump (json) plugins/shepherd/.claude-plugin/plugin.json"
-assert_contains "plan readme bump"       "$out" "bump (readme) plugins/shepherd/README.md"
+assert_contains "plan version bump"      "$out" "bump (json) .claude-plugin/plugin.json"
+assert_contains "plan readme bump"       "$out" "bump (readme) README.md"
 assert_contains "plan complete"          "$out" "release pipeline complete: v5.0.0 released"
 
 # ---- Mode B: sprint-end mode, mid-patch (dev.5 of v0.2.9 — sprints_per_patch=10, last=9) ----

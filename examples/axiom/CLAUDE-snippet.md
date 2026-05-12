@@ -5,7 +5,7 @@ Add this section to your project's `CLAUDE.md` so any Claude Code session knows 
 ```markdown
 ## Sprint orchestration — shepherd plugin
 
-This project runs sprint cycles via the [shepherd](https://github.com/FL03/shepherd/tree/main/plugins/shepherd) plugin (v4.0.0).
+This project runs sprint cycles via the [shepherd](https://github.com/FL03/shepherd) plugin (v5.0.5).
 
 Configuration: `.claude/shepherd.toml`. Project doctrines: `.claude/doctrines/`.
 
