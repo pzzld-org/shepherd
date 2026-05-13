@@ -4,9 +4,71 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
-## v5.0.8 — unreleased
+## v5.0.9 — unreleased
 
-**Fix: prevent dual-namespace split-brain between `.shepherd/` and `.artifacts/`.**
+### Flock cohesion — shared substrate across agents
+
+Per operator observation: "every agent feels isolated rather than acting as part of a larger group so the agents feel like they need to re-invent everything every time from scratch." This release names the structural gap and lands the substrate.
+
+- **New doctrine** `skills/shepherd/doctrines/flock-cohesion.md` — verbalizes the shared-substrate model. Four channels: canonical-types (static "what exists where"), graph state + trace (mechanical "who is doing what now"), pauses (synchronous "I need this"), and insights (asynchronous "I noticed this"). All four are read at MESH; written at DISPATCH and REPORT.
+- **`[SIBLING-LANES]` brief block** (`skills/shepherd/references/agent-briefs.md`) — every wave dispatch brief now lists the other lanes in the wave with their `[FILE-SCOPE]` summaries and the symbols/artifacts they produce. The single most-requested affordance: agents finally see what their siblings are doing. Validity checklist updated.
+- **`## INSIGHTS` report section** (`agents/coder.md`, `agents/worker.md`) — optional cross-lane observations any agent can append to their final report. Canonical kinds: `relocation`, `extension`, `duplication`, `consolidation`, `gap`, `nit`. Replaces the absent "I saw something interesting" channel.
+- **New hook** `hooks/scripts/agent_insight_capture.sh` — `PostToolUse(Agent|Task)` parses `## INSIGHTS` blocks, writes one JSON record per entry to `<ns>/insights/<sprint>/<id>.json`. Silent when no INSIGHTS block is present.
+- **New: `shctx insights <list|show|export|clear>`** (`skills/context/scripts/cmd_insights.sh`) — registry CLI. `export --md` renders as markdown for engineer mesh row 13 consumption.
+- **`agents/engineer.md` Phase 0 mesh row 13** — engineer reads the prior sprint's insights at next-sprint mesh; decides per-kind how to action (relocation → consider scoping a lane; nit → aggregate before acting; etc.). Insights NOT actioned are surfaced under "Cross-lane insights not scoped this sprint" — operator visibility is the rule.
+
+### Dispatch cascade — Stage Graph as rule engine
+
+Per operator request: "create some type of rule engine layer that would allow the conductor to dispatch all agents using conditional links so agents cascade through the plan." The plan is now extractable into a machine-readable topology that `shctx graph` walks deterministically — the conductor's only LLM-driven step per tick is brief authoring + edge-label selection; routing is mechanical.
+
+- **New doctrine** `skills/shepherd/doctrines/dispatch-cascade.md` — the plan IS the program; the conductor IS the interpreter; the Stage Graph IS the topology.
+- **New: `shctx plan <extract|topology|validate>`** (`skills/context/scripts/cmd_plan.sh`) — parse plan.md's `## Stage Graph` YAML block, materialize `<ns>/graph/state.json`, pretty-print topology, run structural validation (acyclic, predicates resolve, parallel_with mutual).
+- **New: `shctx graph <status|next|mark|trace|reset>`** (`skills/context/scripts/cmd_graph.sh`) — the walker. `next` returns the next-eligible batch honoring `parallel_with` cliques. `mark <id> --state=done --exit=<edge>` advances state and auto-promotes downstream nodes when their in_predicates are satisfied. `trace` is append-only at `<ns>/graph/trace.jsonl`.
+- **New: `shctx pauses <list|show|resolve|clear>`** (`skills/context/scripts/cmd_pauses.sh`) — the PAUSE-FOR-DEPENDENCY registry. Hook captures pauses; conductor reads structured records via `show`; `resolve --satellite-sha=<sha>` marks completion.
+- **New hook** `hooks/scripts/agent_pause_detector.sh` — `PostToolUse(Agent|Task)` parses agent output for `Halt code: PAUSE-FOR-DEPENDENCY`, extracts the structured satellite request, writes `<ns>/pauses/<id>.json`, and surfaces an `additionalContext` alert. Eliminates the LLM re-parsing step.
+- **`adaptation-loop.md §V-bis`** — node-level telemetry from `trace.jsonl` (duration, exit-edge frequency, halt rate per node-type) feeds the sprint-pattern registry with finer-grained signal than sprint-level summaries.
+- **`pipeline.md §V`** — walk algorithm now references the `shctx graph` runtime mechanization.
+
+### Field feedback from v5.0.8 / axiom v0.3.2-dev.0
+
+**§1 — `PAUSE-FOR-DEPENDENCY` primitive (most requested).** First-class Stage Graph escape hatch for mid-lane out-of-scope dependencies. Coder emits a structured halt → conductor dispatches an XS/S satellite `@coder` → `SendMessage` resumes the paused lane. Cap: 2 satellites/lane. Cherry-pick order invariant: satellite commit lands before resumed-lane commit.
+- New: `skills/shepherd/doctrines/pause-for-dependency.md`
+- `agents/coder.md` — `PAUSE-FOR-DEPENDENCY` halt code, trigger protocol, report shape
+- `skills/shepherd/pipeline.md` — `PAUSE-FOR-DEPENDENCY` + `RESUME-LANE` stage taxonomy; `on-pause-dep` edge predicate; `§XV-quint` subgraph walkthrough
+
+**§2 — Coder lane file-scope cap.** `agents/engineer.md` — soft cap of ≤3 files per lane MAY-MODIFY; single-file exception at >300 LOC.
+
+**§3 — Parallel cherry-pick conflict documentation.** `skills/shepherd/references/branching-model.md §VII-bis` — file overlap between parallel lane branches is expected; how to resolve; STAGE-GRAPH-VIOLATION vs legitimate conflict.
+
+**§4 — Conductor anchor drift hygiene.**
+- New: `hooks/scripts/bash_post.sh` — `PostToolUse(Bash)` detects cwd drift into sub-worktrees
+- `hooks/hooks.json` — wires the new PostToolUse hook
+- `hooks/scripts/session_open.sh` — adds sprint-patterns.md absence warning
+- `hooks/scripts/bash_guard.sh` — adds `cd`-into-worktree warning + corrected cargo-parallel regex (no longer false-positives on `cargo check && cargo test`)
+
+**§5 — Cargo sequential gates doctrine.**
+- New: `skills/shepherd/doctrines/cargo-sequential-gates.md`
+- `skills/shepherd/pipeline.md §XV-sext` — referenced at WAVE-GATE
+- `skills/shepherd/SKILL.md §2 BODY` — cross-referenced from gate sequence
+- `hooks/scripts/bash_guard.sh` — Check 2: warn on backgrounded cargo invocations (`&` not `&&`)
+
+**§6/§7 — /reload-plugins escape hatch + MCP preference.**
+- New: `skills/shepherd/doctrines/plugin-reload-escape.md`
+- `skills/shepherd/pipeline.md §XV-sept` — Phase 0 MCP availability + reload note
+
+**§8 — Programmatic GH issue triage (`shctx issues classify`).** Replaces the per-sprint LLM enumeration pass with deterministic label/milestone/severity bucketing from the cached `index_issues` table.
+- New: `skills/context/scripts/cmd_issues.sh` — subcommands `classify` and `list`; buckets `blocking-this-sprint`, `labeled-non-issue`, `tracking-future`, `drift-risk`, `unclassified`; `--unclassified-only` for focused LLM review
+- `skills/context/scripts/shctx` — registers `issues` subcommand under the `<noun> <verb>` convention
+- `agents/engineer.md` Phase 0 mesh row 1 — preferred path is `shctx issues classify`; MCP/gh enumeration is the fallback when cache is stale
+
+**§9 — Sprint-patterns registry verification.**
+- `hooks/scripts/session_open.sh` — surfaces `sprint-patterns.md` absence at session start
+- `skills/shepherd/SKILL.md §1` — existence check added to INTRODUCTION checklist
+- `skills/shepherd/doctrines/adaptation-loop.md` — on-first-close creation protocol
+
+**§10 — Feedback classification.** `skills/shepherd/doctrines/adaptation-loop.md §VI-bis` — framework-generic vs project-specific feedback rule; framework-generic candidates are flagged in close reports for doctrine promotion.
+
+### Fix: prevent dual-namespace split-brain between `.shepherd/` and `.artifacts/`
 
 The root cause: `shctx init` (no flags) defaulted to `.shepherd/` on a fresh project while example `shepherd.toml` files had `[paths]` entries referencing `.artifacts/`. The conductor's Write calls then created `.artifacts/` as a directory side effect, leaving both namespaces present. `shctx_artifacts_root()` always preferred `.shepherd/` while the conductor kept reading `.artifacts/*` — split-brain until the operator migrated by hand.
 

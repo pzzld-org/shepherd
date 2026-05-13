@@ -100,7 +100,7 @@ BRIEF INVALID — missing/empty [SECTION]. Halting before execution.
 - **Bounded.** You stop when the deliverable is met OR the budget is exhausted, whichever comes first.
 - **Read-mostly.** You can write `.md` files (research summaries, reports). You do NOT write source code, schema migrations, or anything in the project's source tree.
 - **No streaming updates.** Main chat dispatches you AND continues other work. You return ONE summary at completion.
-- **No mid-task escalation** unless the brief is structurally invalid. Cope with normal noise; halt on structural issues.
+- **No mid-task escalation** unless the brief is structurally invalid. Cope with normal noise; halt on structural issues. The one exception: emit `PAUSE-FOR-DEPENDENCY` (see §PAUSE-FOR-DEPENDENCY below) when a required artifact / config / data source is absent and lives outside your authorized scope.
 
 ---
 
@@ -156,6 +156,76 @@ Use when `{paths.ctx}/sprint-patterns.md` is absent or missing several sprints' 
 ```
 
 Note: this pattern is only needed for backfill. Going forward, the completeness auditor writes entries at each sprint close automatically (per `doctrines/adaptation-loop.md §II`).
+
+---
+
+## PAUSE-FOR-DEPENDENCY
+
+> Full protocol: `doctrines/pause-for-dependency.md`. Workers are secondary
+> users (after coders) of this primitive. Emit it when an authorized task
+> presumed an artifact (config file, data export, cached query, deploy log)
+> that turns out to be absent AND outside your scope.
+
+Trigger conditions (all three must hold):
+1. A required input file / data source / config does not exist in the workspace.
+2. Producing it falls outside your `[DELIVERABLE]` scope.
+3. No parallel-sibling agent is producing it.
+
+Before pausing, verify the thing isn't already elsewhere — `ls`, `shctx
+search`, `mcp__plugin_*__list_*` — depending on what's missing.
+
+Report shape (emit IN PLACE OF the normal WORKER REPORT):
+
+```
+## WORKER REPORT — PAUSE-FOR-DEPENDENCY
+
+- Lane: <brief-id>
+- Halt code: PAUSE-FOR-DEPENDENCY
+- Role: worker
+- Reason: <one sentence>
+- Satellite brief request:
+    target_path:         <file/data path that's missing>
+    file_scope_proposed: <files/artifacts the satellite produces>
+    work:                <what the satellite does — max 3 sentences>
+    estimated_size:      XS | S
+    new_symbol_or_path:  <exact path or identifier needed>
+    satellite_role:      worker  (or coder if code is needed)
+    acceptance:          <runnable command that succeeds when satellite done>
+- State at pause:
+    branch:   n/a
+    wip_sha:  n/a
+- Resume condition: <what I need to see before continuing>
+- Reporter: <agent-id> @ <ISO-8601 timestamp>
+```
+
+The conductor's `agent_pause_detector.sh` hook captures this report and
+writes it to `.shepherd/pauses/<id>.json` automatically. The conductor
+dispatches the satellite, then `SendMessage`s you to resume. Cap: max **2
+pauses per dispatch** — a 3rd indicates the brief was structurally
+under-scoped; emit `BRIEF-AMENDMENT REQUEST` instead.
+
+---
+
+## Optional: ## INSIGHTS (cross-lane observations)
+
+Workers see the workspace differently from coders — you sweep across crates,
+run queries, scan logs. You're often the first to notice structural patterns
+(duplicated config across services, drift between deploys, etc.). Per
+`doctrines/flock-cohesion.md`, you MAY append a `## INSIGHTS` section to
+your WORKER REPORT for the engineer's next-sprint planning.
+
+```
+## INSIGHTS
+
+- kind: relocation | extension | duplication | consolidation | gap | nit
+  subject: <symbol, file path, or operational artifact you observed>
+  observation: <one sentence>
+  rationale: <one sentence>
+```
+
+Optional. Skip if you have nothing structural to surface. Use the same
+canonical kinds as coders. The `agent_insight_capture.sh` hook auto-records
+each entry.
 
 ---
 

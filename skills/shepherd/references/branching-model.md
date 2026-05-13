@@ -277,6 +277,48 @@ The framework's lifecycle (cut → work → rebase → DELETE → cut next) appl
 
 ---
 
+## VII-bis. Parallel lane cherry-pick conflict expectations (v5.0.9)
+
+> Field origin: shepherd v5.0.8 conductor feedback (axiom v0.3.2-dev.0) §3.
+
+When N coders run in parallel with `isolation: "worktree"`, **file-overlap
+between parallel lane branches IS possible** even when `[FILE-SCOPE]` lists are
+designed to be disjoint. Common causes:
+
+- Both lanes touch the same `mod.rs` (pub re-export) or `lib.rs` (crate root)
+  to add an import/export — these files are often not in any lane's explicit
+  MAY-MODIFY list but get implicitly modified.
+- Two lanes add different functions to the same test file.
+- One lane generates code that includes generated bindings another lane also
+  generates.
+
+**Expected conductor behavior at WAVE-GATE rebase:**
+
+- Cherry-pick conflicts on shared files ARE expected and ARE the conductor's
+  responsibility to resolve. They do not indicate a framework bug.
+- Resolve with `git checkout --ours / --theirs` or manual edit as appropriate.
+  For `mod.rs` / `lib.rs` additions, both sides' additions should be kept
+  (they're additive).
+- Use `-X theirs` or `-X ours` only when the conflict is on whitespace/comment
+  wording (semantics-free). Never use these flags on logical code conflicts.
+
+**Mitigation (for the engineer):**
+
+- Explicitly allocate `mod.rs` / `lib.rs` in one lane's MAY-MODIFY list and
+  add it to all other lanes' MUST-NOT-TOUCH lists.
+- Or: use the `[FILE-SCOPE]` "MAY MODIFY: lines N..M" form (per
+  `doctrines/coder-brief-format-shared-artifacts.md`) to partition shared files
+  by line range.
+
+**STAGE-GRAPH-VIOLATION vs. expected conflict:** A conflict on a file that IS
+in a coder's `[FILE-SCOPE]` and also appears in another coder's worktree commit
+(i.e., was NOT in that other coder's `[FILE-SCOPE]`) IS a violation — the other
+coder wrote outside their scope. Flag with `SCOPE OVERFLOW` in the audit report.
+A conflict on a file that BOTH coders legitimately touched (both had it in their
+MAY-MODIFY) is NOT a violation — just a merge to resolve.
+
+---
+
 ## VIII. See also
 
 - `SKILL.md` §II — branch topology summary

@@ -86,7 +86,25 @@ The conductor reads `shepherd.toml [mcp]` + `[cli]` and passes you which surface
 
 **Mesh row 1 — open-issue ledger sweep (CRITICAL — combats tunnel vision).**
 
-Per `doctrines/issue-ledger-awareness.md`. Enumerate the FULL open-issue space, not just the current milestone:
+Per `doctrines/issue-ledger-awareness.md`. Goal: enumerate the FULL open-issue
+space (not just current milestone) and classify each into
+`[ledger.classify_into]` buckets (default: `blocking-this-sprint`,
+`labeled-non-issue`, `tracking-future`, `drift-risk`).
+
+**Preferred (v5.0.9): `shctx issues classify` — rule-based bucketing from the
+cache, no LLM triage required.**
+
+```bash
+shctx issues classify --sprint={sprint_branch} --md
+# --unclassified-only focuses your LLM judgment on the residual bucket
+```
+
+Applies deterministic rules (label / milestone / severity / recency) against
+`index_issues`. Returns the four canonical buckets plus `unclassified` (the
+residual to triage manually — typically 10–20% of volume). Eliminates the
+per-sprint full-enumeration LLM cost.
+
+**Fallback (cache absent or stale beyond `[context.refresh].ttl_minutes`):**
 
 ```
 mcp__plugin_github_github__list_issues({ state: "open", per_page: 100, ... })
@@ -94,9 +112,13 @@ mcp__plugin_github_github__list_issues({ state: "open", per_page: 100, ... })
 gh issue list --state open --limit 500 --json number,title,milestone,labels
 ```
 
-Classify every result into `[ledger.classify_into]` buckets (default: `blocking-this-sprint`, `labeled-non-issue`, `tracking-future`, `drift-risk`). Surface non-current-milestone CRITICAL/HIGH items as **drift risks** in the plan.
+Classify manually against `[ledger.classify_into]`.
 
-If your mesh produces drift-risk items the seed didn't address, list them under "Drift-risk items not in this sprint's scope" — DO NOT silently absorb them into the plan. The operator decides whether to add them, milestone them out of drift status, or accept the drift risk.
+**Regardless of path** — surface non-current-milestone CRITICAL/HIGH items as
+**drift risks** in the plan. If drift-risk items appear that the seed did not
+address, list them under "Drift-risk items not in this sprint's scope" — do
+NOT silently absorb them. The operator decides: add to scope, milestone out,
+or accept the drift.
 
 **Mesh row 2 — recent activity.**
 
@@ -191,7 +213,53 @@ From each report, extract all findings flagged `HF-this-sprint: no` AND `carry: 
 
 This row is the bridge between the auditor's findings (written at close) and the next engineer's plan (written at mesh). It ensures deferred findings do not silently evaporate between sprints.
 
-**Mesh rows 12+** — project-doctrine extensions (read `[memory].project_doctrines/planter-mesh-extensions.md` if it exists; add rows accordingly).
+**Mesh row 12 — workspace knowledge silo** (per `doctrines/zero-duplicate-tolerance.md`).
+
+```bash
+shctx query canonical-types --md
+```
+
+This is the static "what exists where" — the workspace's public surface
+that every coder lane consults. Note any gaps you observe; agents who
+discovered them likely already flagged them in **mesh row 13** below.
+
+**Mesh row 13 — cross-lane insights** (v5.0.9, per `doctrines/flock-cohesion.md`).
+
+```bash
+# Render unactioned insights from the previous sprint(s) as markdown
+shctx insights export --sprint={previous_sprint_branch} --md
+# OR all unactioned insights across recent sprints:
+shctx insights list --unactioned --md
+```
+
+The previous sprint's agents may have appended `## INSIGHTS` blocks to their
+reports flagging cross-lane discoveries — relocations, extensions,
+duplications, consolidations, gaps. These are the flock's accumulated
+observations the engineer must now weigh:
+
+| Insight kind | Default action |
+|---|---|
+| `relocation` | Consider scoping a relocation lane THIS sprint if the move is bounded; otherwise surface as "Cross-lane insights NOT scoped this sprint" |
+| `extension` | Decide: small lane this sprint, or recorded for the next |
+| `duplication` | Add a consolidation lane (small) or strengthen `[ACCEPTANCE]` on a lane that touches the implicated files |
+| `consolidation` | SUBTRACT candidate — schedule per `doctrines/subtract-dont-add.md` |
+| `gap` | Treat as a candidate scope item; the operator decides if it makes this sprint |
+| `nit` | Almost never scoped individually; aggregate 3+ similar nits as a single hygiene lane if warranted |
+
+For each insight you action: note its id in the corresponding plan lane.
+The auditor will mark them `actioned_in: <sprint>` at close (via
+`shctx insights resolve <id> --sprint=<branch>`, v5.0.10+; until then,
+note manually in the close report).
+
+For each insight you do NOT action: list under "Cross-lane insights not
+scoped this sprint" in the plan. Operator visibility is the rule; silent
+suppression is the failure mode.
+
+If `shctx insights export` returns no rows, note "no insight residue from
+prior sprint" and move on. This row is additive: it does not exist for
+first-sprint or empty-residue cases.
+
+**Mesh rows 14+** — project-doctrine extensions (read `[memory].project_doctrines/planter-mesh-extensions.md` if it exists; add rows accordingly).
 
 ### Mesh report shape
 
@@ -305,6 +373,8 @@ author: @engineer (agent-id-<your-id>)
 |---|---|---|---|---|
 
 (Minimum lanes per sprint size: M→3, L→4, XL→4/wave. If you cannot decompose to the minimum, flag it under "Open Questions for Critic" and explain why.)
+
+**File-scope cap (v5.0.9):** Each coder lane SHOULD own ≤ 3 files in its MAY-MODIFY list. If a lane needs more, decompose into 2 lanes. Exception: a single-file lane with > 300 LOC of expected change may remain one lane. The cap reduces the surface where a coder hits an out-of-scope dependency and must emit `PAUSE-FOR-DEPENDENCY` (per `doctrines/pause-for-dependency.md`).
 
 ## Phase A — <name>  [Wave 1, parallel-safe with B and C]
 **Mission:** <one sentence>
