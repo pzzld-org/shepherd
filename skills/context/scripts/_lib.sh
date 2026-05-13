@@ -22,6 +22,13 @@ shctx_artifacts_root() {
   if [[ -n "${SHCTX_ROOT_OVERRIDE:-}" ]]; then
     echo "$root/${SHCTX_ROOT_OVERRIDE}"
   elif [[ -d "$root/.shepherd" ]]; then
+    # Warn when both namespaces exist — this is the split-brain state. One of
+    # them is unused; shctx picks .shepherd/ by precedence. Run `shctx doctor`
+    # for remediation guidance.
+    if [[ -d "$root/.artifacts" && -z "${SHCTX_QUIET:-}" ]]; then
+      echo "shctx WARNING: both .shepherd/ and .artifacts/ exist in $(basename "$root")." >&2
+      echo "  Using .shepherd/ (detected by precedence). Run 'shctx doctor' for details." >&2
+    fi
     echo "$root/.shepherd"
   elif [[ -d "$root/.artifacts" ]]; then
     echo "$root/.artifacts"

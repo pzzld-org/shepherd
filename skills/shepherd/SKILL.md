@@ -1,7 +1,7 @@
 ---
 name: shepherd
 slug: shepherd
-version: 5.0.7
+version: 5.0.8
 description: |
   Sprint-by-sprint version-cycle conductor. Five-agent flock (engineer, critic,
   coder, auditor, worker) on a three-section sprint pipeline (§1 INTRODUCTION
@@ -9,8 +9,9 @@ description: |
   drift-resistant sprint seeds.
 
   v5.0.0 introduces the **context registry** — a per-project SQLite cache
-  (`.artifacts/root.db`) backing Phase 0 mesh fast-paths and DEDUP-GATE
-  Layer 2 SQL pre-filtering. Briefs gain `[DB-CONTEXT]`; the conductor
+  (`<namespace>/root.db`, where namespace is `.shepherd/` by default or
+  `.artifacts/` for legacy projects) backing Phase 0 mesh fast-paths and
+  DEDUP-GATE Layer 2 SQL pre-filtering. Briefs gain `[DB-CONTEXT]`; the conductor
   prefers `shctx query` over MCP/CLI hops when the cache is fresh. The
   v4.2.0 Stage Graph (binding dispatch DAG that the engineer's plan emits
   and the conductor walks deterministically) remains the orchestration
@@ -282,7 +283,7 @@ The flock-level set lives in `flock.md` (13 items). Conductor-level lifters
 18. Stale carry-forward after lane closes → run `shctx close-lane <id>` mid-sprint (`doctrines/carry-forward-refresh.md`).
 19. **Coder writes outside worktree** → silent dropped from cherry-pick (`doctrines/worktree-confinement.md`, v5.0.4).
 20. **Auditor runs gates from worktree** → FALSE-CRITICAL findings; halt with `WORKTREE-DRIFT` (`doctrines/auditor-readonly.md`, v5.0.4).
-21. **Same shared `.shepherd/ctx/*.md` across two lanes without partition rule** → cherry-pick conflicts (`doctrines/coder-brief-format-shared-artifacts.md`, v5.0.4).
+21. **Same shared `<namespace>/ctx/*.md` across two lanes without partition rule** → cherry-pick conflicts (`doctrines/coder-brief-format-shared-artifacts.md`, v5.0.4).
 22. **Conductor `git switch`/`git checkout` to an `agent-*` lane branch** → HEAD drift; next commit lands on the lane branch, next `shctx worktree create-batch --from HEAD` propagates the wrong base, worktrees-within-worktrees nest (`doctrines/conductor-cwd.md` Ban 2 + Ban 3, v5.0.6). The conductor's HEAD MUST be `{sprint_branch}` (or `{patch_branch}`/`{main_branch}` during release plumbing) for the entire session. Inspect agent branches via `git -C <worktree-path>` only.
 
 ---

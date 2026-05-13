@@ -89,7 +89,7 @@ ctx     = ".shepherd/ctx"       # workspace knowledge silo (canonical-types, ded
 
 Paths are relative to the repo root. Directories are auto-created on first write.
 
-**Namespace default (v5.0.0):** the per-project namespace directory is **`.shepherd/`** by default. Projects that prefer the legacy `.artifacts/` layout opt in by running `shctx init --artifacts`; substitute `.artifacts/` for `.shepherd/` in the snippet above. The `shctx` CLI auto-detects which directory is in use at every invocation (preferring `.shepherd/` when both exist).
+**Namespace default (v5.0.0):** the per-project namespace directory is **`.shepherd/`** by default. Projects that prefer the legacy `.artifacts/` layout opt in by running `shctx init --artifacts`; substitute `.artifacts/` for `.shepherd/` in the snippet above. The `shctx` CLI auto-detects which directory is in use at every invocation (preferring `.shepherd/` when both exist). **The `[paths]` entries here must match the active namespace** — if they diverge, `shctx doctor` will surface a conflict warning. As of v5.0.8, `shctx init` also refuses to scaffold a new namespace when the other is already initialized, preventing this split-brain at the source.
 
 ### `[context]` — context registry (new in v5.0.0)
 
