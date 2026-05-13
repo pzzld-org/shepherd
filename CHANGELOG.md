@@ -6,7 +6,16 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ## v5.0.8 — unreleased
 
-*Next patch — no changes yet.*
+**Fix: prevent dual-namespace split-brain between `.shepherd/` and `.artifacts/`.**
+
+The root cause: `shctx init` (no flags) defaulted to `.shepherd/` on a fresh project while example `shepherd.toml` files had `[paths]` entries referencing `.artifacts/`. The conductor's Write calls then created `.artifacts/` as a directory side effect, leaving both namespaces present. `shctx_artifacts_root()` always preferred `.shepherd/` while the conductor kept reading `.artifacts/*` — split-brain until the operator migrated by hand.
+
+- `scaffold.sh` — guard refuses to scaffold namespace X when namespace Y already carries the shctx `.gitignore` marker and X does not yet exist. Emits a clear error with remediation steps.
+- `_lib.sh` — `shctx_artifacts_root()` now emits a stderr warning when both directories coexist; suppressed via `SHCTX_QUIET=1` in callers that handle this themselves.
+- `cmd_doctor.sh` — reports the dual-namespace state as a `WARN` check with a fix instruction.
+- `examples/minimal/shepherd.toml` — `[paths]` updated from `.artifacts/` to `.shepherd/` (the v5.0.0+ default); comment added explaining the namespace coupling.
+- `examples/axiom/shepherd.toml` — comment added explaining `.artifacts/` is the legacy namespace for that project.
+- `skills/context/SKILL.md`, `skills/shepherd/SKILL.md` — hardcoded `.artifacts/` references replaced with namespace-neutral `<namespace>/`.
 
 ---
 
