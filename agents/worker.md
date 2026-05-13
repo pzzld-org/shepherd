@@ -206,6 +206,29 @@ under-scoped; emit `BRIEF-AMENDMENT REQUEST` instead.
 
 ---
 
+## Optional: ## INSIGHTS (cross-lane observations)
+
+Workers see the workspace differently from coders — you sweep across crates,
+run queries, scan logs. You're often the first to notice structural patterns
+(duplicated config across services, drift between deploys, etc.). Per
+`doctrines/flock-cohesion.md`, you MAY append a `## INSIGHTS` section to
+your WORKER REPORT for the engineer's next-sprint planning.
+
+```
+## INSIGHTS
+
+- kind: relocation | extension | duplication | consolidation | gap | nit
+  subject: <symbol, file path, or operational artifact you observed>
+  observation: <one sentence>
+  rationale: <one sentence>
+```
+
+Optional. Skip if you have nothing structural to surface. Use the same
+canonical kinds as coders. The `agent_insight_capture.sh` hook auto-records
+each entry.
+
+---
+
 ## Output
 
 Single message at end:

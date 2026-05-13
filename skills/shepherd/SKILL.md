@@ -358,9 +358,11 @@ For `:start` / `:autorun` / `:parallel`, sprint is inferred from current branch 
 | `doctrines/stage-graph.md` | First sprint-walk decision | Plan-IS-dispatch-contract principle (graph-as-discipline) |
 | `doctrines/conductor-cwd.md` | First worktree inspection | Conductor anchor discipline — cwd / HEAD / worktree all stay on sprint root; bans `cd`, `git switch <agent-branch>`, and `git worktree add` from inside a worktree (v5.0.3 + v5.0.6) |
 | `doctrines/gates-restoration.md` | Sprint opens with red gates | Run GATES-DISCOVERY before Lane 0; brief on full inventory, not narrow subset (v5.0.3) |
-| `doctrines/pause-for-dependency.md` | Coder returns PAUSE-FOR-DEPENDENCY | Satellite dispatch protocol, cap rules, cherry-pick order (v5.0.9) |
+| `doctrines/pause-for-dependency.md` | Any agent returns PAUSE-FOR-DEPENDENCY | Agent-agnostic satellite dispatch protocol (v5.0.9) |
 | `doctrines/cargo-sequential-gates.md` | Any WAVE-GATE run | Cargo must run sequentially on shared workspace (v5.0.9) |
 | `doctrines/plugin-reload-escape.md` | MCP tool unavailable at session start | /reload-plugins escape hatch + MCP-first preference (v5.0.9) |
+| `doctrines/dispatch-cascade.md` | First sprint-walk decision | Stage Graph rule-engine runtime — `shctx plan extract` + `shctx graph next/mark` mechanize the walk (v5.0.9) |
+| `doctrines/flock-cohesion.md` | Wave dispatch authoring + agent report writing + next-sprint mesh row 13 | Shared substrate — `[SIBLING-LANES]` briefs, `## INSIGHTS` reports, `shctx insights` registry (v5.0.9) |
 | `doctrines/adaptation-loop.md` | After CLOSE-FINALIZE; at planter seed authorship; at @engineer mesh | Sprint pattern registry — self-improvement loop (v5.0.6); write protocol (completeness auditor), read protocol (engineer + planter), conductor trend surface |
 | `doctrines/*.md` | Referenced by name throughout | Framework-intrinsic rules (subtract-don't-add, wrapper-must-earn, pattern-b-overlap, chain-repair, stage-graph, conductor-cwd, gates-restoration, adaptation-loop, ...) |
 | `${CLAUDE_PLUGIN_ROOT}/agents/<role>.md` | Each flock dispatch | Agent system prompt (injected into brief) |

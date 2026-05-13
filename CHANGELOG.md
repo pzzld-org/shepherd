@@ -6,6 +6,17 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ## v5.0.9 — unreleased
 
+### Flock cohesion — shared substrate across agents
+
+Per operator observation: "every agent feels isolated rather than acting as part of a larger group so the agents feel like they need to re-invent everything every time from scratch." This release names the structural gap and lands the substrate.
+
+- **New doctrine** `skills/shepherd/doctrines/flock-cohesion.md` — verbalizes the shared-substrate model. Four channels: canonical-types (static "what exists where"), graph state + trace (mechanical "who is doing what now"), pauses (synchronous "I need this"), and insights (asynchronous "I noticed this"). All four are read at MESH; written at DISPATCH and REPORT.
+- **`[SIBLING-LANES]` brief block** (`skills/shepherd/references/agent-briefs.md`) — every wave dispatch brief now lists the other lanes in the wave with their `[FILE-SCOPE]` summaries and the symbols/artifacts they produce. The single most-requested affordance: agents finally see what their siblings are doing. Validity checklist updated.
+- **`## INSIGHTS` report section** (`agents/coder.md`, `agents/worker.md`) — optional cross-lane observations any agent can append to their final report. Canonical kinds: `relocation`, `extension`, `duplication`, `consolidation`, `gap`, `nit`. Replaces the absent "I saw something interesting" channel.
+- **New hook** `hooks/scripts/agent_insight_capture.sh` — `PostToolUse(Agent|Task)` parses `## INSIGHTS` blocks, writes one JSON record per entry to `<ns>/insights/<sprint>/<id>.json`. Silent when no INSIGHTS block is present.
+- **New: `shctx insights <list|show|export|clear>`** (`skills/context/scripts/cmd_insights.sh`) — registry CLI. `export --md` renders as markdown for engineer mesh row 13 consumption.
+- **`agents/engineer.md` Phase 0 mesh row 13** — engineer reads the prior sprint's insights at next-sprint mesh; decides per-kind how to action (relocation → consider scoping a lane; nit → aggregate before acting; etc.). Insights NOT actioned are surfaced under "Cross-lane insights not scoped this sprint" — operator visibility is the rule.
+
 ### Dispatch cascade — Stage Graph as rule engine
 
 Per operator request: "create some type of rule engine layer that would allow the conductor to dispatch all agents using conditional links so agents cascade through the plan." The plan is now extractable into a machine-readable topology that `shctx graph` walks deterministically — the conductor's only LLM-driven step per tick is brief authoring + edge-label selection; routing is mechanical.

@@ -213,7 +213,53 @@ From each report, extract all findings flagged `HF-this-sprint: no` AND `carry: 
 
 This row is the bridge between the auditor's findings (written at close) and the next engineer's plan (written at mesh). It ensures deferred findings do not silently evaporate between sprints.
 
-**Mesh rows 12+** — project-doctrine extensions (read `[memory].project_doctrines/planter-mesh-extensions.md` if it exists; add rows accordingly).
+**Mesh row 12 — workspace knowledge silo** (per `doctrines/zero-duplicate-tolerance.md`).
+
+```bash
+shctx query canonical-types --md
+```
+
+This is the static "what exists where" — the workspace's public surface
+that every coder lane consults. Note any gaps you observe; agents who
+discovered them likely already flagged them in **mesh row 13** below.
+
+**Mesh row 13 — cross-lane insights** (v5.0.9, per `doctrines/flock-cohesion.md`).
+
+```bash
+# Render unactioned insights from the previous sprint(s) as markdown
+shctx insights export --sprint={previous_sprint_branch} --md
+# OR all unactioned insights across recent sprints:
+shctx insights list --unactioned --md
+```
+
+The previous sprint's agents may have appended `## INSIGHTS` blocks to their
+reports flagging cross-lane discoveries — relocations, extensions,
+duplications, consolidations, gaps. These are the flock's accumulated
+observations the engineer must now weigh:
+
+| Insight kind | Default action |
+|---|---|
+| `relocation` | Consider scoping a relocation lane THIS sprint if the move is bounded; otherwise surface as "Cross-lane insights NOT scoped this sprint" |
+| `extension` | Decide: small lane this sprint, or recorded for the next |
+| `duplication` | Add a consolidation lane (small) or strengthen `[ACCEPTANCE]` on a lane that touches the implicated files |
+| `consolidation` | SUBTRACT candidate — schedule per `doctrines/subtract-dont-add.md` |
+| `gap` | Treat as a candidate scope item; the operator decides if it makes this sprint |
+| `nit` | Almost never scoped individually; aggregate 3+ similar nits as a single hygiene lane if warranted |
+
+For each insight you action: note its id in the corresponding plan lane.
+The auditor will mark them `actioned_in: <sprint>` at close (via
+`shctx insights resolve <id> --sprint=<branch>`, v5.0.10+; until then,
+note manually in the close report).
+
+For each insight you do NOT action: list under "Cross-lane insights not
+scoped this sprint" in the plan. Operator visibility is the rule; silent
+suppression is the failure mode.
+
+If `shctx insights export` returns no rows, note "no insight residue from
+prior sprint" and move on. This row is additive: it does not exist for
+first-sprint or empty-residue cases.
+
+**Mesh rows 14+** — project-doctrine extensions (read `[memory].project_doctrines/planter-mesh-extensions.md` if it exists; add rows accordingly).
 
 ### Mesh report shape
 

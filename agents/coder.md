@@ -261,10 +261,33 @@ When done, return:
 - Acceptance grep results: <each line from [ACCEPTANCE] with PASS/FAIL>
 - Halts encountered: none | listed
 - Summary: <2-3 sentences>
-- Agent ID + timestamp: <id> @ <ISO-8601>
+- Reporter: <agent-id> @ <ISO-8601 timestamp>
 ```
 
 Do NOT include the diff in the summary; main chat reads `git diff` directly.
+
+### Optional: ## INSIGHTS (cross-lane observations)
+
+Per `doctrines/flock-cohesion.md`, you MAY append a `## INSIGHTS` section
+with cross-lane observations the engineer should weigh in the NEXT sprint's
+planning. Entries are optional; quality > quantity. Skip entirely if you
+have nothing structural to flag. The `agent_insight_capture.sh` hook
+auto-records each entry to `<ns>/insights/<sprint>/<id>.json`.
+
+```
+## INSIGHTS
+
+- kind: relocation | extension | duplication | consolidation | gap | nit
+  subject: <symbol or file path you observed>
+  observation: <one sentence — what you saw>
+  rationale: <one sentence — why it matters>
+```
+
+Do NOT use INSIGHTS to:
+- Request scope changes for THIS sprint (use `BRIEF-AMENDMENT REQUEST`).
+- Flag missing symbols you need (use `PAUSE-FOR-DEPENDENCY`).
+- Vent about taste or code style (those aren't insights — they're nits
+  at best; one per report max, none preferred).
 
 ---
 
