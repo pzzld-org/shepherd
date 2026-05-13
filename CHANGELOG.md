@@ -4,7 +4,31 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
-## v5.1.0 — unreleased
+## v5.1.1 — hotfix: plugin hook silent crash
+
+### Bug fix
+
+- **`hooks/scripts/bash_guard.sh`** — every `PreToolUse(Bash)` invocation in
+  a shepherd-enabled project exited with status 1 and no stderr output,
+  causing Claude Code to surface `Failed with non-blocking status code: No
+  stderr output`. Root cause: a backgrounded-cargo detection pipeline
+  (`grep -oE ... | wc -l | tr -d ' '`) returned non-zero whenever grep
+  found nothing — under bash 5.2 with `set -euo pipefail`, a failing
+  pipeline inside an assignment's command substitution terminates the
+  script even though `inherit_errexit` is off. Added `|| true` to the
+  pipeline. Other hooks already had this guard.
+- **New** `hooks/tests/run.sh` — smoke suite covering every hook with
+  realistic Claude Code payloads. Pins the contract: every hook must exit
+  0 silently on non-actionable inputs. 17 cases, runs in <1s.
+
+### Other
+
+- `README.md` — current-version banner caught up to 5.1.1 (had stuck at
+  5.0.9 through the 5.1.0 release).
+
+---
+
+## v5.1.0
 
 ### Flock cohesion — shared substrate across agents
 

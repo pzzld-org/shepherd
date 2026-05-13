@@ -57,7 +57,7 @@ fi
 clean=$(printf '%s' "$cmd" | sed -e 's/&&/__AND__/g' -e 's/||/__OR__/g')
 # A backgrounded cargo is `cargo <subcmd> ...` followed by a `&` that is
 # either end-of-string or followed by whitespace/newline (i.e., not `&&`).
-bg_cargo_count=$(printf '%s' "$clean" | grep -oE 'cargo[[:space:]]+[a-z_-]+[^|;]*&([[:space:]]|$)' | wc -l | tr -d ' ')
+bg_cargo_count=$(printf '%s' "$clean" | grep -oE 'cargo[[:space:]]+[a-z_-]+[^|;]*&([[:space:]]|$)' | wc -l | tr -d ' ' || true)
 if [[ "${bg_cargo_count:-0}" -gt 0 ]]; then
   warn="[shepherd] cargo parallel WARN — ${bg_cargo_count}+ backgrounded cargo invocation(s) detected."$'\n'
   warn+="Cargo holds an exclusive lock on target/; parallel cargo processes deadlock."$'\n'
