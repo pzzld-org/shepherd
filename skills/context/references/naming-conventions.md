@@ -6,6 +6,8 @@ Shepherd v5.0.0 enforces strict file-naming patterns under the per-project names
 
 The namespace directory is **`.shepherd/` by default** in v5.0.0. Projects that prefer the legacy `.artifacts/` layout can opt in by running `shctx init --artifacts`. Auto-detection runs at every CLI invocation: if either `.shepherd/` or `.artifacts/` already exists in the repo root, the existing one is used (preferring `.shepherd/` if both exist). When neither exists and no flag is passed, `init` scaffolds `.shepherd/`.
 
+**Conflict guard (v5.0.8):** `shctx init` refuses to create a new namespace directory when the *other* namespace is already an initialized shctx workspace (detected by the presence of the shctx `.gitignore` marker). This prevents the split-brain that occurs when shctx data lands in one namespace while `shepherd.toml [paths]` entries reference the other. If both directories are ever found to coexist, `shctx_artifacts_root()` emits a warning and `shctx doctor` surfaces a `WARN` check with remediation steps.
+
 Throughout the rest of this document, paths shown as `.artifacts/` apply identically to `.shepherd/` for projects on the new default — substitute the active namespace name.
 
 The same table is mirrored to `<namespace>/CONVENTIONS.md` on `shctx init` for quick local reference inside the consumer project.
@@ -109,7 +111,7 @@ The `<topic>` slug is kebab-case, descriptive, and unique within the day.
 
 ## Lint behavior
 
-`shctx lint` walks `.artifacts/` and reports:
+`shctx lint` walks the active namespace directory and reports:
 
 - **Misnamed file** — extension or stem doesn't match any pattern.
 - **Misplaced file** — pattern matches but directory is wrong (e.g. `*.plan.md` outside `plans/`).
