@@ -4,7 +4,7 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
-## v5.0.9 — unreleased
+## v5.1.0 — unreleased
 
 ### Flock cohesion — shared substrate across agents
 
@@ -67,6 +67,11 @@ Per operator request: "create some type of rule engine layer that would allow th
 - `skills/shepherd/doctrines/adaptation-loop.md` — on-first-close creation protocol
 
 **§10 — Feedback classification.** `skills/shepherd/doctrines/adaptation-loop.md §VI-bis` — framework-generic vs project-specific feedback rule; framework-generic candidates are flagged in close reports for doctrine promotion.
+
+### Fix: `bash_guard.sh` silently exited on every `PreToolUse(Bash)`
+
+- **`hooks/scripts/bash_guard.sh`** — the backgrounded-cargo detection pipeline (`grep -oE '...' | wc -l | tr -d ' '`) on line 60 was missing the `|| true` guard every other hook script in the directory uses. Under bash 5.2 with `set -euo pipefail`, when `grep` finds nothing it exits 1, `pipefail` propagates that as the pipeline's exit code, and `set -e` then terminates the script — even though `inherit_errexit` is off and the assignment "succeeded" (`bg_cargo_count="0"`). Net effect: every Bash tool call in any shepherd-enabled project surfaced as `Failed with non-blocking status code: No stderr output`. Trailing `|| true` fixes it.
+- **New** `hooks/tests/run.sh` — 17-case smoke suite that exercises every hook with realistic Claude Code payloads (`SessionStart`, `PreToolUse` with cargo bg / cargo sequential / normal cmd / empty input / no-command-field, `PostToolUse(Agent|Task)` with and without insight/pause markers, `lock_guard` no-lock / conflict / same-session). Pins the contract: every hook must exit 0 silently on non-actionable inputs.
 
 ### Fix: prevent dual-namespace split-brain between `.shepherd/` and `.artifacts/`
 
