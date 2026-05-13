@@ -16,6 +16,13 @@ set -eu -o pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 source "$HERE/_lib.sh"
 
+# Requires bash 4+ for associative arrays. macOS ships bash 3.2 by default.
+if (( BASH_VERSINFO[0] < 4 )); then
+  echo "ERROR: shctx issues requires bash 4+ (have ${BASH_VERSION:-unknown})." >&2
+  echo "  On macOS: brew install bash, then re-run via the brewed bash." >&2
+  exit 1
+fi
+
 sub="${1:-}"; shift || true
 
 usage() {
@@ -85,7 +92,7 @@ _classify_row() {
         updated_at="$6" current_milestone="$7" drift_thresh="$8"
 
   # labeled-non-issue (checked first — explicit dismissal labels win)
-  if _has_label "$labels" "deferred" "wontfix" "invalid" "duplicate" "question" "won't fix" "wontfix"; then
+  if _has_label "$labels" "deferred" "wontfix" "won't fix" "invalid" "duplicate" "question"; then
     echo "labeled-non-issue"
     return
   fi
@@ -298,9 +305,10 @@ cmd_list() {
     FROM index_issues WHERE $where ORDER BY updated_at DESC LIMIT $limit;")
 
   if [[ "$fmt" == "json" ]]; then
-    shctx_sql ".mode json
-SELECT number, title, state, COALESCE(milestone,'') AS milestone, labels, url
-FROM index_issues WHERE $where ORDER BY updated_at DESC LIMIT $limit;"
+    sqlite3 -bail -cmd ".mode json" "$db" \
+      "SELECT number, title, state, COALESCE(milestone,'') AS milestone, labels, url
+       FROM index_issues WHERE $where ORDER BY updated_at DESC LIMIT $limit;" 2>/dev/null \
+      || echo "[]"
     return
   fi
 

@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
-# shepherd hook — Bash pre-use guard (conductor-cwd + cargo sequential doctrine)
+# shepherd hook — Bash pre-use guard (conductor-cwd + cargo doctrines)
 #
-# Fires at PreToolUse(Bash). Two checks:
+# Fires at PreToolUse(Bash). Three checks (first-match-wins):
 #
-# 1. git commit BLOCK — HEAD is on an agent/lane branch (Ban 2, conductor-cwd.md)
-# 2. cargo parallel WARN — multiple cargo invocations backgrounded in a single
-#    command (cargo-sequential-gates.md v5.0.9)
+# 1. git commit BLOCK — HEAD on agent/lane branch (conductor-cwd.md §Ban 2)
+# 2. cargo parallel WARN — backgrounded cargo (cargo-sequential-gates.md, v5.0.9)
+# 3. cd-into-worktree WARN — drifts cwd (conductor-cwd.md §Ban 1, v5.0.9)
 #
-# Input (stdin): PreToolUse JSON payload { tool_name, tool_input.command, ... }
-# Output: {"permissionDecision":"deny","message":"..."} to block,
-#         {"additionalContext":"..."}               to warn (cargo case),
-#         or exit 0 to allow silently.
+# Input  (stdin): PreToolUse JSON { tool_name, tool_input.command, ... }
+# Output (stdout):
+#   {"permissionDecision":"deny", "message":"..."}    — Check 1 only
+#   {"additionalContext":"..."}                         — Checks 2 / 3
+#   exit 0 silently if no check fires.
 
 set -euo pipefail
 
@@ -50,12 +51,15 @@ fi
 
 # ---------------------------------------------------------------------------
 # Check 2 — parallel cargo invocations (WARN, do not block)
-# cargo <subcmd> ... & pattern in the same command = parallel cargo
+# Detect: `cargo ... &` backgrounding (excluding `&&` which is sequential).
 # ---------------------------------------------------------------------------
-# Count backgrounded cargo invocations: `cargo ... &`
-bg_cargo_count=$(printf '%s' "$cmd" | grep -oE 'cargo\s+\S+[^&]*&' | wc -l | tr -d ' ')
+# Mask `&&` and `||` so they don't masquerade as backgrounding `&`.
+clean=$(printf '%s' "$cmd" | sed -e 's/&&/__AND__/g' -e 's/||/__OR__/g')
+# A backgrounded cargo is `cargo <subcmd> ...` followed by a `&` that is
+# either end-of-string or followed by whitespace/newline (i.e., not `&&`).
+bg_cargo_count=$(printf '%s' "$clean" | grep -oE 'cargo[[:space:]]+[a-z_-]+[^|;]*&([[:space:]]|$)' | wc -l | tr -d ' ')
 if [[ "${bg_cargo_count:-0}" -gt 0 ]]; then
-  warn="[shepherd] cargo parallel WARN — ${bg_cargo_count} backgrounded cargo invocation(s) detected."$'\n'
+  warn="[shepherd] cargo parallel WARN — ${bg_cargo_count}+ backgrounded cargo invocation(s) detected."$'\n'
   warn+="Cargo holds an exclusive lock on target/; parallel cargo processes deadlock."$'\n'
   warn+="Use sequential: cargo check && cargo clippy (not '&' backgrounding)."$'\n'
   warn+="See doctrines/cargo-sequential-gates.md"
