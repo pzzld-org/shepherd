@@ -4,7 +4,13 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
-## v5.1.0 — unreleased
+## v5.1.1 — unreleased
+
+Next patch branch — open. No changes yet.
+
+---
+
+## v5.1.0 — 2026-05-13
 
 ### Flock cohesion — shared substrate across agents
 
