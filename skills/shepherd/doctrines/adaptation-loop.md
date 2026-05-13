@@ -82,6 +82,8 @@ The `completeness` auditor is responsible for appending a new entry at each spri
 
 If the pattern file is inaccessible (path missing, permission error), note it in the audit report under "anomalies" and skip. Do NOT block CLOSE-FINALIZE for this.
 
+**On first close** (file doesn't exist yet): create it with the file header, then append the entry. Surface to the conductor: "Sprint-patterns registry initialized — first adaptation cycle recorded."
+
 ---
 
 ## III. Read protocol — engineer at mesh time
@@ -157,6 +159,28 @@ immediately before each WAVE-IMPL dispatch, not at session start.
 ```
 
 Trend alerts are **informational** — they do not block PAUSE. The operator decides whether to act.
+
+---
+
+## VI-bis. Feedback classification — project-specific vs framework-generic (v5.0.9)
+
+> Field origin: shepherd v5.0.8 conductor feedback §10.
+
+When the conductor saves a `feedback_*.md` memory entry mid-sprint (e.g., via
+`shctx mem add`), classify it before writing:
+
+| Classification | Criterion | Write location |
+|---|---|---|
+| Project-specific | Only applies to THIS project's stack, team, or codebase | `{paths.ctx}/feedback/<rule-name>.md` (project memory) |
+| Framework-generic | Would benefit ANY shepherd project (e.g., cargo sequencing, file-scope caps) | `{paths.ctx}/feedback/<rule-name>.md` (project memory) AND note in close report: "Candidate for shepherd doctrine promotion" |
+
+**Framework-generic feedback** is flagged in the close report so the operator
+can promote it to the shepherd repo's doctrine library at their convenience.
+The conductor does NOT push doctrine changes to the shepherd repo — it only
+flags the candidate.
+
+**Rule of thumb:** if the feedback starts "Every Rust/Python/Go shepherd
+project will hit this…" — it's framework-generic.
 
 ---
 

@@ -64,6 +64,8 @@ Every node in the graph is one of these types. The type determines the dispatch 
 | `WORKER-IO` | One or more `@worker` (bounded; non-competing) | @worker | bounded reports |
 | `HARD-STOP` | Conductor inline (terminal) | Conductor | operator-surfaced halt block |
 | `PAUSE` | Conductor inline (terminal under `/shepherd:start`; bypassed under `/shepherd:autorun`) | Conductor | end-of-sprint waypoint |
+| `PAUSE-FOR-DEPENDENCY` | Conductor inline (validate satellite request + dispatch) | Conductor | satellite brief dispatched; paused coder awaiting resume |
+| `RESUME-LANE` | Conductor inline (SendMessage to paused coder; awaits resumed CODER REPORT) | Conductor | resumed lane commit lands before `WAVE-N-GATE` |
 
 Each node carries:
 
@@ -132,6 +134,7 @@ Edges are conditional transitions between nodes. Each edge has a label; the labe
 | `on-grade-cap` | Fires from CLOSE-SWARM when completeness grade-caps (per `subtract-dont-add.md` / `issue-ledger-awareness.md`) — does NOT fail the sprint, but lowers the grade |
 | `on-budget-exceeded` | Fires from WORKER-IO when budget exhausted; informational |
 | `on-coder-complete` | Fires from WAVE-IMPL when ALL coders reported back |
+| `on-pause-dep` | Fires from a WAVE-IMPL coder that returned `PAUSE-FOR-DEPENDENCY` → routes to `PAUSE-FOR-DEPENDENCY` subgraph |
 | `on-rebase-clean` | Fires from WAVE-GATE when rebase-merge applied with no conflicts |
 | `on-dedup-clear` | Fires from DEDUP-GATE when every grep returned the expected count |
 | `on-dedup-block` | Fires from DEDUP-GATE when ANY grep returned > expected; loops back to brief-amendment then re-fires DEDUP-GATE |
@@ -688,6 +691,79 @@ authoring conductor includes either:
 
 See `doctrines/coder-brief-format-shared-artifacts.md`.
 
+## XV-quint. PAUSE-FOR-DEPENDENCY subgraph (v5.0.9)
+
+> Field origin: shepherd v5.0.8 conductor feedback (axiom v0.3.2-dev.0) §1.
+
+When a coder returns `PAUSE-FOR-DEPENDENCY` instead of a normal CODER REPORT,
+the conductor walks a three-node inline subgraph before `WAVE-N-GATE` can fire:
+
+```
+WAVE-N-IMPL ──on-pause-dep──► PAUSE-FOR-DEPENDENCY ──on-satellite-dispatched──►
+  SATELLITE-<lane-id> (HOTFIX shape, ≤ S) ──on-coder-complete──►
+  RESUME-LANE-<lane-id> (SendMessage to paused coder) ──on-coder-complete──►
+  (rejoin WAVE-N-GATE)
+```
+
+**Conductor steps:**
+1. Validate the satellite request (XS or S only; file-disjoint from other lanes; symbol not already present).
+2. If M+ or 3rd pause from the same lane → escalate via `BRIEF-AMENDMENT REQUEST` to engineer instead.
+3. Dispatch `@coder` satellite with `isolation: "worktree"`.
+4. After satellite commits and acceptance greps pass: rebase satellite commit onto sprint branch FIRST.
+5. `SendMessage` to the paused coder (agent ID from their PAUSE report) with the resume signal.
+6. Await resumed CODER REPORT. Then proceed to `WAVE-N-GATE`.
+
+**Cherry-pick order is mandatory:** satellite commit → paused lane resume commit.
+The `WAVE-N-GATE` rebase runs AFTER both commits are staged. The satellite
+providing a symbol must appear before the consumer lane in the git log.
+
+Full protocol and cap rules: `doctrines/pause-for-dependency.md`.
+
+---
+
+## XV-sext. WAVE-GATE cargo invocation rule (v5.0.9)
+
+> Field origin: shepherd v5.0.8 conductor feedback (axiom v0.3.2-dev.0) §5.
+
+The WAVE-GATE gate sequence **MUST run cargo invocations sequentially** — never
+as parallel background processes:
+
+```bash
+# CORRECT — single chained call; cargo parallelizes internally via -j nproc
+{gates.format} && {gates.check} && {gates.lint}
+
+# WRONG — cargo blocks on shared target/ lock; total time ≥ sequential
+cargo check & cargo clippy & wait
+```
+
+See `doctrines/cargo-sequential-gates.md` for the full rule. This applies to
+the conductor's WAVE-GATE inline runs and any `@worker` running build verification.
+
+---
+
+## XV-sept. Phase 0 MCP availability + /reload-plugins (v5.0.9)
+
+> Field origin: shepherd v5.0.8 conductor feedback (axiom v0.3.2-dev.0) §7, §8.
+
+When `[mcp].supabase = true` (or any other `[mcp].*` flag) but the tool prefix
+is not callable at session start:
+
+1. **Surface the unavailability explicitly** — do not silently degrade to shell
+   (`psql`, `sentry-cli`, etc.).
+2. **Request operator to run `/reload-plugins`** — this refreshes the MCP
+   catalog without restarting the session.
+3. **After reload**, re-verify. If still unavailable: degrade to CLI/shell and
+   annotate the mesh report with the degraded surface.
+
+MCP tool preference over shell fallbacks (Supabase example):
+1. `mcp__plugin_supabase_supabase__execute_sql` — structured rows, advisory-aware
+2. `mcp__plugin_supabase_supabase__get_advisors` — security + perf advisors
+3. Shell `psql` — degraded fallback only; flag it
+
+Full doctrine: `doctrines/plugin-reload-escape.md`.
+
+---
+
 ## XVI. See also
 
 - `doctrines/stage-graph.md` — the principle (graph is the contract)
@@ -703,5 +779,8 @@ See `doctrines/coder-brief-format-shared-artifacts.md`.
 - `doctrines/carry-forward-refresh.md` — encoded as completeness-auditor input
 - `doctrines/gates-restoration.md` — encoded as the GATES-DISCOVERY conductor-inline node (v5.0.3)
 - `doctrines/conductor-cwd.md` — companion discipline for graph-walk Bash hygiene (v5.0.3)
+- `doctrines/pause-for-dependency.md` — PAUSE-FOR-DEPENDENCY primitive (v5.0.9)
+- `doctrines/cargo-sequential-gates.md` — cargo must run sequentially at WAVE-GATE (v5.0.9)
+- `doctrines/plugin-reload-escape.md` — /reload-plugins escape hatch for MCP unavailability (v5.0.9)
 - `autorun.md` — autorun = loop the walk algorithm
 - `parallel.md` — parallel = N concurrent walks with cross-graph join at CLOSE-FINALIZE

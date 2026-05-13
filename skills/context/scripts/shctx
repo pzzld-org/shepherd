@@ -42,6 +42,11 @@ Subcommands (atomic):
   worktree <list|create-batch|gc|merge> [args]
                           Worktree hygiene + cherry-pick helper.
                           create-batch (v5.0.4) pre-creates per-lane worktrees from sprint HEAD.
+  issues <classify|list> [args]
+                          classify: rule-based issue bucketing from DB cache — eliminates
+                          LLM triage pass; outputs blocking-this-sprint / labeled-non-issue /
+                          tracking-future / drift-risk / unclassified buckets.
+                          list: plain issue listing from cache.
 
 Pipelines (multi-step automation, v5.0.4):
   sync [--scope=…|--all] [--verbose]
@@ -69,7 +74,7 @@ script_for() {
 cmd="${1:-help}"; shift || true
 case "$cmd" in
   help|-h|--help) usage ;;
-  init|status|doctor|refresh|query|search|inject|profile|style|mem|lock|lint|migrate|export|release|handoff|worktree|close-lane|sync|ready|sprint|audit)
+  init|status|doctor|refresh|query|search|inject|profile|style|mem|lock|lint|migrate|export|release|handoff|worktree|close-lane|issues|sync|ready|sprint|audit)
     impl="$HERE/$(script_for "$cmd")"
     if [[ ! -f "$impl" ]]; then
       echo "ERROR: $cmd not yet implemented (missing $impl)" >&2; exit 2
