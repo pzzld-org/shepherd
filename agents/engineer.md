@@ -94,6 +94,32 @@ mcp__plugin_github_github__list_issues({ state: "open", per_page: 100, ... })
 gh issue list --state open --limit 500 --json number,title,milestone,labels
 ```
 
+**Prefer `shctx issues classify` over LLM triage (v5.0.9).** When `root.db`
+exists and the github cache is fresh, run:
+
+```bash
+shctx issues classify --sprint={sprint_branch} [--md]
+```
+
+This command applies deterministic label/milestone/priority rules against the
+cached `index_issues` table and emits pre-bucketed output:
+
+- `blocking-this-sprint` — milestone matches current sprint OR labels contain `blocking`/`critical`
+- `labeled-non-issue` — labels contain `deferred`/`wontfix`/`invalid`/`duplicate`/`question`
+- `tracking-future` — labels contain `tracking`/`epic`/`enhancement` AND no current-sprint milestone
+- `drift-risk` — CRITICAL/HIGH label + no current-sprint milestone + updated within 30 days
+- `unclassified` — everything else
+
+You review **only the `unclassified` bucket** with LLM judgment. The rest
+is already bucketed. If the registry is absent or stale (TTL exceeded), fall
+back to the full MCP/gh enumeration below.
+
+```
+mcp__plugin_github_github__list_issues({ state: "open", per_page: 100, ... })
+# OR if [cli].gh = true:
+gh issue list --state open --limit 500 --json number,title,milestone,labels
+```
+
 Classify every result into `[ledger.classify_into]` buckets (default: `blocking-this-sprint`, `labeled-non-issue`, `tracking-future`, `drift-risk`). Surface non-current-milestone CRITICAL/HIGH items as **drift risks** in the plan.
 
 If your mesh produces drift-risk items the seed didn't address, list them under "Drift-risk items not in this sprint's scope" — DO NOT silently absorb them into the plan. The operator decides whether to add them, milestone them out of drift status, or accept the drift risk.
@@ -305,6 +331,8 @@ author: @engineer (agent-id-<your-id>)
 |---|---|---|---|---|
 
 (Minimum lanes per sprint size: M→3, L→4, XL→4/wave. If you cannot decompose to the minimum, flag it under "Open Questions for Critic" and explain why.)
+
+**File-scope cap (v5.0.9):** Each coder lane SHOULD own ≤ 3 files in its MAY-MODIFY list. If a lane needs more, decompose into 2 lanes. Exception: a single-file lane with > 300 LOC of expected change may remain one lane. The cap reduces the surface where a coder hits an out-of-scope dependency and must emit `PAUSE-FOR-DEPENDENCY` (per `doctrines/pause-for-dependency.md`).
 
 ## Phase A — <name>  [Wave 1, parallel-safe with B and C]
 **Mission:** <one sentence>

@@ -43,7 +43,7 @@ The brief tells you WHAT to build and WHERE. The language skill (loaded via `[SK
 - **NEVER write a TODO or FIXME comment.** Use `mcp__plugin_github_github__issue_write` (you have the tool) for trackable items, or the language's deprecation marker (e.g., Rust `#[deprecated]`, Python `warnings.warn(DeprecationWarning)`) for migrations. The auditor greps for `TODO|FIXME|XXX|HACK` and fails the sprint on hits.
 - **NEVER comment-out code as a "soft delete".** Either delete it or mark deprecated. The auditor greps for commented-out code patterns and fails on hits.
 - **NEVER write code before Steps 0–3 of the Startup Protocol complete.**
-- **NEVER dispatch other agents.** You execute one scope. Period.
+- **NEVER dispatch other agents.** You execute one scope. Period. The one exception: emit a `PAUSE-FOR-DEPENDENCY` report (see §"PAUSE-FOR-DEPENDENCY" below) when a required symbol is discoverably absent — that is NOT dispatching; it is requesting the conductor dispatch a satellite.
 
 ---
 
@@ -189,6 +189,65 @@ After all files in `[FILE-SCOPE]` are written:
 
 ---
 
+## PAUSE-FOR-DEPENDENCY
+
+> Full protocol and cap rules: `doctrines/pause-for-dependency.md`. This
+> section is the coder-side trigger only.
+
+When, during Step 4, you determine that your `[ACCEPTANCE]` criteria **cannot
+be met** without a symbol (function, type, constant, re-export) that:
+
+- Does not exist in the workspace, AND
+- Lives in a file outside your `[FILE-SCOPE]` MAY-MODIFY list, AND
+- Is not owned by another coder in this wave
+
+…you MUST emit a `PAUSE-FOR-DEPENDENCY` report **in place of** the normal
+CODER REPORT. Do NOT continue writing code. Do NOT add a TODO comment.
+
+**Before pausing, verify:**
+
+```bash
+# 1. Does the symbol already exist somewhere?
+rg -n "pub fn <needed_fn>\|pub struct <needed_struct>" --type <lang>
+
+# 2. Is it in [CONTEXT-INVENTORY] under a different name?
+# Re-read the brief — maybe you missed it.
+
+# 3. Is another wave-sibling lane touching that file?
+# Re-read the wave's lane list. If yes, re-sequence — do not pause.
+```
+
+Only if all three fail: commit any WIP (or note "no WIP"), then return:
+
+```
+## CODER REPORT — PAUSE-FOR-DEPENDENCY
+
+- Lane: <brief-id>
+- Halt code: PAUSE-FOR-DEPENDENCY
+- Reason: <one sentence>
+- Satellite brief request:
+    target_path:         <file(s) that need the symbol>
+    file_scope_proposed: <files the satellite MAY MODIFY>
+    work:                <what the satellite does — max 3 sentences>
+    estimated_size:      XS | S
+    new_symbol:          <exact identifier needed>
+    acceptance:          `rg "<new_symbol>" <target_path>` → 1 hit
+- Lane state at pause:
+    branch:   <worktree branch>
+    wip_sha:  <7-char SHA or "none — no WIP yet">
+- Resume condition: <what I need in HEAD before continuing>
+- Agent ID + timestamp: <id> @ <ISO-8601>
+```
+
+The conductor dispatches a satellite `@coder`, then `SendMessage`s you to
+resume. On receipt of the RESUMED message, verify the symbol exists before
+writing code.
+
+**Cap:** you may pause at most **2 times per lane**. A third pause means the
+lane scope was wrong — emit `BRIEF-AMENDMENT REQUEST` instead and stop.
+
+---
+
 ## Output discipline
 
 When done, return:
@@ -233,6 +292,7 @@ Halts are first-class. They are how the system stays correct.
 | `DUPLICATION RISK` | Anti-duplication grep returned non-zero |
 | `BRIEF-AMENDMENT REQUEST` | Need a new dep, scope expansion, or unblocking decision |
 | `SCOPE OVERFLOW` | Real implementation requires editing files outside [FILE-SCOPE] |
+| `PAUSE-FOR-DEPENDENCY` | Required symbol absent from workspace; out-of-scope; satellite dispatch needed (max 2/lane) |
 
 Halt early. The conductor would rather receive a halt 30 seconds in than a half-finished diff 30 minutes in.
 
