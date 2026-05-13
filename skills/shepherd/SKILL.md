@@ -1,7 +1,7 @@
 ---
 name: shepherd
 slug: shepherd
-version: 5.0.8
+version: 5.0.9
 description: |
   Sprint-by-sprint version-cycle conductor. Five-agent flock (engineer, critic,
   coder, auditor, worker) on a three-section sprint pipeline (§1 INTRODUCTION
