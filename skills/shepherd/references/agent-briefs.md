@@ -12,6 +12,7 @@ This checklist IS the runtime body of the `DEDUP-GATE` graph node (per `pipeline
 - [ ] All **seven** bracketed headers present verbatim — `[SKILLS]`, `[CONTEXT-INVENTORY]`, `[DO-NOT-DUPLICATE]`, `[USER-STYLE]`, `[FILE-SCOPE]`, `[NON-GOALS]`, `[ACCEPTANCE]`. Do NOT rename or paraphrase — the parser is strict.
 - [ ] `[WORKTREE]` block present with `Path:`, `Branch:`, `Commit template:` lines.
 - [ ] **`[BASE-COMMIT-EXPECTED]` block present** with the recorded SHA (the conductor runs `git rev-parse HEAD` on `{sprint_branch}` IMMEDIATELY before this dispatch and pastes the short SHA). Per `doctrines/conductor-cwd.md` companion contract — the coder rejects the worktree on mismatch.
+- [ ] **`[SIBLING-LANES]` block present** (v5.0.9, `doctrines/flock-cohesion.md`) — every OTHER lane in this wave listed with its `[FILE-SCOPE]` summary + the symbols/artifacts it produces. Empty list (`- none — solo wave`) is acceptable for single-lane waves.
 - [ ] `[FILE-SCOPE]` is file-disjoint from every OTHER coder dispatched in the same wave.
 - [ ] `[NON-GOALS]` explicitly lists scope items reserved for other sprints or other coders.
 - [ ] `[ACCEPTANCE]` is runnable (greps, structural assertions, LOC counts) — not prose.
@@ -82,6 +83,15 @@ No new build-manifest dependencies without conductor approval.
 # The SHA the worktree was branched from. Coder MUST verify before any edits
 # (per agents/coder.md Step 0.5). Mismatch ⇒ HALT with `BASE-DRIFT`.
 - {sprint_branch} HEAD at dispatch: {short_sha}    (run `git rev-parse HEAD` in the worktree)
+
+[SIBLING-LANES]
+# Read-only awareness (v5.0.9, flock-cohesion.md). The OTHER lanes firing in
+# this same Agent batch. You may NOT modify their MAY-MODIFY paths. If you
+# need a symbol they're producing, emit PAUSE-FOR-DEPENDENCY (do NOT silently
+# wait or duplicate). If you see scope overlap, flag SCOPE OVERFLOW.
+- {Lane B} (@{role}) — {file_scope summary}        — produces: {symbols/artifacts}
+- {Lane C} (@{role}) — {file_scope summary}        — produces: {symbols/artifacts}
+- ...
 
 [SKILLS]
 - code-style                          (mandatory per [skills.mandatory])

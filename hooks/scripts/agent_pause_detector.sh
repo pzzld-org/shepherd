@@ -52,7 +52,8 @@ printf '%s' "$response" | grep -qE 'Halt code:\s*PAUSE-FOR-DEPENDENCY' || exit 0
 # ---------------------------------------------------------------------------
 # Locate namespace and mint a sortable id
 # ---------------------------------------------------------------------------
-repo_root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || repo_root=""
+[[ -z "$repo_root" ]] && repo_root="$(pwd)"
 ns=""
 for cand in "$repo_root/.shepherd" "$repo_root/.artifacts"; do
   [[ -d "$cand" ]] && { ns="$cand"; break; }
