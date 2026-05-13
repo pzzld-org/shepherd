@@ -86,33 +86,25 @@ The conductor reads `shepherd.toml [mcp]` + `[cli]` and passes you which surface
 
 **Mesh row 1 — open-issue ledger sweep (CRITICAL — combats tunnel vision).**
 
-Per `doctrines/issue-ledger-awareness.md`. Enumerate the FULL open-issue space, not just the current milestone:
+Per `doctrines/issue-ledger-awareness.md`. Goal: enumerate the FULL open-issue
+space (not just current milestone) and classify each into
+`[ledger.classify_into]` buckets (default: `blocking-this-sprint`,
+`labeled-non-issue`, `tracking-future`, `drift-risk`).
 
-```
-mcp__plugin_github_github__list_issues({ state: "open", per_page: 100, ... })
-# OR if [cli].gh = true:
-gh issue list --state open --limit 500 --json number,title,milestone,labels
-```
-
-**Prefer `shctx issues classify` over LLM triage (v5.0.9).** When `root.db`
-exists and the github cache is fresh, run:
+**Preferred (v5.0.9): `shctx issues classify` — rule-based bucketing from the
+cache, no LLM triage required.**
 
 ```bash
-shctx issues classify --sprint={sprint_branch} [--md]
+shctx issues classify --sprint={sprint_branch} --md
+# --unclassified-only focuses your LLM judgment on the residual bucket
 ```
 
-This command applies deterministic label/milestone/priority rules against the
-cached `index_issues` table and emits pre-bucketed output:
+Applies deterministic rules (label / milestone / severity / recency) against
+`index_issues`. Returns the four canonical buckets plus `unclassified` (the
+residual to triage manually — typically 10–20% of volume). Eliminates the
+per-sprint full-enumeration LLM cost.
 
-- `blocking-this-sprint` — milestone matches current sprint OR labels contain `blocking`/`critical`
-- `labeled-non-issue` — labels contain `deferred`/`wontfix`/`invalid`/`duplicate`/`question`
-- `tracking-future` — labels contain `tracking`/`epic`/`enhancement` AND no current-sprint milestone
-- `drift-risk` — CRITICAL/HIGH label + no current-sprint milestone + updated within 30 days
-- `unclassified` — everything else
-
-You review **only the `unclassified` bucket** with LLM judgment. The rest
-is already bucketed. If the registry is absent or stale (TTL exceeded), fall
-back to the full MCP/gh enumeration below.
+**Fallback (cache absent or stale beyond `[context.refresh].ttl_minutes`):**
 
 ```
 mcp__plugin_github_github__list_issues({ state: "open", per_page: 100, ... })
@@ -120,9 +112,13 @@ mcp__plugin_github_github__list_issues({ state: "open", per_page: 100, ... })
 gh issue list --state open --limit 500 --json number,title,milestone,labels
 ```
 
-Classify every result into `[ledger.classify_into]` buckets (default: `blocking-this-sprint`, `labeled-non-issue`, `tracking-future`, `drift-risk`). Surface non-current-milestone CRITICAL/HIGH items as **drift risks** in the plan.
+Classify manually against `[ledger.classify_into]`.
 
-If your mesh produces drift-risk items the seed didn't address, list them under "Drift-risk items not in this sprint's scope" — DO NOT silently absorb them into the plan. The operator decides whether to add them, milestone them out of drift status, or accept the drift risk.
+**Regardless of path** — surface non-current-milestone CRITICAL/HIGH items as
+**drift risks** in the plan. If drift-risk items appear that the seed did not
+address, list them under "Drift-risk items not in this sprint's scope" — do
+NOT silently absorb them. The operator decides: add to scope, milestone out,
+or accept the drift.
 
 **Mesh row 2 — recent activity.**
 

@@ -284,6 +284,17 @@ The conductor does NOT add ad-hoc nodes mid-walk. If a need emerges that the gra
 
 This is the discipline that prevents drift: the graph is the contract; the walk is mechanical; deviation is structural and visible.
 
+**Mechanization (v5.0.9 dispatch cascade):** the abstract walk above is implemented by `shctx graph` — see `doctrines/dispatch-cascade.md`. After MESH, the conductor runs `shctx plan extract <plan.md>` to materialize the graph into `<ns>/graph/state.json`, then loops:
+
+```
+shctx graph next   # → batch of ready nodes (parallel_with cliques honored)
+# dispatch via Agent tool in ONE message
+shctx graph mark <id> --state=done --exit=<edge-label>
+# downstream nodes auto-promote to "ready" when all in_predicates satisfied
+```
+
+`shctx graph trace` is the append-only event log that feeds `adaptation-loop.md §V-bis` node-level telemetry. The conductor's only LLM-driven step per tick is brief authoring + edge-label selection; routing is mechanical.
+
 ---
 
 ## VI. Pattern B is a graph shape, not a checklist item
@@ -779,8 +790,9 @@ Full doctrine: `doctrines/plugin-reload-escape.md`.
 - `doctrines/carry-forward-refresh.md` — encoded as completeness-auditor input
 - `doctrines/gates-restoration.md` — encoded as the GATES-DISCOVERY conductor-inline node (v5.0.3)
 - `doctrines/conductor-cwd.md` — companion discipline for graph-walk Bash hygiene (v5.0.3)
-- `doctrines/pause-for-dependency.md` — PAUSE-FOR-DEPENDENCY primitive (v5.0.9)
+- `doctrines/pause-for-dependency.md` — PAUSE-FOR-DEPENDENCY primitive, agent-agnostic (v5.0.9)
 - `doctrines/cargo-sequential-gates.md` — cargo must run sequentially at WAVE-GATE (v5.0.9)
 - `doctrines/plugin-reload-escape.md` — /reload-plugins escape hatch for MCP unavailability (v5.0.9)
+- `doctrines/dispatch-cascade.md` — Stage Graph as rule engine; `shctx plan extract` + `shctx graph` mechanize the walk (v5.0.9)
 - `autorun.md` — autorun = loop the walk algorithm
 - `parallel.md` — parallel = N concurrent walks with cross-graph join at CLOSE-FINALIZE

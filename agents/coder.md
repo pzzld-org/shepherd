@@ -236,7 +236,7 @@ Only if all three fail: commit any WIP (or note "no WIP"), then return:
     branch:   <worktree branch>
     wip_sha:  <7-char SHA or "none — no WIP yet">
 - Resume condition: <what I need in HEAD before continuing>
-- Agent ID + timestamp: <id> @ <ISO-8601>
+- Reporter: <agent-id> @ <ISO-8601 timestamp>
 ```
 
 The conductor dispatches a satellite `@coder`, then `SendMessage`s you to

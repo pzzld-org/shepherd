@@ -1,267 +1,189 @@
 ---
-title: PAUSE-FOR-DEPENDENCY — coder-initiated satellite dispatch
+title: PAUSE-FOR-DEPENDENCY — agent-initiated satellite dispatch
 description: |
-  First-class Stage Graph primitive for when a coder discovers an out-of-scope
-  dependency mid-lane. Replaces the three bad options (silent scope expansion,
-  TODO comment, one-line escalation) with a structured halt → satellite dispatch
-  → resume flow the conductor can walk deterministically.
+  Generic Stage Graph primitive for mid-task out-of-scope dependencies. ANY
+  flock agent (coder primarily; worker secondarily; auditor rarely) can emit
+  a structured halt → conductor dispatches a satellite agent of the appropriate
+  role → SendMessage resumes the paused agent. Replaces silent scope expansion,
+  TODO comments, and heavyweight engineer amendment for localized gaps.
 introduced: v5.0.9
 field_origin: shepherd v5.0.8 conductor feedback (axiom v0.3.2-dev.0) §1
+generalized: v5.0.9 — operator request: "available for *any* agent"
 ---
 
 # Doctrine — PAUSE-FOR-DEPENDENCY
 
-## Why this exists
+A mid-task agent discovers their acceptance criteria require something
+outside their scope (a missing public symbol, a file the brief did not
+authorize, data that hasn't been collected). Three pre-v5.0.9 options were
+all bad: silent scope expansion (caught by audit), TODO/deferred comment
+(banned), or engineer `BRIEF-AMENDMENT REQUEST` (forces a full plan
+revision + critic re-gate). PAUSE-FOR-DEPENDENCY is the fourth: agent
+halts with a structured satellite request, conductor dispatches an XS/S
+satellite agent, then `SendMessage`s the paused agent to resume.
 
-Mid-lane, a coder sometimes discovers that completing their `[FILE-SCOPE]` requires
-a public API, struct extension, or module-level change that lives in a *different*
-crate or file — outside `[FILE-SCOPE]`. Before v5.0.9, the coder had three options:
+## I. Who pauses (general availability)
 
-1. **Silently expand scope** — banned by `[NON-GOALS]` + `wrapper-must-earn.md`;
-   auditors catch and grade-cap as `STAGE-GRAPH-VIOLATION`.
-2. **Punt with a TODO comment** — banned explicitly by `agents/coder.md`
-   Hard Prohibitions; auditors grep for `TODO|FIXME|XXX|HACK` and fail.
-3. **Escalate via "BRIEF-AMENDMENT REQUEST"** — exists as a one-line escape
-   hatch in `agents/coder.md` but isn't a Stage Graph node, has no conductor
-   handler, and requires an engineer amendment cycle (full plan revision + critic
-   re-gate), which is heavyweight for a localized dependency gap.
+The primitive is **agent-agnostic** — the framework wiring is the same
+regardless of role. Expected frequency:
 
-**PAUSE-FOR-DEPENDENCY** is the fourth option: the coder owns the request; the
-conductor orchestrates a bounded satellite dispatch; the paused lane resumes after
-the satellite lands. No silent expansion, no TODO, no full plan revision.
+| Role | Primary trigger | Notes |
+|---|---|---|
+| `@coder` | Missing public symbol outside `[FILE-SCOPE]` | Primary user; full operational guide in `agents/coder.md §PAUSE-FOR-DEPENDENCY` |
+| `@worker` | Missing data, config, or external resource the brief presumed available | Secondary user; emits the same structured report with worker-appropriate `target_path` (e.g., a config file, a cached query result) |
+| `@auditor` | Missing audit input (rare — auditors are read-only) | Pauses if a referenced report file is absent; satellite is usually a `@worker` to materialize the file |
+| `@engineer` | Almost never — engineers handle scope drift via `BRIEF-AMENDMENT REQUEST`, not PAUSE | Pausing during plan authorship means the seed was incomplete; route to operator instead |
+| `@critic` | Never — critic is gated dispatch, no satellites | If critic finds the plan structurally invalid, the verdict is `RED` not a pause |
 
----
+The satellite agent's **role** is chosen by the conductor based on what's
+missing, not by who paused:
 
-## I. Coder protocol — when to emit PAUSE-FOR-DEPENDENCY
+- Missing **code** (symbol, type, export) → satellite is `@coder`
+- Missing **data, config, or research artifact** → satellite is `@worker`
+- Missing **review or sign-off** → escalate to operator (not a satellite)
 
-**Trigger condition:** during Step 4 (write code), the coder determines that
-completing the acceptance criteria for their lane requires a change to a file
-**not in their `[FILE-SCOPE]` MAY-MODIFY list**, AND:
+## II. Agent-side trigger + report (any role)
 
-- The required change is bounded (XS or S — a new public fn, a struct field,
-  a re-exported type), AND
-- The required change is not already in another lane in the SAME wave (if it
-  is, the conductor should sequence the lanes; this is a lane-ordering issue,
-  not a satellite issue).
+**Trigger:** during execution, the agent determines acceptance cannot be met
+without (a) a thing that does not exist in the workspace, AND (b) the thing
+lives outside the agent's explicit scope, AND (c) no parallel-sibling agent
+is producing it.
 
-**What to check first (before pausing):**
-
-```bash
-# 1. Is the symbol I need already exported somewhere?
-rg -n "pub fn <needed_fn>\|pub struct <needed_struct>" --type rs
-
-# 2. Is it in a [CONTEXT-INVENTORY] entry I missed?
-# Re-read the [CONTEXT-INVENTORY] section of the brief.
-
-# 3. Is another coder in this wave touching that file?
-# Re-read the wave's lane list. If yes, wait or reorder — do NOT pause.
-```
-
-Only if all three checks fail: emit PAUSE-FOR-DEPENDENCY.
-
-**What to do at pause time:**
-
-1. Commit any WIP to the worktree branch:
-   ```bash
-   git -C "$WORKTREE_PATH" add <files touched so far>
-   git -C "$WORKTREE_PATH" commit -m "wip(dev.N/<lane>): PAUSE-FOR-DEPENDENCY checkpoint"
-   ```
-   If nothing is written yet, no commit needed — note "no WIP" in the report.
-
-2. Return the structured PAUSE report (see below). Do NOT continue writing code.
-
-**Structured PAUSE report (replaces the normal CODER REPORT on pause):**
+**Before pausing, the agent must verify** the thing doesn't already exist
+(role-specific check — `rg` for symbols, `ls` for files, `shctx query` for
+data). If verification passes, the agent emits the standard report and
+stops:
 
 ```
-## CODER REPORT — PAUSE-FOR-DEPENDENCY
+## <ROLE> REPORT — PAUSE-FOR-DEPENDENCY
 
-- Lane: <brief-id / lane name>
+- Lane: <brief-id>
 - Halt code: PAUSE-FOR-DEPENDENCY
-- Reason: <one sentence: what is missing and why it blocks lane completion>
+- Role: coder | worker | auditor
+- Reason: <one sentence>
 - Satellite brief request:
-    target_path:       <file(s) that need the new/extended symbol>
-    file_scope_proposed: <exact files the satellite MAY MODIFY>
-    work:              <what the satellite needs to do — max 3 sentences>
-    estimated_size:    XS | S
-    new_symbol:        <exact identifier the satellite must introduce>
-    acceptance:        `rg "<new_symbol>" <target_path>` → 1 hit
-- Lane state at pause:
-    branch:   <worktree branch name>
-    wip_sha:  <7-char SHA of checkpoint commit, or "none — no WIP yet">
-- Resume condition: <what the coder needs to see in HEAD before resuming>
-  (e.g., "pub fn foo exported from crates/engine/src/lib.rs")
-- Agent ID + timestamp: <id> @ <ISO-8601>
+    target_path:         <file(s) that need the thing>
+    file_scope_proposed: <files the satellite MAY MODIFY/PRODUCE>
+    work:                <what the satellite does — max 3 sentences>
+    estimated_size:      XS | S
+    new_symbol_or_path:  <exact identifier or path needed>
+    satellite_role:      coder | worker
+    acceptance:          <runnable command that succeeds when the satellite is done>
+- State at pause:
+    branch:   <worktree branch, or 'n/a' for workers>
+    wip_sha:  <7-char SHA, or 'none' / 'n/a'>
+- Resume condition: <what I need to see before continuing>
+- Reporter: <agent-id> @ <ISO-8601 timestamp>
 ```
 
----
+Role-specific operational guidance:
+- **Coders**: `agents/coder.md §PAUSE-FOR-DEPENDENCY` (canonical bash greps)
+- **Workers**: emit the same report; `target_path` may be a config/data
+  artifact; `satellite_role` is usually `worker` unless code is needed.
+- **Auditors**: read-only; if pausing, `satellite_role: worker` to
+  materialize the missing input.
 
-## II. Conductor protocol — handling a PAUSE-FOR-DEPENDENCY report
+## III. Conductor protocol
 
-When a coder returns a `PAUSE-FOR-DEPENDENCY` report, the conductor walks these
-steps **inline** (no new graph nodes need to be added ad-hoc — the satellite
-dispatch IS the PAUSE-FOR-DEPENDENCY Stage Graph node, see §III):
+| Step | Action |
+|---|---|
+| 1 | **Hook auto-captures** the pause: `agent_pause_detector.sh` writes the structured request to `.shepherd/pauses/<id>.json` and surfaces a context alert. The conductor reads from the JSON, not by re-parsing the agent's text. |
+| 2 | **Validate.** `estimated_size` must be XS or S. `file_scope_proposed` disjoint from active/pending agents. `new_symbol_or_path` must not already exist (re-run the appropriate check). |
+| 3 | **Dispatch satellite** of `satellite_role` with `isolation: "worktree"`. Standard 7-section brief. Commit template: `fix(dev.N/satellite-<lane-id>): <work-summary>`. `[NON-GOALS]`: "Do not implement the paused agent's task; produce the satellite deliverable only." |
+| 4 | **After satellite commits:** rebase satellite onto sprint branch FIRST. Record SHA. Run `shctx pauses resolve <id> --satellite-sha=<sha>`. |
+| 5 | **Resume.** `SendMessage` to the paused agent's id with the resume signal. |
+| 6 | **Await resumed REPORT**, then proceed to `WAVE-N-GATE` (coder pauses) or the agent's normal join point (worker / auditor pauses). |
 
-### Step 1 — Validate the satellite request
+Escalation: if `estimated_size` is M+, OR the same lane already has 2
+active satellites, return `BRIEF-AMENDMENT REQUEST` to the engineer
+instead — the plan itself was wrong, not just the dep surface.
 
-Before dispatching, verify:
+## IV. Mechanization (hook + shctx)
 
-- `estimated_size` is `XS` or `S`. If `M` or larger: the paused lane is
-  fronting work that should have been its own wave lane — the engineer's plan
-  was under-scoped. Escalate via `BRIEF-AMENDMENT REQUEST` to the engineer
-  (NOT a satellite dispatch). Surface to the operator.
-- `file_scope_proposed` is disjoint from every OTHER currently-active or
-  pending coder lane. If it overlaps, resolve the ordering conflict first.
-- `new_symbol` does not already exist (run the `[DO-NOT-DUPLICATE]` check on
-  `new_symbol`). If it exists, update the paused coder's brief with the
-  existing symbol's location and `SendMessage` to resume immediately.
+The pause flow is **hook-mechanized** end-to-end:
 
-### Step 2 — Dispatch the satellite coder
+1. `PostToolUse(Agent)` hook (`hooks/scripts/agent_pause_detector.sh`) —
+   parses agent output for `Halt code: PAUSE-FOR-DEPENDENCY`, extracts
+   the structured satellite request, writes
+   `.shepherd/pauses/<uuid>.json`, and injects an `additionalContext`
+   alert into the conductor's stream.
+2. `shctx pauses list` — enumerate active pauses (status=active).
+3. `shctx pauses show <id>` — dump the JSON for one pause (the conductor
+   reads structured fields, not free-form text).
+4. `shctx pauses resolve <id> --satellite-sha=<sha>` — mark as resolved
+   after the satellite lands; records resolution timestamp + SHA.
+5. `shctx pauses clear` — prune resolved pauses older than N days.
 
-Dispatch a `@coder` with `isolation: "worktree"` for the satellite work. The
-satellite brief follows the standard seven-section format from
-`references/agent-briefs.md`, with:
+The hook eliminates the LLM parsing step; the registry eliminates manual
+state tracking. The conductor's only LLM-driven step is the satellite
+brief authoring (Step 3).
 
-- `[FILE-SCOPE]` = `file_scope_proposed` from the report
-- `[NON-GOALS]` = "Do not implement the paused lane's feature; expose the
-  symbol only."
-- `[ACCEPTANCE]` = the `acceptance` grep from the report
-- Size cap: if the satellite brief cannot be written as XS or S, halt —
-  the request is over-scoped for a satellite (see §IV cap rules).
-- Commit template: `fix(dev.N/satellite-<lane-id>): expose <new_symbol>`
+## V. Cap rules
 
-### Step 3 — After satellite commits
+| Rule | Limit | On violation |
+|---|---|---|
+| Satellite size | XS or S only | Escalate to `BRIEF-AMENDMENT REQUEST` |
+| Satellites per paused agent | ≤ 2 | 3rd pause → escalate; the task was under-decomposed |
+| Satellite scope | ≤ 2 files / artifacts | Split or escalate |
+| Recursive pause | Satellites CANNOT pause | Satellite halts with `BRIEF-AMENDMENT REQUEST` instead |
 
-Once the satellite coder returns a CODER REPORT with acceptance greps passing:
+A paused agent needing 3+ satellites signals the engineer plan was
+under-scoped; the auditor flags this in CLOSE-SWARM as a planning-quality
+observation (not a grade-cap — a signal for the next plan).
 
-1. Rebase the satellite's worktree commit onto the sprint branch FIRST
-   (before the paused lane resumes). Cherry-pick order matters — see §V.
-2. Record the satellite SHA.
-3. `SendMessage` to the paused coder with:
-   ```
-   RESUMED — satellite landed. <new_symbol> now at <file_path>:<line>.
-   Satellite commit: <sha>. Your WIP checkpoint: <wip_sha or "none">.
-   Continue from where you left off. Confirm the new symbol is visible
-   before writing code.
-   ```
+## VI. Cherry-pick order invariant (coder pauses)
 
-### Step 4 — Paused coder resumes
+For coder pauses, the git log on the sprint branch MUST read:
+`<sprint base> → <satellite commit> → [other wave commits] → <resumed lane commit>`
 
-The paused coder:
-1. Verifies the new symbol is present: `rg "<new_symbol>" <path>` → 1 hit.
-2. Resumes from WIP checkpoint (or from scratch if no WIP).
-3. Commits using the original lane commit template (not the satellite's).
-4. Returns the normal CODER REPORT.
+Reasons: resumed lane's compile depends on satellite's symbol; `git
+bisect` identifies provider before consumer. WAVE-AUDIT verifies the
+ordering. Reversed order → `STAGE-GRAPH-VIOLATION` finding.
 
----
+Worker pauses produce no commits and have no ordering constraint —
+the resume signal is "the artifact is now present".
 
-## III. Stage Graph encoding
+## VII. PAUSE-FOR-DEPENDENCY vs. BRIEF-AMENDMENT
 
-The engineer's plan does NOT need to pre-declare PAUSE-FOR-DEPENDENCY nodes —
-they're discovered at runtime. When a coder pauses, the conductor adds two
-ephemeral nodes to its in-memory walk:
+| Path | Use when | Owner | Plan cost |
+|---|---|---|---|
+| `PAUSE-FOR-DEPENDENCY` | Task goal correct; one specific thing absent | Agent → conductor (hook + inline dispatch) | None — satellite is ephemeral subgraph |
+| `BRIEF-AMENDMENT REQUEST` | Task goal, scope, or non-goals must change | Agent → conductor → engineer | Engineer revision + critic re-gate |
+
+## VIII. Stage Graph encoding
+
+Structurally anticipated (like HOTFIX-DYNAMIC, cardinality at runtime — see
+`pipeline.md §II`). Engineer doesn't pre-declare; conductor adds the
+subgraph when a pause is detected:
 
 ```yaml
-# (added at runtime when coder-<lane-id> returns PAUSE-FOR-DEPENDENCY)
-- id: pause-dep-<lane-id>
-  type: PAUSE-FOR-DEPENDENCY
-  in_predicates: [{ predecessor: wave-N-impl-<lane-id>, edge: on-pause-dep }]
-  agents: []    # conductor-inline
+- id: pause-dep-<agent-id>
+  type: PAUSE-FOR-DEPENDENCY            # conductor-inline validate
+  in_predicates: [{ predecessor: <any-agent-node>, edge: on-pause-dep }]
   out_edges:
-    - { label: on-satellite-dispatched, target: satellite-<lane-id> }
+    - { label: on-satellite-dispatched, target: satellite-<agent-id> }
+    - { label: on-hard-stop,            target: hard-stop }
 
-- id: satellite-<lane-id>
-  type: HOTFIX    # reuses HOTFIX dispatch shape; satellite is ≤ S
-  in_predicates: [{ predecessor: pause-dep-<lane-id>, edge: on-satellite-dispatched }]
-  agents: [{ role: coder, count: 1, brief-ref: satellite-brief-<lane-id> }]
+- id: satellite-<agent-id>
+  type: HOTFIX                          # reuses HOTFIX dispatch shape (≤ S)
+  agents: [{ role: <coder|worker>, count: 1, brief-ref: satellite-brief-<agent-id> }]
   out_edges:
-    - { label: on-coder-complete, target: resume-<lane-id> }
-    - { label: on-hard-stop, target: hard-stop }
+    - { label: on-coder-complete, target: resume-<agent-id> }
+    - { label: on-hard-stop,      target: hard-stop }
 
-- id: resume-<lane-id>
-  type: RESUME-LANE    # conductor SendMessage + await resumed coder
-  in_predicates: [{ predecessor: satellite-<lane-id>, edge: on-coder-complete }]
-  agents: []    # conductor sends message to the PAUSED coder agent
+- id: resume-<agent-id>
+  type: RESUME-LANE                     # conductor SendMessage
   out_edges:
-    - { label: on-coder-complete, target: wave-N-gate }
-    - { label: on-hard-stop, target: hard-stop }
+    - { label: on-coder-complete, target: <agent's-normal-join-point> }
 ```
 
-The PAUSE-FOR-DEPENDENCY → satellite → RESUME-LANE subgraph resolves BEFORE
-the `WAVE-N-GATE` node can fire. The gate waits for ALL lanes, including the
-resumed lane.
+## IX. See also
 
-**Stage taxonomy additions (v5.0.9):**
-
-| Type | Dispatch shape | Owner | Produces |
-|---|---|---|---|
-| `PAUSE-FOR-DEPENDENCY` | Conductor inline (validate + dispatch satellite) | Conductor | satellite brief + SendMessage resume trigger |
-| `RESUME-LANE` | Conductor inline (SendMessage to paused coder; awaits resumed CODER REPORT) | Conductor | resumed lane commit |
-
----
-
-## IV. Cap rules (anti-scope-creep guardrails)
-
-| Rule | Limit | Enforcement |
-|---|---|---|
-| Satellite size cap | XS or S only | Conductor validates `estimated_size` before dispatch; M+ → escalate to engineer, not satellite |
-| Satellite count per lane | Max 2 per lane | If a lane triggers 3+ satellites, the lane scope was wrong — escalate to BRIEF-AMENDMENT; auditor flags as `STAGE-GRAPH-VIOLATION` |
-| Satellite scope | XS/S size AND ≤ 2 files | A satellite touching > 2 files is scoped too broadly; split or escalate |
-| Satellite recursion | Satellites CANNOT pause for sub-satellites | If a satellite hits its own out-of-scope dep, it returns `BRIEF-AMENDMENT REQUEST` to the conductor, NOT a recursive PAUSE |
-
-**Why 2-satellite cap?** A lane needing 3+ satellite fixes signals the original
-lane scope was under-decomposed — the engineer's plan was incorrect, not just the
-dependency surface. At that point, the cost of satellite overhead exceeds the cost
-of a plan amendment. The conductor surfaces this as a process observation in the
-close report.
-
----
-
-## V. Cherry-pick order invariant
-
-Satellite commits MUST land on the sprint branch BEFORE the paused lane's resumed
-commit. The git log on the sprint branch MUST read:
-
-```
-<sprint base>
-  ↓
-<satellite commit: fix(dev.N/satellite-<lane-id>): expose <new_symbol>>
-  ↓
-<other concurrent wave commits, if any>
-  ↓
-<resumed lane commit: fix(dev.N/<lane-id>): <original subject>>
-```
-
-This is a hard ordering rule:
-- Ensures the resumed lane's commit compiles against the satellite's change.
-- Ensures `git bisect` can identify the satellite as the provider and the
-  resumed lane as the consumer.
-- Auditors verify the ordering at WAVE-GATE via `git log --oneline -N` inspection.
-
-Violation (resumed commit lands before satellite) → `STAGE-GRAPH-VIOLATION`
-finding in WAVE-AUDIT.
-
----
-
-## VI. Relation to BRIEF-AMENDMENT REQUEST
-
-These are two distinct escalation paths for different problems:
-
-| Escalation | Trigger | Owner | Plan impact |
-|---|---|---|---|
-| `BRIEF-AMENDMENT REQUEST` | Plan itself was wrong — scope, dep graph, or non-goal conflict | Coder → conductor → engineer | Requires engineer revision + critic re-gate |
-| `PAUSE-FOR-DEPENDENCY` | Plan was right but a localized dep was undiscovered | Coder → conductor (inline satellite) | No plan revision; satellite is ad-hoc XS/S dispatch |
-
-Use PAUSE-FOR-DEPENDENCY when the original lane's goal is correct but ONE
-specific symbol is missing. Use BRIEF-AMENDMENT when the lane's goal, file scope,
-or non-goals need to change.
-
----
-
-## VII. See also
-
-- `agents/coder.md` — halt table (PAUSE-FOR-DEPENDENCY row) + Step 4 implementation
-- `pipeline.md` §II — stage taxonomy (PAUSE-FOR-DEPENDENCY + RESUME-LANE rows)
-- `pipeline.md` §XV-ter — SendMessage vs spawn mechanics (the RESUME-LANE step uses SendMessage)
+- `agents/coder.md §PAUSE-FOR-DEPENDENCY` — coder-side operational guide
+- `agents/worker.md` — worker-side pause is symmetric; same report shape
+- `pipeline.md §II` (stage taxonomy) + `§XV-quint` (subgraph walkthrough)
+- `pipeline.md §XV-ter` — `SendMessage` vs spawn mechanics (used at Step 5)
+- `hooks/scripts/agent_pause_detector.sh` — `PostToolUse(Agent)` mechanization
+- `skills/context/scripts/cmd_pauses.sh` — `shctx pauses` registry CLI
 - `doctrines/worktree-confinement.md` — satellite coder writes inside its own worktree
-- `doctrines/stage-graph.md` — ephemeral node additions are still graph-walk, not ad-hoc dispatch
-- `references/agent-briefs.md` — satellite brief follows standard seven-section format
+- `doctrines/stage-graph.md` — ephemeral nodes ARE structural; not ad-hoc
