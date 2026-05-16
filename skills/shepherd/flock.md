@@ -1,6 +1,6 @@
 ---
 title: flock
-description: Per-agent dispatch reference for the five-agent flock. Covers trigger conditions, parallel-safety, brief contract, and label/milestone discipline. Each agent's system prompt lives in agents/<role>.md — flock.md does NOT duplicate that content.
+description: Per-agent dispatch reference for the six-agent flock. Covers trigger conditions, parallel-safety, brief contract, and label/milestone discipline. Each agent's system prompt lives in agents/<role>.md — flock.md does NOT duplicate that content.
 ---
 
 # The Flock — Dispatch Reference
@@ -11,14 +11,15 @@ Main chat is the **conductor** (orchestrator). It plans, seeds, dispatches, vali
 
 ## I. Agent files and dispatch procedure
 
-The five agent definitions live at `${CLAUDE_PLUGIN_ROOT}/agents/`. Each file's YAML frontmatter defines the agent's `name`, `model`, `tools`, and `description`. The markdown body is the agent's **system prompt** — the identity + behavioral rules + NEVER clauses. **flock.md does NOT duplicate that content.** This file is the conductor's operational reference: when to dispatch, parallel-safety, brief shape.
+The six agent definitions live at `${CLAUDE_PLUGIN_ROOT}/agents/`. Each file's YAML frontmatter defines the agent's `name`, `model`, `tools`, and `description`. The markdown body is the agent's **system prompt** — the identity + behavioral rules + NEVER clauses. **flock.md does NOT duplicate that content.** This file is the conductor's operational reference: when to dispatch, parallel-safety, brief shape.
 
 ```
-${CLAUDE_PLUGIN_ROOT}/agents/coder.md      → @coder     model: sonnet
-${CLAUDE_PLUGIN_ROOT}/agents/auditor.md    → @auditor   model: sonnet
-${CLAUDE_PLUGIN_ROOT}/agents/critic.md     → @critic    model: sonnet
-${CLAUDE_PLUGIN_ROOT}/agents/engineer.md   → @engineer  model: opus
-${CLAUDE_PLUGIN_ROOT}/agents/worker.md     → @worker    model: sonnet
+${CLAUDE_PLUGIN_ROOT}/agents/coder.md      → @coder      model: sonnet
+${CLAUDE_PLUGIN_ROOT}/agents/auditor.md    → @auditor    model: sonnet
+${CLAUDE_PLUGIN_ROOT}/agents/critic.md     → @critic     model: sonnet
+${CLAUDE_PLUGIN_ROOT}/agents/engineer.md   → @engineer   model: opus
+${CLAUDE_PLUGIN_ROOT}/agents/worker.md     → @worker     model: sonnet
+${CLAUDE_PLUGIN_ROOT}/agents/discovery.md  → @discovery  model: sonnet  (v5.1.1+)
 ```
 
 **Dispatch procedure (every flock agent, every time):**
@@ -37,7 +38,7 @@ Agent({
 })
 ```
 
-The flock agent's identity comes from the injected system prompt. **The flock is closed.** NEVER dispatch any agent outside these five — no `general-purpose`, `Explore`, `Plan`, `feature-dev:*`, `pr-review-toolkit:*`, `superpowers:*`. Engineer's plan-skills (`superpowers:brainstorming` + `superpowers:writing-plans`) load from inside the engineer's own dispatch — that is not the conductor calling them. If a task doesn't fit a flock role, the conductor handles it inline.
+The flock agent's identity comes from the injected system prompt. **The flock is closed at six.** NEVER dispatch any agent outside these six — no `general-purpose`, `Explore`, `Plan`, `feature-dev:*`, `pr-review-toolkit:*`, `superpowers:*`. Engineer's plan-skills (`superpowers:brainstorming` + `superpowers:writing-plans`) and auditor's skill (`superpowers:systematic-debugging`) load from inside the agent's own dispatch — that is not the conductor calling them. If a task doesn't fit a flock role, the conductor handles it inline.
 
 ---
 
@@ -284,6 +285,46 @@ git branch -d claude-agent-<lane>-<short-hash>
 - GREEN → READY; main chat commits plan, proceeds to coder dispatch
 - YELLOW → revise ONCE; @critic pass 2; pass-2 GREEN → READY; pass-2 YELLOW/RED → ESCALATED
 - RED → ESCALATED immediately; main chat amends seed before re-dispatch
+
+---
+
+### @discovery — read-only orientation / research (v5.1.1+)
+
+**Model:** Sonnet · **System prompt:** `${CLAUDE_PLUGIN_ROOT}/agents/discovery.md`
+
+**Dispatch mode:** Single OR parallel — multiple discoveries fire in one Agent batch when their questions are file-disjoint (typically all are). Cap: 5 concurrent.
+
+**Trigger:** when the conductor (or engineer's plan) needs to absorb read-only exploration into a parallel agent. Canonical patterns:
+- **PRE-MESH-DISCOVERY** (in INTRO-COMBO-WAVE): prior-close-audit ingestion, canonical-types freshness, GH state inventory
+- **PRE-HOTFIX-DISCOVERY**: error-cluster analysis from `.shepherd/runs/wN-gate.json`
+- **ARCHITECTURE-DISCOVERY**: mid-session orientation when conductor joins late
+- **DOCTRINE-RECONCILIATION-DISCOVERY**: "does the codebase actually follow doctrine X?"
+- **MCP-STATE-DISCOVERY**: read-only fan-out across GH + Sentry + Supabase + ...
+- **RESEARCH-SUMMARY-DISCOVERY**: external web research with citations
+
+**Hard rules:**
+- Read-only. NEVER mutates state. No Edit, no MCP write, no dispatch.
+- Output is a structured DISCOVERY REPORT written to `{paths.reports}/<date>-discovery-<id>.md`.
+- Never grades (auditor's lane) — surfaces facts and questions, not recommendations.
+- Never substitutes for worker (which acts) or auditor (which grades).
+
+**Brief contract (mandatory bracketed sections):**
+
+```
+[ROLE]               @discovery — read-only orientation
+[QUESTION]           <one-sentence question>
+[SOURCES]            <files, dirs, MCP queries, web URLs>
+[OUTPUT-PATH]        {paths.reports}/<date>-discovery-<id>.md
+[BUDGET]
+  - Time: <max minutes>
+  - Max tool calls: <N>
+[FORMAT]             <Findings + Open questions + Confidence minimum>
+[NON-GOALS]          (default four + brief-specific additions)
+```
+
+Copy-paste templates per pattern: `references/agent-briefs.md` § @discovery.
+
+Full contract + use-case catalog + cross-sprint reuse rules: `doctrines/discovery-readonly.md`.
 
 ---
 
