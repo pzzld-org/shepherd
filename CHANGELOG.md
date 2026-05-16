@@ -4,6 +4,22 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v5.1.2 — unreleased
+
+Next patch branch — open. No changes yet.
+
+Planned scope (per v5.1.1 release notes):
+- `hooks/scripts/_lib.sh` shared library (jq/python fallback, log_event)
+- `hooks/scripts/agent_invocation_tagger.sh` (PreToolUse on Agent|Task)
+- `hooks/scripts/discovery_capture.sh` (PostToolUse on Agent|Task)
+- `bash_guard.sh` extension (auditor cwd guard + discovery state-modify block)
+- `lock_guard.sh` extension (role-based write-path enforcement)
+- `agent_pause_detector.sh` extension (auto-draft satellite brief stub)
+- `skills/context/scripts/cmd_doctor.sh` (`shctx doctor` preflight)
+- `<ns>/logs/hooks/YYYY-MM-DD.jsonl` event log activation
+
+---
+
 ## v5.1.1 — 2026-05-15
 
 ### Discovery agent + INTRO-COMBO-WAVE + hypothesis-driven auditor + sprint-as-patch
