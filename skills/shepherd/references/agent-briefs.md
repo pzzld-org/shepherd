@@ -387,6 +387,323 @@ Write to {paths.reports}/{date}-w-e-prod-diagnostic.md
 
 ---
 
+## `@discovery` — read-only orientation / research (v5.1.1+)
+
+Discovery briefs are short and tight. Every brief carries six bracketed
+sections; missing any one halts the agent at Step 0.
+
+### Generic skeleton
+
+```
+You are @discovery. Read-only orientation. Report-only output.
+
+[ROLE]               @discovery — read-only orientation
+
+[QUESTION]
+{one sentence — the exact question you want answered}
+
+[SOURCES]
+- {file or dir path}
+- {MCP query}
+- {web URL}
+
+[OUTPUT-PATH]        {paths.reports}/{date}-discovery-{id}.md
+
+[BUDGET]
+- Time: {N} min
+- Max tool calls: {N}
+
+[FORMAT]
+Markdown report. Required sections: ## Sources, ## Findings, ## Open questions, ## Confidence.
+
+[NON-GOALS]
+- Do NOT propose code changes; surface facts, not recommendations.
+- Do NOT dispatch other agents.
+- Do NOT Write outside [OUTPUT-PATH].
+- Do NOT run state-modifying Bash (rm, mv, >, >>, tee, gh issue create, etc.).
+```
+
+### D-A — PRE-MESH-DISCOVERY: prior-close-audit-summary
+
+Fires in INTRO-COMBO-WAVE before engineer MESH.
+
+```
+[ROLE] @discovery — D-A prior-close-audit-summary
+
+[QUESTION]
+What HIGH/CRITICAL findings from the prior sprint's close-time audit are still
+open at HEAD? For each, surface: severity, location, GH issue (if filed),
+recommended disposition (resolved / carry-forward / drift).
+
+[SOURCES]
+- {paths.reports}/*-{prior_sprint_branch}-close.md
+- {paths.reports}/*-audit-*.md  (close-time audit reports, prior sprint)
+- mcp__plugin_github_github__list_issues (state: open, milestone: current)
+- git log {prior_sprint_branch}..HEAD --oneline
+
+[OUTPUT-PATH] {paths.reports}/{date}-discovery-prior-close-audit-summary.md
+
+[BUDGET]
+- Time: 8 min
+- Max tool calls: 25
+
+[FORMAT]
+Markdown report. ## Findings table: severity | location | GH# | recommended disposition.
+```
+
+### D-B — PRE-MESH-DISCOVERY: canonical-types-freshness
+
+```
+[ROLE] @discovery — D-B canonical-types-freshness
+
+[QUESTION]
+Is {paths.ctx}/canonical-types.md fresh for this sprint's mesh? Report:
+last refresh date, age in days, drift since last refresh (new pub symbols
+not yet in the index), and whether the dev.0 CANONICAL-TYPES-REFRESH worker
+needs to fire this sprint.
+
+[SOURCES]
+- {paths.ctx}/canonical-types.md (mtime + content)
+- git log --since="{N} days ago" --name-only -- 'crates/**/*.rs' (or project equivalent)
+- rg "pub (fn|struct|trait|enum|type|const) " --type rust  (or project language)
+
+[OUTPUT-PATH] {paths.reports}/{date}-discovery-canonical-types-freshness.md
+
+[BUDGET]
+- Time: 5 min
+- Max tool calls: 15
+
+[FORMAT]
+Markdown. ## Findings: freshness verdict (FRESH / STALE / MISSING), drift
+count, recommended action.
+```
+
+### D-C — PRE-MESH-DISCOVERY: gh-state-inventory
+
+```
+[ROLE] @discovery — D-C gh-state-inventory
+
+[QUESTION]
+Classify every open GH issue into ledger buckets:
+{drift-risk, current-milestone, non-issue, tracking-future, chronic}.
+Surface counts + a flat list of HIGH/CRITICAL items not on current milestone.
+
+[SOURCES]
+- mcp__plugin_github_github__list_issues (state: open, per_page: 500)
+- mcp__plugin_github_github__list_milestones (state: open)
+- {ledger.non_issue_labels} from shepherd.toml
+
+[OUTPUT-PATH] {paths.reports}/{date}-discovery-gh-state-inventory.md
+
+[BUDGET]
+- Time: 10 min
+- Max tool calls: 30
+
+[FORMAT]
+Markdown. ## Findings: bucket counts table + drift-risk table (severity | # | title).
+```
+
+### D-D — PRE-HOTFIX-DISCOVERY: error-cluster
+
+Fires when WAVE-N-GATE returns on-fail; conductor uses output to shape
+HOTFIX-DYNAMIC dispatch.
+
+```
+[ROLE] @discovery — D-D pre-hotfix error-cluster
+
+[QUESTION]
+Cluster the gate errors in .shepherd/runs/w{N}-gate.json by file-disjoint
+scope. For each cluster, report: files involved, error lines (sample),
+proposed [FILE-SCOPE], proposed [ACCEPTANCE] grep.
+
+[SOURCES]
+- .shepherd/runs/w{N}-gate.json (or w{N}-gate.txt)
+- {paths.plans}/{sprint_branch}.plan.md (for original [FILE-SCOPE] context)
+
+[OUTPUT-PATH] {paths.reports}/{date}-discovery-w{N}-hf-clusters.md
+
+[BUDGET]
+- Time: 5 min
+- Max tool calls: 15
+
+[FORMAT]
+Markdown. ## Findings: cluster table (cluster_id | files | err_count | proposed
+HF brief stub). Each cluster becomes one HOTFIX-DYNAMIC coder lane.
+```
+
+### D-E — ARCHITECTURE-DISCOVERY
+
+For mid-session re-orientation. The conductor joins a sprint mid-flight.
+
+```
+[ROLE] @discovery — D-E architecture-orientation
+
+[QUESTION]
+The conductor needs to re-orient on sprint {sprint_branch}. Synthesize:
+current Stage Graph position, recent commits (last 20), hot files (most-
+edited in last 5 days), open dispatches (if any), pending PAUSE records.
+
+[SOURCES]
+- {paths.plans}/{sprint_branch}.plan.md (Stage Graph section)
+- {paths.reports}/*-{sprint_branch}-walk.md (if exists)
+- git log -20 --stat
+- ls .shepherd/pauses/ (or .artifacts/pauses/)
+- ls .shepherd/dispatch/{sprint_branch}/ (or .artifacts equivalent)
+
+[OUTPUT-PATH] {paths.reports}/{date}-discovery-architecture-orientation.md
+
+[BUDGET]
+- Time: 8 min
+- Max tool calls: 20
+
+[FORMAT]
+Markdown. ## Findings: where-are-we summary + next-eligible-node + open
+dispatches table.
+```
+
+### D-F — DOCTRINE-RECONCILIATION-DISCOVERY
+
+```
+[ROLE] @discovery — D-F doctrine-reconciliation
+
+[QUESTION]
+Does this codebase adhere to {doctrine name}? Walk the doctrine's rules,
+grep the codebase, report adherence per rule.
+
+[SOURCES]
+- ${CLAUDE_PLUGIN_ROOT}/skills/shepherd/doctrines/{doctrine-slug}.md
+- Codebase (project-specific paths)
+
+[OUTPUT-PATH] {paths.reports}/{date}-discovery-doctrine-{slug}-adherence.md
+
+[BUDGET]
+- Time: 10 min
+- Max tool calls: 30
+
+[FORMAT]
+Markdown. ## Findings: per-rule adherence table (rule | adheres? | evidence | gaps).
+```
+
+### D-G — MCP-STATE-DISCOVERY
+
+```
+[ROLE] @discovery — D-G mcp-state
+
+[QUESTION]
+Consolidate the current state of every MCP surface advertised in
+shepherd.toml [mcp] into one report. For each (github / sentry / supabase):
+recent activity counts, advisor warnings (if any), and any anomalies
+worth surfacing to the engineer.
+
+[SOURCES]
+- mcp__plugin_github_github__list_issues (state: open, recent)
+- mcp__plugin_github_github__list_pull_requests (state: open)
+- mcp__plugin_sentry_sentry__find_issues (recent)
+- mcp__plugin_supabase_supabase__get_advisors
+
+[OUTPUT-PATH] {paths.reports}/{date}-discovery-mcp-state.md
+
+[BUDGET]
+- Time: 8 min
+- Max tool calls: 20
+
+[FORMAT]
+Markdown. ## Findings: per-surface section (github, sentry, supabase, ...)
+with counts table + anomaly list.
+```
+
+### D-H — RESEARCH-SUMMARY-DISCOVERY
+
+```
+[ROLE] @discovery — D-H research-summary
+
+[QUESTION]
+{Specific external research question — e.g., "What is the current best-
+practice for X in the {library Y} ecosystem as of 2026-05?"}
+
+[SOURCES]
+- WebFetch / WebSearch for authoritative sources
+- {paths.docs}/{any prior research doc on this topic}
+- ToolSearch + Skill (load context7-mcp if library docs needed)
+
+[OUTPUT-PATH] {paths.reports}/{date}-discovery-research-{topic-slug}.md
+
+[BUDGET]
+- Time: 12 min
+- Max tool calls: 25
+
+[FORMAT]
+Markdown. ## Findings: cited summary with [source: URL] footnotes;
+## Open questions for anything sources didn't authoritatively resolve.
+
+[NON-GOALS]
+- Do NOT recommend a specific implementation — surface options + tradeoffs.
+- Do NOT cite single-source claims as authoritative.
+```
+
+### Intro-mode auditor briefs (v5.1.1+ — pair with intro discoveries in INTRO-COMBO-WAVE)
+
+```
+[ROLE] @auditor (intro mode)
+
+[CONCERN] regression
+[MODE] regression
+
+[PRIOR-SPRINT-PLAN]   {paths.plans}/{prior_sprint_branch}.plan.md
+[PRIOR-SPRINT-CLOSE]  {paths.reports}/*-{prior_sprint_branch}-close.md
+[OUTPUT-PATH]         {paths.reports}/{date}-intro-audit-regression.md
+[SPRINT-ROOT]         {abs path}
+[SPRINT-BRANCH]       {sprint_branch}
+
+[INSTRUCTIONS]
+- Load superpowers:systematic-debugging on entry.
+- Read every coder lane's [ACCEPTANCE] block in the prior plan.
+- Re-run each runnable grep / structural assertion at the current HEAD.
+- File findings per the v5.1.1 Hypothesis + Falsification + Confidence
+  contract. No grade — this is intro mode.
+- Cap LOW findings (surface under ## Open questions instead).
+```
+
+```
+[ROLE] @auditor (intro mode)
+
+[CONCERN] carry-forward-disposition
+[MODE] carry-forward-disposition
+
+[CARRY-FORWARD-LEDGER]  {paths.ctx}/carry-forward.md  (or [ledger].carry_forward_file)
+[OUTPUT-PATH]           {paths.reports}/{date}-intro-audit-carry-forward.md
+[SPRINT-ROOT]           {abs path}
+[SPRINT-BRANCH]         {sprint_branch}
+
+[INSTRUCTIONS]
+- Load superpowers:systematic-debugging on entry.
+- For every ledger entry, verify GH issue state + label correctness +
+  sprint-target sanity.
+- File findings per the v5.1.1 contract. No grade.
+- Apply chronic label per [ledger.chronic_threshold_patches] rule.
+```
+
+---
+
+## INTRO-COMBO-WAVE dispatch (one Agent batch, sprint open)
+
+After SEED-VERIFY (and before MESH), the conductor dispatches the wave in
+ONE message:
+
+```
+Agent({ description: "@discovery: D-A prior-close-audit-summary", model: "sonnet", prompt: "<discovery body + D-A brief>" })
+Agent({ description: "@discovery: D-B canonical-types-freshness",  model: "sonnet", prompt: "<discovery body + D-B brief>" })
+Agent({ description: "@discovery: D-C gh-state-inventory",         model: "sonnet", prompt: "<discovery body + D-C brief>" })
+Agent({ description: "@auditor: regression (intro mode)",          model: "sonnet", prompt: "<auditor body + intro-regression brief>" })
+Agent({ description: "@auditor: carry-forward-disposition (intro)", model: "sonnet", prompt: "<auditor body + intro-cfd brief>" })
+```
+
+When all five return, the conductor consolidates outputs into
+`[DISCOVERY-CONTEXT]` + `[INTRO-AUDIT-CONTEXT]` blocks for the engineer's
+MESH brief. Per `doctrines/intro-combo-wave.md`.
+
+---
+
 ## Pattern B overlap dispatch (auditor + Wave N+1 coders, single batch)
 
 After Wave N gates pass, dispatch IN ONE MESSAGE:

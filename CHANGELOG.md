@@ -4,7 +4,53 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
-## v5.1.0 — unreleased
+## v5.1.1 — 2026-05-15
+
+### Discovery agent + INTRO-COMBO-WAVE + hypothesis-driven auditor + sprint-as-patch
+
+Per operator request: introduce `@discovery` (read-only orientation, no
+terminal-mutating Bash, sole task is to comprehend) so the conductor and
+engineer don't burn context on exploratory reads. Pair with an intro-mode
+parallel wave at sprint open. Tighten auditor methodology via
+`superpowers:systematic-debugging`. Reframe sprint scope as patch-equivalent
+("every dev.N sprint IS a patch in scope").
+
+- **New agent** `agents/discovery.md` — sixth lane in the flock. Sonnet, `thinking: high`, color blue. Tools: Read/Grep/Glob/NotebookRead/LSP, read-only Bash, MCP read-only, Web*, Skill, ToolSearch, TaskCreate/Get/List/Update, and Write restricted to `{paths.reports}/<date>-discovery-<id>.md`. NEVER: Edit, MCP write, Agent dispatch. Five canonical use-case patterns: PRE-MESH-DISCOVERY, PRE-HOTFIX-DISCOVERY, ARCHITECTURE-DISCOVERY, DOCTRINE-RECONCILIATION-DISCOVERY, MCP-STATE-DISCOVERY.
+- **New doctrine** `skills/shepherd/doctrines/discovery-readonly.md` — `@discovery` contract, role boundaries vs `@worker` / `@auditor` / `@critic`, max-concurrent rules, report shape, cross-sprint reuse via `<ns>/discoveries/<sprint>/<id>.json`.
+- **New doctrine** `skills/shepherd/doctrines/intro-combo-wave.md` — INTRO-COMBO-WAVE between SEED-VERIFY and MESH. Default composition: 3 discoveries (prior-close-audit-summary, canonical-types-freshness, gh-state-inventory) + 2 intro-mode auditors (regression, carry-forward-disposition). All read-only, all in one Agent batch. Engineer reads outputs as `[DISCOVERY-CONTEXT]` + `[INTRO-AUDIT-CONTEXT]` in its MESH brief.
+- **New doctrine** `skills/shepherd/doctrines/auditor-hypothesis-driven.md` — every finding now carries Hypothesis + Falsification attempt + Confidence. LOW-confidence findings land under `## Open questions`, not as GH issues. Bayesian finding-class weighting from sprint-patterns registry. Auditor loads `superpowers:systematic-debugging` as Step 1.
+- **`agents/auditor.md` rewrite** — Step 1 loads `superpowers:systematic-debugging`. Three modes: `close` (grades), `regression` (intro mode, no grade), `carry-forward-disposition` (intro mode, no grade). Per-finding contract requires the hypothesis triple. Per-concern emphasis sections now lead with a hypothesis-first prompt. New `## Verifications` section for disproved hypotheses.
+- **New doctrine** `skills/shepherd/doctrines/sprint-as-patch.md` — every `dev.N` sprint is operator-equivalent to a full patch. Planter sizes seeds at patch-grade; engineer authors plans at patch-grade body depth; critic rejects under-scoped seeds; auditor grades against patch-grade output expectation. T-shirt lane minimums revised: M → 4, L → 6, XL → 6/wave.
+- **`skills/shepherd/planter.md` §0** — sprint-as-patch sizing made binding for planter seed authorship.
+- **New doctrine** `skills/shepherd/doctrines/hook-event-log.md` — `<ns>/logs/hooks/YYYY-MM-DD.jsonl` schema, jq queries, retention guidance, anti-patterns (no live tailing, no secret logging).
+- **New doctrine** `skills/shepherd/doctrines/preflight-doctor.md` — `shctx doctor` preflight semantics, exit-code matrix, integration with `/shepherd:start`.
+- **`skills/shepherd/SKILL.md`** — six-agent flock table, INTRO-COMBO-WAVE in §1 INTRO checklist, sprint-as-patch impactfulness contract made binding, six new doctrines indexed in §XI file map, six new anti-patterns (#23–#28).
+- **`skills/shepherd/flock.md`** — new `## @discovery` section between `@critic` and `@worker`. Six-agent flock language throughout.
+- **`skills/shepherd/pipeline.md`** — `DISCOVERY` and `INTRO-COMBO-WAVE` node types added to §II stage taxonomy. New edge predicates: `on-research-complete`, `on-intro-wave-complete`, `on-intro-audit-complete`.
+- **`skills/shepherd/references/agent-briefs.md`** — six discovery brief templates (D-A through D-F) + intro-mode auditor templates + INTRO-COMBO-WAVE single-message dispatch pattern.
+
+#### Hook hardening + preflight (initial scope; full hook overhaul deferred to v5.1.1)
+
+The v5.1.0 release lands the new doctrines + agent contracts; the matching
+hook teeth + `shctx doctor` ship in v5.1.1. Doctrines/agent contracts are
+the load-bearing change; hooks are the guardrail. Operator can adopt v5.1.0
+with hooks left at v5.1.0-baseline; v5.1.1 will add:
+
+- `hooks/scripts/_lib.sh` shared library (jq/python fallback, log_event)
+- `hooks/scripts/agent_invocation_tagger.sh` (PreToolUse on Agent|Task)
+- `hooks/scripts/discovery_capture.sh` (PostToolUse on Agent|Task)
+- `bash_guard.sh` extension (auditor cwd guard + discovery state-modify block)
+- `lock_guard.sh` extension (role-based write-path enforcement)
+- `agent_pause_detector.sh` extension (auto-draft satellite brief stub)
+- `skills/context/scripts/cmd_doctor.sh` (`shctx doctor` preflight)
+- `<ns>/logs/hooks/YYYY-MM-DD.jsonl` event log activation
+
+Doctrines/agent contracts are the load-bearing change; hooks are the
+guardrail. Operator can adopt v5.1.1 with hooks left at the v5.1.0 baseline.
+
+---
+
+## v5.1.0 — released
 
 ### Flock cohesion — shared substrate across agents
 
@@ -67,11 +113,6 @@ Per operator request: "create some type of rule engine layer that would allow th
 - `skills/shepherd/doctrines/adaptation-loop.md` — on-first-close creation protocol
 
 **§10 — Feedback classification.** `skills/shepherd/doctrines/adaptation-loop.md §VI-bis` — framework-generic vs project-specific feedback rule; framework-generic candidates are flagged in close reports for doctrine promotion.
-
-### Fix: `bash_guard.sh` silently exited on every `PreToolUse(Bash)`
-
-- **`hooks/scripts/bash_guard.sh`** — the backgrounded-cargo detection pipeline (`grep -oE '...' | wc -l | tr -d ' '`) on line 60 was missing the `|| true` guard every other hook script in the directory uses. Under bash 5.2 with `set -euo pipefail`, when `grep` finds nothing it exits 1, `pipefail` propagates that as the pipeline's exit code, and `set -e` then terminates the script — even though `inherit_errexit` is off and the assignment "succeeded" (`bg_cargo_count="0"`). Net effect: every Bash tool call in any shepherd-enabled project surfaced as `Failed with non-blocking status code: No stderr output`. Trailing `|| true` fixes it.
-- **New** `hooks/tests/run.sh` — 17-case smoke suite that exercises every hook with realistic Claude Code payloads (`SessionStart`, `PreToolUse` with cargo bg / cargo sequential / normal cmd / empty input / no-command-field, `PostToolUse(Agent|Task)` with and without insight/pause markers, `lock_guard` no-lock / conflict / same-session). Pins the contract: every hook must exit 0 silently on non-actionable inputs.
 
 ### Fix: prevent dual-namespace split-brain between `.shepherd/` and `.artifacts/`
 

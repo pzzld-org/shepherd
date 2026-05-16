@@ -66,6 +66,8 @@ Every node in the graph is one of these types. The type determines the dispatch 
 | `PAUSE` | Conductor inline (terminal under `/shepherd:start`; bypassed under `/shepherd:autorun`) | Conductor | end-of-sprint waypoint |
 | `PAUSE-FOR-DEPENDENCY` | Conductor inline (validate satellite request + dispatch) | Conductor | satellite brief dispatched; paused coder awaiting resume |
 | `RESUME-LANE` | Conductor inline (SendMessage to paused coder; awaits resumed CODER REPORT) | Conductor | resumed lane commit lands before `WAVE-N-GATE` |
+| `DISCOVERY` | Single or parallel `@discovery` (v5.1.1+) | @discovery | DISCOVERY REPORT at `{paths.reports}/<date>-discovery-<id>.md` |
+| `INTRO-COMBO-WAVE` | Parallel batch of `@discovery` + `@auditor` (intro-mode) (v5.1.1+) | both | Mesh-input bundle: discoveries + regression + carry-forward-disposition reports |
 
 Each node carries:
 
@@ -139,6 +141,9 @@ Edges are conditional transitions between nodes. Each edge has a label; the labe
 | `on-dedup-clear` | Fires from DEDUP-GATE when every grep returned the expected count |
 | `on-dedup-block` | Fires from DEDUP-GATE when ANY grep returned > expected; loops back to brief-amendment then re-fires DEDUP-GATE |
 | `on-hard-stop` | Fires from any node into HARD-STOP terminal — operator must intervene |
+| `on-research-complete` | (v5.1.1+) Fires from DISCOVERY when report written; targets the downstream consumer (MESH, HOTFIX-DYNAMIC, etc.) |
+| `on-intro-wave-complete` | (v5.1.1+) Fan-in fires when ALL members of an INTRO-COMBO-WAVE have completed; targets MESH |
+| `on-intro-audit-complete` | (v5.1.1+) Fires from intro-mode auditor when its report is written |
 
 A node with multiple `out_edges` is a branch point. Branch points are deterministic: exactly one outgoing edge fires per evaluation.
 

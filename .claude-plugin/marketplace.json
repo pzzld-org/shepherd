@@ -12,8 +12,8 @@
   "plugins": [
     {
       "name": "shepherd",
-      "version": "5.1.0",
-      "description": "Sprint-by-sprint version-cycle conductor. Five-agent flock (engineer, critic, coder, auditor, worker) on a three-section sprint pipeline (INTRODUCTION → BODY → CLOSE). v5.0.6 adds: adaptation loop (sprint pattern registry — auditor writes at close, engineer reads at mesh, planter reads at seed); operator communication norms + session continuity protocol; language-agnostic gate references; axiom dev.8a field feedback (no-isolation workaround, HOTFIX-DYNAMIC stage type, structured gate output, work-bound-to-tracking + mid-flight-operator-amendment doctrines, W-A/B/D/E worker templates, engineer self-learning hook via prior audit reports); plugin hooks (session-open hygiene, git-commit guard, sprint-lock conflict warning). Project-agnostic — branch topology, gates, paths, and ledger discipline configured per-project via .claude/shepherd.toml.",
+      "version": "5.1.1",
+      "description": "Sprint-by-sprint version-cycle conductor. Six-agent flock (engineer, critic, coder, auditor, worker, discovery) on a three-section sprint pipeline (INTRODUCTION → BODY → CLOSE). v5.1.1 adds: @discovery sixth lane (read-only orientation), INTRO-COMBO-WAVE pre-MESH parallel batch, hypothesis-driven auditor methodology, sprint-as-patch sizing. v5.1.0 added: flock cohesion substrate, dispatch cascade rule engine, pause-for-dependency primitive. Project-agnostic — branch topology, gates, paths, and ledger discipline configured per-project via .claude/shepherd.toml.",
       "category": "development",
       "source": {
         "source": "github",
@@ -22,5 +22,5 @@
       "homepage": "https://github.com/FL03/shepherd"
     }
   ],
-  "version": "5.1.0"
+  "version": "5.1.1"
 }

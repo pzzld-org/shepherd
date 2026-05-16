@@ -5,9 +5,27 @@ description: Behavioral contract for the planter — the Opus-pinned conductor v
 
 # Planter — Behavioral Contract
 
-The planter is **not** a flock agent. The flock remains closed at five lanes. The planter is a **conductor variant**: an Opus session that takes over the main-chat conductor role specifically to author seeds, then hands back to the regular Sonnet conductor for sprint execution.
+The planter is **not** a flock agent. The flock is closed at six lanes (v5.1.1+: engineer, critic, coder, auditor, worker, discovery). The planter is a **conductor variant**: an Opus session that takes over the main-chat conductor role specifically to author seeds, then hands back to the regular Sonnet conductor for sprint execution.
 
 If you are reading this file, you are in planter mode (loaded by `/shepherd:plant` in the current Opus session). Treat this document as your behavioral overlay for the duration of the planting session.
+
+## 0. Sprint-as-patch sizing (v5.1.1 BINDING)
+
+**Every `dev.N` sprint is operator-equivalent to a full patch.** Per
+`doctrines/sprint-as-patch.md`:
+
+- A sprint's scope = what an outside observer would call a "patch theme"
+- A sprint MUST ship operator-visible improvement; structural-only work
+  is not a sprint, it's a worker dispatch
+- A sprint MUST have SUBTRACT delta (deletion at parity with addition)
+- A sprint MUST be release-notes-eligible at close
+- 4-8 parallel coder lanes per WAVE is the floor, not the ceiling
+- The patch-arc seed (`{patch_branch}.seed.md`) BUNDLES N patch-grade
+  sprints — it is NOT a master plan from which sprints are derived;
+  each sprint seed stands alone
+
+Under-scoping a seed (single-bullet work, one-file fix, ≤ 1 hour duration)
+is a self-rejection. Expand the theme or merge into another sprint.
 
 ---
 
@@ -83,12 +101,21 @@ Phase E — Auditor swarm                 [unconditional, runs last]
 
 **Parallel-safe groupings** within a wave require zero file overlap and zero shared-build-manifest writers. The planter pre-checks this when proposing waves; if two lanes touch the same build manifest, they MUST be sequenced or merged.
 
-**Lane minimums** by sprint T-shirt:
-- M → 3 parallel lanes minimum in Wave 1.
-- L → 4 parallel lanes minimum in Wave 1.
-- XL → 4 parallel lanes minimum *per wave*, multiple waves.
+**Lane minimums** by sprint T-shirt (v5.1.1+ — sprint-as-patch sizing):
+- S → 3 parallel lanes minimum in Wave 1 (S is exceptional; most sprints M+)
+- M → 4 parallel lanes minimum in Wave 1.
+- L → 6 parallel lanes minimum in Wave 1.
+- XL → 6 parallel lanes minimum *per wave*, multiple waves.
 
 A seed proposing fewer lanes than the T-shirt minimum is a self-rejection; downsize the sprint or decompose harder before commit.
+
+**INTRO-COMBO-WAVE planning (v5.1.1+).** Sprint seeds with size M+ MUST
+include an `intro_wave:` section in the phase-decomposition hint, naming the
+recommended discoveries + intro auditors per `doctrines/intro-combo-wave.md`.
+Default composition: 3 discoveries (prior-close-audit-summary,
+canonical-types-freshness, gh-state-inventory) + 2 intro auditors (regression,
+carry-forward-disposition). Operator may override via
+`shepherd.toml [stage_graph.intro_wave]`.
 
 ---
 

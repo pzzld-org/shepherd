@@ -1,6 +1,6 @@
 # shepherd
 
-Sprint-by-sprint version-cycle conductor. A production-grade orchestration framework that turns a single Claude Code session into a disciplined release engineer driving a closed five-agent flock through repeatable sprint pipelines.
+Sprint-by-sprint version-cycle conductor. A production-grade orchestration framework that turns a single Claude Code session into a disciplined release engineer driving a closed six-agent flock (engineer, critic, coder, auditor, worker, discovery) through repeatable sprint pipelines.
 
 ```bash
 ┌──────────────────────────────────────────────────────────────────┐
@@ -215,7 +215,7 @@ Shepherd follows semver:
 - **MINOR** bumps add new commands, new doctrines, new config keys (backward-compatible).
 - **PATCH** bumps fix bugs in dispatch logic, doctrines, brief templates.
 
-Current version: **5.1.0**
+Current version: **5.1.1**
 
 See [`CHANGELOG.md`](CHANGELOG.md) for the per-version history.
 

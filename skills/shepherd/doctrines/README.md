@@ -82,7 +82,11 @@ These get loaded by the conductor at session-open per `[hooks].on_every_dispatch
 | Doctrine | Principle |
 |---|---|
 | `adaptation-loop.md` | Self-improvement loop — sprint pattern registry written at close, read at mesh + seed time |
+| `auditor-hypothesis-driven.md` | (v5.1.1+) Auditors load `superpowers:systematic-debugging`; every finding carries Hypothesis + Falsification + Confidence; Bayesian finding-class weighting from sprint-patterns |
 | `auditor-readonly.md` | Auditors file findings; conductor dispatches fixes |
+| `discovery-readonly.md` | (v5.1.1+) `@discovery` is the sixth lane — read-only orientation + research synthesis; never grades, never proposes, never dispatches |
+| `intro-combo-wave.md` | (v5.1.1+) Sprint open dispatches discoveries + intro-mode auditors in parallel before MESH; engineer reads `[DISCOVERY-CONTEXT]` + `[INTRO-AUDIT-CONTEXT]` as authoritative |
+| `hook-event-log.md` | (v5.1.1+) Every hook fire appends one line to `<ns>/logs/hooks/YYYY-MM-DD.jsonl`; structured operator-debuggable record |
 | `mid-flight-operator-amendment.md` | Four amendment types (clarification, feature-add, regression, architectural); conductor response protocol + dispatcher-patch ledger |
 | `carry-forward-refresh.md` | Chronic items labeled at sprint close; CRITICAL/HIGH cannot defer silently |
 | `chain-repair.md` | Mechanical seed drift verified + amended inline; substantive drift escalates |
@@ -92,7 +96,9 @@ These get loaded by the conductor at session-open per `[hooks].on_every_dispatch
 | `gates-restoration.md` | Run GATES-DISCOVERY before Lane 0 when sprint opens with red gates |
 | `issue-ledger-awareness.md` | Phase 0 enumerates ALL open issues; tunnel vision is the documented failure |
 | `pattern-b-overlap.md` | WAVE-N-AUDIT and WAVE-(N+1)-IMPL fire in the same batch |
+| `preflight-doctor.md` | (v5.1.1+) `shctx doctor` runs a structured preflight (git, plan, ctx, hooks, MCP, lock); recommended before `/shepherd:start` |
 | `seed-anchored-by-issues.md` | Every MUST-LAND lane cites a GH#; detail lives in the issue, not the seed |
+| `sprint-as-patch.md` | (v5.1.1+) Every `dev.N` sprint is operator-equivalent to a full patch; planter and engineer size scope at patch-grade |
 | `stage-graph.md` | The plan IS the dispatch contract; off-graph dispatch is a process violation |
 | `subtract-dont-add.md` | Every sprint ends net-negative; deletion is a constraint, not the job |
 | `use-mcp-not-cli.md` | Writes to shared systems use MCP; CLI for read-only enumeration |
