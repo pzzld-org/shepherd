@@ -13,6 +13,9 @@ description = "BTC prediction + Polymarket trading. Closed-loop attribution → 
 [branching]
 patch_branch_pattern  = "v{X}.{Y}.{Z}"
 sprint_branch_pattern = "v{X}.{Y}.{Z}-dev.{N}"
+# Filesystem-slug forms (v5.1.1+) — dots collapsed for filename safety.
+patch_slug_pattern    = "v{X}{Y}{Z}"
+sprint_slug_pattern   = "v{X}{Y}{Z}-dev{N}"
 sprints_per_patch     = 10
 main_branch           = "main"
 release_tag_pattern   = "v{X}.{Y}.{Z}"

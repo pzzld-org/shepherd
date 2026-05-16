@@ -43,7 +43,7 @@ If the verification confirms the contradiction, AMEND. If verification fails (th
 
 The conductor edits the seed file directly:
 
-1. Open `{paths.plans}/{sprint_branch}.seed.md`
+1. Open `{paths.plans}/{sprint_slug}.seed.md`
 2. Add a top-of-file section:
 
 ```markdown

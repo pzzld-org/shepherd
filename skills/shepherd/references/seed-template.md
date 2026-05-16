@@ -9,12 +9,12 @@ A seed is **dense, drift-resistant, multi-phase, and parallel-aware**. Tables ov
 ## File path
 
 ```
-{paths.plans}/{sprint_branch}.seed.md
+{paths.plans}/{sprint_slug}.seed.md
 ```
 
 For a patch under default config (`patch_branch_pattern = "v{X}.{Y}.{Z}"`, `sprint_branch_pattern = "v{X}.{Y}.{Z}-dev.{N}"`), this resolves to e.g., `.artifacts/plans/v0.2.9-dev.5.seed.md`.
 
-Patch-arc seeds drop the sprint suffix: `{paths.plans}/{patch_branch}.seed.md` → e.g., `.artifacts/plans/v0.2.9.seed.md`.
+Patch-arc seeds drop the sprint suffix: `{paths.plans}/{patch_slug}.seed.md` → e.g., `.artifacts/plans/v0.2.9.seed.md`.
 
 ---
 
@@ -33,7 +33,7 @@ author: planter (opus) @ <session-id>      # or: main-chat | operator
 prior_sprint: <prior {sprint_branch}>
 prior_close_report: {paths.reports}/<date>-<prior sprint>-close.md
 prior_handoff: {paths.docs}/<date>-<prior sprint>-close-handoff.md
-patch_seed: {paths.plans}/{patch_branch}.seed.md
+patch_seed: {paths.plans}/{patch_slug}.seed.md
 planter_mesh: {paths.reports}/<date>-planter-mesh.md
 milestone: <GH-milestone-number-for-{patch_branch}>
 sprint_dependencies: [<prior dev branch identifiers>]   # which prior sprints this depends on

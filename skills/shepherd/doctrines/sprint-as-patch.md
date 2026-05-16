@@ -41,10 +41,10 @@ Seed authorship targets PATCH-GRADE scope per sprint:
   release-notes-eligible content (operator may bundle multiple sprints into
   one release, but each sprint's close-handoff stands alone as release-notes
   material).
-- **Patch-arc relationship:** the `{patch_branch}.seed.md` is the bundling
+- **Patch-arc relationship:** the `{patch_slug}.seed.md` is the bundling
   spec — what `dev.0..dev.{last}` collectively deliver toward the version's
   thesis. NOT a master plan from which sprints are derived. Each
-  `{sprint_branch}.seed.md` is a patch-grade standalone seed informed by the
+  `{sprint_slug}.seed.md` is a patch-grade standalone seed informed by the
   patch-arc seed.
 
 ### For the engineer (`@engineer`)

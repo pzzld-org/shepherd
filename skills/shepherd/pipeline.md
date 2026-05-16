@@ -406,8 +406,8 @@ Three layers of progressive specification, each more concrete than the prior:
 
 | Layer | File | Author | Detail level |
 |---|---|---|---|
-| Hint | `{paths.plans}/{sprint_branch}.seed.md` §"Stage decomposition hint" | Planter | Phase decomposition, parallel-safe groupings, conditional links — non-binding suggestion |
-| Contract | `{paths.plans}/{sprint_branch}.plan.md` §"Stage Graph" | Engineer | Full DAG: every node, every edge, every predicate, every brief-ref. This is what the conductor walks. |
+| Hint | `{paths.plans}/{sprint_slug}.seed.md` §"Stage decomposition hint" | Planter | Phase decomposition, parallel-safe groupings, conditional links — non-binding suggestion |
+| Contract | `{paths.plans}/{sprint_slug}.plan.md` §"Stage Graph" | Engineer | Full DAG: every node, every edge, every predicate, every brief-ref. This is what the conductor walks. |
 | Trace | `{paths.reports}/<date>-{sprint_branch}-walk.md` | Conductor (auto, optional) | Append-only log of node fires, edge evaluations, batch composition — for post-hoc audit |
 
 The seed's hint is **non-binding** — the engineer rebuilds against Phase 0 mesh evidence. The plan's Stage Graph is **binding** — the conductor walks it verbatim.

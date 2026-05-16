@@ -38,7 +38,7 @@ Agent({
 })
 ```
 
-The flock agent's identity comes from the injected system prompt. **The flock is closed at six.** NEVER dispatch any agent outside these six — no `general-purpose`, `Explore`, `Plan`, `feature-dev:*`, `pr-review-toolkit:*`, `superpowers:*`. Engineer's plan-skills (`superpowers:brainstorming` + `superpowers:writing-plans`) and auditor's skill (`superpowers:systematic-debugging`) load from inside the agent's own dispatch — that is not the conductor calling them. If a task doesn't fit a flock role, the conductor handles it inline.
+The flock agent's identity comes from the injected system prompt. **The flock is closed at six + specialist exceptions per `doctrines/specialist-dispatch.md`** (v5.1.1+). NEVER dispatch any agent outside these six unless it's a pre-authorized specialist (e.g., `code-review:code-review`, `sentry:seer`) AND the task strictly fits the specialist's contract. Specialists are exception, not default. Plan authorship / critic gating / close-time audit grading / code implementation are NEVER substitutable. Engineer's plan-skills (`superpowers:brainstorming` + `superpowers:writing-plans`) and auditor's skill (`superpowers:systematic-debugging`) load from inside the agent's own dispatch — that is not the conductor calling them. If a task doesn't fit a flock role AND no specialist fits, the conductor handles it inline.
 
 ---
 
@@ -276,7 +276,7 @@ git branch -d claude-agent-<lane>-<short-hash>
 
 **Process:**
 1. **Phase 0 mesh** — run at plan-time, embed at TOP of plan (open GH issues — full ledger per `doctrines/issue-ledger-awareness.md`, recent PRs, `git log` since prior close, deploy/error/datastore state per `[mcp]` and `[cli]` flags, prior carry-forwards, every artefact the seed references)
-2. **Author plan** — `{paths.plans}/{sprint_branch}.plan.md` with frontmatter, Phase 0 findings, north-star, phases, wave composition, exit criteria, open questions
+2. **Author plan** — `{paths.plans}/{sprint_slug}.plan.md` with frontmatter, Phase 0 findings, north-star, phases, wave composition, exit criteria, open questions
 3. **Proof-of-dispatch footer** — main chat populates critic/revision/status fields after critic passes
 
 **Brief must include:** seed file path, prior close-report path, branch + version context, `[mcp]` and `[cli]` availability flags, "DO NOT write source code. DO NOT commit. DO NOT dispatch other agents."

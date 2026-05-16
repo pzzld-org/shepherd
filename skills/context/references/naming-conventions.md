@@ -79,8 +79,8 @@ Why: timestamped human files fragment context across N files per day. Date-only 
 
 Many of the patterns above pair with a sprint identifier. Conventions:
 
-- `plans/{sprint_branch}.plan.md` — e.g. `plans/v5.0.0-dev.0.plan.md`.
-- `plans/{sprint_branch}.seed.md`.
+- `plans/{sprint_slug}.plan.md` — e.g. `plans/v5.0.0-dev.0.plan.md`.
+- `plans/{sprint_slug}.seed.md`.
 - `reports/<date>-{sprint_branch}-close.md` — e.g. `reports/2026-05-04-v5.0.0-dev.0-close.md`.
 - `reports/<date>-{sprint_branch}-walk.md`.
 - `reports/<date>-{sprint_branch}-phase0.md`.

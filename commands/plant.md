@@ -75,7 +75,7 @@ Scope arg semantics:
 | (nothing) | author next-sprint seed + skeletons for the rest of the patch (default) |
 | `dev.N`   | author exactly `{paths.plans}/{sprint_branch with N}.seed.md` |
 | `dev.N..dev.M` | author seeds for sprints N through M inclusive (dev-order) |
-| `arc`     | author the patch-arc seed `{paths.plans}/{patch_branch}.seed.md` AND skeletons for every dev.{N} of the patch |
+| `arc`     | author the patch-arc seed `{paths.plans}/{patch_slug}.seed.md` AND skeletons for every dev.{N} of the patch |
 | `next-version` | bump the version (rollover algorithm per `references/branching-model.md` §IV) and author the next patch's arc seed + dev.0 |
 
 For each seed, follow `references/seed-template.md` exactly. Density discipline (per `planter.md` §III): 150–300 lines per sprint seed; 80–150 lines for patch-arc seed. Lane bodies anchored by GH issues per `${CLAUDE_PLUGIN_ROOT}/skills/shepherd/doctrines/seed-anchored-by-issues.md`.
