@@ -80,23 +80,31 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "Releasing v${CURRENT}; next patch v${NEXT} (${SHIFT} shift)."
 
-      - name: Resolve release notes path
+      - name: Extract release notes from CHANGELOG.md
         if: steps.detect.outputs.proceed == 'true'
         id: notes
         env:
           CURRENT: ${{ steps.ver.outputs.current }}
         run: |
           set -euo pipefail
-          PRIMARY=".artifacts/docs/v${CURRENT}-release-notes.md"
-          FALLBACK=".artifacts/docs/v${CURRENT//./}-release-notes.md"
-          if   [ -f "$PRIMARY" ];  then NOTES="$PRIMARY"
-          elif [ -f "$FALLBACK" ]; then NOTES="$FALLBACK"
-          else
-            echo "::error::No release notes found at $PRIMARY or $FALLBACK"
+          NOTES="${RUNNER_TEMP}/release-notes-v${CURRENT}.md"
+          # Slice the CHANGELOG section for the current version: capture from
+          # "## v<CURRENT>" up to (but not including) the next "## v<...>" header.
+          # Dots in $CURRENT are escaped so "5.1.2" doesn't also match "5x1y2".
+          awk -v ver="${CURRENT}" '
+            BEGIN { gsub(/\./, "\\.", ver); pat = "^## v" ver "( |$)" }
+            $0 ~ pat                   { capture = 1; print; next }
+            capture && /^## v[0-9]/    { exit }
+            capture                    { print }
+          ' CHANGELOG.md > "$NOTES"
+          if [ ! -s "$NOTES" ]; then
+            echo "::error::No '## v${CURRENT}' section found in CHANGELOG.md"
             exit 1
           fi
           echo "path=$NOTES" >> "$GITHUB_OUTPUT"
-          echo "Using release notes: $NOTES"
+          echo "::group::Extracted release notes for v${CURRENT}"
+          head -20 "$NOTES"
+          echo "::endgroup::"
 
       # ─── Patch close: tag + GitHub release ─────────────────────────────────
       - name: Tag the release commit
