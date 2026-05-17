@@ -4,19 +4,138 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
-## v5.1.2 — unreleased
+## v5.1.2 — 2026-05-17
 
-Next patch branch — open. No changes yet.
+### Hook teeth, anti-laziness preambles, dir-watch, specialist dispatch, slug naming, discovery registry
 
-Planned scope (per v5.1.1 release notes):
-- `hooks/scripts/_lib.sh` shared library (jq/python fallback, log_event)
-- `hooks/scripts/agent_invocation_tagger.sh` (PreToolUse on Agent|Task)
-- `hooks/scripts/discovery_capture.sh` (PostToolUse on Agent|Task)
-- `bash_guard.sh` extension (auditor cwd guard + discovery state-modify block)
-- `lock_guard.sh` extension (role-based write-path enforcement)
-- `agent_pause_detector.sh` extension (auto-draft satellite brief stub)
-- `skills/context/scripts/cmd_doctor.sh` (`shctx doctor` preflight)
-- `<ns>/logs/hooks/YYYY-MM-DD.jsonl` event log activation
+The v5.1.1 release landed the new doctrines + agent contracts; v5.1.2 lands
+the matching hook teeth, registries, and consistency sweeps. Doctrines from
+v5.1.1 now have machine-enforced guardrails instead of being agent-prompt
+discipline alone.
+
+#### Hook hardening
+
+- **New `hooks/scripts/_lib.sh`** — shared library every hook sources.
+  Exports `is_shepherd_project`, `resolve_namespace`, `json_field`,
+  `json_response`, `emit_context`, `emit_deny`, `pass_silent`, `log_event`,
+  `current_role`, `current_sprint`, `sprint_root`, `in_subworktree`.
+  jq-preferred with python3 fallback. Every emit goes through `log_event`,
+  which appends a JSONL entry to `<ns>/logs/hooks/YYYY-MM-DD.jsonl`.
+- **New `hooks/scripts/agent_invocation_tagger.sh`** — `PreToolUse(Agent|Task)`
+  parses the agent body's `# @<role>` header and writes
+  `<ns>/dispatch/<sprint>/<tool_use_id>.json` so downstream hooks can make
+  role-conditional decisions without re-parsing prompts.
+- **New `hooks/scripts/discovery_capture.sh`** — `PostToolUse(Agent|Task)`
+  indexes `## DISCOVERY REPORT` blocks to `<ns>/discoveries/<sprint>/<id>.json`
+  for cross-sprint reuse.
+- **New `hooks/scripts/dedup_write_guard.sh`** — `PreToolUse(Write|Edit)`
+  scans @coder-emitted content for new public symbol declarations
+  (rust / python / ts/js / go) and BLOCKS if the symbol already exists
+  elsewhere in the workspace. The hook layer's expression of
+  zero-duplicate-tolerance — the conductor's pre-dispatch DEDUP-GATE
+  remains the primary check; this catches what slips through.
+- **`bash_guard.sh` extensions** — adds three role-conditional BLOCK checks
+  on top of the v5.1.0 commit-on-lane block: auditor invoking gates from a
+  sub-worktree (false-CRITICAL prevention), @discovery invoking
+  state-modifying Bash (read-only enforcement), parallel cargo invocations
+  WARN, cd-into-worktree WARN.
+- **`lock_guard.sh` extensions** — role-based write-path enforcement:
+  @discovery may only Write to `{paths.reports}/<date>-discovery-*.md`;
+  @auditor may only Write to `{paths.reports}/<date>-(intro-)audit-*.md`;
+  @coder Write must land inside the recorded `[WORKTREE].Path` from
+  `agent_invocation_tagger`'s dispatch record. Sprint-lock conflict still
+  WARN-only (does not block).
+- **`agent_pause_detector.sh` extension** — beyond writing the structured
+  pause record to `<ns>/pauses/<id>.json`, the hook now ALSO auto-drafts a
+  near-complete dispatch brief stub at `<ns>/pauses/<id>.brief.md` per
+  the satellite role (coder / discovery / worker / auditor). The conductor
+  reads a ready-to-fire brief instead of composing one from scratch.
+- **`session_open.sh` extension** — fourth check: when HEAD matches the
+  sprint branch pattern, verify the corresponding `plan.md` exists (slug
+  OR legacy dotted form). Surfaces missing-plan as a warning so engineer
+  dispatch isn't silently skipped.
+- **`bash_post.sh` extension** — cwd-drift detection post-Bash; surfaces
+  when the conductor's cwd has migrated into a sub-worktree.
+
+#### Anti-laziness — `agent-excellence` doctrine + strive-higher preambles
+
+- **New doctrine** `skills/shepherd/doctrines/agent-excellence.md` — every
+  agent must aim higher than "ship code that compiles". Refuse lazy
+  duplication, honor language idioms, halt rather than ship sub-standard
+  work. Pairs with `dedup_write_guard.sh` (the hook teeth) and the
+  zero-duplicate-tolerance doctrine.
+- **Strive-higher preamble** prepended to all six `agents/*.md` so every
+  flock-agent loads the excellence contract before the role-specific
+  instructions.
+
+#### Slug naming convention
+
+- **New doctrine** `skills/shepherd/doctrines/seed-naming.md` — branches
+  keep dots (`v5.1.2-dev.3`); filenames collapse them (`v512-dev3.seed.md`).
+  Origin: operator caught the planter producing `v0.3.2-dev.5.seed.md`
+  (dotted form bleeding from `{sprint_branch}`) when the convention had
+  been the slug.
+- **`shepherd.toml` schema extension** — `[branching].patch_slug_pattern`
+  and `sprint_slug_pattern` added. If absent, framework falls back to
+  branch pattern with a deprecation warning.
+- **Templates + briefs migrated** to use `{sprint_slug}` / `{patch_slug}`
+  for filename construction in `skills/shepherd/references/seed-template.md`,
+  `skills/shepherd/references/agent-briefs.md`, `skills/shepherd/SKILL.md`,
+  `skills/shepherd/pipeline.md`, `skills/shepherd/doctrines/preflight-doctor.md`,
+  `skills/shepherd/doctrines/mid-flight-operator-amendment.md`,
+  `skills/shepherd/doctrines/gates-restoration.md`, `commands/plant.md`,
+  `commands/parallel.md`, `agents/engineer.md`.
+  Branch placeholders preserved where the value is the literal branch
+  (git commands, dispatch dir key, milestone target, etc.).
+- **Examples in `examples/{axiom,minimal}/shepherd.toml`** include the new
+  slug pattern keys.
+- **`docs/configuration.md` §[branching]`** documents both pattern pairs.
+
+#### Dir-watch — content-hash gating
+
+- **New migration** `skills/context/schema/migrations/0005_watch_paths.sql` —
+  registers watched directories and their last-seen content hash.
+- **New `skills/context/scripts/cmd_watch.sh`** — `shctx watch
+  add/mark/status/list/remove` over the watch_paths table.
+- **New doctrine** `skills/shepherd/doctrines/dir-watch.md` — semantics,
+  hashing strategy, integration points (engineer mesh, conductor pre-MESH
+  fast-path).
+
+#### Specialist dispatch
+
+- **New doctrine** `skills/shepherd/doctrines/specialist-dispatch.md` —
+  framework is "closed at six + specialist exceptions". The flock proper
+  remains six; a specialist agent (security-reviewer, perf-analyzer, etc.)
+  may be dispatched in addition when the seed names one explicitly.
+- **`skills/shepherd/SKILL.md`** + **`skills/shepherd/flock.md`** language
+  updated from "closed flock" to "closed at six + specialist exceptions".
+
+#### Discovery registry CLI
+
+- **New `skills/context/scripts/cmd_discovery.sh`** — `shctx discovery
+  list/show/search/clear` over the `<ns>/discoveries/<sprint>/<id>.json`
+  files captured by `discovery_capture.sh`. Engineer pulls cross-sprint
+  discoveries at MESH without re-parsing report markdown.
+- **`shctx` dispatcher** routes `discovery` and `watch` subcommands to
+  their new handlers.
+
+#### Plugin description trim
+
+The verbose multi-version description in `.claude-plugin/plugin.json` and
+`.claude-plugin/marketplace.json` collapsed to a single capability
+statement. Per-version detail lives here in CHANGELOG.md.
+
+#### Deferred to v5.1.3
+
+- **Lane B — CLI subcommand reorg** (`shctx workspace/brief/lane/discovery/
+  watch/pauses` groups). Scope comparable to all six landed lanes
+  combined; better as an isolated refactor.
+- **`cmd_doctor.sh` extension** for v5.1.1+ surfaces (`<ns>/discoveries/`,
+  `<ns>/dispatch/`, `<ns>/logs/hooks/` writability, intro-wave plan-node
+  presence detection). The doctor exists at v5.0.4 baseline; v5.1.1
+  surfaces uncovered.
+- **`agent_insight_capture.sh` refactor to `_lib.sh`** — v5.0.9 logic still
+  functions; refactor risk not worth the cleanup this patch.
 
 ---
 

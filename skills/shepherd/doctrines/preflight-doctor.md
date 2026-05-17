@@ -127,7 +127,7 @@ Reads:
 - `.claude/shepherd.toml` (resolves branches, gates, paths)
 - `.git/HEAD` (current branch)
 - `.git/worktrees/` (sub-worktree enumeration)
-- `<paths.plans>/<sprint_branch>.plan.md` (plan presence + Stage Graph check)
+- `<paths.plans>/<sprint_slug>.plan.md` (plan presence + Stage Graph check; falls back to `<sprint_branch>.plan.md` for legacy dotted filenames)
 - `<paths.ctx>/canonical-types.md` mtime (freshness check)
 - `<ns>/root.db` (size + migration version via sqlite3)
 - `<ns>/logs/hooks/<today>.jsonl` (event log activity)

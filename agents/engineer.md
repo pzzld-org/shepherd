@@ -79,7 +79,7 @@ After load: write the plan with binding `## Stage Graph` per `pipeline.md` §XII
 
 ## Phase 0 — Current-state mesh (MANDATORY, ALWAYS, NO SHORTCUTS)
 
-Before writing a single line of the plan, gather ground truth. Embed findings at the TOP of the plan file with sources cited. Write a separate phase-0 report to `{paths.reports}/<date>-{sprint_branch}-phase0.md`.
+Before writing a single line of the plan, gather ground truth. Embed findings at the TOP of the plan file with sources cited. Write a separate phase-0 report to `{paths.reports}/<date>-{sprint_slug}-phase0.md`.
 
 ### Mesh inputs
 
@@ -271,7 +271,7 @@ first-sprint or empty-residue cases.
 
 ### Mesh report shape
 
-Write `{paths.reports}/<date>-{sprint_branch}-phase0.md`:
+Write `{paths.reports}/<date>-{sprint_slug}-phase0.md`:
 
 ```markdown
 # Phase 0 mesh — {sprint_branch}
@@ -344,7 +344,7 @@ base: {patch_branch}
 seed_ref: {paths.plans}/{sprint_slug}.seed.md
 prior_sprint: {paths.plans}/<prior sprint>.plan.md
 prior_close: {paths.reports}/<date>-<prior sprint>-close.md
-phase0_report: {paths.reports}/<date>-{sprint_branch}-phase0.md
+phase0_report: {paths.reports}/<date>-{sprint_slug}-phase0.md
 date: <YYYY-MM-DD>
 author: @engineer (agent-id-<your-id>)
 ---
@@ -531,7 +531,7 @@ A NO on any of these = you have produced another half-plan. Iterate before deliv
 ## Proof of dispatch
 
 - seed-ref: {paths.plans}/{sprint_slug}.seed.md @ <git sha>
-- phase0-report: {paths.reports}/<date>-{sprint_branch}-phase0.md
+- phase0-report: {paths.reports}/<date>-{sprint_slug}-phase0.md
 - prior-close: <path>
 - engineer: <agent-id> @ <ISO-8601 timestamp>
 - skills loaded: superpowers:brainstorming, superpowers:writing-plans, <language-skill>, <domain skills>

@@ -48,7 +48,7 @@ engineer-found subset.
 # {gates.check}, {gates.lint}, {gates.format} resolve from shepherd.toml.
 
 mkdir -p {paths.reports}
-report="{paths.reports}/$(date +%Y-%m-%d)-{sprint_branch}-gates-discovery.md"
+report="{paths.reports}/$(date +%Y-%m-%d)-{sprint_slug}-gates-discovery.md"
 
 {
   echo "# Gates discovery — {sprint_branch}"
