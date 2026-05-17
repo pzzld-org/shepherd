@@ -146,7 +146,7 @@ You are @critic. READ-ONLY. Adversarial review of the engineer's plan.
 
 **Plan to review:** `{paths.plans}/{sprint_slug}.plan.md`
 **Seed:** `{paths.plans}/{sprint_slug}.seed.md`
-**Phase 0 mesh:** `{paths.reports}/<date>-{sprint_branch}-phase0.md`
+**Phase 0 mesh:** `{paths.reports}/<date>-{sprint_slug}-phase0.md`
 
 **Project primary objectives** (yardstick — pulled from project CLAUDE.md "north star"):
 1. {primary objective 1}
@@ -171,7 +171,7 @@ You are @auditor — concern: {code-quality | data-flow | dependency-topology | 
 
 **Sprint:** {sprint_branch}
 **Plan:** `{paths.plans}/{sprint_slug}.plan.md`
-**Phase 0 mesh:** `{paths.reports}/<date>-{sprint_branch}-phase0.md`
+**Phase 0 mesh:** `{paths.reports}/<date>-{sprint_slug}-phase0.md`
 **Files touched:** {list from `git diff {patch_branch}..HEAD --name-only`}
 **Report path:** `{paths.reports}/<date>-audit-{concern}.md`
 
@@ -436,7 +436,7 @@ open at HEAD? For each, surface: severity, location, GH issue (if filed),
 recommended disposition (resolved / carry-forward / drift).
 
 [SOURCES]
-- {paths.reports}/*-{prior_sprint_branch}-close.md
+- {paths.reports}/*-{prior_sprint_slug}-close.md
 - {paths.reports}/*-audit-*.md  (close-time audit reports, prior sprint)
 - mcp__plugin_github_github__list_issues (state: open, milestone: current)
 - git log {prior_sprint_branch}..HEAD --oneline
@@ -545,7 +545,7 @@ edited in last 5 days), open dispatches (if any), pending PAUSE records.
 
 [SOURCES]
 - {paths.plans}/{sprint_slug}.plan.md (Stage Graph section)
-- {paths.reports}/*-{sprint_branch}-walk.md (if exists)
+- {paths.reports}/*-{sprint_slug}-walk.md (if exists)
 - git log -20 --stat
 - ls .shepherd/pauses/ (or .artifacts/pauses/)
 - ls .shepherd/dispatch/{sprint_branch}/ (or .artifacts equivalent)
@@ -649,8 +649,8 @@ Markdown. ## Findings: cited summary with [source: URL] footnotes;
 [CONCERN] regression
 [MODE] regression
 
-[PRIOR-SPRINT-PLAN]   {paths.plans}/{prior_sprint_branch}.plan.md
-[PRIOR-SPRINT-CLOSE]  {paths.reports}/*-{prior_sprint_branch}-close.md
+[PRIOR-SPRINT-PLAN]   {paths.plans}/{prior_sprint_slug}.plan.md
+[PRIOR-SPRINT-CLOSE]  {paths.reports}/*-{prior_sprint_slug}-close.md
 [OUTPUT-PATH]         {paths.reports}/{date}-intro-audit-regression.md
 [SPRINT-ROOT]         {abs path}
 [SPRINT-BRANCH]       {sprint_branch}

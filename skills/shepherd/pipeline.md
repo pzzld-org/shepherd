@@ -12,7 +12,7 @@ description: |
 
 This file owns the canonical dispatch DAG for a shepherd sprint. The DAG is the bridge between **declarative planning** (planter authors seed, engineer authors plan) and **deterministic execution** (conductor walks graph, fires next-eligible stages). Once the engineer commits the plan, the conductor's job collapses to "walk the graph". No fresh sequencing decisions. No re-reading flock.md mid-sprint. No checklist-juggling.
 
-The Stage Graph is the structural fix for "the conductor has the load of orchestrating five agents across N waves with M conditional gates" — that load lives in the graph now, not in the conductor's working memory.
+The Stage Graph is the structural fix for "the conductor has the load of orchestrating six agents across N waves with M conditional gates" — that load lives in the graph now, not in the conductor's working memory.
 
 > **Reads with:** `SKILL.md` §III (sprint sections), `flock.md` (per-agent dispatch), `agents/engineer.md` (plan emits the graph), `references/seed-template.md` (planter sketches the graph), `doctrines/stage-graph.md` (the principle).
 
@@ -408,7 +408,7 @@ Three layers of progressive specification, each more concrete than the prior:
 |---|---|---|---|
 | Hint | `{paths.plans}/{sprint_slug}.seed.md` §"Stage decomposition hint" | Planter | Phase decomposition, parallel-safe groupings, conditional links — non-binding suggestion |
 | Contract | `{paths.plans}/{sprint_slug}.plan.md` §"Stage Graph" | Engineer | Full DAG: every node, every edge, every predicate, every brief-ref. This is what the conductor walks. |
-| Trace | `{paths.reports}/<date>-{sprint_branch}-walk.md` | Conductor (auto, optional) | Append-only log of node fires, edge evaluations, batch composition — for post-hoc audit |
+| Trace | `{paths.reports}/<date>-{sprint_slug}-walk.md` | Conductor (auto, optional) | Append-only log of node fires, edge evaluations, batch composition — for post-hoc audit |
 
 The seed's hint is **non-binding** — the engineer rebuilds against Phase 0 mesh evidence. The plan's Stage Graph is **binding** — the conductor walks it verbatim.
 

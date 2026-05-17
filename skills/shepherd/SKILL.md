@@ -231,9 +231,9 @@ Deletion counts toward SUBTRACT but NOT toward this quota.
 - [ ] Auditor `dependency-topology` runs the wrapper-grep gate (`doctrines/wrapper-must-earn.md`)
 - [ ] If CLOSE-SWARM emits `on-finding` (CRITICAL/HIGH), HOTFIX-CLOSE subgraph fires before CLOSE-FINALIZE
 - [ ] CLOSE-FINALIZE fires:
-  - Close report at `{paths.reports}/<date>-{sprint_branch}-close.md` (grade A–F + SUBTRACT-vs-real-work + Stage-Graph-walk summary)
+  - Close report at `{paths.reports}/<date>-{sprint_slug}-close.md` (grade A–F + SUBTRACT-vs-real-work + Stage-Graph-walk summary)
   - Handoff at `{paths.docs}/<date>-dev{N}-close-handoff.md`
-  - Walk trace (optional but encouraged for L/XL) at `{paths.reports}/<date>-{sprint_branch}-walk.md`
+  - Walk trace (optional but encouraged for L/XL) at `{paths.reports}/<date>-{sprint_slug}-walk.md`
   - Memory + project doctrines updated; project CLAUDE.md patched
   - **Rebase-merge** dev.N into patch; verify with `git log {patch_branch} --oneline | head -5`
   - **DELETE dev branch** (origin + local + prune) per `references/branching-model.md` §II.4
@@ -372,7 +372,7 @@ The conductor is the operator's agent. Keep the operator informed without becomi
 When a session opens on an existing sprint branch (partial progress), orient before taking any action:
 
 1. **Locate the plan**: `ls {paths.plans}/{sprint_slug}.plan.md` — read the `## Stage Graph` section and identify which nodes are enumerated.
-2. **Read the walk trace** (if it exists): `{paths.reports}/*{sprint_branch}*-walk.md` — the most recent append shows where the walk was last active.
+2. **Read the walk trace** (if it exists): `{paths.reports}/*{sprint_slug}*-walk.md` — the most recent append shows where the walk was last active.
 3. **Survey the sprint branch log**: `git log {patch_branch}..HEAD --oneline` — landed coder commits show which WAVE-IMPL nodes have completed and been rebased.
 4. **Check orphan worktrees**: `git worktree list` — if any `agent-*` worktrees exist, check each for committed (or uncommitted) state via `git -C <path> log --oneline -3`.
 5. **Reconstruct walk position** from steps 1–4 and report to operator before firing any node: "Re-oriented. Plan has N nodes. Based on git log + walk trace, nodes [X, Y, Z] are complete. Current position: [node-id]. Next eligible: [node-id]."

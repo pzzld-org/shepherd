@@ -12,9 +12,9 @@ A seed is **dense, drift-resistant, multi-phase, and parallel-aware**. Tables ov
 {paths.plans}/{sprint_slug}.seed.md
 ```
 
-For a patch under default config (`patch_branch_pattern = "v{X}.{Y}.{Z}"`, `sprint_branch_pattern = "v{X}.{Y}.{Z}-dev.{N}"`), this resolves to e.g., `.artifacts/plans/v0.2.9-dev.5.seed.md`.
+For a patch under default config (`patch_slug_pattern = "v{X}{Y}{Z}"`, `sprint_slug_pattern = "v{X}{Y}{Z}-dev{N}"`), this resolves to e.g., `.artifacts/plans/v029-dev5.seed.md`. Filenames collapse the version triplet (`X.Y.Z` → `XYZ`) and the `-dev.N` suffix (`-dev.N` → `-devN`) per `doctrines/seed-naming.md`. Branches keep dots; filenames don't.
 
-Patch-arc seeds drop the sprint suffix: `{paths.plans}/{patch_slug}.seed.md` → e.g., `.artifacts/plans/v0.2.9.seed.md`.
+Patch-arc seeds drop the sprint suffix: `{paths.plans}/{patch_slug}.seed.md` → e.g., `.artifacts/plans/v029.seed.md`.
 
 ---
 
@@ -98,7 +98,7 @@ The 12-row default (project-extensible via `[memory].project_doctrines/planter-m
 | 15+ | (project-doctrine extensions)    | per `planter-mesh-extensions.md`                                      | per project |
 ```
 
-Output path: `{paths.reports}/<date>-{sprint_branch}-phase0.md`.
+Output path: `{paths.reports}/<date>-{sprint_slug}-phase0.md`.
 
 ### 5. Engineering decisions (locked) — bullets
 
