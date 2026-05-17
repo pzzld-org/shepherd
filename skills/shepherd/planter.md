@@ -20,7 +20,7 @@ If you are reading this file, you are in planter mode (loaded by `/shepherd:plan
 - A sprint MUST have SUBTRACT delta (deletion at parity with addition)
 - A sprint MUST be release-notes-eligible at close
 - 4-8 parallel coder lanes per WAVE is the floor, not the ceiling
-- The patch-arc seed (`{patch_branch}.seed.md`) BUNDLES N patch-grade
+- The patch-arc seed (`{patch_slug}.seed.md`) BUNDLES N patch-grade
   sprints — it is NOT a master plan from which sprints are derived;
   each sprint seed stands alone
 
@@ -205,8 +205,8 @@ The planter is failing if:
 
 The planter writes the following file types:
 
-- `{paths.plans}/{sprint_branch}.seed.md` — sprint seeds (one per sprint planted)
-- `{paths.plans}/{patch_branch}.seed.md` — patch-arc seed (when planting `arc`)
+- `{paths.plans}/{sprint_slug}.seed.md` — sprint seeds (one per sprint planted)
+- `{paths.plans}/{patch_slug}.seed.md` — patch-arc seed (when planting `arc`)
 - `{paths.plans}/<next-patch>.seed.md` — next-patch skeleton (when `next-version`)
 - `[ledger.carry_forward_file]` — carry-forward ledger (created/updated)
 - `{paths.reports}/<date>-planter-mesh.md` — single mesh report per planting session
@@ -229,10 +229,10 @@ The planter MUST use GitHub-native surfaces where they exist before authoring lo
 
 | Scope | Canonical home | Local-file role |
 |---|---|---|
-| **Sprint seeds** (`{paths.plans}/{sprint_branch}.seed.md`) | LOCAL — sprint-level operational detail belongs in-tree where coders read it | the canonical artifact |
-| **Patch arc** (per-patch deliverable roadmap; XL) | **GH Milestone description** — markdown body holds the patch theme + 10-sprint deliverable summary + release-gate criteria + references | local backup ONLY (`{paths.plans}/{patch_branch}.seed.md` may exist as drafting buffer; canonical truth is the milestone description) |
+| **Sprint seeds** (`{paths.plans}/{sprint_slug}.seed.md`) | LOCAL — sprint-level operational detail belongs in-tree where coders read it | the canonical artifact |
+| **Patch arc** (per-patch deliverable roadmap; XL) | **GH Milestone description** — markdown body holds the patch theme + 10-sprint deliverable summary + release-gate criteria + references | local backup ONLY (`{paths.plans}/{patch_slug}.seed.md` may exist as drafting buffer; canonical truth is the milestone description) |
 | **Minor-version vision** (entire 10-patch arc; XXL) | **GH Project (v2) description + items** if `read:project` scope available; OR a single local `.artifacts/plans/v{X}.{Y}.vision.md` if not | the canonical artifact when Projects scope unavailable |
-| **Sprint plan** (`{paths.plans}/{sprint_branch}.plan.md`) | LOCAL — engineer-authored | the canonical artifact |
+| **Sprint plan** (`{paths.plans}/{sprint_slug}.plan.md`) | LOCAL — engineer-authored | the canonical artifact |
 | **Issue tracking** | GH Issues + labels + milestones | NEVER local (no `.artifacts/issues/`) |
 | **Project / kanban view** | GH Project v2 | NEVER local (no `.artifacts/kanban/`) |
 
@@ -243,7 +243,7 @@ The planter MUST use GitHub-native surfaces where they exist before authoring lo
 - **CREATE milestone first** when authoring a new patch's arc seed. The milestone description is the canonical XL roadmap.
 - **PATCH milestone description** when refining a patch's roadmap mid-cycle.
 - **CITE milestone URL** in every dev-sprint seed's references list — `https://github.com/{owner}/{repo}/milestone/{number}`.
-- The local `{paths.plans}/{patch_branch}.seed.md` MAY exist as drafting buffer (the author writes there first, then `gh api PATCH /repos/{owner}/{repo}/milestones/{N} -f description="$(cat ...)"`), but the milestone description is the authoritative truth post-publish.
+- The local `{paths.plans}/{patch_slug}.seed.md` MAY exist as drafting buffer (the author writes there first, then `gh api PATCH /repos/{owner}/{repo}/milestones/{N} -f description="$(cat ...)"`), but the milestone description is the authoritative truth post-publish.
 - For projects with no `read:project` scope on the operator's gh token, the local `v{X}.{Y}.vision.md` file is the canonical home for the minor-version roadmap; the planter notes the scope-gap and recommends the operator run `gh auth refresh -s read:project` when convenient.
 
 #### Bash patterns for milestone management

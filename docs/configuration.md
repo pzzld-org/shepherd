@@ -31,15 +31,21 @@ description = "BTC prediction + Polymarket trading"
 
 ```toml
 [branching]
-patch_branch_pattern  = "v{X}.{Y}.{Z}"        # patch-arc branch
-sprint_branch_pattern = "v{X}.{Y}.{Z}-dev.{N}" # sprint branch
-sprints_per_patch     = 10                     # 0..N-1 sprints per patch (default 10)
-main_branch           = "main"                 # release target
-release_tag_pattern   = "v{X}.{Y}.{Z}"        # tag emitted at dev.{last} squash
-allow_direct_main_commit = false               # NEVER true except solo bootstrap
+patch_branch_pattern  = "v{X}.{Y}.{Z}"          # patch-arc branch (dots — git-valid)
+sprint_branch_pattern = "v{X}.{Y}.{Z}-dev.{N}"   # sprint branch (dots — git-valid)
+# Filesystem-slug forms (v5.1.1+) — dots collapsed for filename safety
+# Used in seed/plan filenames so we don't get double-dotted paths
+patch_slug_pattern    = "v{X}{Y}{Z}"             # e.g., v512 (was v5.1.2)
+sprint_slug_pattern   = "v{X}{Y}{Z}-dev{N}"      # e.g., v512-dev3 (was v5.1.2-dev.3)
+sprints_per_patch     = 10                       # 0..N-1 sprints per patch (default 10)
+main_branch           = "main"                   # release target
+release_tag_pattern   = "v{X}.{Y}.{Z}"          # tag emitted at dev.{last} squash
+allow_direct_main_commit = false                 # NEVER true except solo bootstrap
 ```
 
 The framework reads `{X}/{Y}/{Z}/{N}` as integer placeholders. Other patterns work — e.g., `release/{X}.{Y}` + `release/{X}.{Y}/sprint-{N}` — but the placeholder set is fixed.
+
+**Branch vs. slug distinction (v5.1.1+):** branches keep dots because git accepts dotted refs natively (`v5.1.2-dev.3` is a valid branch name). But `.seed.md` / `.plan.md` filenames in `{paths.plans}/` derive from `*_slug_pattern` to avoid the documented `v0.3.2-dev.5.seed.md`-style filename drift (per `doctrines/seed-naming.md`). If `*_slug_pattern` is absent, the framework falls back to `*_branch_pattern` for backward compat but emits a deprecation warning.
 
 ### `[gates]` — between-wave validation
 

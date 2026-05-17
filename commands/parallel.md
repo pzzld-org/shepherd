@@ -23,7 +23,7 @@ Do NOT use when:
 
 1. Load `superpowers:using-superpowers`, `superpowers:using-git-worktrees`, `superpowers:dispatching-parallel-agents`.
 2. Read `shepherd.toml`. Detect current patch branch from `[branching]`.
-3. Inventory existing dev seeds: `ls {paths.plans}/{sprint_branch_pattern with N as wildcard}.seed.md`.
+3. Inventory existing dev seeds: `ls {paths.plans}/{sprint_slug_pattern with N as wildcard}.seed.md`.
 4. Read each seed's scope summary; identify build-manifest writers, shared packages, public-API touchpoints.
 5. **Propose a parallel-safe subset to the operator.** Example:
    > "Seeds present: dev.3 (circuits), dev.4 (engine), dev.5 (gui), dev.6 (bin/node). Parallel-safe pairs: {dev.3, dev.5} (no overlap), {dev.4, dev.6} (engine ↔ bin/node coupling — sequential). Suggest run dev.3 + dev.5 concurrently. Confirm or amend?"

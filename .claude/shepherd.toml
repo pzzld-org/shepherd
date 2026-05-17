@@ -1,0 +1,79 @@
+# shepherd.toml — shepherd plugin (self-hosted dogfood)
+#
+# This is the shepherd plugin REPO running shepherd on itself. The plugin
+# under development IS the orchestration framework being used. Sprint
+# scope per dev.N = patch-grade per doctrines/sprint-as-patch.md.
+
+[project]
+name        = "shepherd"
+description = "Sprint-by-sprint version-cycle conductor (Claude Code plugin)"
+language    = "markdown"   # primary content is .md doctrine + shell scripts
+
+[branching]
+patch_branch_pattern  = "v{X}.{Y}.{Z}"
+sprint_branch_pattern = "v{X}.{Y}.{Z}-dev.{N}"
+sprint_slug_pattern   = "v{X}{Y}{Z}-dev{N}"      # v5.1.2 — filesystem-slug form; dots collapsed
+patch_slug_pattern    = "v{X}{Y}{Z}"             # v5.1.2 — patch-arc slug form
+sprints_per_patch     = 10
+main_branch           = "main"
+
+[paths]
+plans   = ".artifacts/plans"
+reports = ".artifacts/reports"
+docs    = ".artifacts/docs"
+ctx     = ".artifacts/ctx"
+
+[gates]
+# Plugin has no compilable language; gates are validation of structured assets.
+check  = "jq empty .claude-plugin/plugin.json .claude-plugin/marketplace.json hooks/hooks.json"
+lint   = "skills/context/scripts/shctx lint"
+format = ""
+
+[gates.extra]
+hook_tests = "bash hooks/scripts/_lib.sh && echo lib-sourceable-ok"
+ctx_tests  = "bash skills/context/tests/run.sh"
+
+[skills]
+mandatory  = ["code-style"]
+by_domain  = { shell = ["code-style"], markdown = ["code-style"] }
+
+[release]
+driver              = "operator"
+release_notes_path  = "CHANGELOG.md"
+
+[ledger]
+carry_forward_file        = ".artifacts/ctx/carry-forward.md"
+phase_0_full_ledger       = true
+chronic_threshold_patches = 2
+non_issue_labels          = ["wontfix", "tracking-future", "design-question", "rfc"]
+
+[stage_graph]
+default_wave_count    = 2
+hotfix_max_iterations = 3
+walk_trace_enabled    = true
+
+[stage_graph.intro_wave]
+enabled                  = true
+default_discoveries      = ["prior-close-audit-summary", "canonical-types-freshness", "gh-state-inventory"]
+default_intro_auditors   = ["regression", "carry-forward-disposition"]
+disable_for_tshirt       = ["XS"]
+parallel_max             = 5
+
+[context]
+auto_refresh = ["on-sprint-open"]
+[context.refresh]
+ttl_minutes = 30
+[context.lock]
+stale_after_minutes = 120
+
+[mcp]
+github   = true
+sentry   = false
+supabase = false
+
+[cli]
+fly = false
+gh  = true
+
+[preflight]
+auto_invoke = "doctor"

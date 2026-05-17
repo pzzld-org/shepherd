@@ -156,7 +156,7 @@ This converts the framework from "graph-as-documentation" to
 
 ```bash
 # Once after MESH (engineer plan ready):
-shctx plan extract {paths.plans}/{sprint_branch}.plan.md
+shctx plan extract {paths.plans}/{sprint_slug}.plan.md
 shctx plan validate
 
 # At every dispatch tick:

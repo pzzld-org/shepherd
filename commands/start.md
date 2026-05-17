@@ -59,14 +59,14 @@ PAUSE     → stop and wait for operator to clear context before dev.{N+1}
 ## §1 INTRODUCTION — @engineer dispatch
 
 @engineer (Opus) is dispatched with:
-- Path to the seed file: `{paths.plans}/{sprint_branch}.seed.md`
+- Path to the seed file: `{paths.plans}/{sprint_slug}.seed.md`
 - Path to the prior close report (from handoff)
 - Carry-forward GH issue numbers from the handoff
 - Path to the project's carry-forward ledger: `[ledger.carry_forward_file]`
 - Mesh surface availability flags: `[mcp]` and `[cli]` from `shepherd.toml`
 - Explicit instruction to **run Phase 0 mesh first** (per `${CLAUDE_PLUGIN_ROOT}/agents/engineer.md` and `${CLAUDE_PLUGIN_ROOT}/skills/shepherd/SKILL.md` §III)
 
-Engineer writes `{paths.plans}/{sprint_branch}.plan.md` — a parallel-optimized plan with wave decomposition, full `[CONTEXT-INVENTORY]` and `[DO-NOT-DUPLICATE]` per lane, conditional links between phases, and an embedded Phase 0 mesh report. Main chat does NOT write the plan.
+Engineer writes `{paths.plans}/{sprint_slug}.plan.md` — a parallel-optimized plan with wave decomposition, full `[CONTEXT-INVENTORY]` and `[DO-NOT-DUPLICATE]` per lane, conditional links between phases, and an embedded Phase 0 mesh report. Main chat does NOT write the plan.
 
 The introduction produces ALIGNMENT, not code. §2 BODY follows once @critic gates the plan.
 

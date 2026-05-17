@@ -1,7 +1,7 @@
 ---
 name: shepherd
 slug: shepherd
-version: 5.1.1
+version: 5.1.2
 description: |
   Sprint-by-sprint version-cycle conductor. Six-agent flock (engineer, critic,
   coder, auditor, worker, discovery) on a three-section sprint pipeline
@@ -109,7 +109,7 @@ Agent({
 })
 ```
 
-The flock is **closed at six**. Never dispatch outside these six — no `general-purpose`, `Explore`, `Plan`, `feature-dev:*`, `pr-review-toolkit:*`, `superpowers:*` agents (engineer's plan-skills load `superpowers:brainstorming` + `superpowers:writing-plans` from inside its own dispatch; auditor loads `superpowers:systematic-debugging` from inside its own dispatch — that is not the conductor calling them). If a task doesn't fit a flock role, you handle it inline.
+The flock is **closed at six + specialist exceptions per `doctrines/specialist-dispatch.md`** (v5.1.1+). Never dispatch outside these six unless the task is a perfect fit for a pre-authorized specialist (e.g., `code-review:code-review` for PR review, `sentry:seer` for Sentry triage) AND the specialist is on the project's `shepherd.toml [specialists].allowed` list. Specialists are EXCEPTION, not default — flock first; specialist only when strictly better. Plan authorship, critic gating, close-time audit grading, and code implementation are NEVER substitutable. Engineer's plan-skills load `superpowers:brainstorming` + `superpowers:writing-plans` from inside its own dispatch; auditor loads `superpowers:systematic-debugging` from inside its own dispatch — that is not the conductor calling them. If a task doesn't fit a flock role AND no specialist fits, the conductor handles it inline.
 
 **Inline vs. dispatch.** Handle inline (no Agent call): single Bash commands (git ops, worktree hygiene, gate runs), single-file reads for dispatch decisions, writing brief metadata and report frontmatter, one-shot MCP read lookups (verify a GH issue state, check deploy status). Escalate to the flock when: any task > 5 min of sustained observation → `@worker`; > 10 sequential MCP calls → `@worker`; production code changes → `@coder`; code-quality review → `@auditor`; plan authorship → `@engineer`; adversarial plan review → `@critic`. When in doubt between inline and `@worker`, dispatch the worker — the conductor's context is more valuable than a worker token.
 
@@ -180,10 +180,10 @@ Skip the wave for XS sprints or when `shepherd.toml [stage_graph.intro_wave].ena
 - [ ] Conductor anchor verified — `pwd` is the primary worktree, `git rev-parse --abbrev-ref HEAD` is `{sprint_branch}`, `git rev-parse --git-dir == --git-common-dir` (per `doctrines/conductor-cwd.md` "Mandatory verification"). HALT on any drift. **Note (v5.1.1+):** if the session open hook didn't fire (e.g., plugin not loaded at session start), run the three-anchor check manually before any git operation. The `session_open.sh` hook performs this automatically when the shepherd plugin is loaded.
 - [ ] Preflight via `shctx doctor` — surfaces git, plan, ctx, hooks, MCP, lock state (per `doctrines/preflight-doctor.md`). Strongly recommended; required before `/shepherd:autorun` and `/shepherd:parallel`.
 - [ ] Sprint-patterns registry status verified — `ls {paths.ctx}/sprint-patterns.md` (per `doctrines/adaptation-loop.md`). If absent: note "no pattern history yet — first adaptation cycle will land at this sprint close" and continue. If present: read last 3 entries for trend signals before dispatching `@engineer`.
-- [ ] Verified seed at `{paths.plans}/{sprint_branch}.seed.md` (planter authored or main-chat-inline) — graph-hint section present (per `references/seed-template.md` §7-bis)
+- [ ] Verified seed at `{paths.plans}/{sprint_slug}.seed.md` (planter authored or main-chat-inline) — graph-hint section present (per `references/seed-template.md` §7-bis)
 - [ ] **INTRO-COMBO-WAVE dispatched (M+ sprints)** — discoveries + intro auditors in ONE Agent batch BEFORE @engineer. Reports written to `{paths.reports}/<date>-discovery-*.md` and `{paths.reports}/<date>-intro-audit-*.md`.
 - [ ] Dispatched @engineer with seed + prior close report + carry-forward GH#s + `[DISCOVERY-CONTEXT]` + `[INTRO-AUDIT-CONTEXT]` + explicit instruction to run **Phase 0 mesh FIRST** + emit binding `## Stage Graph` per `pipeline.md` §XII
-- [ ] Plan returned at `{paths.plans}/{sprint_branch}.plan.md` with the seven bracketed sections per coder lane + Phase 0 mesh embedded at top + `## Stage Graph` YAML block
+- [ ] Plan returned at `{paths.plans}/{sprint_slug}.plan.md` with the seven bracketed sections per coder lane + Phase 0 mesh embedded at top + `## Stage Graph` YAML block
 - [ ] Phase 0 mesh enumerated the FULL open-issue ledger (per `[ledger].phase_0_full_ledger`), classified into the configured buckets, surfaced non-current-milestone CRITICAL/HIGH as drift risks
 - [ ] Stage Graph parses cleanly — every required node present (per `pipeline.md` §IV), every node's `in_predicates` resolve, every `parallel_with` is mutual, every branch point has an `on-hard-stop` outgoing edge
 - [ ] If Phase 0 reveals SEED DRIFT: per `doctrines/chain-repair.md`, conductor verifies facts directly (MCP/file/git) + amends seed inline if 100% verifies; escalates only for theme/money-path/secrets changes — graph re-emitted from amended seed
@@ -231,9 +231,9 @@ Deletion counts toward SUBTRACT but NOT toward this quota.
 - [ ] Auditor `dependency-topology` runs the wrapper-grep gate (`doctrines/wrapper-must-earn.md`)
 - [ ] If CLOSE-SWARM emits `on-finding` (CRITICAL/HIGH), HOTFIX-CLOSE subgraph fires before CLOSE-FINALIZE
 - [ ] CLOSE-FINALIZE fires:
-  - Close report at `{paths.reports}/<date>-{sprint_branch}-close.md` (grade A–F + SUBTRACT-vs-real-work + Stage-Graph-walk summary)
+  - Close report at `{paths.reports}/<date>-{sprint_slug}-close.md` (grade A–F + SUBTRACT-vs-real-work + Stage-Graph-walk summary)
   - Handoff at `{paths.docs}/<date>-dev{N}-close-handoff.md`
-  - Walk trace (optional but encouraged for L/XL) at `{paths.reports}/<date>-{sprint_branch}-walk.md`
+  - Walk trace (optional but encouraged for L/XL) at `{paths.reports}/<date>-{sprint_slug}-walk.md`
   - Memory + project doctrines updated; project CLAUDE.md patched
   - **Rebase-merge** dev.N into patch; verify with `git log {patch_branch} --oneline | head -5`
   - **DELETE dev branch** (origin + local + prune) per `references/branching-model.md` §II.4
@@ -264,9 +264,9 @@ a worker dispatch or a hotfix subgraph.
   configured driver. Full sequence: `references/branching-model.md` §III.
   Rollover algorithm: §IV.
 
-**Patch-arc seed (`{patch_branch}.seed.md`) is the BUNDLING** of N
+**Patch-arc seed (`{patch_slug}.seed.md`) is the BUNDLING** of N
 patch-grade sprints — not a master plan from which sprints are derived.
-Each `{sprint_branch}.seed.md` is patch-grade and stands alone.
+Each `{sprint_slug}.seed.md` is patch-grade and stands alone.
 
 ---
 
@@ -371,8 +371,8 @@ The conductor is the operator's agent. Keep the operator informed without becomi
 
 When a session opens on an existing sprint branch (partial progress), orient before taking any action:
 
-1. **Locate the plan**: `ls {paths.plans}/{sprint_branch}.plan.md` — read the `## Stage Graph` section and identify which nodes are enumerated.
-2. **Read the walk trace** (if it exists): `{paths.reports}/*{sprint_branch}*-walk.md` — the most recent append shows where the walk was last active.
+1. **Locate the plan**: `ls {paths.plans}/{sprint_slug}.plan.md` — read the `## Stage Graph` section and identify which nodes are enumerated.
+2. **Read the walk trace** (if it exists): `{paths.reports}/*{sprint_slug}*-walk.md` — the most recent append shows where the walk was last active.
 3. **Survey the sprint branch log**: `git log {patch_branch}..HEAD --oneline` — landed coder commits show which WAVE-IMPL nodes have completed and been rebased.
 4. **Check orphan worktrees**: `git worktree list` — if any `agent-*` worktrees exist, check each for committed (or uncommitted) state via `git -C <path> log --oneline -3`.
 5. **Reconstruct walk position** from steps 1–4 and report to operator before firing any node: "Re-oriented. Plan has N nodes. Based on git log + walk trace, nodes [X, Y, Z] are complete. Current position: [node-id]. Next eligible: [node-id]."

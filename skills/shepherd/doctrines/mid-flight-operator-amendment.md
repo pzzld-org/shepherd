@@ -38,7 +38,7 @@ When the operator provides new information mid-sprint, classify it before acting
 
 1. Ask for confirmation via `AskUserQuestion` if the amendment could be read two ways.
 2. Apply as a **dispatcher-patch** — amend the affected lane's brief inline, without engineer re-dispatch.
-3. Log to the dispatcher-patch ledger at `{paths.ctx}/dispatcher-patches/{sprint_branch}-pc-{N}.md` (see §III).
+3. Log to the dispatcher-patch ledger at `{paths.ctx}/dispatcher-patches/{sprint_slug}-pc-{N}.md` (see §III).
 4. Do NOT stop the active coder dispatch; fold into the NEXT brief if that coder is already in-flight.
 
 ### Feature addition
@@ -73,7 +73,7 @@ When the operator provides new information mid-sprint, classify it before acting
 
 Every mid-flight amendment, regardless of type, gets a one-line entry in the dispatcher-patch ledger.
 
-**Location:** `{paths.ctx}/dispatcher-patches/{sprint_branch}-pc-{N}.md` (sequential N per sprint)
+**Location:** `{paths.ctx}/dispatcher-patches/{sprint_slug}-pc-{N}.md` (sequential N per sprint)
 
 **Entry format:**
 ```markdown
