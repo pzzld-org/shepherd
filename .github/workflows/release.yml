@@ -1,7 +1,7 @@
 name: release
 
 # Mechanical patch-release pipeline. Implements the shepherd skill §III sequence:
-# tag → release → cut next patch → bump versions → cargo.sh -a → draft PR → cut dev.0 →
+# tag → release → cut next patch → bump versions → draft PR → cut dev.0 →
 # orphan sweep → milestone roll. Triggered by the squash-merge of a "release: vX.Y.Z"
 # patch PR landing on main; non-release pushes are skipped via the detect step.
 #
@@ -59,7 +59,7 @@ jobs:
         id: ver
         run: |
           set -euo pipefail
-          CURRENT=$(grep -m1 '^version = ' Cargo.toml | sed -E 's/version = "([^"]+)"/\1/')
+          CURRENT=$(jq -r '.version' .claude-plugin/plugin.json)
           IFS=. read -r X Y Z <<<"$CURRENT"
 
           if   [ "$Z" -lt 9 ]; then NX=$X;       NY=$Y;       NZ=$((Z+1)); SHIFT=patch
@@ -147,19 +147,29 @@ jobs:
             git checkout -b "$PATCH" main
           fi
 
-          # Replace exact "X.Y.Z" → "NEXT" in version-pinning files.
-          # Cargo.toml: workspace.package.version + workspace.dependencies inline pins.
-          # *.nix: version = "X.Y.Z";
-          for f in Cargo.toml flake.nix default.nix shell.nix; do
+          # Bump the version across shepherd's source-of-truth files (per CLAUDE.md
+          # §Versioning): plugin + marketplace manifests, both SKILL.md frontmatters,
+          # and the README current-version line.
+          jq --arg v "${NEXT}" '.version = $v' .claude-plugin/plugin.json \
+            > .claude-plugin/plugin.json.tmp \
+            && mv .claude-plugin/plugin.json.tmp .claude-plugin/plugin.json
+          jq --arg v "${NEXT}" '.version = $v | .plugins[0].version = $v' \
+            .claude-plugin/marketplace.json > .claude-plugin/marketplace.json.tmp \
+            && mv .claude-plugin/marketplace.json.tmp .claude-plugin/marketplace.json
+          for f in skills/shepherd/SKILL.md skills/context/SKILL.md; do
             if [ -f "$f" ]; then
-              sed -i.bak "s/\"${CURRENT}\"/\"${NEXT}\"/g" "$f"
+              sed -i.bak -E "s/^version: ${CURRENT}\$/version: ${NEXT}/" "$f"
               rm -f "${f}.bak"
             fi
           done
+          if [ -f README.md ]; then
+            sed -i.bak -E "s/Current version: \*\*${CURRENT}\*\*/Current version: **${NEXT}**/" README.md
+            rm -f README.md.bak
+          fi
 
           if command -v rg >/dev/null 2>&1; then
             echo "::group::Remaining references to ${CURRENT} (review manually if any)"
-            rg -n --no-heading -F "${CURRENT}" -t toml -t nix -t md || true
+            rg -n --no-heading -F "${CURRENT}" -t md -t json || true
             echo "::endgroup::"
           fi
       - name: Commit + push patch branch with version bump
@@ -174,7 +184,7 @@ jobs:
           if git diff --cached --quiet; then
             echo "No version changes to commit (idempotent re-run?)."
           else
-            git commit -m "chore(${PATCH}/version): bump workspace ${CURRENT} → ${NEXT}"
+            git commit -m "chore(${PATCH}/version): bump plugin ${CURRENT} → ${NEXT}"
           fi
           git push -u origin "$PATCH"
 
