@@ -76,17 +76,35 @@ exploratory thresholds and refines them as data accumulates:
 - **Baseline period (first 2–3 sprints after v5.1.3):** report-only. No
   grade impact. The auditor lists the table and notes "exploratory
   baseline" if patterns are not yet stable.
-- **Post-baseline:** aggregate hit-rate below 40% across a sprint surfaces
-  as a MEDIUM finding for the @engineer to investigate at the next intro
-  wave. Do NOT grade-cap on cache telemetry alone — the metric measures
-  caching health, not correctness or completeness.
-- **Per-role expected ranges:** to be filled in after three sprints of
-  data. Discovery and worker dispatches will trend higher (single-turn,
-  small variable suffix); engineer Phase-0 mesh dispatches will trend
-  lower (long, sprint-unique brief tail).
+- **Post-baseline:** aggregate hit-rate below the role-weighted floor (see
+  per-role ranges below) across a sprint surfaces as a MEDIUM finding for
+  the @engineer to investigate at the next intro wave. Do NOT grade-cap
+  on cache telemetry alone — the metric measures caching health, not
+  correctness or completeness.
 
-A v5.1.4+ revision of this doctrine replaces "exploratory" with the
-observed per-role ranges and adjusts the 40% trigger accordingly.
+### Per-role expected ranges (v5.1.5 calibration)
+
+Estimated from each role's theoretical max given prefix stability and
+variable-tail length per `doctrines/brief-cache-discipline.md`. These are
+**theoretical-max estimates, not observed equilibrium** — refine after 5
+sprints of observed data.
+
+| Role | Target ≥ | Alarm < | Rationale |
+|---|---|---|---|
+| `@coder` | 60% | 40% | Stable role header + protocol reminders dominate; small variable suffix per lane (`[FILE-SCOPE]`, `[CONTEXT-INVENTORY]`, `[DO-NOT-DUPLICATE]`, `[WORKTREE]`) |
+| `@auditor` | 55% | 35% | Close-mode swarm shares role-stable prefix across 3–5 concerns; concern-specific tail is short |
+| `@worker` | 65% | 40% | Single-turn, very small variable suffix; bounded deliverable means minimal `[ACCEPTANCE]` divergence |
+| `@discovery` | 55% | 35% | Single-turn, role-stable prefix; variable tail is `[RESEARCH-SCOPE]` only |
+| `@critic` | 50% | 30% | Single-turn; prefix dominates but `[PLAN-UNDER-REVIEW]` injects a sprint-unique tail |
+| `@engineer` | 30% | 15% | Phase 0 mesh dispatches are long and sprint-unique; cache wins limited to role header + skill stack |
+
+**Aggregate sprint hit-rate trigger:** a sprint whose lane-weighted mean
+hit-rate falls below 40% surfaces as a MEDIUM finding (was unconditional
+40%; v5.1.5 weights by lane count so an engineer-heavy intro doesn't drag
+a healthy coder swarm under the alarm).
+
+A v5.2.0+ revision of this doctrine will replace these estimates with the
+observed per-role ranges from 5+ sprints of telemetry data.
 
 ## Failure modes
 
@@ -120,7 +138,12 @@ desired (`find <ns>/logs -name 'events-*.jsonl' -mtime +30 -delete`).
 ## See also
 
 - `doctrines/brief-cache-discipline.md` — the structural rule this measures
-  the impact of (stable framing first, variable content last).
+  the impact of (stable framing first, variable content last); the
+  Brief Assembly Checklist there is the mechanical procedure that makes
+  the hit-rate ranges achievable.
+- `doctrines/agent-excellence.md` — Rule 6 "Conserve tokens" is the
+  per-brief complement to this measurement layer; longer briefs lower
+  the achievable hit-rate by lengthening the variable tail.
 - `doctrines/hook-event-log.md` — the JSONL event-log convention this
   hook writes to.
 - `doctrines/context-registry.md` — the cache-vs-canonical registry model;

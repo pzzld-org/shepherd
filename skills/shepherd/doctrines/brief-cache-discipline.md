@@ -58,6 +58,61 @@ section in the variable block. Prose interleaving is fine — the rule
 governs bracketed-section ordering, not freeform connective text. The
 bracketed-section order itself, within each block, is non-negotiable.
 
+## Brief assembly checklist (7 steps, every dispatch)
+
+A mechanical recipe — follow it line by line and the cache invariant holds
+without thinking. Re-derive nothing; copy verbatim from prior dispatches in
+the same sprint wherever possible.
+
+1. Emit `[ROLE]` — copy verbatim from `agents/<role>.md` frontmatter. Same text every dispatch in the session.
+2. Emit `[SKILLS]` — deterministic per role (computed from `[skills.detection]` against `[FILE-SCOPE]` is downstream; the role-default list is the cacheable header).
+3. Emit `[DOCTRINES]` — sprint-stable list (project + framework). Recompute only on sprint open, then reuse.
+4. Emit `[PROTOCOL-REMINDERS]` — role-stable halt codes and hard prohibitions. NEVER customize per dispatch.
+5. Emit the variable block in fixed order: `[FILE-SCOPE]` → `[CONTEXT-INVENTORY]` → `[DO-NOT-DUPLICATE]` → `[ACCEPTANCE]` → `[NON-GOALS]` (and `[WORKTREE]` → `[BASE-COMMIT-EXPECTED]` for coders).
+6. Verify byte-identity of steps 1–4 against the most recent dispatch of the same role in this sprint (visual diff or `diff <(sed -n '/\[ROLE\]/,/\[FILE-SCOPE\]/p' brief-old) <(...) `).
+7. Dispatch. Telemetry (`doctrines/cache-telemetry.md`) measures whether the cache actually hit.
+
+**Cache-stable header — copy-paste verbatim for every coder dispatch in a sprint.** Only the trailing variable block changes per lane. This is the byte-identical prefix the runtime caches:
+
+```text
+[ROLE]
+@coder — implementation lane. Sonnet. Parallel-safe. Owns a single non-overlapping
+[FILE-SCOPE]. Read agents/coder.md for the binding system prompt.
+
+[SKILLS]
+- code-style (mandatory per shepherd.toml [skills.mandatory])
+- code-style:<lang> (auto-attached per [FILE-SCOPE] languages)
+- language-mastery skill(s) per [FILE-SCOPE]
+- superpowers:test-driven-development
+- superpowers:verification-before-completion
+
+[DOCTRINES]
+- doctrines/zero-duplicate-tolerance.md (DEDUP-GATE; coder Step 3 re-runs greps)
+- doctrines/wrapper-must-earn.md (JUSTIFY-NEW for wrapper types)
+- doctrines/subtract-dont-add.md (every addition pays for itself)
+- doctrines/agent-excellence.md (greatness is the bar)
+- doctrines/worktree-confinement.md (writes confined to the assigned worktree)
+- doctrines/coder-brief-format-shared-artifacts.md (shared ctx files need partition rule)
+
+[PROTOCOL-REMINDERS]
+- Greatness is the bar. Mediocrity is a halt code.
+- READ before writing. REUSE before creating.
+- Step 2 (read canonical-types) is mandatory. Step 3 (dedup grep) is mandatory.
+- Halt codes are first-class: PAUSE-FOR-DEPENDENCY, BRIEF-AMENDMENT, SCOPE-OVERFLOW, BASE-DRIFT, WORKTREE-DRIFT.
+- Writes confined to the assigned worktree. Do NOT cd; use git -C <path>.
+- Conserve tokens — every line you write into the report is a paid line.
+
+# --- variable block follows ---
+
+[FILE-SCOPE]
+...
+```
+
+The block above (header through the comment line) is the cacheable prefix.
+A coder dispatched twice in the same sprint sees this exact text twice; the
+runtime caches it once, replays the cache breakpoint on the second dispatch,
+and only pays full input rate on the variable tail.
+
 ## Why ordering matters
 
 The Claude Code runtime places implicit cache breakpoints at major content
@@ -107,7 +162,9 @@ catches drift while keeping the hot path fast.
 
 ## See also
 
-- `doctrines/cache-telemetry.md` — how we measure whether this is working
+- `doctrines/cache-telemetry.md` — how we measure whether this is working (per-role hit-rate ranges, alarm thresholds)
+- `doctrines/agent-excellence.md` — Rule 6 "Conserve tokens" cites this doctrine as the structural complement to per-brief trimming
+- `skills/shepherd/SKILL.md §Token + cache discipline` — operator-facing surface of this doctrine
 - `doctrines/hook-event-log.md` — the event log that captures dispatch metadata
 - `pipeline.md` §V — the canonical dispatch shape (citation point)
 - `references/agent-briefs.md` — existing brief templates conform to this ordering

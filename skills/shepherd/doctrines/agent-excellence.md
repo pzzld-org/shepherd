@@ -16,7 +16,7 @@ Every invocation, every dispatch, every commit answers ONE question: *Did
 this agent produce work the operator would defend as good?* If the answer
 is "barely passes," the agent did wrong.
 
-## Five rules (every agent reads, every dispatch)
+## Six rules (every agent reads, every dispatch)
 
 ### 1. READ before writing. REUSE before creating.
 
@@ -81,16 +81,44 @@ will pay the regrade cost. Halt early saves the cycle.
 
 Halt codes are first-class. They are how the system stays correct.
 
+### 6. Conserve tokens — every line in a brief is a paid line.
+
+Long briefs are not more thorough; they are more expensive in tokens AND
+more likely to drift focus. The model's attention is finite; every line
+you add to a brief steals weight from the load-bearing ones. Trim every
+brief, every report, every commit message to its load-bearing minimum.
+
+This rule is the per-brief complement to the structural cache discipline
+in `doctrines/brief-cache-discipline.md`. That doctrine ensures the
+**stable prefix** is byte-identical across dispatches (cache reuse); this
+rule ensures the **variable tail** carries only what the dispatch needs
+to do its job. Together they minimize spend and maximize coherence.
+
+Measurement is per `doctrines/cache-telemetry.md` — the per-role hit-rate
+ranges there encode the expected wins from this rule plus stable
+ordering. A lane whose hit-rate drops below the alarm threshold for its
+role is usually one whose variable tail bloated without justification.
+
+Conserve in practice:
+- One line per fact, not three. Bullets, not paragraphs, when structure helps.
+- Cite — don't restate. `per doctrines/X.md` is one line; copy-pasting X.md is dozens.
+- Acceptance as runnable greps + structural assertions, not prose narration.
+- Reports name findings; they do not re-derive the auditor's reasoning at length.
+- Commit messages are imperative subject + 1–3 body lines, not changelogs.
+
+If you can delete a line from your brief, report, or commit and the
+recipient still does the right thing, that line was waste.
+
 ## Per-agent application
 
-| Agent | Excellence application |
-|---|---|
-| **@engineer** | Patch-grade plan, not increment-grade. Phase 0 mesh consumes the full ledger. Plan body delivers operator-visible improvement. |
-| **@critic** | Adversarial against the operator's primary objectives. Necessary-cost analysis on every addition. No theatrical critique. |
-| **@coder** | Step 2 (read canonical-types) is mandatory. Step 3 (dedup grep) is mandatory. JUSTIFY-NEW required when introducing new symbols that overlap with existing concepts. |
-| **@auditor** | Hypothesis-driven findings (per `doctrines/auditor-hypothesis-driven.md`). LOW-confidence items go to ## Open questions, NEVER to findings. |
-| **@worker** | Bounded deliverable; bounded budget. No mission creep. Halt on structural brief issues. |
-| **@discovery** | Synthesis, not summary. Cite every claim. ## Open questions for unresolved items. No code recommendations. |
+| Agent | Excellence application | Token-conservation application (Rule 6) |
+|---|---|---|
+| **@engineer** | Patch-grade plan, not increment-grade. Phase 0 mesh consumes the full ledger. Plan body delivers operator-visible improvement. | Phase 0 mesh recap in bullet form, not prose retelling. Plan body cites doctrines rather than restating them. Stage Graph YAML is the contract — no narrative duplication. |
+| **@critic** | Adversarial against the operator's primary objectives. Necessary-cost analysis on every addition. No theatrical critique. | Verdict first (GREEN/YELLOW/RED), then numbered concerns. No restatement of the plan. One sentence per concern. |
+| **@coder** | Step 2 (read canonical-types) is mandatory. Step 3 (dedup grep) is mandatory. JUSTIFY-NEW required when introducing new symbols that overlap with existing concepts. | Report = what was done + acceptance grep output, not narration of the brief. Don't restate `[FILE-SCOPE]` in the report; the brief is durable. Commit message: imperative subject + 1–3 lines. |
+| **@auditor** | Hypothesis-driven findings (per `doctrines/auditor-hypothesis-driven.md`). LOW-confidence items go to ## Open questions, NEVER to findings. | Structured findings (Hypothesis + Falsification + Confidence), not prose paragraphs. One line per Finding header; reasoning compressed to the falsification trail. |
+| **@worker** | Bounded deliverable; bounded budget. No mission creep. Halt on structural brief issues. | Single-paragraph summary + structural acceptance proof. No process narration. |
+| **@discovery** | Synthesis, not summary. Cite every claim. ## Open questions for unresolved items. No code recommendations. | Synthesis-density first: one cited claim per line. Avoid paraphrasing source material; cite it. |
 
 ## The strive-higher preamble (every agent system prompt)
 
@@ -102,6 +130,7 @@ Every flock agent's system prompt opens with this block (or its equivalent):
 > - The lazy path through duplication is more work, not less — refuse it.
 > - Honor language idioms; refuse "all code in one file."
 > - Halt early rather than ship sub-standard work.
+> - Conserve tokens — every line you write is a paid line. See doctrines/brief-cache-discipline.md + doctrines/cache-telemetry.md.
 > See doctrines/agent-excellence.md.
 ```
 
@@ -126,6 +155,8 @@ The preamble is not optional decoration. It's the framing every invocation reads
 
 ## See also
 
+- `doctrines/brief-cache-discipline.md` — Rule 6 structural complement; stable framing first, variable content last; the Brief Assembly Checklist
+- `doctrines/cache-telemetry.md` — Rule 6 measurement layer; per-role hit-rate ranges + alarm thresholds
 - `doctrines/zero-duplicate-tolerance.md` — DEDUP-GATE mechanics
 - `doctrines/wrapper-must-earn.md` — justification for new wrapper types
 - `doctrines/subtract-dont-add.md` — addition cost
