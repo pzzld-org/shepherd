@@ -1,7 +1,7 @@
 ---
 name: shepherd
 slug: shepherd
-version: 5.1.4
+version: 5.1.5
 description: |
   Sprint-by-sprint version-cycle conductor. Six-agent flock (engineer, critic,
   coder, auditor, worker, discovery) on a three-section sprint pipeline
@@ -74,6 +74,36 @@ Throughout this skill, references to:
 - `{sprint_branch}` mean `branching.sprint_branch_pattern`
 - `{paths.plans}`, `{paths.reports}`, `{paths.docs}`, `{paths.ctx}` mean the resolved `[paths]` values
 - `{gates.check}`, `{gates.lint}`, `{gates.format}` mean the resolved `[gates]` commands
+
+---
+
+## 0-bis. Token + cache discipline (foundational, always-on)
+
+Three doctrines form the always-on framework for keeping flock dispatches
+cheap, coherent, and drift-resistant. Load them on every sprint open and
+treat them as binding for every brief, report, and commit message:
+
+- **`doctrines/brief-cache-discipline.md`** — the structural rule
+  (stable framing first, variable content last) plus a **7-step Brief
+  Assembly Checklist** the conductor follows for every dispatch.
+  Includes the byte-identical-prefix coder header to copy-paste verbatim.
+- **`doctrines/cache-telemetry.md`** — the measurement layer.
+  Per-role hit-rate targets and alarm thresholds (v5.1.5 calibration):
+  `@coder` ≥60%/<40%, `@auditor` ≥55%/<35%, `@worker` ≥65%/<40%,
+  `@discovery` ≥55%/<35%, `@critic` ≥50%/<30%, `@engineer` ≥30%/<15%.
+  Surfaced in the close report's `## Cache telemetry` subsection.
+- **`doctrines/agent-excellence.md` Rule 6** — "Conserve tokens — every
+  line in a brief is a paid line." The per-brief complement to the
+  structural cache discipline. Long briefs are not more thorough; they
+  are more expensive AND more likely to drift focus.
+
+The three are tightly coupled: ordering (brief-cache-discipline) makes
+the prefix cacheable; conservation (agent-excellence Rule 6) keeps the
+variable tail minimal; telemetry (cache-telemetry) measures whether the
+two are working. A sprint whose lane-weighted aggregate hit-rate falls
+below 40% surfaces as a MEDIUM finding at close — investigate brief
+ordering per `doctrines/brief-cache-discipline.md` first, brief length
+per `doctrines/agent-excellence.md` §Rule 6 second.
 
 ---
 
@@ -333,7 +363,7 @@ The conductor is the operator's agent. Keep the operator informed without becomi
 - **Phase 0 mesh complete** — surface drift-risk items + carry-forward count before dispatching `@engineer`. One short paragraph.
 - **PLAN-GATE result** — verdict + key concerns (even GREEN warrants "critic cleared; N concerns folded into briefs").
 - **Each WAVE-GATE** — pass/fail + LOC delta if easily available.
-- **CLOSE-SWARM result** — grades per concern + any grade-cap reasons + trend alert (if triggered).
+- **CLOSE-SWARM result** — grades per concern + any grade-cap reasons + trend alert (if triggered) + cache-telemetry aggregate. Sprint-aggregate cache hit-rate <40%? Investigate brief ordering per `doctrines/brief-cache-discipline.md`.
 - **PAUSE** — one-paragraph summary: what shipped, what carried forward, next sprint branch.
 
 **Status line format** (use at node completions during the walk):
@@ -380,6 +410,16 @@ For `:start` and `:spawn`, sprint is inferred from current branch when no `sprin
 ---
 
 ## XI. See also (file map)
+
+**Foundational (always-on) — load on every sprint open:**
+
+| File | Loaded when | Owns |
+|------|-------------|------|
+| `doctrines/brief-cache-discipline.md` | Every dispatch | **Stable framing first, variable content last** — the 7-step Brief Assembly Checklist + byte-identical-prefix coder header (v5.1.3, refined v5.1.5) |
+| `doctrines/cache-telemetry.md` | Every sprint close | **Measurement layer** — per-role hit-rate ranges (v5.1.5 calibration: @coder ≥60%, @engineer ≥30%, others between) + alarm thresholds + `## Cache telemetry` close-report subsection |
+| `doctrines/agent-excellence.md` | Every dispatch | **Six rules + strive-higher preamble** — Rule 6 "Conserve tokens" pairs with brief-cache-discipline + cache-telemetry as the token + cache discipline triad |
+
+**Conductor + commands:**
 
 | File | Loaded when | Owns |
 |------|-------------|------|
