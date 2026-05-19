@@ -300,6 +300,24 @@ shctx graph mark <id> --state=done --exit=<edge-label>
 
 `shctx graph trace` is the append-only event log that feeds `adaptation-loop.md §V-bis` node-level telemetry. The conductor's only LLM-driven step per tick is brief authoring + edge-label selection; routing is mechanical.
 
+### Cache-first brief ordering (v5.1.3+)
+
+Every brief the conductor emits follows the stable-framing-first /
+variable-content-last discipline per `doctrines/brief-cache-discipline.md`.
+The bracketed-section order is:
+
+**Stable (top):** `[ROLE]` → `[SKILLS]` → `[DOCTRINES]` → `[PROTOCOL-REMINDERS]`
+**Variable (bottom):** `[FILE-SCOPE]` → `[CONTEXT-INVENTORY]` → `[DO-NOT-DUPLICATE]` → `[ACCEPTANCE]` → `[NON-GOALS]` → `[WORKTREE]` → `[BASE-COMMIT-EXPECTED]`
+
+Stable sections are reused verbatim across every dispatch in a sprint; the
+runtime caches them as the brief prefix. Variable sections are
+dispatch-specific and live at the tail so the prefix remains stable across
+fan-out. The completeness auditor verifies ordering at close (LOW per
+violation; aggregates to MEDIUM if > 30% of captured dispatches violate)
+per `doctrines/brief-cache-discipline.md`. The v5.1.3 telemetry hooks
+surface per-role hit-rate so the dollar/consistency wins are measurable —
+see `doctrines/cache-telemetry.md`.
+
 ---
 
 ## VI. Pattern B is a graph shape, not a checklist item

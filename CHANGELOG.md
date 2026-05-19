@@ -4,6 +4,88 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v5.1.3 — 2026-05-19 (in progress)
+
+### Cleanup, cache discipline, dispatch telemetry
+
+v5.1.3 fixes the base. No new conductor capabilities, no new agent roles, no
+semantic changes to the dispatch pipeline. The sprint is a focused sweep:
+smaller, more stable agent prefixes; brief ordering that puts variable
+content last so prompt caching can do its job; SubagentStop telemetry that
+proves the wins are real; and a sweep of accumulated cruft.
+
+#### Agent restructure (Lanes A1 + A2)
+
+- **Five-agent prefix/reference split** — `agents/{engineer,coder,critic,worker,discovery}.md`
+  trimmed to the cacheable prefix (frontmatter, identity, prohibitions,
+  halt codes, mandatory protocol, report shape, "What you are NOT"); verbose
+  reference catalogs extracted to `skills/shepherd/agents/<role>.reference.md`
+  loaded on demand via Skill at agent startup.
+- **`agents/auditor.md` trim** — same restructure; reference content extracted
+  to `skills/shepherd/agents/auditor.reference.md`.
+- **Inline `Greatness is the bar` preamble removed** — replaced with a single
+  `> See doctrines/agent-excellence.md.` line per agent (doctrine already
+  existed; the inline duplication just bloated every dispatch).
+- **`tools:` frontmatter audit** — each agent's MCP tool list now contains
+  only tools actually invoked by its documented protocol.
+
+#### Brief assembly discipline (Lane B)
+
+- **New doctrine `doctrines/brief-cache-discipline.md`** — stable framing first
+  (`[ROLE]` → `[SKILLS]` → `[DOCTRINES]` → `[PROTOCOL-REMINDERS]`), variable
+  content last (`[FILE-SCOPE]` → `[CONTEXT-INVENTORY]` → `[DO-NOT-DUPLICATE]` →
+  `[ACCEPTANCE]` → `[NON-GOALS]` → `[WORKTREE]` → `[BASE-COMMIT-EXPECTED]`).
+  Enforcement is post-hoc via the completeness auditor.
+- **`pipeline.md` §V** gains a "Cache-first brief ordering" subsection citing
+  the new doctrine.
+
+#### Dispatch telemetry (Lane C)
+
+- **New hook `hooks/scripts/subagent_telemetry.sh`** — captures cache stats
+  per subagent dispatch (`cache_read_input_tokens`,
+  `cache_creation_input_tokens`, `ephemeral_5m_input_tokens`,
+  `ephemeral_1h_input_tokens`, `hit_rate`). Non-blocking on any failure;
+  emits `parse_error` rows rather than silently no-op.
+- **Registry schema migration 0006** — new `index_cache_usage` table and
+  `v_cache_usage` view aggregating per sprint + role.
+- **New `shctx query cache-usage`** — surfaces hit-rate per sprint + role.
+- **`shctx refresh --scope=telemetry`** — ingests JSONL events into the
+  registry idempotently.
+- **New doctrine `doctrines/cache-telemetry.md`** — what's captured, where it
+  lands, how it surfaces in close reports, threshold guidance (exploratory
+  baseline for the first 2–3 sprints; < 40% aggregate hit-rate is a MEDIUM
+  finding flag once baselines settle).
+
+#### Cleanup (Lane D)
+
+- Dead command-script sweep (no scripts removed; all `cmd_*.sh` reachable
+  through the `shctx` dispatcher's dynamic dispatch or via internal stage
+  composition in `cmd_sprint.sh`).
+- Stale-reference audit across `skills/shepherd/doctrines/` and
+  `skills/shepherd/{pipeline,planter,SKILL}.md` — all `v4.x` / `v5.0.x`
+  references are legitimate historical-origin annotations; no operative
+  references to removed mechanisms were found.
+- `_candidates/` directory contains only its README (the promotion-pipeline
+  doc); no orphan candidates to promote or delete.
+- Gitignored-but-tracked sweep: zero hits.
+- Version-source-of-truth files verified at 5.1.3 across `plugin.json`,
+  `marketplace.json`, both SKILL frontmatters, README, and this changelog.
+
+#### Version-scale roadmap doctrine (Lane E)
+
+- **New doctrine `doctrines/version-scale-roadmap.md`** — codifies the
+  four-tier scale factor: major `vX` (~1000 sprints, vision), minor `vX.Y`
+  (~100 sprints, roadmap), patch `vX.Y.Z` (≤ 10 sprints, the planning unit),
+  dev `vX.Y.Z-dev.N` (1 sprint, the execution branch — cut from the patch
+  branch as a cushion). Extends `sprint-as-patch.md` upward by naming the
+  three levels above the dev sprint.
+- **`planter.md` §0** updated to anchor seed authorship at PATCH scope
+  (seeds do not carry dev.N suffix).
+- **`agents/engineer.md`** updated to cite the doctrine and clarify the
+  engineer operates at DEV scope (decomposing the patch seed).
+
+---
+
 ## v5.1.2 — 2026-05-17
 
 ### Hook teeth, anti-laziness preambles, dir-watch, specialist dispatch, slug naming, discovery registry
