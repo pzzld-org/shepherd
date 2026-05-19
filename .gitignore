@@ -5,13 +5,18 @@
 *.db
 *.db.*
 
-# shepherd context registry
+# shepherd context registry + hook runtime state
 .artifacts/root.db
 .artifacts/root.db-*
 .artifacts/shepherd.lock
 .artifacts/project.json
 .artifacts/tmp/
 .artifacts/logs/
+.artifacts/dispatch/
+.artifacts/discoveries/
+.artifacts/insights/
+.artifacts/pauses/
+.artifacts/runs/
 
 *.log
 *.log.*

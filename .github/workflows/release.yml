@@ -2,8 +2,10 @@ name: release
 
 # Mechanical patch-release pipeline. Implements the shepherd skill §III sequence:
 # tag → release → cut next patch → bump versions → draft PR → cut dev.0 →
-# orphan sweep → milestone roll. Triggered by the squash-merge of a "release: vX.Y.Z"
-# patch PR landing on main; non-release pushes are skipped via the detect step.
+# orphan sweep → milestone roll. Triggered by the squash-merge of a patch PR landing
+# on main whose subject is either "vX.Y.Z" (operator convention, with the gh-appended
+# " (#N)" suffix tolerated) or "release: vX.Y.Z" (back-compat). The extracted version
+# is cross-checked against .claude-plugin/plugin.json; non-release pushes are skipped.
 #
 # Branch protection on main MUST require PR + linear history + no force-push for the
 # trigger to be reliable (configured outside this file).
@@ -34,15 +36,27 @@ jobs:
           ref: main
       - name: Detect release squash commit
         id: detect
-        # Read the commit subject from the checked-out repo (not the github event payload).
-        # Subject is held as a shell-quoted var and only used for prefix comparison + echo —
-        # never interpolated into a command.
+        # Recognize either of two release commit subject conventions:
+        #   • bare        "vX.Y.Z"            (operator PR title convention; gh appends " (#N)" on squash)
+        #   • prefixed    "release: vX.Y.Z"   (kept for back-compat / automation-authored PRs)
+        # The extracted version is then cross-checked against .claude-plugin/plugin.json so a
+        # stray commit subject can't accidentally fire the pipeline against the wrong version.
+        # SUBJECT is read from `git log` on the checked-out tree (not from github.event.*),
+        # held as a shell-quoted var, and only used for regex comparison + echo — never
+        # interpolated into a command.
         run: |
           set -euo pipefail
           SUBJECT=$(git log -1 --format=%s HEAD)
-          if [[ "$SUBJECT" == "release: v"* ]]; then
-            echo "proceed=true" >> "$GITHUB_OUTPUT"
-            printf 'Release commit detected: %s\n' "$SUBJECT"
+          if [[ "$SUBJECT" =~ ^(release:[[:space:]]+)?v([0-9]+\.[0-9]+\.[0-9]+)([[:space:]]|$) ]]; then
+            SUBJECT_VER="${BASH_REMATCH[2]}"
+            PLUGIN_VER=$(jq -r '.version' .claude-plugin/plugin.json)
+            if [ "$SUBJECT_VER" = "$PLUGIN_VER" ]; then
+              echo "proceed=true" >> "$GITHUB_OUTPUT"
+              printf 'Release commit detected: %s (v%s)\n' "$SUBJECT" "$SUBJECT_VER"
+            else
+              echo "proceed=false" >> "$GITHUB_OUTPUT"
+              printf '::warning::Subject version (v%s) does not match plugin.json (v%s); skipping.\n' "$SUBJECT_VER" "$PLUGIN_VER"
+            fi
           else
             echo "proceed=false" >> "$GITHUB_OUTPUT"
             printf 'Skipping: head subject does not match release pattern.\nSubject: %s\n' "$SUBJECT"
