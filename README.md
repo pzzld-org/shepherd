@@ -6,8 +6,7 @@ Sprint-by-sprint version-cycle conductor. A production-grade orchestration frame
 ┌──────────────────────────────────────────────────────────────────┐
 │  /shepherd:plant     Opus-pinned seed authorship (upstream)      │
 │  /shepherd:start     One sprint end-to-end, then PAUSE           │
-│  /shepherd:autorun   Sequential autopilot (no inter-sprint pause)│
-│  /shepherd:parallel  Multi-sprint worktree fan-out               │
+│  /shepherd:spawn     Teammate-conductor (--auto, --parallel N)   │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
