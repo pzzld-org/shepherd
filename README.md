@@ -166,11 +166,14 @@ A working example for the Axiom project lives at [`examples/axiom/shepherd.toml`
 # Run a single sprint, then pause for sign-off
 /shepherd:start
 
-# Run sprints back-to-back, no pause between
-/shepherd:autorun
+# Spawn a teammate-conductor (planter stays lean as babysitter)
+/shepherd:spawn
 
-# Run multiple disjoint sprints in parallel worktrees
-/shepherd:parallel
+# Sequential autopilot: fresh context window per sprint
+/shepherd:spawn --auto
+
+# Fan out N disjoint sprints across git worktrees
+/shepherd:spawn --parallel 3
 ```
 
 For first-time use:
@@ -185,7 +188,7 @@ For first-time use:
 | Path | What it is |
 | ---- | ---------- |
 | `.claude-plugin/plugin.json` | Plugin manifest |
-| `commands/{plant,start,autorun,parallel}.md` | The four slash commands |
+| `commands/{plant,start,spawn}.md` | Active slash commands (`autorun` + `parallel` are retired thin redirects) |
 | `agents/{engineer,critic,coder,auditor,worker}.md` | Closed flock — agent system prompts |
 | `skills/shepherd/SKILL.md` | Conductor quick reference (loaded by every command) |
 | `skills/shepherd/{flock,planter,autorun,parallel}.md` | Mode-specific operational detail |

@@ -11,9 +11,9 @@ Configuration: `.claude/shepherd.toml`. Project doctrines: `.claude/doctrines/`.
 
 **Commands:**
 - `/shepherd:plant`   — Opus session, authors sprint seeds upstream of execution
-- `/shepherd:start`   — Sonnet session, runs one sprint then pauses
-- `/shepherd:autorun` — Sonnet session, runs sprints back-to-back
-- `/shepherd:parallel` — Sonnet session, fans out multiple disjoint sprints in worktrees
+- `/shepherd:start`              — Sonnet session, runs one sprint then pauses
+- `/shepherd:spawn --auto`       — Sonnet session, runs sprints back-to-back (fresh context window per sprint)
+- `/shepherd:spawn --parallel N` — Sonnet session, fans out N disjoint sprints across worktrees
 
 **Branch topology:** `v{X}.{Y}.{Z}-dev.{0..9}` — 10 sprints per patch, rebase-merge into patch on close, squash patch into main on dev.9 + automated release pipeline (`.github/workflows/release.yml`).
 
