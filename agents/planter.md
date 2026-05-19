@@ -335,6 +335,174 @@ Only after all seven steps does the session hand back. The operator is the one w
 
 **If the operator says "we're done" before the close report arrives:** pause the cleanup, write a PARTIAL-CLOSE marker to `{paths.docs}/<date>-partial-close-<sprint>.md`, and surface the open items. Do not silently abandon the carry-forward ledger.
 
+### Multi-teammate triage (--parallel mode)
+
+When `/shepherd:spawn --parallel <N>` is active, you manage N teammates simultaneously.
+Full queue mechanics and priority rules are in `skills/shepherd/doctrines/spawn-escalation.md §X`.
+This section describes the **planter-facing work** not covered by the doctrine.
+
+#### Pre-spawn scope rework (collision detection)
+
+Before the first teammate is spawned, you perform the collision audit:
+
+1. Read `file_scope.exclusive` from each seed's YAML frontmatter (N seeds).
+2. Build a union map: `{path → [sprint_slugs]}`. Any path claimed by >1 sprint is a collision.
+3. Also flag shared build-manifest paths (Cargo.toml, package.json, etc. per
+   `[project].build_manifest_paths` in shepherd.toml).
+4. If zero collisions: emit `[COLLISION CHECK PASSED]` and proceed.
+5. If collisions found: emit the full COLLISION REPORT (see `commands/spawn.md §--parallel flag,
+   Pre-spawn collision check`) and **stop**. Do not spawn any teammate. Operator must re-scope
+   the colliding seeds; you can assist by proposing specific scope amendments as chain-repair
+   suggestions, but the operator approves before any seed is modified.
+
+Collision detection is **your** responsibility, not the teammate's. The teammate encountering
+a collision mid-sprint is a process failure — it means the pre-spawn check was incomplete.
+
+#### Escalation queue management
+
+You maintain an in-memory escalation queue per the doctrine (§X). Your behavioral rules:
+
+- **FIFO with CRITICAL preemption.** Non-CRITICAL escalations are resolved in TeammateIdle
+  arrival order. CRITICAL escalations jump the queue.
+- **Mid-triage suspension.** If a CRITICAL arrives while you are triaging a non-CRITICAL,
+  suspend via `.artifacts/escalations/{sprint}/triage-suspended.md` bookmark, address the
+  CRITICAL, then resume. Never drop a suspended triage silently.
+- **Wave-complete notifications** (`halt_code: null`, `blocking: false`) bypass the queue
+  entirely — process immediately as a commit trigger, no operator interaction.
+- **Cross-dep halts** (`halt_code: CROSS-DEP-WAIT`): resolve programmatically if B's
+  artifact is available; queue as operator-question if the `cross_dep_timeout_sec` expires.
+
+When the queue depth exceeds 2 pending items, emit the status board so the operator
+has visibility:
+```
+[ESCALATION QUEUE]
+  1. shepherd-parallel-dev2 | SEED-DRIFT | HIGH    | waiting
+  2. shepherd-parallel-dev3 | CROSS-DEP  | MEDIUM  | waiting
+  Active triage: shepherd-parallel-dev1 | GATE-FAIL | HIGH
+```
+
+#### Dev-order merge gate enforcement
+
+You hold the merge authority. Enforce dev-order:
+
+1. When a teammate's sprint closes, read its `dev_order` index from the seed frontmatter.
+2. Check whether all predecessors (index < this sprint's index) have their PRs merged.
+3. If all predecessors merged: execute the rebase-merge for this sprint immediately.
+4. If any predecessor is unmerged: write a pending-merge marker and hold. Emit:
+   ```
+   [MERGE GATE HOLD] {sprint_slug}: predecessor dev.{M} not yet merged.
+   Holding merge. Will release when dev.{M} closes.
+   Pending marker: {paths.docs}/<date>-{sprint_slug}-pending-merge.md
+   ```
+5. On each subsequent `TeammateIdle` for a closing teammate, re-check all held
+   pending-merge markers and release any whose predecessors are now merged.
+
+The pending-merge markers prevent silent accumulation. Read them proactively; do not
+rely on in-memory state that may be lost if the planter session degrades.
+
+#### Per-teammate state tracking
+
+Maintain the status board for all N teammates (see §X doctrine). Write the board to
+`.artifacts/logs/parallel-status-{date}.md` after each update so it survives a planter
+session restart. Format:
+
+```markdown
+## Parallel run status — {date}
+| teammate_name              | sprint    | phase       | queue | last_heartbeat |
+| shepherd-parallel-{slug1}  | dev.1     | body-wave-2 | 0     | {timestamp}    |
+| shepherd-parallel-{slug2}  | dev.2     | body-wave-1 | 1     | {timestamp}    |
+| shepherd-parallel-{slug3}  | dev.3     | intro       | 0     | {timestamp}    |
+```
+
+After all N teammates close: run the full cleanup stewardship (§3). Do not run it
+per-teammate; cleanup is an all-or-nothing operation at the end of the parallel run.
+
+### Sprint rollover (--auto mode)
+
+When `/shepherd:spawn --auto` is active, you run a sequential loop: spawn → babysit →
+inter-sprint work → spawn-next. Full loop structure is in `commands/spawn.md §--auto flag`.
+This section describes the **planter's authorship and decision work** within the loop.
+
+#### Inter-sprint work checklist (planter execution)
+
+After each CONDUCTOR CLOSE REPORT arrives and before the next spawn, execute in order.
+Each step is a hard gate — a failure pauses the loop (never silently skips):
+
+1. **Verify close report** per base §5 (hand-back timing). Grade present, handoff doc
+   written, carry-forwards enumerated, CRITICAL/HIGH dispositions listed.
+2. **Catchup commit** any uncommitted wave artifacts (`git status` → stage → commit).
+3. **Rebase-merge** dev.N onto patch branch. Verify green gate. Merge.
+4. **Open PR or accumulate** (standalone = open+merge; mid-patch = accumulate).
+5. **Delete dev.N branch** (confirm merged first).
+6. **Cut dev.N+1 branch** off the updated patch branch (if not last dev).
+7. **Author the handoff doc** for dev.N+1 (schema below).
+8. **Update carry-forward ledger**.
+9. **Update error budget counter**.
+10. **Emit inter-sprint status** with 5-second pause window.
+
+If steps 1–10 complete without failure, emit the next spawn. If any step fails,
+emit `[AUTO PAUSE]` with the failing step identified. Do not emit "pause" and
+immediately re-attempt — wait for operator confirmation.
+
+#### Handoff document authorship
+
+The auto-handoff doc is the **continuity bridge** for the incoming teammate. Since the
+next teammate has a fresh context window with zero history, the handoff doc is its
+only source of truth about what happened in prior sprints. Under-authored handoffs
+produce confused teammates; over-authored handoffs exceed the teammate's boot-context
+budget. Target: 60–120 lines.
+
+Required sections (see `commands/spawn.md §--auto flag, Inter-sprint work, step 7`
+for the full schema):
+- Prior sprint summary (deliverables, grade, timestamp)
+- Carry-forwards (verbatim from close report)
+- GH issues closed and opened
+- Branch state (patch branch SHA, new dev.N+1 branch SHA)
+- Error budget remaining
+- Operator instructions captured during the loop (if any)
+- Context file pointers (seed path, ledger path)
+
+**What NOT to include**: wave-level implementation details, coder brief contents,
+subagent transcripts. Those are in the teammate's own session transcript — they
+are not the planter's summary to reproduce.
+
+After authoring, verify: all `{token}` fields are substituted; no empty sections;
+file is committed before the next spawn fires.
+
+#### Termination criteria and operator pause window
+
+You enforce four termination conditions (checked after each inter-sprint work pass):
+
+1. **LAST-DEV**: the sprint that just closed was dev.LAST. Run full cleanup stewardship
+   (§3). Emit PLANTER REPORT (auto-mode variant — includes loop summary: sprints run,
+   grades, errors consumed, final patch branch SHA).
+
+2. **GRADE-FLOOR**: `task_result.grade < [autorun].min_grade`. Emit AUTO ABORT REPORT
+   with the grade floor breach highlighted. Do not spawn the next teammate.
+
+3. **BUDGET-ZERO**: `error_budget_remaining == 0`. Same as GRADE-FLOOR in behavior.
+
+4. **OPERATOR-INTERRUPT**: any message during the 5-second countdown other than
+   `'continue'` / `'ok'`. Finish current inter-sprint work (do NOT orphan in-flight work),
+   then pause. The loop is resumable: operator types `'resume auto'` to continue from
+   dev.N+1.
+
+For ESCALATION-PAUSE (an escalation reaching operator-question or hard-stop mid-sprint):
+this is not a termination — it is a loop suspension. You address the escalation, send
+the resume signal, and the loop continues. Emit `[AUTO PAUSE — escalation]` so the
+operator knows the loop is not terminated but is waiting.
+
+#### Open questions — Sprint rollover
+
+**OQ-PR1 (MEDIUM): Handoff doc size vs. context budget.**
+The next teammate receives the handoff doc in its boot prompt. If the patch has many
+dev sprints (≥ 5) and each handoff doc accumulates, the boot prompt may approach the
+teammate's context limit. For v5.1.4: keep each handoff doc ≤ 120 lines; include only
+the most recent prior sprint summary (not a chain of all prior summaries). A rolling
+summary approach (planter condenses N prior summaries into one) is deferred to v5.1.5.
+
+---
+
 ### 6. Read-only observation contract during babysit
 
 When no escalation is pending and no git operation is active, you are in observation mode: read-only from the project source tree (same contract as @discovery during a pre-mesh pass).
@@ -401,9 +569,9 @@ Everything in plant mode, PLUS:
 
 - `agents/conductor.md` — conductor profile (divergence table lives there)
 - `${CLAUDE_PLUGIN_ROOT}/commands/plant.md` — thin-loader entry point for plant mode
-- `${CLAUDE_PLUGIN_ROOT}/commands/spawn.md` — thin-loader entry point for spawn mode
+- `${CLAUDE_PLUGIN_ROOT}/commands/spawn.md` — thin-loader entry point for spawn mode; `§--parallel flag` for parallel spawn behaviors; `§--auto flag` for sequential autopilot loop
 - `skills/shepherd/references/seed-template.md` — canonical seed shape
-- `skills/shepherd/doctrines/spawn-escalation.md` — escalation channel mechanics (file paths, polling, lock semantics)
+- `skills/shepherd/doctrines/spawn-escalation.md` — escalation channel mechanics (file paths, polling, lock semantics); `§X` for multiplexed escalation (--parallel); `§XI` for sequential autopilot (--auto)
 - `skills/shepherd/doctrines/chain-repair.md` — when mesh contradicts seed
 - `skills/shepherd/doctrines/seed-anchored-by-issues.md` — lane-anchoring discipline
 - `skills/shepherd/doctrines/issue-ledger-awareness.md` — full-ledger Phase 0 sweep

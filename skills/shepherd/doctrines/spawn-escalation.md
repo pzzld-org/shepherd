@@ -33,7 +33,7 @@ communication failure to a specific broken invariant here.
 > Source of truth for all platform facts cited in this doctrine:
 > `.artifacts/docs/handoffs/2026-05-19-teammate-api-discovery.md` (D-API report).
 > Any contradiction between this doctrine and the D-API report should be resolved
-> in favor of the D-API report, and flagged as an Open Question (§X below).
+> in favor of the D-API report, and flagged as an Open Question (§IX below).
 
 ---
 
@@ -413,7 +413,7 @@ itself fails. The planter operates on these rules without improvising.
 
 ---
 
-## VIII. Non-goals in v5.1.4
+## VIII. Non-goals in v5.1.4 (single-teammate baseline)
 
 These are explicitly deferred. Do not implement them in this patch; do not design
 escalation flows that assume them.
@@ -437,7 +437,7 @@ escalation flows that assume them.
 
 ---
 
-## IX. Open questions
+## IX. Open questions (single-teammate baseline)
 
 These questions were raised by the D-API report and are not yet resolved.
 The engineer's plan must address them before the escalation channel can be
@@ -471,7 +471,270 @@ tool must be called from a Claude session.
 
 ---
 
-## X. See also
+---
+
+## X. Multiplexed escalation (--parallel mode)
+
+When `/shepherd:spawn --parallel <N>` is active, N teammates may surface escalations
+concurrently. The base channel mechanics (§II–§IV) remain identical for each
+individual escalation — one payload per teammate, one resume reply per payload. The
+planter's **triage loop** is what changes: it becomes a multiplexed queue.
+
+### Routing keys
+
+Each escalation is routed by `teammate_name` (the predictable `shepherd-parallel-{sprint_slug}`
+string). The `TeammateIdle` hook payload carries `teammate_name` (D-API §13), which is
+the unambiguous key. The planter MUST NOT route by `teammate_type` until OQ-1 is
+resolved (§IX).
+
+The escalation filesystem path encodes the sprint slug:
+```
+.artifacts/escalations/{sprint_slug}/{timestamp}-{role}.md
+```
+
+When N teammates are active, N separate `{sprint_slug}/` directories exist. The
+planter reads all N directories on each `TeammateIdle` fire; a new file in any
+directory is a pending escalation.
+
+### Priority rules
+
+| Priority | Condition | Action |
+|---|---|---|
+| P0 (CRITICAL preemption) | `halt_code` is a CRITICAL-tier code per `agents/conductor.md §Halt codes` | Jumps queue immediately. Multiple simultaneous CRITICAL halts → operator decision (§Hard stops #9 in spawn.md) |
+| P1 (FIFO) | All other `halt_code` values | Processed first-in-first-out by `TeammateIdle` arrival time |
+| P-NOTIFY (non-blocking) | `halt_code: null`, `blocking: false` | Wave-complete notification; processed immediately (no queue); triggers a commit and wave-ack |
+
+### Queue state during mid-triage arrival
+
+The planter holds an in-memory queue. Notation: `Q = [(teammate_name, payload), ...]`.
+
+**Scenario A: planter is mid-triaging teammate A; teammate B fires a non-CRITICAL halt.**
+- Enqueue B: `Q.append((B, payload_B))`.
+- Emit: `[QUEUE] Teammate B escalation received (halt_code: {code}). Queued at position {len(Q)}. Completing A-triage first.`
+- Finish A-triage. Call SendMessage to resume A. Then process B.
+
+**Scenario B: planter is mid-triaging teammate A; teammate B fires a CRITICAL halt.**
+- Suspend A-triage: write bookmark to `.artifacts/escalations/{sprint_A}/triage-suspended.md`:
+  ```json
+  { "suspended_at": "<ISO-timestamp>", "triage_stage": "<stage>", "reason": "CRITICAL preempt from {sprint_B}" }
+  ```
+- Emit: `[QUEUE PREEMPT] Interrupting {sprint_A} triage for CRITICAL halt in {sprint_B}`.
+- Process B to resolution. Send B's resume signal.
+- Return to A: re-read the suspension bookmark, continue A-triage from the bookmark stage.
+- Delete the suspension bookmark after A-triage completes.
+
+**Scenario C: planter's own main-chat session is slow/busy while escalations queue.**
+- The TeammateIdle hook is BLOCKING (can exit 2). Use this: if the planter has >1
+  queued item, exit 2 on the current TeammateIdle to hold the idle teammate while
+  the planter clears the queue head first.
+- Do NOT hold a teammate idle beyond 2 minutes. If the queue is deep: emit
+  `[QUEUE WARNING] {N} escalations pending; teammate {name} held for {elapsed}s`.
+
+### Cross-teammate dependency halts
+
+When teammate A's sprint declares a `sprint_dependencies` link to teammate B's output
+(e.g., B generates a type definition that A imports), A may halt with:
+
+```json
+{
+  "halt_code": "CROSS-DEP-WAIT",
+  "role": "coder",
+  "phase": "body-wave-2",
+  "question": "Waiting for {path} from sprint {sprint_B}. Not yet produced.",
+  "blocking": true,
+  "context_files": ["path/to/A/import_site.rs"],
+  "suggested_resolution": "operator-question"
+}
+```
+
+**Planter resolution procedure:**
+
+1. Check teammate B's heartbeat row for phase. If B's relevant wave has completed:
+   - Read B's wave-gate output for the artifact path.
+   - Deliver via resume reply (§IV Option A):
+     ```json
+     { "resolution": "operator-answer",
+       "answer": "Artifact available at {path}. Proceed.",
+       "amended_files": ["{path}"] }
+     ```
+   - A resumes immediately (no operator input needed for this case).
+
+2. If B has not yet produced the artifact:
+   - Notify A: `SendMessage(to: A, "B's artifact not yet ready. Stand by — planter will
+     notify when available.")` Do NOT mark A as resumed yet; let it stay idle.
+   - Re-check after each subsequent `TeammateIdle` fire. When B's wave completes,
+     deliver the artifact path to A.
+   - Track in the status board under A's row: `blocked_by: {sprint_B}`.
+
+3. If `[spawn].cross_dep_timeout_sec` (default 300) expires without B producing the artifact:
+   - Escalate to operator as `ESCALATION — operator question`.
+   - Include B's current phase and heartbeat data in the context_files.
+
+### PARALLEL-COLLISION halt
+
+If, after spawn, a coder in any teammate discovers a runtime file collision (shared
+path not detected by the pre-spawn check), it surfaces `halt_code: PARALLEL-COLLISION`.
+
+**Planter response:**
+
+1. Receive the PARALLEL-COLLISION payload. Identify which two sprints collide.
+2. Immediately send `SendMessage` to ALL affected teammates: `"PARALLEL-COLLISION halt
+   received. Halting your sprint pending conflict resolution. Do NOT proceed to the next
+   node."` Do not resume any affected teammate until the conflict is resolved.
+3. Surface to operator with a conflict summary:
+   ```
+   [PARALLEL-COLLISION]
+   Conflicting path: {path}
+   Sprint A (shepherd-parallel-{slugA}): wave {N}, role {roleA}
+   Sprint B (shepherd-parallel-{slugB}): wave {M}, role {roleB}
+
+   Options:
+   (1) Amend sprint A's scope to avoid {path} — planter can chain-repair
+   (2) Amend sprint B's scope to avoid {path} — planter can chain-repair
+   (3) Serialize: let A finish {path} first, then B reads A's output (sets cross-dep)
+   (4) Abort the --parallel run; re-scope manually
+   ```
+4. On operator choice: execute the amendment or serialization, then resume affected teammates.
+
+### Open questions — §X
+
+**OQ-X1 (MEDIUM): Exit-2 semantics for multiple concurrent TeammateIdle events.**
+D-API §13 documents `TeammateIdle` as BLOCKING (exit 2 = keep working). If two
+teammates fire `TeammateIdle` at the same time and the planter's hook scripts are
+executed in sequence, the second hook may fire before the first is resolved. Whether
+the platform queues these or fires them in parallel is not documented. Until confirmed:
+treat each `TeammateIdle` as atomic (the planter handles only one at a time); the queue
+above is the in-memory representation, not a platform primitive.
+
+---
+
+## XI. Sequential autopilot (--auto mode)
+
+When `/shepherd:spawn --auto` is active, the planter runs a sequential loop. The
+escalation channel (§II–§IV) is the same as single-spawn — only one teammate is
+active at a time, so there is no multiplexed queue. The additions in this section
+govern the **loop boundary** behavior: what the planter does between spawns, how it
+detects the patch end, and what context the next teammate inherits.
+
+### `TaskCompleted` → planter-takes-over → spawn-next contract
+
+The binding transition between two auto-loop iterations:
+
+1. **`TaskCompleted` fires** for the terminal task of the sprint (the conductor's close
+   synthesis task). This is the authoritative signal that the sprint is done —
+   not just `TeammateIdle`, which can fire mid-sprint when the teammate is waiting.
+   The conductor MUST complete a named task (e.g., `shepherd-{sprint_slug}-close`)
+   to signal loop completion.
+
+2. **Planter takes over**: the `TeammateIdle` hook fires immediately after the
+   terminal `TaskCompleted`. The planter reads the mailbox for the CONDUCTOR CLOSE
+   REPORT envelope, verifies it, and begins the inter-sprint work checklist
+   (`commands/spawn.md §--auto flag, Inter-sprint work`).
+
+3. **Spawn-next**: after inter-sprint work completes cleanly (all 10 steps verified),
+   the planter dispatches the next teammate via `Agent`. The new teammate receives the
+   handoff doc path in its boot prompt (§ Build the teammate prompt, `commands/spawn.md`).
+
+**Critical invariant**: the planter MUST NOT spawn the next teammate until the
+inter-sprint work is fully committed to git. An incomplete commit state at spawn-next
+means the new teammate starts with an inconsistent patch branch.
+
+### Patch boundary detection
+
+The planter determines `dev.LAST` from three sources (in precedence order):
+
+| Source | How | Precedence |
+|---|---|---|
+| `shepherd.toml [version].dev_total` | Direct config value | 1 (highest) |
+| Seed count on the patch branch | `ls {paths.plans}/{patch_slug}-dev*.seed.md \| wc -l` | 2 |
+| Operator input during preflight Check 5 | Interactive prompt | 3 (fallback) |
+
+Once `dev.LAST` is determined, it is locked for the lifetime of the auto-loop. The
+planter does NOT dynamically re-detect `dev.LAST` mid-loop. If the operator amends
+the scope mid-loop (e.g., "add one more sprint"), they must interrupt the loop,
+update `shepherd.toml`, and re-invoke `--auto` from the current sprint.
+
+### Loop-termination payload shape
+
+When the auto-loop terminates (any condition), the final `TaskCompleted` from the
+closing teammate carries the terminal sprint's grade and carry-forwards. The planter
+reads this to produce the termination report.
+
+Expected `TaskCompleted` payload (produced by the conductor at close synthesis):
+
+```json
+{
+  "task_id": "shepherd-{sprint_slug}-close",
+  "task_title": "Sprint close — {sprint_slug}",
+  "task_result": {
+    "grade": "A",
+    "carry_forwards": ["#NNN (deferred)", "#MMM (resolved)"],
+    "handoff_path": "{paths.docs}/<date>-{sprint_slug}-close-handoff.md",
+    "error_budget_consumed": 1,
+    "open_questions": []
+  },
+  "assignee": "shepherd-auto-{sprint_slug}"
+}
+```
+
+The planter reads `task_result.grade` for the GRADE-FLOOR termination check and
+`task_result.error_budget_consumed` for the BUDGET-ZERO check.
+
+If `task_result` is missing or malformed, the planter treats it as a GRADE-FLOOR
+event (fail-safe) and emits an AUTO ABORT REPORT with `grade: UNKNOWN`.
+
+### Context the next teammate inherits
+
+The next teammate (context window = zero prior sprint history) receives three
+documents in its boot prompt:
+
+1. **Active seed**: `{paths.plans}/{sprint_slug_N+1}.seed.md` — the plan.
+2. **Auto-handoff doc**: `{paths.docs}/<date>-{sprint_slug_N+1}-auto-handoff.md` —
+   authored by the planter during inter-sprint step 7. Contains prior sprint summary,
+   carry-forwards, branch state, error budget. This is the teammate's only window
+   into what happened before it woke up.
+3. **Carry-forward ledger**: `{ledger.carry_forward_file}` — chronic items.
+
+The seed alone is NOT sufficient. The handoff doc is mandatory. If the handoff doc
+is missing when spawn-next fires, the planter emits hard stop #13
+(`commands/spawn.md §--auto flag, Hard stops specific to --auto`).
+
+### Operator pause window
+
+Between each spawn (after the 5-second countdown in `commands/spawn.md §--auto flag`),
+the operator may interrupt by pressing Ctrl-C or sending any message. The planter
+treats any message during the countdown as an interrupt unless the message is exactly
+`'continue'` or `'ok'`.
+
+When interrupted, the loop pauses at the most recently completed inter-sprint work
+state. All git commits from the inter-sprint checklist have already landed — no work
+is lost. The operator can:
+- `'resume auto'` — continue the loop from the next sprint.
+- `'abort'` — terminate the loop; planter emits AUTO ABORT REPORT.
+- Any other instruction — the planter treats it as a manual operator interaction,
+  executes it, then asks: `"Auto-loop is paused. Resume with 'resume auto' or abort with 'abort'."`.
+
+### Open questions — §XI
+
+**OQ-XI1 (MEDIUM): `TaskCompleted` for terminal task — naming convention.**
+The close synthesis task must have a predictable name for the planter to distinguish
+it from wave-scope `TaskCompleted` events. Current proposal: `shepherd-{sprint_slug}-close`.
+If the conductor names this task differently, the planter will mis-classify the
+terminal signal as a wave-complete notification and commit rather than trigger the
+inter-sprint work. Confirm the task name with the conductor profile author before
+the first auto-loop runs.
+
+**OQ-XI2 (LOW): Operator interrupt via message vs. Ctrl-C during countdown.**
+The 5-second countdown is described as a wait, but in the Claude Code model, there
+is no true "timer" — the planter is not a daemon with a sleep loop. The countdown is
+approximated by the planter emitting the countdown message and checking for operator
+input on its next turn. A very fast operator can interrupt before the next turn; a
+slow operator may not. This asymmetry is acceptable for v5.1.4 but may need a more
+robust mechanism in v5.1.5.
+
+---
+
+## XII. See also
 
 - `skills/shepherd/doctrines/pause-for-dependency.md` — mid-sprint satellite dispatch contract (conductor-side pause for dependency resolution; uses `SendMessage` at Step 5)
 - `skills/shepherd/doctrines/chain-repair.md` — when a planter triage determines chain-repair category; amend-and-resume protocol
@@ -480,5 +743,8 @@ tool must be called from a Claude session.
 - `agents/conductor.md §Side-effect boundary` — what the conductor does NOT do (git, cleanup, lock)
 - `agents/planter.md §Babysitter mode §1` — escalation triage categories (chain-repair, operator-question, hard-stop)
 - `agents/planter.md §Babysitter mode §2` — git custody during spawn
-- `commands/spawn.md` — spawn command; §Failure modes & recovery for operator-facing recovery UX
+- `agents/planter.md §Multi-teammate triage (--parallel mode)` — planter-side implementation of §X; collision detection, status board, per-teammate state
+- `agents/planter.md §Sprint rollover (--auto mode)` — planter-side implementation of §XI; inter-sprint checklist, handoff authorship, termination
+- `commands/spawn.md §--parallel flag` — spawn command parallel behaviors (collision check, worktree setup, merge gate, cleanup per teammate)
+- `commands/spawn.md §--auto flag` — spawn command auto-loop semantics (loop structure, inter-sprint work, termination conditions)
 - `.artifacts/docs/handoffs/2026-05-19-teammate-api-discovery.md` — D-API report (all platform facts sourced here)

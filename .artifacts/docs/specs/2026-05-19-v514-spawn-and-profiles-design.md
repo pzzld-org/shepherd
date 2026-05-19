@@ -26,18 +26,35 @@ teammate-conductor — proactively reading context, answering escalations the fl
 can't resolve alone, and owning the side-effects (git, cleanup, conflict
 resolution) the conductor shouldn't touch.
 
+## Scope addendum (operator amendment 2026-05-19 mid-design)
+
+Scope expanded mid-design from "foundation only" to **command consolidation**:
+
+- `/shepherd:spawn` adds two flags:
+  - `--parallel <N>` — spawn N sibling teammates inside the lead's single
+    team (D-API: one team per lead, but a team can hold N teammates)
+  - `--auto` — sequential autopilot; planter spawns a fresh teammate per
+    sprint, doing inter-sprint cleanup + git + handoff between spawns
+- **Drop `/shepherd:parallel`** — fully replaced by `/shepherd:spawn --parallel`
+- **Drop `/shepherd:autorun`** — fully replaced by `/shepherd:spawn --auto`
+- Final command surface: `plant`, `start`, `spawn` (with `--parallel`, `--auto` flags)
+
+**Version-tier implication:** dropping two commands and adding one is MINOR
+per shepherd's own semver (CLAUDE.md: "MINOR = new commands/doctrines/config
+keys"). Operator decision needed before PR: keep tagged as v5.1.4 (patch) or
+re-tag as v5.2.0 (minor). Branch stays `v5.1.4` for now.
+
 ## Non-goals (explicitly deferred)
 
 The v5.1.4 seed (`.artifacts/docs/plans/v514-teammate-parallel.seed.md`) covers
-a much larger surface — registry-mediated parallel coordination, build-manifest
-locks, per-teammate cache-telemetry aggregation. Those defer to v5.1.5+.
-This patch ships the **foundation only**: spawn + profiles + escalation channel.
+a much larger surface — registry tables, `shctx parallel` subcommands, per-
+teammate cache-telemetry aggregation. Those defer to v5.1.5+.
 
-Out of scope for v5.1.4:
-- Multi-teammate fanout in `/shepherd:parallel` (still single-operator multi-worktree)
+Out of scope for v5.1.4 (after consolidation amendment):
 - Registry tables `parallel_assignments`, `parallel_locks`, `parallel_ready`
-- `shctx parallel *` subcommands
-- Build-manifest single-writer lock
+- `shctx parallel *` subcommands (claim, ready, lock, unlock, status)
+- Formal build-manifest single-writer lock (planter handles collision-avoidance
+  by sprint scope rework during `--parallel` setup; explicit lock primitives wait)
 - Per-teammate cache-telemetry aggregation
 - Live RPC between teammates
 - Teammate role/permission system

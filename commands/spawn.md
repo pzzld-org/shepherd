@@ -5,7 +5,18 @@ description: |
   planter/babysitter. Requires the Agent Teams feature (CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=true,
   Claude Code ≥ v2.1.32, teammateMode configured). Main chat adopts the planter profile;
   the teammate's first action is /shepherd:start against the active sprint scope.
-argument-hint: "[ sprint_slug ]   defaults to next unstarted dev.N in shepherd.toml"
+
+  Two flags extend the base behavior:
+    --parallel <N>  Fan out N sibling teammates inside the lead's single team. Each
+                    teammate runs one sprint in its own worktree. Planter pre-checks
+                    scope for file-disjoint collision before any spawn fires. Escalations
+                    are multiplexed; planter triages by teammate_name. Merges are
+                    dev-order gated (predecessor merged before successor).
+    --auto          Sequential autopilot. Planter spawns one teammate per sprint, does
+                    inter-sprint cleanup + git + handoff between spawns, then spawns the
+                    next. Each sprint gets a fresh context window. Loop terminates at
+                    last dev, operator interrupt, grade floor, or error budget exhaustion.
+argument-hint: "[ sprint_slug ] [ --parallel <N> | --auto ]   defaults to next unstarted dev.N"
 allowed-tools: Bash, Edit, Glob, Grep, Read, Skill, Write, ToolSearch, TaskCreate, TaskGet, TaskList, TaskUpdate, WebFetch, WebSearch
 ---
 
@@ -120,6 +131,51 @@ Continuing anyway — you may override by pressing Ctrl-C now.
 
 This check is **non-blocking** (framework defaults cover the gap). All other checks
 are hard-stop.
+
+### Check 5 — Flag-specific preflight (--parallel and --auto only)
+
+**For `--parallel <N>`:**
+
+1. **Collision pre-check (HARD-STOP).** Before any spawn fires, planter reads each
+   seed's `file_scope.exclusive` frontmatter for all N sprints. Seeds that share any
+   path are colliding. A collision before spawn fires is a hard stop:
+   ```
+   /shepherd:spawn --parallel — REFUSED: Collision detected.
+   Sprints {A} and {B} both claim exclusive write to {path}.
+   Re-scope one sprint's file_scope before retrying.
+   ```
+   Operator must amend the seeds; then re-invoke. Planter does not auto-resolve collisions.
+
+2. **N within bounds (HARD-STOP).** `N` must be 2–4. N=1 is just base spawn; N>4
+   saturates the lead's `TeammateIdle` handler. Refuse with:
+   ```
+   /shepherd:spawn --parallel <N> — REFUSED: N must be between 2 and 4 (got {N}).
+   ```
+
+3. **N seeds available.** Exactly N seeds must exist as
+   `{paths.plans}/{sprint_slug}.seed.md`. Missing seeds → hard stop; operator must run
+   `/shepherd:plant` for the missing slots.
+
+**For `--auto`:**
+
+1. **Patch boundary detection (HARD-STOP).** Planter reads `shepherd.toml [branching]`
+   to enumerate all dev.N branches in the current patch. It must identify which dev.N
+   is the last before spawning:
+   ```bash
+   # Infer last dev from shepherd.toml [version] or the seed count on the patch branch
+   grep -E 'dev\.' .claude/shepherd.toml | tail -1
+   ```
+   If the patch boundary cannot be determined (no `dev_total` or `patch_dev_count` key
+   in `shepherd.toml`), planter prompts the operator:
+   ```
+   [PROMPT] /shepherd:spawn --auto: Cannot determine the last dev sprint.
+   How many dev sprints does this patch contain? (current: dev.{N})
+   Enter total count or "stop after dev.{N}" to cap the run:
+   ```
+   Operator input is mandatory before auto-loop begins.
+
+2. **Min-grade configured.** `[autorun].min_grade` must be set in `shepherd.toml`.
+   If absent, default to `B` and warn the operator.
 
 ---
 
@@ -283,6 +339,398 @@ After calling `Agent`, emit:
         Heartbeat threshold: 5 min. Alert on staleness.
         Sprint: {sprint_slug}
 ```
+
+---
+
+## § --parallel flag
+
+`/shepherd:spawn --parallel <N>` fans out N sibling teammates inside the lead's single
+team. N is typically 2–4 (see preflight Check 5). Each teammate runs exactly one
+sprint end-to-end via `/shepherd:start`. The planter (main chat) acts as the
+multiplexed babysitter for all N teammates simultaneously.
+
+Base spawn behavior (§ Adopt the planter profile, § Build the teammate prompt,
+§ Spawn dispatch) applies to each teammate. The sections below describe the
+**incremental behavior** specific to `--parallel`.
+
+### Pre-spawn collision check
+
+Before calling `Agent` for any teammate, the planter executes the collision check
+from preflight Check 5 (§ Preflight). This check is repeated here as a hard gate:
+
+1. Read `file_scope.exclusive` from each seed's YAML frontmatter.
+2. Build a union map: `{path → [sprint_slugs_that_claim_it]}`.
+3. Any path with more than one claimant is a collision.
+4. Surfaces ALL collisions to the operator in one block before stopping:
+   ```
+   [COLLISION REPORT]
+   path: src/foo/bar.rs
+     claimed by: v515-dev1 (exclusive), v515-dev2 (exclusive)
+   path: Cargo.toml
+     claimed by: v515-dev1 (exclusive), v515-dev3 (exclusive)
+
+   Re-scope the colliding seeds before retrying /shepherd:spawn --parallel.
+   ```
+5. **Also check for shared build-manifest writes.** Paths matching `Cargo.toml`,
+   `package.json`, `pyproject.toml`, `go.mod`, `*.lock`, `*.sum`, `build.gradle`
+   (or equivalent per `[project].build_manifest_paths` in shepherd.toml) are
+   single-writer surfaces. If more than one sprint writes these, it is always a
+   collision regardless of `file_scope` classification.
+6. If zero collisions: emit `[COLLISION CHECK PASSED — N sprints are file-disjoint]`
+   and proceed to spawn.
+
+If a collision is detected AFTER spawn (e.g., a coder brief discovers an unexpected
+shared file), the teammate MUST surface it as a halt with `halt_code: PARALLEL-COLLISION`.
+Planter receives this, pauses ALL affected teammates via SendMessage, then resolves before
+allowing any affected teammate to continue. See §X (PARALLEL-COLLISION halt) in spawn-escalation doctrine.
+
+### Worktree-per-teammate setup
+
+Each of the N teammates runs in its own git worktree to guarantee filesystem isolation:
+
+```bash
+# For each teammate i (1..N):
+git worktree add .worktrees/{sprint_slug_i} {sprint_branch_i}
+```
+
+The worktree path is `.worktrees/{sprint_slug}` (e.g., `.worktrees/v515-dev2`).
+
+Include the worktree path in the teammate's boot prompt (INHERITED CONTEXT block):
+```
+WORKTREE PATH:  {abs_path}/.worktrees/{sprint_slug}
+All file reads and writes MUST use this path as the working root.
+```
+
+Cleanup: planter removes each worktree as its teammate's sprint closes
+(see § Babysitter responsibilities §4, and Cleanup at each teammate close below).
+
+### Teammate naming convention (--parallel)
+
+Teammate names follow the pattern `shepherd-parallel-{sprint_slug}` to distinguish
+from single-spawn (`shepherd-conductor-{sprint_slug}`). The `TeammateIdle` hook routes
+by `teammate_name`; the `shepherd-parallel-` prefix is the routing key.
+
+### Multiplexed escalation queue
+
+With N teammates active simultaneously, escalations can arrive concurrently. The planter
+processes them as a queue with the following rules:
+
+1. **CRITICAL preemption.** Any escalation carrying `halt_code` in the CRITICAL tier
+   (from `agents/conductor.md §Halt codes`) jumps the queue immediately, regardless of
+   arrival order. If multiple CRITICAL escalations arrive simultaneously, process them
+   alphabetically by `teammate_name` (deterministic ordering).
+
+2. **Same-level FIFO.** Non-CRITICAL escalations are processed first-in-first-out, keyed
+   by `TeammateIdle` hook arrival time.
+
+3. **Mid-triage arrival.** If the planter is currently triaging teammate A's escalation
+   and teammate B fires another:
+   - If B's escalation is CRITICAL: emit `[QUEUE PREEMPT] Interrupting A-triage for B
+     CRITICAL halt`. Suspend A-triage state by writing a bookmark to
+     `.artifacts/escalations/{sprint_A}/triage-suspended.md`. Address B first.
+     Resume A after B's resume signal is sent.
+   - If B's escalation is non-CRITICAL: enqueue it. Emit `[QUEUE] Teammate B escalation
+     queued (position {N}). Completing A-triage first.`
+
+4. **Cross-teammate dependency halt.** If teammate A is waiting for an output from
+   teammate B's sprint (a declared `sprint_dependencies` link in the seed):
+   - Teammate A surfaces `halt_code: CROSS-DEP-WAIT` with payload identifying the
+     blocking sprint and the specific artifact path.
+   - Planter checks teammate B's current phase via its heartbeat row. If B's relevant
+     wave has completed, planter delivers the artifact path to A via resume reply.
+   - If B has not yet produced the artifact, planter notifies A that B is still in
+     flight and sets a check interval (every TeammateIdle fire, re-check).
+   - Do NOT block A permanently on B without a timeout. After `[spawn].cross_dep_timeout_sec`
+     (default: 300), escalate to the operator as an `ESCALATION — operator question`.
+
+5. **Status board.** Planter maintains a lightweight in-memory status board:
+   ```
+   | teammate_name              | phase     | queue_depth | last_seen |
+   | shepherd-parallel-dev1     | body-wave-2 | 0         | 14:03 |
+   | shepherd-parallel-dev2     | body-wave-1 | 1 (queued) | 14:01 |
+   | shepherd-parallel-dev3     | intro      | 0         | 13:58 |
+   ```
+   After each `TeammateIdle` or `TaskCompleted` hook fire, update the board and
+   print it if the operator is watching the session.
+
+### Dev-order merge gate
+
+The seeds for parallel sprints declare a merge order (via `sprint_dependencies` or
+`dev_order` in the seed frontmatter). The planter enforces this order:
+
+1. **Merge gate rule.** Sprint dev.N+1 may NOT be merged to the patch branch until
+   dev.N's PR is merged. Even if dev.N+1's sprint closes first.
+
+2. **Detection.** On each `TeammateIdle` fire for a closing teammate, planter reads the
+   `dev_order` from the teammate's seed. If any predecessor sprint is unmerged:
+   ```
+   [MERGE GATE] shepherd-parallel-{sprint_slug} sprint closed cleanly.
+   Predecessor dev.{M} PR is not yet merged. Holding merge.
+   Carrying close report in .artifacts/docs/handoffs/<timestamp>-{sprint_slug}-pending-merge.md
+   Monitoring TeammateIdle for dev.{M} to close.
+   ```
+
+3. **Release.** When the predecessor closes and its PR merges, planter immediately
+   releases the held sprint: rebases `dev.N+1` onto the now-updated patch branch,
+   verifies green gate, merges.
+
+4. **Order invariant.** The patch branch commit graph must always reflect dev-order
+   regardless of which sprint finished first. The merge gate enforces this.
+
+### Cleanup at each teammate close
+
+When a teammate's sprint closes (CONDUCTOR CLOSE REPORT received via `TeammateIdle`):
+
+1. Verify the close report per base spawn (§ Babysitter responsibilities §4).
+2. Apply the merge gate (above). If held: write pending-merge marker, skip merge.
+3. If not held (predecessor already merged): execute the rebase-merge sequence.
+4. Remove the teammate's worktree:
+   ```bash
+   git worktree remove --force .worktrees/{sprint_slug}
+   # --force only if the branch is already merged; otherwise surface to operator.
+   ```
+5. Update the multiplexed status board to mark this teammate as CLOSED.
+6. Update the carry-forward ledger for this sprint's items.
+7. DO NOT run the full cleanup stewardship (agent-* branches, shepherd.lock) until
+   ALL N teammates have closed. Run the full §3 cleanup only at final close.
+
+### Hard stops specific to --parallel
+
+In addition to the base hard stops (§ Hard stops), refuse or halt when:
+
+8. **Collision detected after spawn.** Halt with `PARALLEL-COLLISION`. Pause ALL
+   affected teammates via SendMessage before addressing. See spawn-escalation §X (PARALLEL-COLLISION halt).
+9. **More than 1 simultaneous CRITICAL halt.** If two or more teammates fire CRITICAL
+   escalations at the same time, halt the planter's entire ambient loop:
+   ```
+   [HARD STOP] Multiple simultaneous CRITICAL halts detected.
+   Teammates in CRITICAL state: {list}.
+   This requires operator judgment on priority. Presenting all CRITICAL payloads now.
+   ```
+   Operator decides resolution order. Do not auto-prioritize CRITICAL vs. CRITICAL.
+10. **Teammate count drops to 0 unexpectedly.** If all N teammates stall or session-drop
+    before any sprint closes, the parallel run is unrecoverable without operator input.
+    Emit full stall alert per § Failure modes & recovery.
+11. **Dev-order cycle detected.** If the `sprint_dependencies` graph contains a cycle
+    (A depends on B, B depends on A), the merge gate would deadlock. Detect this during
+    Check 5 (pre-spawn) and refuse with:
+    ```
+    /shepherd:spawn --parallel — REFUSED: Dependency cycle detected in sprint_dependencies.
+    Cycle: {A} → {B} → {A}. Fix the seed frontmatter before retrying.
+    ```
+
+---
+
+## § --auto flag
+
+`/shepherd:spawn --auto` runs a sequential autopilot loop. The planter spawns one
+teammate per sprint, waits for it to close, does all inter-sprint work, then spawns
+the next — until the patch is exhausted or a termination condition fires.
+
+The core win over repeated `/shepherd:start` or `/shepherd:spawn`: **each sprint gets a
+fresh context window**. The previous sprint's accumulated context does not degrade the
+next sprint's dispatch quality. The planter holds continuity; the conductor resets.
+
+Base spawn behavior (§ Adopt the planter profile, § Build the teammate prompt,
+§ Spawn dispatch, § Babysitter responsibilities) applies to each loop iteration.
+The sections below describe the **loop semantics** and the inter-sprint work.
+
+### Loop structure
+
+```
+[AUTO INIT]
+  1. Read shepherd.toml → determine dev.0 (or current dev.N) through dev.LAST
+  2. Execute preflight Check 5 --auto: confirm patch boundary + min_grade
+  3. Emit loop plan: "Auto-loop will run dev.N through dev.LAST ({M} sprints)."
+  4. Operator has 10 seconds to interrupt before first spawn fires (emit countdown).
+
+[FOR each dev.N in dev_order]:
+
+  [SPAWN]
+    a. Build teammate prompt (§ Build the teammate prompt) for dev.N
+    b. Dispatch via Agent (§ Spawn dispatch)
+    c. Emit: "[AUTO] Sprint {N}/{LAST}: shepherd-auto-{sprint_slug} spawned."
+
+  [BABYSIT]
+    d. Full base babysit: wave-boundary commits, heartbeat monitoring,
+       escalation response (§ Babysitter responsibilities)
+    e. If escalation reaches operator-question or hard-stop: AUTO LOOP PAUSES.
+       Print: "[AUTO PAUSE] Sprint dev.{N} requires operator input. Auto-loop
+       is suspended. Resolve the escalation and type 'resume auto' to continue."
+       Loop resumes only on explicit operator confirmation.
+
+  [SPRINT CLOSE]
+    f. Receive CONDUCTOR CLOSE REPORT from teammate via TeammateIdle
+    g. Execute inter-sprint work (see below)
+
+  [TERMINATION CHECK — runs after inter-sprint work]
+    h. If this was dev.LAST: EXIT LOOP → emit PLANTER REPORT (auto-mode variant)
+    i. If grade < [autorun].min_grade: EXIT LOOP → emit AUTO ABORT REPORT
+    j. If error_budget_remaining == 0: EXIT LOOP → emit AUTO ABORT REPORT
+    k. If operator sent interrupt signal: EXIT LOOP → emit AUTO ABORT REPORT
+    l. Otherwise: continue to next iteration (dev.N+1)
+
+[END LOOP]
+```
+
+Teammate naming convention for auto-loop: `shepherd-auto-{sprint_slug}` (distinguishes
+from single-spawn `shepherd-conductor-*` and parallel `shepherd-parallel-*`).
+
+### Inter-sprint work
+
+The inter-sprint work is the planter's exclusive domain between two spawned teammates.
+It runs after the close report arrives and before the next teammate is spawned.
+
+**Checklist (execute in order; each step is a hard gate for the next):**
+
+1. **Verify the close report.**
+   - Grade present, carry-forwards enumerated, handoff doc written to `{paths.docs}/`.
+   - All CRITICAL/HIGH GH# dispositions listed.
+   - If verification fails: emit `[AUTO PAUSE]` — do not continue to the next sprint.
+
+2. **Wave-boundary commits catchup (if any missed).**
+   - `git status` — stage and commit any uncommitted wave artifacts.
+   - Emit per-file list of what was committed.
+
+3. **Rebase-merge dev.N onto patch branch.**
+   ```bash
+   git checkout {patch_branch}
+   git rebase {dev_N_branch}
+   # or: git merge --no-ff {dev_N_branch} -m "merge({dev_N_branch}): sprint close"
+   ```
+   Verify green gate. If gate fails: `[AUTO PAUSE]` — operator must fix before auto continues.
+
+4. **Open PR (if sprint is standalone) or accumulate (if mid-patch).**
+   - Standalone sprint (last dev): open and merge PR per
+     `feedback_pr_required_not_bypass.md` discipline.
+   - Mid-patch sprint: accumulate the merge, DO NOT open PR yet. PR opens when
+     the last dev.N closes.
+
+5. **Delete dev.N branch.**
+   ```bash
+   git branch -d {dev_N_branch}
+   ```
+   Confirm branch is merged before deleting. If not merged: surface to operator.
+
+6. **Cut dev.N+1 branch** (if not the last dev):
+   ```bash
+   git checkout -b {dev_N+1_branch} {patch_branch}
+   ```
+
+7. **Write handoff document for dev.N+1.**
+   Path: `{paths.docs}/<date>-{sprint_slug_N+1}-auto-handoff.md`
+   Content schema (the next teammate has zero prior context; this doc IS its history):
+   ```markdown
+   # Auto-handoff: {sprint_slug_N+1}
+
+   ## Prior sprint summary
+   - Sprint: {sprint_slug_N}
+   - Grade: {grade}
+   - Closed at: {ISO-timestamp}
+   - Key deliverables: {bullet list from close report}
+
+   ## Carry-forwards from dev.{N}
+   {verbatim carry-forward list from close report}
+
+   ## GH issues closed
+   {list of #NNN merged}
+
+   ## GH issues opened or updated
+   {list}
+
+   ## Branch state
+   - Patch branch: {patch_branch} @ {sha}
+   - dev.{N+1} branch: {dev_N+1_branch} @ {sha} (cut from patch branch)
+
+   ## Error budget
+   - Budget at dev.{N} close: {error_budget_remaining}
+   - Errors consumed: {count}
+
+   ## Operator instructions (if any)
+   {any instructions the operator provided during the auto-loop}
+
+   ## Context files for dev.{N+1} seed
+   - Seed: {paths.plans}/{sprint_slug_N+1}.seed.md
+   - Prior handoff: this file
+   - Carry-forward ledger: {ledger.carry_forward_file}
+   ```
+
+8. **Update carry-forward ledger.**
+   Every CRITICAL/HIGH item from the close report placed, deferred with a target,
+   or operator-dropped. No silent disappearances.
+
+9. **Update the error budget.**
+   Deduct any errors consumed this sprint. If `error_budget_remaining` reaches 0:
+   termination condition J fires.
+
+10. **Emit inter-sprint status.**
+    ```
+    [AUTO] Sprint dev.{N} closed → dev.{N+1} ready.
+    Grade: {grade} | Budget remaining: {N} | Sprints remaining: {M}
+    Handoff written: {path}
+    Next spawn in 5 seconds — interrupt with Ctrl-C now to pause.
+    ```
+    The 5-second window is the operator's pause opportunity between sprints.
+
+### Termination conditions
+
+The auto-loop exits on any of these conditions (all checked at step h–k above):
+
+| Condition | Code | Planter action |
+|---|---|---|
+| `dev.LAST` closed cleanly | LAST-DEV | Full cleanup stewardship; emit final PLANTER REPORT |
+| Grade < `[autorun].min_grade` | GRADE-FLOOR | AUTO ABORT; emit abort report; operator decides whether to re-spawn manually |
+| `error_budget_remaining == 0` | BUDGET-ZERO | AUTO ABORT; same as GRADE-FLOOR |
+| Operator sends interrupt | OPERATOR-INTERRUPT | AUTO ABORT after current sprint's inter-sprint work completes cleanly (do not orphan a mid-sprint teammate) |
+| Escalation requires operator input mid-sprint | ESCALATION-PAUSE | AUTO LOOP PAUSES (not terminates); resumes on explicit operator confirmation |
+
+### Auto ABORT REPORT shape
+
+When a non-LAST-DEV termination fires, emit:
+
+```
+## AUTO ABORT REPORT
+- Termination code: {code}
+- Sprint at termination: dev.{N} (of dev.{LAST})
+- Grade at termination: {grade}
+- Error budget remaining: {N}
+- Handoff doc (for manual continuation): {path}
+- Last committed SHA on patch branch: {sha}
+- Carry-forwards pending: {list or "see ledger"}
+- Recommended action: /shepherd:spawn dev.{N+1} (manual single-sprint)
+  or /shepherd:spawn --auto dev.{N+1}..dev.{LAST} (resume auto from here)
+```
+
+### Context the next teammate inherits
+
+Beyond the seed (which carries the plan), the next teammate receives via its boot prompt:
+
+```
+INHERITED CONTEXT
+  Prior auto-handoff: {paths.docs}/<date>-{sprint_slug_N+1}-auto-handoff.md
+  Prior close report: {paths.reports}/<date>-{sprint_slug_N}-close.md
+  Carry-forward ledger: {ledger.carry_forward_file}
+  Error budget remaining: {N}
+  Patch branch SHA: {sha}
+```
+
+The handoff doc (step 7 above) is the continuity bridge. It must be authored completely
+before the next spawn fires — an incomplete handoff produces a confused teammate.
+
+### Hard stops specific to --auto
+
+In addition to base hard stops (§ Hard stops), the auto-loop also halts when:
+
+12. **Inter-sprint work step fails.** Any step in the inter-sprint checklist that fails
+    (gate failure, merge conflict, branch cut failure) triggers `[AUTO PAUSE]`. The loop
+    does not proceed until the operator resolves the failure and types `'resume auto'`.
+13. **Handoff doc missing or malformed.** Before each spawn, the planter verifies the
+    handoff doc for the next sprint exists and contains all required fields. If missing:
+    auto-pause; do not spawn into a context vacuum.
+14. **Teammate stalls > 10 min (auto-specific threshold).** In base spawn the threshold
+    is 5 min with operator decision. In auto mode, a 10-minute stall (without escalation)
+    triggers `[AUTO PAUSE]` and suspends the loop. Operator must confirm whether to wait
+    longer, declare stall, or abort auto.
 
 ---
 
@@ -508,11 +956,38 @@ until this is confirmed.
 
 ---
 
+## § Open questions
+
+**OQ-4 (MEDIUM, --parallel specific): Cross-worktree build-manifest contention.**
+The collision check (Check 5) guards `file_scope.exclusive` paths. However, some build
+tools (e.g., cargo with a shared registry cache, npm with a shared `node_modules`)
+may still contend on paths outside the worktree. For v5.1.4, treat this as a known
+gap: the collision check is sufficient for source-file collisions; build-tool-level
+contention is handled by shepherd.toml `[project].build_manifest_paths` extension
+once the consumer project configures it.
+
+**OQ-5 (LOW, --auto specific): `resume auto` signal mechanism.**
+The loop pause/resume uses the operator typing `'resume auto'` as the resume signal.
+There is no formal tool call for this; it relies on the planter recognizing the phrase
+in the conversation. A more robust mechanism (e.g., a `TaskCreate` with a resume-signal
+subject) is deferred to v5.1.5.
+
+**OQ-6 (LOW, --parallel + --auto): teammate naming collisions across sessions.**
+If the operator runs `--parallel` or `--auto` twice in the same Claude Code session
+without full team cleanup between runs, teammate names (`shepherd-parallel-{slug}`,
+`shepherd-auto-{slug}`) may collide with existing `~/.claude/teams/` entries. The
+one-team-per-lead limit (Check 3) partially guards against this, but if the prior
+team's config.json was removed manually without a clean team shutdown, the check
+may pass incorrectly. Mitigation: always verify `ls ~/.claude/teams/` is empty before
+spawning any multi-sprint run.
+
+---
+
 ## § See also
 
-- `agents/planter.md` — full planter/babysitter behavioral contract; §Babysitter mode for spawn-specific behaviors
+- `agents/planter.md` — full planter/babysitter behavioral contract; §Babysitter mode for spawn-specific behaviors; §Multi-teammate triage (--parallel mode); §Sprint rollover (--auto mode)
 - `agents/conductor.md` — conductor profile; §Side-effect boundary; §Hard prohibitions #12; §Escalation protocol
-- `skills/shepherd/doctrines/spawn-escalation.md` — **escalation channel contract** (file paths, payload schema, resume shape, heartbeat, wave-boundary commit discipline)
+- `skills/shepherd/doctrines/spawn-escalation.md` — **escalation channel contract** (file paths, payload schema, resume shape, heartbeat, wave-boundary commit discipline; §X multiplexed escalation; §XI sequential autopilot)
 - `commands/start.md` — the command the teammate invokes after boot
 - `commands/plant.md` — seed authorship mode (prerequisite for a well-prepared spawn)
 - `docs/configuration.md` — shepherd.toml schema + Agent Teams setup section
