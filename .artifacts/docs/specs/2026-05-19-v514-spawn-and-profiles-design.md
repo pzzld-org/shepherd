@@ -285,11 +285,67 @@ code-quality auditor reviews the new profiles for clarity; data-flow auditor
 traces the escalation channel for soundness. Then PR `v5.1.4 → main` per
 `feedback_pr_required_not_bypass`.
 
+## D-LIFT findings (Phase 0 partial — survey landed 2026-05-19)
+
+Survey at `.artifacts/docs/handoffs/2026-05-19-profile-lift-survey.md`. Numbers:
+
+- ~620 lines lift to conductor profile (from SKILL.md + pipeline.md + flock.md + autorun.md + parallel.md + 2 doctrines)
+- ~280 lines lift to planter profile (from skills/shepherd/planter.md + commands/plant.md)
+- ~150 lines net-new for 6 babysitter-during-spawn behaviors (escalation response, git custody, cleanup stewardship, concurrent-write discipline, hand-back timing, read-only observation contract)
+
+**Operator-decision questions (adopted resolutions):**
+
+| Q | Resolution |
+|---|---|
+| SKILL.md fate | **Thin-loader** — quick-reference index, points at `agents/conductor.md` for full protocol |
+| Divergence table canonical | **Live in `agents/conductor.md`** as "what makes me different from planter"; planter cites |
+| autorun.md fate | **Thin to delta only** — loop semantics + sprint-through grant + autorun hard stops; pre-sprint discipline cites conductor profile |
+| skills/shepherd/planter.md survival | **Retire** — 5-line redirect at the old path; canonical content moves to `agents/planter.md` |
+| pause-for-dependency.md | **Reference, don't embed** — conductor.md cites the doctrine |
+
+**Refactor risks tracked in survey §6** — the medium-severity risks (R3: triple drift of dispatch procedure across SKILL.md + flock.md + new conductor.md; R5: autorun.md silent divergence after lift) are mitigated by enforcing ONE canonical location per piece of content.
+
+## D-API findings (Phase 0 complete — discovery landed 2026-05-19)
+
+Report at `.artifacts/docs/handoffs/2026-05-19-teammate-api-discovery.md`. Verdict: **mature enough to ship `/shepherd:spawn` in v5.1.4** with one major design constraint absorbed.
+
+**Confirmed platform facts:**
+
+| Fact | Value |
+|---|---|
+| Env var | `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=true` (string `true`, not `=1`) |
+| Teammate mode | `in-process` (per operator config) |
+| Min Claude Code version | v2.1.32 (operator on v2.1.144) |
+| Spawn mechanism | `Agent` tool dispatch from the lead session |
+| Communication primary | `SendMessage` (platform mailbox) |
+| Communication durable | `~/.claude/tasks/{team-name}/` shared filesystem |
+| Lifecycle hooks | `TeammateIdle` (BLOCKING, fires in lead), `TaskCreated`, `TaskCompleted` |
+| Heartbeat | NO platform primitive — shim via `PostToolUse` writing shctx rows |
+
+**Hard limits (load-bearing for design):**
+
+- **No nested teams** — teammate cannot spawn its own teammates; subagent dispatch via Agent tool is still available
+- **One team per lead session** — `/shepherd:spawn` refuses if a team is already active
+- **No session resumption for in-process teammates** — if a teammate stalls, work is lost (no `/resume`); planter MUST commit at wave boundaries so the loss horizon is one wave at most
+- **No per-teammate config at spawn** — the conductor profile is loaded by the teammate via its own `/shepherd:start` invocation, not injected by the spawner
+
+**Adopted escalation channel design:**
+
+Primary: `SendMessage` (mailbox). Conductor surfaces an escalation by calling `SendMessage(to: lead, payload: <structured>)`. Planter watches `TeammateIdle` hook firing (BLOCKING in lead context — natural pause point) or reads the mailbox proactively in ambient mode.
+
+Durable fallback: filesystem at `~/.claude/tasks/{team-name}/` — for transcripts, audit trail, and recovery if the SendMessage path is unavailable.
+
+Heartbeat: shctx `PostToolUse` hook writes a row per teammate tool call (timestamp, role, phase). Planter staleness check polls the row; threshold = 5 minutes inactivity → alert operator.
+
+**Wave-boundary commit discipline (new requirement, from "no /resume"):**
+
+The planter MUST commit on every `TaskCompleted` hook fire for a wave-scope task. The conductor signals wave completion via SendMessage AND TaskCompleted; planter commits the wave's work to the dev branch. If the teammate then stalls in the next wave, only THAT wave's work is lost.
+
+This makes the side-effect boundary stricter: conductor produces wave artifacts in the worktree but never commits; planter commits on every wave boundary signal.
+
 ## Open questions (engineer's plan resolves these)
 
-1. **Escalation channel shape** — Phase 0 D-API confirms: filesystem-mediated
-   (`.artifacts/escalations/`) vs return-envelope vs direct-message. Doctrine
-   §3 codifies whichever wins.
+1. ~~**Escalation channel shape**~~ — RESOLVED by D-API. SendMessage primary, filesystem durable, shctx heartbeat shim.
 
 2. **Heartbeat cadence** — every dispatch? every N minutes? Both?
 
