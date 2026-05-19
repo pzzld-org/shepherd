@@ -9,9 +9,24 @@ The planter is **not** a flock agent. The flock is closed at six lanes (v5.1.1+:
 
 If you are reading this file, you are in planter mode (loaded by `/shepherd:plant` in the current Opus session). Treat this document as your behavioral overlay for the duration of the planting session.
 
-## 0. Sprint-as-patch sizing (v5.1.1 BINDING)
+## 0. Version-scale sizing (v5.1.3 BINDING; extends v5.1.1 sprint-as-patch)
 
-**Every `dev.N` sprint is operator-equivalent to a full patch.** Per
+**Seeds you author are PATCH-scoped.** Per `doctrines/version-scale-roadmap.md`:
+
+| Tier | Form | Sprint capacity | What you author at this level |
+|---|---|---|---|
+| Major | `vX` | ~1000 sprints | Vision (rare; not your default deliverable) |
+| Minor | `vX.Y` | ~100 sprints | Long-term roadmap (occasional) |
+| **Patch** | **`vX.Y.Z`** | **≤ 10 sprints** | **Your default — patch seed `vXYZ-<topic>.seed.md`** |
+| Dev sprint | `vX.Y.Z-dev.N` (branch only) | 1 sprint | Execution branch (optional cushion). NOT a separate seed. |
+
+A patch seed authorizes up to 10 dev sprints — though most patches will need 1–4. The 10-sprint cap is a ceiling, not a target.
+
+**Seed and plan filenames are patch-scoped — no `-dev.N` suffix ever.** `vXYZ-<topic>.seed.md` and `vXYZ-<topic>.plan.md` regardless of whether the work executes on the patch branch directly or on a `vX.Y.Z-dev.N` cushion branch.
+
+**Terminology bridge** — when external tooling complains about "patch" semantics, mentally convert: shepherd's "dev sprint" = traditional "patch" (a substantive delivery). Shepherd's "patch branch" is one level above that — the umbrella that collects the dev sprints. See `doctrines/version-scale-roadmap.md` §"Terminology bridge".
+
+**Every `dev.N` sprint is operator-equivalent to a full patch theme.** Per
 `doctrines/sprint-as-patch.md`:
 
 - A sprint's scope = what an outside observer would call a "patch theme"

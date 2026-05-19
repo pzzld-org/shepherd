@@ -62,6 +62,8 @@ The engineer's full Phase 0 mesh + plan-authorship contract lives in `${CLAUDE_P
 Use this template as the canonical coder brief. The bracketed structure is non-negotiable.
 
 ```
+[ROLE] @coder — implementation lane for {sprint_branch}
+
 Repo: {abs_path}, branch `{sprint_branch}`. Implementation task.
 Commit template: fix(dev.{N}/{track}): {subject}
 DO NOT run gates / build / test — main chat validates.
@@ -74,30 +76,38 @@ No new build-manifest dependencies without conductor approval.
 - `{paths.plans}/{sprint_slug}.plan.md`        — this sprint's plan
 - {any prior audit reports that inform this task}
 
-[WORKTREE]
-- Path: {abs_worktree_path}                    (the conductor sets `isolation: "worktree"`; this is your home)
-- Branch: {worktree_branch}                    (the agent's isolated branch — DO NOT push)
-- Commit template: fix(dev.{N}/{track}): {subject}
-
-[BASE-COMMIT-EXPECTED]
-# The SHA the worktree was branched from. Coder MUST verify before any edits
-# (per agents/coder.md Step 0.5). Mismatch ⇒ HALT with `BASE-DRIFT`.
-- {sprint_branch} HEAD at dispatch: {short_sha}    (run `git rev-parse HEAD` in the worktree)
-
-[SIBLING-LANES]
-# Read-only awareness (v5.0.9, flock-cohesion.md). The OTHER lanes firing in
-# this same Agent batch. You may NOT modify their MAY-MODIFY paths. If you
-# need a symbol they're producing, emit PAUSE-FOR-DEPENDENCY (do NOT silently
-# wait or duplicate). If you see scope overlap, flag SCOPE OVERFLOW.
-- {Lane B} (@{role}) — {file_scope summary}        — produces: {symbols/artifacts}
-- {Lane C} (@{role}) — {file_scope summary}        — produces: {symbols/artifacts}
-- ...
+# --- STABLE FRAMING BLOCK (cacheable prefix; reused across dispatches) ---
+# Per doctrines/brief-cache-discipline.md — these sections come FIRST and
+# are emitted verbatim across every dispatch in this sprint.
 
 [SKILLS]
 - code-style                          (mandatory per [skills.mandatory])
 - {language-skill}                     (per [skills.by_domain] for this lane's primary language)
 - {domain-skill 1}                     (per [skills.by_domain] for this lane's domain)
 - {domain-skill 2}                     (if applicable)
+
+[USER-STYLE]
+- code-style
+
+[DOCTRINES]
+- doctrines/zero-duplicate-tolerance.md
+- doctrines/agent-excellence.md
+- doctrines/brief-cache-discipline.md
+- {any project-doctrines from shepherd.toml [doctrines]}
+
+[PROTOCOL-REMINDERS]
+- Halt codes: DUPLICATION RISK, BASE-DRIFT, SCOPE OVERFLOW, PAUSE-FOR-DEPENDENCY
+- Read agents/coder.md Step 0.5 before editing (verify [BASE-COMMIT-EXPECTED] SHA).
+- Run agents/coder.md Step 3 (fallback dedup grep) before introducing any new symbol.
+
+# --- VARIABLE CONTENT BLOCK (dispatch-specific; tail of brief) ---
+
+[FILE-SCOPE]
+MAY MODIFY:
+- {path 1}
+- {path 2}
+MUST NOT TOUCH:
+- {paths owned by other lanes in this wave}
 
 [CONTEXT-INVENTORY]
 # Every existing symbol the lane will reuse, with absolute path
@@ -109,25 +119,34 @@ No new build-manifest dependencies without conductor approval.
 - {grep pattern} → expected 0
 - {grep pattern} → expected 0
 
-[USER-STYLE]
-- code-style
-
-[FILE-SCOPE]
-MAY MODIFY:
-- {path 1}
-- {path 2}
-MUST NOT TOUCH:
-- {paths owned by other lanes in this wave}
-
-[NON-GOALS]
-- {scope items reserved for later sprints}
-- {scope items reserved for other lanes}
-
 [ACCEPTANCE]
 # Runnable greps and structural assertions; NOT prose
 - {grep} → {expected count}
 - {gate command from [gates] passes — main chat runs}
 - {file count delta verification}
+
+[NON-GOALS]
+- {scope items reserved for later sprints}
+- {scope items reserved for other lanes}
+
+[SIBLING-LANES]
+# Read-only awareness (v5.0.9, flock-cohesion.md). The OTHER lanes firing in
+# this same Agent batch. You may NOT modify their MAY-MODIFY paths. If you
+# need a symbol they're producing, emit PAUSE-FOR-DEPENDENCY (do NOT silently
+# wait or duplicate). If you see scope overlap, flag SCOPE OVERFLOW.
+- {Lane B} (@{role}) — {file_scope summary}        — produces: {symbols/artifacts}
+- {Lane C} (@{role}) — {file_scope summary}        — produces: {symbols/artifacts}
+- ...
+
+[WORKTREE]
+- Path: {abs_worktree_path}                    (the conductor sets `isolation: "worktree"`; this is your home)
+- Branch: {worktree_branch}                    (the agent's isolated branch — DO NOT push)
+- Commit template: fix(dev.{N}/{track}): {subject}
+
+[BASE-COMMIT-EXPECTED]
+# The SHA the worktree was branched from. Coder MUST verify before any edits
+# (per agents/coder.md Step 0.5). Mismatch ⇒ HALT with `BASE-DRIFT`.
+- {sprint_branch} HEAD at dispatch: {short_sha}    (run `git rev-parse HEAD` in the worktree)
 ```
 
 > **`[BASE-COMMIT-EXPECTED]` is mandatory as of v5.0.3.** The conductor records
