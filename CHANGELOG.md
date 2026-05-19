@@ -4,6 +4,58 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v5.1.5 — 2026-05-19
+
+### Spawn flow optimization + flock normalization + token discipline
+
+v5.1.5 is a surface-area optimization release. No new commands, no new agent
+roles, no new doctrines. Four parallel lanes tightened the plugin's internal
+consistency and token efficiency.
+
+#### Lane A — spawn flow tightened
+
+`commands/spawn.md` streamlined (1027 → 600 effective lines): cleaner dispatch
+logic, new **Teammate tool feed** section documenting exactly what flows from
+main chat to the teammate-conductor at spawn time. `spawn-escalation.md`
+similarly trimmed (494 → 471). `commands/start.md` unchanged.
+
+#### Lane B — conductor dispatch decision tree + specialist examples
+
+`specialist-dispatch.md` expanded (152 → 530 lines) with a **DISPATCH DECISION
+TREE** and four worked specialist examples. `conductor.md` reinforced with
+three new anti-patterns (#28–30) strengthening flock-first defaults.
+`Agent`, `ToolSearch`, and `SendMessage` added to the conductor tools list.
+
+#### Lane C — flock agent normalization
+
+All six flock agents (`engineer`, `critic`, `coder`, `auditor`, `worker`,
+`discovery`) normalized to a cache-stable section order with a strive-higher
+preamble, `## Adaptability`, and `## What I am NOT` sections. Model
+assignments corrected: conductor remains `inherit`-only; flock restored to
+original models (5× Sonnet 4.6, engineer Opus 1m).
+
+#### Lane D — cache discipline + token conservation docs
+
+`brief-cache-discipline.md` gained a **BRIEF ASSEMBLY CHECKLIST**.
+`cache-telemetry.md` updated with per-role v5.1.5 hit-rate calibration.
+`agent-excellence.md` added a sixth rule (token conservation).
+`skills/shepherd/SKILL.md` gained a foundational **Token + cache discipline**
+section.
+
+### Changed
+
+- `commands/spawn.md` — streamlined; new Teammate tool feed section
+- `skills/shepherd/doctrines/spawn-escalation.md` — trimmed to essential content
+- `skills/shepherd/doctrines/specialist-dispatch.md` — DISPATCH DECISION TREE + 4 worked examples
+- `agents/conductor.md` — 3 new anti-patterns; Agent/ToolSearch/SendMessage in tool list
+- `agents/{engineer,critic,coder,auditor,worker,discovery}.md` — normalized section order + model assignments
+- `skills/shepherd/doctrines/brief-cache-discipline.md` — BRIEF ASSEMBLY CHECKLIST added
+- `skills/shepherd/doctrines/cache-telemetry.md` — per-role v5.1.5 calibration
+- `skills/shepherd/doctrines/agent-excellence.md` — sixth rule: token conservation
+- `skills/shepherd/SKILL.md` — Token + cache discipline foundational section
+
+---
+
 ## v5.1.4 — 2026-05-19
 
 ### Teammate-conductor + planter/conductor profile split
