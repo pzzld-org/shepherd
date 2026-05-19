@@ -33,6 +33,38 @@ binding contract at `skills/shepherd/doctrines/spawn-escalation.md`.
 
 ---
 
+## § Platform compatibility
+
+**Status (2026-05-19):** The conductor-as-teammate path documented below is fully
+functional in **tmux** `teammateMode` today. **In-process** mode is partially limited
+by [Claude Code issue #31977](https://github.com/anthropics/claude-code/issues/31977)
+— teammate sessions in in-process mode currently do not expose the `Agent` tool,
+so a spawned teammate's `/shepherd:start` cannot dispatch the flock the same way
+main chat can.
+
+| `teammateMode` setting | Conductor-as-teammate | Flock dispatch inside teammate |
+|---|---|---|
+| `tmux`        | ✅ Works today | ✅ Available |
+| `in-process`  | ⚠️ Degraded    | ❌ Blocked on #31977 |
+
+**Forward-compat:** This command and the `conductor` + `planter` profiles are
+designed for the eventual state (full Agent-tool parity across modes). When
+#31977 fixes, no spawn-side redesign is required; in-process users automatically
+gain full functionality.
+
+**Recommendation while #31977 is open:**
+- Use `tmux` teammateMode for live spawn workflows that exercise the full flock
+- In `in-process` mode, prefer `/shepherd:start` in main chat (which dispatches
+  the flock via the lead's Agent tool) until the bug lands; the `--as <leaf-role>`
+  family of spawn invocations (future v5.1.5 — see Open questions §X) will give
+  in-process users single-role teammate isolation without needing nested dispatch
+
+The preflight checks below detect feature-flag presence but do NOT currently gate
+on `teammateMode`. Operator is expected to be aware of the mode-vs-feature
+mismatch.
+
+---
+
 ## § Preflight
 
 Run every check before calling `Agent`. Refuse with a clear error if any check fails.

@@ -63,7 +63,7 @@ Every node in the graph is one of these types. The type determines the dispatch 
 | `RELEASE` | Conditional on dev.{last}; runs per `[release].driver` | Conductor or CI | tag + GH release + next patch branch + dev.0 |
 | `WORKER-IO` | One or more `@worker` (bounded; non-competing) | @worker | bounded reports |
 | `HARD-STOP` | Conductor inline (terminal) | Conductor | operator-surfaced halt block |
-| `PAUSE` | Conductor inline (terminal under `/shepherd:start`; bypassed under `/shepherd:autorun`) | Conductor | end-of-sprint waypoint |
+| `PAUSE` | Conductor inline (terminal under `/shepherd:start`; bypassed under `/shepherd:spawn --auto`) | Conductor | end-of-sprint waypoint |
 | `PAUSE-FOR-DEPENDENCY` | Conductor inline (validate satellite request + dispatch) | Conductor | satellite brief dispatched; paused coder awaiting resume |
 | `RESUME-LANE` | Conductor inline (SendMessage to paused coder; awaits resumed CODER REPORT) | Conductor | resumed lane commit lands before `WAVE-N-GATE` |
 | `DISCOVERY` | Single or parallel `@discovery` (v5.1.1+) | @discovery | DISCOVERY REPORT at `{paths.reports}/<date>-discovery-<id>.md` |
@@ -257,7 +257,7 @@ This is the default DAG every `/shepherd:start` walks unless the engineer's plan
                             ┌──────────┐    ┌──────────────────┐
                             │  PAUSE   │    │ RELEASE          │
                             │(or loop  │    │ (per [release]   │
-                            │ autorun) │    │  .driver)        │
+                            │ spawn    │    │  .driver)        │
                             └──────────┘    └──────────────────┘
 ```
 
@@ -384,28 +384,28 @@ The conductor does NOT compose hot-fix briefs from scratch — the auditor's rep
 
 ## IX. The autorun walk (loop semantics)
 
-Under `/shepherd:autorun`, after `CLOSE-FINALIZE` for sprint N, the conductor:
+Under `/shepherd:spawn --auto`, after `CLOSE-FINALIZE` for sprint N, the planter:
 
 1. Runs `references/branching-model.md` §II.4 (DELETE + cut next).
-2. Re-enters Step 0 of `/shepherd:start` for sprint N+1 (loads new seed, builds new graph).
-3. Walks the new graph.
+2. Spawns a fresh teammate-conductor for sprint N+1 (loads new seed, builds new graph).
+3. The teammate walks the new graph.
 
 The loop terminates on:
 
 - `HARD-STOP` node fired anywhere
-- `PAUSE` node fired (only happens under `/shepherd:start`; autorun bypasses by definition)
+- `PAUSE` node fired (only happens under `/shepherd:start`; spawn --auto bypasses by definition)
 - dev.{last} `CLOSE-FINALIZE` returns `on-dev.last` AND no sprint-through grant → exits to operator before `RELEASE`
 
-Autorun is structurally simpler in 4.2.0: it's "loop the walk algorithm". No special-cased "skip the PAUSE" logic — `PAUSE` is just absent from the autorun graph.
+Autorun is structurally simpler in 4.2.0: it's "loop the walk algorithm". No special-cased "skip the PAUSE" logic — `PAUSE` is just absent from the spawn --auto graph. Full loop mechanics: `commands/spawn.md §--auto flag`.
 
 ---
 
 ## X. The parallel walk (worktree fan-out)
 
-Under `/shepherd:parallel`, the conductor:
+Under `/shepherd:spawn --parallel <N>`, the planter fans out N sibling teammate-conductors. Each teammate:
 
-1. Builds N independent graphs (one per concurrent sprint).
-2. Walks all N concurrently, one walk per worktree.
+1. Receives an independent graph (one per concurrent sprint).
+2. Walks its graph in its own worktree.
 3. Joins at `CLOSE-FINALIZE` in dev-order — `dev.{N+1}` waits for `dev.{N}` to finalize before its own `CLOSE-FINALIZE` fires.
 
 The dev-order join is encoded as a cross-graph `in_predicate`:
@@ -414,7 +414,7 @@ The dev-order join is encoded as a cross-graph `in_predicate`:
 sprint-{N+1}.CLOSE-FINALIZE.in_predicates += [ sprint-{N}.CLOSE-FINALIZE.completed ]
 ```
 
-Per `parallel.md`, the maximum concurrent sprint count is 5. The walker enforces this by refusing to start a sixth concurrent walk.
+The maximum concurrent sprint count is 4 (N must be 2–4 per `commands/spawn.md §Preflight Check 5`). The planter enforces this before any teammate is spawned. Full mechanics: `commands/spawn.md §--parallel flag`.
 
 ---
 
@@ -817,5 +817,4 @@ Full doctrine: `doctrines/plugin-reload-escape.md`.
 - `doctrines/cargo-sequential-gates.md` — cargo must run sequentially at WAVE-GATE (v5.0.9)
 - `doctrines/plugin-reload-escape.md` — /reload-plugins escape hatch for MCP unavailability (v5.0.9)
 - `doctrines/dispatch-cascade.md` — Stage Graph as rule engine; `shctx plan extract` + `shctx graph` mechanize the walk (v5.0.9)
-- `autorun.md` — autorun = loop the walk algorithm
-- `parallel.md` — parallel = N concurrent walks with cross-graph join at CLOSE-FINALIZE
+- `commands/spawn.md` — `/shepherd:spawn --auto` (loop the walk algorithm) and `--parallel <N>` (N concurrent walks with cross-graph join at CLOSE-FINALIZE)

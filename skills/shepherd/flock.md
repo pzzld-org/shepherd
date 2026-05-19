@@ -407,13 +407,36 @@ Full contract + use-case catalog + cross-sprint reuse rules: `doctrines/discover
 
 ---
 
-## VI. See also
+## VI. Meta tier (conductor + planter)
 
+The six flock agents above are the closed domain flock. **Conductor and planter are meta-orchestrators above the flock.** They live in `agents/` by file convention but do NOT open the closed-flock contract and are NOT dispatched via the Agent tool as lane agents.
+
+| Profile | File | Role |
+|---------|------|------|
+| **@conductor** | `${CLAUDE_PLUGIN_ROOT}/agents/conductor.md` | Sprint-runner. Loads as a system-prompt addendum when `/shepherd:start` or `/shepherd:spawn` fires. Walks the Stage Graph, dispatches flock agents, gates waves, authors close reports. Writes `.md` only — never source code. |
+| **@planter** | `${CLAUDE_PLUGIN_ROOT}/agents/planter.md` | Seed author + babysitter. Loads for `/shepherd:plant` (seed authorship) and `/shepherd:spawn` (ambient babysitter while teammate-conductor runs). Holds git custody during spawn. Escalation responder. |
+
+**Key distinction from the six lanes:**
+- Flock agents are dispatched via `Agent({ prompt: "<agents/role.md body>...", ... })` — they are ephemeral subagents.
+- Conductor and planter are adopted as the **ambient session identity** of whoever invokes the command (main chat or teammate). They are NOT ephemeral. The dispatch procedure in §I applies to the six flock agents only; conductor and planter are self-applied profiles.
+
+The divergence table comparing conductor and planter is canonical in `agents/conductor.md §How the conductor differs from the planter`. Do not maintain a second copy here.
+
+<!-- DUPLICATED in agents/conductor.md §How the conductor differs from the planter — canonical there -->
+
+---
+
+## VII. See also
+
+- `${CLAUDE_PLUGIN_ROOT}/agents/conductor.md` — **canonical conductor profile** (sprint-runner; dispatch procedure; pipeline steps; halt codes; side-effect boundary; divergence table vs. planter)
+- `${CLAUDE_PLUGIN_ROOT}/agents/planter.md` — **canonical planter profile** (seed authorship; babysitter mode; git custody; escalation response)
+- `${CLAUDE_PLUGIN_ROOT}/commands/spawn.md` — spawn command (preflight, teammate prompt construction, `--parallel` and `--auto` flag behavior)
 - `pipeline.md` — Stage Graph node taxonomy + edge labels + walk algorithm
 - `doctrines/stage-graph.md` — graph-as-dispatch-contract principle
 - `doctrines/zero-duplicate-tolerance.md` — DEDUP-GATE pre-dispatch contract + skill auto-attachment
+- `doctrines/spawn-escalation.md` — NEW v5.1.4 — escalation channel contract (file paths, payload schema, resume shape, heartbeat, wave-boundary commits)
 - `references/agent-briefs.md` — copy-paste brief templates + grade cutoffs
 - `references/seed-template.md` — canonical seed shape (engineer reads + parses; now includes graph-hint §7-bis)
 - `references/branching-model.md` — branch lifecycle + rollover algorithm + hygiene checks
 - `doctrines/*.md` — framework-intrinsic rules
-- `${CLAUDE_PLUGIN_ROOT}/agents/<role>.md` — agent system prompts (the source of truth for each agent's identity)
+- `${CLAUDE_PLUGIN_ROOT}/agents/<role>.md` — agent system prompts (the source of truth for each agent's identity) — six domain lanes + conductor + planter meta-orchestrators

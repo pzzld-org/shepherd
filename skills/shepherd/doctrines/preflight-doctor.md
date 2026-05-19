@@ -35,8 +35,9 @@ Non-blocking by design — the doctor reports, the operator decides.
 |---|---|
 | Before `/shepherd:plant` | Optional — planter doesn't need it but it surfaces blockers early |
 | Before `/shepherd:start` | **Recommended** — catches pre-sprint state issues before the engineer's MESH absorbs them |
-| Before `/shepherd:autorun` | **Strongly recommended** — autorun bypasses operator pauses; preflight catches issues that would otherwise compound silently |
-| Before `/shepherd:parallel` | **Required** — parallel mode is multi-worktree; preflight catches stale sub-worktrees first |
+| Before `/shepherd:spawn` | **Strongly recommended** — spawn boots a teammate-conductor; preflight catches env flag, version, and lock issues before the Agent call |
+| Before `/shepherd:spawn --auto` | **Strongly recommended** — sequential autopilot bypasses operator pauses between sprints; preflight catches issues that would otherwise compound silently. Also verifies `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=true` per `commands/spawn.md §Preflight Check 1` |
+| Before `/shepherd:spawn --parallel <N>` | **Required** — parallel mode is multi-worktree; preflight catches stale sub-worktrees and collision-check readiness first |
 | When something feels off | Always — the doctor is cheap (~ 5 seconds) and informative |
 | Mid-sprint after `/reload-plugins` | Optional — verifies the reload picked up everything |
 
