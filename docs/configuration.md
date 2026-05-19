@@ -138,7 +138,7 @@ The context registry is a per-project SQLite cache that backs:
 `enabled = false` is a valid configuration in v5.0.0-c (the DB is optional and the framework falls back to direct MCP/CLI). In v5.0.0-d the DB becomes mandatory — `shctx migrate` and `shctx status` reject `enabled = false`.
 
 `auto_refresh` triggers (additive list):
-- `on-sprint-open` — fire `shctx refresh --scope=all` at the top of every `/shepherd:start` and `/shepherd:autorun` walk.
+- `on-sprint-open` — fire `shctx refresh --scope=all` at the top of every `/shepherd:start` and `/shepherd:spawn` walk (including `--auto` and `--parallel <N>` modes).
 - `on-engineer-dispatch` — fire `shctx refresh --scope=github` if `index_issues.refreshed_at` older than `[context.refresh].ttl_minutes`.
 - `on-close-finalize` — fire `shctx refresh --scope=artifacts` after handoff is written.
 - `on-wave-gate` *(v5.0.3)* — fire `shctx refresh --scope=github,artifacts` after every `WAVE-GATE` lands. Combats stale carry-forward / dedup-ledger drift mid-sprint (per v5.0.1 field feedback §2.8). Recommended for L/XL sprints with 4+ waves; LOW for S/M sprints (refresh churn outweighs benefit).

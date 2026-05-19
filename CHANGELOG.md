@@ -4,6 +4,106 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v5.1.4 — 2026-05-19
+
+### Teammate-conductor + planter/conductor profile split
+
+v5.1.4 introduces `/shepherd:spawn` for teammate-driven sprint execution and
+extracts the orchestrator behavior into two canonical profile files at
+`agents/conductor.md` (sprint-runner) and `agents/planter.md` (seed-author +
+ambient babysitter). Main chat stays lean as the planter while a spawned
+teammate runs the sprint as conductor. `/shepherd:autorun` and
+`/shepherd:parallel` retire into `/shepherd:spawn --auto` and
+`/shepherd:spawn --parallel <N>` respectively — consolidated command surface
+is `{plant, start, spawn, ctx}`.
+
+#### New
+
+- **`agents/conductor.md`** (445 lines, cyan, inherit model) — canonical
+  sprint-runner profile adopted by `/shepherd:start` whether main chat or a
+  spawned teammate is the runner. Lifts ~620 lines of orchestrator behavior
+  from `SKILL.md`, `pipeline.md`, `flock.md`, `autorun.md`, `parallel.md`.
+  Strict side-effect boundary (Hard Prohibition #12: no git writes, no
+  filesystem cleanup outside dispatch). Tools list trimmed to GitHub
+  read-only.
+- **`agents/planter.md`** (582 lines, violet, `opus[1m]`) — dual-mode
+  profile (plant + spawn babysitter). Lifts ~280 lines from
+  `skills/shepherd/planter.md` + `commands/plant.md`. Adds 6/6 net-new
+  babysitter subsections: escalation triage, git custody, cleanup
+  stewardship, concurrent-write discipline, hand-back timing, observation
+  contract. Tools list includes GitHub write tools per side-effect
+  ownership.
+- **`commands/spawn.md`** (995 lines) — `/shepherd:spawn` command with
+  `--parallel <N>` (fan out N sibling teammate-conductors with planter-side
+  dev-order merge gate, cap N ≤ 4) and `--auto` (sequential autopilot,
+  fresh teammate context window per sprint, planter handles inter-sprint
+  cleanup + git + handoff). Platform compatibility note for GitHub issue
+  #31977.
+- **`skills/shepherd/doctrines/spawn-escalation.md`** (750 lines) —
+  canonical teammate↔planter escalation contract: SendMessage primary
+  channel, filesystem durable fallback at `~/.claude/tasks/{team}/`,
+  `PostToolUse`-driven heartbeat row in shctx, wave-boundary commit
+  discipline (≤ 1 wave loss horizon for in-process teammates with no
+  `/resume`).
+
+#### Retired
+
+- `/shepherd:autorun` → use `/shepherd:spawn --auto`
+- `/shepherd:parallel` → use `/shepherd:spawn --parallel <N>`
+- `commands/{autorun,parallel}.md` collapsed to thin delta notes
+- `skills/shepherd/{autorun,parallel,planter}.md` collapsed to thin
+  redirects pointing at the canonical successors
+
+#### Refactored (thin-loader pattern)
+
+- `commands/start.md`: 99 → 52 lines. Loads `agents/conductor.md` as a
+  system-prompt addendum; Step 0 bootstrap preserved (shepherd.toml,
+  branch detect, doctrines, handoff, CLAUDE.md).
+- `commands/plant.md`: 138 → 52 lines. Loads `agents/planter.md`; Opus
+  model gate preserved.
+- `skills/shepherd/SKILL.md`: dispatch-procedure block collapsed to a
+  pointer at `agents/conductor.md` (mitigates the R3 triple-drift risk
+  surfaced by the D-LIFT survey).
+- `skills/shepherd/flock.md`: new §VI Meta tier section listing planter
+  and conductor profiles.
+- `skills/shepherd/pipeline.md`: §IX/§X autorun-walk + parallel-walk now
+  correctly attribute loop/fanout control to the **planter** (the
+  conductor doesn't loop itself under `--auto`).
+- `CLAUDE.md`: flock count corrected to six domain agents + two meta
+  orchestrators; commands table updated with spawn row + retirement
+  notice; file contracts expanded with `agents/conductor.md` and
+  `agents/planter.md` invariants.
+
+#### Phase 0 discovery reports
+
+- `2026-05-19-teammate-api-discovery.md` (D-API) — Agent Teams platform
+  surface: `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=true`, in-process
+  teammateMode, SendMessage mailbox, `TeammateIdle`/`TaskCreated`/
+  `TaskCompleted` hooks. Hard limits documented.
+- `2026-05-19-profile-lift-survey.md` (D-LIFT) — ~620 + ~280 lines of
+  lift identified by file:line range; 6 babysitter gaps cataloged as
+  net-new; 5 overlap questions adopted with operator resolutions.
+- `2026-05-19-teammate-subagent-roadmap.md` (R-ROADMAP) — GitHub issue
+  #31977 (open, labeled `bug`) is the load-bearing constraint;
+  tmux-mode teammates already have Agent tool. Verdict YES-EVENTUAL /
+  MEDIUM. Design is forward-compatible — no spawn-side redesign when
+  the bug fixes.
+- `2026-05-19-flock-teammate-efficacy.md` (R-FLOCK) — per-agent matrix.
+  Top-3 leaf-teammate candidates: `@discovery` > `@worker` > `@engineer`.
+  Pattern B (peer-to-peer flock teammates) NOT recommended for v5.1.4 (no
+  role attestation; deps already file-mediated).
+
+#### Known limitations
+
+- **In-process `teammateMode` + GitHub #31977**: teammate sessions in
+  in-process mode do not expose the `Agent` tool, so a spawned teammate
+  cannot dispatch the flock the way main chat can. **Workaround**: use
+  tmux `teammateMode` for full functionality, or stay on `/shepherd:start`
+  in main chat until the bug lands. See `commands/spawn.md
+  §Platform compatibility` for the full table.
+
+---
+
 ## v5.1.3 — 2026-05-19
 
 ### Cleanup, cache discipline, dispatch telemetry

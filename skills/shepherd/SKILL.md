@@ -1,7 +1,7 @@
 ---
 name: shepherd
 slug: shepherd
-version: 5.1.3
+version: 5.1.4
 description: |
   Sprint-by-sprint version-cycle conductor. Six-agent flock (engineer, critic,
   coder, auditor, worker, discovery) on a three-section sprint pipeline
@@ -31,32 +31,34 @@ description: |
   dispatch DAG that the engineer's plan emits and the conductor walks
   deterministically) remains the orchestration contract.
 
-  Four commands:
+  Three commands:
     /shepherd:plant    — Opus-only seed authorship (precedes every sprint pipeline)
     /shepherd:start    — one sprint, then PAUSE
-    /shepherd:autorun  — sequential autopilot (skip the PAUSE between sprints)
-    /shepherd:parallel — multi-sprint worktree fan-out
+    /shepherd:spawn    — spawn a teammate-conductor; --auto for sequential autopilot,
+                         --parallel <N> for concurrent multi-sprint fan-out
+
+  /shepherd:autorun and /shepherd:parallel are retired (v5.1.4). Their behaviors
+  are fully superseded by /shepherd:spawn --auto and /shepherd:spawn --parallel <N>.
 
   Project-agnostic. Branch topology, gate commands, artifact paths, and
   skill-integration mappings configured per-project via .claude/shepherd.toml.
 
-  Mechanics live in: planter.md, flock.md, pipeline.md, autorun.md, parallel.md,
-  references/branching-model.md, references/seed-template.md,
-  references/agent-briefs.md, doctrines/*.md, agents/<role>.md.
+  Mechanics live in: flock.md, pipeline.md, references/branching-model.md,
+  references/seed-template.md, references/agent-briefs.md, doctrines/*.md,
+  agents/<role>.md (including agents/conductor.md and agents/planter.md).
 metadata:
   triggers:
     - "/shepherd"
     - "/shepherd:plant"
     - "/shepherd:start"
-    - "/shepherd:autorun"
-    - "/shepherd:parallel"
+    - "/shepherd:spawn"
 ---
 
 # /shepherd — Conductor Quick Reference
 
-You are the **conductor**. Main chat. Sonnet. You plan, dispatch, validate, and tie off. You write `.md` only — never source code, build files, or shell. The flock writes the code.
+This file is a **quick-reference index**. Operational detail lives in the sibling files and agent profile files (see §XI). When this file points at one, load it.
 
-This file is a quick reference. Operational detail lives in the sibling files (see §IX). When this file points at one, load it.
+**Sprint-runner behavior is canonical in `agents/conductor.md`.** This file provides orientation and cross-references; for the binding dispatch procedure, pipeline steps, and halt codes, see `agents/conductor.md §Mandatory protocol`.
 
 ---
 
@@ -86,34 +88,14 @@ Throughout this skill, references to:
 | @worker | sonnet | Single or parallel | Bounded execution: monitoring, research, ops, MCP batches |
 | @discovery | sonnet | Single or parallel | Read-only orientation, comprehension, synthesis. No mutation. Pre-MESH or mid-walk research lane (v5.1.1+) |
 
-**Planter (Opus, conductor variant — not a seventh lane).** When a session needs to author seeds, `/shepherd:plant` switches the current Opus session into planter mode. Mechanics: `planter.md`. Command: `${CLAUDE_PLUGIN_ROOT}/commands/plant.md`.
+**Planter and conductor are meta-orchestrators, not flock members.** They live in `agents/` by file convention but DO NOT open the closed-flock contract. The conductor runs sprints; the planter authors seeds and acts as babysitter when a teammate-conductor is active. See `agents/conductor.md` and `agents/planter.md` for their canonical behavior. The meta tier is documented in full in `flock.md §Meta tier`.
 
 **Three hard rules:**
 - `@critic` gates every plan above XS, every money-path/schema change, every merge to main.
 - `@auditor` close-mode is always a 3–5 swarm split by concern (code-quality, data-flow, dependency-topology, datastore-state, completeness). Intro-mode is 1–2 lanes (regression, carry-forward-disposition).
 - `@discovery` is **read-only**. It absorbs exploration; it never grades, never proposes, never dispatches. See `doctrines/discovery-readonly.md`.
 
-**Dispatch procedure (every flock agent, every time):**
-
-1. Read `${CLAUDE_PLUGIN_ROOT}/agents/<role>.md`.
-2. Extract the markdown body below the YAML frontmatter.
-3. Prepend that body to the brief as the agent's system prompt.
-4. Set `model` per the table above.
-5. **Do NOT set `subagent_type`** — omit it (defaults to general-purpose runtime).
-
-```
-Agent({
-  description: "@coder: <task>",
-  model: "sonnet",
-  prompt: "<full body of agents/coder.md>\n\n---\nTASK BRIEF:\n<brief>"
-})
-```
-
-The flock is **closed at six + specialist exceptions per `doctrines/specialist-dispatch.md`** (v5.1.1+). Never dispatch outside these six unless the task is a perfect fit for a pre-authorized specialist (e.g., `code-review:code-review` for PR review, `sentry:seer` for Sentry triage) AND the specialist is on the project's `shepherd.toml [specialists].allowed` list. Specialists are EXCEPTION, not default — flock first; specialist only when strictly better. Plan authorship, critic gating, close-time audit grading, and code implementation are NEVER substitutable. Engineer's plan-skills load `superpowers:brainstorming` + `superpowers:writing-plans` from inside its own dispatch; auditor loads `superpowers:systematic-debugging` from inside its own dispatch — that is not the conductor calling them. If a task doesn't fit a flock role AND no specialist fits, the conductor handles it inline.
-
-**Inline vs. dispatch.** Handle inline (no Agent call): single Bash commands (git ops, worktree hygiene, gate runs), single-file reads for dispatch decisions, writing brief metadata and report frontmatter, one-shot MCP read lookups (verify a GH issue state, check deploy status). Escalate to the flock when: any task > 5 min of sustained observation → `@worker`; > 10 sequential MCP calls → `@worker`; production code changes → `@coder`; code-quality review → `@auditor`; plan authorship → `@engineer`; adversarial plan review → `@critic`. When in doubt between inline and `@worker`, dispatch the worker — the conductor's context is more valuable than a worker token.
-
-Per-agent triggers, brief contracts, parallel-safety rules, NEVER clauses: **`flock.md`**. Copy-paste templates: **`references/agent-briefs.md`**.
+**Dispatch procedure (every flock agent, every time):** See `agents/conductor.md §Mandatory protocol` for the binding dispatch procedure. In brief: read `agents/<role>.md`, extract the body below the YAML frontmatter, prepend it to the brief as the agent's system prompt, set `model` per the table above, and omit `subagent_type`. Full procedure with inline-vs-dispatch heuristic and specialist-exception policy: **`agents/conductor.md`**. Per-agent triggers, brief contracts, parallel-safety rules, NEVER clauses: **`flock.md`**. Copy-paste templates: **`references/agent-briefs.md`**.
 
 ---
 
@@ -178,7 +160,7 @@ Skip the wave for XS sprints or when `shepherd.toml [stage_graph.intro_wave].ena
 **Conductor checklist:**
 - [ ] Session-start branch hygiene executed — orphan dev branches surfaced (`references/branching-model.md` §V.1)
 - [ ] Conductor anchor verified — `pwd` is the primary worktree, `git rev-parse --abbrev-ref HEAD` is `{sprint_branch}`, `git rev-parse --git-dir == --git-common-dir` (per `doctrines/conductor-cwd.md` "Mandatory verification"). HALT on any drift. **Note (v5.1.1+):** if the session open hook didn't fire (e.g., plugin not loaded at session start), run the three-anchor check manually before any git operation. The `session_open.sh` hook performs this automatically when the shepherd plugin is loaded.
-- [ ] Preflight via `shctx doctor` — surfaces git, plan, ctx, hooks, MCP, lock state (per `doctrines/preflight-doctor.md`). Strongly recommended; required before `/shepherd:autorun` and `/shepherd:parallel`.
+- [ ] Preflight via `shctx doctor` — surfaces git, plan, ctx, hooks, MCP, lock state (per `doctrines/preflight-doctor.md`). Strongly recommended; required before `/shepherd:spawn --auto` and `/shepherd:spawn --parallel`.
 - [ ] Sprint-patterns registry status verified — `ls {paths.ctx}/sprint-patterns.md` (per `doctrines/adaptation-loop.md`). If absent: note "no pattern history yet — first adaptation cycle will land at this sprint close" and continue. If present: read last 3 entries for trend signals before dispatching `@engineer`.
 - [ ] Verified seed at `{paths.plans}/{sprint_slug}.seed.md` (planter authored or main-chat-inline) — graph-hint section present (per `references/seed-template.md` §7-bis)
 - [ ] **INTRO-COMBO-WAVE dispatched (M+ sprints)** — discoveries + intro auditors in ONE Agent batch BEFORE @engineer. Reports written to `{paths.reports}/<date>-discovery-*.md` and `{paths.reports}/<date>-intro-audit-*.md`.
@@ -239,7 +221,7 @@ Deletion counts toward SUBTRACT but NOT toward this quota.
   - **DELETE dev branch** (origin + local + prune) per `references/branching-model.md` §II.4
   - Next sprint branch cut + pushed (off the patch branch)
 - [ ] **Adaptation signal** (v5.0.6+): after CLOSE-FINALIZE and before PAUSE, check `{paths.ctx}/sprint-patterns.md` for trend alerts per `doctrines/adaptation-loop.md §V`. If any trend trigger fires (3+ same-concern CRITICAL/HIGH, 3+ same halt code, downward grade trend), surface a `[TREND]` alert to the operator. Takes < 1 min inline. Regardless of alert, the completeness auditor has already appended the sprint entry in CLOSE-SWARM.
-- [ ] **PAUSE** node fires under `/shepherd:start` (skipped under autorun); RELEASE node fires under sprint-through grant on dev.{last}
+- [ ] **PAUSE** node fires under `/shepherd:start` (skipped under `/shepherd:spawn --auto`); RELEASE node fires under sprint-through grant on dev.{last}
 
 ### Sprint impactfulness contract (v5.1.1 — sprint-as-patch binding)
 
@@ -388,11 +370,12 @@ The walk trace (optional, per `[stage_graph].walk_trace_enabled`) is the O(1) re
 | Command | Model | Action |
 |---------|-------|--------|
 | `/shepherd:plant [scope]` | **Opus required** | Author drift-resistant sprint seeds. Scope: nothing (next-sprint+future), `dev.N`, `dev.N..dev.M`, `arc`, or `next-version`. See `${CLAUDE_PLUGIN_ROOT}/commands/plant.md`. |
-| `/shepherd:start` | Sonnet | One complete sprint, then PAUSE. See `${CLAUDE_PLUGIN_ROOT}/commands/start.md`. |
-| `/shepherd:autorun` | Sonnet | Sequential autopilot — skips PAUSE between sprints. See `autorun.md` + `${CLAUDE_PLUGIN_ROOT}/commands/autorun.md`. |
-| `/shepherd:parallel` | Sonnet | Multi-sprint orchestration across worktrees. See `parallel.md` + `${CLAUDE_PLUGIN_ROOT}/commands/parallel.md`. |
+| `/shepherd:start` | Sonnet | One complete sprint, then PAUSE. Loads conductor profile from `agents/conductor.md`. See `${CLAUDE_PLUGIN_ROOT}/commands/start.md`. |
+| `/shepherd:spawn [sprint_slug] [--auto \| --parallel <N>]` | Sonnet | Spawn a teammate-conductor to run a sprint while main chat stays lean as the ambient planter/babysitter. `--auto` runs the full patch sequentially (one fresh teammate per sprint). `--parallel <N>` fans out N sibling teammates for concurrent disjoint sprints. See `${CLAUDE_PLUGIN_ROOT}/commands/spawn.md`. |
 
-For `:start` / `:autorun` / `:parallel`, sprint is inferred from current branch — no arguments needed. For `:plant`, scope arg controls how many seeds to emit.
+For `:start` and `:spawn`, sprint is inferred from current branch when no `sprint_slug` is given. For `:plant`, scope arg controls how many seeds to emit.
+
+> **Retired commands (v5.1.4):** `/shepherd:autorun` is replaced by `/shepherd:spawn --auto`. `/shepherd:parallel` is replaced by `/shepherd:spawn --parallel <N>`. The command files at `commands/autorun.md` and `commands/parallel.md` are retained as thin delta notes for reference only.
 
 ---
 
@@ -400,11 +383,13 @@ For `:start` / `:autorun` / `:parallel`, sprint is inferred from current branch 
 
 | File | Loaded when | Owns |
 |------|-------------|------|
-| `planter.md` | `/shepherd:plant` fires | Planter behavioral contract (Opus seed authorship) |
+| `${CLAUDE_PLUGIN_ROOT}/agents/conductor.md` | `/shepherd:start` or `/shepherd:spawn` fires | **Canonical conductor profile** — sprint-runner identity, dispatch procedure, pipeline steps, halt codes, side-effect boundary |
+| `${CLAUDE_PLUGIN_ROOT}/agents/planter.md` | `/shepherd:plant` or `/shepherd:spawn` fires | **Canonical planter profile** — seed authorship (plant mode) + babysitter (spawn mode) |
+| `${CLAUDE_PLUGIN_ROOT}/commands/spawn.md` | `/shepherd:spawn` fires | Spawn command — preflight, planter-profile load, teammate prompt construction, `--parallel` + `--auto` flag behavior |
 | `pipeline.md` | First sprint-walk decision | **Stage Graph contract** — node taxonomy, edge labels, walk algorithm, canonical sprint DAG |
-| `flock.md` | First flock dispatch | Per-agent triggers + briefs + parallel-safety + label discipline + anti-patterns |
-| `autorun.md` | `/shepherd:autorun` fires | Sequential autopilot details (loop = re-walk graph per sprint) |
-| `parallel.md` | `/shepherd:parallel` fires | Multi-sprint worktree mode (N concurrent walks, dev-order CLOSE-FINALIZE join) |
+| `flock.md` | First flock dispatch | Per-agent triggers + briefs + parallel-safety + label discipline + anti-patterns + meta tier |
+| `autorun.md` | Reference only (v5.1.4+) | Thin delta — loop semantics notes; full behavior superseded by `/shepherd:spawn --auto` + `agents/conductor.md §Autorun walk` |
+| `parallel.md` | Reference only (v5.1.4+) | Thin delta — multi-worktree notes; full behavior superseded by `/shepherd:spawn --parallel` + `agents/conductor.md §Parallel walk` |
 | `references/branching-model.md` | First branch-touching action | Authoritative branch lifecycle + rollover + hygiene |
 | `references/seed-template.md` | Planter authoring or seed audit | Canonical seed shape (now includes graph-hint §7-bis) |
 | `references/agent-briefs.md` | Brief drafting | Copy-paste brief templates + grade cutoffs |
@@ -424,7 +409,8 @@ For `:start` / `:autorun` / `:parallel`, sprint is inferred from current branch 
 | `doctrines/hook-event-log.md` | When inspecting hook behavior | NEW v5.1.1 — `<ns>/logs/hooks/YYYY-MM-DD.jsonl` schema, jq queries, retention |
 | `doctrines/preflight-doctor.md` | Before sprint open | NEW v5.1.1 — `shctx doctor` invocation, exit codes, integration with `/shepherd:start` |
 | `doctrines/*.md` | Referenced by name throughout | Framework-intrinsic rules (subtract-don't-add, wrapper-must-earn, pattern-b-overlap, chain-repair, stage-graph, conductor-cwd, gates-restoration, adaptation-loop, ...) |
-| `${CLAUDE_PLUGIN_ROOT}/agents/<role>.md` | Each flock dispatch | Agent system prompt (injected into brief) — six lanes total |
+| `${CLAUDE_PLUGIN_ROOT}/agents/<role>.md` | Each flock dispatch | Agent system prompt (injected into brief) — six domain lanes + conductor + planter meta-orchestrators |
+| `doctrines/spawn-escalation.md` | `/shepherd:spawn` active | NEW v5.1.4 — escalation channel contract (file paths, payload schema, resume shape, heartbeat, wave-boundary commits; §X multiplexed; §XI sequential autopilot) |
 | `${CLAUDE_PLUGIN_ROOT}/commands/<cmd>.md` | Slash-command fire | Slash-command behavior |
 | `${CLAUDE_PLUGIN_ROOT}/docs/configuration.md` | First invocation per session | shepherd.toml schema + defaults + validation |
 | `${CLAUDE_PLUGIN_ROOT}/skills/context/SKILL.md` | DEDUP-GATE fires; Phase 0 mesh fast-path; `shctx doctor` invocation | context registry CLI (new in v5.0.0; `shctx doctor` added v5.1.1). Backs DEDUP-GATE Layer 2 SQL fast-path. See doctrines/context-registry.md. |
