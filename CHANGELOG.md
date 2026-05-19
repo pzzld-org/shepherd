@@ -4,7 +4,7 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
-## v5.1.3 — 2026-05-19 (in progress)
+## v5.1.3 — 2026-05-19
 
 ### Cleanup, cache discipline, dispatch telemetry
 
