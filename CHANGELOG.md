@@ -4,6 +4,130 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v5.1.6 — 2026-05-19
+
+### Root-shepherd tier + lane-per-conductor fanout + `--scope` flag
+
+v5.1.6 introduces a **three-tier dispatch hierarchy** under `/shepherd:spawn`,
+downgrades the conductor to Sonnet with dual-mode behavior (solo retains full
+surface; teammate is restricted), restricts `@engineer` and `@critic` to
+root-tier-exclusive dispatch under spawn, adds a `--scope` flag for workload
+scaling, and lifts engineer plan minimums toward ultra-parallel composition
+(M=6, L=8, XL=10–15 lanes per wave).
+
+The primary new spawn pattern is **lane-per-conductor fanout**: the engineer
+designs the plan as W waves × L_w lanes per wave; for each wave, root spawns
+L_w teammate-conductors (one per lane). Each teammate gets a tiny stable
+prefix (one lane's brief + the conductor profile body), pushing cache hit
+rates higher and reducing context pollution. More small focused teammates
+becomes both cheaper and higher-quality than fewer broad ones.
+
+`/shepherd:start` and `/shepherd:spawn` remain two independent execution
+paths. `/shepherd:start` (solo, main chat) is backward-compatible — full
+pipeline, conductor profile, all six lanes dispatchable. `/shepherd:start
+--teammate` (NEW) is the teammate-session entry point spawned by `/shepherd:spawn`:
+skip Phase 0 / INTRO / engineer / critic (root already did those); read assigned
+lane brief; execute lane; surface WAVE-COMPLETE.
+
+#### New
+
+- **`agents/shepherd.md`** — root-tier profile (model: inherit, color: gold).
+  Adopted by main chat under `/shepherd:spawn` (operator-explicit only).
+  Owns `@engineer` + `@critic` dispatch, artifact materialization from
+  teammate payloads, cross-teammate dispute resolution, close-swarm
+  coordination. Two-meta-loading with planter for delegated seed work.
+- **`doctrines/root-shepherd-orchestration.md`** — root-tier behavioral
+  contract: three modes (idle/dispatch/coordinate), responsibilities,
+  prohibitions, escalation triage matrix, close-mode flow.
+- **`doctrines/dispatch-tier-separation.md`** — binding three-tier matrix.
+  Teammate-conductors CANNOT dispatch `@engineer`/`@critic` — surface
+  `PLAN-AUTHORSHIP-REQUEST` / `PLAN-GATE-REQUEST` escalations instead.
+  Solo-mode `/shepherd:start` retains full dispatch (exemption documented).
+- **`doctrines/scope-scale-workload.md`** — `--scope` flag semantics, 4-tier
+  mapping (sprint/patch/minor/version), composition with `--parallel`,
+  preflight gating for minor/version (operator double-confirm), sprint
+  enumeration algorithm.
+- **`/shepherd:start --teammate`** flag — teammate-session entry point.
+  Skips Phase 0/INTRO/engineer/critic (root did those); loads conductor
+  in TEAMMATE mode; reads assigned lane brief from boot prompt; walks
+  lane micro-Stage-Graph (DEDUP-GATE → IMPL → LANE-CLOSE); surfaces
+  WAVE-COMPLETE via SendMessage.
+- **`/shepherd:spawn --scope <value>`** flag — workload scale declaration:
+  `sprint` (1 sprint, default), `patch` (≡ retired `--auto`), `minor`
+  (experimental, requires `confirm minor`), `version` (experimental,
+  requires `confirm version` + resource warning).
+- **`/shepherd:spawn Check 0`** — operator-explicit invocation enforcement.
+  Refuses nested spawn from teammate sessions (detects via
+  `$CLAUDE_AGENT_TEAMMATE_NAME`, INVOCATION-CONTEXT, parent-session env).
+
+#### Changed
+
+- **`agents/conductor.md`** — `model: inherit` → `model: sonnet`. New
+  "Conductor modes" section documents dual-mode behavior (solo vs teammate)
+  + mode-detection signals. Three new hard prohibitions (#13–#15) for
+  teammate mode: no engineer dispatch, no critic dispatch, no artifact
+  writes. Lane-per-conductor model documented inline. Peer-to-peer
+  messaging permissions defined. Side-effect boundary table split into
+  SOLO and TEAMMATE mode sub-tables.
+- **`agents/engineer.md`** + **`agents/critic.md`** — new
+  `WRONG-TIER-DISPATCH` halt code; tier check is first prohibition in
+  Step 0 of critic protocol. `[INVOCATION-CONTEXT]` brief field added.
+  Engineer body gains "Ultra-parallel plan template (spawn mode)" section
+  with lane structural requirements (`lane_id`, `wave`, `file_scope`,
+  `parallel_with`, `steps`, `acceptance` in YAML form). Critic gains a
+  seventh core duty: ultra-parallel discipline audit.
+- **Engineer plan template** — minimum lane counts raised under spawn mode:
+  M=6 (was 4), L=8 (was 6), XL=10–15/wave (was 6+/wave). Body LOC floor
+  scaled accordingly (M=400, L=700, XL=1500+). Solo mode retains v5.1.5
+  minimums.
+- **`commands/spawn.md`** — new Check 0 (operator-only), new `--scope`
+  flag section, main chat now adopts `agents/shepherd.md` (not
+  `planter.md`) under spawn, boot prompt includes `INVOCATION-CONTEXT` +
+  lane-fanout fields + `ROOT-SESSION-NAME`. Teammate first action is now
+  `/shepherd:start --teammate` (not bare `/shepherd:start`). Hard-pause
+  prompts for `--scope=minor` and `--scope=version`.
+- **`commands/start.md`** — `--teammate` flag documented. Teammate path
+  is a 5-step lane-execute walk distinct from the solo full pipeline.
+- **`skills/shepherd/SKILL.md`** §I — three-tier meta table replaces the
+  two-row planter/conductor table. §X invocation row updated for `--scope`.
+  §XI see-also adds three new doctrine rows.
+- **`skills/shepherd/flock.md`** §VI — three-tier meta table replaces
+  two-row table; tier-separation cited.
+- **`README.md`** — v5.1.6 section header, three-tier meta table, lane
+  table updated with root-tier-exclusive notes on engineer/critic.
+- **`CLAUDE.md`** — Shepherd plugin commands table updated with
+  `/shepherd:start --teammate` and `--scope` flags. File-contracts section
+  enumerates `agents/shepherd.md`.
+
+#### Migration notes
+
+- Operators running `/shepherd:start` in main chat see no behavior
+  change — conductor profile remains the runner in SOLO mode. Tier
+  separation does NOT apply solo. Backward-compatible with all v5.1.5
+  and prior versions.
+- Operators using `/shepherd:spawn` now have main chat adopt the
+  `shepherd` root profile instead of `planter`. The planter profile is
+  loaded only by `/shepherd:plant` or when seed authorship is delegated
+  mid-spawn. Both profiles coexist (planter-loaded BEFORE spawn) — the
+  shepherd is the outer frame, planter the inner.
+- `--auto` is preserved as an alias for `--scope patch` to avoid breaking
+  operator muscle memory. Deprecation in v5.2.0, removal in v6.0.0.
+- The conductor model downgrade (`inherit` → `sonnet`) lowers cost for
+  ALL conductor invocations, including `/shepherd:start` solo. Per
+  operator request for cost discipline + Agent Teams behavioral consistency.
+
+#### Known gaps (filed as GH issues)
+
+- In-process teammates cannot dispatch the `Agent` tool (mirror of
+  Claude Code #31977) — recommend `tmux` `teammateMode` for `/shepherd:spawn`
+  until upstream lands.
+- `--scope minor` and `--scope version` ship with sequential-only enforcement;
+  cross-patch / cross-minor parallel walks deferred to v5.2.0.
+- Peer-to-peer `SendMessage` between sibling teammates is permitted in tmux
+  teammateMode; in-process support pending upstream.
+
+---
+
 ## v5.1.5 — 2026-05-19
 
 ### Spawn flow optimization + flock normalization + token discipline

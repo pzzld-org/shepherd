@@ -71,14 +71,17 @@ cp -r ./.claude-plugin ~/.claude/plugins/marketplaces/fl03/
 
 ## Shepherd plugin commands
 
-| Command | Model required | What it does |
+| Command | Model | What it does |
 |---|---|---|
-| `/shepherd:plant [scope]` | **Opus** | Author drift-resistant sprint seeds upstream of execution |
-| `/shepherd:start` | Sonnet | Run one sprint end-to-end, then pause |
-| `/shepherd:spawn [sprint_slug] [--auto \| --parallel <N>]` | Sonnet | Spawn a teammate-conductor to run a sprint while main chat stays lean as the ambient planter/babysitter. `--auto` = sequential autopilot across the full patch (one fresh context window per sprint). `--parallel <N>` = fan out N concurrent disjoint sprints. See `commands/spawn.md`. |
+| `/shepherd:plant [scope]` | **Opus required** | Author drift-resistant sprint seeds upstream of execution |
+| `/shepherd:start` (solo) | Sonnet | Run one sprint end-to-end in main chat (conductor SOLO mode), then pause |
+| `/shepherd:start --teammate` (v5.1.6+) | Sonnet | Lane-execute mode for spawned teammate sessions; skip INTRO/engineer/critic; read assigned lane brief from boot prompt; walk lane micro-Stage-Graph |
+| `/shepherd:spawn [sprint_slug] [--scope <sprint\|patch\|minor\|version>] [--parallel <N> \| --auto]` | Sonnet | Main chat adopts **root-shepherd profile** (v5.1.6+); spawns teammate-conductors per the plan's lane-per-conductor structure. `--scope` declares workload scale (default `sprint`). `--auto` aliases `--scope patch`. `--parallel <N>` fans out N sibling sprints for `--scope >= patch`. **Operator-explicit only** — refuses from teammate sessions. See `commands/spawn.md`. |
 | `/shepherd:ctx` | Sonnet | Inspect / refresh the per-project SQLite context registry |
 
-> **Retired (v5.1.4):** `/shepherd:autorun` is superseded by `/shepherd:spawn --auto`. `/shepherd:parallel` is superseded by `/shepherd:spawn --parallel <N>`. Command files retained as thin delta references only.
+> **Retired (v5.1.4):** `/shepherd:autorun` is superseded by `/shepherd:spawn --auto` (which itself aliases `--scope patch` in v5.1.6+). `/shepherd:parallel` is superseded by `/shepherd:spawn --parallel <N>`. Command files retained as thin delta references only.
+
+> **v5.1.6 dispatch tier separation:** under `/shepherd:spawn`, `@engineer` and `@critic` become **root-tier-exclusive** (only the root shepherd in main chat may dispatch them). Teammate-conductors surface `PLAN-AUTHORSHIP-REQUEST` / `PLAN-GATE-REQUEST` escalations instead. Under `/shepherd:start` solo mode this restriction does NOT apply — conductor IS root in solo. See `skills/shepherd/doctrines/dispatch-tier-separation.md`.
 
 Shepherd is project-agnostic. Each consumer project configures it via `.claude/shepherd.toml`. The full schema is at `docs/configuration.md`. A working example lives at `examples/axiom/shepherd.toml`; a stripped-down template at `examples/minimal/shepherd.toml`.
 
@@ -89,11 +92,12 @@ When editing shepherd, these invariants must hold:
 - **`skills/shepherd/SKILL.md`** is the conductor quick reference — the entry point for every `/shepherd:*` invocation. All runtime references resolve relative to `${CLAUDE_PLUGIN_ROOT}` (which is the repo root, post-migration).
 - **`.claude-plugin/plugin.json`** is the plugin manifest. Version bumps must stay in sync with `README.md`, `skills/shepherd/SKILL.md` frontmatter, `skills/context/SKILL.md` frontmatter, `.claude-plugin/marketplace.json`, and `CHANGELOG.md`. `shctx release` automates this; see `skills/context/scripts/cmd_release.sh`.
 - **`agents/<role>.md`** — each file is the full system prompt injected into the corresponding flock-agent brief. Do not abbreviate or inline these; the conductor reads them at dispatch time.
-- **`agents/conductor.md`** — canonical conductor profile (sprint-runner identity, dispatch procedure, pipeline, halt codes, side-effect boundary). Adopted as a system-prompt addendum by `/shepherd:start` and `/shepherd:spawn`. Single source of truth for sprint-runner behavior.
-- **`agents/planter.md`** — canonical planter profile (seed authorship + babysitter during spawn). Adopted by `/shepherd:plant` and `/shepherd:spawn`. Covers escalation response, git custody, cleanup stewardship, and concurrent-write discipline.
-- **`skills/shepherd/doctrines/*.md`** — framework-intrinsic rules. New doctrines go here; project-specific doctrines go in the consumer repo's `.claude/doctrines/`.
+- **`agents/shepherd.md`** (v5.1.6+) — canonical **root-tier** profile. Adopted by main chat under `/shepherd:spawn`. Owns engineer/critic dispatch, artifact materialization from teammate payloads, dispute resolution, close-swarm coordination. Single source of truth for root-tier behavior.
+- **`agents/conductor.md`** — canonical conductor profile (Tier 2). Adopted by `/shepherd:start` (SOLO mode) and by spawned teammate sessions (TEAMMATE mode). Dual-mode behavior is binding (v5.1.6+): solo retains full surface; teammate is restricted. **Model: sonnet** (downgraded v5.1.6 from `inherit`).
+- **`agents/planter.md`** — canonical planter profile (parallel meta). Adopted by `/shepherd:plant`; also loaded by shepherd profile mid-spawn for delegated seed work. Covers escalation response, git custody, cleanup stewardship.
+- **`skills/shepherd/doctrines/*.md`** — framework-intrinsic rules. New doctrines go here; project-specific doctrines go in the consumer repo's `.claude/doctrines/`. v5.1.6 doctrines: `root-shepherd-orchestration.md`, `dispatch-tier-separation.md`, `scope-scale-workload.md`.
 - **`skills/context/styles/<lang>.md`** are the bundled per-language style defaults shipped with the plugin. `shctx style init <lang>` copies them into a consumer project's `.artifacts/styles/<lang>.md`. The conductor auto-injects the project-local copy into every coder brief whose `[FILE-SCOPE]` matches.
-- The flock remains closed at six domain agents (engineer, critic, coder, auditor, worker, discovery), with two meta-orchestrators above (planter, conductor) at `agents/planter.md` and `agents/conductor.md`. The meta tier does NOT open the closed-flock contract. Non-code work goes to `@worker` per `skills/shepherd/doctrines/worker-patterns.md`.
+- The flock remains closed at six domain agents (engineer, critic, coder, auditor, worker, discovery), with **three meta-orchestrators** above (v5.1.6+): root `agents/shepherd.md`, conductor `agents/conductor.md`, parallel-meta `agents/planter.md`. The meta tier does NOT open the closed-flock contract. Non-code work goes to `@worker` per `skills/shepherd/doctrines/worker-patterns.md`.
 
 ## Skill SKILL.md frontmatter
 

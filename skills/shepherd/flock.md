@@ -407,22 +407,29 @@ Full contract + use-case catalog + cross-sprint reuse rules: `doctrines/discover
 
 ---
 
-## VI. Meta tier (conductor + planter)
+## VI. Three-tier meta (shepherd + conductor + planter) — v5.1.6+
 
-The six flock agents above are the closed domain flock. **Conductor and planter are meta-orchestrators above the flock.** They live in `agents/` by file convention but do NOT open the closed-flock contract and are NOT dispatched via the Agent tool as lane agents.
+The six flock agents above are the closed domain flock. **Above them sit three meta-orchestrators on TWO tiers.** All three live in `agents/` by file convention but do NOT open the closed-flock contract and are NOT dispatched via the Agent tool as lane agents.
 
-| Profile | File | Role |
-|---------|------|------|
-| **@conductor** | `${CLAUDE_PLUGIN_ROOT}/agents/conductor.md` | Sprint-runner. Loads as a system-prompt addendum when `/shepherd:start` or `/shepherd:spawn` fires. Walks the Stage Graph, dispatches flock agents, gates waves, authors close reports. Writes `.md` only — never source code. |
-| **@planter** | `${CLAUDE_PLUGIN_ROOT}/agents/planter.md` | Seed author + babysitter. Loads for `/shepherd:plant` (seed authorship) and `/shepherd:spawn` (ambient babysitter while teammate-conductor runs). Holds git custody during spawn. Escalation responder. |
+| Tier | Profile | File | Adopted by | Role |
+|---|---------|------|---|------|
+| **3 (root)** | **@shepherd** | `${CLAUDE_PLUGIN_ROOT}/agents/shepherd.md` | Main chat under `/shepherd:spawn` (operator-explicit only) | **NEW v5.1.6 — root-tier orchestrator.** Owns `@engineer` + `@critic` dispatch, artifact materialization from teammate payloads, dispute resolution, close-swarm coordination. Writes `.md` only — never source code. |
+| **2 (meta)** | **@conductor** | `${CLAUDE_PLUGIN_ROOT}/agents/conductor.md` | Main chat under `/shepherd:start` (SOLO) OR teammate session under `/shepherd:spawn` (TEAMMATE) | Sprint-runner / wave-executor. **Dual-mode** (v5.1.6+): solo mode preserves full dispatch + writes; teammate mode is restricted (no engineer/critic dispatch, no artifact writes). **Model: sonnet** (downgraded v5.1.6 from `inherit`). |
+| **PARALLEL** | **@planter** | `${CLAUDE_PLUGIN_ROOT}/agents/planter.md` | Main chat under `/shepherd:plant`; also loaded by shepherd profile mid-spawn for delegated seed work | Seed author + cleanup steward. Holds git custody during cleanup phases. Escalation responder when shepherd not loaded. Model: opus[1m]. |
 
 **Key distinction from the six lanes:**
-- Flock agents are dispatched via `Agent({ prompt: "<agents/role.md body>...", ... })` — they are ephemeral subagents.
-- Conductor and planter are adopted as the **ambient session identity** of whoever invokes the command (main chat or teammate). They are NOT ephemeral. The dispatch procedure in §I applies to the six flock agents only; conductor and planter are self-applied profiles.
 
-The divergence table comparing conductor and planter is canonical in `agents/conductor.md §How the conductor differs from the planter`. Do not maintain a second copy here.
+- Flock agents are dispatched via `Agent({ prompt: "<agents/role.md body>...", ... })` — they are ephemeral subagents.
+- Shepherd, conductor, and planter are adopted as the **ambient session identity** of whoever invokes the command (main chat or teammate). They are NOT ephemeral. The dispatch procedure in §I applies to the six flock agents only; the three meta profiles are self-applied.
+
+**Dispatch tier separation under `/shepherd:spawn`:**
+
+Per `doctrines/dispatch-tier-separation.md`, teammate-conductors (tier 2 teammate mode) CANNOT dispatch `@engineer` or `@critic` — those are root-tier-exclusive. Teammates surface `PLAN-AUTHORSHIP-REQUEST` or `PLAN-GATE-REQUEST` escalations to root via `SendMessage`. Solo-mode conductors (`/shepherd:start`) retain full dispatch surface — tier separation does NOT apply (solo conductor IS root).
+
+The divergence table comparing conductor and planter is canonical in `agents/conductor.md §How the conductor differs from the planter`. The three-tier dispatch matrix is canonical in `doctrines/dispatch-tier-separation.md §II`. Do not maintain copies here.
 
 <!-- DUPLICATED in agents/conductor.md §How the conductor differs from the planter — canonical there -->
+<!-- DUPLICATED in doctrines/dispatch-tier-separation.md §II — canonical there -->
 
 ---
 

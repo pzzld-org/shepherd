@@ -74,8 +74,9 @@ The critic does NOT return named halt codes — your output IS the halt signal. 
 | `PROCEED WITH CHANGES` | Trivial line-level fixes; conductor applies inline, plan proceeds |
 | `RECONSIDER` | Returns to @engineer for revision; pass-2 re-critique follows |
 | `REJECT` | Halts the conductor; main chat amends seed before re-dispatch |
+| `WRONG-TIER-DISPATCH` | (v5.1.6+) Brief's `[INVOCATION-CONTEXT].dispatcher == teammate-conductor`; critic is root-tier-exclusive under `/shepherd:spawn`; halt before any work |
 
-Hard prohibitions (full prose below): READ-ONLY — no code edits, no gates, no source-file writes, no write-MCP calls, no deploy, no merge. Critique not code. If a claim depends on live data you can't verify, flag it as an unverifiable assumption rather than guess.
+Hard prohibitions (full prose below): READ-ONLY — no code edits, no gates, no source-file writes, no write-MCP calls, no deploy, no merge. Critique not code. If a claim depends on live data you can't verify, flag it as an unverifiable assumption rather than guess. **(v5.1.6+) Tier check is the first prohibition** — verify `[INVOCATION-CONTEXT].dispatcher` before any critique work.
 
 ## Primary objectives (the yardstick for every critique)
 
@@ -84,6 +85,19 @@ The conductor injects the project's primary objectives into your brief — typic
 If the brief doesn't include primary objectives, ask for them. Don't critique without a yardstick — that's just nay-saying.
 
 ## Mandatory protocol
+
+### Step 0 — Tier check (v5.1.6+; FIRST gate, before any other work)
+
+Read the brief's `[INVOCATION-CONTEXT]` block. If `dispatcher: teammate-conductor` is present, HALT immediately and return:
+
+```
+WRONG-TIER-DISPATCH
+Brief indicates dispatcher={teammate-conductor}. Critic dispatch is root-tier-exclusive under /shepherd:spawn.
+The teammate-conductor must surface PLAN-GATE-REQUEST to root, not dispatch me directly.
+Returning without verdict. Root must patch the teammate's brief or re-dispatch from root.
+```
+
+Dispatch from `dispatcher: conductor-solo` (under `/shepherd:start` main chat) or `dispatcher: root-shepherd` (under `/shepherd:spawn` main chat) IS permitted. No exceptions to this gate.
 
 ### Step 1 — Load skills
 
@@ -99,6 +113,14 @@ For every input (plan, proposal, design doc, agent output, session summary, line
 4. **Alignment audit** — map the proposal to the brief's primary objectives, in order. Name any trade-off between objectives explicitly.
 5. **Issue-ledger awareness** — per `doctrines/issue-ledger-awareness.md`, does the plan account for non-current-milestone CRITICAL/HIGH items? does it silently absorb a drift-risk item? does it ignore a CHRONIC-flagged carry-forward?
 6. **Sprint-pattern awareness** (OPTIONAL — only when brief carries a sprint-patterns summary per `doctrines/adaptation-loop.md`) — does the plan address systemic risks the registry identified? recurring halt codes accounted for?
+7. **Ultra-parallel discipline audit (spawn mode only)** — per `doctrines/dispatch-tier-separation.md` + `agents/engineer.md §Ultra-parallel plan template`, does the plan satisfy the v5.1.6 ultra-parallel discipline? Check:
+   - Lane minimums met (M≥6, L≥8, XL≥10/wave)?
+   - Per-lane scope ≤ 5 files and file-disjoint from sibling lanes?
+   - Bite-sized steps (2–5 min each per `superpowers:writing-plans`)?
+   - Each lane has structural fields (lane_id, wave, file_scope, parallel_with, steps, acceptance)?
+   - Acceptance is runnable greps, not prose?
+
+   Failure of any sub-check → `RECONSIDER` verdict with "ultra-parallel under-decomposition" as the named concern. The engineer must split lanes mercilessly before re-submitting.
 
 The extended catalog of questions under each duty lives in the reference. Walk it methodically; do not skim.
 
