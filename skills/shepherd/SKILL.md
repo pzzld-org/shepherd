@@ -107,18 +107,34 @@ per `doctrines/agent-excellence.md` §Rule 6 second.
 
 ---
 
-## I. The flock (closed at six)
+## I. The flock (closed at six) + three-tier meta (v5.1.6+)
 
 | Agent | Model | Mode | Job |
 |-------|-------|------|-----|
-| @engineer | opus | Single, once per sprint | Authors plan from seed via `superpowers:brainstorming` + `superpowers:writing-plans` |
-| @critic | sonnet | Single, sequential gate | Adversarial review; gates every non-XS plan and every merge to main |
+| @engineer | opus | Single, once per sprint | Authors plan from seed via `superpowers:brainstorming` + `superpowers:writing-plans`. **Root-tier-exclusive under `/shepherd:spawn`.** |
+| @critic | sonnet | Single, sequential gate | Adversarial review; gates every non-XS plan and every merge to main. **Root-tier-exclusive under `/shepherd:spawn`.** |
 | @coder | sonnet | Parallel waves | Implementation; one per non-overlapping file scope |
 | @auditor | sonnet | Swarm of 3–5 (close) OR 1–2 (intro) | Read-only review; close-mode grades, intro-mode surfaces regressions/carry-forward drift |
 | @worker | sonnet | Single or parallel | Bounded execution: monitoring, research, ops, MCP batches |
 | @discovery | sonnet | Single or parallel | Read-only orientation, comprehension, synthesis. No mutation. Pre-MESH or mid-walk research lane (v5.1.1+) |
 
-**Planter and conductor are meta-orchestrators, not flock members.** They live in `agents/` by file convention but DO NOT open the closed-flock contract. The conductor runs sprints; the planter authors seeds and acts as babysitter when a teammate-conductor is active. See `agents/conductor.md` and `agents/planter.md` for their canonical behavior. The meta tier is documented in full in `flock.md §Meta tier`.
+**Three-tier meta** (above the flock; v5.1.6+):
+
+| Tier | Profile | Model | Adopted by |
+|---|---|---|---|
+| **3 (root)** | `agents/shepherd.md` | inherit | Main chat under `/shepherd:spawn` (operator-explicit-only) |
+| **2 (meta)** | `agents/conductor.md` | **sonnet** (downgraded in v5.1.6 from `inherit`) | Main chat under `/shepherd:start` (SOLO mode) OR teammate session under `/shepherd:spawn` (TEAMMATE mode) |
+| **PARALLEL meta** | `agents/planter.md` | opus[1m] | Main chat under `/shepherd:plant`; also loaded by shepherd profile mid-spawn for delegated seed work |
+
+The conductor profile has **dual-mode behavior** (v5.1.6+):
+- **SOLO mode** (under `/shepherd:start`) — full dispatch surface (engineer + critic + four-lane flock); writes plans/reports/handoffs. Backward-compatible with all prior versions.
+- **TEAMMATE mode** (under `/shepherd:spawn`) — restricted dispatch (no `@engineer`, no `@critic` — those surface `PLAN-AUTHORSHIP-REQUEST`/`PLAN-GATE-REQUEST` to root); no artifact writes (returns structured payloads via `SendMessage`; root materializes).
+
+Dispatch tier separation is binding under `/shepherd:spawn` per `doctrines/dispatch-tier-separation.md`. Solo-mode `/shepherd:start` is unaffected.
+
+**Lane-per-conductor fanout (default under spawn):** the engineer designs the plan as W waves × L_w lanes; root spawns L_w teammate-conductors per wave, one per lane. See `agents/engineer.md §Ultra-parallel plan template`.
+
+See `agents/shepherd.md`, `agents/conductor.md`, `agents/planter.md` for canonical profiles. Three-tier reference: `flock.md §VI`.
 
 **Three hard rules:**
 - `@critic` gates every plan above XS, every money-path/schema change, every merge to main.
@@ -397,15 +413,15 @@ The walk trace (optional, per `[stage_graph].walk_trace_enabled`) is the O(1) re
 
 ## X. Invocation
 
-| Command | Model | Action |
-|---------|-------|--------|
-| `/shepherd:plant [scope]` | **Opus required** | Author drift-resistant sprint seeds. Scope: nothing (next-sprint+future), `dev.N`, `dev.N..dev.M`, `arc`, or `next-version`. See `${CLAUDE_PLUGIN_ROOT}/commands/plant.md`. |
-| `/shepherd:start` | Sonnet | One complete sprint, then PAUSE. Loads conductor profile from `agents/conductor.md`. See `${CLAUDE_PLUGIN_ROOT}/commands/start.md`. |
-| `/shepherd:spawn [sprint_slug] [--auto \| --parallel <N>]` | Sonnet | Spawn a teammate-conductor to run a sprint while main chat stays lean as the ambient planter/babysitter. `--auto` runs the full patch sequentially (one fresh teammate per sprint). `--parallel <N>` fans out N sibling teammates for concurrent disjoint sprints. See `${CLAUDE_PLUGIN_ROOT}/commands/spawn.md`. |
+| Command | Profile loaded | Action |
+|---------|---|--------|
+| `/shepherd:plant [scope]` | `agents/planter.md` (Opus required) | Author drift-resistant sprint seeds. Scope: nothing (next-sprint+future), `dev.N`, `dev.N..dev.M`, `arc`, or `next-version`. See `${CLAUDE_PLUGIN_ROOT}/commands/plant.md`. |
+| `/shepherd:start` | `agents/conductor.md` (SOLO mode) — model: sonnet | One complete sprint, then PAUSE. Backward-compatible with all prior versions; tier separation does NOT apply (conductor IS root in solo). See `${CLAUDE_PLUGIN_ROOT}/commands/start.md`. |
+| `/shepherd:spawn [sprint_slug] [--scope sprint\|patch\|minor\|version] [--parallel <N> \| --auto]` | `agents/shepherd.md` (root, v5.1.6+) | Main chat adopts root-shepherd; spawns teammate-conductor(s) per the plan's lane-per-conductor structure. `--scope` declares workload scale (default `sprint`). `--auto` is alias for `--scope patch`. `--parallel <N>` fans out N sibling teammates for sprint-level concurrency (`--scope >= patch` only). See `${CLAUDE_PLUGIN_ROOT}/commands/spawn.md`. **Operator-explicit invocation only — refuses from teammate sessions (nested spawn forbidden).** |
 
-For `:start` and `:spawn`, sprint is inferred from current branch when no `sprint_slug` is given. For `:plant`, scope arg controls how many seeds to emit.
+For `:start` and `:spawn`, sprint is inferred from current branch when no `sprint_slug` is given. For `:plant`, scope arg controls how many seeds to emit. For `:spawn`, `--scope` controls workload scale; `--parallel` controls sprint-level fanout; lane-per-conductor fanout within each sprint is implicit (driven by the plan).
 
-> **Retired commands (v5.1.4):** `/shepherd:autorun` is replaced by `/shepherd:spawn --auto`. `/shepherd:parallel` is replaced by `/shepherd:spawn --parallel <N>`. The command files at `commands/autorun.md` and `commands/parallel.md` are retained as thin delta notes for reference only.
+> **Retired commands (v5.1.4):** `/shepherd:autorun` is replaced by `/shepherd:spawn --auto` (alias for `--scope patch` in v5.1.6+). `/shepherd:parallel` is replaced by `/shepherd:spawn --parallel <N>`. The command files at `commands/autorun.md` and `commands/parallel.md` are retained as thin delta notes for reference only.
 
 ---
 
@@ -419,13 +435,17 @@ For `:start` and `:spawn`, sprint is inferred from current branch when no `sprin
 | `doctrines/cache-telemetry.md` | Every sprint close | **Measurement layer** — per-role hit-rate ranges (v5.1.5 calibration: @coder ≥60%, @engineer ≥30%, others between) + alarm thresholds + `## Cache telemetry` close-report subsection |
 | `doctrines/agent-excellence.md` | Every dispatch | **Six rules + strive-higher preamble** — Rule 6 "Conserve tokens" pairs with brief-cache-discipline + cache-telemetry as the token + cache discipline triad |
 
-**Conductor + commands:**
+**Three-tier meta + commands (v5.1.6+):**
 
 | File | Loaded when | Owns |
 |------|-------------|------|
-| `${CLAUDE_PLUGIN_ROOT}/agents/conductor.md` | `/shepherd:start` or `/shepherd:spawn` fires | **Canonical conductor profile** — sprint-runner identity, dispatch procedure, pipeline steps, halt codes, side-effect boundary |
-| `${CLAUDE_PLUGIN_ROOT}/agents/planter.md` | `/shepherd:plant` or `/shepherd:spawn` fires | **Canonical planter profile** — seed authorship (plant mode) + babysitter (spawn mode) |
-| `${CLAUDE_PLUGIN_ROOT}/commands/spawn.md` | `/shepherd:spawn` fires | Spawn command — preflight, planter-profile load, teammate prompt construction, `--parallel` + `--auto` flag behavior |
+| `${CLAUDE_PLUGIN_ROOT}/agents/shepherd.md` | **`/shepherd:spawn` fires (main chat)** | **NEW v5.1.6 — root-tier profile.** Engineer/critic dispatch, artifact materialization from teammate payloads, dispute resolution, close-swarm coordination. |
+| `${CLAUDE_PLUGIN_ROOT}/agents/conductor.md` | `/shepherd:start` (SOLO) or teammate session under `/shepherd:spawn` (TEAMMATE) | **Canonical conductor profile** — dual-mode (solo: full surface; teammate: restricted). Model: **sonnet** (downgraded v5.1.6 from `inherit`). |
+| `${CLAUDE_PLUGIN_ROOT}/agents/planter.md` | `/shepherd:plant` or delegated mid-spawn | **Canonical planter profile** — seed authorship + cleanup stewardship |
+| `${CLAUDE_PLUGIN_ROOT}/commands/spawn.md` | `/shepherd:spawn` fires | Spawn command — Check 0 (operator-only), `--scope` flag, root-profile load, teammate prompt with INVOCATION-CONTEXT |
+| `doctrines/root-shepherd-orchestration.md` | `/shepherd:spawn` active | **NEW v5.1.6 — root-tier behavioral contract** (three modes: idle/dispatch/coordinate, responsibilities, escalation triage) |
+| `doctrines/dispatch-tier-separation.md` | Every dispatch under spawn | **NEW v5.1.6 — three-tier matrix** + WRONG-TIER-DISPATCH halt enforcement |
+| `doctrines/scope-scale-workload.md` | `/shepherd:spawn --scope` | **NEW v5.1.6 — flag semantics**, 4-tier mapping, --parallel composition, minor/version gating |
 | `pipeline.md` | First sprint-walk decision | **Stage Graph contract** — node taxonomy, edge labels, walk algorithm, canonical sprint DAG |
 | `flock.md` | First flock dispatch | Per-agent triggers + briefs + parallel-safety + label discipline + anti-patterns + meta tier |
 | `autorun.md` | Reference only (v5.1.4+) | Thin delta — loop semantics notes; full behavior superseded by `/shepherd:spawn --auto` + `agents/conductor.md §Autorun walk` |

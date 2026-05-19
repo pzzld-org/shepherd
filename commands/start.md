@@ -1,12 +1,24 @@
 ---
 name: start
-description: Run one complete sprint end-to-end (engineer → critic → coder waves → auditor swarm → close), then PAUSE for operator sign-off before opening the next sprint. For continuous or multi-sprint modes, see /shepherd:spawn (--auto and --parallel <N> flags).
-allowed-tools: Bash, Edit, Glob, Grep, Read, Skill, Write, ToolSearch, TaskCreate, TaskGet, TaskList, TaskUpdate, WebFetch, WebSearch
+description: Run one complete sprint end-to-end (engineer → critic → coder waves → auditor swarm → close), then PAUSE for operator sign-off before opening the next sprint. For continuous or multi-sprint modes, see /shepherd:spawn (--scope and --parallel flags). v5.1.6+ adds --teammate flag for sessions spawned by /shepherd:spawn.
+argument-hint: "[ --teammate ]   default: solo full-pipeline; --teammate: lane-execute the assigned brief"
+allowed-tools: Bash, Edit, Glob, Grep, Read, Skill, Write, ToolSearch, TaskCreate, TaskGet, TaskList, TaskUpdate, SendMessage, WebFetch, WebSearch
 ---
 
 # /shepherd:start — Single Sprint Execution
 
-Execute **one sprint** end-to-end then stop and wait for the operator. For continuous or multi-sprint modes, see `/shepherd:spawn` (`--auto` and `--parallel <N>` flags).
+Execute **one sprint** end-to-end then stop and wait for the operator. For continuous or multi-sprint modes, see `/shepherd:spawn` (`--scope` and `--parallel <N>` flags).
+
+## Two invocation paths (v5.1.6+)
+
+| Invocation | Used by | Pipeline |
+|---|---|---|
+| `/shepherd:start` (no flag) | Main chat in solo mode | Full pipeline — load `agents/conductor.md` (SOLO), Phase 0 mesh, INTRO-COMBO-WAVE (default-on M+), `@engineer`, `@critic`, coder waves, audit swarm, close. |
+| `/shepherd:start --teammate` | Teammate session spawned by `/shepherd:spawn` (v5.1.6+) | Lane-execute only — load `agents/conductor.md` (TEAMMATE), skip Phase 0 / INTRO / engineer / critic (root already did those), read assigned lane brief from inherited context, walk lane's micro-Stage-Graph (DEDUP-GATE → IMPL → LANE-CLOSE), surface WAVE-COMPLETE via SendMessage. |
+
+The `--teammate` flag is intended for sessions that have been spawned by `/shepherd:spawn` and carry the `INVOCATION-CONTEXT.dispatcher: teammate-conductor` boot-prompt block. The flag should NOT be used by main-chat operators — it skips work main chat is supposed to do (engineer, critic, plan authorship). Mismatch detection: if `--teammate` is invoked but no `INVOCATION-CONTEXT` boot block is present, HALT with `TEAMMATE-FLAG-MISUSED` and refuse.
+
+The remainder of this document describes the **solo path** (no `--teammate`). For the teammate path, jump to §"Teammate path (`--teammate` flag)" below.
 
 ## Step 0 — Auto-orient (ALWAYS first, every invocation)
 
@@ -40,13 +52,89 @@ Read `${CLAUDE_PLUGIN_ROOT}/agents/conductor.md` in full and adopt it as a syste
 
 ## Step 2 — Run pipeline
 
-Execute the three-section pipeline per `${CLAUDE_PLUGIN_ROOT}/agents/conductor.md` §§Step 1–3 (INTRODUCTION → BODY → CLOSE). After CLOSE-FINALIZE completes and the CONDUCTOR CLOSE REPORT is emitted, this command halts and waits for operator sign-off — single-sprint discipline enforced. Re-invoke `/shepherd:start` for the next sprint, or `/shepherd:spawn --auto` for the teammate-driven sequential autopilot.
+Execute the three-section pipeline per `${CLAUDE_PLUGIN_ROOT}/agents/conductor.md` §§Step 1–3 (INTRODUCTION → BODY → CLOSE). After CLOSE-FINALIZE completes and the CONDUCTOR CLOSE REPORT is emitted, this command halts and waits for operator sign-off — single-sprint discipline enforced. Re-invoke `/shepherd:start` for the next sprint, or `/shepherd:spawn --scope patch` for the teammate-driven sequential autopilot.
+
+---
+
+## Teammate path (`--teammate` flag) — v5.1.6+
+
+When invoked as `/shepherd:start --teammate`, the session is a spawned teammate. The execution path is materially different:
+
+### Step T0 — Verify invocation context
+
+Read the boot-prompt addendum for an `INVOCATION-CONTEXT` block. Required fields:
+
+```
+ROOT-SESSION-NAME: shepherd-root @ <session-id>
+INVOCATION-CONTEXT:
+  dispatcher: teammate-conductor
+  spawn_session: <team-id>
+  scope: <sprint|patch|...>
+  fanout_mode: <lane|sprint>
+  lane_index: <i_of_L_w>       # lane mode only
+  wave_index: <w_of_W>         # lane mode only
+  ...
+```
+
+If missing: HALT with `TEAMMATE-FLAG-MISUSED` and surface:
+```
+/shepherd:start --teammate: REFUSED — no INVOCATION-CONTEXT block found in boot prompt.
+
+This flag is intended for sessions spawned by /shepherd:spawn. Main-chat solo
+operators should invoke /shepherd:start (no flag) for the full pipeline.
+
+If you are a teammate session and this error fires, your boot prompt is malformed.
+Report back to root via SendMessage(to: lead, halt_code: TEAMMATE-BOOT-MALFORMED).
+```
+
+### Step T1 — Load conductor profile in TEAMMATE mode
+
+Read `${CLAUDE_PLUGIN_ROOT}/agents/conductor.md` and self-detect TEAMMATE mode per §"Conductor modes" (signals 3 and 4 — boot prompt contains the relevant blocks). Surface:
+
+```
+[SESSION-START] mode=teammate | lane={lane_id} | wave={wave_index} | sprint={sprint_slug}
+```
+
+### Step T2 — Read assigned lane brief
+
+The boot prompt includes the lane brief slice (lane_id, wave, file_scope, parallel_with, steps, acceptance). This is your ENTIRE instruction set. Do NOT re-mesh; do NOT re-engineer; do NOT re-critic — root already did those.
+
+### Step T3 — Walk the lane's micro-Stage-Graph
+
+A typical lane walk:
+
+1. **DEDUP-GATE** — run `[DO-NOT-DUPLICATE]` greps from the lane brief. Block if any unexpected hits.
+2. **IMPL** — dispatch `@coder` with the lane brief as the coder's brief. The coder writes to the worktree at `INVOCATION-CONTEXT.worktree_path`. Single coder per lane is the norm; complex lanes may warrant `@worker` or `@discovery` support.
+3. **LANE-CLOSE** — read coder output, verify `[ACCEPTANCE]` greps, prepare WAVE-COMPLETE payload.
+
+Throughout: peer messaging permitted per `agents/conductor.md §Teammate-to-teammate communication` (status updates, joint pre-surface). No artifact writes (root materializes); no engineer/critic dispatch (root-tier-exclusive); no git commits (root commits on wave-complete).
+
+### Step T4 — Surface WAVE-COMPLETE
+
+```
+SendMessage(to: lead, {
+  phase: "body-wave-{wave_index}-lane-{lane_id}",
+  halt_code: null,
+  blocking: false,
+  context_files: ["<lane-output-summary>"],
+  loc_delta: {add: N, del: M},
+  acceptance_results: {<grep>: <count>, ...}
+})
+```
+
+Then idle. Root materializes your wave artifacts, runs the wave-gate after all sibling lanes close, and decides next action.
+
+### Step T5 — Pause for resume
+
+You are an ephemeral teammate. After WAVE-COMPLETE, you remain available for follow-up dispatch (hot-fix, second wave) from root. If root sends a resume reply with another lane brief, walk that lane through T3–T4. If root closes the team, you exit.
 
 ---
 
 ## See also
 
-- `${CLAUDE_PLUGIN_ROOT}/agents/conductor.md` — full conductor profile (pipeline, dispatch, gates, halt codes)
-- `${CLAUDE_PLUGIN_ROOT}/commands/spawn.md` — teammate variants (`--auto`, `--parallel <N>`)
+- `${CLAUDE_PLUGIN_ROOT}/agents/conductor.md` — full conductor profile; §"Conductor modes" for solo vs teammate mode detection
+- `${CLAUDE_PLUGIN_ROOT}/agents/shepherd.md` — root-tier profile (the dispatcher behind `--teammate`)
+- `${CLAUDE_PLUGIN_ROOT}/commands/spawn.md` — teammate-spawn entry (`--scope`, `--parallel`)
 - `${CLAUDE_PLUGIN_ROOT}/skills/shepherd/flock.md` — per-agent dispatch rules
+- `${CLAUDE_PLUGIN_ROOT}/skills/shepherd/doctrines/dispatch-tier-separation.md` — three-tier dispatch matrix
 - `${CLAUDE_PLUGIN_ROOT}/docs/configuration.md` — shepherd.toml schema

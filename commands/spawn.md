@@ -1,23 +1,37 @@
 ---
 name: spawn
 description: |
-  Spawn a teammate-conductor to run a sprint while main chat stays lean as the
-  planter/babysitter. Requires the Agent Teams feature (CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=true,
-  Claude Code ≥ v2.1.32, teammateMode configured). Main chat adopts the planter profile;
-  the teammate's first action is /shepherd:start against the active sprint scope.
+  Spawn teammate-conductor(s) to execute a sprint while main chat adopts the
+  root-shepherd profile (agents/shepherd.md). Requires the Agent Teams feature
+  (CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=true, Claude Code ≥ v2.1.32, teammateMode
+  configured). Operator-explicit invocation only — refuses from teammate sessions
+  (nested spawn forbidden).
 
-  Two flags extend the base behavior:
-    --parallel <N>  Fan out N sibling teammates inside the lead's single team. Each
-                    teammate runs one sprint in its own worktree. Planter pre-checks
-                    scope for file-disjoint collision before any spawn fires. Escalations
-                    are multiplexed; planter triages by teammate_name. Merges are
-                    dev-order gated (predecessor merged before successor).
-    --auto          Sequential autopilot. Planter spawns one teammate per sprint, does
-                    inter-sprint cleanup + git + handoff between spawns, then spawns the
-                    next. Each sprint gets a fresh context window. Loop terminates at
-                    last dev, operator interrupt, grade floor, or error budget exhaustion.
-argument-hint: "[ sprint_slug ] [ --parallel <N> | --auto ]   defaults to next unstarted dev.N"
-allowed-tools: Bash, Edit, Glob, Grep, Read, Skill, Write, ToolSearch, TaskCreate, TaskGet, TaskList, TaskUpdate, WebFetch, WebSearch
+  v5.1.6 introduces:
+    - Root-shepherd tier — main chat adopts agents/shepherd.md (not planter.md);
+      planter loads only under /shepherd:plant or when seed work is delegated mid-spawn.
+    - Lane-per-conductor fanout (default) — for each wave in the plan, root spawns
+      one teammate-conductor PER LANE. Many small focused teammates beat fewer broad
+      ones; cache hit rates climb when each teammate's stable prefix is small.
+    - --scope flag — workload scaling per doctrines/scope-scale-workload.md.
+    - INTRO-COMBO-WAVE always-on under spawn — every sprint gets a grounded plan.
+    - Teammate-conductor write restrictions — returns structured payloads; root
+      materializes artifacts. Engineer/critic dispatch root-tier-exclusive.
+
+  Three flags extend the base behavior (compose orthogonally):
+    --scope <value>    sprint | patch | minor | version (default sprint)
+                       sprint  = one dev.N (current /shepherd:spawn behavior)
+                       patch   = full patch (≡ retired --auto; sequential or parallel)
+                       minor   = experimental; operator double-confirm
+                       version = experimental; operator double-confirm + resource warning
+    --parallel <N>     Fan out N sibling teammates for sprint-level concurrency (only
+                       valid for --scope >= patch; ≤ 4 for patch; refused for minor/version
+                       in v5.1.6). Within each sprint, lane-per-conductor fanout still
+                       applies internally.
+    --auto             ALIAS for --scope patch (preserved for operator muscle memory;
+                       deprecated in v5.2.0, removed v6.0.0).
+argument-hint: "[ sprint_slug ] [ --scope sprint|patch|minor|version ] [ --parallel <N> | --auto ]"
+allowed-tools: Agent, Bash, Edit, Glob, Grep, Read, Skill, Write, ToolSearch, TaskCreate, TaskGet, TaskList, TaskUpdate, SendMessage, WebFetch, WebSearch
 ---
 
 # /shepherd:spawn — Teammate-Conductor Dispatch
@@ -101,6 +115,34 @@ expected to know which mode they configured.
 
 Run every check before calling `Agent`. Refuse with a clear error if any check fails.
 
+### Check 0 — Operator-only invocation (v5.1.6+)
+
+`/shepherd:spawn` is **operator-explicit-only**. Nested spawn from within a teammate session is forbidden. Detection signals (ANY positive → refuse):
+
+| # | Signal | Source |
+|---|---|---|
+| 1 | `$CLAUDE_AGENT_TEAMMATE_NAME` is set (non-empty) | env var |
+| 2 | `$CLAUDE_PROJECT_SESSION_TYPE == "teammate"` | env var |
+| 3 | Current session's system prompt addendum contains `INVOCATION-CONTEXT.dispatcher: teammate-conductor` | profile |
+| 4 | Current session was spawned (CLAUDE_AGENT_PARENT_SESSION_ID present) | env var |
+
+If ANY positive:
+```
+/shepherd:spawn — REFUSED: nested spawn forbidden.
+
+Subagents and teammate-conductors cannot spawn further teammates. The Agent Teams
+platform forbids nested teams (D-API §12), and shepherd discipline forbids
+out-of-tier dispatch (per doctrines/dispatch-tier-separation.md).
+
+If you need plan amendment or scope expansion, surface the request to the root
+shepherd via SendMessage(to: lead, halt_code: PLAN-AUTHORSHIP-REQUEST) instead.
+
+If you are the operator and this error fires unexpectedly, check your environment
+for stale teammate env vars and re-invoke from a clean main-chat session.
+```
+
+This check is the FIRST gate. It runs before any other preflight.
+
 ### Check 1 — Agent Teams feature flag
 
 ```bash
@@ -178,37 +220,123 @@ If missing, emit `[WARN]` and proceed with framework defaults from
 4. **No dev-order cycle.** If `sprint_dependencies` contains a cycle, the merge
    gate would deadlock — refuse.
 
-**For `--auto`:**
+**For `--auto`** (aliased to `--scope patch` in v5.1.6+):
 
 1. **Patch boundary detection (HARD-STOP).** Read `shepherd.toml [branching]` to
    enumerate dev.N branches. Identify `dev.LAST` (precedence: `[version].dev_total`
    → seed count → operator prompt). If undeterminable, prompt:
    ```
-   [PROMPT] /shepherd:spawn --auto: Cannot determine the last dev sprint.
+   [PROMPT] /shepherd:spawn --scope patch: Cannot determine the last dev sprint.
    How many dev sprints does this patch contain? (current: dev.{N})
    ```
    Operator input is mandatory before the loop begins.
 2. **Min-grade configured.** `[autorun].min_grade` must be set in `shepherd.toml`.
    If absent, default to `B` and warn.
 
+### Check 6 — Scope sprint enumeration (v5.1.6+)
+
+For every `--scope` value, enumerate the concrete sprint list before any spawn. Reads
+seeds from `{paths.plans}/` and verifies presence:
+
+```
+[SCOPE ENUMERATION]
+Scope: {scope}
+Patch boundary: dev.0..dev.{LAST}
+Concrete sprint list:
+  - v{X}.{Y}.{Z}-dev.0  → {paths.plans}/v{XYZ}-dev0.seed.md       [seed: present | MISSING]
+  - v{X}.{Y}.{Z}-dev.1  → {paths.plans}/v{XYZ}-dev1.seed.md       [seed: present]
+  - ...
+
+Total sprints: {N}
+Missing seeds: {M}
+```
+
+If any required seed is missing, REFUSE the spawn and direct the operator to run
+`/shepherd:plant {sprint_slug}` for each gap. Per `doctrines/scope-scale-workload.md §III`.
+
+### Check 7 — Scope confirmation for minor/version (v5.1.6+)
+
+For `--scope minor`: require operator to type the literal string `confirm minor`
+(case-insensitive, exact phrase). Refuse otherwise.
+
+For `--scope version`: surface the resource-estimate warning block AND require
+operator to type `confirm version`:
+
+```
+/shepherd:spawn --scope version: ESTIMATED 1000-sprint walk.
+
+This will consume:
+  - Token budget: ~$N estimated (based on prior-sprint averages)
+  - Wall time: ~M days estimated
+  - GitHub API rate budget: ~K calls
+
+This is experimental in v5.1.6 — single-minor walks have been validated;
+cross-minor walks are deferred. Refuse will route you to a less ambitious scope.
+
+Confirm by typing the exact phrase: confirm version
+```
+
+Refuse if confirmation absent.
+
+### Check 8 — Resource estimate (info-only, always surfaced)
+
+Always emit before spawning:
+
+```
+[RESOURCE ESTIMATE]
+Sprints: {N}
+Estimated wall time: ~{N × avg_sprint_minutes} minutes
+Estimated GitHub API calls: ~{N × avg_api_per_sprint}
+Worktree count peak: {parallel_N} concurrent worktrees
+```
+
+Estimates use `{paths.ctx}/sprint-patterns.md` averages if present, else conservative
+defaults (avg_sprint_minutes=90, avg_api_per_sprint=200).
+
 ---
 
-## § Adopt the planter profile
+## § --scope flag (v5.1.6+)
 
-Main chat (this session) becomes the ambient planter/babysitter for the lifetime of
-the teammate's run.
+`--scope` declares workload scale. Default: `sprint`. Full semantics in
+`doctrines/scope-scale-workload.md`.
 
-1. Read `${CLAUDE_PLUGIN_ROOT}/agents/planter.md` (full file).
-2. Confirm mode: **spawn** (not plant). Primary activity = ambient read + escalation
-   response. Git custody = full. Session ends only after the hand-back sequence in
-   `agents/planter.md §Babysitter mode §5` completes.
+| Value | Sprint count | Behavior |
+|---|---|---|
+| `sprint` (default) | 1 | One `dev.N`. Lane-per-conductor fanout within the sprint's waves. |
+| `patch` | ~sprints_per_patch (default 10) | Full patch dev.0..dev.LAST. Equivalent to retired `--auto`. |
+| `minor` | ~patches_per_minor × sprints_per_patch | Experimental. Requires `confirm minor` phrase. |
+| `version` | ~minors × patches × sprints | Experimental. Requires `confirm version` phrase + resource warning. |
 
-If `agents/planter.md` is already loaded (e.g., operator ran `/shepherd:plant`
-earlier), skip the re-read.
+Composition with `--parallel <N>`:
 
-> `agents/planter.md` frontmatter pins model `opus[1m]`. If this session is Sonnet
-> and the operator intends a long babysit, recommend switching to Opus now.
-> Non-blocking; quality of escalation triage degrades on Sonnet.
+- `--scope sprint --parallel <N>`: N concurrent file-disjoint sprints from current patch (the v5.1.5 model). Each sprint internally uses lane-per-conductor.
+- `--scope patch --parallel <N>`: N concurrent sprints from the patch's pool. Each sprint internally uses lane-per-conductor.
+- `--scope minor` / `--scope version` + `--parallel >1`: REFUSED in v5.1.6 (cross-patch parallel not validated).
+
+Within EVERY sprint (regardless of scope/parallel), the plan's lane-per-conductor structure determines how many teammate-conductors root spawns per wave. This is the implicit fanout; no flag controls it (the plan does).
+
+`--auto` is preserved as an alias for `--scope patch`. Both forms work; `--scope patch` is canonical. Deprecation in v5.2.0, removal in v6.0.0.
+
+---
+
+## § Adopt the root-shepherd profile (v5.1.6+)
+
+Main chat (this session) becomes the **root shepherd** for the lifetime of the spawn.
+
+1. Read `${CLAUDE_PLUGIN_ROOT}/agents/shepherd.md` (full file).
+2. Adopt as system-prompt addendum.
+3. Cite mandatory doctrines:
+   - `doctrines/root-shepherd-orchestration.md` (root tier behavioral contract)
+   - `doctrines/dispatch-tier-separation.md` (who-can-dispatch-whom matrix)
+   - `doctrines/scope-scale-workload.md` (--scope semantics)
+
+**Two-meta-loading (shepherd + planter):** if `agents/planter.md` is already loaded (operator ran `/shepherd:plant` earlier in this session), the shepherd profile **augments** rather than replaces. Per `doctrines/root-shepherd-orchestration.md §V`:
+- Outer frame: shepherd (this profile) — owns engineer/critic, teammate coordination, artifact materialization.
+- Inner frame: planter — seed authorship, mesh writing, cleanup stewardship.
+
+The shepherd profile delegates seed work to planter mode inline when needed (mid-spawn amendments). On spawn close, planter regains its primary write authority for cleanup stewardship.
+
+> `agents/shepherd.md` frontmatter is `model: inherit`. If this session is Sonnet and the operator intends ultra-parallel spawn coordination, recommend switching to Opus now (the engineer + critic dispatched FROM shepherd are individually pinned to Opus + Sonnet, so the root tier's own reasoning model is the bottleneck for coordination quality).
 
 ---
 
@@ -217,24 +345,43 @@ earlier), skip the re-read.
 Construct the teammate's boot prompt before calling `Agent`. The prompt carries all
 inherited context the teammate needs without re-asking main chat.
 
-### Required context block
+### Required context block (v5.1.6+ — lane-per-conductor model)
 
 ```
 You are a spawned teammate-conductor for the shepherd framework.
 
-Your main chat (the lead session) is your planter and babysitter. It watches your
-escalations, owns all git operations, and will execute the post-sprint merge sequence.
+Your main chat (the lead session) is the root shepherd. It owns engineer/critic
+dispatch, materializes your returned payloads as artifacts, runs all git operations,
+and executes the post-sprint merge sequence. You are a wave-executor (or
+lane-executor under lane-per-conductor fanout) reporting up.
+
+ROOT-SESSION-NAME: shepherd-root @ {main_chat_session_id}
+
+INVOCATION-CONTEXT:
+  dispatcher: teammate-conductor
+  spawn_session: {team_id}
+  scope: {sprint|patch|minor|version}
+  fanout_mode: {lane|sprint}            # lane = lane-per-conductor (default); sprint = scope>sprint concurrent sprints
+  lane_index: {i_of_L_w}                # lane index within its wave (lane mode only)
+  wave_index: {w_of_W}                  # wave index within plan (lane mode only)
+  parallel_index: {i_of_N}              # sprint-fanout index (sprint mode only)
+  peer_teammate_names: [list]           # sibling teammates in this wave for peer SendMessage
 
 IDENTITY
-  Role: conductor (sprint runner)
-  Profile: ${CLAUDE_PLUGIN_ROOT}/agents/conductor.md  (load immediately)
+  Role: conductor (TEAMMATE MODE)
+  Profile: ${CLAUDE_PLUGIN_ROOT}/agents/conductor.md  (load immediately; detect TEAMMATE mode via the INVOCATION-CONTEXT above)
   Escalation channel: skills/shepherd/doctrines/spawn-escalation.md
+  Tier-separation doctrine: skills/shepherd/doctrines/dispatch-tier-separation.md
 
 INHERITED CONTEXT
   CLAUDE.md path:          {project_claude_md_path}
   Active seed path:        {paths.plans}/{sprint_slug}.seed.md
+  Active plan path:        {paths.plans}/{sprint_slug}.plan.md
+  Your assigned lane:      {lane_id from plan}  (lane mode only)
+  Lane brief slice:        {paste lane's seven-bracketed section + steps}
   Prior close handoff:     {paths.docs}/{prior_handoff_filename}
   Carry-forward GH issues: {comma-separated #NNN from handoff}
+  Worktree path:           {abs_path}/.worktrees/{sprint_slug}-{lane_id}
   shepherd.toml snapshot:  inline below
 
 --- shepherd.toml snapshot ---
@@ -242,7 +389,19 @@ INHERITED CONTEXT
 --- end snapshot ---
 
 FIRST ACTION
-  Invoke /shepherd:start. Do not wait for further instructions.
+  Invoke /shepherd:start --teammate. (v5.1.6+)
+
+  The --teammate flag signals lane-execute mode:
+    - Skip Phase 0 mesh / INTRO-COMBO-WAVE / @engineer / @critic (root already did those).
+    - Load agents/conductor.md and self-detect TEAMMATE mode.
+    - Read the lane brief from this INHERITED CONTEXT block.
+    - Walk lane micro-Stage-Graph: DEDUP-GATE → IMPL (@coder for lane scope) → LANE-CLOSE.
+    - Surface WAVE-COMPLETE via SendMessage.
+
+  Do NOT invoke /shepherd:start without --teammate — that triggers SOLO mode
+  full-pipeline behavior, which is wrong for a teammate (it would re-engineer the plan,
+  re-critic, etc.). The lane brief above is your complete instruction set; --teammate
+  binds you to it.
 
 ESCALATION RULES — summary; full contract at spawn-escalation doctrine
   On any Halt code from agents/conductor.md §Halt codes:
@@ -255,22 +414,44 @@ ESCALATION RULES — summary; full contract at spawn-escalation doctrine
     5. Heartbeat: emit a status row at every phase boundary.
 
 HARD PROHIBITIONS WHILE SPAWNED
-  - NO git commit / push / branch -d / rebase. Git is the planter's exclusive
-    domain. See agents/conductor.md §Side-effect boundary + Hard prohibition #12.
+  - NO dispatching @engineer or @critic — those are root-tier-exclusive.
+    Surface PLAN-AUTHORSHIP-REQUEST or PLAN-GATE-REQUEST via SendMessage.
+  - NO writing artifact files (plans, reports, handoffs, close docs, audit
+    reports). Return structured payloads via SendMessage; root materializes.
+    Your Edit/Write authority is restricted to worktree-local questions.md
+    and to your dispatched @coder's writes within its own scope.
+  - NO git commit / push / branch -d / rebase. Git is the root shepherd's
+    exclusive domain. See agents/conductor.md §Side-effect boundary
+    (TEAMMATE mode table).
   - NO acquiring or releasing .artifacts/shepherd.lock.
-  - NO spawning your own teammates (platform forbids nested teams).
+  - NO spawning your own teammates (platform forbids nested teams; tier
+    separation forbids it doctrinally).
   - NO pushing to any remote branch not owned by the active sprint.
 
 WAVE-BOUNDARY COMMIT PROTOCOL
-  At each wave completion:
+  At lane completion (LANE-CLOSE):
     1. SendMessage(to: lead) wave-complete payload:
-         {phase: "body-wave-N", halt_code: null, blocking: false,
-          context_files: ["<wave-gate-output-path>"]}
-    2. TaskCompleted fires automatically on wave-scope task completion.
-  Planter commits your wave on TaskCompleted (spawn-escalation §VI).
+         {phase: "body-wave-N-lane-{lane_id}", halt_code: null, blocking: false,
+          context_files: ["<lane-output-summary-path>"],
+          loc_delta: {add: N, del: M},
+          acceptance_results: {<grep>: <count>, ...}}
+    2. TaskCompleted fires automatically on lane-scope task completion.
+  Root shepherd commits your lane's work after ALL lanes in your wave have
+  closed (per dev-order or peer-order merge gate; see spawn-escalation §VI).
+
+PEER COMMUNICATION (where supported by platform)
+  Sibling teammates in the same wave are listed in INVOCATION-CONTEXT.peer_teammate_names.
+  You MAY SendMessage(to: peer_name) for:
+    - Wave-internal status (your lane done; informing peer waiting on your symbol).
+    - Cross-lane discovery sharing (read-only mesh applicable to a sibling).
+    - Joint dispute pre-surface (siblings spot conflicting interpretations).
+  You MUST NOT use peer messaging for:
+    - Plan amendments (root only).
+    - Critic gating (root only).
+    - Source-code conflict resolution (worktrees are file-disjoint by design).
 
 TEAMMATE IDENTITY
-  Name: shepherd-conductor-{sprint_slug}
+  Name: shepherd-{lane|parallel|auto}-{sprint_slug}[-{lane_id}]
   Session transcript: ~/.claude/projects/<project-path>/<session-uuid>.jsonl
 ```
 
@@ -559,11 +740,10 @@ In addition to base hard stops:
 
 ---
 
-## § Babysitter responsibilities
+## § Root-shepherd responsibilities (v5.1.6+; was "babysitter")
 
-While the teammate-conductor runs the sprint, this main-chat session is the
-ambient babysitter. Full behavioral contract: `agents/planter.md §Babysitter mode`.
-Mechanical channel contract: `skills/shepherd/doctrines/spawn-escalation.md`.
+While the teammate-conductor(s) run the sprint, this main-chat session is the
+**root shepherd**. Full behavioral contract: `agents/shepherd.md` + `doctrines/root-shepherd-orchestration.md`. Mechanical channel contract: `skills/shepherd/doctrines/spawn-escalation.md`. When planter is also loaded (two-meta), the cleanup-stewardship responsibilities cite `agents/planter.md §Babysitter mode §3` directly.
 
 Summary (one screen):
 

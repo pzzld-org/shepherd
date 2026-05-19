@@ -3,12 +3,30 @@
 Sprint-by-sprint version-cycle conductor. A production-grade orchestration framework that turns a single Claude Code session into a disciplined release engineer driving a closed six-agent flock (engineer, critic, coder, auditor, worker, discovery) through repeatable sprint pipelines.
 
 ```bash
-┌──────────────────────────────────────────────────────────────────┐
-│  /shepherd:plant     Opus-pinned seed authorship (upstream)      │
-│  /shepherd:start     One sprint end-to-end, then PAUSE           │
-│  /shepherd:spawn     Teammate-conductor (--auto, --parallel N)   │
-└──────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│  /shepherd:plant     Opus-pinned seed authorship (upstream)          │
+│  /shepherd:start     One sprint end-to-end, then PAUSE               │
+│                       --teammate    lane-execute (spawned sessions)  │
+│  /shepherd:spawn     Root-shepherd + teammate-conductors             │
+│                       --scope <sprint|patch|minor|version>           │
+│                       --parallel <N>      sprint-level fanout        │
+│                       --auto              alias: --scope patch       │
+└──────────────────────────────────────────────────────────────────────┘
 ```
+
+## v5.1.6 — Root-Shepherd Tier + Lane-Per-Conductor Fanout
+
+v5.1.6 introduces a **three-tier dispatch hierarchy** under `/shepherd:spawn`:
+
+- **Tier 3 (root)** — `agents/shepherd.md`. Main chat adopts this profile when `/shepherd:spawn` is invoked. Owns `@engineer` + `@critic` dispatch, artifact materialization from teammate-returned payloads, cross-teammate dispute resolution, and close-swarm coordination.
+- **Tier 2 (meta)** — `agents/conductor.md` (downgraded to **model: sonnet** in v5.1.6). Dual-mode: **solo mode** under `/shepherd:start` retains full dispatch + writes (backward-compatible); **teammate mode** under `/shepherd:spawn` is restricted (no engineer/critic dispatch, no artifact writes — returns structured payloads via `SendMessage`).
+- **Tier 1 (flock)** — closed at six (coder, auditor, worker, discovery, engineer, critic). Engineer + critic become root-tier-exclusive under spawn.
+
+The new spawn pattern is **lane-per-conductor fanout**: the engineer designs the plan as W waves × L_w lanes per wave; root spawns L_w teammate-conductors per wave (one per lane). Many small focused teammates beat fewer broad ones — cache hit rates climb when each teammate's stable prefix is small.
+
+`--scope sprint|patch|minor|version` (default `sprint`) scales workload per the 4-tier roadmap. `--scope patch` replaces the retired `--auto` (preserved as alias). `minor` and `version` are experimental — require operator double-confirmation.
+
+See [`docs/configuration.md`](docs/configuration.md), [`agents/shepherd.md`](agents/shepherd.md), and [`skills/shepherd/doctrines/dispatch-tier-separation.md`](skills/shepherd/doctrines/dispatch-tier-separation.md) for full details.
 
 ## v5.0.0 — Context Registry
 
@@ -48,15 +66,26 @@ Bundled defaults ship at [`skills/context/styles/<lang>.md`](skills/context/styl
 
 ## What it is
 
-Shepherd is the framework. The conductor (main chat, Sonnet) writes seeds, dispatches a closed flock of five agents, runs gates, audits, and ties off — then pauses or loops or fans out depending on the command invoked.
+Shepherd is the framework. **Three meta tiers** orchestrate a closed **six-agent flock** through repeatable sprint pipelines.
+
+**Meta tiers** (v5.1.6+):
+
+| Tier | Profile | Model | Adopted by | Role |
+| ---- | ------- | ----- | ---------- | ---- |
+| 3 (root) | `agents/shepherd.md` | inherit | Main chat under `/shepherd:spawn` | Engineer/critic dispatch, artifact materialization, dispute resolution, close-swarm |
+| 2 (meta) | `agents/conductor.md` | sonnet | Main chat under `/shepherd:start` (solo) OR teammate session (teammate) | Sprint/lane execution; dual-mode |
+| PARALLEL | `agents/planter.md` | opus[1m] | Main chat under `/shepherd:plant`; mid-spawn delegated | Seed authorship + cleanup stewardship |
+
+**The flock** (closed at six):
 
 | Lane | Model | Mode | Job |
 | ---- | ----- | ---- | --- |
-| `@engineer` | Opus | Single, once per sprint | Phase 0 mesh + sprint plan authorship |
-| `@critic` | Sonnet | Single, sequential gate | Adversarial review of plans, money-paths, merges |
+| `@engineer` | Opus | Single, once per sprint | Phase 0 mesh + sprint plan authorship. **Root-tier-exclusive under `/shepherd:spawn`.** |
+| `@critic` | Sonnet | Single, sequential gate | Adversarial review of plans, money-paths, merges. **Root-tier-exclusive under `/shepherd:spawn`.** |
 | `@coder` | Sonnet | Parallel waves | Implementation; one per disjoint file scope |
 | `@auditor` | Sonnet | Swarm of 3–5 | Read-only review at sprint close, split by concern |
 | `@worker` | Sonnet | Single or parallel | Bounded execution: monitoring, research, ops |
+| `@discovery` | Sonnet | Single or parallel | Read-only orientation, comprehension, synthesis |
 
 The flock is **closed**. Plus an upstream **planter** mode (Opus, conductor variant — not a sixth lane) that authors drift-resistant seeds.
 
