@@ -11,6 +11,7 @@
 #   show <id> [--md|--json|--report]         Show structured record OR open the report
 #   search --question="<paraphrase>" [...]   Find discoveries whose question matches
 #   clear --sprint=<branch>                  Purge sprint discoveries (operator confirmed)
+#   insert --run=<id> --title=<t> [...]      Insert a structured finding row (v5.1.7+)
 #   help
 
 set -eu -o pipefail
@@ -29,14 +30,48 @@ USAGE
   shctx discovery show <id> [--md|--json|--report]
   shctx discovery search --question="<paraphrase>" [--sprint=<branch>] [--max-age-sprints=<N>]
   shctx discovery clear --sprint=<branch> [--force]
+  shctx discovery insert --run=<id> --title=<t> [--section=<s>]
+                          [--sources=<json>] [--sprint=<branch>]  < body.md
 
 EXAMPLES
   shctx discovery list                              # current sprint, markdown
   shctx discovery show 20260515T141023-a3f9         # structured record
   shctx discovery search --question="canonical types freshness"
   shctx discovery clear --sprint=v5.1.2-dev.0 --force
+  echo "Auth probe body" | shctx discovery insert --run=D-AUTH \
+      --section=confirmed --title='Auth probe'
 EOF
 }
+
+# ---------------------------------------------------------------------------
+# v5.1.7+ insert subverb — intercepted BEFORE namespace/sprint resolution so
+# `shctx discovery insert ...` works on direct invocation (tests use bare
+# bash + SHCTX_DB) and does not need the hooks-lib `resolve_namespace` /
+# `current_sprint` helpers that the legacy list/show/search/clear paths
+# depend on.
+# ---------------------------------------------------------------------------
+if [[ "$sub" == "insert" ]]; then
+  run=""; section=""; title=""; sources=""; sprint=""
+  while [[ $# -gt 0 ]]; do case "$1" in
+    --run=*)     run="${1#*=}";;
+    --section=*) section="${1#*=}";;
+    --title=*)   title="${1#*=}";;
+    --sources=*) sources="${1#*=}";;
+    --sprint=*)  sprint="${1#*=}";;
+    *) echo "unknown flag: $1" >&2; exit 2;;
+  esac; shift; done
+  [[ -n "$run" && -n "$title" ]] || { echo "ERR: --run and --title required" >&2; exit 2; }
+  body="$(cat)"
+  DB="${SHCTX_DB:-$(shctx_db_path)}"
+  [[ -f "$DB" ]] || { echo "ERR: registry DB not found at $DB" >&2; exit 1; }
+  pid="$(sqlite3 "$DB" "SELECT id FROM projects LIMIT 1;")"
+  ts=$(($(date +%s) * 1000))
+  safe_title="${title//\'/\'\'}"; safe_body="${body//\'/\'\'}"
+  safe_sec="${section//\'/\'\'}"; safe_src="${sources//\'/\'\'}"; safe_sp="${sprint//\'/\'\'}"
+  id=$(sqlite3 "$DB" "INSERT INTO discovery_findings (project_id, sprint_branch, discovery_run, section, title, body, sources, created_at) VALUES ('$pid', NULLIF('$safe_sp',''), '$run', NULLIF('$safe_sec',''), '$safe_title', '$safe_body', NULLIF('$safe_src',''), $ts) RETURNING id;")
+  echo "$id"
+  exit 0
+fi
 
 ns=$(resolve_namespace)
 current_sprint_name=$(current_sprint)
@@ -224,5 +259,7 @@ case "$sub" in
   show)           cmd_show "$@" ;;
   search)         cmd_search "$@" ;;
   clear)          cmd_clear "$@" ;;
+  # insert is handled in the early-intercept block above, before namespace
+  # resolution, so direct `bash cmd_discovery.sh insert ...` works.
   *) echo "ERROR: unknown shctx discovery subcommand: $sub" >&2; usage >&2; exit 1 ;;
 esac
