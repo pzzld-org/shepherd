@@ -24,8 +24,8 @@ case "$sub" in
     KIND="note"; TITLE=""; BODY=""; TAGS="[]"; parse_kv "$@"
     [[ -n "$TITLE" ]] || { echo "ERROR: --title required" >&2; exit 1; }
     id=$(shctx_uuid7)
-    body_esc=${BODY//\'/\'\'}
-    title_esc=${TITLE//\'/\'\'}
+    body_esc=${BODY//\'/''}
+    title_esc=${TITLE//\'/''}
     shctx_sql "INSERT INTO mem_entries (id,project_id,kind,title,body,tags,pinned,created_at,updated_at)
                VALUES ('$id','$project_id','$KIND','$title_esc','$body_esc','$TAGS',0,$now,$now);"
     echo "$id"
@@ -37,7 +37,7 @@ case "$sub" in
   search)
     Q=""; parse_kv "$@"
     [[ -n "$Q" ]] || { echo "ERROR: --q=<text> required for mem search" >&2; exit 1; }
-    q_esc="%${Q//\'/\'\'}%"
+    q_esc="%${Q//\'/''}%"
     shctx_sql -header -column \
       "SELECT id, kind, title, pinned FROM mem_entries WHERE project_id='$project_id' AND (title LIKE '$q_esc' OR body LIKE '$q_esc') ORDER BY pinned DESC, created_at DESC;"
     ;;

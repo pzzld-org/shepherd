@@ -32,7 +32,7 @@ i=0
 while [[ $i -lt ${#bind_keys[@]} ]]; do
   k=${bind_keys[$i]}
   v=${bind_vals[$i]}
-  v=${v//\'/\'\'}
+  v=${v//\'/''}
   sql=${sql//:$k/\'$v\'}
   i=$((i + 1))
 done

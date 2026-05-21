@@ -35,8 +35,8 @@ case "$sub" in
     sender="${CLAUDE_TEAMMATE_NAME:-root}"
     ts="$(now_ms)"
     # Escape single quotes in payload
-    safe_payload="${payload//\'/\'\'}"
-    safe_target="${target//\'/\'\'}"
+    safe_payload="${payload//\'/''}"
+    safe_target="${target//\'/''}"
     id=$(sqlite3 "$DB" "INSERT INTO mailbox (project_id, sender_id, recipient_name, kind, payload, target_file, requires_ack, sent_at) VALUES ('$pid','$sender','$to','$kind','$safe_payload',NULLIF('$safe_target',''),$ack,$ts) RETURNING id;")
     echo "$id"
     ;;
@@ -58,6 +58,7 @@ case "$sub" in
     ;;
   ack)
     id="$1"
+    [[ "$id" =~ ^[0-9]+$ ]] || { echo "ERR: id must be numeric" >&2; exit 2; }
     sqlite3 "$DB" "UPDATE mailbox SET acked_at=$(now_ms) WHERE id=$id;"
     ;;
   stale)

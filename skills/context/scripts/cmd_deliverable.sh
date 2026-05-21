@@ -28,12 +28,13 @@ case "$sub" in
     session="${CLAUDE_SESSION_ID:-unknown}"
     role="${role:-${CLAUDE_AGENT_ROLE:-unknown}}"
     ts="$(now_ms)"
-    safe_t="${target//\'/\'\'}"
+    safe_t="${target//\'/''}"
     id=$(sqlite3 "$DB" "INSERT INTO deliverables (project_id, agent_session, agent_role, kind, target_ref, promised_at, status) VALUES ('$pid','$session','$role','$kind','$safe_t',$ts,'pending') RETURNING id;")
     echo "$id"
     ;;
   complete)
     id="$1"
+    [[ "$id" =~ ^[0-9]+$ ]] || { echo "ERR: id must be numeric" >&2; exit 2; }
     sqlite3 "$DB" "UPDATE deliverables SET status='delivered', delivered_at=$(now_ms) WHERE id=$id;"
     ;;
   stalled)

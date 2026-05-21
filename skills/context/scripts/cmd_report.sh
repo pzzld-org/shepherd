@@ -29,8 +29,8 @@ case "$kind" in
     echo "# Discovery report — run \`$run\`"
     [[ -n "$sprint" ]] && echo "Sprint: \`$sprint\`"
     echo
-    sqlite3 -separator '|' "$DB" "SELECT section, title, body, sources FROM discovery_findings WHERE discovery_run='$run'$([ -n "$sprint" ] && echo " AND sprint_branch='$sprint'") ORDER BY section, created_at;" \
-      | while IFS='|' read -r section title body sources; do
+    sqlite3 -separator $'\x1f' "$DB" "SELECT section, title, body, sources FROM discovery_findings WHERE discovery_run='$run'$([ -n "$sprint" ] && echo " AND sprint_branch='$sprint'") ORDER BY section, created_at;" \
+      | while IFS=$'\x1f' read -r section title body sources; do
           echo "## ${section:-General} — $title"
           echo
           echo "$body"
@@ -52,8 +52,8 @@ case "$kind" in
     [[ -n "$sev" ]]     && where="$where AND severity='$sev'"
     echo "# Audit report — sprint \`$sprint\`"
     echo
-    sqlite3 -separator '|' "$DB" "SELECT concern, severity, hypothesis, falsification, confidence, finding, gh_issue FROM audit_findings WHERE $where ORDER BY CASE severity WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 WHEN 'low' THEN 4 ELSE 5 END, created_at;" \
-      | while IFS='|' read -r concern severity hypothesis falsification confidence finding gh; do
+    sqlite3 -separator $'\x1f' "$DB" "SELECT concern, severity, hypothesis, falsification, confidence, finding, gh_issue FROM audit_findings WHERE $where ORDER BY CASE severity WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 WHEN 'low' THEN 4 ELSE 5 END, created_at;" \
+      | while IFS=$'\x1f' read -r concern severity hypothesis falsification confidence finding gh; do
           echo "### [$severity / $concern] $hypothesis"
           [[ -n "$gh" && "$gh" != "" ]] && echo "(filed as #$gh)"
           echo
@@ -72,13 +72,13 @@ case "$kind" in
     echo "# Escalations"
     echo
     if [[ "$open" == "1" ]]; then
-      sqlite3 -separator '|' "$DB" "SELECT id, role, phase, question, raised_at FROM v_escalations_open;" \
-        | while IFS='|' read -r id role phase q raised; do
+      sqlite3 -separator $'\x1f' "$DB" "SELECT id, role, phase, question, raised_at FROM v_escalations_open;" \
+        | while IFS=$'\x1f' read -r id role phase q raised; do
             echo "- **#$id [$role/${phase:-?}]** $q (raised: $raised)"
           done
     else
-      sqlite3 -separator '|' "$DB" "SELECT id, role, question, raised_at, resolved_at FROM escalations ORDER BY raised_at DESC;" \
-        | while IFS='|' read -r id role q raised resolved; do
+      sqlite3 -separator $'\x1f' "$DB" "SELECT id, role, question, raised_at, resolved_at FROM escalations ORDER BY raised_at DESC;" \
+        | while IFS=$'\x1f' read -r id role q raised resolved; do
             status="OPEN"; [[ -n "$resolved" && "$resolved" != "" ]] && status="RESOLVED"
             echo "- **#$id [$role/$status]** $q"
           done
@@ -113,8 +113,8 @@ case "$kind" in
     echo
     where="1=1"
     [[ -n "$team" ]] && where="team_name='$team'"
-    sqlite3 -separator '|' "$DB" "SELECT teammate_name, agent_type, status, last_seen_at FROM teammates WHERE $where ORDER BY spawned_at DESC;" \
-      | while IFS='|' read -r name type status seen; do
+    sqlite3 -separator $'\x1f' "$DB" "SELECT teammate_name, agent_type, status, last_seen_at FROM teammates WHERE $where ORDER BY spawned_at DESC;" \
+      | while IFS=$'\x1f' read -r name type status seen; do
           echo "- **$name** ($type) — status: $status — last seen: $seen"
         done
     ;;

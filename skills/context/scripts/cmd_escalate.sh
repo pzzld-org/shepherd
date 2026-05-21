@@ -38,7 +38,7 @@ case "$sub" in
     tid=""
     [[ -n "$tname" ]] && tid=$(sqlite3 "$DB" "SELECT id FROM teammates WHERE teammate_name='$tname' ORDER BY spawned_at DESC LIMIT 1;")
     ts="$(now_ms)"
-    safe_q="${q//\'/\'\'}"; safe_ctx="${ctx//\'/\'\'}"
+    safe_q="${q//\'/''}"; safe_ctx="${ctx//\'/''}"
     id=$(sqlite3 "$DB" "INSERT INTO escalations (project_id, teammate_id, role, phase, question, blocking, context_refs, raised_at) VALUES ('$pid', NULLIF('$tid',''), '$role', NULLIF('$phase',''), '$safe_q', $blocking, NULLIF('$safe_ctx',''), $ts) RETURNING id;")
     echo "$id"
     ;;
@@ -56,13 +56,14 @@ case "$sub" in
     ;;
   resolve)
     id="$1"; shift
+    [[ "$id" =~ ^[0-9]+$ ]] || { echo "ERR: id must be numeric" >&2; exit 2; }
     reply=""
     while [[ $# -gt 0 ]]; do case "$1" in
       --reply=*) reply="${1#*=}";;
       *) echo "unknown flag: $1" >&2; exit 2;;
     esac; shift; done
     [[ -n "$reply" ]] || { echo "ERR: --reply required" >&2; exit 2; }
-    safe="${reply//\'/\'\'}"
+    safe="${reply//\'/''}"
     sqlite3 "$DB" "UPDATE escalations SET resolved_at=$(now_ms), resolution='$safe' WHERE id=$id;"
     ;;
   ""|help|--help|-h) usage;;
