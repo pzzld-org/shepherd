@@ -393,6 +393,24 @@ If your coder discovers an unexpected file shared with another sibling's scope, 
 
 ---
 
+## Cargo discipline (binding under spawn)
+
+Every cargo invocation in your flock — including your own and every coder/
+worker subagent you dispatch — MUST use:
+
+    CARGO_TARGET_DIR=target/.lanes/<lane-slug> cargo <subcmd> ... --frozen
+
+Where `<lane-slug>` is the kebab-case suffix of your teammate name (e.g.
+`conductor-obs-init` → `obs-init`). When dispatching coder/worker subagents,
+your brief MUST include this prefix in any cargo example you provide.
+
+Root cleanup removes `target/.lanes/` at sprint close.
+
+Closes #50. References `doctrines/cargo-sequential-gates.md` and
+`doctrines/sqlite-canonical-state.md`.
+
+---
+
 ## Carry-forward + label discipline
 
 (Full rules in `flock.md` §IV — one-liner here for ambient conductor awareness.)

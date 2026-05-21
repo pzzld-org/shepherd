@@ -428,6 +428,16 @@ HARD PROHIBITIONS WHILE SPAWNED
     separation forbids it doctrinally).
   - NO pushing to any remote branch not owned by the active sprint.
 
+## Cargo discipline (binding)
+
+- `--frozen` on EVERY cargo invocation. No exceptions.
+- `CARGO_TARGET_DIR=target/.lanes/<your-lane-slug>` on EVERY cargo invocation
+  (yours + every coder/worker subagent you dispatch).
+- Cargo gates SERIAL only (per `doctrines/cargo-sequential-gates.md`).
+- `cargo fix` FORBIDDEN.
+
+Your lane-slug is `<derived from teammate_name>`.
+
 WAVE-BOUNDARY COMMIT PROTOCOL
   At lane completion (LANE-CLOSE):
     1. SendMessage(to: lead) wave-complete payload:
