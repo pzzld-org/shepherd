@@ -95,6 +95,25 @@ Hard prohibitions (full prose below): READ-ONLY — Write exclusively to `{paths
 
   Running gates from inside a coder's worktree picks up uncommitted state and produces FALSE-CRITICAL findings. The `bash_guard.sh` hook (v5.1.1+) enforces this at the tool layer; the agent-side check remains the first line of defense.
 - **Paste evidence per gate.** Every gate finding cites the gate's `Finished` or `error:` line verbatim — not a paraphrase. Bare claims ("compile failed") are not findings; they're conjecture.
+- **Skipping `[gates].extra` in intro-mode is CONTRACT VIOLATION.** (v5.1.7+) The intro-mode regression concern MUST iterate every `[gates].extra` entry in `.claude/shepherd.toml` per the Canonical gates section below. Silent omission of extras was the v5.1.5 regression root-cause (#44). See `doctrines/sqlite-canonical-state.md`.
+
+## Step 0 — Register deliverable promise (v5.1.7+; FIRST WRITE-PATH OPERATION)
+
+Per `doctrines/sqlite-canonical-state.md`, every auditor finding is canonical as a ROW in `audit_findings`, not as inline markdown. The report file is a courtesy view. Before reading source / running gates, register the deliverable promise:
+
+```bash
+DELIV_ID=$(shctx deliverable promise --kind=row --target=audit_findings:<concern> --role=auditor)
+```
+
+`<concern>` is the brief's assigned concern (`code-quality`, `data-flow`, `dependency-topology`, `datastore-state`, `completeness`, `regression`, `carry-forward-disposition`). Record the returned `$DELIV_ID` in your reasoning. At end of turn — after writing every finding row via `shctx audit insert` (one row per CRITICAL / HIGH / MEDIUM / LOW finding) — call:
+
+```bash
+shctx deliverable complete "$DELIV_ID"
+```
+
+If you end your turn without calling `complete`, the `deliverable_check.sh` hook marks the row as `stalled` and the dispatcher will re-spawn with a tightened brief. The finding ROWS are canonical; the markdown report at `{paths.reports}/<date>-audit-<concern>.md` is a materialized view rendered by `shctx report audit --sprint=<branch> --concern=<concern>`.
+
+The `## Output to conductor` summary at end-of-turn MUST include `- deliverable: <DELIV_ID> (status: delivered)`.
 
 ## Modes (v5.1.1+)
 
@@ -138,8 +157,32 @@ Each concern has a hypothesis-first opening (per `doctrines/auditor-hypothesis-d
 - **`dependency-topology`** — "what new types/aliases were introduced?" Wrapper-grep on those; build-manifest adds vs removes; feature gate discipline.
 - **`datastore-state`** — "what schema changes did this sprint introduce?" Advisor checks AFTER changes; migrations applied; row-count anomalies; RLS.
 - **`completeness`** — "what did the seed PROMISE that the plan delivered (or not)?" Real-work test; Phase 0 mesh + ledger sweep; carry-forward refresh; SUBTRACT verification; sprint-pattern journal write; **brief-order verification (per `doctrines/brief-cache-discipline.md`)**; **cache-telemetry table (per `doctrines/cache-telemetry.md`)**.
-- **`regression`** (intro) — "what acceptance from PRIOR sprint is most likely to have drifted at HEAD?" Re-run runnable acceptances; file findings on mismatches. No grade.
+- **`regression`** (intro) — "what acceptance from PRIOR sprint is most likely to have drifted at HEAD?" Re-run runnable acceptances; file findings on mismatches. No grade. **v5.1.7+:** also walks `[gates].extra` per Canonical gates section below.
 - **`carry-forward-disposition`** (intro) — "which carry-forward entries are most likely to be stale/mislabeled?" Verify GH state, label, sprint target. No grade.
+
+### Canonical gates (intro-mode regression)
+
+(v5.1.7+; closes #44 — silent test-class regression in intro audit.) The intro-mode `regression` concern MUST run BOTH the canonical 4 check-class gates AND every `[gates].extra` entry the project declares. Silent omission of extras was the root cause of #44.
+
+1. Run the 4 check-class canonical gates as today (per-language `cargo check` / `pnpm typecheck` / `pytest --collect-only` etc., as the brief specifies).
+2. **For EACH `[gates].extra` entry** in `.claude/shepherd.toml`:
+   - Set `CARGO_TARGET_DIR=target/.lanes/intro-extra-<name>` (per `doctrines/cargo-sequential-gates.md`, to keep per-lane build cache isolated from coder/worker lanes).
+   - Run the entry's `cmd` line.
+   - Record ONE `audit_findings` row per extra, regardless of pass/fail:
+
+     ```bash
+     shctx audit insert \
+       --concern=regression-extras \
+       --severity=<high-on-fail|info-on-pass> \
+       --hypothesis="extras gate <name>" \
+       --falsification="ran <cmd> against HEAD" \
+       --confidence=high \
+       --sprint=<branch> \
+       <<<"<first 20 lines of failure OR 'pass'>"
+     ```
+3. The materialized report (`shctx report audit --sprint=<branch> --concern=regression-extras`) MUST list 'extras run' + 'extras skipped' explicitly — a skipped extra without a row is a process violation surfaced by the close swarm.
+
+See `doctrines/sqlite-canonical-state.md` and `doctrines/cargo-sequential-gates.md`.
 
 ### Completeness — v5.1.3 extension: brief-order verification
 
@@ -234,8 +277,11 @@ Sprint-pattern entry written: yes | no (reason)
 
 ## Output to conductor
 
+> **v5.1.7+:** prepend `- deliverable: <DELIV_ID> (status: delivered)` per `doctrines/sqlite-canonical-state.md` — confirms row-write contract closed cleanly.
+
 ```
 ## AUDITOR REPORT
+- deliverable: <DELIV_ID> (status: delivered)
 - Concern: <concern>
 - Mode: close | regression | carry-forward-disposition
 - Files reviewed: <count>
