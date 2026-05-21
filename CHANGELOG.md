@@ -18,6 +18,8 @@ doctrines, CHANGELOG, README).
 Resolves the v5.1.5/v5.1.6 spawn-rollout defect cluster (#43, #44, #49,
 #50, #51, #52) via the same shift — each bug was a file-bound symptom of
 a missing canonical store; the cluster collapses once the store exists.
+Also generalizes axiom's per-package feature CI feedback (#54) into a
+workspace-tool-general doctrine.
 
 #### Schema (Lane A1)
 - New migration `0007_canonical_state.sql` adds 7 tables + 3 views:
@@ -99,12 +101,21 @@ a missing canonical store; the cluster collapses once the store exists.
   set in that hook context. Liveness detection works; tool-name fidelity
   doesn't. Fix or accept in v5.1.8.
 
+### New doctrine (also lands in v5.1.7 — reframe of #54)
+- `doctrines/workspace-member-isolation-gate.md` — generalizes axiom's
+  per-package feature CI feedback (#54) into a workspace-tool-general
+  doctrine. The defect class ("workspace-unified passes, per-member
+  isolated fails") affects cargo, pnpm, npm workspaces, turborepo, go
+  work, bazel, gradle multi-project, maven reactor — any workspace-aware
+  build tool. Doctrine specifies the acceptance contract; per-ecosystem
+  realization is project-owned (typically via `shepherd.toml [gates].extra`
+  consumed by the v5.1.7 intro-mode regression auditor extras gate).
+  Closes #54.
+
 ### Deferred to v5.2.0+
 - #47 — cross-patch `--scope=minor` / `--scope=version` enumeration
 - #53 — `SendMessage heartbeat_payload` first-class runtime primitive
   (shctx infrastructure ready; upstream-dependent)
-- #54 — per-package feature-coverage CI gate (axiom-specific; ships as
-  doctrine guidance only)
 
 ---
 
