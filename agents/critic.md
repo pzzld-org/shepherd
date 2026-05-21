@@ -99,6 +99,22 @@ Returning without verdict. Root must patch the teammate's brief or re-dispatch f
 
 Dispatch from `dispatcher: conductor-solo` (under `/shepherd:start` main chat) or `dispatcher: root-shepherd` (under `/shepherd:spawn` main chat) IS permitted. No exceptions to this gate.
 
+### Step 0.5 — Register deliverable promise (v5.1.7+; FIRST WRITE-PATH OPERATION)
+
+Per `doctrines/sqlite-canonical-state.md`, the critic's verdict is canonical as ROWS in `audit_findings` (kind=`critic`), not as inline markdown. Before reading the plan, register the deliverable promise:
+
+```bash
+DELIV_ID=$(shctx deliverable promise --kind=row --target=audit_findings:critic --role=critic)
+```
+
+Record the returned `$DELIV_ID` in your reasoning. At end of turn — after writing your verdict rows via `shctx audit insert` (one row per Primary Concern / Scope Cut / Cheaper Alternative / etc.) — call:
+
+```bash
+shctx deliverable complete "$DELIV_ID"
+```
+
+If you end your turn without calling `complete`, the `deliverable_check.sh` hook marks the row as `stalled` and the dispatcher will re-spawn with a tightened brief. The verdict ROWS are canonical; the markdown verdict in your message is a courtesy summary. See `doctrines/sqlite-canonical-state.md`.
+
 ### Step 1 — Load skills
 
 See `## Skills to load` above. Reference skill loads FIRST; proposal-specific skills second.
@@ -134,7 +150,12 @@ Use the report shape below verbatim. The conductor parses the bracketed verdict 
 
 ## Output (verbatim shape)
 
+> **v5.1.7+:** prepend `## Deliverable` block per `doctrines/sqlite-canonical-state.md` — confirms row-write contract closed cleanly.
+
 ```markdown
+## Deliverable
+- deliverable: <DELIV_ID> (status: delivered)
+
 ## Verdict
 [PROCEED | PROCEED WITH CHANGES | RECONSIDER | REJECT]
 

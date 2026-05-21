@@ -138,6 +138,23 @@ binding; this profile operationalizes it.
 | `SCOPE-CONFIRMATION-MISSING` | `--scope minor` / `--scope version` invocation without confirmation phrase. |
 | `DISPATCH-CONTRACT-VIOLATION` | Teammate-returned payload references off-graph dispatches OR missing wave-gate evidence. |
 | `OPERATOR-INTERRUPT` | Operator typed pause/stop/exit during coordinate mode; suspend cleanly. |
+| `TEAMMATE-CRASHED` | A spawned teammate's last_seen_at is stale beyond threshold. Root polls `shctx teammate liveness --stale-mins=5` and surfaces `presumed-crashed` rows. Offer re-spawn via `shctx mailbox` of the archived initial brief. |
+
+---
+
+## Crashed-teammate detection (closes #49)
+
+During spawn, poll `shctx teammate liveness --stale-mins=5` after each
+wave-gate. Any teammate with `verdict=presumed-crashed` should be:
+
+1. Surfaced to the operator with the failed teammate's name, agent_type,
+   and last_seen_at delta.
+2. Offered for re-spawn — operator confirms; root then dispatches a fresh
+   teammate with the same brief (retrieved from the original spawn record).
+3. If operator declines re-spawn, mark `shctx teammate retire <name>` and
+   continue without that lane (escalate any blocked dependencies).
+
+See `doctrines/sqlite-canonical-state.md`.
 
 ---
 

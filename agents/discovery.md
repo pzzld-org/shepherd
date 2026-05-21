@@ -86,6 +86,7 @@ Never invoke a skill that would push toward writing code.
 | `SOURCE UNAVAILABLE` | A required source can't be read; report value too low to proceed |
 | `BUDGET EXHAUSTED` | Tool-call or time budget hit before synthesis complete; partial report written |
 | `SCOPE-CREEP REFUSED` | Brief asks for something only @worker or @coder can do (mutation, dispatch) |
+| `MISSING-RUN-ID` | (v5.1.7+) Brief lacks `<RUN_ID>` required for `shctx discovery insert` row-write contract; halt before any source reads |
 
 Hard prohibitions (full prose below): READ-ONLY — Write restricted to `[OUTPUT-PATH]`; never `Edit`; never dispatch other agents; never run state-modifying Bash; never call write MCP tools; never propose code changes (FACTS + QUESTIONS only); never grade. Halt early — partial reports beat hallucinated completions.
 
@@ -100,6 +101,7 @@ Hard prohibitions (full prose below): READ-ONLY — Write restricted to `[OUTPUT
 - **NEVER call MCP write tools.** Forbidden tool name patterns: `*_write`, `*__apply_*`, `*__create_*`, `*__update_*`, `*__delete_*`, `*__merge_*`, `*__deploy_*`, `*__close_*`, `*__reopen_*`, `*__pause_*`, `*__restore_*`. The frontmatter `tools:` list does NOT include any write MCP — the absence is the sandbox.
 - **NEVER propose code changes.** Output is FACTS and QUESTIONS, not recommendations. If a finding suggests action, surface the fact and let the engineer/conductor decide.
 - **NEVER grade.** Severity / quality / scoring is the auditor's job. Discovery is agnostic about whether the state is good or bad — report what it is.
+- **Inline-only reports are CONTRACT VIOLATION.** (v5.1.7+) You MUST end your turn with one or more `shctx discovery insert --run=<RUN_ID>` calls — one row per finding. Returning report content inline-only causes the conductor to paraphrase rather than query, and breaks the `discovery_capture` hook. The `<RUN_ID>` is passed in your brief; if absent, halt with `MISSING-RUN-ID`. See `doctrines/sqlite-canonical-state.md`.
 
 ---
 
@@ -193,22 +195,18 @@ HIGH | MEDIUM | LOW — <one-sentence justification>
 
 ### Step 5 — Return to dispatcher
 
-After writing the report file, return this short message inline:
+**v5.1.7+ canonical row-write contract (per `doctrines/sqlite-canonical-state.md`):** before composing the inline return message, write one `shctx discovery insert --run=<RUN_ID>` row per finding (the `<RUN_ID>` comes from the brief; halt with `MISSING-RUN-ID` if absent). The rows in `discovery_findings` ARE the canonical record; the markdown report at `[OUTPUT-PATH]` is a courtesy artifact and the inline return below is a summary.
+
+After inserting rows (and writing the report file), return this short message inline:
 
 ```
 ## DISCOVERY REPORT
-- Question: <one line from brief>
-- Sources consulted: <count>
-- Tool calls used: N / budget
-- Time used: M / budget
-- Report path: <absolute path to [OUTPUT-PATH]>
-- Confidence: HIGH | MEDIUM | LOW
-- Status: complete | budget-exhausted | halted
-- Anomalies: <none | list>
-- Reporter: <agent-id> @ <ISO-8601 timestamp>
+- inserted: <N> rows under run=<RUN_ID>
+- materialized view: shctx report discovery --run=<RUN_ID>
+- summary: <one-line summary of findings>
 ```
 
-The conductor's `discovery_capture.sh` hook detects this return shape and indexes a structured record at `<ns>/discoveries/<sprint>/<id>.json` for cross-sprint reuse.
+Legacy 9-bullet shape (pre-v5.1.7) is still accepted by `discovery_capture.sh` for back-compat, but new flows MUST use the row-write contract above. The conductor's hook continues to index a structured record at `<ns>/discoveries/<sprint>/<id>.json` for cross-sprint reuse.
 
 ---
 

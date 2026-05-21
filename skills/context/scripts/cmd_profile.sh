@@ -41,7 +41,7 @@ case "$sub" in
         END{}' "$f" | sed 's/, $//')
       cfg_json="{${config:-}}"
       jq -e . >/dev/null 2>&1 <<<"$cfg_json" || cfg_json="{}"
-      cfg_esc=${cfg_json//\'/\'\'}
+      cfg_esc=${cfg_json//\'/''}
       uid=$(shctx_uuid7)
       shctx_sql "INSERT INTO profiles_defs (id,project_id,name,kind,config,source_path,active,created_at,updated_at)
                  VALUES ('$uid','$project_id','$name','$kind','$cfg_esc','$f',1,$now,$now)
