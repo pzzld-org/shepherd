@@ -83,6 +83,25 @@ shctx_sql() {
 # Now-epoch (seconds).
 shctx_now() { date +%s; }
 
+# Cross-lib compatibility shims (v5.1.8) — cmd_discovery.sh and any future
+# cmd_*.sh that get invoked via bare `bash` (not via shctx wrapper) source
+# THIS lib, not hooks/scripts/_lib.sh. These shims expose the helper names
+# expected by such scripts so direct invocation does not fail with
+# `command not found`.
+
+# Delegates to shctx_artifacts_root. SHCTX_QUIET=1 suppresses the
+# split-brain warning emitted when both .shepherd/ and .artifacts/ exist
+# (the shim is invoked on every cmd dispatch and would otherwise be noisy).
+resolve_namespace() {
+  SHCTX_QUIET=1 shctx_artifacts_root
+}
+
+# Echo the current sprint branch name (or "unknown"). Mirrors the
+# hooks-lib helper of the same name.
+current_sprint() {
+  git rev-parse --abbrev-ref HEAD 2>/dev/null || printf 'unknown'
+}
+
 # gh wrapper with retry on transient failures (504/502/503/timeout).
 # Usage: shctx_gh_retry <gh args...>
 # v5.0.4 — addresses v5.0.3 feedback §8 (refresh-github + close-lane took

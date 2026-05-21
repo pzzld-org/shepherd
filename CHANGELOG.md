@@ -4,6 +4,147 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v5.1.8 — 2026-05-21
+
+### Platform-alignment patch
+
+Adopts Claude Code v2.1+ hook primitives where they cover ground shepherd
+previously had to handle by inference, ships the v5.1.7 carry-forward bug
+fix, and documents how shepherd's teammate-coordination model maps to the
+official **Agent Teams** primitive (Claude Code v2.1.32+). The flock model
+and SQLite-canonical store are unchanged; this release is additive across
+hooks, doctrines, and one helper-shim fix.
+
+Closes #22, #23, #55. Issue #21 closed via default-on agent-based hook.
+Documents the platform mapping for #53 indirectly via the new alignment
+doctrine.
+
+#### Hook surface (new events — Lane B)
+
+- `CwdChanged` — `hooks/scripts/cwd_changed.sh` (59 lines). Informs the
+  conductor when cwd drifts into a sub-worktree, paired with
+  `doctrines/conductor-cwd.md §Ban 1`. Informational only; never blocks.
+  Subagents (coder, auditor, etc.) are exempt — only conductor-role cwd
+  drift fires the warning.
+- `UserPromptSubmit` — `hooks/scripts/user_prompt_submit.sh` (88 lines).
+  Auto-injects `shctx status --md` as `additionalContext` for
+  `/shepherd:start` and `/shepherd:spawn` invocations; surfaces a friendly
+  "no shepherd.toml" warning when the host project is unconfigured.
+  `/shepherd:ctx` is intentionally not auto-primed (operator is about to
+  query manually).
+- `WorktreeCreate` / `WorktreeRemove` — `hooks/scripts/worktree_lifecycle.sh`
+  (133 lines, single script registered for both events). Records worktree
+  lifecycle in the new `worktrees` SQLite table; on remove, prunes the
+  zombie `worktree-agent-*` ref if no HEAD pointer remains. Closes #22.
+  Idempotent; never blocks. Defensive against schema drift — Claude Code
+  docs don't yet specify the payload field structure, so the hook reads
+  `.worktree.path` / `.worktree.branch` then falls back to pwd + current
+  branch. Extraction is recorded in `<namespace>/logs/hooks/YYYY-MM-DD.jsonl`
+  for drift audit.
+
+#### Hook surface (new event types — first adoption of `type: agent`)
+
+- **Agent-based hook** on `PostToolUse(Edit|Write)` with
+  `if: "Edit(*.plan.md)"` / `if: "Write(*.plan.md)"`: **Phase 0 mesh
+  verification**. Verifies every "landed in tree" / "confirmed at" /
+  "in tree:" claim in a sprint plan against the sprint branch's
+  `git log` (not file-content grep — that's what produced the false-landed
+  L5/L6 claims on `fl03/axiom v0.3.2-dev.1`; see issue #23). Surfaces
+  unverified claims as a warning so the engineer doesn't propagate false
+  "done" markers to the next session's handoff. Closes #23. Default-on;
+  `if` filter gates spawn so the hook only runs on plan-md writes (low
+  frequency). Timeout 90 s, max 10 tool calls.
+- **Agent-based hook** on `Stop`: **WAVE-GATE cherry-pick check**.
+  Fast-paths via `git branch | grep -c '^  agent-'` (0 ⇒ ok, no further
+  tools); on active sprint branches checks each `agent-*` branch for
+  stray commits not reachable from sprint HEAD and surfaces a warning.
+  Closes #21. Default-on; the fast-path keeps the per-turn cost bounded
+  (~$0.001/turn Haiku when no agent branches exist; ~$0.005/turn during
+  active multi-lane sprints). Timeout 30 s, max 5 tool calls.
+
+#### Schema (Lane A)
+
+- Migration `0008_worktrees.sql` — adds `worktrees` table
+  (`id PK, path, branch, tool_use_id, agent_role, sprint, created_at,
+  removed_at, status`) + 2 indexes (`status`, `sprint`). Additive only;
+  no ALTER on existing tables, WAL mode preserved.
+
+#### Doctrines (Lane D)
+
+- **NEW** `skills/shepherd/doctrines/claude-code-platform-alignment.md`
+  (617 lines) — maps shepherd's teammate / mailbox / heartbeat /
+  escalation / deliverable primitives to the Claude Code v2.1.32+
+  official **Agent Teams** primitive (opt-in via
+  `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`). 22-row primitive map; 5
+  bridging rules with owner / bridge / failure-mode triples; 8
+  anti-patterns; 3-version migration roadmap (v5.1.8 document mapping →
+  v5.2.0 evaluate `TaskCreated`/`TaskCompleted` consumption → v6.0.0
+  evaluate `[teams].platform_backend` opt-in). Documents the mailbox
+  bridging rule (shepherd persists across sessions; platform `SendMessage`
+  is in-session only).
+
+#### Bug fixes (Lane C)
+
+- **#55** — `cmd_discovery.sh` legacy subverbs (`list`, `show`, `search`,
+  `clear`) were broken because they called `resolve_namespace` /
+  `current_sprint` helpers that live in `hooks/scripts/_lib.sh`, not in
+  `skills/context/scripts/_lib.sh` (the lib sourced when these cmd
+  scripts are invoked via bare `bash`). Fix: add cross-lib shims to the
+  context lib so direct invocation works without cross-coupling to the
+  hooks lib. New smoke test `skills/context/tests/test_helpers_in_ctx_lib.sh`
+  regression-guards both helpers (sources lib, asserts `declare -F`,
+  asserts non-empty output, asserts absolute path).
+
+#### Plugin-manifest evaluation (decided non-features)
+
+- **`settings.json` at plugin root with `agent: "shepherd"`** — evaluated
+  and deliberately deferred. The platform key activates the named agent
+  as the main-thread agent for every Claude Code session where the
+  plugin is enabled, applying its system prompt, tool restrictions, and
+  model globally. That would change main-chat behavior for every
+  shepherd-installed session, breaking `/shepherd:start` solo mode's
+  expectation that main chat behaves as a regular Claude. Better path:
+  conditional activation on `/shepherd:spawn` only, which requires
+  upstream Claude Code support we don't have today. Cited in alignment
+  doctrine §VI.
+- **`monitors/monitors.json`** — evaluated. shepherd already streams
+  events into `<namespace>/logs/events-YYYY-MM-DD.jsonl`; a monitor
+  `tail -F` over that file would create a noisy notification stream
+  during every dispatch. Deferred; revisit if operators want it.
+- **`.lsp.json`** — not applicable to shepherd's domain.
+- **`bin/`** — evaluated. Exposing `shctx` directly on `$PATH` would
+  shorten invocations. Deferred to v5.2.0 (multi-install conflict risk).
+
+#### Known gaps (carry to v5.1.9 / v5.2.0)
+
+- **#19** — `additionalContext` JSON rendering as PreToolUse error in
+  operator UI. Workaround in tree: all info-level hook output prefixed
+  with `[shepherd]` (already done). Proper fix waits on either a Claude
+  Code UI channel for informational hook output, or a shepherd-side
+  `silent_mode` config knob (deferred).
+- **TeammateIdle `tool_name` fidelity gap** — carry from v5.1.7; still
+  open (`CLAUDE_TOOL_NAME` env var not set in `SubagentStop` context).
+- **WorktreeCreate / WorktreeRemove payload schema** — Claude Code docs
+  don't yet specify field structure. `worktree_lifecycle.sh` is
+  defensive but actual fields may shift; log-stream the extracted
+  payload to catch drift.
+- **#47 / #53** — deferred to v5.2.0+ unchanged.
+
+#### Deferred to v5.2.0+
+
+- `TaskCreated` / `TaskCompleted` hook consumption (Claude Code Agent
+  Teams primitives) — evaluation pending platform's experimental-flag
+  removal.
+- `SubagentStart` hook consumption — replaces inference of spawn time
+  from `subagent_telemetry.sh` `SubagentStop` event; would unblock
+  per-spawn telemetry rows.
+- `PreCompact` / `PostCompact` hooks — auto-snapshot dispatch state for
+  context-truncated session resume (mitigates lost-work landmines like
+  #21 / #24 from a different angle).
+- `bin/` directory with `shctx` on PATH.
+
+---
+
 ## v5.1.7 — 2026-05-20
 
 ### SQLite-canonical operational state
