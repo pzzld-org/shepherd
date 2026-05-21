@@ -4,6 +4,110 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v5.1.7 — 2026-05-20
+
+### SQLite-canonical operational state
+
+Architectural shift: `.artifacts/root.db` becomes canonical for ephemeral
+operational state (teammate liveness, heartbeats, mailbox, escalations,
+deliverables, structured discovery/audit findings). Markdown reports are
+materialized views over rows. File-canonical store is reserved for
+human-authored durable artifacts (specs, plans, seeds, agent profiles,
+doctrines, CHANGELOG, README).
+
+Resolves the v5.1.5/v5.1.6 spawn-rollout defect cluster (#43, #44, #49,
+#50, #51, #52) via the same shift — each bug was a file-bound symptom of
+a missing canonical store; the cluster collapses once the store exists.
+
+#### Schema (Lane A1)
+- New migration `0007_canonical_state.sql` adds 7 tables + 3 views:
+  `teammates`, `heartbeats`, `mailbox`, `escalations`, `deliverables`,
+  `discovery_findings`, `audit_findings`. Additive only — no ALTER on
+  existing tables. WAL mode preserved.
+
+#### Doctrine (Lane A2)
+- New `doctrines/sqlite-canonical-state.md` — binding rule + allow-list
+  + anti-patterns + migration guidance + back-compat statement.
+
+#### shctx surface (Lanes A3, A4)
+- New subcommands: `shctx teammate {register,heartbeat,status,liveness,
+  prune,retire}`, `shctx mailbox {send,recv,ack,stale}`, `shctx escalate
+  {<create>,list,resolve}`, `shctx deliverable {promise,complete,stalled}`,
+  `shctx report <kind>`.
+- Extended: `shctx discovery insert`, `shctx audit insert`.
+- Tests under `skills/context/tests/test_cmd_*.sh` + `test_schema_0007.sh`.
+- Shctx dispatcher whitelist updated to include the 5 new subcommands.
+
+#### Agent profile amendments (Lanes B1, B2)
+- `agents/discovery.md` — row-write Hard Prohibition (closes #43);
+  `MISSING-RUN-ID` halt code.
+- `agents/critic.md` — Step 0.5 deliverable promise/complete contract (closes #52).
+- `agents/auditor.md` — Step 0 deliverable contract; new `Canonical gates
+  (intro-mode regression)` section that runs `[gates].extra` from
+  `shepherd.toml` (closes #52, #44).
+- `agents/conductor.md` — Cargo discipline (binding under spawn) section
+  mandating `CARGO_TARGET_DIR=target/.lanes/<lane-slug>` + `--frozen` on
+  every cargo invocation in the flock (closes #50).
+- `agents/shepherd.md` — `TEAMMATE-CRASHED` halt code + Crashed-teammate
+  detection section (closes #49).
+- `commands/spawn.md` — Cargo discipline (binding) block injected into the
+  conductor brief template.
+
+#### New command (Lane B3)
+- `/shepherd:cleanup` — prunes stale/crashed teammates from canonical state
+  via `shctx teammate prune` (closes #51). Operator-confirmed; never
+  auto-prunes live entries.
+
+#### Hook integration (Lane B4)
+- `hooks/scripts/subagent_telemetry.sh` extended to emit teammate
+  heartbeats when `CLAUDE_TEAMMATE_NAME` is set.
+- `hooks/scripts/teammate_idle.sh` — new `TeammateIdle` hook marks
+  status=idle, surfaces open escalations + stalled deliverables to lead.
+- `hooks/scripts/deliverable_check.sh` — new `Stop` hook auto-marks
+  promises stalled after 10 min.
+- `hooks/hooks.json` — registers `TeammateIdle` and `Stop` entries.
+
+#### Hotfix (Lane B5 — close-audit blockers)
+- Fixed broken SQL escape idiom `${var//\'/\'\'}` (4-char artifact, not
+  SQL-doubled apostrophe) across all 5 new v5.1.7 scripts AND 3
+  pre-existing scripts that carried the same bug (`cmd_mem.sh`,
+  `cmd_profile.sh`, `cmd_query.sh`). Replacement is now `''` (literal
+  two-apostrophe SQL escape).
+- Added numeric-id validation `[[ $id =~ ^[0-9]+$ ]]` to `mailbox ack`,
+  `deliverable complete`, `escalate resolve` — closes a live SQL
+  injection vector confirmed in audit.
+- `cmd_report.sh` materializer switched from `|` separator to ASCII
+  `\x1f` Unit Separator across all 4 query sites — fixes corruption when
+  finding bodies contain markdown table chars or newlines.
+
+#### Backlog hygiene (Lanes W1, W2)
+- 22 open issues in #18–#39 triaged: 3 superseded, 13 still-valid,
+  1 close-as-stale. Report at `.artifacts/docs/handoffs/2026-05-20-old-issue-triage.md`.
+  Operator close review pending for #18, #25, #32, #39.
+- v5.1.6 fixes verified in tree: #45 (dispatch-tier separation) and #46
+  (in-process Agent tool restriction, upstream Claude Code #31977) both
+  have grep-evidenced verification comments; recommended for close.
+
+### Known gaps (carry to v5.1.8)
+- `cmd_discovery.sh` and other legacy subverbs call `resolve_namespace` /
+  `current_sprint` helpers that live in `hooks/scripts/_lib.sh` but not
+  `skills/context/scripts/_lib.sh` — direct bash invocation of legacy
+  subverbs breaks. Pre-existing bug surfaced by Lane A4. New v5.1.7
+  insert paths bypass the broken precondition.
+- Heartbeat hook fires on `SubagentStop` not per-tool-call; `tool_name`
+  column always logs `unknown` because `CLAUDE_TOOL_NAME` env var is not
+  set in that hook context. Liveness detection works; tool-name fidelity
+  doesn't. Fix or accept in v5.1.8.
+
+### Deferred to v5.2.0+
+- #47 — cross-patch `--scope=minor` / `--scope=version` enumeration
+- #53 — `SendMessage heartbeat_payload` first-class runtime primitive
+  (shctx infrastructure ready; upstream-dependent)
+- #54 — per-package feature-coverage CI gate (axiom-specific; ships as
+  doctrine guidance only)
+
+---
+
 ## v5.1.6 — 2026-05-19
 
 ### Root-shepherd tier + lane-per-conductor fanout + `--scope` flag
