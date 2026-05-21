@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# shepherd hook — session-open hygiene (v5.1.2)
+# shepherd hook — session-open hygiene (v5.1.8)
 #
 # Fires at SessionStart. Implements:
 #   1. Three-anchor verification (conductor-cwd.md §Mandatory verification)
 #   2. Orphan worktree detection
 #   3. Sprint-patterns.md existence surface (adaptation-loop.md)
 #   4. Plan validity check (v5.1.2 — sprint pattern branch must have a plan)
+#   5. Agent-branch stray-commit survey (v5.1.8 — issue #24)
+#   6. Multi-plan.md reconciliation surface (v5.1.8 — issue #26)
 #
 # Output: JSON additionalContext injected into Claude's context when any
 # warning fires; silent exit 0 when all checks pass.
@@ -66,15 +68,54 @@ if [[ "$branch" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-dev\.[0-9]+$ ]]; then
   fi
 fi
 
+# --- Anchor 5: agent-branch stray-commit survey (v5.1.8 — issue #24) ---
+# Scan local agent-* branches for unique commits not reachable from the sprint
+# HEAD. Catches lost work from context-truncated prior sessions BEFORE the
+# conductor reads the handoff and trusts a "complete" claim. Complements the
+# v5.1.8 WAVE-GATE Stop hook (which catches strays during the current session).
+if [[ "$branch" != "unknown" ]] && ! [[ "$branch" =~ ^(agent-|lane-) ]]; then
+  stray_branches=()
+  while IFS= read -r br; do
+    [[ -z "$br" ]] && continue
+    br=$(echo "$br" | sed 's/^[[:space:]]*//')
+    ahead=$(git rev-list --right-only --count "$branch...$br" 2>/dev/null || echo 0)
+    if [[ "${ahead:-0}" -gt 0 ]]; then
+      stray_branches+=("$br ($ahead)")
+    fi
+  done < <(git branch 2>/dev/null | grep '^  agent-' || true)
+  if [[ ${#stray_branches[@]} -gt 0 ]]; then
+    stray_list=$(IFS=', '; echo "${stray_branches[*]}")
+    warnings+=("$( printf '%s' "${#stray_branches[@]} agent branch(es) have stray commits NOT in '$branch': $stray_list. Cherry-pick or drop before dispatching — silent data-loss risk if next session inherits 'complete' from handoff. [issue #24]" )")
+  fi
+fi
+
+# --- Anchor 6: multiple plan.md files for current sprint (v5.1.8 — issue #26) ---
+# When a sprint has an addendum plan (dev.1.plan.md + dev.1b.plan.md), the
+# second is invisible to Step 0 by default. Surface the file list so the
+# conductor reads ALL of them, not just one.
+if [[ "$branch" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-dev\.[0-9]+$ ]] && [[ -d "$ns/plans" ]]; then
+  # Match base sprint prefix; the dot-or-letter suffix allows addendum forms
+  # (dev.1.plan.md, dev.1b.plan.md, dev.1.b.plan.md).
+  plan_matches=()
+  while IFS= read -r f; do
+    [[ -n "$f" ]] && plan_matches+=("$f")
+  done < <(ls -1 "$ns/plans/" 2>/dev/null | grep -E "^${branch}([.-][a-z0-9]+)?\.plan\.md$" || true)
+  if [[ ${#plan_matches[@]} -gt 1 ]]; then
+    plan_list=$(IFS=', '; echo "${plan_matches[*]}")
+    warnings+=("$( printf '%s' "${#plan_matches[@]} plan files for sprint '$branch': $plan_list — reconcile ALL (addendum plans may carry orphaned lanes). Read each in chronological order. [issue #26]" )")
+  fi
+fi
+
 # --- Build output ---
 session=$(cat 2>/dev/null || true)  # already consumed; placeholder
 [[ ${#warnings[@]} -eq 0 ]] && pass_silent "session_open" "Session" "conductor" ""
 
-msg="[shepherd] Session-open hygiene (v5.1.2):"$'\n'
+msg="[shepherd] Session-open hygiene (v5.1.8):"$'\n'
 for w in "${warnings[@]}"; do
   msg+="  • $w"$'\n'
 done
 msg+="Run 'shctx doctor' for a full pre-flight check."
 
-log_event "session_open" "warn" "Session" "conductor" "" "$(emit_json_obj warnings_count "${#warnings[@]}")"
-emit_json_obj additionalContext "$msg"
+# v5.1.8: route through emit_context so [hooks].quiet_warnings opt-out applies.
+# emit_context already calls log_event under the hood.
+emit_context "$msg" "session_open" "Session" "conductor" ""

@@ -15,9 +15,8 @@ official **Agent Teams** primitive (Claude Code v2.1.32+). The flock model
 and SQLite-canonical store are unchanged; this release is additive across
 hooks, doctrines, and one helper-shim fix.
 
-Closes #22, #23, #55. Issue #21 closed via default-on agent-based hook.
-Documents the platform mapping for #53 indirectly via the new alignment
-doctrine.
+Closes #19, #21, #22, #23, #24, #26, #55. Documents the platform mapping
+for #53 indirectly via the new alignment doctrine.
 
 #### Hook surface (new events — Lane B)
 
@@ -95,6 +94,32 @@ doctrine.
   regression-guards both helpers (sources lib, asserts `declare -F`,
   asserts non-empty output, asserts absolute path).
 
+#### Session-open hardening (Lane E — v5.1.8 extension)
+
+- **#24** — `session_open.sh` Anchor 5: agent-branch stray-commit survey.
+  At SessionStart, walks `git branch | grep '^  agent-'` and runs
+  `git rev-list --right-only --count "<sprint>...<branch>"` for each;
+  surfaces any branch with stray commits not reachable from the sprint
+  HEAD as a warning. Catches lost work from context-truncated prior
+  sessions BEFORE the conductor reads the handoff and inherits a "complete"
+  claim that is false on the sprint branch. Complements the WAVE-GATE Stop
+  hook (which catches strays during the active session) — together they
+  form a session-boundary safety net per the issue's recommendation.
+- **#26** — `session_open.sh` Anchor 6: multi-plan.md reconciliation
+  surface. When a sprint branch has more than one plan file (e.g.,
+  `v0.3.2-dev.1.plan.md` + `v0.3.2-dev.1b.plan.md`), the file list is
+  surfaced as a warning so the conductor reconciles all plans, not just
+  the primary. Matches `^<sprint>([.-][a-z0-9]+)?\.plan\.md$` to catch
+  the common addendum-suffix conventions (`.b`, `-b`, `-addendum`).
+- **#19** — informational hook warning UI rendering. Added `[hooks].quiet_warnings`
+  opt-out in `shepherd.toml` (default `false`, preserving v5.1.7 and prior
+  behavior). When `true`, `emit_context` skips JSON emission while still
+  calling `log_event` — operators can grep
+  `<namespace>/logs/hooks/YYYY-MM-DD.jsonl` to recover the warning text
+  out-of-band. `session_open.sh` refactored to route its final emission
+  through `emit_context` so the opt-out gate applies uniformly.
+  Documented in `docs/configuration.md §[hooks]`.
+
 #### Plugin-manifest evaluation (decided non-features)
 
 - **`settings.json` at plugin root with `agent: "shepherd"`** — evaluated
@@ -117,11 +142,6 @@ doctrine.
 
 #### Known gaps (carry to v5.1.9 / v5.2.0)
 
-- **#19** — `additionalContext` JSON rendering as PreToolUse error in
-  operator UI. Workaround in tree: all info-level hook output prefixed
-  with `[shepherd]` (already done). Proper fix waits on either a Claude
-  Code UI channel for informational hook output, or a shepherd-side
-  `silent_mode` config knob (deferred).
 - **TeammateIdle `tool_name` fidelity gap** — carry from v5.1.7; still
   open (`CLAUDE_TOOL_NAME` env var not set in `SubagentStop` context).
 - **WorktreeCreate / WorktreeRemove payload schema** — Claude Code docs

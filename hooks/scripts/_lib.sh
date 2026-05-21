@@ -117,12 +117,28 @@ print(json.dumps(obj))
   fi
 }
 
+# Returns 0 if `.claude/shepherd.toml` contains `quiet_warnings = true` under
+# `[hooks]`. Used by emit_context to suppress informational additionalContext
+# emissions for operators who find them noisy in the UI (issue #19, v5.1.8+).
+# Default: false (preserve v5.1.7 and prior behavior — warnings visible).
+# Cheap grep — no TOML parser needed; the key is unique enough.
+quiet_warnings() {
+  [[ -f .claude/shepherd.toml ]] || return 1
+  grep -qE '^[[:space:]]*quiet_warnings[[:space:]]*=[[:space:]]*true' .claude/shepherd.toml 2>/dev/null
+}
+
 # Emit an additionalContext warning and exit 0.
 # Usage: emit_context "<msg>" [hook_name] [tool] [role] [session_id]
 # The optional fields are for log_event; if omitted, log_event is skipped.
+# When [hooks].quiet_warnings = true in shepherd.toml, the additionalContext
+# JSON is suppressed (log_event still fires); operators can grep
+# `<namespace>/logs/hooks/YYYY-MM-DD.jsonl` to recover the warning text.
 emit_context() {
   local msg="$1" hook="${2:-}" tool="${3:-}" role="${4:-unknown}" session="${5:-}"
   [[ -n "$hook" ]] && log_event "$hook" "warn" "$tool" "$role" "$session" "$(emit_json_obj reason "$msg")"
+  if quiet_warnings; then
+    exit 0
+  fi
   emit_json_obj additionalContext "$msg"
   exit 0
 }

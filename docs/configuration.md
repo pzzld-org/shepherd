@@ -306,6 +306,16 @@ on_engineer_only = ["workflow"]
 
 # Skills loaded only by the planter.
 on_planter_only = []
+
+# v5.1.8+: suppress informational additionalContext emissions from hooks
+# (bash_guard cargo-parallel warn, cd-into-worktree warn, session_open
+# hygiene warnings). When true, the warnings are still logged to
+# `<namespace>/logs/hooks/YYYY-MM-DD.jsonl` for grep, but no
+# additionalContext JSON is emitted — Claude doesn't see them and the
+# operator UI doesn't render them as a "PreToolUse error". Recommended
+# only after the operator is familiar with shepherd's discipline rules.
+# Default: false (warnings visible). Closes #19 as opt-out.
+quiet_warnings = false
 ```
 
 This is the integration point with locally developed skills — `code-style` is the canonical example, but you can wire any skill you want into the dispatch.

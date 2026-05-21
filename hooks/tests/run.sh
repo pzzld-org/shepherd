@@ -44,6 +44,10 @@ touch .claude/shepherd.toml
 echo "== session_open.sh =="
 run_case "no-payload"          session_open.sh ''
 run_case "session-start"       session_open.sh '{"session_id":"s1","hook_event_name":"SessionStart","source":"startup"}'
+# v5.1.8 — quiet_warnings opt-out gate (#19). Default off; warnings visible.
+mkdir -p "$tmp/.claude" && printf '[hooks]\nquiet_warnings = true\n' > "$tmp/.claude/shepherd.toml"
+run_case "session-quiet-mode"  session_open.sh '{"session_id":"s1","hook_event_name":"SessionStart","source":"startup"}'
+printf '' > "$tmp/.claude/shepherd.toml"
 
 echo "== bash_guard.sh =="
 run_case "normal-ls"           bash_guard.sh '{"session_id":"s1","tool_name":"Bash","tool_input":{"command":"ls -la"}}'
