@@ -44,6 +44,10 @@ touch .claude/shepherd.toml
 echo "== session_open.sh =="
 run_case "no-payload"          session_open.sh ''
 run_case "session-start"       session_open.sh '{"session_id":"s1","hook_event_name":"SessionStart","source":"startup"}'
+# v5.1.8 — quiet_warnings opt-out gate (#19). Default off; warnings visible.
+mkdir -p "$tmp/.claude" && printf '[hooks]\nquiet_warnings = true\n' > "$tmp/.claude/shepherd.toml"
+run_case "session-quiet-mode"  session_open.sh '{"session_id":"s1","hook_event_name":"SessionStart","source":"startup"}'
+printf '' > "$tmp/.claude/shepherd.toml"
 
 echo "== bash_guard.sh =="
 run_case "normal-ls"           bash_guard.sh '{"session_id":"s1","tool_name":"Bash","tool_input":{"command":"ls -la"}}'
@@ -72,6 +76,19 @@ run_case "non-agent-tool"      agent_pause_detector.sh '{"session_id":"s1","tool
 echo "== agent_insight_capture.sh =="
 run_case "no-insights-block"   agent_insight_capture.sh '{"session_id":"s1","tool_name":"Agent","tool_response":"plain text"}'
 run_case "non-agent-tool"      agent_insight_capture.sh '{"session_id":"s1","tool_name":"Bash","tool_response":"x"}'
+
+echo "== cwd_changed.sh (v5.1.8) =="
+run_case "no-payload"          cwd_changed.sh ''
+run_case "cwd-event"           cwd_changed.sh '{"session_id":"s1","hook_event_name":"CwdChanged","cwd":"/tmp"}'
+
+echo "== user_prompt_submit.sh (v5.1.8) =="
+run_case "no-payload"          user_prompt_submit.sh ''
+run_case "plain-prompt"        user_prompt_submit.sh '{"session_id":"s1","hook_event_name":"UserPromptSubmit","prompt":"hello"}'
+run_case "shepherd-prompt"     user_prompt_submit.sh '{"session_id":"s1","hook_event_name":"UserPromptSubmit","prompt":"/shepherd:status"}'
+
+echo "== worktree_lifecycle.sh (v5.1.8) =="
+run_case "no-payload"          worktree_lifecycle.sh ''
+run_case "non-worktree-event"  worktree_lifecycle.sh '{"session_id":"s1","hook_event_name":"PreToolUse"}'
 
 echo "—— $((total-fails))/$total passed ——"
 exit "$fails"
