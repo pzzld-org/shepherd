@@ -24,21 +24,22 @@ ${CLAUDE_PLUGIN_ROOT}/agents/discovery.md  → @discovery  model: sonnet  (v5.1.
 
 **Dispatch procedure (every flock agent, every time):**
 
-1. **Read** the agent definition file.
-2. **Extract** the markdown body below the YAML frontmatter `---`.
-3. **Prepend** that body to the task brief as the agent's system prompt.
-4. **Set `model`** per the table above.
-5. **Do NOT set `subagent_type`** — omit it (defaults to general-purpose runtime).
+1. **Set `subagent_type`** to `"shepherd:<role>"` (e.g., `shepherd:coder`, `shepherd:auditor`). The plugin agent registry auto-loads the agent body from `agents/<role>.md`.
+2. **Set `model`** per the table above.
+3. **Put the task brief in `prompt`** — do NOT duplicate the agent body.
 
 ```
 Agent({
   description: "@coder: <short task summary>",
+  subagent_type: "shepherd:coder",
   model: "sonnet",
-  prompt: "<full body of agents/coder.md>\n\n---\nTASK BRIEF:\n<brief>"
+  prompt: "TASK BRIEF:\n<brief>"
 })
 ```
 
-The flock agent's identity comes from the injected system prompt. **The flock is closed at six + specialist exceptions per `doctrines/specialist-dispatch.md`** (v5.1.1+). NEVER dispatch any agent outside these six unless it's a pre-authorized specialist (e.g., `code-review:code-review`, `sentry:seer`) AND the task strictly fits the specialist's contract. Specialists are exception, not default. Plan authorship / critic gating / close-time audit grading / code implementation are NEVER substitutable. Engineer's plan-skills (`superpowers:brainstorming` + `superpowers:writing-plans`) and auditor's skill (`superpowers:systematic-debugging`) load from inside the agent's own dispatch — that is not the conductor calling them. If a task doesn't fit a flock role AND no specialist fits, the conductor handles it inline.
+This saves ~150–650 lines of inline body per dispatch (GH #20). For a 9-coder wave, that is ~3000 tokens saved per wave.
+
+**The flock is closed at six + specialist exceptions per `doctrines/specialist-dispatch.md`** (v5.1.1+). NEVER dispatch any agent outside these six unless it's a pre-authorized specialist (e.g., `code-review:code-review`, `sentry:seer`) AND the task strictly fits the specialist's contract. Specialists are exception, not default. Plan authorship / critic gating / close-time audit grading / code implementation are NEVER substitutable. Engineer's plan-skills (`superpowers:brainstorming` + `superpowers:writing-plans`) and auditor's skill (`superpowers:systematic-debugging`) load from inside the agent's own dispatch — that is not the conductor calling them. If a task doesn't fit a flock role AND no specialist fits, the conductor handles it inline.
 
 ---
 
@@ -350,7 +351,7 @@ Full contract + use-case catalog + cross-sprint reuse rules: `doctrines/discover
 
 | Rule | Detail |
 |------|--------|
-| **Flock agents ONLY — injected via prompt** | Read `agents/<role>.md`, inject body. Never set `subagent_type`. No outside agents. |
+| **Flock agents ONLY — via `subagent_type`** | Set `subagent_type: "shepherd:<role>"`. Plugin registry loads agent body. No outside agents. |
 | Parallel coders require zero file overlap | Verify before dispatch; single build-manifest writer at a time |
 | Parallel dispatch rule | Zero-overlap coders MUST be in the same message — sequential dispatch is a process violation |
 | Minimum lanes: M=3, L=4, XL=4/wave | Plan with fewer lanes → reject back to @engineer |

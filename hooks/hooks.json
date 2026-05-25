@@ -157,7 +157,12 @@
           {
             "type": "agent",
             "prompt": "Wave-gate cherry-pick verification (shepherd issue #21). Fast-path: (1) Run: git branch 2>/dev/null | grep -c '^  agent-' || echo 0. If 0, respond {\"ok\": true} immediately and use no further tools. Heavy path (only if agent-* branches exist): (2) Get sprint branch via git rev-parse --abbrev-ref HEAD. (3) For each agent-* branch: run git rev-list --right-only --count \"<sprint>...<branch>\" 2>/dev/null. Collect branches whose count > 0 (stray commits not in sprint). (4) If none stray, respond {\"ok\": true}. (5) Else respond {\"ok\": false, \"reason\": \"WAVE-GATE: N agent branch(es) have unique commits not in <sprint>: <list of branch:count>. Cherry-pick onto sprint before closing the wave (issue #21). Silent data-loss risk if next session inherits 'complete' from plan/handoff while commits remain orphaned.\"}. Max 5 tool calls. Default to ok=true on any error. Be terse.",
-          "timeout": 30
+            "timeout": 30
+          },
+          {
+            "type": "agent",
+            "prompt": "Close-finalize completion check (shepherd GH #60). Fast-path: (1) Run: git rev-parse --abbrev-ref HEAD 2>/dev/null. If HEAD is NOT a dev branch (does not match *-dev.[0-9]*), respond {\"ok\": true} — not in a sprint context. (2) Extract patch branch: echo the branch name with the -dev.N suffix stripped. (3) Check if sprint commits are in the patch branch: git log --oneline origin/<patch_branch> 2>/dev/null | head -3. (4) Check if close report exists: find . -path '*reports*' -name '*close*' -newer .git/HEAD 2>/dev/null | head -1. (5) If close report exists BUT sprint branch still exists on origin (git ls-remote --heads origin <sprint_branch> shows output), respond {\"ok\": false, \"reason\": \"CLOSE-FINALIZE INCOMPLETE: close report written but dev branch not rebased into patch and deleted. Sprint will appear incomplete to next session. Run: git checkout <patch_branch> && git merge --ff-only <sprint_branch> && git push origin <patch_branch> && git push origin --delete <sprint_branch>\"}. (6) Otherwise respond {\"ok\": true}. Max 5 tool calls. Default to ok=true on any error. Be terse.",
+            "timeout": 30
           }
         ]
       }

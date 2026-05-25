@@ -42,11 +42,33 @@ Plan-time defaults (configurable per project via shepherd.toml):
 
 | Lane | Role | Brief template |
 |---|---|---|
+| 0 | conductor-inline | `patch-branch-advancement-check` — **mandatory** (v5.1.9+, GH #60). Runs BEFORE dispatching the combo batch. Verifies patch branch contains all prior sprint commits. If stale: ff-merge the gap before continuing. See procedure below. |
 | 1 | @discovery | `prior-close-audit-summary` — reads prior sprint's audit reports, lists outstanding findings |
 | 2 | @discovery | `canonical-types-freshness` — reports last refresh date + drift since last canonical-types refresh |
 | 3 | @discovery | `gh-state-inventory` — enumerates open issues with classification bucket counts |
 | 4 | @auditor (mode: regression) | verifies prior plan's `[ACCEPTANCE]` blocks still hold at HEAD; files findings on regressions |
 | 5 | @auditor (mode: carry-forward-disposition) | reads carry-forward ledger; verifies each entry's status (open / closed / drifted) |
+
+### Lane 0 — patch-branch advancement check (conductor-inline, mandatory)
+
+Fires before the parallel Agent batch. NOT an agent dispatch — the conductor
+runs this inline in < 30 seconds:
+
+```bash
+git fetch origin {patch_branch}
+PATCH_HEAD=$(git rev-parse origin/{patch_branch})
+SPRINT_BASE=$(git merge-base HEAD origin/{patch_branch})
+if [ "$PATCH_HEAD" != "$SPRINT_BASE" ]; then
+  echo "PATCH-BRANCH-STALE: origin/{patch_branch} is at $PATCH_HEAD but sprint base is $SPRINT_BASE"
+  echo "Prior sprint commits may not have been merged. FF-merge required."
+fi
+```
+
+If stale: conductor ff-merges the gap (`git checkout {patch_branch} && git merge --ff-only <prior_sprint_branch> && git push origin {patch_branch} && git checkout {sprint_branch} && git rebase {patch_branch}`) BEFORE dispatching the combo wave. This prevents the axiom dev.8 incident (30 commits dangling 6 hours because dev.7 close didn't rebase).
+
+**Severity: P0.** A stale patch branch means every sprint operates on
+code that doesn't include the prior sprint's work. The cost compounds
+across sprints — the longer it goes undetected, the harder the merge.
 
 Plan may add or remove lanes; the engineer's plan emits the actual `agents:`
 block in the Stage Graph YAML.

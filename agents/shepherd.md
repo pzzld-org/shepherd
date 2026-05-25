@@ -228,6 +228,11 @@ grounded picture every teammate inherits.
 
 **Checklist:**
 
+- [ ] **Patch-branch advancement check** (mandatory, v5.1.9+, GH #60):
+      BEFORE dispatching the combo wave, verify `origin/{patch_branch}`
+      contains all prior sprint commits. Inline check (< 30s):
+      `git fetch origin {patch_branch} && git log origin/{patch_branch} --oneline | head -3`.
+      If stale: ff-merge the gap first. Per `doctrines/intro-combo-wave.md` Lane 0.
 - [ ] Dispatch INTRO-COMBO-WAVE: `@discovery` × N (prior-close-audit-summary,
       canonical-types-freshness, gh-state-inventory) + `@auditor` × 2
       (intro-mode regression, intro-mode carry-forward-disposition) in ONE
@@ -337,11 +342,60 @@ sprint when `--scope > sprint`):
       dispatch coder ONLY when no teammates are active).
 - [ ] Materialize CLOSE-SWARM reports.
 - [ ] Update memory + project doctrines; patch project `CLAUDE.md`.
-- [ ] Rebase-merge sprint branch into patch branch (or skip if `--scope >
-      sprint` and more sprints remain in the loop).
-- [ ] Cleanup stewardship (worktrees, agent branches, `shepherd.lock`)
-      per `agents/planter.md §3` — delegate to planter mode if loaded,
-      inline otherwise.
+- [ ] **ROOT CLOSE-FINALIZE — git operations.** Root MUST execute these
+      directly (never delegate to planter or expect a teammate to handle
+      them). This mirrors the mechanical rigor of `.github/workflows/release.yml`
+      which handles patch→main; root handles dev.N→patch.
+
+      **RF-1. Patch-branch advancement check** (GH #60). Before rebase,
+      verify the patch branch contains all prior sprint commits:
+      ```bash
+      git fetch origin {patch_branch}
+      git log origin/{patch_branch} --oneline | head -3
+      ```
+      If `{patch_branch}` is behind the prior sprint's HEAD: ff-merge the
+      gap FIRST. A stale patch branch means every downstream sprint
+      operates on a stale base (axiom dev.8 incident — 30 commits dangled
+      6 hours).
+
+      **RF-2. Rebase-merge sprint → patch.**
+      ```bash
+      git checkout {patch_branch}
+      git pull --ff-only origin {patch_branch}
+      git merge --ff-only {sprint_branch}
+      git push origin {patch_branch}
+      ```
+      Verify: `git log {patch_branch} --oneline | head -5`.
+      Skip ONLY if `--scope > sprint` AND more sprints remain in the loop
+      AND the next sprint will rebase from the same patch-branch HEAD.
+
+      **RF-3. DELETE dev branch.**
+      ```bash
+      git push origin --delete {sprint_branch}
+      git branch -d {sprint_branch}
+      git fetch --prune origin
+      ```
+      NON-NEGOTIABLE. Per `references/branching-model.md` §II.4.
+
+      **RF-4. Cut next sprint branch.** Compute via mod-10:
+      if SPRINT < `{sprints_per_patch}-1` → cut dev.{N+1}.
+      if SPRINT = `{sprints_per_patch}-1` → dev.{last}: open release PR
+      per `references/branching-model.md` §III; `release.yml` handles
+      tag + release + next patch + dev.0 + orphan sweep + milestone roll.
+      ```bash
+      git checkout -b {next_sprint_branch} {patch_branch}
+      git push -u origin {next_sprint_branch}
+      ```
+
+      **RF-5. Cleanup stewardship.**
+      ```bash
+      git worktree list | grep 'agent-' | awk '{print $1}' | while read wp; do
+        git worktree remove --force "$wp" 2>/dev/null || true
+      done
+      git worktree prune
+      ```
+      Release `shepherd.lock` if held. Prune orphan `agent-*` local branches.
+
 - [ ] Emit ROOT CLOSE REPORT to operator (shape below); PAUSE.
 
 ---
