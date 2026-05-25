@@ -244,6 +244,7 @@ The INTRODUCTION phase produces **alignment** — same ground state for every ac
 **Conductor checklist:**
 
 - [ ] Verified seed at `{paths.plans}/{sprint_slug}.seed.md` — graph-hint §7-bis present (per `references/seed-template.md`).
+- [ ] **Patch-branch advancement check** (mandatory, v5.1.9+, GH #60): BEFORE dispatching the INTRO-COMBO-WAVE, verify `origin/{patch_branch}` contains all prior sprint commits. Run inline (< 30s): `git fetch origin {patch_branch} && git log origin/{patch_branch} --oneline | head -3`. If stale (prior sprint's commits not present): ff-merge the gap first. Per `doctrines/intro-combo-wave.md` Lane 0.
 - [ ] **INTRO-COMBO-WAVE dispatched** for M+ sprints (or when `shepherd.toml [stage_graph.intro_wave].enabled = true`): dispatch `@discovery` × N + `@auditor` (intro-mode regression + carry-forward-disposition) in **ONE Agent batch** BEFORE `@engineer`. Reports land at `{paths.reports}/<date>-discovery-*.md` and `{paths.reports}/<date>-intro-audit-*.md`. Skip for XS sprints. Per `doctrines/intro-combo-wave.md`.
 - [ ] `@engineer` dispatched (Opus, once per sprint) with: seed path, prior close-report path, branch + version context, `[DISCOVERY-CONTEXT]` block, `[INTRO-AUDIT-CONTEXT]` block, explicit instruction to run **Phase 0 mesh FIRST** and emit binding `## Stage Graph` per `pipeline.md` §XII.
 - [ ] Plan returned at `{paths.plans}/{sprint_slug}.plan.md` with seven bracketed sections per coder lane, Phase 0 mesh embedded at top, `## Stage Graph` YAML block.
@@ -331,17 +332,73 @@ The body IS the Stage Graph walk. You no longer compose dispatches — you evalu
 - [ ] `completeness` auditor verifies: real-work test, issue-ledger discipline from §1, carry-forward refresh, Stage Graph discipline (no off-graph commits, no skipped Pattern B). `on-grade-cap` fires — grade lowers, walk continues to CLOSE-FINALIZE.
 - [ ] `dependency-topology` auditor runs wrapper-grep gate per `doctrines/wrapper-must-earn.md`.
 - [ ] If CLOSE-SWARM emits `on-finding` (CRITICAL/HIGH): HOTFIX-CLOSE subgraph fires before CLOSE-FINALIZE.
-- [ ] **CLOSE-FINALIZE** (conductor inline):
+- [ ] **CLOSE-FINALIZE** — mechanical procedure (like `.github/workflows/release.yml` handles patch→main, this handles dev.N→patch). Execute steps **in order**; do NOT skip or reorder. TEAMMATE mode: skip to step 7.
+
+  **Step 1 — Reports.**
   - Close report at `{paths.reports}/<date>-{sprint_slug}-close.md` (grade A–F, SUBTRACT delta, Stage-Graph-walk summary).
   - Handoff at `{paths.docs}/<date>-dev{N}-close-handoff.md`.
   - Walk trace (optional, encouraged for L/XL) at `{paths.reports}/<date>-{sprint_slug}-walk.md`.
+
+  **Step 2 — State updates.**
   - Memory + project doctrines updated; project `CLAUDE.md` patched.
-  - Rebase-merge dev.N into patch branch; verify with `git log {patch_branch} --oneline | head -5`.
-  - **DELETE dev branch** (origin + local + prune) per `references/branching-model.md` §II.4.
-  - Next sprint branch cut + pushed (off the patch branch).
-- [ ] **Adaptation signal** (v5.0.6+): check `{paths.ctx}/sprint-patterns.md` after CLOSE-FINALIZE for trend alerts per `doctrines/adaptation-loop.md §V`. If any trend trigger fires (3+ same-concern CRITICAL/HIGH, 3+ same halt code, downward grade trend): surface a `[TREND]` alert to the planter/operator. Takes < 1 min inline.
-- [ ] **PAUSE** fires at CLOSE-FINALIZE every time (including when spawned under `--auto` or `--parallel <N>`); you return control to the planter. The planter handles inter-sprint transitions, not you. **RELEASE** fires on dev.{last} + sprint-through grant.
-- [ ] **Emit close summary** to planter/operator: "What shipped, what carried forward, next sprint branch."
+
+  **Step 3 — Rebase-merge dev.N → patch.** (SOLO mode only.)
+  ```bash
+  git checkout {patch_branch}
+  git pull --ff-only origin {patch_branch}
+  git merge --ff-only {sprint_branch}   # ff-only; if fails: git rebase {sprint_branch}
+  git push origin {patch_branch}
+  ```
+  Verify: `git log {patch_branch} --oneline | head -5` — sprint commits visible.
+  Per `references/branching-model.md` §II.3.
+
+  **Step 4 — DELETE dev branch.** (SOLO mode only.)
+  ```bash
+  git push origin --delete {sprint_branch}
+  git branch -d {sprint_branch}
+  git fetch --prune origin
+  ```
+  Verify: `git ls-remote --heads origin {sprint_branch}` — expect empty.
+  Per `references/branching-model.md` §II.4. NON-NEGOTIABLE.
+
+  **Step 5 — Cut next sprint branch.** (SOLO mode only.)
+  Compute N+1 via mod-10: if SPRINT < `{sprints_per_patch}-1`, next is dev.{N+1}. If SPRINT = `{sprints_per_patch}-1`, this is dev.{last} — skip to Step 6 (release pipeline).
+  ```bash
+  git checkout {patch_branch}
+  git checkout -b {next_sprint_branch} {patch_branch}
+  git push -u origin {next_sprint_branch}
+  ```
+  Per `references/branching-model.md` §II.1.
+
+  **Step 6 — Release pipeline (dev.{last} only).** (SOLO mode only.)
+  When SPRINT = `{sprints_per_patch}-1`: open the release PR per `references/branching-model.md` §III and the configured `[release].driver`. For `github-workflow` driver: open the PR; `.github/workflows/release.yml` handles tag → release → next patch → dev.0 → orphan sweep → milestone roll. For `conductor` driver: run §III steps 1–7 inline. For `operator` driver: surface release notes and stop.
+
+  **Step 7 — TEAMMATE mode close.** (TEAMMATE mode only; steps 3–6 skipped.)
+  Emit CONDUCTOR CLOSE REPORT as structured payload via `SendMessage(to: root)`:
+  ```
+  CONDUCTOR CLOSE REPORT
+  - Sprint: {sprint_slug}
+  - Lane: {lane_id}
+  - Grade: {A–F}
+  - SUBTRACT delta: net +X / -Y LOC
+  - Carry-forward: [items]
+  - Close report path: {paths.reports}/<date>-{sprint_slug}-close.md
+  - CLOSE-FINALIZE git ops: DEFERRED TO ROOT
+  ```
+  Root handles steps 3–6 after all teammates close.
+
+  **Step 8 — Worktree + branch cleanup.** (SOLO mode only.)
+  ```bash
+  git worktree list | grep 'agent-' | awk '{print $1}' | while read wp; do
+    git worktree remove --force "$wp" 2>/dev/null || true
+  done
+  git worktree prune
+  ```
+
+  **Step 9 — Adaptation signal** (v5.0.6+): check `{paths.ctx}/sprint-patterns.md` for trend alerts per `doctrines/adaptation-loop.md §V`. If any trend trigger fires (3+ same-concern CRITICAL/HIGH, 3+ same halt code, downward grade trend): surface a `[TREND]` alert. Takes < 1 min.
+
+- [ ] **PAUSE** fires after step 9. Under `/shepherd:start` (SOLO): you are done — operator takes over. Under `/shepherd:spawn`: you return control to root. **RELEASE** fires on dev.{last} + sprint-through grant (step 6 above).
+- [ ] **Emit close summary** to planter/operator: "What shipped, what carried forward, next sprint branch name."
 
 ---
 

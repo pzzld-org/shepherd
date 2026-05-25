@@ -115,6 +115,17 @@ The engineer **does**:
 - Identify parallel-safe vs sequential dependencies between lanes
 - Write runnable exit criteria for every phase
 - **Design lanes as conductor-teammate units under `/shepherd:spawn`** (v5.1.6+): if the plan's invocation context indicates spawn mode, each lane MUST be sized for one teammate-conductor: ≤ 5 files, file-disjoint from sibling lanes in the same wave, bite-sized step granularity (2–5 min per step per `superpowers:writing-plans`), capable of running concurrently with all sibling lanes. The lane count per wave directly determines the teammate-conductor count root spawns. See §"Ultra-parallel plan template (spawn mode)" below.
+- **Match dispatch tier to work type** (v5.1.9+, GH #61): not everything warrants a full teammate-conductor. Use this heuristic when assigning lanes:
+
+  | Work type | Dispatch tier |
+  |---|---|
+  | Multi-file source edits, cross-crate coordination | teammate-conductor |
+  | Single-file source edits | subagent (`@coder`) |
+  | Markdown report / ledger / spec / canonical-types refresh | subagent OR root-direct |
+  | Read-only audit | subagent (`@auditor` in close-swarm) |
+  | Long-running monitor / IO bulk | `@worker` (subagent) |
+
+  A lane whose `file_scope.exclusive` contains ONLY `*.md` paths should NOT be assigned a teammate-conductor — it wastes a full context window on work a subagent handles in seconds. Surface a `[TIER-MISMATCH]` note if the seed prescribes a conductor for markdown-only work.
 
 If the seed is ambiguous, flag it under "Open Questions for Critic" — never silently choose.
 

@@ -141,7 +141,7 @@ See `agents/shepherd.md`, `agents/conductor.md`, `agents/planter.md` for canonic
 - `@auditor` close-mode is always a 3–5 swarm split by concern (code-quality, data-flow, dependency-topology, datastore-state, completeness). Intro-mode is 1–2 lanes (regression, carry-forward-disposition).
 - `@discovery` is **read-only**. It absorbs exploration; it never grades, never proposes, never dispatches. See `doctrines/discovery-readonly.md`.
 
-**Dispatch procedure (every flock agent, every time):** See `agents/conductor.md §Mandatory protocol` for the binding dispatch procedure. In brief: read `agents/<role>.md`, extract the body below the YAML frontmatter, prepend it to the brief as the agent's system prompt, set `model` per the table above, and omit `subagent_type`. Full procedure with inline-vs-dispatch heuristic and specialist-exception policy: **`agents/conductor.md`**. Per-agent triggers, brief contracts, parallel-safety rules, NEVER clauses: **`flock.md`**. Copy-paste templates: **`references/agent-briefs.md`**.
+**Dispatch procedure (every flock agent, every time):** Set `subagent_type: "shepherd:<role>"` (e.g., `shepherd:coder`, `shepherd:auditor`) — the plugin's agent registry auto-loads the agent body from `agents/<role>.md`. Set `model` per the table above. The brief goes in `prompt`. Do NOT inline-embed the agent body in the prompt — that wastes tokens duplicating content the registry already provides (GH #20). Full procedure with brief-assembly checklist: **`agents/conductor.md §Mandatory protocol`**. Per-agent triggers, brief contracts, parallel-safety rules: **`flock.md`**. Copy-paste templates: **`references/agent-briefs.md`**.
 
 ---
 
@@ -258,16 +258,17 @@ Deletion counts toward SUBTRACT but NOT toward this quota.
 - [ ] Auditor `completeness` verifies real-work test passed; verifies the issue-ledger discipline from §1 INTRO (carry-forward refresh, non-current-milestone drift surface, chronic flagging at `[ledger].chronic_threshold_patches`); verifies Stage Graph discipline (no off-graph commits, no skipped Pattern B). Emits `on-grade-cap` edge if any check fails — grade caps at C+ but the walk continues to CLOSE-FINALIZE.
 - [ ] Auditor `dependency-topology` runs the wrapper-grep gate (`doctrines/wrapper-must-earn.md`)
 - [ ] If CLOSE-SWARM emits `on-finding` (CRITICAL/HIGH), HOTFIX-CLOSE subgraph fires before CLOSE-FINALIZE
-- [ ] CLOSE-FINALIZE fires:
-  - Close report at `{paths.reports}/<date>-{sprint_slug}-close.md` (grade A–F + SUBTRACT-vs-real-work + Stage-Graph-walk summary)
-  - Handoff at `{paths.docs}/<date>-dev{N}-close-handoff.md`
-  - Walk trace (optional but encouraged for L/XL) at `{paths.reports}/<date>-{sprint_slug}-walk.md`
-  - Memory + project doctrines updated; project CLAUDE.md patched
-  - **Rebase-merge** dev.N into patch; verify with `git log {patch_branch} --oneline | head -5`
-  - **DELETE dev branch** (origin + local + prune) per `references/branching-model.md` §II.4
-  - Next sprint branch cut + pushed (off the patch branch)
-- [ ] **Adaptation signal** (v5.0.6+): after CLOSE-FINALIZE and before PAUSE, check `{paths.ctx}/sprint-patterns.md` for trend alerts per `doctrines/adaptation-loop.md §V`. If any trend trigger fires (3+ same-concern CRITICAL/HIGH, 3+ same halt code, downward grade trend), surface a `[TREND]` alert to the operator. Takes < 1 min inline. Regardless of alert, the completeness auditor has already appended the sprint entry in CLOSE-SWARM.
-- [ ] **PAUSE** node fires under `/shepherd:start` (skipped under `/shepherd:spawn --auto`); RELEASE node fires under sprint-through grant on dev.{last}
+- [ ] **CLOSE-FINALIZE** — mechanical procedure. Full detail in `agents/conductor.md §Step 3 CLOSE-FINALIZE` (SOLO mode) and `agents/shepherd.md §Step 3` (root mode under `/spawn`). Summary:
+  1. Reports: close report + handoff + walk trace (optional).
+  2. State: memory + doctrines + CLAUDE.md patched.
+  3. Patch-branch advancement check (verify prior sprint merged; GH #60).
+  4. Rebase-merge dev.N → patch; verify with `git log {patch_branch} --oneline | head -5`.
+  5. DELETE dev branch (origin + local + prune) per `references/branching-model.md` §II.4.
+  6. Cut next sprint (mod-10: N+1 if N < 9; release pipeline if N = last) per §II.1.
+  7. Worktree + branch cleanup.
+  In TEAMMATE mode: steps 3–7 deferred to root via structured `SendMessage` payload.
+- [ ] **Adaptation signal** (v5.0.6+): check `{paths.ctx}/sprint-patterns.md` for trend alerts per `doctrines/adaptation-loop.md §V`. Surface `[TREND]` alert if any trigger fires.
+- [ ] **PAUSE** fires after CLOSE-FINALIZE. RELEASE fires on dev.{last} + sprint-through grant.
 
 ### Sprint impactfulness contract (v5.1.1 — sprint-as-patch binding)
 
