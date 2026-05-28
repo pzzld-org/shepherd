@@ -1,4 +1,4 @@
-# shepherd
+# shepherd — v6.0.0
 
 Sprint-by-sprint version-cycle conductor. A production-grade orchestration framework that turns a single Claude Code session into a disciplined release engineer driving a closed six-agent flock (engineer, critic, coder, auditor, worker, discovery) through repeatable sprint pipelines.
 
@@ -13,6 +13,37 @@ Sprint-by-sprint version-cycle conductor. A production-grade orchestration frame
 │                       --auto              alias: --scope patch       │
 └──────────────────────────────────────────────────────────────────────┘
 ```
+
+## v6.0.0 — Dispatch enforcement + planter authority excision
+
+v6.0.0 closes the dispatch-enforcement gap that v5.1.9 opened. The
+`subagent_type` field is now MANDATORY on every flock dispatch — missing,
+`general-purpose`, `Explore`, or `Chat` is a `DISPATCH-MISSING-SUBAGENT-TYPE`
+refusal, not a silent degradation. The full forbidden-combination matrix
+lives in
+[`skills/shepherd/doctrines/dispatch-tier-separation.md §IV-bis`](skills/shepherd/doctrines/dispatch-tier-separation.md).
+
+Additionally:
+
+- **Wave-tier model is now canonical doctrine.** Under `/shepherd:spawn`:
+  INTRO + plan-gate + CLOSE-SWARM are root-direct subagents; BODY is
+  teammate-conductors, each running their own subagent waves for their
+  assigned lane. See
+  [`doctrines/root-shepherd-orchestration.md §I-bis`](skills/shepherd/doctrines/root-shepherd-orchestration.md).
+- **Planter authority is bounded.** Per FL03/shepherd #67, the seed
+  template's old §6 ("MUST-LAND lanes — numbered, issue-anchored")
+  becomes "Deliverables (issue-anchored)" — no `Lane N` numbering, no
+  `Sequencing:` directives. Lane decomposition is the engineer's
+  exclusive authority.
+- **Scope is workload-scale, not a quality bar.** `/shepherd:spawn --scope
+  patch` delivers what each sprint's seed promises. "It's just a patch"
+  is framework-recognized malpractice. See
+  [`doctrines/version-scale-roadmap.md`](skills/shepherd/doctrines/version-scale-roadmap.md)
+  opening note.
+
+**Breaking change:** projects relying on the v5.1.5 → v5.1.9 permissive
+fallback (Agent calls without `subagent_type`) will now refuse to fire.
+Update affected dispatches to `Agent({subagent_type: "shepherd:<role>", ...})`.
 
 ## v5.1.6 — Root-Shepherd Tier + Lane-Per-Conductor Fanout
 

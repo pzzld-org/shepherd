@@ -1,4 +1,4 @@
-# Dispatch tier separation (v5.1.6+)
+# Dispatch tier separation (v5.1.6+; enforcement hardened v6.0.0)
 
 The shepherd flock now operates on a **three-tier dispatch hierarchy** when
 `/shepherd:spawn` is active. Each tier has bounded dispatch authority. This
@@ -162,6 +162,133 @@ teammate session if it cannot reliably observe the tier-separation rule.
 
 ---
 
+## IV-bis. Forbidden dispatch matrix (binding refusal contract; v6.0.0+)
+
+The dispatch matrix in §II describes what each tier MAY do. This section
+enumerates the specific Agent-call constructions that MUST be refused on
+sight, with their halt codes. Every cited file (`agents/shepherd.md`,
+`agents/conductor.md`, `skills/shepherd/flock.md`, `skills/shepherd/SKILL.md`,
+`commands/spawn.md`) inlines a one-line cite to this section instead of
+re-stating the rules.
+
+The shape of an Agent call under shepherd discipline:
+
+```
+Agent({
+  subagent_type: "shepherd:<role>",   // MANDATORY for every flock dispatch
+  model: "<sonnet|opus>",              // per flock.md table
+  prompt: "<task brief>",              // brief only — NOT the agent body
+  team_name: <UNSET unless root-level teammate spawn under /shepherd:spawn>
+})
+```
+
+Any deviation from this shape is one of the violations below.
+
+### IV-bis.1. `DISPATCH-MISSING-SUBAGENT-TYPE`
+
+**Trigger:** any flock dispatch (`@coder`, `@auditor`, `@worker`, `@discovery`,
+`@engineer`, `@critic`) that omits `subagent_type`, defaults to
+`general-purpose`, or sets `subagent_type` to `Explore` / `Chat` /
+`general-purpose` / any other non-shepherd identifier.
+
+**Refusal:** the dispatcher (root in INTRO/CLOSE; teammate-conductor in
+BODY) MUST refuse to fire the Agent call. Surface to operator (root) or
+escalate (`SendMessage(to: lead, halt_code: DISPATCH-MISSING-SUBAGENT-TYPE,
+blocking: true)`, teammate).
+
+**Why:** v5.1.5 and earlier allowed prompt-injected dispatch with
+`subagent_type` omitted. v5.1.9 switched to the registry-loaded path. In
+between, the permissive fallback let conductors silently degrade to
+`general-purpose` agents — which break every framework discipline
+(brief contract, dedup-gate, halt codes, model pinning). This refusal is
+the load-bearing replacement for the prior implicit enforcement.
+
+### IV-bis.2. `DISPATCH-TEAMMATE-TYPE-MISMATCH`
+
+**Trigger:** an Agent call sets `team_name: <something>` AND `subagent_type
+!= "shepherd:conductor"`. Concretely: `Agent({team_name: "...", subagent_type:
+"shepherd:coder", ...})` or any flock role other than `conductor` paired with
+a `team_name`.
+
+**Refusal:** root MUST refuse. Teammate-spawning is conductor-only. A coder
+("etc.) is an ephemeral subagent dispatched BY a conductor, never spawned AS
+a teammate.
+
+**Why:** axiom v0.3.4-dev.1 (FL03/shepherd #65, 2026-05-26) — root
+dispatched 4 coder teammates instead of conductor teammates. Work landed
+without conductor-level gates, error recovery, or proper iteration.
+Architecturally: a teammate session inherits the lead's permission mode
+and runs with the SendMessage channel; the in-process platform constraint
+(Anthropic GH #31977) currently denies the Agent tool to in-process
+teammates. A coder teammate has no flock to coordinate AND cannot be
+substituted for a conductor.
+
+### IV-bis.3. `DISPATCH-OFF-FLOCK`
+
+**Trigger:** an Agent call sets `subagent_type` to any value outside the
+closed-flock-six (`shepherd:engineer`, `shepherd:critic`, `shepherd:coder`,
+`shepherd:auditor`, `shepherd:worker`, `shepherd:discovery`) and outside
+`shepherd:conductor` (for teammate spawns from root). Specialist
+exceptions per `doctrines/specialist-dispatch.md` clear this only when
+they pass the DISPATCH DECISION TREE §Q1–Q4.
+
+**Refusal:** the dispatcher MUST refuse. The flock is closed at six. Plan
+authorship, critic gating, close-time audit grading, and code
+implementation are NEVER substitutable.
+
+### IV-bis.4. `TEAMMATE-NESTING-ATTEMPT`
+
+**Trigger:** a teammate-conductor (TEAMMATE mode per §III) constructs any
+Agent call with `team_name` set, OR invokes `/shepherd:spawn` from within
+its session, OR otherwise attempts to spawn its own teammate-tier.
+
+**Refusal:** the teammate MUST refuse and `SendMessage(to: lead, halt_code:
+TEAMMATE-NESTING-ATTEMPT, blocking: true)` to root. Platform forbids
+nested teams (D-API §12); shepherd discipline forbids it doctrinally.
+
+### IV-bis.5. `WRONG-TIER-DISPATCH`
+
+**Trigger:** a teammate-conductor attempts to dispatch `@engineer` or
+`@critic`. (Detected at the agent boundary: engineer/critic profiles read
+the `INVOCATION-CONTEXT.dispatcher` brief field on boot and halt with this
+code if the dispatcher is a teammate.)
+
+**Refusal:** teammate surfaces `PLAN-AUTHORSHIP-REQUEST` (engineer needed)
+or `PLAN-GATE-REQUEST` (critic needed) escalation to root. Root dispatches
+engineer/critic directly and returns the result via resume reply.
+
+### IV-bis.6. `MODE-MISUSE`
+
+**Trigger:** SOLO-mode conductor (under `/shepherd:start` in main chat)
+attempts to spawn a teammate. OR: TEAMMATE-mode conductor attempts a
+SOLO-mode operation (artifact write, git commit, operator direct-message)
+that the §III matrix forbids.
+
+**Refusal:** halt and surface. Mode detection is mandatory at Step 0 of
+the conductor protocol per `agents/conductor.md §Conductor modes`. If
+mode-detection is ambiguous (some signals positive, others negative),
+halt with `MODE-DETECTION-AMBIGUOUS` (separate code, same surface
+discipline).
+
+### IV-bis.7. Quick-reference table
+
+| Violation | Halt code | Refused by |
+|---|---|---|
+| Flock dispatch missing `subagent_type` | `DISPATCH-MISSING-SUBAGENT-TYPE` | root + conductor |
+| `team_name` set with `subagent_type ≠ shepherd:conductor` | `DISPATCH-TEAMMATE-TYPE-MISMATCH` | root |
+| `subagent_type` outside closed-flock-six (or shepherd:conductor) | `DISPATCH-OFF-FLOCK` | root + conductor |
+| Teammate tries to construct `team_name` | `TEAMMATE-NESTING-ATTEMPT` | teammate-conductor |
+| Teammate dispatches `@engineer`/`@critic` | `WRONG-TIER-DISPATCH` | engineer/critic on receipt |
+| SOLO mode spawning OR TEAMMATE mode running SOLO ops | `MODE-MISUSE` | conductor |
+| Mode-detection signals contradict | `MODE-DETECTION-AMBIGUOUS` | conductor |
+
+These halt codes are **terminal for the offending dispatch**. Root does
+NOT auto-resume on `WRONG-TIER-DISPATCH` or `TEAMMATE-NESTING-ATTEMPT` —
+the teammate brief is malformed and needs operator review per
+`agents/shepherd.md §Halt codes (root-side)`.
+
+---
+
 ## V. The flock contract (unchanged)
 
 The closed-at-six flock contract from prior versions remains binding:
@@ -182,7 +309,10 @@ work must surface `PLAN-AUTHORSHIP-REQUEST` first.
 
 ## VI. Why this discipline matters
 
-Two failure modes from v5.1.5 motivated this doctrine:
+Three failure modes have motivated this doctrine. The first two come from
+v5.1.5 (motivated the original tier separation); the third (motivated the
+v6.0.0 hard-refusal hardening) comes from v0.3.4-dev.0/1/2 on
+FL03/axiom.
 
 1. **Teammate-conductor engineer dispatch.** A teammate ran `@engineer` mid-
    sprint to re-plan its own wave. This produced two parallel plans (the
@@ -197,6 +327,21 @@ Two failure modes from v5.1.5 motivated this doctrine:
 Tier separation fixes both. Engineer + critic happen ONCE per sprint at root.
 Teammate context stays narrow (own wave only). Root absorbs the artifact-
 materialization cost and gets the cross-teammate view critic needs.
+
+3. **Permissive-fallback dispatch slippage (v5.1.9 → v6.0.0 regression).**
+   Three consecutive `/shepherd:spawn` runs (v0.3.4-dev.0/1/2 on FL03/axiom,
+   2026-05-25..27) failed in concurrent failure modes: root treated spawn
+   like start (did body work directly instead of fanning out conductors);
+   when teammates were spawned, `Agent({team_name, subagent_type:
+   "shepherd:coder"})` slipped through and produced lane-coder teammates
+   with no conductor coordination; `general-purpose` agents were dispatched
+   because `subagent_type` was sometimes omitted entirely. The framework
+   describing the correct shape was not enough; the enforcement language
+   had been weakened in v5.1.9's dispatch-procedure rewrite without an
+   explicit-refusal replacement. §IV-bis above closes that gap by naming
+   the violations and pairing each with a halt code that the dispatcher
+   self-checks. Filed as FL03/shepherd #65 (teammate type mismatch) and
+   #66 (general process violations).
 
 ---
 

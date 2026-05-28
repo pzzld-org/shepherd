@@ -22,22 +22,34 @@ ${CLAUDE_PLUGIN_ROOT}/agents/worker.md     → @worker     model: sonnet
 ${CLAUDE_PLUGIN_ROOT}/agents/discovery.md  → @discovery  model: sonnet  (v5.1.1+)
 ```
 
-**Dispatch procedure (every flock agent, every time):**
+**Dispatch procedure (every flock agent, every time) — MANDATORY (v6.0.0):**
 
-1. **Set `subagent_type`** to `"shepherd:<role>"` (e.g., `shepherd:coder`, `shepherd:auditor`). The plugin agent registry auto-loads the agent body from `agents/<role>.md`.
+1. **Set `subagent_type` to `"shepherd:<role>"`** (e.g., `shepherd:coder`, `shepherd:auditor`). The plugin agent registry auto-loads the agent body from `agents/<role>.md`. **This field is MANDATORY for every flock dispatch.** Omitting it, defaulting to `general-purpose`, or substituting `Explore` / `Chat` is a `DISPATCH-MISSING-SUBAGENT-TYPE` violation per `doctrines/dispatch-tier-separation.md §IV-bis.1` — refuse to fire the call.
 2. **Set `model`** per the table above.
 3. **Put the task brief in `prompt`** — do NOT duplicate the agent body.
+4. **Leave `team_name` UNSET.** `team_name` is reserved for root-level teammate-CONDUCTOR spawns under `/shepherd:spawn` only. A flock dispatch with `team_name` set produces a coder/auditor/worker AS a teammate, which has no conductor coordination — `DISPATCH-TEAMMATE-TYPE-MISMATCH` per §IV-bis.2. Refuse.
 
 ```
 Agent({
   description: "@coder: <short task summary>",
-  subagent_type: "shepherd:coder",
+  subagent_type: "shepherd:coder",      // MANDATORY — never omit
   model: "sonnet",
   prompt: "TASK BRIEF:\n<brief>"
+  // team_name: NEVER set on a flock dispatch
 })
 ```
 
 This saves ~150–650 lines of inline body per dispatch (GH #20). For a 9-coder wave, that is ~3000 tokens saved per wave.
+
+**Forbidden combinations — refuse on sight (full table at `doctrines/dispatch-tier-separation.md §IV-bis`):**
+
+| Combination | Halt code |
+|---|---|
+| `subagent_type` missing OR `general-purpose` / `Explore` / `Chat` | `DISPATCH-MISSING-SUBAGENT-TYPE` |
+| `team_name` set + `subagent_type ≠ shepherd:conductor` | `DISPATCH-TEAMMATE-TYPE-MISMATCH` |
+| `subagent_type` outside closed-flock-six (no specialist clearance) | `DISPATCH-OFF-FLOCK` |
+| Teammate-conductor constructs `team_name` (any value) | `TEAMMATE-NESTING-ATTEMPT` |
+| Teammate-conductor dispatches `@engineer`/`@critic` | `WRONG-TIER-DISPATCH` (engineer/critic halts on receipt) |
 
 **The flock is closed at six + specialist exceptions per `doctrines/specialist-dispatch.md`** (v5.1.1+). NEVER dispatch any agent outside these six unless it's a pre-authorized specialist (e.g., `code-review:code-review`, `sentry:seer`) AND the task strictly fits the specialist's contract. Specialists are exception, not default. Plan authorship / critic gating / close-time audit grading / code implementation are NEVER substitutable. Engineer's plan-skills (`superpowers:brainstorming` + `superpowers:writing-plans`) and auditor's skill (`superpowers:systematic-debugging`) load from inside the agent's own dispatch — that is not the conductor calling them. If a task doesn't fit a flock role AND no specialist fits, the conductor handles it inline.
 
@@ -351,7 +363,7 @@ Full contract + use-case catalog + cross-sprint reuse rules: `doctrines/discover
 
 | Rule | Detail |
 |------|--------|
-| **Flock agents ONLY — via `subagent_type`** | Set `subagent_type: "shepherd:<role>"`. Plugin registry loads agent body. No outside agents. |
+| **Flock agents ONLY — `subagent_type` MANDATORY (v6.0.0)** | Set `subagent_type: "shepherd:<role>"`. Plugin registry loads agent body. Missing → `DISPATCH-MISSING-SUBAGENT-TYPE` halt; never silently defaults to general-purpose. See `doctrines/dispatch-tier-separation.md §IV-bis`. |
 | Parallel coders require zero file overlap | Verify before dispatch; single build-manifest writer at a time |
 | Parallel dispatch rule | Zero-overlap coders MUST be in the same message — sequential dispatch is a process violation |
 | Minimum lanes: M=3, L=4, XL=4/wave | Plan with fewer lanes → reject back to @engineer |

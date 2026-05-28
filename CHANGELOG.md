@@ -4,6 +4,115 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v6.0.0 — 2026-05-28
+
+### Dispatch enforcement + planter authority excision
+
+Major bump. v5.1.9 modernized the dispatch model (registry-loaded
+`subagent_type` replaced inline body injection — issue #20) but removed the
+old enforcement language without an equivalent replacement, leaving a
+permissive fallback path that produced three consecutive failed sprints on
+`fl03/axiom v0.3.4-dev.0/1/2` (2026-05-25..27). v6.0.0 closes the gap:
+
+**Hard refusal contract (binding) — `doctrines/dispatch-tier-separation.md §IV-bis`:**
+
+| Combination | Halt code |
+|---|---|
+| `subagent_type` missing OR `general-purpose` / `Explore` / `Chat` | `DISPATCH-MISSING-SUBAGENT-TYPE` |
+| `team_name` set + `subagent_type ≠ shepherd:conductor` | `DISPATCH-TEAMMATE-TYPE-MISMATCH` |
+| `subagent_type` outside closed-flock-six (no specialist clearance) | `DISPATCH-OFF-FLOCK` |
+| Teammate-conductor constructs `team_name` (any value) | `TEAMMATE-NESTING-ATTEMPT` |
+| Teammate-conductor dispatches `@engineer`/`@critic` | `WRONG-TIER-DISPATCH` |
+| SOLO mode spawning OR TEAMMATE mode running SOLO ops | `MODE-MISUSE` |
+
+These codes are terminal for the offending dispatch. Root does NOT
+auto-resume on `WRONG-TIER-DISPATCH` or `TEAMMATE-NESTING-ATTEMPT` — the
+teammate brief is malformed and needs operator review.
+
+**Wave-tier model promoted to canonical doctrine** —
+`doctrines/root-shepherd-orchestration.md §I-bis`:
+
+- INTRODUCTION (§1) = root-direct subagents (`@discovery` × N + intro
+  `@auditor` × 2 + `@engineer` + `@critic` + plan materialization +
+  operator approval gate). No teammates spawned.
+- BODY (§2) = teammate-conductors, one per lane per wave. Each conductor
+  walks its lane's micro-Stage-Graph using its OWN subagent waves.
+- CLOSE (§3) = root-direct subagents (`@auditor` × 3-5 close-swarm split
+  by concern, on aggregated sprint output). CLOSE-FINALIZE git ops run at
+  root.
+
+**Planter authority excised** — `agents/planter.md §Authority boundary` +
+`references/seed-template.md §6` (renamed from "MUST-LAND lanes" to
+"Deliverables (issue-anchored)") closes FL03/shepherd #67:
+
+- Lane numbering (`Lane N`) and sequencing (`sequential after Lane K`) are
+  the engineer's exclusive authority in the plan. Removed from seed
+  template.
+- Wave composition table (§7) demoted to NON-BINDING recommendation. The
+  engineer's `## Stage Graph` is the binding decomposition.
+- Per-deliverable T-shirt sizes removed from seed template — engineer
+  analyzes at plan-time.
+
+**Scope is workload-scale, never a quality bar** —
+`doctrines/version-scale-roadmap.md` + `scope-scale-workload.md` opening
+notes are now binding:
+
+- A planter may NOT defer or downscope work because "it's just a patch."
+- A conductor may NOT come up short on lanes citing patch size.
+- "Reshape as a `@worker` dispatch" framing for sprints that don't deliver
+  their seed-promised work is forbidden — that is seed/implementation
+  drift, gradeable as a `@critic` RECONSIDER or `@auditor completeness`
+  C+ cap, NOT a sprint reclassification.
+
+**New halt codes** — root-side (`agents/shepherd.md §Halt codes`) and
+conductor-side (`agents/conductor.md §Halt codes`):
+
+- `DISPATCH-MISSING-SUBAGENT-TYPE`
+- `DISPATCH-TEAMMATE-TYPE-MISMATCH`
+- `DISPATCH-OFF-FLOCK`
+- `TEAMMATE-NESTING-ATTEMPT`
+- `MODE-MISUSE`
+- `MODE-DETECTION-AMBIGUOUS` (formalized; was implicit prior)
+
+**Boot-prompt hardening** — `commands/start.md §Step T0 (--teammate path)`
+now runs a four-check refusal block (INVOCATION-CONTEXT present,
+`dispatcher == teammate-conductor`, lane brief slice present,
+`ROOT-SESSION-NAME` populated) before any dispatch. SOLO `/shepherd:start`
+unchanged.
+
+**Spawn HARD PROHIBITIONS rephrased** — `commands/spawn.md §Build the
+teammate prompt` rewrites the prohibition block from descriptive ("NO X")
+to machine-checkable ("MUST REFUSE X and SendMessage halt_code: <code>,
+blocking: true"). Same content, enforceable shape.
+
+#### Closes / references
+
+- Closes FL03/shepherd #65 (shepherd:coder dispatched as teammate)
+- Closes FL03/shepherd #66 (root shepherd ignored feedback / dispatch
+  protocol)
+- Closes FL03/shepherd #67 (seed-template lane prescription)
+- Downstream blast radius: axiom v0.3.4-dev.0/1/2 failed sprints, axiom
+  issues #1487-#1494 (P0/P1 production fires opened 2026-05-26/27)
+
+#### Migration
+
+Projects on v5.1.x must update any direct Agent calls in custom doctrines
+or hooks to set `subagent_type: "shepherd:<role>"` explicitly. The
+permissive fallback to `general-purpose` is GONE — calls without it will
+refuse at dispatch time. Hooks that compose dispatch briefs (e.g., custom
+`agent_pause_detector.sh` extensions) should also be audited.
+
+#### Files moved together
+
+- `.claude-plugin/plugin.json` → 6.0.0
+- `.claude-plugin/marketplace.json` → 6.0.0
+- `skills/shepherd/SKILL.md` frontmatter → 6.0.0
+- `skills/context/SKILL.md` frontmatter → 6.0.0
+- `README.md` header
+- `CHANGELOG.md` (this entry)
+
+---
+
 ## v5.1.8 — 2026-05-21
 
 ### Platform-alignment patch

@@ -105,6 +105,9 @@ Solo runs ONE sprint and returns at CLOSE-FINALIZE. Teammate runs ONE sprint and
 13. **(TEAMMATE MODE ONLY) NEVER dispatch `@engineer`.** Plan authorship is root-tier-exclusive under `/shepherd:spawn`. Surface a `PLAN-AUTHORSHIP-REQUEST` escalation per `doctrines/spawn-escalation.md §III` instead. Direct dispatch is a `WRONG-TIER-DISPATCH` process violation per `doctrines/dispatch-tier-separation.md`.
 14. **(TEAMMATE MODE ONLY) NEVER dispatch `@critic`.** Plan gating + cross-teammate finding aggregation is root-tier-exclusive under `/shepherd:spawn`. Surface a `PLAN-GATE-REQUEST` escalation instead. Same `WRONG-TIER-DISPATCH` semantics.
 15. **(TEAMMATE MODE ONLY) NEVER write artifact files.** Plans, close reports, walk traces, handoffs, audit reports — all return as structured payloads via `SendMessage` to root, which materializes them. Your `Edit`/`Write` tools in teammate mode are restricted to `questions.md` and worktree-local temporary files only. Source code writes belong to `@coder` dispatches (and those happen in the teammate's owned worktree, not directly from teammate-conductor context).
+16. **(v6.0.0, BOTH MODES) Every flock dispatch MUST set `subagent_type: "shepherd:<role>"`** (`shepherd:coder`, `shepherd:auditor`, `shepherd:worker`, `shepherd:discovery` — and `shepherd:engineer`/`shepherd:critic` in SOLO mode only). Missing → `DISPATCH-MISSING-SUBAGENT-TYPE`; outside closed-flock-six → `DISPATCH-OFF-FLOCK`; `general-purpose`/`Explore`/`Chat` → same. Refuse to fire and either surface (SOLO) or `SendMessage(to: lead, halt_code: ...)` (TEAMMATE). Full refusal contract: `doctrines/dispatch-tier-separation.md §IV-bis`.
+17. **(v6.0.0, TEAMMATE MODE ONLY) NEVER set `team_name` on any Agent call.** You are NOT a lead; you have no team to manage. Constructing `Agent({team_name: ..., ...})` is `TEAMMATE-NESTING-ATTEMPT` — refuse and `SendMessage(to: lead, halt_code: TEAMMATE-NESTING-ATTEMPT, blocking: true)`. Platform forbids nested teams (D-API §12); shepherd discipline forbids it doctrinally. Your dispatches are subagents only (`@coder`/`@auditor`/`@worker`/`@discovery` for your lane), via `Agent({subagent_type: "shepherd:<role>"})` with NO `team_name`.
+18. **(v6.0.0, SOLO MODE ONLY) NEVER spawn teammates.** Solo mode is `/shepherd:start` — the conductor IS root. Spawning a teammate from solo mode produces a confused execution model where the conductor tries to run as a teammate-conductor of itself. Halt with `MODE-MISUSE`. If parallel work is wanted, the operator invokes `/shepherd:spawn` from a clean main-chat session, which adopts the root-shepherd profile and spawns teammates correctly.
 
 ---
 
@@ -214,6 +217,12 @@ Operators running `/shepherd:start` in main chat see ZERO behavior change. The f
 | `STAGE-GRAPH-VIOLATION` | Off-graph or mal-formed dispatch detected; auditor will grade-cap C+. |
 | `DEV.LAST-NO-GRANT` | dev.{last} CLOSE-FINALIZE reached without sprint-through; hold for release signal. |
 | `WORKTREE-CORRUPT` | `git worktree list` shows missing or locked entries; surface before proceeding. |
+| `MODE-DETECTION-AMBIGUOUS` | Mode-detection signals at Step 0 contradict (some teammate-positive, some solo-positive). Surface to operator (SOLO) or `SendMessage` to root (likely TEAMMATE) before any dispatch. |
+| `MODE-MISUSE` (v6.0.0) | SOLO mode tried to spawn a teammate, OR TEAMMATE mode tried to run a SOLO-only operation (artifact write, git commit, operator direct-message). Per `doctrines/dispatch-tier-separation.md §IV-bis.6`. |
+| `DISPATCH-MISSING-SUBAGENT-TYPE` (v6.0.0) | Tried to fire `Agent({...})` without `subagent_type: "shepherd:<role>"`. Refuse the call. Per §IV-bis.1. |
+| `DISPATCH-OFF-FLOCK` (v6.0.0) | `subagent_type` outside the closed-flock-six (no specialist clearance). Per §IV-bis.3. |
+| `TEAMMATE-NESTING-ATTEMPT` (v6.0.0, TEAMMATE mode only) | Constructed `Agent({team_name: ..., ...})` while in TEAMMATE mode. SendMessage to root with this code, blocking. Per §IV-bis.4. |
+| `WRONG-TIER-DISPATCH` (TEAMMATE mode only) | Tried to dispatch `@engineer` or `@critic`. Surface `PLAN-AUTHORSHIP-REQUEST` or `PLAN-GATE-REQUEST` to root instead. Per §IV-bis.5. |
 
 ---
 

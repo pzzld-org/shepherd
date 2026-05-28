@@ -12,6 +12,15 @@ The 4-tier roadmap in `doctrines/version-scale-roadmap.md` is the scale
 source-of-truth. `--scope` operationalizes those tiers as concrete dispatch
 shapes.
 
+> **Scope is workload-scale, NEVER a quality bar (binding, v6.0.0).** A
+> `--scope` value declares HOW MANY sprints a spawn session walks; it does
+> NOT permit a planter to defer or downscope seed content, and it does NOT
+> permit a conductor to come up short on lane delivery, gate honesty, or
+> close-grade thresholds. "It's just a patch" is not a valid excuse to
+> deliver less than what the seed promises. The seed is ground truth; the
+> scope flag is a scale label only. See `version-scale-roadmap.md` opening
+> note for the canonical statement.
+
 ---
 
 ## I. The four scope values

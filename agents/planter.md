@@ -163,24 +163,39 @@ Write the consolidated mesh report to `{paths.reports}/<date>-planter-mesh.md`. 
 | `arc` | Author patch-arc seed `{paths.plans}/{patch_slug}.seed.md` + skeletons for every dev.N |
 | `next-version` | Bump version + author next patch's arc seed + dev.0 |
 
-Per `references/seed-template.md`. Density discipline: **150–300 lines per sprint seed; 80–150 lines for patch-arc seed**. Lane bodies anchored by GH issues per `doctrines/seed-anchored-by-issues.md`.
+Per `references/seed-template.md`. Density discipline: **150–300 lines per sprint seed; 80–150 lines for patch-arc seed**. Deliverables anchored by GH issues per `doctrines/seed-anchored-by-issues.md`.
+
+> **Authority boundary (v6.0.0):** the planter names WHAT must land (the
+> deliverables in §6 of `seed-template.md`) and recommends WHEN (the wave
+> shape in §7, NON-BINDING). The planter does NOT prescribe lane
+> numbering, sequencing, or per-lane scope — those are the engineer's
+> exclusive authority during plan authorship. Operator-binding: "removing
+> your own predefined lanes. That is for an engineer to decide, you may
+> prescribe a recommendation but do not define lanes themselves." (FL03/
+> shepherd #67, 2026-05-27). The planter also does NOT make semver-
+> content judgments: any phrasing like "this is too small for a patch",
+> "merge with the neighboring patch", or "reshape as a `@worker` dispatch"
+> is overreach. The seed is the contract; scope is naming only. See
+> `version-scale-roadmap.md` opening note.
 
 ### Step 4 — Verification before commit (pre-flight)
 
 Run this checklist on every emitted seed. Fix before commit; never commit-with-caveats.
 
-- [ ] Every MUST-LAND lane has a `**GH:**` line (existing `#NNN` verified via `mcp__plugin_github_github__issue_read`, or `file at Phase 0` placeholder; process lanes exempt)
+- [ ] Every deliverable in §6 has a `**GH:**` line (existing `#NNN` verified via `mcp__plugin_github_github__issue_read`, or `file at Phase 0` placeholder; process deliverables exempt)
 - [ ] Every cited `#NNN` exists
 - [ ] Every file path in `file_scope.exclusive` resolves
 - [ ] Every doc/research/memory path resolves
 - [ ] Phase 0 mesh table has 8+ rows
 - [ ] No `TODO:` / `FIXME:` / `tbd` markers
-- [ ] Sprint T-shirt size matches lane composition (S→3, M→4, L→6, XL→6/wave)
+- [ ] **No `Lane N` numbering or `Sequencing:` directives in seed body (v6.0.0 — engineer authority per #67)**
+- [ ] **No semver-content judgments in seed body (v6.0.0 — "too small for a patch" / "reshape as worker" framing is overreach per `version-scale-roadmap.md`)**
+- [ ] Sprint T-shirt size matches deliverable count (recommendation only — engineer composes lanes)
 - [ ] Seed footprint ≤ 400 lines (sprint) / ≤ 200 lines (patch-arc)
 - [ ] `intro_wave:` section present for M+ seeds per `doctrines/intro-combo-wave.md`
 - [ ] Carry-forward dispositions cover every CRITICAL/HIGH GH# from prior close
-- [ ] No lanes proposing fewer parallel lanes than the sprint T-shirt minimum (a self-rejection)
-- [ ] Hollow-wrapper lanes rejected per `doctrines/wrapper-must-earn.md`
+- [ ] At least one deliverable is CRITICAL or HIGH priority
+- [ ] Hollow-wrapper deliverables rejected per `doctrines/wrapper-must-earn.md`
 - [ ] Patch milestone exists (or is created) per GitHub-leverage discipline (§VIII-bis of `skills/shepherd/planter.md`)
 
 ### Step 5 — Hand-off report

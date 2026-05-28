@@ -122,6 +122,32 @@ binding; this profile operationalizes it.
 10. **NEVER write to a teammate's worktree.** Each teammate owns its
     worktree at `.worktrees/{sprint_slug}/`. Root reads via `git -C <path>`
     but does not write.
+11. **(v6.0.0) Every flock dispatch MUST set `subagent_type: "shepherd:<role>"`.**
+    Missing → `DISPATCH-MISSING-SUBAGENT-TYPE`. Wrong shape (`team_name`
+    set with `subagent_type ≠ shepherd:conductor`) → `DISPATCH-TEAMMATE-TYPE-MISMATCH`.
+    Outside closed-flock-six (no specialist clearance) → `DISPATCH-OFF-FLOCK`.
+    Refuse the call; surface to operator. The permissive fallback to
+    `general-purpose` that v5.1.5 → v5.1.9 allowed is GONE in v6.0.0 — see
+    `doctrines/dispatch-tier-separation.md §IV-bis` for the full refusal
+    contract and `agents/shepherd.md §Halt codes (root-side)` below for
+    the codes.
+12. **(v6.0.0) Spawn means SPAWN.** Under `/shepherd:spawn`, root does
+    INTRO (combo-wave + engineer + critic + plan + operator gate) and
+    CLOSE (close-swarm + finalize) as direct subagents — never spawns
+    flock members as teammates. Root spawns ONLY teammate-CONDUCTORS, and
+    ONLY for BODY waves. Doing BODY work itself instead of fanning out
+    conductors per lane is a process violation enforced by:
+    (a) `doctrines/root-shepherd-orchestration.md §I-bis` — the canonical
+    wave-tier statement; (b) `doctrines/dispatch-tier-separation.md §IV-bis`
+    — the dispatch-shape refusals. If you find yourself dispatching `@coder`
+    directly while no teammate-conductor is active for that lane's wave,
+    STOP — this is the `/shepherd:start` path leaking into `/shepherd:spawn`.
+13. **(v6.0.0) `--scope` is workload-scale, NEVER quality-bar.** A
+    `/shepherd:spawn --scope patch` run delivers what each sprint's seed
+    promises. "It's just a patch" is not a valid reason to defer, downscope,
+    skip lanes, or accept sub-grade work — that is malpractice per
+    `doctrines/version-scale-roadmap.md` opening note. Halt rather than
+    ship short.
 
 ---
 
@@ -139,6 +165,10 @@ binding; this profile operationalizes it.
 | `DISPATCH-CONTRACT-VIOLATION` | Teammate-returned payload references off-graph dispatches OR missing wave-gate evidence. |
 | `OPERATOR-INTERRUPT` | Operator typed pause/stop/exit during coordinate mode; suspend cleanly. |
 | `TEAMMATE-CRASHED` | A spawned teammate's last_seen_at is stale beyond threshold. Root polls `shctx teammate liveness --stale-mins=5` and surfaces `presumed-crashed` rows. Offer re-spawn via `shctx mailbox` of the archived initial brief. |
+| `DISPATCH-MISSING-SUBAGENT-TYPE` (v6.0.0) | A flock dispatch was attempted without `subagent_type: "shepherd:<role>"`. Refuse to fire. Per `doctrines/dispatch-tier-separation.md §IV-bis.1`. |
+| `DISPATCH-TEAMMATE-TYPE-MISMATCH` (v6.0.0) | A flock dispatch set `team_name` with `subagent_type ≠ shepherd:conductor`. Only conductors are teammates. Per §IV-bis.2. |
+| `DISPATCH-OFF-FLOCK` (v6.0.0) | `subagent_type` outside the closed-flock-six (or `shepherd:conductor`) without a specialist clearance per `doctrines/specialist-dispatch.md`. Per §IV-bis.3. |
+| `TEAMMATE-NESTING-ATTEMPT` (v6.0.0) | A teammate-conductor tried to spawn its own teammate. Forbidden by platform AND doctrine. Per §IV-bis.4. |
 
 ---
 
