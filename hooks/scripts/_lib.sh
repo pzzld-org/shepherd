@@ -66,12 +66,18 @@ print(data if isinstance(data, str) else (json.dumps(data) if data else ""))
 
 # Extract the tool_response (which varies — string, dict.content, dict.text, or list).
 # Usage: json_response "$input_json"
+#
+# v6.0.0: jq queries use `?` after each property access to suppress
+# "Cannot index string with X" errors when tool_response is itself a string
+# (jq rc=5). Without `?`, callers under `set -e` exit with code 5 on string
+# tool_responses. The function additionally returns 0 unconditionally so a
+# jq/python failure surfaces as an empty response, not a propagated exit.
 json_response() {
   local input="$1"
   if command -v jq &>/dev/null; then
     printf '%s' "$input" | jq -r '
-      (.tool_response.content // .tool_response.text // .tool_response // empty)
-      | if type == "array" then map(.text // .) | join("\n") else . end' 2>/dev/null
+      (.tool_response.content? // .tool_response.text? // .tool_response // empty)
+      | if type == "array" then map(.text? // .) | join("\n") else . end' 2>/dev/null || true
   else
     python3 -c '
 import json, sys
@@ -82,7 +88,7 @@ if isinstance(r, dict):
 if isinstance(r, list):
     r = "\n".join(x.get("text", "") if isinstance(x, dict) else str(x) for x in r)
 print(r)
-' 2>/dev/null <<<"$input"
+' 2>/dev/null <<<"$input" || true
   fi
 }
 
