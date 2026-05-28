@@ -1,6 +1,9 @@
 # Version-scale roadmap — what each version level commits to
 
 > **Origin:** v5.1.3 (2026-05-19). Operator: "I would like to see a version-based plan & seed scale factor."
+> **Hardened:** v6.0.0 (2026-05-28) — added scope-is-not-a-quality-bar opening note after recurring observation that planters and shepherds were using "it's just a patch" as cover to defer or downscope work (FL03/shepherd #66, axiom v0.3.4-dev.0/1/2).
+
+> **Scope is workload-scale, NEVER a quality bar (binding, v6.0.0).** `--scope sprint`, `patch`, `minor`, `version` (per `doctrines/scope-scale-workload.md`) declare how many sprints a spawn session will walk. They do NOT permit a planter to defer or downscope the contents of any individual seed, and they do NOT permit a conductor to come up short on lane delivery, gate honesty, or close-grade thresholds. The seed is the contract; the scope flag only governs how many sprints are walked. Phrases like "this is just a patch", "since we're only doing a small sprint", "we can defer this to a hot-fix" — these are framework-recognized malpractice patterns. A `/shepherd:spawn --scope patch` run with 9 lanes per sprint executes 9 lanes per sprint, full stop. If real-work cannot land, halt rather than ship short.
 
 This doctrine establishes a binding scale factor between the version level a seed or plan addresses and the number of sprints it commits to. It governs how upstream artefacts (vision documents, roadmaps, patch plans) decompose into the actual unit of execution: the shepherd **dev sprint**.
 
@@ -83,7 +86,7 @@ The natural planning unit for shepherd. A patch seed:
 - Decomposes into ordered sprints (which depends on which)
 - Stays at patch breadth — does NOT name implementation details that belong inside an individual sprint's lane decomposition
 
-A patch with > 10 sprints of work is too large; split into `vX.Y.{Z}` + `vX.Y.{Z+1}`. A patch with < 2 sprints of work probably should be merged with the neighboring patch or executed as a hot-fix without the seed/plan apparatus.
+A patch with > 10 sprints of work is too large; split into `vX.Y.{Z}` + `vX.Y.{Z+1}`. Small patches (< 2 sprints) are not a problem — the framework executes whatever the seed describes. The planter does NOT gatekeep patch contents based on perceived semver size; the operator decides what a patch is for, and the seed describes the work.
 
 ### Dev sprint (`vX.Y.Z-dev.N` branch — optional) — the unit of work
 
@@ -116,7 +119,7 @@ The v5.1.4 patch seed at `.artifacts/docs/plans/v514-teammate-parallel.seed.md` 
 - Putting `dev.N` in a seed or plan filename (`v514-dev1-teammate-parallel.seed.md`) — wrong; seeds/plans are patch-scoped
 - A patch seed with > 10 sprints worth of scope — split the patch
 - A separate plan file per dev sprint within one patch — wrong; the plan organizes them inside as phases/waves
-- A dev sprint that ships no operator-visible change — not a sprint; reshape as a `@worker` dispatch
+- A dev sprint that promises operator-visible change in the seed but does not deliver it — that is seed/implementation drift (a `@critic` RECONSIDER and an `@auditor completeness` C+ cap), NOT a sprint reclassification. Do not "reshape as a `@worker` dispatch" after the fact to avoid grade exposure.
 - Treating dev branches as mandatory — they are optional cushion, especially in meta or doc-only sprints
 - Conflating shepherd's "patch" (umbrella) with standard-practice "patch" (small fix) — the latter is what shepherd calls a dev sprint
 

@@ -1,7 +1,7 @@
 ---
 name: shepherd
 slug: shepherd
-version: 5.1.9
+version: 6.0.0
 description: |
   Sprint-by-sprint version-cycle conductor. Six-agent flock (engineer, critic,
   coder, auditor, worker, discovery) on a three-section sprint pipeline
@@ -141,7 +141,7 @@ See `agents/shepherd.md`, `agents/conductor.md`, `agents/planter.md` for canonic
 - `@auditor` close-mode is always a 3–5 swarm split by concern (code-quality, data-flow, dependency-topology, datastore-state, completeness). Intro-mode is 1–2 lanes (regression, carry-forward-disposition).
 - `@discovery` is **read-only**. It absorbs exploration; it never grades, never proposes, never dispatches. See `doctrines/discovery-readonly.md`.
 
-**Dispatch procedure (every flock agent, every time):** Set `subagent_type: "shepherd:<role>"` (e.g., `shepherd:coder`, `shepherd:auditor`) — the plugin's agent registry auto-loads the agent body from `agents/<role>.md`. Set `model` per the table above. The brief goes in `prompt`. Do NOT inline-embed the agent body in the prompt — that wastes tokens duplicating content the registry already provides (GH #20). Full procedure with brief-assembly checklist: **`agents/conductor.md §Mandatory protocol`**. Per-agent triggers, brief contracts, parallel-safety rules: **`flock.md`**. Copy-paste templates: **`references/agent-briefs.md`**.
+**Dispatch procedure (every flock agent, every time) — MANDATORY (v6.0.0):** Set `subagent_type: "shepherd:<role>"` (e.g., `shepherd:coder`, `shepherd:auditor`) — the plugin's agent registry auto-loads the agent body from `agents/<role>.md`. **`subagent_type` is MANDATORY.** Omitting it, defaulting to `general-purpose`, or substituting `Explore`/`Chat` is a `DISPATCH-MISSING-SUBAGENT-TYPE` violation — refuse to fire. Leave `team_name` UNSET on flock dispatches (it is for root-level teammate-CONDUCTOR spawns only; a flock dispatch with `team_name` is `DISPATCH-TEAMMATE-TYPE-MISMATCH`, refuse). Set `model` per the table above. The brief goes in `prompt`. Do NOT inline-embed the agent body in the prompt (GH #20). Full procedure: **`agents/conductor.md §Mandatory protocol`**. Forbidden dispatch combinations + halt codes: **`doctrines/dispatch-tier-separation.md §IV-bis`**. Per-agent triggers, brief contracts: **`flock.md`**. Copy-paste templates: **`references/agent-briefs.md`**.
 
 ---
 

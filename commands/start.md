@@ -60,9 +60,13 @@ Execute the three-section pipeline per `${CLAUDE_PLUGIN_ROOT}/agents/conductor.m
 
 When invoked as `/shepherd:start --teammate`, the session is a spawned teammate. The execution path is materially different:
 
-### Step T0 — Verify invocation context
+### Step T0 — Verify invocation context (v6.0.0 — hardened checklist)
 
-Read the boot-prompt addendum for an `INVOCATION-CONTEXT` block. Required fields:
+Read the boot-prompt addendum for an `INVOCATION-CONTEXT` block. **All four checks below must pass in order.** Stop at the first failure with the named halt code.
+
+**Check 1 — `INVOCATION-CONTEXT` block present.**
+
+The block must exist with the required field shape:
 
 ```
 ROOT-SESSION-NAME: shepherd-root @ <session-id>
@@ -76,16 +80,28 @@ INVOCATION-CONTEXT:
   ...
 ```
 
-If missing: HALT with `TEAMMATE-FLAG-MISUSED` and surface:
+Missing block → HALT with `TEAMMATE-FLAG-MISUSED` and surface:
+
 ```
 /shepherd:start --teammate: REFUSED — no INVOCATION-CONTEXT block found in boot prompt.
 
 This flag is intended for sessions spawned by /shepherd:spawn. Main-chat solo
 operators should invoke /shepherd:start (no flag) for the full pipeline.
-
-If you are a teammate session and this error fires, your boot prompt is malformed.
-Report back to root via SendMessage(to: lead, halt_code: TEAMMATE-BOOT-MALFORMED).
 ```
+
+**Check 2 — `dispatcher` field is `teammate-conductor`.**
+
+Other values (e.g., `root-shepherd`, `solo-conductor`, missing) → HALT with `TEAMMATE-BOOT-MALFORMED` and `SendMessage(to: lead, halt_code: TEAMMATE-BOOT-MALFORMED, blocking: true)`. Do not guess what the operator meant — boot prompt is the contract.
+
+**Check 3 — Lane brief slice present in boot prompt.**
+
+The boot prompt must include the assigned lane's seven-bracketed-section brief slice (`[ROLE]`, `[FILE-SCOPE]`, `[CONTEXT-INVENTORY]`, `[DO-NOT-DUPLICATE]`, `[ACCEPTANCE]`, `[NON-GOALS]`, `[WORKTREE]` or per the wave's micro-Stage-Graph). Missing → HALT with `TEAMMATE-BOOT-MALFORMED`. A teammate without a lane brief has nothing to execute.
+
+**Check 4 — `ROOT-SESSION-NAME` populated.**
+
+Missing root-session identifier means escalation routing is broken — `SendMessage(to: lead, ...)` calls won't reach root. HALT with `TEAMMATE-BOOT-MALFORMED`.
+
+All four checks pass → proceed to Step T1.
 
 ### Step T1 — Load conductor profile in TEAMMATE mode
 

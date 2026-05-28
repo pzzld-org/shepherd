@@ -25,6 +25,64 @@ is its own root — no separate `shepherd` profile is loaded.
 
 ---
 
+## I-bis. Wave-tier model under spawn (binding)
+
+`/shepherd:spawn` is **not** `/shepherd:start` with a wrapper. The two
+commands define disjoint execution paths and the operator picks between
+them deliberately. Under spawn, the work splits across tiers along the
+sprint's three sections, not along agent type. This section is the
+canonical citation for the dispatch shape; every file that touches spawn
+behavior — `agents/shepherd.md`, `agents/conductor.md`, `commands/spawn.md`,
+`commands/start.md`, `skills/shepherd/SKILL.md`, `flock.md` — points here.
+
+**INTRODUCTION (§1) — root-direct subagents.** Root in main chat
+dispatches the INTRO-COMBO-WAVE (`@discovery` × N + intro-mode `@auditor`
+× 2) in ONE `Agent` batch as direct subagents (i.e., `Agent({subagent_type:
+"shepherd:<role>"})`, no `team_name`). Root then dispatches `@engineer`
+(once, Opus) and `@critic` (once, Sonnet) as direct subagents to author
+and gate the plan. Root materializes the plan to disk and runs the
+operator-approval gate. No teammate is spawned during INTRO. The plan that
+results is the single shared contract every teammate will inherit.
+
+**BODY (§2) — teammate-conductors.** Once the operator approves the plan,
+root spawns ONE teammate-conductor per lane per wave (lane-per-conductor
+fanout — see `agents/conductor.md §Lane-per-conductor model`). Each
+teammate-conductor receives one lane's brief in its boot prompt and walks
+its lane's micro-Stage-Graph using its **own** subagent dispatches
+(`@coder`, optionally `@auditor`/`@worker`/`@discovery` — scoped to its
+lane). Teammate-conductors NEVER dispatch `@engineer`/`@critic` (those are
+done; the plan is fixed) and NEVER spawn further teammates (no nested
+teams). Wave boundaries: each teammate `SendMessage`s `WAVE-COMPLETE`; root
+runs the wave-gate and commits, then advances to wave `w+1`.
+
+**CLOSE (§3) — root-direct subagents.** When the final wave's teammates
+all return wave-complete, root aggregates per-teammate close payloads,
+materializes them to disk, then dispatches the CLOSE-SWARM (3–5 `@auditor`
+lanes split by concern) as direct subagents on the aggregated sprint
+output. Per-teammate close audits would miss cross-teammate concerns
+(`dependency-topology`, `completeness`); the swarm sees the whole sprint.
+HOTFIX-CLOSE subgraph fires on CRITICAL/HIGH findings (re-spawn a small
+teammate OR direct `@coder` dispatch ONLY when no teammates are active).
+Root then runs CLOSE-FINALIZE (git ops per `agents/shepherd.md §Step 3
+RF-1..RF-5`).
+
+The pattern is simple: **root runs the bookends as direct subagents,
+teammates run the body**. Anything else — root spawning a flock member as
+a teammate, a teammate dispatching `@engineer`, root doing BODY work
+itself instead of spawning, root using a `general-purpose` agent — is a
+process violation enumerated in `doctrines/dispatch-tier-separation.md`
+§Forbidden dispatch matrix.
+
+The `--scope > sprint` modes (`patch`, `minor`, `version` per
+`doctrines/scope-scale-workload.md`) compose orthogonally: root re-enters
+INTRODUCTION for each enumerated sprint and re-spawns BODY teammates per
+that sprint's plan. Scope is a workload-scale declaration. **It is never
+a quality bar or a license to defer work** (per `version-scale-roadmap.md`
+opening note). A `/shepherd:spawn --scope patch` run with 9 lanes per
+sprint executes 9 lanes per sprint, regardless of which dev.N is current.
+
+---
+
 ## II. Three modes
 
 The root shepherd cycles between three modes during a spawn session. The mode

@@ -109,32 +109,58 @@ Constraints that the engineer + coders + auditors must respect. Examples:
 
 Each decision is **non-negotiable for this sprint**. If the engineer wants to change one, that's a critic-RED escalation.
 
-### 6. MUST-LAND lanes — numbered, issue-anchored
+### 6. Deliverables (issue-anchored) — v6.0.0
 
-Every lane has the same compact shape — **detailed change spec, full file scope, and long-form acceptance live in the backing GH issue body, NOT in the seed**. The seed lane is a routing pointer (per `doctrines/seed-anchored-by-issues.md`).
+> **Origin of the rename:** FL03/shepherd #67 (2026-05-27). The pre-v6.0.0
+> §6 was titled "MUST-LAND lanes — numbered, issue-anchored" and prescribed
+> a `Lane N` numbering format with explicit `Sequencing:` directives. That
+> conflicts with operator-binding doctrine: **lane decomposition is the
+> engineer's exclusive authority**, not the planter's. The planter names
+> WHAT must land; the engineer (and the conductor under its plan) decides
+> HOW to parallelize and group deliverables into lanes for dispatch.
+
+Every deliverable has the same compact shape — **detailed change spec, full
+file scope, and long-form acceptance live in the backing GH issue body, NOT
+in the seed**. The seed entry is a routing pointer (per
+`doctrines/seed-anchored-by-issues.md`).
 
 ```markdown
-### Lane N — <one-line lane name>  [<priority>]
+### <one-line deliverable name>  [<priority>]
 
-- **GH:** <#NNN | file at Phase 0 — title: "<concise issue title>" | N/A — process lane>
+- **GH:** <#NNN | file at Phase 0 — title: "<concise issue title>" | N/A — process deliverable>
 - **Priority:** <CRITICAL | HIGH | MEDIUM | LOW>
-- **Size:** <XS | S | M | L | XL>
-- **Trigger:** <unconditional | "<runnable check>" returns Z at Phase 0>   ← only for conditional lanes
 - **Spec:** <one-line summary; full details in #NNN body §Spec>
-- **Acceptance pointer:** <one-line runnable grep | "see #NNN body §Acceptance">
-- **Sequencing:** <parallel-safe with Lane M | sequential after Lane K>   ← only if non-default
+- **Acceptance:** <one-line runnable grep | "see #NNN body §Acceptance">
 ```
 
-Lane block target: **≤ 10 lines**. If you need more, push detail into the GH issue body and link it.
+Deliverable block target: **≤ 8 lines**. If you need more, push detail into
+the GH issue body and link it.
 
-**Process-lane exception** (closeout / release-pipeline / retrospective / audit-swarm / milestone population): set `**GH:** N/A — process lane` and keep the inline shape:
+What the seed does **NOT** prescribe (engineer-territory):
+
+- **Lane numbering** (`Lane 1`, `Lane 2`, ...). The engineer composes lanes
+  in the plan based on file-disjointness, T-shirt sizing, and the wave
+  decomposition. Seed deliverables are unordered routing pointers.
+- **Sequencing directives** (`sequential after Lane K`, `parallel-safe with
+  Lane M`). The engineer's `## Stage Graph` block in the plan encodes
+  parallel-safety via `parallel_with` and predicate edges. If a deliverable
+  has a hard dependency on another (e.g., a public re-export needed by a
+  sibling), state the dependency in the GH issue body's `## Depends on`
+  section; the engineer reads it during MESH and composes accordingly.
+- **T-shirt sizes per deliverable**. The sprint as a whole has a T-shirt
+  size (in frontmatter `sprint_size`). Per-deliverable sizing is the
+  engineer's analysis at plan-time; the planter may RECOMMEND in the GH
+  issue body but does not bind.
+
+**Process-deliverable exception** (closeout / release-pipeline /
+retrospective / audit-swarm / milestone population): set `**GH:** N/A —
+process` and keep the inline shape:
 
 ```markdown
-### Lane N — <process lane name>  [<priority>]
+### <process deliverable name>  [<priority>]
 
-- **GH:** N/A — process lane
+- **GH:** N/A — process
 - **Priority:** <...>
-- **Size:** <...>
 - **Steps:** <numbered list of mechanical steps; OK to be inline>
 - **Acceptance:** <runnable check or artifact path>
 ```
@@ -175,17 +201,27 @@ When a seed lane says "file at Phase 0", the engineer's Phase 0 mesh runs `mcp__
 - Doctrines invoked: <list>
 ```
 
-### 7. Wave composition — table
+### 7. Wave composition (NON-BINDING recommendation — engineer composes lanes)
+
+The planter MAY sketch a wave shape so the engineer doesn't invent
+structure from scratch, but this is a recommendation only. The engineer's
+`## Stage Graph` in the plan is the binding wave + lane composition.
 
 ```markdown
-| Wave | Lanes | Parallel? | Depends on | T-shirt total |
-|------|-------|-----------|------------|---------------|
-| 1    | A, B, C | parallel  | —          | M             |
-| 2    | D, E    | parallel  | Wave 1     | S             |
-| 3    | tests   | parallel  | Wave 2     | XS            |
+| Wave | Deliverables grouped (planter recommendation) | Depends on |
+|------|----------------------------------------------|------------|
+| 1    | <deliverable headings from §6>               | —          |
+| 2    | <deliverable headings>                       | Wave 1     |
+| 3    | <test consolidation>                         | Wave 2     |
 ```
 
-Minimum lanes per sprint size: M→3 in Wave 1; L→4 in Wave 1; XL→4 per wave.
+The engineer is free to re-group, split, or merge waves based on Phase 0
+mesh findings, file-disjointness analysis, and per-deliverable T-shirt
+sizing. Per `doctrines/sprint-as-patch.md` minimums for ultra-parallel
+plans: M sprint ≥ 6 coder lanes per wave (ideally 8+); L sprint ≥ 8
+(ideally 10+); XL ≥ 10 per wave (ideally 12-15+). Per-lane scope ≤ 5
+files; split mercilessly if exceeded. These are engineer-side minimums,
+not planter prescription.
 
 ### 7-bis. Stage decomposition hint (NON-BINDING — engineer finalizes)
 
@@ -303,14 +339,15 @@ What this patch EXPLICITLY DOES NOT do. Items reserved for future patches with n
 
 Before `git add` and `git commit`, the planter runs (per `planter.md` §X):
 
-- [ ] Every MUST-LAND lane has a `**GH:**` line
+- [ ] Every deliverable in §6 has a `**GH:**` line
 - [ ] Every existing `#NNN` resolves
 - [ ] Every file path resolves
 - [ ] Phase 0 mesh table has 8+ rows
-- [ ] Lane blocks stay under 10 lines
-- [ ] Sprint T-shirt size matches lane composition
-- [ ] At least one MUST-LAND lane is CRITICAL
+- [ ] Deliverable blocks stay under 8 lines (per v6.0.0 §6 contract)
+- [ ] Sprint T-shirt size matches deliverable count (recommendation only)
+- [ ] At least one deliverable is CRITICAL or HIGH priority
 - [ ] No `TODO:` / `FIXME:` markers
+- [ ] No `Lane N` numbering or `Sequencing:` directives in seed body (per v6.0.0; engineer's authority)
 - [ ] Seed footprint ≤ 400 lines (sprint) / ≤ 200 lines (patch-arc)
 
 A seed that fails any check is fixed before commit.
