@@ -45,6 +45,13 @@ The execution axis and the teammate-state axis are **orthogonal and compose**
 (`workflow-compile-down.md §I`): a teammate-conductor (Agent Teams) compiles its
 own lane's fanout to a workflow (execution). Neither subsumes the other.
 
+> **Canonical binding.** This table is the *coordination-function* view of the three
+> primitives. The single source of truth that binds each **axis** to its primitive **and
+> its ontology unit** (planning → `waves × steps`; teammate-state/lanes → Agent Teams;
+> execution/step-fanout → Dynamic Workflows; worker → subagents) is
+> `doctrines/primitive-axis-binding.md` (v6.0.2, #89). Spawning a lane = Agent Teams; a
+> gate-free step fan-out = a compiled Dynamic Workflow; **never invert**.
+
 ## Replacement matrix (retired mechanic → native replacement)
 
 | Retired mechanic | What it did | Native replacement | Demonstrated by |
@@ -93,6 +100,7 @@ before deleting the hand-rolled mechanics.
 
 ## See also
 
+- `primitive-axis-binding.md` — **canonical** axis ↔ primitive ↔ unit binding (v6.0.2, #89)
 - `workflow-compile-down.md` — the execution axis (in-script ordering, §III–VI)
 - `claude-code-platform-alignment.md` — the teammate-state axis (Agent Teams)
 - `dispatch-tier-separation.md` — the mandatory `subagent_type` contract

@@ -18,6 +18,20 @@
 .artifacts/pauses/
 .artifacts/runs/
 
+# shepherd context registry + hook runtime state (.shepherd/ namespace — default)
+.shepherd/root.db
+.shepherd/root.db-*
+.shepherd/shepherd.lock
+.shepherd/project.json
+.shepherd/tmp/
+.shepherd/logs/
+.shepherd/dispatch/
+.shepherd/discoveries/
+.shepherd/insights/
+.shepherd/pauses/
+.shepherd/runs/
+.shepherd/cache/
+
 *.log
 *.log.*
 
@@ -43,6 +57,13 @@
 
 !**/.artifacts/docs
 !**/.artifacts/.gitkeep
+
+**/.shepherd/cache/
+**/.shepherd/temp/
+**/.shepherd/uploads/
+
+!**/.shepherd/docs
+!**/.shepherd/.gitkeep
 
 **/.cache/
 **/coverage/

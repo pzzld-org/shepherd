@@ -5,9 +5,11 @@ argument-hint: "[ --teammate ]   default: solo full-pipeline; --teammate: lane-e
 allowed-tools: Bash, Edit, Glob, Grep, Read, Skill, Write, ToolSearch, TaskCreate, TaskGet, TaskList, TaskUpdate, SendMessage, WebFetch, WebSearch
 ---
 
-# /shepherd:start — Single Sprint Execution
+# /shepherd:start — Single Sprint Execution (solo)
 
-Execute **one sprint** end-to-end then stop and wait for the operator. For continuous or multi-sprint modes, see `/shepherd:spawn` (`--scope` and `--parallel <N>` flags).
+Execute **one sprint** end-to-end then stop and wait for the operator.
+
+> **Boundary (v6.0.2).** `/shepherd:spawn` is the **primary** command for substantive sprint work — root + teammate-conductor **lanes** (Agent Teams) with **Dynamic Workflow** step execution, the full parallel substrate. `/shepherd:start` is the **solo, lightweight** path: one sprint, in main chat, **no teams, no lanes** (the conductor walks the plan in-session, compiling its own gate-free fan-out). Use `start` for small / single-focus sprints or backward-compat; reach for `spawn` for real parallel work. The two are **disjoint execution paths** (`doctrines/root-shepherd-orchestration.md §I-bis`), not a wrapper relationship. For continuous or multi-sprint modes, see `/shepherd:spawn` (`--scope` and `--parallel <N>`).
 
 ## Two invocation paths (v5.1.6+)
 

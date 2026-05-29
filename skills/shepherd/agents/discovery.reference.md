@@ -1,12 +1,7 @@
 ---
 name: agent-discovery-reference
 slug: agent-discovery-reference
-description: |
-  Reference catalog for @discovery. Loaded on demand at agent startup via Skill,
-  so per-dispatch content stays out of the agent's stable system-prompt prefix.
-  Contains the Bash allowlist, the use-case catalog (Patterns A–F), the
-  OUTPUT-PATH conventions, the extended report template, parallel-safety
-  rules, and the identity-vs-flock comparison.
+description: "On-demand reference catalog for @discovery, loaded at startup via Skill. Holds the Bash allowlist, use-case catalog (Patterns A-F), OUTPUT-PATH conventions, report template, and parallel-safety rules."
 metadata:
   triggers:
     - "agent-discovery-reference"

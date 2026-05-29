@@ -54,8 +54,27 @@ root.db-wal
 root.db-shm
 shepherd.lock
 project.json
+
+# Transient runtime dirs (never tracked).
 tmp/
 logs/
+cache/
+runs/
+dispatch/
+discoveries/
+insights/
+pauses/
+
+# Secret hygiene — never commit credentials/keys from the work dir.
+*.env
+.env
+*.key
+*.pem
+*.secret
+secrets/
+credentials*
+
+# Tracked subtrees stay tracked: docs/ styles/ reports/ plans/ profiles/ ctx/
 EOF
 fi
 

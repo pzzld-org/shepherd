@@ -44,16 +44,29 @@ and gate the plan. Root materializes the plan to disk and runs the
 operator-approval gate. No teammate is spawned during INTRO. The plan that
 results is the single shared contract every teammate will inherit.
 
-**BODY (§2) — teammate-conductors.** Once the operator approves the plan,
-root spawns ONE teammate-conductor per lane per wave (lane-per-conductor
-fanout — see `agents/conductor.md §Lane-per-conductor model`). Each
-teammate-conductor receives one lane's brief in its boot prompt and walks
-its lane's micro-Stage-Graph using its **own** subagent dispatches
-(`@coder`, optionally `@auditor`/`@worker`/`@discovery` — scoped to its
-lane). Teammate-conductors NEVER dispatch `@engineer`/`@critic` (those are
-done; the plan is fixed) and NEVER spawn further teammates (no nested
-teams). Wave boundaries: each teammate `SendMessage`s `WAVE-COMPLETE`; root
-runs the wave-gate and commits, then advances to wave `w+1`.
+**BODY (§2) — teammate-conductors, one per lane.** Once the operator approves
+the plan, root projects the gated `waves × steps` plan into **lanes** (vertical
+slices across waves) and spawns **one teammate-conductor per lane** via **Agent
+Teams** — never a workflow (`doctrines/primitive-axis-binding.md §III.1`). The
+**lane count IS the teammate count**, constant across waves (NOT a per-wave
+count). Each teammate-conductor receives one lane's brief in its boot prompt and
+walks its lane's slice of each wave using its **own** subagent dispatches,
+compiling the gate-free step fan-out to a **Dynamic Workflow** (execution axis —
+`@coder`, optionally `@auditor`/`@worker`/`@discovery`, scoped to its lane).
+Teammate-conductors NEVER dispatch `@engineer`/`@critic` (the plan is fixed) and
+NEVER spawn further teammates (no nested teams).
+
+Wave boundaries: each lane's teammate `SendMessage`s `WAVE-COMPLETE` and goes
+idle; root runs the wave-gate and commits; then the lanes advance to wave `w+1`.
+Root is **proactive about idle teammates** — it does NOT leave one idling once its
+wave payload is materialized: it prunes the teammate (reclaiming compute, avoiding
+forced-compaction cost) and at the next wave boundary **refreshes** the lane by
+spawning a fresh teammate into the **same** lane for the next wave, for clean
+context and lower compaction cost. Proactive pruning is the default, not the
+exception — a lingering idle teammate is wasted compute. **Refreshing a lane's teammate is NOT a new lane**
+(`doctrines/primitive-axis-binding.md §II.1`): the lane is durable, the teammate
+instance is recyclable. Count **lanes** (constant), never teammate-instances,
+never "lanes per wave."
 
 **CLOSE (§3) — root-direct subagents.** When the final wave's teammates
 all return wave-complete, root aggregates per-teammate close payloads,

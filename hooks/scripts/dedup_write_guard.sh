@@ -98,9 +98,9 @@ while IFS= read -r sym; do
   esac
 
   if command -v rg &>/dev/null; then
-    hits=$(rg -n --no-heading -g "*.${file_path##*.}" --glob '!target' --glob '!node_modules' --glob '!.shepherd' --glob '!.artifacts/logs' "$search_pat" "$repo_root" 2>/dev/null | grep -v "^${abs_target}:" | head -3 || true)
+    hits=$(rg -n --no-heading -g "*.${file_path##*.}" --glob '!target' --glob '!node_modules' --glob '!.shepherd' --glob '!.artifacts' "$search_pat" "$repo_root" 2>/dev/null | grep -v "^${abs_target}:" | head -3 || true)
   else
-    hits=$(grep -rn -E "$search_pat" --include="*.${file_path##*.}" "$repo_root" 2>/dev/null | grep -v "^${abs_target}:" | head -3 || true)
+    hits=$(grep -rn -E "$search_pat" --include="*.${file_path##*.}" --exclude-dir='.shepherd' --exclude-dir='.artifacts' "$repo_root" 2>/dev/null | grep -v "^${abs_target}:" | head -3 || true)
   fi
 
   if [[ -n "$hits" ]]; then

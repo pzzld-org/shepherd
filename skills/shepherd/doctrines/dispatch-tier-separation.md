@@ -57,6 +57,27 @@ PARALLEL META BRANCH (not a tier — sibling to conductor at meta level):
 
 ---
 
+## I-bis. Tier ↔ ontology unit ↔ primitive (v6.0.2, #88 / #89)
+
+The three tiers map **one-to-one** onto shepherd's planning ontology and onto the
+Claude-native primitives. This is the ontological half of the binding; the canonical
+table is `doctrines/primitive-axis-binding.md §I, §IV`.
+
+| Ontology unit | Tier | Native primitive |
+|---|---|---|
+| **step** (a unit of work within a wave; a plan is N waves × X steps) | Tier 1 (flock) | **subagent** (`subagent_type: "shepherd:<role>"`) |
+| **lane** (a vertical slice ACROSS waves; spawn-only, post-plan) | Tier 2 (teammate-conductor) | **Agent Teams** teammate |
+| **wave** (a sequential gated stage) | — (seam, not a tier) | conductor-inline gate |
+
+Consequences (enforced by §IV-bis): a **step** is a subagent (`team_name` UNSET); a
+**lane** is a teammate-conductor (`team_name` SET, `subagent_type: shepherd:conductor`);
+spawning a lane uses **Agent Teams, never a Dynamic Workflow**, and a lane's gate-free
+step fan-out **compiles to a Dynamic Workflow, never hand-rolled dispatch**
+(`primitive-axis-binding.md §III`). The engineer authors `waves × steps` with **no lane
+concept**; lanes are the post-plan spawn projection, and **never nest inside a wave**.
+
+---
+
 ## II. Dispatch matrix
 
 | From → To | `@engineer` | `@critic` | `@coder` | `@auditor` | `@worker` | `@discovery` | Another teammate |
@@ -205,14 +226,19 @@ the load-bearing replacement for the prior implicit enforcement.
 
 ### IV-bis.2. `DISPATCH-TEAMMATE-TYPE-MISMATCH`
 
-**Trigger:** an Agent call sets `team_name: <something>` AND `subagent_type
-!= "shepherd:conductor"`. Concretely: `Agent({team_name: "...", subagent_type:
-"shepherd:coder", ...})` or any flock role other than `conductor` paired with
-a `team_name`.
+**Trigger:** a dispatch attempts to stand up a flock role OTHER than
+`shepherd:conductor` as a **teammate** — a `team_name`-bearing dispatch (or, on the
+live platform, a `TeamCreate` referencing a non-conductor agent type) whose
+`subagent_type != "shepherd:conductor"`. *(#93: there is no `team_name` parameter on
+`Agent`/`Task` — those spawn subagents; teammates spawn via the `TeamCreate` family
+referencing `shepherd:conductor`. The real discriminator is the TOOL FAMILY, so the
+`team_name` check is **defence-in-depth** — `dispatch_guard.sh` Check 3 — layered over
+the platform's own behavior. The mechanical floor is the `subagent_type` discipline,
+§IV-bis.1.)*
 
-**Refusal:** root MUST refuse. Teammate-spawning is conductor-only. A coder
-("etc.) is an ephemeral subagent dispatched BY a conductor, never spawned AS
-a teammate.
+**Refusal:** root MUST refuse. Teammate-spawning (a lane) is conductor-only. A coder
+(etc.) is an ephemeral **subagent** dispatched BY a conductor, never spawned AS a
+teammate.
 
 **Why:** axiom v0.3.4-dev.1 (FL03/shepherd #65, 2026-05-26) — root
 dispatched 4 coder teammates instead of conductor teammates. Work landed
@@ -322,7 +348,9 @@ FL03/axiom.
 2. **Teammate context pollution from artifact writes.** Teammate-conductors
    that materialized close reports + handoffs in-session accumulated context
    that contaminated their subsequent wave dispatches. The fresh-context-
-   per-wave guarantee of `--auto` was being eroded.
+   per-wave property (now realized via **lane refresh** — recycling an idle
+   lane's teammate at a wave boundary, `primitive-axis-binding.md §II.1`) was
+   being eroded.
 
 Tier separation fixes both. Engineer + critic happen ONCE per sprint at root.
 Teammate context stays narrow (own wave only). Root absorbs the artifact-
@@ -332,9 +360,10 @@ materialization cost and gets the cross-teammate view critic needs.
    Three consecutive `/shepherd:spawn` runs (v0.3.4-dev.0/1/2 on FL03/axiom,
    2026-05-25..27) failed in concurrent failure modes: root treated spawn
    like start (did body work directly instead of fanning out conductors);
-   when teammates were spawned, `Agent({team_name, subagent_type:
-   "shepherd:coder"})` slipped through and produced lane-coder teammates
-   with no conductor coordination; `general-purpose` agents were dispatched
+   when teammates were spawned, lane-**coders** were stood up as teammates
+   (a non-conductor, `team_name`-bearing dispatch — see #93 for the verified
+   teammate-spawn path: `TeamCreate` referencing `shepherd:conductor`) with no
+   conductor coordination; `general-purpose` agents were dispatched
    because `subagent_type` was sometimes omitted entirely. The framework
    describing the correct shape was not enough; the enforcement language
    had been weakened in v5.1.9's dispatch-procedure rewrite without an
@@ -359,6 +388,7 @@ unaffected. Tier separation activates only under `/shepherd:spawn`.
 
 ## VIII. See also
 
+- `doctrines/primitive-axis-binding.md` — canonical axis ↔ primitive ↔ unit binding; §I-bis above is its tier-mapping projection (v6.0.2, #88 / #89)
 - `doctrines/root-shepherd-orchestration.md` — root-tier responsibilities + modes
 - `doctrines/scope-scale-workload.md` — `--scope` flag composition with tiers
 - `doctrines/spawn-escalation.md` — escalation channel mechanics

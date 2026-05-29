@@ -268,7 +268,7 @@ log_event "subagent_telemetry" "pass" "SubagentStop" "$role" "$session_id" \
 # v5.1.7: emit teammate heartbeat if running inside a teammate session.
 if [[ -n "${CLAUDE_TEAMMATE_NAME:-}" ]]; then
   ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
-  if [[ -n "$ROOT" && -f "$ROOT/.artifacts/root.db" ]]; then
+  if [[ -n "$ROOT" && -f "$ns/root.db" ]]; then
     bash "$ROOT/skills/context/scripts/cmd_teammate.sh" \
       heartbeat "$CLAUDE_TEAMMATE_NAME" \
       --tool="${CLAUDE_TOOL_NAME:-unknown}" 2>/dev/null || true

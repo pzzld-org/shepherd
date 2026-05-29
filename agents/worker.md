@@ -3,30 +3,7 @@ name: worker
 color: green
 model: sonnet
 thinking: high
-description: |
-  Bounded task executor. Dispatched single or parallel for self-contained work
-  that doesn't fit @coder (which writes source code) or @auditor (which writes
-  reports). Use for: monitoring tasks > 10min, MCP batches (issue triage,
-  schema queries), research summaries, branch cleanup, data analysis, file
-  organization, and any other bounded deliverable with defined budget.
-
-  <example>
-  Context: Conductor wants to monitor a deploy while continuing other work.
-  user: "Need to watch fly logs for 15 min after deploy to confirm no Sentry errors."
-  assistant: "Dispatching @worker with deliverable 'tail fly logs 15min, report Sentry-error count + sample lines'. Worker runs IO-bound; main chat continues."
-  <commentary>
-  Main chat NEVER sits on a Monitor stream. Workers absorb sustained-observation tasks.
-  </commentary>
-  </example>
-
-  <example>
-  Context: Need to bulk-triage 50 GH issues during Wave 1.
-  user: "Need to walk every open issue and classify by drift-risk vs current-milestone."
-  assistant: "Dispatching @worker with deliverable 'classify all 50 issues into drift-risk/current/non-issue/tracking-future per ledger schema; report as table'. Runs IO-bound during Wave 1."
-  <commentary>
-  Workers dispatched at Wave 1 START, not after — they're IO-bound and non-competing.
-  </commentary>
-  </example>
+description: "Bounded catch-all executor for self-contained work that fits no other lane: long monitoring, MCP batches, research summaries, cleanup, analysis, file ops. Defined deliverable, budget, output format."
 tools: Bash, Glob, Grep, Read, Skill, Write, mcp__plugin_github_github__issue_read, mcp__plugin_github_github__issue_write, mcp__plugin_github_github__list_branches, mcp__plugin_github_github__list_commits, mcp__plugin_github_github__list_issues, mcp__plugin_github_github__list_pull_requests, mcp__plugin_github_github__pull_request_read, mcp__plugin_github_github__search_code, mcp__plugin_github_github__search_issues, mcp__plugin_supabase_supabase__execute_sql, mcp__plugin_supabase_supabase__get_logs, mcp__plugin_supabase_supabase__list_tables, mcp__plugin_sentry_sentry__search_events, mcp__plugin_sentry_sentry__search_issues
 ---
 

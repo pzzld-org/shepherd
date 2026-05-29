@@ -100,9 +100,7 @@ esac
 # ---------------------------------------------------------------------------
 ns=$(resolve_namespace)
 lock_file=""
-for candidate in "$ns/shepherd.lock" ".artifacts/shepherd.lock" ".shepherd/shepherd.lock"; do
-  [[ -f "$candidate" ]] && { lock_file="$candidate"; break; }
-done
+[[ -f "$ns/shepherd.lock" ]] && lock_file="$ns/shepherd.lock"
 if [[ -n "$lock_file" ]]; then
   if command -v jq &>/dev/null; then
     lock_session=$(jq -r '.session_id // empty' "$lock_file" 2>/dev/null || true)

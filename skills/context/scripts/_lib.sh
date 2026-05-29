@@ -9,17 +9,24 @@ shctx_repo_root() {
   git rev-parse --show-toplevel 2>/dev/null || pwd
 }
 
-# Resolve config values from .claude/shepherd.toml. For milestone c we hard-code
+# Resolve the project-local work directory. For milestone c we hard-code
 # defaults; full TOML parsing is upstreamed into a pluggable parser later.
 #
-# Per-project namespace resolution:
-#   - SHCTX_ROOT_OVERRIDE is honored first (e.g. `init --artifacts` sets it to ".artifacts").
+# Precedence:
+#   - SHEPHERD_WORKDIR (public, first-class) is honored first. Absolute paths
+#     are used as-is; relative paths resolve against the repo root.
+#   - SHCTX_ROOT_OVERRIDE (legacy, e.g. `init --artifacts` sets it to ".artifacts").
 #   - Otherwise auto-detect: prefer existing .shepherd/, fall back to existing .artifacts/.
 #   - If neither exists, default to .shepherd/ (the v5.0.0 default for new init).
-shctx_artifacts_root() {
+resolve_workdir() {
   local root
   root="$(shctx_repo_root)"
-  if [[ -n "${SHCTX_ROOT_OVERRIDE:-}" ]]; then
+  if [[ -n "${SHEPHERD_WORKDIR:-}" ]]; then
+    case "$SHEPHERD_WORKDIR" in
+      /*) echo "$SHEPHERD_WORKDIR" ;;
+      *)  echo "$root/${SHEPHERD_WORKDIR}" ;;
+    esac
+  elif [[ -n "${SHCTX_ROOT_OVERRIDE:-}" ]]; then
     echo "$root/${SHCTX_ROOT_OVERRIDE}"
   elif [[ -d "$root/.shepherd" ]]; then
     # Warn when both namespaces exist — this is the split-brain state. One of
@@ -36,6 +43,9 @@ shctx_artifacts_root() {
     echo "$root/.shepherd"
   fi
 }
+# Retained as the legacy name; delegates to resolve_workdir so all callers
+# (and shctx_db_path/shctx_lock_path/shctx_project_id_path) inherit $SHEPHERD_WORKDIR.
+shctx_artifacts_root() { resolve_workdir; }
 shctx_db_path()         { echo "$(shctx_artifacts_root)/root.db"; }
 shctx_lock_path()       { echo "$(shctx_artifacts_root)/shepherd.lock"; }
 shctx_project_id_path() { echo "$(shctx_artifacts_root)/project.json"; }

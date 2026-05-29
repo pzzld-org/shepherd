@@ -53,7 +53,7 @@ Doctrines aren't replaced by the graph — they're **lifted** into it. The graph
 
 ## What the graph does NOT encode
 
-- **Per-agent identity.** The graph names roles (engineer, critic, coder, auditor, worker), not individual agents. The flock is closed at five (`flock.md` §I); the graph respects that.
+- **Per-agent identity.** The graph names roles (engineer, critic, coder, auditor, worker, discovery), not individual agents. The flock is closed at six (`flock.md` §I); the graph respects that.
 - **Brief contents.** The graph references briefs by id (`brief: lane-A`) but doesn't include them. Briefs live where they always have — derived from the plan's lane decomposition (`agents/engineer.md` §"Brief contract") and the agent-briefs templates.
 - **Project doctrines.** Project-specific doctrines (`.claude/doctrines/`) load as a preamble per `flock.md`. The graph doesn't repeat them.
 - **Skills loaded.** Each agent dispatch loads skills per `[skills.*]` in `shepherd.toml`. The graph doesn't enumerate them.

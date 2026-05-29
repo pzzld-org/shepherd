@@ -16,6 +16,8 @@
 # Output (stdout): silent.
 # Output (stderr): one-line `[shctx] teammate <name> idle | open-escalations=N | stalled-deliverables=N`
 set -euo pipefail
+HERE="$(cd "$(dirname "$0")" && pwd)"
+source "$HERE/_lib.sh"
 
 # Hook payload arrives on stdin as JSON per Claude Code hooks API.
 PAYLOAD="$(cat || true)"
@@ -23,13 +25,15 @@ TEAMMATE="$(echo "$PAYLOAD" | jq -r '.teammate_name // empty' 2>/dev/null || tru
 [[ -z "$TEAMMATE" ]] && exit 0
 
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
-[[ -f "$ROOT/.artifacts/root.db" ]] || exit 0
+NS="$(resolve_namespace)"
+DB="$NS/root.db"
+[[ -f "$DB" ]] || exit 0
 
 # Mark teammate idle (heartbeat carries the note; UPDATE flips status unless
 # the teammate is already crashed or retired).
 bash "$ROOT/skills/context/scripts/cmd_teammate.sh" \
   heartbeat "$TEAMMATE" --note='idle' 2>/dev/null || true
-sqlite3 "$ROOT/.artifacts/root.db" \
+sqlite3 "$DB" \
   "UPDATE teammates SET status='idle' WHERE teammate_name='$TEAMMATE' AND status NOT IN ('crashed','retired');" 2>/dev/null || true
 
 # Surface open escalations + stalled deliverables. `wc -l` includes the header

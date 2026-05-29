@@ -4,6 +4,203 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v6.0.2 — 2026-05-29
+
+### Groove-recovery patch — Wave 0: define the truth (ontology + primitive↔axis binding)
+
+v6.0.1's slimming + the introduction of "lanes" blurred shepherd's core ontology and
+broke its mapping of Claude-native primitives to their roles. In a live axiom session the
+root spawned the conductor wave via **Dynamic Workflows** instead of **Agent Teams**, and
+the teammates then failed to compile their step fan-out into workflows — each native
+primitive used for the OTHER one's job (#89). Root cause: shepherd never pinned
+primitive↔axis, and Dynamic Workflows is a ~1-day-old research-preview feature for which
+the model has **no training prior**, so shepherd's (ambiguous) doctrines were its only
+teacher. v6.0.2 is a four-wave, gated groove-recovery patch. **This entry covers Wave 0
+(doctrine only) — the foundation that gates the mechanism (Wave 1), substrate (Wave 2),
+and slim/validate (Wave 3) waves that follow.**
+
+**A — canonical primitive↔axis binding (#89, #88).** New doctrine
+`doctrines/primitive-axis-binding.md` pins every axis to one primitive and one unit:
+planning → none → `waves × steps`; teammate-state/parallelization → **Agent Teams** →
+one teammate-conductor per **lane**; execution → **Dynamic Workflows** → the compiled
+script over **subagents**; worker → **subagents** → the **steps**. Spawning teammates =
+Agent Teams (never a workflow); a teammate's gate-free fan-out = a compiled Dynamic
+Workflow (never hand-rolled dispatch). **Never invert.** Cross-linked from
+`claude-code-platform-alignment.md §VII`, `native-coordination.md`, and
+`dispatch-tier-separation.md §I-bis` (the ontological tier ↔ unit mapping).
+
+**B — ontology rewrite: `waves × steps`; lanes as a post-plan projection (#88).** The
+engineer now authors the plan as **N sequential waves; each wave is X steps; each step ≈
+one subagent**, with **NO lane concept**. A **lane** is a cohesive **vertical slice across
+waves**, formed **only in spawn mode, after the plan**, owned by one teammate-conductor —
+and it **never nests inside a wave**. Removed every `wave: <N>` field on a lane, every
+"wave is a set of lanes", and every "min lanes per wave" tabulation across `engineer.md`
+(+ `engineer.reference.md`), `references/seed-template.md`, `planter.md`, `pipeline.md`,
+`flock.md`, `dispatch-tier-separation.md`, `SKILL.md`, `conductor.md`, `shepherd.md`,
+`critic.md`, `root-shepherd-orchestration.md`, `sprint-as-patch.md`, `commands/spawn.md`,
+`README.md`. The decomposition discipline split cleanly: planning = many narrow steps per
+wave (substantive LOC floor); spawn = a **total** lane count (never per-wave).
+
+**B-bis — lane refresh (durable lane, recyclable teammate).** One teammate-conductor
+occupies a lane at a time, but at a wave boundary root MAY shut down an idle lane's
+teammate and spawn a fresh one to take over the **same** lane for the next wave (fresh
+context, lower compaction cost). Refreshing a lane's teammate is **not** a new lane — you
+count lanes (constant across waves), never teammate-instances. This is the origin of the
+retired "per lane per wave" phrasing (`primitive-axis-binding.md §II.1`).
+
+**C — Phase-0 split (#88).** The pre-plan **discovery wave** runs at root BEFORE the
+engineer (INTRO-COMBO-WAVE); the engineer now **consumes** its `[DISCOVERY-CONTEXT]` /
+`[INTRO-AUDIT-CONTEXT]` as primary ground truth and verifies targeted gaps, rather than
+re-running the full mesh itself (fixes the `engineer.md` Step 2 contradiction). The mesh
+enumeration is the *coverage spec*; the engineer self-runs only when the wave is disabled
+(XS / `intro_wave.enabled = false`). Carry-over / open-issue handling becomes a candidate
+dedicated lane, not steps folded into the plan body.
+
+**D — #67 / #20 reconciled.** `seed-template.md §6` (Deliverables, not "MUST-LAND lanes")
+landed in v6.0.0; v6.0.2 fixes the residual §7 "coder lanes per wave" minimums and frames
+the planter's seed-quality table around **deliverables** (lane decomposition is the
+engineer's authority). The mandatory-`subagent_type` dispatch contract (#20) is verified
+consistent across `SKILL.md §I`, `flock.md §I`, `conductor.md`, `shepherd.md`, and
+`dispatch-tier-separation.md §IV-bis`.
+
+**E — #75 reconciled.** Verified `doctrines/workflow-compile-down.md` is on-disk,
+coherent, and cross-linked (`platform-alignment.md §VII`, `stage-graph.md`); all internal
+doctrine references resolve.
+
+**Gate 0 (green):** grep proves no live file nests "lane" in "wave" or tabulates "lanes
+per wave" (every residual mention is a negation or the anti-pattern definition); the
+binding table is canonical + referenced by 17 files; `SKILL.md` and the agent profiles
+agree on the dispatch contract; #75 reconciled.
+
+### Wave 1 — make it stick (mechanism) + hardening pass
+
+Turns the Wave-0 truth into mechanical refusals, and folds in an operator-directed
+hardening pass (doc validation against live Claude Code docs, a bug-hunt, description
+hygiene, and the start/spawn boundary).
+
+- **`hooks/scripts/dispatch_guard.sh` (new, PreToolUse Agent|Task).** Hard-blocks the
+  dispatch-class violations: `DISPATCH-MISSING-SUBAGENT-TYPE` (omit / general-purpose /
+  Explore / Chat), `DISPATCH-TEAMMATE-TYPE-MISMATCH` (a flock role carrying `team_name` —
+  a step spawned as a lane, #66.1 / #61), `TEAMMATE-NESTING-ATTEMPT`, `WRONG-TIER-DISPATCH`
+  (teammate → engineer/critic), `DISPATCH-OFF-FLOCK`. Enforces step→subagent /
+  lane→teammate-conductor (#89, #66).
+- **`bash_guard.sh`** gains the #89 **inversion-1** block (a `*.workflow.js` carrying
+  teammate-spawn markers is refused — `PRIMITIVE-INVERSION`) and the #91 cargo
+  sequential-gate block (`run_in_background:true` on a cargo gate is refused).
+- **`doctrines/invariant-enforcement-matrix.md` (new, #86)** — the coverage map pairing
+  every invariant with its mechanism + type (hard-block / flag / lint / auditor / doctrine)
+  + status, surfacing the prose-only gaps that caused #66 / #59 / #74. Honest row-by-row
+  status for the eight #66 violations (1/4 hard-blocked + tested; 2/3/6 flag-candidates;
+  5/7 auditor; 8 doctrine + partial block) and the two #89 inversions (1 hard-blocked; 2
+  flagged-by-design, hard block scoped to #85/Wave 2 since hand-rolled fan-out is a
+  legitimate runtime-failure fallback).
+- **`lint_agent_capabilities.sh`** extended for #84: least-privilege sweep across all nine
+  agents pins that no agent carries a destructive MCP verb under `acceptEdits` (dual-use
+  reads + release verbs are documented retentions); #74 read-only trio lint retained.
+- **`hooks/tests/test_dispatch_guard.sh` (new)** + wired into `run.sh` — Gate 1 evidence:
+  reproduces the two #89 inversions + dispatch-class #66 violations and proves each is
+  blocked, with well-formed dispatches passing. **`hooks/tests/run.sh` 26/26 green.**
+- **Doc validation (live `code.claude.com/docs`).** Confirmed Dynamic Workflows (CC ≥
+  v2.1.154; ≤16 concurrent / ≤1000 total; no mid-run input; no FS/shell; `acceptEdits`;
+  within-session resume; **orchestrates subagents only, cannot spawn teammates** — a
+  platform-level reinforcement of the #89 binding, now cited in `primitive-axis-binding.md
+  §III.1`), Agent Teams (v2.1.32 experimental), and subagents (no `description` char cap;
+  "subagents cannot spawn subagents"). Surfaced discrepancy: the docs spawn teammates via
+  natural-language lead instruction (not `Agent({team_name})`) and don't document
+  `CLAUDE_TEAMMATE_NAME` — shepherd's convention; flagged for operator review, not yet
+  rewritten.
+- **Description hygiene.** All nine agent + both SKILL.md + six reference descriptions
+  rewritten to single-line, **XML-free** (dropped `<example>`/`<commentary>` blocks),
+  ≤200 chars; the shepherd SKILL.md description was 2414 chars — **over the documented
+  1,536 skill cap** — now 187.
+- **start/spawn boundary.** `/shepherd:spawn` is stated as the **primary** command
+  (root + teammate-conductor lanes via Agent Teams + Dynamic Workflow execution);
+  `/shepherd:start` is the **solo, lightweight** path (one sprint, no teams/lanes). Fixed a
+  residual lane-per-wave construct in `commands/spawn.md`. Planter + seed-template made
+  **spawn-aware** (deliverables decompose into file-disjoint vertical slices the engineer
+  projects into lanes; the planter never defines lanes itself).
+- **Bug-hunt fixes** (subagent review, no HIGH): case-fold consistency in dispatch_guard
+  Check 3 (MEDIUM-1); anchored the workflow `team_name` marker to avoid false-blocking a
+  comment mention (MEDIUM-2); added the `CLAUDE_PROJECT_SESSION_TYPE` teammate signal;
+  single-quote in the workflow marker class; fixed a dangling `§V.2` cross-ref. Both
+  MEDIUM fixes locked in with regression tests.
+
+**Gate 1 (green):** `test_dispatch_guard.sh` reproduces the two #89 inversions + the
+dispatch-class #66 violations and proves each mechanically blocked; allowlist lint green.
+
+**Wave 1 follow-ups (gaps tracked in the matrix, not yet hard-mechanized):** #66.2/#66.3
+cargo `CARGO_TARGET_DIR` / `--frozen` warns; #59 close-finalize since-last-commit gate;
+#90 spawn boot-prompt SCOPE RULE.
+
+### Wave 2 + finalization — native substrate, platform reconciliation, productionize
+
+Operator-directed finalization: deliver the governance + context-management core by elegantly
+composing Claude Code's native tools, update the README, and make the repo product-grade.
+Much of the substrate already existed (`shctx graph compile` with a faithfulness diff); this
+wave **reconciles it to the verified platform mechanism, completes the topology tooling, and
+hardens the operational substrate.**
+
+- **#93 RESOLVED — platform mechanism verified against live docs (2026-05-29).** Teammates
+  spawn via the **`TeamCreate`** tool family + a natural-language lead instruction referencing
+  the `shepherd:conductor` subagent definition — there is **no `team_name` parameter on
+  `Agent`/`Task`** (those spawn subagents), and a teammate session exposes **no identity env
+  var** (`anthropics/claude-code#35447`, closed not-planned); identity is delivered only in
+  hook-input JSON. **Dynamic Workflows orchestrate subagents only — never teammates** (confirms
+  the #89 binding; only the call-shape was wrong). Reconciled across `commands/spawn.md`,
+  `agents/conductor.md`, `agents/shepherd.md`, `dispatch_guard.sh`,
+  `claude-code-platform-alignment.md §I` (Open investigation → **Resolved**),
+  `invariant-enforcement-matrix.md`, and `primitive-axis-binding.md §III.1/§IV`.
+- **Honest, env-independent dispatch guard.** `dispatch_guard.sh` now detects a teammate
+  session from the hook-input **`cwd`** (a `.worktrees/` path) — env-independent, since the
+  platform exposes no teammate env var — with the `subagent_type` discipline as the mechanical
+  floor and the `team_name`/teammate-tier checks documented as defence-in-depth (layered over
+  the platform's structural no-nesting guarantee). New `cwd` regression in
+  `test_dispatch_guard.sh`; **hooks 26/26 green.**
+- **`shctx graph diagram` (new, #77 topology utility).** Emits a **Mermaid execution diagram**
+  of the Stage Graph — seam vs fan-out classification (matching the compiler's φ-map), labeled
+  edges, and an optional per-segment compiled-fan-out overlay — to
+  `{workdir}/graph/diagrams/{sprint}.mmd` or stdout. Complements the existing
+  `shctx graph compile` (Dynamic Workflow emission + soundness/completeness/determinism
+  faithfulness diff + manifest seam-export) per `workflow-compile-down.md`.
+- **Operational substrate: `$SHEPHERD_WORKDIR`.** New first-class resolver `resolve_workdir()`
+  (`skills/context/scripts/_lib.sh`, mirrored in `hooks/scripts/_lib.sh`) honors
+  `$SHEPHERD_WORKDIR` → existing `.shepherd` → existing `.artifacts` → default `.shepherd`.
+  **Fixed a canonical-state split-brain bug:** five `cmd_*.sh` (escalate/deliverable/mailbox/
+  report/teammate) and five hooks (teammate_idle/deliverable_check/subagent_telemetry/
+  lock_guard/dedup_write_guard) hardcoded `.artifacts/root.db`, so a `.shepherd`-default project
+  silently used the wrong DB — all now resolve through the namespace. The workdir ships its own
+  `.gitignore` (secrets + runtime trimmed: `*.env`/`*.key`/`*.pem`/`secrets/`/…; design records
+  under `docs/` preserved); the root `.gitignore` mirrors the `.shepherd/` runtime entries. New
+  `skills/context/tests/test_workdir.sh` pins the precedence; documented in
+  `docs/configuration.md`.
+- **Root proactivity + compartmentalization (operator-emphasized).** `agents/shepherd.md`
+  (Coordinate mode) and `root-shepherd-orchestration.md` now make **proactive idle-teammate
+  pruning** a standing root behavior — once a teammate's wave payload is materialized, prune it
+  (reclaim compute, avoid forced compaction) and **refresh** the lane with a fresh teammate at
+  the next wave boundary. Compartmentalizing each wave into fresh context is the default.
+- **#71 `release.yml` fixed** — `actions/checkout@v6`'s credential-persistence breaking change
+  (PR #2286) broke the authenticated `git push` steps once the v6.0.1 `detect` regex fix let
+  the pipeline proceed; pinned checkout to `@v5` + explicit `token:` + `persist-credentials`.
+- **#72 critic false-positive fixed** — the critic's Necessity audit now resolves the full
+  Cargo **feature graph** before flagging reachability (default sets, `foo = ["bar"]` chains,
+  umbrella `full` rollups, optional-dep `dep:`/`x?/feat`, workspace/`--features`), so a
+  transitively-enabled feature (e.g. `native-runtime` via `full`) no longer raises a spurious
+  CRITICAL; genuinely dead features downgrade to a verify-first observation.
+- **README** rewritten to the finalized v6.0.2 story; all six version sources confirmed synced.
+
+**Gate (green):** `hooks/tests/run.sh` 26/26; `test_workdir.sh` passes; `shctx graph diagram`
+verified end-to-end. (Context DB tests require `sqlite3`, absent in this environment —
+environmental, not a regression.)
+
+**Tracked for v6.0.3 (non-core depth — operator-deferred):** adaptability + self-improvement
+mechanisms (filed as issues); the still-tracked matrix gaps (#59 close-gate hard hook, #90
+boot-prompt SCOPE RULE, #66.2/#66.3 cargo warns, #66.6 dead-pane prune); the deeper cross-run
+concurrency budget (#83); the full hand-rolled-mechanic deletion (#70/#53/#58); and
+compile-down telemetry (#87). The governance core + native-substrate execution path are in
+place; these add depth.
+
+---
+
 ## v6.0.1 — 2026-05-29
 
 ### Reposition onto Claude Code's native substrate (Dynamic Workflows + Agent Teams + subagents)

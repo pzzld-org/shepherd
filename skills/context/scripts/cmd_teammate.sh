@@ -5,8 +5,9 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Resolve DB path: prefer .artifacts/root.db relative to project root.
-DB="${SHCTX_DB:-$(git rev-parse --show-toplevel 2>/dev/null)/.artifacts/root.db}"
+source "$HERE/_lib.sh"
+# Resolve DB path via the lib (honors $SHEPHERD_WORKDIR, then .shepherd/.artifacts).
+DB="${SHCTX_DB:-$(shctx_db_path)}"
 [[ -f "$DB" ]] || { echo "ERR: registry DB not found at $DB" >&2; exit 1; }
 
 now_ms() { echo $(($(date +%s) * 1000)); }
