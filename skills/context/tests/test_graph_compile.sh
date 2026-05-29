@@ -113,4 +113,18 @@ fi
 "$SHCTX" graph compile --segment=CLOSE-SWARM --verify >/dev/null \
   || { echo "FAIL: re-verify after recompile did not pass" >&2; exit 1; }
 
+# --- Lane E parity (#78): cross-lane dependency coordinated by in-script -----
+# --- await ordering, with NO pause/heartbeat machinery in the path. ---------
+# (doctrines/native-coordination.md — the proven replacement Lane F depends on)
+if grep -qiE "PAUSE|heartbeat|PAUSE-FOR-DEPENDENCY" "$wscript"; then
+  echo "FAIL: pause/heartbeat machinery leaked into the compiled segment (#78)" >&2; exit 1
+fi
+# The WAVE-1-IMPL ‖ WORKER-IO -> WAVE-1-AUDIT dependency is realized purely by
+# batch ordering: the coder/worker batch precedes the auditor batch.
+coder_ln=$(grep -n 'shepherd:coder'   "$wscript" | head -1 | cut -d: -f1)
+audit_ln=$(grep -n 'shepherd:auditor' "$wscript" | head -1 | cut -d: -f1)
+if [[ -z "$coder_ln" || -z "$audit_ln" || "$coder_ln" -ge "$audit_ln" ]]; then
+  echo "FAIL: cross-lane dependency not realized by in-script await ordering (#78)" >&2; exit 1
+fi
+
 echo "test_graph_compile: OK"
