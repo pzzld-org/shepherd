@@ -241,15 +241,15 @@ A seed that is **not** drift-resistant produces shallow plans, harvesting-during
 
 Seeds are dense — every line carries information — but they do not balloon:
 
-- **GH issues anchor lane detail.** Per `doctrines/seed-anchored-by-issues.md`, every MUST-LAND lane cites a GH#. Change-spec, file scope, hypothesis evidence, and detailed acceptance criteria live in the GH issue body — NOT duplicated in the seed. Seed lane block stays under 10 lines.
-- **Process lane exception.** Closeout / release-pipeline / audit-swarm lanes don't need backing GH issues. Keep priority + size + acceptance inline.
+- **GH issues anchor deliverable detail.** Per `doctrines/seed-anchored-by-issues.md`, every deliverable cites a GH#. Change-spec, file scope, hypothesis evidence, and detailed acceptance criteria live in the GH issue body — NOT duplicated in the seed. Seed deliverable block stays under 8 lines (per `references/seed-template.md` §6; lane composition is the engineer's authority — GH #67).
+- **Process deliverable exception.** Closeout / release-pipeline / audit-swarm deliverables don't need backing GH issues. Keep priority + size + acceptance inline.
 - **No prose paragraphs > 3 sentences.** If a concept needs more, write a separate doc and link it.
-- **Tables for structured data.** Mesh inputs, lanes, waves, carry-forwards — always tables.
+- **Tables for structured data.** Mesh inputs, deliverables, waves, carry-forwards — always tables.
 - **Runnable acceptance, not prose.** Concrete grep + expected count beats "the bot should produce gate-passes".
 - **Cite, do not duplicate.** Research report exists? Link it.
 - **Frontmatter encodes machine-readable scope.** `file_scope.exclusive`, `parallel_with`, `sprint_dependencies` go in YAML, not prose.
 
-A 400-line seed is a smell. Issue-anchored discipline keeps lanes terse.
+A 400-line seed is a smell. Issue-anchored discipline keeps deliverables terse.
 
 ---
 

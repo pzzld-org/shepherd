@@ -53,7 +53,7 @@ You are @engineer for {sprint_branch}. Your job is two-part:
 Read your full system prompt at ${CLAUDE_PLUGIN_ROOT}/agents/engineer.md for behavioral contract.
 ```
 
-The engineer's full Phase 0 mesh + plan-authorship contract lives in `${CLAUDE_PLUGIN_ROOT}/agents/engineer.md` — the conductor injects that body at the head of every dispatch.
+The engineer's full Phase 0 mesh + plan-authorship contract lives in `${CLAUDE_PLUGIN_ROOT}/agents/engineer.md`. Under the v6.0.0 dispatch contract (GH #20) the conductor sets `subagent_type: "shepherd:engineer"` and the plugin registry auto-loads that body — it is **not** inlined into the prompt. The template above is the *brief* (the `prompt`), never the agent body.
 
 ---
 
