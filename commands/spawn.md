@@ -1,18 +1,22 @@
 ---
 name: spawn
 description: |
-  Spawn teammate-conductor(s) to execute a sprint while main chat adopts the
-  root-shepherd profile (agents/shepherd.md). Requires the Agent Teams feature
+  The PRIMARY command for substantive sprint work. Spawn teammate-conductor(s) to
+  execute a sprint while main chat adopts the root-shepherd profile
+  (agents/shepherd.md). Requires the Agent Teams feature
   (CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=true, Claude Code ≥ v2.1.32, teammateMode
   configured). Operator-explicit invocation only — refuses from teammate sessions
-  (nested spawn forbidden).
+  (nested spawn forbidden). For a single in-chat sprint with no teams, use
+  /shepherd:start (solo).
 
   v5.1.6 introduces:
     - Root-shepherd tier — main chat adopts agents/shepherd.md (not planter.md);
       planter loads only under /shepherd:plant or when seed work is delegated mid-spawn.
-    - Lane-per-conductor fanout (default) — for each wave in the plan, root spawns
-      one teammate-conductor PER LANE. Many small focused teammates beat fewer broad
-      ones; cache hit rates climb when each teammate's stable prefix is small.
+    - Lane-per-conductor fanout (default) — after the plan, root projects it into
+      vertical LANES (cohesive slices ACROSS waves) and spawns one teammate-conductor
+      PER LANE via Agent Teams; the lane count is constant across waves (never
+      per-wave), and a lane's teammate may be refreshed per wave for fresh context.
+      Many small focused lanes beat fewer broad ones (doctrines/primitive-axis-binding.md).
     - --scope flag — workload scaling per doctrines/scope-scale-workload.md.
     - INTRO-COMBO-WAVE always-on under spawn — every sprint gets a grounded plan.
     - Teammate-conductor write restrictions — returns structured payloads; root

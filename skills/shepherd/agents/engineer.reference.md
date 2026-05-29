@@ -1,12 +1,7 @@
 ---
 name: agent-engineer-reference
 slug: agent-engineer-reference
-description: |
-  Reference catalog for @engineer. Loaded on demand at agent startup via Skill,
-  so per-dispatch content stays out of the agent's stable system-prompt prefix.
-  Contains the full Phase 0 mesh row enumeration (rows 1–14+), the plan body
-  section templates, the plan-quality bar checklist, the proof-of-dispatch
-  footer template, and the MESH GATE drift-classification rules.
+description: "On-demand reference catalog for @engineer, loaded at startup via Skill. Holds the Phase 0 mesh row enumeration, plan body templates, the plan-quality checklist, and MESH GATE drift rules."
 metadata:
   triggers:
     - "agent-engineer-reference"

@@ -1,12 +1,7 @@
 ---
 name: agent-critic-reference
 slug: agent-critic-reference
-description: |
-  Reference catalog for @critic. Loaded on demand at agent startup via Skill,
-  so per-dispatch content stays out of the agent's stable system-prompt prefix.
-  Contains verdict semantics extended prose, pass-2 flag classification rules,
-  per-duty checklists, and tone reminders that the agent does not need to
-  re-read on every single line of reasoning.
+description: "On-demand reference catalog for @critic, loaded at startup via Skill. Holds verdict semantics, pass-2 flag classification rules, per-duty checklists, and tone reminders."
 metadata:
   triggers:
     - "agent-critic-reference"

@@ -1,12 +1,7 @@
 ---
 name: agent-coder-reference
 slug: agent-coder-reference
-description: |
-  Reference catalog for @coder. Loaded on demand at agent startup via Skill,
-  so per-dispatch content stays out of the agent's stable system-prompt prefix.
-  Contains the INSIGHTS
-  section template, the BASE-DRIFT halt narrative, and project-doctrine
-  layering guidance.
+description: "On-demand reference catalog for @coder, loaded at startup via Skill. Holds the INSIGHTS section template, the BASE-DRIFT halt narrative, and project-doctrine layering guidance."
 metadata:
   triggers:
     - "agent-coder-reference"

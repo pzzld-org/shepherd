@@ -111,5 +111,17 @@ else
   fails=$((fails+1))
 fi
 
+# Gate 1 evidence (v6.0.2 Wave 1): the #89 inversions + dispatch-class #66
+# violations are mechanically blocked by dispatch_guard.sh + bash_guard.sh.
+echo "== test_dispatch_guard.sh (Gate 1 — #89/#66 dispatch enforcement) =="
+total=$((total+1))
+if dg_out=$(bash "$TESTS_DIR/test_dispatch_guard.sh" 2>&1); then
+  printf '  PASS  %s\n' "dispatch-guard-blocks-inversions-and-violations"
+else
+  printf '  FAIL  %-50s\n' "dispatch-guard"
+  printf '%s\n' "$dg_out" | sed 's/^/        /'
+  fails=$((fails+1))
+fi
+
 echo "—— $((total-fails))/$total passed ——"
 exit "$fails"

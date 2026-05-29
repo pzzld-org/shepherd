@@ -70,7 +70,7 @@ Bullets that lack citation are deleted. The seed is not a vibes document.
 
 ### 3. Sprint character — one paragraph
 
-T-shirt size, parallel-safety summary, calendar shape (light vs heavy, observational vs implementation-heavy), expected wave count.
+T-shirt size, parallel-safety summary, calendar shape (light vs heavy, observational vs implementation-heavy), expected wave count. **Spawn shape:** roughly how many **file-disjoint vertical slices (lanes)** the work affords, so the engineer can project lanes for `/shepherd:spawn` (Agent Teams) with Dynamic Workflow step execution — the planter recommends a count; the engineer decides post-plan (`doctrines/primitive-axis-binding.md`).
 
 ### 4. Phase 0 mesh mandate (table)
 

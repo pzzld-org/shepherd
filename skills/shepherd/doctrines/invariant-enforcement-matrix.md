@@ -1,0 +1,116 @@
+---
+title: invariant-enforcement-matrix
+status: binding
+since: v6.0.2
+description: |
+  The coverage map (#86): every load-bearing shepherd invariant paired with the
+  MECHANISM that enforces it, the enforcement TYPE (hard-block / flag / lint /
+  auditor / doctrine), and its STATUS (live / deferred / gap). The root cause
+  behind #66, #59, and #74 was prose-only enforcement of load-bearing rules; this
+  matrix makes that visible and is the contract Wave 1 guards implement.
+---
+
+# Invariant → enforcement coverage matrix (#86)
+
+A load-bearing invariant enforced by prose alone evaporates the moment a
+different dispatcher (a Dynamic Workflow runtime in `acceptEdits`, a teammate with
+no orchestrator in the loop) executes the work. v6.0.1 proved this in the field
+(#66, #89, #59, #74). This matrix pairs each invariant with a **mechanism** and
+states honestly whether that mechanism is a hard block today, a softer signal, or
+a known gap. **An invariant with no mechanical teeth is a liability, not a rule.**
+
+Enforcement **types**:
+- **hard-block** — a PreToolUse hook emits `permissionDecision: deny`; the call cannot fire.
+- **flag** — a hook emits `additionalContext` (operator-visible warning); the call proceeds.
+- **lint** — a static check (`hooks/tests/*`) fails CI / the test harness.
+- **auditor** — a close/wave auditor concern grades it (post-hoc).
+- **doctrine** — prose contract only (the weakest; flagged for promotion).
+
+---
+
+## I. Primitive↔axis binding (#89) — `doctrines/primitive-axis-binding.md`
+
+| # | Invariant | Mechanism | Type | Status | Test |
+|---|---|---|---|---|---|
+| 1 | A lane (teammate) is spawned via **Agent Teams**, never a Dynamic Workflow (inversion 1) | `bash_guard.sh` Check 0-bis: a `*.workflow.js` carrying teammate-spawn markers is denied; **platform also forbids it** (workflows orchestrate subagents only) | hard-block | **live** | `test_dispatch_guard.sh` ("inverted workflow") |
+| 2 | A flock role carries **no `team_name`** (a step is a subagent, not a lane) | `dispatch_guard.sh` Check 3 → `DISPATCH-TEAMMATE-TYPE-MISMATCH` | hard-block | **live** | `test_dispatch_guard.sh` ("coder/auditor-as-teammate") |
+| 3 | A gate-free step fan-out **compiles to a Dynamic Workflow**, not hand-rolled dispatch (inversion 2) | `dispatch_guard.sh` Check 6 (flag) + `dispatch-cascade.md §IV-bis` PRIMARY-path doctrine; **hard compile-correctness is #85 / Wave 2** | flag → (Wave 2 hard) | **partial** | flag asserted; hard block deferred to #85 |
+| 4 | Teammate spawns are Agent Teams; lanes counted, never "lanes per wave" | Wave 0 ontology rewrite + grep Gate 0 | doctrine + lint-candidate | **live (doctrine)** | Gate 0 grep (Wave 0) |
+
+> Inversion 2 is intentionally a **flag**, not a hard block: the doctrine permits
+> in-context dispatch as a **fallback** on workflow-runtime failure
+> (`workflow-compile-down.md §VI`), so hard-refusing hand-rolled fan-out would break a
+> legitimate path. The teeth for inversion 2 are the compiler's segment-purity +
+> faithfulness guards (#85), which ensure that *when* you compile, the result is correct.
+
+## II. Dispatch-tier contract (#66, #61) — `doctrines/dispatch-tier-separation.md §IV-bis`
+
+| # | Invariant | Mechanism | Type | Status | Test |
+|---|---|---|---|---|---|
+| 5 | Every flock dispatch sets `subagent_type: shepherd:<role>` (no omit / general-purpose / Explore / Chat) | `dispatch_guard.sh` Check 1 → `DISPATCH-MISSING-SUBAGENT-TYPE` | hard-block | **live** | `test_dispatch_guard.sh` |
+| 6 | Only `shepherd:conductor` may carry `team_name` (lane→teammate-conductor) | `dispatch_guard.sh` Check 3 | hard-block | **live** | `test_dispatch_guard.sh` |
+| 7 | `subagent_type` stays inside the closed flock (no `shepherd:<unknown>`) | `dispatch_guard.sh` Check 5 → `DISPATCH-OFF-FLOCK` | hard-block | **live** | `test_dispatch_guard.sh` |
+| 8 | A teammate never spawns its own team | `dispatch_guard.sh` Check 2 → `TEAMMATE-NESTING-ATTEMPT` (teammate-mode + `team_name`) | hard-block | **live** | `test_dispatch_guard.sh` |
+| 9 | A teammate never dispatches `@engineer`/`@critic` | `dispatch_guard.sh` Check 4 → `WRONG-TIER-DISPATCH`; engineer/critic also self-halt on the brief field | hard-block | **live** | `test_dispatch_guard.sh` |
+
+## III. The eight #66 field violations — explicit status
+
+| #66 | Violation | Mechanism | Type | Status |
+|---|---|---|---|---|
+| 1 | coders dispatched as teammates | `dispatch_guard.sh` Check 3 | hard-block | **live, tested** |
+| 2 | missing `CARGO_TARGET_DIR` per parallel lane | `bash_guard.sh` parallel-cargo path (warn-candidate) | flag | **gap** — warn not yet wired; tracked for Wave 1 follow-up |
+| 3 | missing `--frozen`/`--locked` on auditor cargo | `bash_guard.sh` (auditor-cargo warn-candidate) | flag | **gap** — tracked |
+| 4 | parallel cargo instead of sequential | `bash_guard.sh` Check 3-bis (`run_in_background` → deny) + Check 4 (`&` → warn) | hard-block + flag | **live, tested** (#91) |
+| 5 | contradictory file scope in a brief | DEDUP-GATE / Brief-Validity Checklist (`flock.md §@coder`); completeness auditor | auditor | **existing** (conductor-run, not a new hook) |
+| 6 | failed to kill dead tmux panes | cleanup stewardship (`planter.md §3`, `worktree_lifecycle.sh`) | doctrine + cleanup | **existing** (Stop-hook prune is a candidate) |
+| 7 | missed blast-radius files from a trait change | engineer Phase-0 mesh + auditor `dependency-topology` | auditor | **existing** |
+| 8 | ran whole waves as direct subagents instead of teammate-conductors | `root-shepherd-orchestration.md §I-bis` + `dispatch_guard.sh` (blocks the shape; "root must spawn conductors for BODY" is phase-contextual) | doctrine + partial hard-block | **partial** |
+
+Violations 1 and 4 — the two that cleanly reduce to a dispatch/exec *shape* — are now
+hard-blocked and tested. 2/3/6 are flag/cleanup candidates (documented gaps, low risk).
+5/7 are inherently *content/analysis* quality and belong to the auditor swarm, not a
+pre-dispatch hook. 8 is doctrine + a partial shape-block. **This row-by-row honesty is
+the point of #86** — it converts "we have a rule" into "here is the rule's teeth, or its
+absence."
+
+## IV. Capability / least-privilege (#74, #84) — `hooks/tests/lint_agent_capabilities.sh`
+
+| # | Invariant | Mechanism | Type | Status |
+|---|---|---|---|---|
+| 10 | Read-only reviewers (auditor/discovery/critic) carry no un-scoped mutating verb | `lint_agent_capabilities.sh` (read-only set) | lint | **live** (#74) |
+| 11 | `Write` on a read-only role is path-scoped by `lock_guard.sh` (PreToolUse Write) | lint asserts the hook is registered + a `Write` matcher exists | lint + hard-block | **live** (#74) |
+| 12 | No agent carries a **gratuitously broad** mutating verb under `acceptEdits` (least-privilege, all nine) | `lint_agent_capabilities.sh` writer-role sweep (forbids `*delete*`/`*merge*`/`*deploy*` outside a role's documented need) | lint | **live (extended)** (#84) |
+
+> Under a Dynamic Workflow runtime every spawned agent runs in `acceptEdits` with **no
+> orchestrator in the loop** (`workflow-compile-down.md §VII`), so the `tools:` allowlist
+> is the *only* capability boundary. Retained dual-use verbs (e.g. `execute_sql` on
+> `@engineer`/`@worker` for read queries) are deliberate, documented retentions — the lint
+> forbids the clearly-gratuitous mutating verbs and pins the read-only set.
+
+## V. Gate / close discipline (#59) and spawn-prompt hygiene (#90, #91)
+
+| # | Invariant | Mechanism | Type | Status |
+|---|---|---|---|---|
+| 13 | cargo gates run sequentially (one `&&`-chain, foreground) | `bash_guard.sh` Check 3-bis (`run_in_background` deny) + `cargo-sequential-gates.md` execution pattern | hard-block + doctrine | **live** (#91) |
+| 14 | `cargo test --workspace --features full` runs before close | `Stop` close-finalize agent-hook (`hooks.json`) — extend with a since-last-commit gate check | flag → hard | **gap** — close-finalize check is a Wave-1 follow-up (#59) |
+| 15 | Conductor boot prompt's INHERITED CONTEXT carries no implementation steps | `commands/spawn.md` boot-prompt SCOPE RULE + conductor first-action check | doctrine | **gap** — SCOPE RULE is a Wave-1 follow-up (#90) |
+
+## VI. Promotion backlog (gaps → mechanisms)
+
+The **gap** rows above are this matrix's live to-do. Each names its target mechanism so
+the promotion is a bounded change, not a redesign:
+- **#66.2 / #66.3** → a `bash_guard.sh` warn for parallel cargo lacking `CARGO_TARGET_DIR`, and for auditor cargo lacking `--frozen`/`--locked`.
+- **#59** → a `Stop`-hook check: if a close report is being written but no `cargo test --workspace --features full` ran since the latest commit, flag/deny CLOSE-FINALIZE.
+- **#90** → a `commands/spawn.md` boot-prompt SCOPE RULE forbidding implementation steps in INHERITED CONTEXT + a conductor first-action `SCOPE-VIOLATION` halt.
+- **#66.6** → a `Stop`-hook dead-pane / orphan-worktree prune.
+- **inversion 2 (#3)** → the #85 compiler segment-purity + §IV faithfulness diff (Wave 2).
+
+## VII. See also
+
+- `doctrines/primitive-axis-binding.md` — the axis↔primitive↔unit binding the guards enforce.
+- `doctrines/dispatch-tier-separation.md §IV-bis` — the forbidden-dispatch halt-code contract.
+- `hooks/scripts/dispatch_guard.sh` — checks 1–6 (dispatch shape).
+- `hooks/scripts/bash_guard.sh` — workflow-inversion + cargo-sequential checks.
+- `hooks/tests/test_dispatch_guard.sh` — the Gate 1 reproduction-and-block test.
+- `hooks/tests/lint_agent_capabilities.sh` — the #74/#84 capability lint.
+- `doctrines/workflow-compile-down.md §VII` — why allowlists are the only `acceptEdits` boundary.

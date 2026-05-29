@@ -72,12 +72,67 @@ per wave" (every residual mention is a negation or the anti-pattern definition);
 binding table is canonical + referenced by 17 files; `SKILL.md` and the agent profiles
 agree on the dispatch contract; #75 reconciled.
 
-**Deferred to later v6.0.2 waves:** mechanical pre-dispatch guards for the two #89
-inversions + the eight #66 violations (Wave 1 — #86 / #84 / #74 / #61); `shctx graph
-compile` + workflow→conductor seam-export (Wave 2 — #82 / #77 / #78 / #83 / #85); mechanic
-deletion + telemetry + `release.yml` / critic-feature fixes (Wave 3 — #76 / #87 / #71 /
-#72). New feedback issues #90 (INHERITED-CONTEXT scope rule) and #91 (cargo-gate execution
-pattern) are folded into Wave 1.
+### Wave 1 — make it stick (mechanism) + hardening pass
+
+Turns the Wave-0 truth into mechanical refusals, and folds in an operator-directed
+hardening pass (doc validation against live Claude Code docs, a bug-hunt, description
+hygiene, and the start/spawn boundary).
+
+- **`hooks/scripts/dispatch_guard.sh` (new, PreToolUse Agent|Task).** Hard-blocks the
+  dispatch-class violations: `DISPATCH-MISSING-SUBAGENT-TYPE` (omit / general-purpose /
+  Explore / Chat), `DISPATCH-TEAMMATE-TYPE-MISMATCH` (a flock role carrying `team_name` —
+  a step spawned as a lane, #66.1 / #61), `TEAMMATE-NESTING-ATTEMPT`, `WRONG-TIER-DISPATCH`
+  (teammate → engineer/critic), `DISPATCH-OFF-FLOCK`. Enforces step→subagent /
+  lane→teammate-conductor (#89, #66).
+- **`bash_guard.sh`** gains the #89 **inversion-1** block (a `*.workflow.js` carrying
+  teammate-spawn markers is refused — `PRIMITIVE-INVERSION`) and the #91 cargo
+  sequential-gate block (`run_in_background:true` on a cargo gate is refused).
+- **`doctrines/invariant-enforcement-matrix.md` (new, #86)** — the coverage map pairing
+  every invariant with its mechanism + type (hard-block / flag / lint / auditor / doctrine)
+  + status, surfacing the prose-only gaps that caused #66 / #59 / #74. Honest row-by-row
+  status for the eight #66 violations (1/4 hard-blocked + tested; 2/3/6 flag-candidates;
+  5/7 auditor; 8 doctrine + partial block) and the two #89 inversions (1 hard-blocked; 2
+  flagged-by-design, hard block scoped to #85/Wave 2 since hand-rolled fan-out is a
+  legitimate runtime-failure fallback).
+- **`lint_agent_capabilities.sh`** extended for #84: least-privilege sweep across all nine
+  agents pins that no agent carries a destructive MCP verb under `acceptEdits` (dual-use
+  reads + release verbs are documented retentions); #74 read-only trio lint retained.
+- **`hooks/tests/test_dispatch_guard.sh` (new)** + wired into `run.sh` — Gate 1 evidence:
+  reproduces the two #89 inversions + dispatch-class #66 violations and proves each is
+  blocked, with well-formed dispatches passing. **`hooks/tests/run.sh` 26/26 green.**
+- **Doc validation (live `code.claude.com/docs`).** Confirmed Dynamic Workflows (CC ≥
+  v2.1.154; ≤16 concurrent / ≤1000 total; no mid-run input; no FS/shell; `acceptEdits`;
+  within-session resume; **orchestrates subagents only, cannot spawn teammates** — a
+  platform-level reinforcement of the #89 binding, now cited in `primitive-axis-binding.md
+  §III.1`), Agent Teams (v2.1.32 experimental), and subagents (no `description` char cap;
+  "subagents cannot spawn subagents"). Surfaced discrepancy: the docs spawn teammates via
+  natural-language lead instruction (not `Agent({team_name})`) and don't document
+  `CLAUDE_TEAMMATE_NAME` — shepherd's convention; flagged for operator review, not yet
+  rewritten.
+- **Description hygiene.** All nine agent + both SKILL.md + six reference descriptions
+  rewritten to single-line, **XML-free** (dropped `<example>`/`<commentary>` blocks),
+  ≤200 chars; the shepherd SKILL.md description was 2414 chars — **over the documented
+  1,536 skill cap** — now 187.
+- **start/spawn boundary.** `/shepherd:spawn` is stated as the **primary** command
+  (root + teammate-conductor lanes via Agent Teams + Dynamic Workflow execution);
+  `/shepherd:start` is the **solo, lightweight** path (one sprint, no teams/lanes). Fixed a
+  residual lane-per-wave construct in `commands/spawn.md`. Planter + seed-template made
+  **spawn-aware** (deliverables decompose into file-disjoint vertical slices the engineer
+  projects into lanes; the planter never defines lanes itself).
+- **Bug-hunt fixes** (subagent review, no HIGH): case-fold consistency in dispatch_guard
+  Check 3 (MEDIUM-1); anchored the workflow `team_name` marker to avoid false-blocking a
+  comment mention (MEDIUM-2); added the `CLAUDE_PROJECT_SESSION_TYPE` teammate signal;
+  single-quote in the workflow marker class; fixed a dangling `§V.2` cross-ref. Both
+  MEDIUM fixes locked in with regression tests.
+
+**Gate 1 (green):** `test_dispatch_guard.sh` reproduces the two #89 inversions + the
+dispatch-class #66 violations and proves each mechanically blocked; allowlist lint green.
+
+**Wave 1 follow-ups (gaps tracked in the matrix, not yet hard-mechanized):** #66.2/#66.3
+cargo `CARGO_TARGET_DIR` / `--frozen` warns; #59 close-finalize since-last-commit gate;
+#90 spawn boot-prompt SCOPE RULE. **Deferred to later waves:** Wave 2 — #82 seam-export →
+#77 `shctx graph compile` + #85 (the #89 inversion-2 hard block) + #78 + #83; Wave 3 —
+#76 mechanic deletion + #87 telemetry + #71 `release.yml` + #72 critic feature.
 
 ---
 

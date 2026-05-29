@@ -134,6 +134,15 @@ emitting a workflow whose "steps" are teammate-conductors. A workflow orchestrat
 **subagents** (the worker primitive), not teammates. Teammate-state is the Agent Teams
 axis; it is **never** an execution-workflow output.
 
+> **Platform-confirmed (`code.claude.com/docs/en/workflows`, verified 2026-05-29):** a
+> Dynamic Workflow "is a JavaScript script that orchestrates **subagents** at scale" — it
+> has **no** teammate-spawn capability, and "subagents cannot spawn other subagents." So
+> at the platform level inversion-1 cannot occur through a *faithfully compiled* workflow;
+> it can only arise from a **hand-authored or mis-compiled** script. The compiler
+> segment-purity guard (#85) plus the workflow-launch guard (`bash_guard.sh` Check 0-bis)
+> close that residue. Conversely, Agent Teams is the only primitive that creates a
+> teammate (a lane) — so spawning lanes is Agent Teams, by construction.
+
 > Halt: `PRIMITIVE-INVERSION — workflow-spawns-teammates`. Spawning a lane =
 > Agent Teams. Refuse the workflow-spawn.
 
@@ -260,7 +269,7 @@ Three properties make the binding non-negotiable:
    inversion #2.)*
 3. **Lanes in the plan.** The engineer authoring `lane:` / `wave: <N>` fields, "min lanes
    per wave," or "a wave is a set of lanes." The plan is waves × steps; lanes are a
-   post-plan spawn-time projection (§V.2).
+   post-plan spawn-time projection (§V, phase 2 — PROJECT TO LANES).
 4. **"Per lane per wave."** Counting teammate-conductors per wave. A lane is vertical
    across waves; you count lanes, full stop.
 5. **Step dispatched as a teammate / lane dispatched as a workflow step.** Tier/primitive

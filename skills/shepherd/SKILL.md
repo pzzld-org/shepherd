@@ -2,49 +2,7 @@
 name: shepherd
 slug: shepherd
 version: 6.0.2
-description: |
-  Sprint-by-sprint version-cycle conductor. Six-agent flock (engineer, critic,
-  coder, auditor, worker, discovery) on a three-section sprint pipeline
-  (§1 INTRODUCTION → §2 BODY → §3 CLOSE) plus an upstream Opus-pinned planter
-  mode that authors drift-resistant sprint seeds.
-
-  v5.1.1 introduces:
-    • @discovery — sixth read-only orientation agent absorbing the conductor's
-      and engineer's exploratory read-load (prior-state ingestion, GH state,
-      canonical-types reconciliation, research summarization)
-    • INTRO-COMBO-WAVE — pre-MESH parallel batch of discoveries + intro-mode
-      auditors (regression + carry-forward-disposition) feeding the engineer
-    • Hypothesis-driven auditor — every finding carries Hypothesis +
-      Falsification + Confidence per superpowers:systematic-debugging discipline
-    • Sprint-as-patch — every dev.N sprint is operator-equivalent to a full
-      patch; planter and engineer size scope accordingly
-    • Hardened hook layer — shared library, event log, role-tagging, per-role
-      write-path enforcement (capability-enforced read-only, #74), auditor cwd guard
-    • shctx doctor — single-command preflight (git / plan / ctx / hooks /
-      MCP / lock)
-
-  v5.0.0 introduced the **context registry** — a per-project SQLite cache
-  (`<namespace>/root.db`, where namespace is `.shepherd/` by default or
-  `.artifacts/` for legacy projects) backing Phase 0 mesh fast-paths and
-  DEDUP-GATE Layer 2 SQL pre-filtering. The v4.2.0 Stage Graph (binding
-  dispatch DAG that the engineer's plan emits and the conductor walks
-  deterministically) remains the orchestration contract.
-
-  Three commands:
-    /shepherd:plant    — Opus-only seed authorship (precedes every sprint pipeline)
-    /shepherd:start    — one sprint, then PAUSE
-    /shepherd:spawn    — spawn a teammate-conductor; --auto for sequential autopilot,
-                         --parallel <N> for concurrent multi-sprint fan-out
-
-  /shepherd:autorun and /shepherd:parallel are retired (v5.1.4). Their behaviors
-  are fully superseded by /shepherd:spawn --auto and /shepherd:spawn --parallel <N>.
-
-  Project-agnostic. Branch topology, gate commands, artifact paths, and
-  skill-integration mappings configured per-project via .claude/shepherd.toml.
-
-  Mechanics live in: flock.md, pipeline.md, references/branching-model.md,
-  references/seed-template.md, references/agent-briefs.md, doctrines/*.md,
-  agents/<role>.md (including agents/conductor.md and agents/planter.md).
+description: "Sprint-by-sprint version-cycle conductor. Six-agent flock (engineer, critic, coder, auditor, worker, discovery) on an INTRO/BODY/CLOSE pipeline with planter/conductor/shepherd meta tiers."
 metadata:
   triggers:
     - "/shepherd"
@@ -412,6 +370,8 @@ The walk trace (optional, per `[stage_graph].walk_trace_enabled`) is the O(1) re
 ---
 
 ## X. Invocation
+
+**`/shepherd:spawn` is the primary command** for substantive sprint work — root-shepherd + teammate-conductor **lanes** (Agent Teams) with **Dynamic Workflow** step execution (the full parallel substrate). **`/shepherd:start` is the solo, lightweight path** — one sprint in main chat, **no teams, no lanes** (the conductor walks the plan in-session and compiles its own gate-free fan-out). They are **disjoint execution paths**, not a wrapper relationship (`doctrines/root-shepherd-orchestration.md §I-bis`). `/shepherd:plant` (Opus) is upstream of both — it authors seeds.
 
 | Command | Profile loaded | Action |
 |---------|---|--------|

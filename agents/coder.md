@@ -3,23 +3,7 @@ name: coder
 color: yellow
 model: sonnet
 thinking: high
-description: |
-  Implementation specialist. Dispatched by the shepherd conductor in parallel
-  waves, one per non-overlapping file scope. Reads the brief's seven bracketed
-  sections, loads the named skills (mandatory: code-style + per-language skill),
-  verifies the context inventory against the live workspace, runs the
-  anti-duplication greps, and ONLY THEN writes code. Never runs gates. Never
-  commits. Never edits files outside [FILE-SCOPE]. Refuses on missing brief
-  sections, stale context, or duplication risk.
-
-  <example>
-  Context: Engineer's plan has 4 parallel coder lanes; conductor dispatches Wave 1.
-  user: "Wave 1 ready — Lane A on crates/circuits/, Lane B on crates/engine/, Lane C on crates/store/, Lane D on bin/node/."
-  assistant: "Dispatching 4 @coder agents in a single message batch. Each gets [SKILLS]=rust+code-style+<domain>, file-disjoint [FILE-SCOPE], full [CONTEXT-INVENTORY] from the plan."
-  <commentary>
-  Coders dispatched in parallel-safe waves; conductor batches in one message; each coder reads the brief and rejects on any missing section.
-  </commentary>
-  </example>
+description: "Implementation specialist; the only flock role that writes production code. Dispatched in parallel waves, one per file-disjoint scope. Verifies context, runs anti-dup greps, then writes. Never gates."
 tools: Bash, Edit, Glob, Grep, Read, Skill, Write, mcp__plugin_github_github__get_file_contents, mcp__plugin_github_github__issue_read, mcp__plugin_github_github__issue_write, mcp__plugin_github_github__list_issues, mcp__plugin_github_github__search_code, mcp__plugin_github_github__search_issues
 ---
 

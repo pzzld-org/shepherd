@@ -1,11 +1,7 @@
 ---
 name: agent-worker-reference
 slug: agent-worker-reference
-description: |
-  Reference catalog for @worker. Loaded on demand at agent startup via Skill,
-  so per-dispatch content stays out of the agent's stable system-prompt prefix.
-  Contains the dispatch pattern catalog (Patterns 1–5), the full
-  the INSIGHTS section template.
+description: "On-demand reference catalog for @worker, loaded at startup via Skill. Holds the dispatch pattern catalog (Patterns 1-5) and the INSIGHTS section template."
 metadata:
   triggers:
     - "agent-worker-reference"

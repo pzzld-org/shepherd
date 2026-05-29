@@ -2,12 +2,7 @@
 name: shepherd-context
 slug: shepherd-context
 version: 6.0.2
-description: |
-  Per-project SQLite registry for the shepherd flock. Backs /shepherd:ctx.
-  Indexes code symbols, GitHub state (issues, PRs, releases, milestones),
-  artifacts (markdown reports), memories, profiles, locks, and event logs.
-  See skills/shepherd/doctrines/context-registry.md for the
-  cache-vs-canonical model.
+description: "Per-project SQLite registry backing /shepherd:ctx and the flock's Phase-0 fast-paths. Indexes code symbols, GitHub state, artifacts, memories, profiles, locks, and event logs."
 metadata:
   triggers:
     - "/shepherd:ctx"

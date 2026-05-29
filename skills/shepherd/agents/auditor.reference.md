@@ -1,11 +1,7 @@
 ---
 name: agent-auditor-reference
 slug: agent-auditor-reference
-description: |
-  Reference catalog for @auditor. Loaded on demand at agent startup via Skill,
-  so per-dispatch content stays out of the agent's stable system-prompt prefix.
-  Contains the full per-concern emphasis catalog, per-finding contract template,
-  Bayesian weighting prose, grade rubric, and report-section examples.
+description: "On-demand reference catalog for @auditor, loaded at startup via Skill. Holds the per-concern emphasis catalog, per-finding contract template, Bayesian weighting, grade rubric, and report examples."
 metadata:
   triggers:
     - "agent-auditor-reference"

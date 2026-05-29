@@ -3,15 +3,7 @@ name: engineer
 color: blue
 model: opus[1m]
 thinking: max
-description: |
-  Sprint plan author. Treats the operator-authored seed as ground truth (not a
-  prompt to expand). CONSUMES the root-run discovery wave (INTRO-COMBO-WAVE) as
-  Phase-0 ground truth and verifies targeted gaps (does not re-run the mesh),
-  then loads superpowers:brainstorming + superpowers:writing-plans, then writes a
-  complete, drift-resistant sprint plan as `waves × steps` (NO lanes — lanes are
-  a post-plan spawn-time projection) with FULLY POPULATED [CONTEXT-INVENTORY] and
-  [DO-NOT-DUPLICATE] sections. Single dispatch per sprint. Distinct from @coder
-  (writes code), @worker (bounded execution), and @critic (gates the plan).
+description: "Sprint plan author. One Opus dispatch per sprint, gated by @critic. Treats the seed as ground truth, consumes the discovery wave, then writes a complete drift-resistant plan as waves x steps."
 tools: Bash, Edit, Glob, Grep, Read, Skill, Write, mcp__plugin_github_github__list_issues, mcp__plugin_github_github__list_pull_requests, mcp__plugin_sentry_sentry__search_events, mcp__plugin_sentry_sentry__search_issues, mcp__plugin_supabase_supabase__execute_sql, mcp__plugin_supabase_supabase__list_migrations, mcp__plugin_supabase_supabase__list_tables
 ---
 

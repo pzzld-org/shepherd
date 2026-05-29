@@ -23,12 +23,36 @@ input=$(cat)
 is_shepherd_project || exit 0
 
 cmd=$(json_field "$input" '.tool_input.command')
+bg=$(json_field "$input" '.tool_input.run_in_background')
 tool_use_id=$(json_field "$input" '.tool_use_id')
 session=$(json_field "$input" '.session_id')
 sprint=$(current_sprint)
 role=$(current_role "$tool_use_id" "$sprint")
 
 [[ -z "$cmd" ]] && pass_silent "bash_guard" "Bash" "$role" "$session"
+
+# ---------------------------------------------------------------------------
+# Check 0-bis — Dynamic Workflow used to instantiate teammate-conductors (BLOCK)
+# #89 inversion 1 / primitive-axis-binding.md §III.1: a compiled workflow
+# orchestrates SUBAGENTS (the execution axis). Spawning a lane (teammate-
+# conductor) is the Agent Teams axis — never a workflow. A *.workflow.js whose
+# script carries teammate-spawn markers is the inversion — refuse to run it.
+# ---------------------------------------------------------------------------
+if printf '%s' "$cmd" | grep -qE '[A-Za-z0-9._/-]+\.workflow\.js'; then
+  while IFS= read -r wf; do
+    [[ -f "$wf" ]] || continue
+    if grep -qE "team_name[[:space:]]*:|subagent_type[\"'[:space:]]*:[\"'[:space:]]*shepherd:conductor|/shepherd:spawn" "$wf" 2>/dev/null; then
+      msg="[shepherd] PRIMITIVE-INVERSION — workflow-spawns-teammates — BLOCKED."$'\n'
+      msg+="  Workflow: $wf"$'\n'
+      msg+="A Dynamic Workflow orchestrates SUBAGENTS (the execution axis). Spawning a"$'\n'
+      msg+="lane (teammate-conductor) is the Agent Teams axis — Agent({team_name:...,"$'\n'
+      msg+="subagent_type: \"shepherd:conductor\"}) — NEVER a workflow. This is the v6.0.1"$'\n'
+      msg+="field regression (#89 inversion 1). Spawn lanes via Agent Teams; let each"$'\n'
+      msg+="teammate compile its OWN gate-free step fan-out. See doctrines/primitive-axis-binding.md §III.1."
+      emit_deny "$msg" "bash_guard" "Bash" "$role" "$session"
+    fi
+  done < <(printf '%s' "$cmd" | grep -oE '[A-Za-z0-9._/-]+\.workflow\.js')
+fi
 
 # ---------------------------------------------------------------------------
 # Check 1 — git commit on agent/lane branch (BLOCK)
@@ -89,6 +113,23 @@ if [[ "$role" == "discovery" ]]; then
     msg+="See doctrines/discovery-readonly.md §Hard prohibitions."
     emit_deny "$msg" "bash_guard" "Bash" "$role" "$session"
   fi
+fi
+
+# ---------------------------------------------------------------------------
+# Check 3-bis — cargo GATE command backgrounded via run_in_background (BLOCK, #91)
+# cargo-sequential-gates.md: wave gates run as ONE &&-chained FOREGROUND call.
+# run_in_background:true on a gate command yields concurrent cargo holding the
+# target/ lock — the dev.4 field violation. Forbidden for gate commands.
+# ---------------------------------------------------------------------------
+if [[ "$bg" == "true" ]] && printf '%s' "$cmd" | grep -qE '(^|[[:space:];|&])cargo[[:space:]]+(check|clippy|test|build|fmt|nextest)'; then
+  msg="[shepherd] CARGO-GATE-BACKGROUNDED — BLOCKED (#91)."$'\n'
+  msg+="  run_in_background:true on a cargo gate command."$'\n'
+  msg+="Cargo gates MUST run as a SINGLE &&-chained FOREGROUND Bash call — never"$'\n'
+  msg+="run_in_background, never two gate commands in separate tool calls. Concurrent"$'\n'
+  msg+="cargo deadlocks on the target/ lock and silently violates sequential gating."$'\n'
+  msg+="Use: cargo fmt --all && cargo check ... && cargo clippy ... && cargo test ..."$'\n'
+  msg+="See doctrines/cargo-sequential-gates.md (Execution pattern)."
+  emit_deny "$msg" "bash_guard" "Bash" "$role" "$session"
 fi
 
 # ---------------------------------------------------------------------------

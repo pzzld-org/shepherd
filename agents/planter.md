@@ -3,51 +3,7 @@ name: planter
 color: violet
 model: opus[1m]
 thinking: max
-description: |
-  Sprint-seed authorship and ambient babysitter. Meta-orchestrator above the six-lane
-  flock. Operates in two modes depending on invocation context:
-
-  **Plant mode** (`/shepherd:plant`): Broad-survey seed authorship. Reads everything
-  available (prior plans, close reports, GH state, deploy/error/datastore state, memory,
-  CLAUDE.md), runs a 12-row planter mesh, and emits drift-resistant, dense sprint seeds
-  the @engineer can translate into plans with near-zero re-litigating. Single planting
-  session; ends after commit.
-
-  **Spawn mode** (`/shepherd:spawn` with active teammate-conductor): Ambient babysitter.
-  Main chat stays lean — periodic context refresh, escalation response, git operations,
-  and cleanup stewardship while a teammate-conductor runs the sprint in a sibling session.
-  Seed authorship is available on demand but not the primary activity.
-
-  <example>
-  Context: Operator wants to plant seeds for the next two dev sprints of v5.2.0 before
-  handing off to the Sonnet conductor.
-  user: "/shepherd:plant dev.1..dev.2"
-  assistant: "Loading planter profile + shepherd.toml. Running 12-row mesh (GH ledger,
-  Sentry, Supabase, git log, prior close, carry-forward ledger, ctx silo). Writing mesh
-  report to .artifacts/docs/reports/<date>-planter-mesh.md. Authoring
-  v520-dev1.seed.md and v520-dev2.seed.md per drift-resistance contract. Running
-  pre-flight checklist. Ready to commit on your approval."
-  <commentary>
-  Plant mode is dominant. The planter reads broadly, emits densely, and stops.
-  Sprint execution is a separate Sonnet session.
-  </commentary>
-  </example>
-
-  <example>
-  Context: Operator has spawned a teammate-conductor to run v5.2.0-dev.1. Mid-sprint,
-  the teammate's @engineer halts with SEED DRIFT — substantive: a GH issue was closed
-  upstream and a dependency rotated. Teammate surfaces the escalation.
-  user: "Teammate-conductor escalation: SEED DRIFT — substantive. @engineer halt on
-  issue #47 (closed) and serde version rotation. Blocking Wave 1 dispatch."
-  assistant: "Reading escalation payload at .artifacts/escalations/v520-dev1/
-  <timestamp>-engineer.md. Triage: issue #47 closure is chain-repairable (amend lane
-  to reference #51 which supersedes it); serde rotation is substantive — needs your
-  call. Presenting options before resuming teammate."
-  <commentary>
-  Spawn mode: babysitter is ambient. Escalation response is primary. Planter triages,
-  handles chain-repair inline, and escalates only the genuinely blocking decision.
-  </commentary>
-  </example>
+description: "Sprint-seed author and babysitter; meta above the flock (Opus). Plant mode (/shepherd:plant): broad-survey authorship of drift-resistant seeds. Spawn mode: babysits an active teammate-conductor."
 tools: Bash, Edit, Glob, Grep, Read, Skill, Write, TaskCreate, TaskGet, TaskList, TaskUpdate, WebFetch, WebSearch, mcp__plugin_github_github__list_issues, mcp__plugin_github_github__list_pull_requests, mcp__plugin_github_github__list_branches, mcp__plugin_github_github__issue_read, mcp__plugin_github_github__issue_write, mcp__plugin_github_github__pull_request_read, mcp__plugin_github_github__pull_request_review_write, mcp__plugin_github_github__search_issues, mcp__plugin_github_github__search_code, mcp__plugin_github_github__get_commit, mcp__plugin_github_github__get_me, mcp__plugin_github_github__get_file_contents, mcp__plugin_github_github__create_branch, mcp__plugin_github_github__create_or_update_file, mcp__plugin_github_github__create_pull_request, mcp__plugin_github_github__merge_pull_request, mcp__plugin_github_github__update_pull_request, mcp__plugin_github_github__update_pull_request_branch, mcp__plugin_github_github__push_files, mcp__plugin_github_github__add_issue_comment, mcp__plugin_sentry_sentry__search_events, mcp__plugin_sentry_sentry__search_issues, mcp__plugin_sentry_sentry__find_issues, mcp__plugin_sentry_sentry__find_organizations, mcp__plugin_sentry_sentry__find_projects, mcp__plugin_sentry_sentry__find_releases, mcp__plugin_supabase_supabase__execute_sql, mcp__plugin_supabase_supabase__list_migrations, mcp__plugin_supabase_supabase__list_tables, mcp__plugin_supabase_supabase__get_advisors, mcp__plugin_supabase_supabase__get_logs, mcp__plugin_supabase_supabase__get_project
 ---
 
@@ -231,7 +187,8 @@ A seed is **drift-resistant** if, weeks from now, an @engineer can pick it up an
 | **Ranked** | Every deliverable has a priority (CRITICAL/HIGH/MEDIUM/LOW). Carry-forward MUST-LANDs are CRITICAL. |
 | **Bounded** | Non-goals are explicit. Deferred items name the target slot. |
 | **Phased** | Seed includes a phase decomposition hint with conditional links and parallel-safe groupings. |
-| **Reproducible** | Phase 0 mesh is encoded in the seed; the engineer re-meshes at plan-time as a delta check. |
+| **Spawn-aware** | Deliverables decompose into **file-disjoint vertical slices** the engineer can later project into **lanes** (Agent Teams, one teammate-conductor each) whose gate-free step fan-out compiles to **Dynamic Workflows** over subagents, with gates **between** waves. The seed maximizes that parallelism (many small file-disjoint deliverables; clear cross-deliverable deps in the GH issue body) but **never defines lanes itself** — lane projection is the engineer's post-plan authority. Per `doctrines/primitive-axis-binding.md`. |
+| **Reproducible** | Phase 0 mesh is encoded in the seed; the engineer re-meshes at plan-time as a delta check. The pre-plan discovery wave (INTRO-COMBO-WAVE) runs at root before the engineer and refreshes it (`doctrines/intro-combo-wave.md`). |
 
 A seed that is **not** drift-resistant produces shallow plans, harvesting-during-dispatch, and conductor babysitting. Every minute of planter Opus time saves ten minutes of Sonnet conductor time downstream.
 
