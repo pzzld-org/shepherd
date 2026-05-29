@@ -313,7 +313,7 @@ Composition with `--parallel <N>`:
 - `--scope patch --parallel <N>`: N concurrent sprints from the patch's pool. Each sprint internally uses lane-per-conductor.
 - `--scope minor` / `--scope version` + `--parallel >1`: REFUSED in v5.1.6 (cross-patch parallel not validated).
 
-Within EVERY sprint (regardless of scope/parallel), the plan's lane-per-conductor structure determines how many teammate-conductors root spawns per wave. This is the implicit fanout; no flag controls it (the plan does).
+Within EVERY sprint (regardless of scope/parallel), the engineer's post-plan **lane projection** (the vertical slice of the `waves × steps` plan — `doctrines/primitive-axis-binding.md`) determines how many teammate-conductors root spawns: **one per lane** (the lane count, constant across waves — NOT a per-wave count; a lane's teammate may be refreshed per wave for fresh context, which is not a new lane). This is the implicit fanout; no flag controls it (the plan does).
 
 `--auto` is preserved as an alias for `--scope patch`. Both forms work; `--scope patch` is canonical. Deprecation in v5.2.0, removal in v6.0.0.
 

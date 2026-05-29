@@ -131,7 +131,7 @@ The conductor profile has **dual-mode behavior** (v5.1.6+):
 
 Dispatch tier separation is binding under `/shepherd:spawn` per `doctrines/dispatch-tier-separation.md`. Solo-mode `/shepherd:start` is unaffected.
 
-**Lane-per-conductor fanout (default under spawn):** the engineer designs the plan as W waves × L_w lanes; root spawns L_w teammate-conductors per wave, one per lane. See `agents/engineer.md §Ultra-parallel plan template`.
+**Lane-per-conductor fanout (default under spawn):** the engineer authors the plan as **`waves × steps`** (no lanes); then, **post-plan and spawn-only**, the plan is sliced **vertically across waves** into **lanes** (one teammate-conductor each, via **Agent Teams** — never a workflow). Root spawns **one teammate-conductor per lane** (the lane count, NOT a per-wave count). Lanes are a post-plan projection per `doctrines/primitive-axis-binding.md`; see `agents/engineer.md §Lane projection`.
 
 See `agents/shepherd.md`, `agents/conductor.md`, `agents/planter.md` for canonical profiles. Three-tier reference: `flock.md §VI`.
 
@@ -210,11 +210,11 @@ Skip the wave for XS sprints or when `shepherd.toml [stage_graph.intro_wave].ena
 - [ ] Verified seed at `{paths.plans}/{sprint_slug}.seed.md` (planter authored or main-chat-inline) — graph-hint section present (per `references/seed-template.md` §7-bis)
 - [ ] **INTRO-COMBO-WAVE dispatched (M+ sprints)** — discoveries + intro auditors in ONE Agent batch BEFORE @engineer. Reports written to `{paths.reports}/<date>-discovery-*.md` and `{paths.reports}/<date>-intro-audit-*.md`.
 - [ ] Dispatched @engineer with seed + prior close report + carry-forward GH#s + `[DISCOVERY-CONTEXT]` + `[INTRO-AUDIT-CONTEXT]` + explicit instruction to run **Phase 0 mesh FIRST** + emit binding `## Stage Graph` per `pipeline.md` §XII
-- [ ] Plan returned at `{paths.plans}/{sprint_slug}.plan.md` with the seven bracketed sections per coder lane + Phase 0 mesh embedded at top + `## Stage Graph` YAML block
+- [ ] Plan returned at `{paths.plans}/{sprint_slug}.plan.md` with the seven bracketed sections per coder step + Phase 0 mesh embedded at top + `## Stage Graph` YAML block
 - [ ] Phase 0 mesh enumerated the FULL open-issue ledger (per `[ledger].phase_0_full_ledger`), classified into the configured buckets, surfaced non-current-milestone CRITICAL/HIGH as drift risks
 - [ ] Stage Graph parses cleanly — every required node present (per `pipeline.md` §IV), every node's `in_predicates` resolve, every `parallel_with` is mutual, every branch point has an `on-hard-stop` outgoing edge
 - [ ] If Phase 0 reveals SEED DRIFT: per `doctrines/chain-repair.md`, conductor verifies facts directly (MCP/file/git) + amends seed inline if 100% verifies; escalates only for theme/money-path/secrets changes — graph re-emitted from amended seed
-- [ ] Plan addresses every HIGH/CRITICAL finding from the INTRO-COMBO-WAVE as Wave 1 lanes (regression hotfixes, carry-forward dispositions). Silent absorption is a process violation.
+- [ ] Plan addresses every HIGH/CRITICAL finding from the INTRO-COMBO-WAVE as Wave 1 steps (regression hotfixes, carry-forward dispositions). Silent absorption is a process violation.
 
 ### §2 — BODY
 
@@ -223,7 +223,7 @@ The body IS the Stage Graph walk. The conductor is no longer composing dispatche
 **Conductor checklist (every walk-tick):**
 - [ ] PLAN-GATE node fired (@critic single dispatch). YELLOW → PLAN-REVISION node (engineer revises ONCE) → re-fire PLAN-GATE. RED → HARD-STOP.
 - [ ] Brief-Validity Checklist passed for every WAVE-IMPL node's coder briefs (in `flock.md` → @coder)
-- [ ] Each WAVE-IMPL node fires as a single Agent batch — zero file overlap across lanes; single primary-build-manifest writer (Cargo.toml / package.json / pyproject.toml / go.mod — whichever the project uses)
+- [ ] Each WAVE-IMPL node fires as a single Agent batch — zero file overlap across steps; single primary-build-manifest writer (Cargo.toml / package.json / pyproject.toml / go.mod — whichever the project uses)
 - [ ] WORKER-IO nodes fire in the SAME batch as WAVE-1-IMPL (graph encodes `parallel_with: [wave-1-impl]`) — non-competing
 - [ ] WAVE-GATE node (conductor inline): coders each commit in their worktrees → rebase all into sprint branch → **gate sequence** (sequential, NEVER parallel — see `doctrines/cargo-sequential-gates.md`): `{gates.format}` → `{gates.check}` → `{gates.lint}` → language-specific auto-fix if applicable (e.g., `cargo fix --allow-dirty && cargo clippy --fix --allow-dirty` for Rust; per the loaded language skill) → commit `fix(dev.N/wave-K): rebase + gate`. Worktrees deleted. Auto-clean target dir if `[gates].target_clean_threshold_gb` exceeded.
 - [ ] WAVE-N-AUDIT and WAVE-(N+1)-IMPL fire in the SAME batch (graph encodes `parallel_with` — Pattern B is structural, per `doctrines/pattern-b-overlap.md`)
@@ -236,15 +236,15 @@ The body IS the Stage Graph walk. The conductor is no longer composing dispatche
 
 `doctrines/subtract-dont-add.md` says every sprint MUST end net-negative. **That's a CONSTRAINT, not a JOB DESCRIPTION.** Don't mistake deletion for work. If seed deliverables are not met but a lot was deleted, close grade caps at C+.
 
-**Body-depth heuristic** (was the body worth the agent + token cost?):
+**Body-depth heuristic** (was the body worth the agent + token cost?). The unit of the plan is the **step** (≈ one `@coder` subagent); the planning bar is substantive output via narrow steps, NOT a "lanes per wave" count (`doctrines/primitive-axis-binding.md`):
 
-| T-shirt | Coder lanes (minimum) | Per-lane production | Body LOC floor (substantive) |
-|---------|-----------------------|---------------------|------------------------------|
-| M       | 4                     | ~80 LOC             | ~200 LOC (C+ ceiling below)  |
-| L       | 6                     | ~100 LOC            | ~400 LOC                     |
-| XL      | 6+ per wave           | multiple waves      | 1000+ LOC                    |
+| T-shirt | Coder steps (minimum, per wave) | Per-step production | Body LOC floor (substantive) |
+|---------|---------------------------------|---------------------|------------------------------|
+| M       | 4                               | ~80 LOC             | ~200 LOC (C+ ceiling below)  |
+| L       | 6                               | ~100 LOC            | ~400 LOC                     |
+| XL      | 6+                              | multiple waves      | 1000+ LOC                    |
 
-**More lanes is better.** A plan with 8 focused coders beats one with 4 broad ones — smaller scope = less drift from `[FILE-SCOPE]`, cleaner worktree rebases, and no single coder becoming a context bottleneck. Split mercilessly: if a lane touches > 6 files, decompose it. The only agent that is never parallelized is `@engineer` (Opus, once per sprint, plan author).
+**More (narrower) steps is better.** A wave of 8 focused coder steps beats one of 4 broad ones — smaller scope = less drift from `[FILE-SCOPE]`, cleaner worktree rebases, no single coder becoming a context bottleneck. Split mercilessly: if a step touches > 6 files, decompose it. The only agent never parallelized is `@engineer` (Opus, once per sprint, plan author). **Under `/shepherd:spawn`, parallelism is the post-plan lane projection** (total lanes, never per-wave) — `agents/engineer.md §Lane projection`.
 
 Deletion counts toward SUBTRACT but NOT toward this quota.
 
@@ -279,8 +279,8 @@ a worker dispatch or a hotfix subgraph.
 - **dev.0** — patch-grade setup + carryover + cleanup + at least one
   operator-visible feature or unblock. Real-work test applies; "setup
   sprint" is not a pass for low-deliverable work.
-- **dev.1 … dev.{last-1}** — patch-grade theme delivery. Multi-lane,
-  multi-wave, SUBTRACT delta, release-notes-eligible at close. Never
+- **dev.1 … dev.{last-1}** — patch-grade theme delivery. Multi-wave,
+  multi-step, SUBTRACT delta, release-notes-eligible at close. Never
   typo-and-docstring.
 - **dev.{last}** — wiring, polish, release-notes draft, closeout audit.
   **The release pipeline runs per `[release].driver`** — `conductor`
@@ -302,9 +302,9 @@ Each `{sprint_slug}.seed.md` is patch-grade and stands alone.
 
 Every coder brief MUST contain seven exact bracketed headers + four supporting lines. Full shape, Required-Skills Matrix, Brief-Validity Checklist: **`flock.md` → @coder**. Copy-paste templates: **`references/agent-briefs.md`**.
 
-The engineer's plan pre-populates `[CONTEXT-INVENTORY]` and `[DO-NOT-DUPLICATE]` for every lane; the conductor copies them verbatim into the dispatch.
+The engineer's plan pre-populates `[CONTEXT-INVENTORY]` and `[DO-NOT-DUPLICATE]` for every step; the conductor copies them verbatim into the dispatch.
 
-**Minimum lane counts:** M sprint → 4 parallel coders, L → 6, XL → 6 per wave. Plan with fewer lanes than the T-shirt minimum → reject back to engineer for decomposition. More lanes is always better — split until each coder owns ≤ 6 files.
+**Step decomposition:** decompose each wave into many narrow coder steps (M → 4+, L → 6+, XL → 6+ per wave) to the substantive LOC floor. A wave under-decomposed below the T-shirt bar → reject back to engineer. More (narrower) steps is always better — split until each coder owns ≤ 6 files. (Spawn-mode parallelism = the total-lane projection, never per-wave — `agents/engineer.md §Lane projection`.)
 
 `[skills.mandatory]` from `shepherd.toml` is enforced — `code-style` (or whatever the project mandates) appears in `[SKILLS]` of every coder brief.
 
@@ -350,7 +350,7 @@ The flock-level set lives in `flock.md` (13 items). Conductor-level lifters
 8. Missing `gh issue create` for new findings → file at the surface, not at close.
 9. Acceptance as prose → use greps + structural assertions.
 10. Tunnel vision on current milestone → Phase 0 enumerates ALL open issues (`[ledger].phase_0_full_ledger`).
-11. Too-few coder lanes → reject back to engineer.
+11. Under-decomposed wave (too few / too broad coder steps), or under-parallelized spawn lane projection → reject back to engineer.
 12. `cargo` inside a coder dispatch → worktrees share parent `target/` (see `pipeline.md` §XV-bis); conductor runs the gate at sprint root.
 13. Off-graph dispatch → `STAGE-GRAPH-VIOLATION` per `doctrines/stage-graph.md`.
 14. Skipping the dev.0 canonical-types refresh → drift compounds across patches (`doctrines/zero-duplicate-tolerance.md`).
@@ -417,10 +417,10 @@ The walk trace (optional, per `[stage_graph].walk_trace_enabled`) is the O(1) re
 |---------|---|--------|
 | `/shepherd:plant [scope]` | `agents/planter.md` (Opus required) | Author drift-resistant sprint seeds. Scope: nothing (next-sprint+future), `dev.N`, `dev.N..dev.M`, `arc`, or `next-version`. See `${CLAUDE_PLUGIN_ROOT}/commands/plant.md`. |
 | `/shepherd:start` | `agents/conductor.md` (SOLO mode) — model: sonnet | One complete sprint, then PAUSE. Backward-compatible with all prior versions; tier separation does NOT apply (conductor IS root in solo). See `${CLAUDE_PLUGIN_ROOT}/commands/start.md`. |
-| `/shepherd:spawn [sprint_slug] [--scope sprint\|patch\|minor\|version] [--parallel <N> \| --auto]` | `agents/shepherd.md` (root, v5.1.6+) | Main chat adopts root-shepherd; spawns teammate-conductor(s) per the plan's lane-per-conductor structure. `--scope` declares workload scale (default `sprint`). `--auto` is alias for `--scope patch`. `--parallel <N>` fans out N sibling teammates for sprint-level concurrency (`--scope >= patch` only). See `${CLAUDE_PLUGIN_ROOT}/commands/spawn.md`. **Operator-explicit invocation only — refuses from teammate sessions (nested spawn forbidden).** |
+| `/shepherd:spawn [sprint_slug] [--scope sprint\|patch\|minor\|version] [--parallel <N> \| --auto]` | `agents/shepherd.md` (root, v5.1.6+) | Main chat adopts root-shepherd; spawns one teammate-conductor **per lane** (the post-plan vertical projection of the `waves × steps` plan), via Agent Teams. `--scope` declares workload scale (default `sprint`). `--auto` is alias for `--scope patch`. `--parallel <N>` fans out N sibling teammates for sprint-level concurrency (`--scope >= patch` only). See `${CLAUDE_PLUGIN_ROOT}/commands/spawn.md`. **Operator-explicit invocation only — refuses from teammate sessions (nested spawn forbidden).** |
 | `/shepherd:cleanup` | Sonnet | Prune stale/crashed teammate entries from the canonical-state registry (closes #51). Operator-confirmed; never auto-prune live entries. |
 
-For `:start` and `:spawn`, sprint is inferred from current branch when no `sprint_slug` is given. For `:plant`, scope arg controls how many seeds to emit. For `:spawn`, `--scope` controls workload scale; `--parallel` controls sprint-level fanout; lane-per-conductor fanout within each sprint is implicit (driven by the plan).
+For `:start` and `:spawn`, sprint is inferred from current branch when no `sprint_slug` is given. For `:plant`, scope arg controls how many seeds to emit. For `:spawn`, `--scope` controls workload scale; `--parallel` controls sprint-level fanout; the per-lane fanout within each sprint is implicit (the engineer's post-plan lane projection of the gated plan — no flag controls it).
 
 > **Retired commands (v5.1.4):** `/shepherd:autorun` is replaced by `/shepherd:spawn --auto` (alias for `--scope patch` in v5.1.6+). `/shepherd:parallel` is replaced by `/shepherd:spawn --parallel <N>`. The command files at `commands/autorun.md` and `commands/parallel.md` are retained as thin delta notes for reference only.
 

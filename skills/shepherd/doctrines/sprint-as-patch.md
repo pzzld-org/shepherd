@@ -31,8 +31,12 @@ Seed authorship targets PATCH-GRADE scope per sprint:
   single ticket, not a one-file-fix. Examples: "Realtime data-plane hardening",
   "Bot lifecycle observability", "Schema consolidation across all tracking
   tables".
-- **Lane count target:** 6+ parallel lanes per WAVE is the floor (was 4 for L,
-  is 6+ now). Plan with fewer = under-scoped, reject back.
+- **Decomposition target:** patch-grade depth = each wave decomposed into many
+  narrow **steps** (to the substantive LOC floor) and, under `/shepherd:spawn`, a
+  substantial **total** lane count (the post-plan projection — never "per wave";
+  `doctrines/primitive-axis-binding.md`). A thin sprint (one wave, a couple of
+  broad steps) = under-scoped, reject back. The planter recommends; the engineer
+  decomposes.
 - **Deliverable density:** every sprint MUST ship operator-visible improvement;
   every sprint MUST have a SUBTRACT delta (deletion at parity with addition);
   every sprint MUST have at least one user-perceivable feature OR a structural
@@ -51,9 +55,11 @@ Seed authorship targets PATCH-GRADE scope per sprint:
 
 Plan authorship targets PATCH-GRADE scope per sprint:
 
-- **Body depth:** N phases is non-trivial; the §2 BODY is where the actual
-  patch ships. Minimum 4 parallel coder lanes per wave, multiple waves for
-  L+ sprints.
+- **Body depth:** N waves is non-trivial; the §2 BODY is where the actual
+  patch ships. Decompose each wave into many narrow coder **steps**; multiple
+  waves for L+ sprints (substantive LOC floor per `agents/engineer.md §Step
+  decomposition discipline`). Lanes are a post-plan spawn projection, not a
+  plan-body concept.
 - **Real-work justification per phase:** plan body MUST cite each phase's
   operator-visible outcome — "Lane A delivers X" not "Lane A refactors Y".
   Structural-only phases need an outsized justification (unblocks N
@@ -73,7 +79,8 @@ Plan authorship targets PATCH-GRADE scope per sprint:
 Sprint-open expectations:
 
 - **Body-depth heuristic** in SKILL.md §III is now BINDING, not aspirational:
-  M sprint → 4 lane minimum, L → 6, XL → 6+/wave with multiple waves.
+  decompose each wave to the T-shirt substantive LOC floor (many narrow steps);
+  spawn-mode **total** lane minimums per `agents/engineer.md §Lane projection`.
 - **PAUSE between sprints is meaningful** — each sprint close is a
   patch-equivalent waypoint where the operator may want to:
   - Release-tag intermediate progress
@@ -107,8 +114,9 @@ Plan-gate expectations:
 - **Under-scoped seed → RECONSIDER.** If the seed reads like "fix this one
   bug" or "add this one feature", critic verdict is RECONSIDER — escalate
   to engineer to expand the theme to patch-grade.
-- **Under-scoped plan → RECONSIDER.** Body with fewer than the T-shirt's
-  lane minimum, or body that doesn't ship operator-visible value, reject.
+- **Under-scoped plan → RECONSIDER.** A body under-decomposed below the
+  T-shirt's substantive step-depth (or, under spawn, an under-parallelized lane
+  projection), or a body that doesn't ship operator-visible value, reject.
 
 ## What does NOT change
 

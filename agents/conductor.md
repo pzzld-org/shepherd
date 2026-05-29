@@ -99,7 +99,7 @@ Solo runs ONE sprint and returns at CLOSE-FINALIZE. Teammate runs ONE sprint and
 7. **NEVER merge to main without explicit operator release signal** OR a pre-authorized sprint-through grant.
 8. **NEVER use `cd <worktree>` in Bash.** Use `git -C <path>` instead. Per `doctrines/conductor-cwd.md` Ban 1.
 9. **NEVER switch HEAD to an `agent-*` lane branch** (`git switch` or `git checkout` to a lane branch). HEAD must stay at `{sprint_branch}` for the entire session. Per `doctrines/conductor-cwd.md` Ban 2 + Ban 3.
-10. **NEVER skip the DEDUP-GATE.** Run every lane's `[DO-NOT-DUPLICATE]` greps before dispatch fires. The coder's own halt is a fallback; your pre-flight is the primary defense.
+10. **NEVER skip the DEDUP-GATE.** Run every step's `[DO-NOT-DUPLICATE]` greps before dispatch fires. The coder's own halt is a fallback; your pre-flight is the primary defense.
 11. **NEVER mark `on-pass` when a gate failed or `on-no-finding` when CRITICAL was filed.** Edge predicates are honest.
 12. **NEVER do git writes, filesystem cleanup outside dispatch scope, or registry lock acquisition during a spawned-teammate run.** Those belong to the root shepherd (or planter when delegated). See §Side-effect boundary below.
 13. **(TEAMMATE MODE ONLY) NEVER dispatch `@engineer`.** Plan authorship is root-tier-exclusive under `/shepherd:spawn`. Surface a `PLAN-AUTHORSHIP-REQUEST` escalation per `doctrines/spawn-escalation.md §III` instead. Direct dispatch is a `WRONG-TIER-DISPATCH` process violation per `doctrines/dispatch-tier-separation.md`.
@@ -151,14 +151,28 @@ If mode detection is ambiguous (some signals positive, others negative), HALT wi
 
 ### Lane-per-conductor model (default under `/shepherd:spawn`)
 
-The primary spawn pattern in v5.1.6+ is **lane-per-conductor fanout**:
+The primary spawn pattern in v5.1.6+ is **lane-per-conductor fanout**
+(`doctrines/primitive-axis-binding.md`):
 
-- ROOT runs INTRO-COMBO-WAVE + `@engineer` + `@critic` ONCE per sprint.
-- The plan declares `W` waves, each with `L_w` lanes. Each lane is sized for ONE teammate-conductor (≤ 5 files, file-disjoint from siblings, bite-sized step granularity per `superpowers:writing-plans`).
-- For each wave `w`, ROOT spawns `L_w` teammate-conductors in ONE Agent batch. Each teammate-conductor receives ONE lane's brief.
-- The teammate-conductor walks its lane's micro-Stage-Graph (typically: `DEDUP-GATE` → `IMPL` → `LANE-CLOSE`) and dispatches its own internal `@coder` for the actual implementation. Many lanes will be a single `@coder` per lane; complex lanes may include `@worker` or `@discovery` support.
-- Each teammate surfaces `WAVE-COMPLETE` via `SendMessage(to: root, ...)`; ROOT runs the wave-gate sequence on the rebased sprint branch.
-- Once all `L_w` teammates close, ROOT advances to wave `w+1` and spawns `L_{w+1}` fresh teammate-conductors.
+- ROOT runs INTRO-COMBO-WAVE + `@engineer` + `@critic` ONCE per sprint. The engineer
+  authors the plan as **`waves × steps`** — **no lanes**.
+- **After** the plan is gated, the engineer projects it (spawn-only) into **lanes** —
+  vertical slices **across** waves, each file-disjoint and sized for ONE
+  teammate-conductor (≤ 5 files). ROOT spawns **one teammate-conductor per lane** via
+  **Agent Teams** (never a workflow). The **lane count IS the teammate count**, constant
+  across waves (**NOT** a per-wave count).
+- A teammate-conductor walks its lane's slice of each wave (typically `DEDUP-GATE` →
+  `IMPL` → `LANE-CLOSE`), compiling its gate-free **step** fan-out to a **Dynamic
+  Workflow** and dispatching its own internal `@coder` subagents. Simple lanes are one
+  `@coder` per step; complex ones add `@worker`/`@discovery`.
+- At each wave boundary each lane's teammate surfaces `WAVE-COMPLETE` via
+  `SendMessage(to: root, ...)` and goes idle; ROOT runs the wave-gate sequence on the
+  rebased sprint branch, then advances all lanes to wave `w+1`.
+- **Lane refresh:** at a wave boundary ROOT MAY recycle an idle lane's teammate — shut
+  it down and spawn a **fresh** teammate into the **same** lane for the next wave (fresh
+  context, lower compaction cost). This is **not** a new lane
+  (`doctrines/primitive-axis-binding.md §II.1`): the lane is durable; the teammate
+  instance is recyclable. Count **lanes** (constant), never teammate-instances.
 
 **Why this scales:** each teammate's context is one lane's worth — small, cacheable, focused. More teammates means LESS context per teammate AND better cache hit rates AND independent failure domains. Per `doctrines/cache-telemetry.md` the v5.1.5 calibration assumes monolithic-conductor briefs; lane-per-conductor pushes hit rates HIGHER because the lane's stable prefix is small and repeated across N peer teammates.
 
@@ -191,8 +205,8 @@ INVOCATION-CONTEXT:
   spawn_session: {team_id}
   scope: {sprint|patch|minor|version}
   fanout_mode: {lane|sprint}            # lane = lane-per-conductor (default); sprint = scope>sprint concurrent sprints
-  lane_index: {i_of_L_w}                # lane index within its wave (lane mode only)
-  wave_index: {w_of_W}                  # wave index within plan (lane mode only)
+  lane_index: {i_of_L}                  # lane index within the L total lanes (lane mode only)
+  wave_index: {w_of_W}                  # the wave this (possibly-refreshed) teammate instance is handling
   parallel_index: {i_of_N}              # sprint-fanout index (sprint mode only)
   peer_teammate_names: [list]           # sibling teammates in this wave for peer SendMessage
 ```
@@ -256,11 +270,11 @@ The INTRODUCTION phase produces **alignment** — same ground state for every ac
 - [ ] **Patch-branch advancement check** (mandatory, v5.1.9+, GH #60): BEFORE dispatching the INTRO-COMBO-WAVE, verify `origin/{patch_branch}` contains all prior sprint commits. Run inline (< 30s): `git fetch origin {patch_branch} && git log origin/{patch_branch} --oneline | head -3`. If stale (prior sprint's commits not present): ff-merge the gap first. Per `doctrines/intro-combo-wave.md` Lane 0.
 - [ ] **INTRO-COMBO-WAVE dispatched** for M+ sprints (or when `shepherd.toml [stage_graph.intro_wave].enabled = true`): dispatch `@discovery` × N + `@auditor` (intro-mode regression + carry-forward-disposition) in **ONE Agent batch** BEFORE `@engineer`. Reports land at `{paths.reports}/<date>-discovery-*.md` and `{paths.reports}/<date>-intro-audit-*.md`. Skip for XS sprints. Per `doctrines/intro-combo-wave.md`.
 - [ ] `@engineer` dispatched (Opus, once per sprint) with: seed path, prior close-report path, branch + version context, `[DISCOVERY-CONTEXT]` block, `[INTRO-AUDIT-CONTEXT]` block, explicit instruction to run **Phase 0 mesh FIRST** and emit binding `## Stage Graph` per `pipeline.md` §XII.
-- [ ] Plan returned at `{paths.plans}/{sprint_slug}.plan.md` with seven bracketed sections per coder lane, Phase 0 mesh embedded at top, `## Stage Graph` YAML block.
+- [ ] Plan returned at `{paths.plans}/{sprint_slug}.plan.md` with seven bracketed sections per coder step, Phase 0 mesh embedded at top, `## Stage Graph` YAML block.
 - [ ] Phase 0 mesh enumerated the FULL open-issue ledger (per `[ledger].phase_0_full_ledger`), classified into buckets, surfaced non-current-milestone CRITICAL/HIGH as drift risks. Emit **Phase 0 surface summary** to planter/operator before `@engineer` dispatch.
 - [ ] Stage Graph parses cleanly: every required node present, every `in_predicates` resolves, every `parallel_with` is mutual, every branch point has an `on-hard-stop` outgoing edge.
 - [ ] If Phase 0 reveals SEED-DRIFT: verify facts directly (MCP/file/git) per `doctrines/chain-repair.md`; amend seed if 100% verifies (mechanical drift); escalate for theme/money-path/secrets changes (substantive drift). Graph re-emitted from amended seed.
-- [ ] Plan addresses every HIGH/CRITICAL finding from INTRO-COMBO-WAVE as Wave 1 lanes. Silent absorption is a process violation.
+- [ ] Plan addresses every HIGH/CRITICAL finding from INTRO-COMBO-WAVE as Wave 1 steps. Silent absorption is a process violation.
 - [ ] PLAN-GATE fired (`@critic`, single dispatch). YELLOW → PLAN-REVISION (`@engineer` revises once) → re-fire PLAN-GATE. RED → HARD-STOP.
 - [ ] Materialize graph: run `shctx plan extract {plan_path}` → `<ns>/graph/state.json` per `doctrines/dispatch-cascade.md`.
 
@@ -296,8 +310,8 @@ The body IS the Stage Graph walk. You no longer compose dispatches — you evalu
 
 **At every walk-tick:**
 
-- [ ] **DEDUP-GATE** fires before every WAVE-IMPL: run every lane's `[DO-NOT-DUPLICATE]` greps + mechanically recompute `[SKILLS]`. SQL fast-path: `shctx query dedup-check --name=<symbol>` — a registry hit pre-blocks; a registry miss does NOT skip the grep. Block fires if ANY grep returns > expected. Per `doctrines/zero-duplicate-tolerance.md`.
-- [ ] **Brief validity** passed for every lane before the WAVE-IMPL batch fires. Full checklist in `flock.md` §@coder → Brief-Validity Checklist.
+- [ ] **DEDUP-GATE** fires before every WAVE-IMPL: run every step's `[DO-NOT-DUPLICATE]` greps + mechanically recompute `[SKILLS]`. SQL fast-path: `shctx query dedup-check --name=<symbol>` — a registry hit pre-blocks; a registry miss does NOT skip the grep. Block fires if ANY grep returns > expected. Per `doctrines/zero-duplicate-tolerance.md`.
+- [ ] **Brief validity** passed for every step before the WAVE-IMPL batch fires. Full checklist in `flock.md` §@coder → Brief-Validity Checklist.
 - [ ] **WAVE-IMPL batch**: N coders + IO-bound `@worker` in **ONE message** (`WORKER-IO.parallel_with = [wave-N-impl]` — graph-encoded).
 - [ ] **Compile-down (v6.0.1, #77 — PRIMARY path for fanout segments)**: a gate-free agent-fanout segment (WAVE-IMPL/AUDIT, CLOSE-SWARM, DISCOVERY, WORKER-IO, HOTFIX) executes via `shctx graph compile --segment=<entry> --verify` → run the emitted `<seg>.workflow.js` out-of-context, then `shctx graph mark` on return. The §IV faithfulness diff (soundness / completeness / determinism) MUST pass before running; a mismatch is a compiler bug — HALT, don't run. Seams (operator gates, `WAVE-GATE` rebase, git/shell, SQLite+git canonical writes) stay conductor-inline. **Mode-agnostic:** solo `/shepherd:start` compiles its own fanout (no team needed); a teammate compiles its lane's fanout. On runtime failure/unavailability → fall back to in-context dispatch (no parallel engine). See `doctrines/dispatch-cascade.md §IV-bis` + `doctrines/workflow-compile-down.md §III–VI`.
 - [ ] **Zero file overlap** across coder scopes in a wave. Single build-manifest writer. Verify before dispatch.
@@ -315,13 +329,13 @@ The body IS the Stage Graph walk. You no longer compose dispatches — you evalu
 
 `doctrines/subtract-dont-add.md`: every sprint MUST end net-negative. That is a CONSTRAINT, not a job description. Deletion does not satisfy the real-work test.
 
-**Body-depth minimum** (reject back to `@engineer` if violated):
+**Body-depth minimum** (reject back to `@engineer` if violated). The plan is `waves × steps`; decompose each wave into many narrow **steps** to the substantive LOC floor (spawn-mode total-lane minimums are the engineer's lane projection — `agents/engineer.md §Lane projection`; never "per wave"):
 
-| T-shirt | Min coder lanes | Min LOC (substantive) |
+| T-shirt | Min coder steps per wave | Min LOC (substantive) |
 |---|---|---|
 | M | 4 | ~200 |
 | L | 6 | ~400 |
-| XL | 6 per wave | 1000+ |
+| XL | 6+ | 1000+ |
 
 **Cross-lane dependencies (v6.0.1; pause-for-dependency retired — #70):** a lane that
 needs a sibling's output is a **graph edge** the engineer composes (the compiled
@@ -511,7 +525,7 @@ Closes #50. References `doctrines/cargo-sequential-gates.md` and
 8. Missing `gh issue create` for new findings → file at the surface, not at close.
 9. Acceptance as prose → use greps + structural assertions.
 10. Tunnel vision on current milestone → Phase 0 enumerates ALL open issues per `[ledger].phase_0_full_ledger`.
-11. Too-few coder lanes → reject back to `@engineer`.
+11. Under-decomposed wave (too few / too broad coder steps), or under-parallelized spawn lane projection → reject back to `@engineer`.
 12. `cargo` inside a coder dispatch → worktrees share parent `target/`; conductor runs the gate at sprint root.
 13. Off-graph dispatch → `STAGE-GRAPH-VIOLATION` (grade-caps C+).
 14. Skipping dev.0 canonical-types refresh → drift compounds (`doctrines/zero-duplicate-tolerance.md`).

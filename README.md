@@ -1,4 +1,4 @@
-# shepherd — v6.0.1
+# shepherd — v6.0.2
 
 Sprint-by-sprint version-cycle conductor. A production-grade orchestration framework that turns a single Claude Code session into a disciplined release engineer driving a closed six-agent flock (engineer, critic, coder, auditor, worker, discovery) through repeatable sprint pipelines.
 
@@ -13,6 +13,31 @@ Sprint-by-sprint version-cycle conductor. A production-grade orchestration frame
 │                       --auto              alias: --scope patch       │
 └──────────────────────────────────────────────────────────────────────┘
 ```
+
+## v6.0.2 — Primitive↔axis binding + ontology recovery (Wave 0)
+
+v6.0.1's slimming + the introduction of "lanes" blurred shepherd's core ontology
+and broke its mapping of Claude-native primitives to their roles. v6.0.2 restores
+the truth as **canonical doctrine** —
+[`doctrines/primitive-axis-binding.md`](skills/shepherd/doctrines/primitive-axis-binding.md):
+
+| Axis | Native primitive | Unit |
+|---|---|---|
+| **Planning** (engineer-authored, no parallelism) | — | **waves × steps** |
+| **Teammate-state / parallelization** (lanes) | **Agent Teams** | one teammate-conductor per **lane** |
+| **Execution** (gate-free step fan-out) | **Dynamic Workflows** (compiled) | the script over **subagents** |
+| **Worker** | **subagents** | the **steps** themselves |
+
+- A plan is **N sequential waves; each wave is X steps; each step ≈ one subagent.**
+  Gates run **between** waves. The engineer authors `waves × steps` with **no lane
+  concept**.
+- A **lane** is a cohesive **vertical slice across waves**, formed **only in spawn
+  mode, after the plan**, owned by one teammate-conductor. Lanes never nest inside a
+  wave. A lane's teammate may be **refreshed** between waves (fresh context) — that is
+  not a new lane.
+- **Spawning teammates = Agent Teams, never a workflow.** A teammate's gate-free
+  fan-out = **compile to a Dynamic Workflow**, never hand-rolled dispatch. Never invert
+  (the v6.0.1 field regression, [#89](https://github.com/FL03/shepherd/issues/89)).
 
 ## v6.0.0 — Dispatch enforcement + planter authority excision
 
@@ -53,7 +78,7 @@ v5.1.6 introduces a **three-tier dispatch hierarchy** under `/shepherd:spawn`:
 - **Tier 2 (meta)** — `agents/conductor.md` (downgraded to **model: sonnet** in v5.1.6). Dual-mode: **solo mode** under `/shepherd:start` retains full dispatch + writes (backward-compatible); **teammate mode** under `/shepherd:spawn` is restricted (no engineer/critic dispatch, no artifact writes — returns structured payloads via `SendMessage`).
 - **Tier 1 (flock)** — closed at six (coder, auditor, worker, discovery, engineer, critic). Engineer + critic become root-tier-exclusive under spawn.
 
-The new spawn pattern is **lane-per-conductor fanout**: the engineer designs the plan as W waves × L_w lanes per wave; root spawns L_w teammate-conductors per wave (one per lane). Many small focused teammates beat fewer broad ones — cache hit rates climb when each teammate's stable prefix is small.
+The spawn pattern is **lane-per-conductor fanout** (clarified in v6.0.2): the engineer authors the plan as `waves × steps` (no lanes); then, **post-plan and spawn-only**, the plan is sliced **vertically across waves** into **lanes** (one teammate-conductor each, via Agent Teams). Root spawns one teammate-conductor **per lane** — the lane count, constant across waves (a lane's teammate may be refreshed per wave for fresh context; that is not a new lane). Many small focused lanes beat fewer broad ones — cache hit rates climb when each teammate's stable prefix is small. See [`doctrines/primitive-axis-binding.md`](skills/shepherd/doctrines/primitive-axis-binding.md).
 
 `--scope sprint|patch|minor|version` (default `sprint`) scales workload per the 4-tier roadmap. `--scope patch` replaces the retired `--auto` (preserved as alias). `minor` and `version` are experimental — require operator double-confirmation.
 

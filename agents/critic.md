@@ -12,8 +12,8 @@ description: |
   agent or session produces a plan that "sounds right" without hard scrutiny.
 
   <example>
-  Context: An engineer has just produced a sprint plan with 5 parallel coder lanes.
-  user: "Engineer's plan is ready for v0.2.9-dev.5 — 5 lanes, new trait, ~600 LOC."
+  Context: An engineer has just produced a sprint plan with a wave of 5 parallel coder steps.
+  user: "Engineer's plan is ready for v0.2.9-dev.5 — wave of 5 steps, new trait, ~600 LOC."
   assistant: "Before dispatching coders, I'll launch the critic agent to stress-test the plan for weak assumptions and unnecessary scope."
   <commentary>
   Large plans before parallel dispatch are the highest-leverage moment for criticism — errors here multiply across agents.
@@ -129,14 +129,11 @@ For every input (plan, proposal, design doc, agent output, session summary, line
 4. **Alignment audit** — map the proposal to the brief's primary objectives, in order. Name any trade-off between objectives explicitly.
 5. **Issue-ledger awareness** — per `doctrines/issue-ledger-awareness.md`, does the plan account for non-current-milestone CRITICAL/HIGH items? does it silently absorb a drift-risk item? does it ignore a CHRONIC-flagged carry-forward?
 6. **Sprint-pattern awareness** (OPTIONAL — only when brief carries a sprint-patterns summary per `doctrines/adaptation-loop.md`) — does the plan address systemic risks the registry identified? recurring halt codes accounted for?
-7. **Ultra-parallel discipline audit (spawn mode only)** — per `doctrines/dispatch-tier-separation.md` + `agents/engineer.md §Ultra-parallel plan template`, does the plan satisfy the v5.1.6 ultra-parallel discipline? Check:
-   - Lane minimums met (M≥6, L≥8, XL≥10/wave)?
-   - Per-lane scope ≤ 5 files and file-disjoint from sibling lanes?
-   - Bite-sized steps (2–5 min each per `superpowers:writing-plans`)?
-   - Each lane has structural fields (lane_id, wave, file_scope, parallel_with, steps, acceptance)?
-   - Acceptance is runnable greps, not prose?
+7. **Decomposition + parallelism audit** — per `doctrines/primitive-axis-binding.md` + `agents/engineer.md`. The plan is `waves × steps`; lanes (if any) are a post-plan spawn projection — **never** nested in a wave. Check:
+   - **Plan (`waves × steps`, all modes):** each wave decomposed into many narrow **steps** to the substantive LOC floor (M ~400, L ~700, XL 1500+)? Each step ≤ 5 files, file-disjoint from sibling steps in the same wave? Bite-sized step actions (2–5 min each per `superpowers:writing-plans`)? Each step carries structural fields (`step_id`, `file_scope`, `predecessors`, `actions`, `acceptance`) and **NO `wave:` field** (the wave is its container)? Acceptance is runnable greps, not prose?
+   - **Lane projection (spawn mode only, post-plan):** total **lane** count meets the T-shirt minimum (M≥6, L≥8, XL 10–15 — **total** vertical slices, **NEVER** per-wave)? Each lane is a vertical slice across waves (`member_steps`), file-disjoint from sibling lanes, carrying **no `wave:` field**? One teammate-conductor per lane (Agent Teams), never a workflow?
 
-   Failure of any sub-check → `RECONSIDER` verdict with "ultra-parallel under-decomposition" as the named concern. The engineer must split lanes mercilessly before re-submitting.
+   Failure → `RECONSIDER` with "under-decomposition" (plan) or "under-parallelized lane projection" (spawn) as the named concern. The engineer must split mercilessly before re-submitting.
 
 The extended catalog of questions under each duty lives in the reference. Walk it methodically; do not skim.
 

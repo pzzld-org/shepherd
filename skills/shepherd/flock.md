@@ -87,7 +87,7 @@ This saves ~150–650 lines of inline body per dispatch (GH #20). For a 9-coder 
 
 **Model:** Sonnet · **System prompt:** `${CLAUDE_PLUGIN_ROOT}/agents/coder.md`
 
-**Dispatch mode:** Parallel waves, one coder per non-overlapping file/package scope.
+**Dispatch mode:** one `@coder` subagent per **step** (a step ≈ one coder's non-overlapping file scope — `doctrines/primitive-axis-binding.md §II`). A wave's gate-free coder steps fan out concurrently.
 
 **Trigger:** any implementation task in the sprint plan; §2 body of the sprint. Never dispatch for planning, architecture, or research.
 
@@ -98,7 +98,7 @@ This saves ~150–650 lines of inline body per dispatch (GH #20). For a 9-coder 
 
 **Parallel dispatch rule (binding):** zero-overlapping coders MUST be dispatched in the **same message** (single Agent batch). Sequential dispatch of parallel-safe coders is a process violation.
 
-**Minimum lane count by sprint T-shirt:** M → 3 parallel coders, L → 4, XL → 4 per wave (multiple waves). Plan with fewer lanes than the minimum → reject back to @engineer.
+**Decomposition discipline:** decompose each wave into many narrow `@coder` **steps** (file-disjoint), to the substantive LOC floor by T-shirt in `agents/engineer.md §Step decomposition discipline`. A wave with too few/too-broad steps → reject back to @engineer. (Parallelism under `/shepherd:spawn` is the **lane** projection — total lanes, never per-wave — per `agents/engineer.md §Lane projection`; lanes are a post-plan concept, `doctrines/primitive-axis-binding.md`.)
 
 **Meaningful-progress bar:** each coder modifies/creates ≥ 50–100 LOC of production code (not boilerplate). < 30 LOC = merge with adjacent work. > 8 files = split into sub-coders.
 
@@ -366,7 +366,7 @@ Full contract + use-case catalog + cross-sprint reuse rules: `doctrines/discover
 | **Flock agents ONLY — `subagent_type` MANDATORY (v6.0.0)** | Set `subagent_type: "shepherd:<role>"`. Plugin registry loads agent body. Missing → `DISPATCH-MISSING-SUBAGENT-TYPE` halt; never silently defaults to general-purpose. See `doctrines/dispatch-tier-separation.md §IV-bis`. |
 | Parallel coders require zero file overlap | Verify before dispatch; single build-manifest writer at a time |
 | Parallel dispatch rule | Zero-overlap coders MUST be in the same message — sequential dispatch is a process violation |
-| Minimum lanes: M=3, L=4, XL=4/wave | Plan with fewer lanes → reject back to @engineer |
+| Decompose each wave into many narrow steps (LOC floor per `engineer.md`); spawn-mode total-lane minimums per `engineer.md §Lane projection` | Under-decomposed wave / under-parallelized lane projection → reject back to @engineer |
 | @critic before every non-XS dispatch | No exceptions for money-path, schema, or arch changes |
 | @auditor always a swarm by concern | 3–5 agents minimum; split by concern, never by file |
 | @auditor overlaps with Wave 2 coders | Pattern B — same message batch (`doctrines/pattern-b-overlap.md`) |
@@ -408,7 +408,7 @@ Full contract + use-case catalog + cross-sprint reuse rules: `doctrines/discover
 6. @engineer dispatched for coder-scope tasks → @engineer is plans only
 7. @critic skipped for M+ scope → no exceptions for "obvious" plans
 8. Workers dispatched after Wave 1 → IO-bound, batch with Wave 1 START (graph encodes `parallel_with: [wave-1-impl]`)
-9. Silent plan rejection → if plan has too few lanes, explicitly reject to engineer
+9. Silent plan rejection → if a wave is under-decomposed (too few/too-broad steps) or a spawn lane projection is under-parallelized, explicitly reject to engineer
 10. Missing `code-style` on coder briefs → mandatory always
 11. Soft `[CONTEXT-INVENTORY]` → engineer must fully populate inline; conductor cross-checks against `{paths.ctx}/canonical-types.md`
 12. **Skipping the anti-duplication grep** → THE ZERO-TOLERANCE ANTI-PATTERN. Conductor runs every `[DO-NOT-DUPLICATE]` grep BEFORE dispatch (DEDUP-GATE node). Coder-side self-halt is a fallback, not the primary defense.

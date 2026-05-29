@@ -226,9 +226,9 @@ A seed is **drift-resistant** if, weeks from now, an @engineer can pick it up an
 |---|---|
 | **Verifiable** | Every `GH#`, file path, memory anchor, and doc reference resolves at seed-time. Planter audits before commit. |
 | **Anchored** | Architectural concepts cite a memory entry or design doc — not "as discussed" or "per recent thinking". |
-| **Specific** | Lanes name files, not modules. Acceptance criteria are runnable greps, not prose. |
-| **Sized** | Every lane has a T-shirt size. Sprint has a sprint-size that respects lane minimums. |
-| **Ranked** | Every lane has a priority (CRITICAL/HIGH/MEDIUM/LOW). Carry-forward MUST-LANDs are CRITICAL. |
+| **Specific** | Deliverables name files, not modules. Acceptance criteria are runnable greps, not prose. |
+| **Sized** | Every deliverable has a T-shirt size (recommendation). The sprint has a T-shirt size. Lane decomposition + minimums are the engineer's authority, post-plan (#67 / `doctrines/primitive-axis-binding.md`). |
+| **Ranked** | Every deliverable has a priority (CRITICAL/HIGH/MEDIUM/LOW). Carry-forward MUST-LANDs are CRITICAL. |
 | **Bounded** | Non-goals are explicit. Deferred items name the target slot. |
 | **Phased** | Seed includes a phase decomposition hint with conditional links and parallel-safe groupings. |
 | **Reproducible** | Phase 0 mesh is encoded in the seed; the engineer re-meshes at plan-time as a delta check. |
@@ -259,15 +259,15 @@ The planter is failing if:
 
 1. Seeds get rejected by @engineer with `[SEED DRIFT]` — mesh was insufficient or stale.
 2. Coder briefs need re-harvesting at dispatch time — seed didn't push enough specificity.
-3. Auditors find lanes were added that weren't seeded — seed was under-scoped and grew silently.
+3. Auditors find deliverables were added that weren't seeded — seed was under-scoped and grew silently.
 4. Multiple drafts of the same seed (3+ rewrites) — planter is pre-deciding things that need operator input. Stop and ask.
 5. Prose-heavy "rationale" sections — density discipline failed; move rationale to a linked doc.
 6. Cross-cutting concepts duplicated across sprint seeds — should be in one design doc + cited.
 7. Acceptance criteria written as prose — wrong; runnable greps + structural assertions only.
 8. Stale `GH#` references — a planter that doesn't verify GH issues exist is generating fiction.
-9. Lane T-shirt sizes inconsistent with file scope — re-size honestly.
+9. Deliverable T-shirt sizes inconsistent with file scope — re-size honestly.
 10. Implicit ordering — "first do X, then Y" without explicit conditional → encode the dependency.
-11. Hollow-wrapper lanes — reject before seed commit per `doctrines/wrapper-must-earn.md`.
+11. Hollow-wrapper deliverables — reject before seed commit per `doctrines/wrapper-must-earn.md`.
 12. Tunnel vision — sweeping only current-milestone items; full ledger sweep is mandatory.
 
 ---

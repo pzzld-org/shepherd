@@ -57,6 +57,27 @@ PARALLEL META BRANCH (not a tier — sibling to conductor at meta level):
 
 ---
 
+## I-bis. Tier ↔ ontology unit ↔ primitive (v6.0.2, #88 / #89)
+
+The three tiers map **one-to-one** onto shepherd's planning ontology and onto the
+Claude-native primitives. This is the ontological half of the binding; the canonical
+table is `doctrines/primitive-axis-binding.md §I, §IV`.
+
+| Ontology unit | Tier | Native primitive |
+|---|---|---|
+| **step** (a unit of work within a wave; a plan is N waves × X steps) | Tier 1 (flock) | **subagent** (`subagent_type: "shepherd:<role>"`) |
+| **lane** (a vertical slice ACROSS waves; spawn-only, post-plan) | Tier 2 (teammate-conductor) | **Agent Teams** teammate |
+| **wave** (a sequential gated stage) | — (seam, not a tier) | conductor-inline gate |
+
+Consequences (enforced by §IV-bis): a **step** is a subagent (`team_name` UNSET); a
+**lane** is a teammate-conductor (`team_name` SET, `subagent_type: shepherd:conductor`);
+spawning a lane uses **Agent Teams, never a Dynamic Workflow**, and a lane's gate-free
+step fan-out **compiles to a Dynamic Workflow, never hand-rolled dispatch**
+(`primitive-axis-binding.md §III`). The engineer authors `waves × steps` with **no lane
+concept**; lanes are the post-plan spawn projection, and **never nest inside a wave**.
+
+---
+
 ## II. Dispatch matrix
 
 | From → To | `@engineer` | `@critic` | `@coder` | `@auditor` | `@worker` | `@discovery` | Another teammate |
@@ -322,7 +343,9 @@ FL03/axiom.
 2. **Teammate context pollution from artifact writes.** Teammate-conductors
    that materialized close reports + handoffs in-session accumulated context
    that contaminated their subsequent wave dispatches. The fresh-context-
-   per-wave guarantee of `--auto` was being eroded.
+   per-wave property (now realized via **lane refresh** — recycling an idle
+   lane's teammate at a wave boundary, `primitive-axis-binding.md §II.1`) was
+   being eroded.
 
 Tier separation fixes both. Engineer + critic happen ONCE per sprint at root.
 Teammate context stays narrow (own wave only). Root absorbs the artifact-
@@ -359,6 +382,7 @@ unaffected. Tier separation activates only under `/shepherd:spawn`.
 
 ## VIII. See also
 
+- `doctrines/primitive-axis-binding.md` — canonical axis ↔ primitive ↔ unit binding; §I-bis above is its tier-mapping projection (v6.0.2, #88 / #89)
 - `doctrines/root-shepherd-orchestration.md` — root-tier responsibilities + modes
 - `doctrines/scope-scale-workload.md` — `--scope` flag composition with tiers
 - `doctrines/spawn-escalation.md` — escalation channel mechanics

@@ -49,9 +49,9 @@ Every node in the graph is one of these types. The type determines the dispatch 
 | `CHAIN-REPAIR` | Conductor inline (verify) → Edit (amend seed) → re-fire `MESH` | Conductor | amended seed (or escalation) |
 | `PLAN-GATE` | Single `@critic` | @critic | verdict ∈ {GREEN, YELLOW, RED} |
 | `PLAN-REVISION` | Single `@engineer` | @engineer | revised plan (max once before pass-2) |
-| `DEDUP-GATE` | Conductor inline (run every lane's `[DO-NOT-DUPLICATE]` greps + `[SKILLS]` mechanical-recompute) | Conductor | dispatch-allowed boolean + amended briefs (per `doctrines/zero-duplicate-tolerance.md`) |
-| `GATES-DISCOVERY` | Conductor inline (run every configured gate verbosely; tee to discovery report) | Conductor | full latent error inventory (per `doctrines/gates-restoration.md` — fires before any `WAVE-IMPL` whose mission is "restore the gates", typically Lane 0 / Wave 0) |
-| `WAVE-IMPL` | Parallel batch of N `@coder` (one per lane) + `@worker` IO-bound batch in the SAME message | @coder + @worker | committed worktrees |
+| `DEDUP-GATE` | Conductor inline (run every step's `[DO-NOT-DUPLICATE]` greps + `[SKILLS]` mechanical-recompute) | Conductor | dispatch-allowed boolean + amended briefs (per `doctrines/zero-duplicate-tolerance.md`) |
+| `GATES-DISCOVERY` | Conductor inline (run every configured gate verbosely; tee to discovery report) | Conductor | full latent error inventory (per `doctrines/gates-restoration.md` — fires before any `WAVE-IMPL` whose mission is "restore the gates", typically Wave 0) |
+| `WAVE-IMPL` | Parallel batch of N `@coder` (one per step) + `@worker` IO-bound batch in the SAME message | @coder + @worker | committed worktrees |
 | `WAVE-GATE` | Conductor inline (rebase + four-step gate) | Conductor | gate-pass boolean + rebased commit |
 | `LANE-CLOSE` | Conductor inline (`shctx close-lane <lane-id>`) — fires after each `WAVE-GATE` per lane | Conductor | carry-forward + dedup ledger auto-resolved (per v5.0.3 §2.7) |
 | `CANONICAL-TYPES-REFRESH` | Single `@worker` (bounded; non-competing) — fires at every dev.0 | @worker | refreshed `{paths.ctx}/canonical-types.md` |
@@ -86,9 +86,9 @@ cluster analysis:
    --keep-going > .shepherd/runs/w{N}-gate.json 2>&1` for tools that support it,
    OR `{gates.lint} 2>&1 | tee .shepherd/runs/w{N}-gate.txt`).
 2. Parse errors and cluster by **file-disjoint scope**: each cluster becomes one
-   parallel HF coder lane.
+   parallel HF coder step.
 3. Dispatch all clusters in ONE Agent batch (same Wave-style parallel safety
-   rules as WAVE-IMPL — zero file overlap per lane).
+   rules as WAVE-IMPL — zero file overlap per step).
 4. After all HF coders return, re-run the gate ONCE. If still failing, escalate
    (cap at 3 HOTFIX iterations per gate).
 
@@ -98,18 +98,18 @@ The Stage Graph YAML for a `HOTFIX-DYNAMIC` node:
   type: HOTFIX-DYNAMIC
   in_predicates: [{ predecessor: wave-1-gate, edge: on-fail }]
   cardinality: "1..cluster_count"   # auto-derived at walk-time
-  per_instance_brief: hotfix-coder-template  # brief template, not per-lane
+  per_instance_brief: hotfix-coder-template  # brief template, not per-step
   out_edges:
     - { label: on-coder-complete, target: wave-1-gate-rerun }
     - { label: on-hard-stop, target: hard-stop }    # > 3 iterations
 ```
 
 This encodes HF-cascade parallelism structurally rather than requiring the
-engineer to pre-declare N specific HF lanes (which they cannot know at plan time).
+engineer to pre-declare N specific HF steps (which they cannot know at plan time).
 
 The plan section §"Stage Graph" enumerates every node. The conductor parses it at sprint open and walks it.
 
-**SQL fast-path (v5.0.0+).** Before running per-lane greps, the conductor runs `shctx query dedup-check --name=<lane.new_symbol>` for each lane. If the registry returns ≥1 row, BLOCK with the standard recommendation block (citing the DB row's `file_path:line`). The grep remains the contract — registry rows are derived and may be stale; a registry miss does NOT skip the grep, but a registry hit pre-blocks dispatch and saves the grep step.
+**SQL fast-path (v5.0.0+).** Before running per-step greps, the conductor runs `shctx query dedup-check --name=<step.new_symbol>` for each step. If the registry returns ≥1 row, BLOCK with the standard recommendation block (citing the DB row's `file_path:line`). The grep remains the contract — registry rows are derived and may be stale; a registry miss does NOT skip the grep, but a registry hit pre-blocks dispatch and saves the grep step.
 
 ---
 
@@ -479,7 +479,7 @@ nodes:
     in_predicates: [{ predecessor: dedup-gate-w1, edge: on-dedup-clear }]
     parallel_with: [worker-io]
     agents:
-      - { role: coder, count: 4, briefs: [lane-A, lane-B, lane-C, lane-D] }
+      - { role: coder, count: 4, briefs: [step-A, step-B, step-C, step-D] }
     out_edges:
       - { label: on-coder-complete, target: wave-1-gate }
 
@@ -532,7 +532,7 @@ The YAML block is parseable. Conductor reads it once at sprint open and walks de
 
 The `completeness` auditor verifies graph discipline at close:
 
-1. **Off-graph dispatches** — a coder commit whose lane id doesn't match any `WAVE-IMPL` node — process violation.
+1. **Off-graph dispatches** — a coder commit whose step id doesn't match any `WAVE-IMPL` node — process violation.
 2. **Skipped Pattern B** — `WAVE-N-AUDIT` fired strictly before `WAVE-(N+1)-IMPL` (not in same batch) — process violation.
 3. **Missing HARD-STOP edges** — every branch point has an `on-hard-stop` outgoing edge — graph-validity check.
 4. **Implicit hot-fix loops** — a HOTFIX subgraph that loops > 3 times without operator surface — process violation.

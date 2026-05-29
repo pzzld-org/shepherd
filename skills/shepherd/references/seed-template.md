@@ -201,11 +201,13 @@ When a seed lane says "file at Phase 0", the engineer's Phase 0 mesh runs `mcp__
 - Doctrines invoked: <list>
 ```
 
-### 7. Wave composition (NON-BINDING recommendation — engineer composes lanes)
+### 7. Wave composition (NON-BINDING recommendation — engineer composes `waves × steps`)
 
 The planter MAY sketch a wave shape so the engineer doesn't invent
 structure from scratch, but this is a recommendation only. The engineer's
-`## Stage Graph` in the plan is the binding wave + lane composition.
+`## Stage Graph` in the plan is the binding **`waves × steps`** composition
+(lanes, if any, are the engineer's post-plan spawn projection —
+`doctrines/primitive-axis-binding.md`).
 
 ```markdown
 | Wave | Deliverables grouped (planter recommendation) | Depends on |
@@ -217,11 +219,12 @@ structure from scratch, but this is a recommendation only. The engineer's
 
 The engineer is free to re-group, split, or merge waves based on Phase 0
 mesh findings, file-disjointness analysis, and per-deliverable T-shirt
-sizing. Per `doctrines/sprint-as-patch.md` minimums for ultra-parallel
-plans: M sprint ≥ 6 coder lanes per wave (ideally 8+); L sprint ≥ 8
-(ideally 10+); XL ≥ 10 per wave (ideally 12-15+). Per-lane scope ≤ 5
-files; split mercilessly if exceeded. These are engineer-side minimums,
-not planter prescription.
+sizing. Per `agents/engineer.md`: decompose each wave into many narrow
+**steps** (substantive LOC floor by T-shirt); and under `/shepherd:spawn`,
+the engineer's post-plan **lane projection** meets the **total** lane
+minimum (M ≥ 6, L ≥ 8, XL 10–15 — total vertical slices, **never** per-wave).
+Per-step / per-lane scope ≤ 5 files; split mercilessly if exceeded. These are
+engineer-side, not planter prescription.
 
 ### 7-bis. Stage decomposition hint (NON-BINDING — engineer finalizes)
 
@@ -251,7 +254,7 @@ The engineer specializes this into the binding YAML graph at `## Stage Graph` of
 ```markdown
 | GH# | Item | Severity | First seen sprint | Patches crossed | Disposition this sprint |
 |---|---|---|---|---|---|
-| #NNN | <title> | CRITICAL | <prior sprint> | N | LAND in Lane K | DEFER to dev.{M} | DROP (operator-marked) |
+| #NNN | <title> | CRITICAL | <prior sprint> | N | LAND (Wave K) | DEFER to dev.{M} | DROP (operator-marked) |
 ```
 
 Items crossing `[ledger.chronic_threshold_patches]` boundaries are flagged CHRONIC.

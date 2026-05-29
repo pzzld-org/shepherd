@@ -4,6 +4,83 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v6.0.2 — 2026-05-29
+
+### Groove-recovery patch — Wave 0: define the truth (ontology + primitive↔axis binding)
+
+v6.0.1's slimming + the introduction of "lanes" blurred shepherd's core ontology and
+broke its mapping of Claude-native primitives to their roles. In a live axiom session the
+root spawned the conductor wave via **Dynamic Workflows** instead of **Agent Teams**, and
+the teammates then failed to compile their step fan-out into workflows — each native
+primitive used for the OTHER one's job (#89). Root cause: shepherd never pinned
+primitive↔axis, and Dynamic Workflows is a ~1-day-old research-preview feature for which
+the model has **no training prior**, so shepherd's (ambiguous) doctrines were its only
+teacher. v6.0.2 is a four-wave, gated groove-recovery patch. **This entry covers Wave 0
+(doctrine only) — the foundation that gates the mechanism (Wave 1), substrate (Wave 2),
+and slim/validate (Wave 3) waves that follow.**
+
+**A — canonical primitive↔axis binding (#89, #88).** New doctrine
+`doctrines/primitive-axis-binding.md` pins every axis to one primitive and one unit:
+planning → none → `waves × steps`; teammate-state/parallelization → **Agent Teams** →
+one teammate-conductor per **lane**; execution → **Dynamic Workflows** → the compiled
+script over **subagents**; worker → **subagents** → the **steps**. Spawning teammates =
+Agent Teams (never a workflow); a teammate's gate-free fan-out = a compiled Dynamic
+Workflow (never hand-rolled dispatch). **Never invert.** Cross-linked from
+`claude-code-platform-alignment.md §VII`, `native-coordination.md`, and
+`dispatch-tier-separation.md §I-bis` (the ontological tier ↔ unit mapping).
+
+**B — ontology rewrite: `waves × steps`; lanes as a post-plan projection (#88).** The
+engineer now authors the plan as **N sequential waves; each wave is X steps; each step ≈
+one subagent**, with **NO lane concept**. A **lane** is a cohesive **vertical slice across
+waves**, formed **only in spawn mode, after the plan**, owned by one teammate-conductor —
+and it **never nests inside a wave**. Removed every `wave: <N>` field on a lane, every
+"wave is a set of lanes", and every "min lanes per wave" tabulation across `engineer.md`
+(+ `engineer.reference.md`), `references/seed-template.md`, `planter.md`, `pipeline.md`,
+`flock.md`, `dispatch-tier-separation.md`, `SKILL.md`, `conductor.md`, `shepherd.md`,
+`critic.md`, `root-shepherd-orchestration.md`, `sprint-as-patch.md`, `commands/spawn.md`,
+`README.md`. The decomposition discipline split cleanly: planning = many narrow steps per
+wave (substantive LOC floor); spawn = a **total** lane count (never per-wave).
+
+**B-bis — lane refresh (durable lane, recyclable teammate).** One teammate-conductor
+occupies a lane at a time, but at a wave boundary root MAY shut down an idle lane's
+teammate and spawn a fresh one to take over the **same** lane for the next wave (fresh
+context, lower compaction cost). Refreshing a lane's teammate is **not** a new lane — you
+count lanes (constant across waves), never teammate-instances. This is the origin of the
+retired "per lane per wave" phrasing (`primitive-axis-binding.md §II.1`).
+
+**C — Phase-0 split (#88).** The pre-plan **discovery wave** runs at root BEFORE the
+engineer (INTRO-COMBO-WAVE); the engineer now **consumes** its `[DISCOVERY-CONTEXT]` /
+`[INTRO-AUDIT-CONTEXT]` as primary ground truth and verifies targeted gaps, rather than
+re-running the full mesh itself (fixes the `engineer.md` Step 2 contradiction). The mesh
+enumeration is the *coverage spec*; the engineer self-runs only when the wave is disabled
+(XS / `intro_wave.enabled = false`). Carry-over / open-issue handling becomes a candidate
+dedicated lane, not steps folded into the plan body.
+
+**D — #67 / #20 reconciled.** `seed-template.md §6` (Deliverables, not "MUST-LAND lanes")
+landed in v6.0.0; v6.0.2 fixes the residual §7 "coder lanes per wave" minimums and frames
+the planter's seed-quality table around **deliverables** (lane decomposition is the
+engineer's authority). The mandatory-`subagent_type` dispatch contract (#20) is verified
+consistent across `SKILL.md §I`, `flock.md §I`, `conductor.md`, `shepherd.md`, and
+`dispatch-tier-separation.md §IV-bis`.
+
+**E — #75 reconciled.** Verified `doctrines/workflow-compile-down.md` is on-disk,
+coherent, and cross-linked (`platform-alignment.md §VII`, `stage-graph.md`); all internal
+doctrine references resolve.
+
+**Gate 0 (green):** grep proves no live file nests "lane" in "wave" or tabulates "lanes
+per wave" (every residual mention is a negation or the anti-pattern definition); the
+binding table is canonical + referenced by 17 files; `SKILL.md` and the agent profiles
+agree on the dispatch contract; #75 reconciled.
+
+**Deferred to later v6.0.2 waves:** mechanical pre-dispatch guards for the two #89
+inversions + the eight #66 violations (Wave 1 — #86 / #84 / #74 / #61); `shctx graph
+compile` + workflow→conductor seam-export (Wave 2 — #82 / #77 / #78 / #83 / #85); mechanic
+deletion + telemetry + `release.yml` / critic-feature fixes (Wave 3 — #76 / #87 / #71 /
+#72). New feedback issues #90 (INHERITED-CONTEXT scope rule) and #91 (cargo-gate execution
+pattern) are folded into Wave 1.
+
+---
+
 ## v6.0.1 — 2026-05-29
 
 ### Reposition onto Claude Code's native substrate (Dynamic Workflows + Agent Teams + subagents)

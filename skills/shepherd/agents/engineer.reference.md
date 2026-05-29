@@ -19,11 +19,19 @@ file for the long-form material — the mesh row enumeration, plan-document
 templates, the quality-bar checklist, and the proof-of-dispatch footer —
 that does not need to be re-read on every turn of reasoning.
 
-## Phase 0 mesh — full row enumeration
+## Phase 0 mesh — coverage specification (consume the discovery wave)
 
-The engineer runs Phase 0 BEFORE writing a single line of the plan. Findings
-land at the TOP of the plan file with sources cited; a separate phase-0
-report writes to `{paths.reports}/<date>-{sprint_slug}-phase0.md`.
+**Phase-0 split (v6.0.2, #88).** This enumeration is the **specification of what
+Phase-0 must cover** — NOT a mandate that the engineer personally re-query every
+row. By default the **discovery wave runs at root BEFORE the engineer**
+(INTRO-COMBO-WAVE per `doctrines/intro-combo-wave.md`), covering these rows and
+injecting `[DISCOVERY-CONTEXT]` + `[INTRO-AUDIT-CONTEXT]` into the engineer brief.
+The engineer **consumes** those reports as authoritative, **verifies targeted
+gaps only**, and **acts** on findings. The engineer runs the rows below **itself
+ONLY when the discovery wave did not fire** (XS sprints, or
+`[stage_graph.intro_wave].enabled = false`). Findings land at the TOP of the plan
+file with sources cited; a separate phase-0 report writes to
+`{paths.reports}/<date>-{sprint_slug}-phase0.md`.
 
 ### Fast-path via context registry
 
@@ -235,12 +243,12 @@ observations the engineer must now weigh:
 
 | Insight kind | Default action |
 |---|---|
-| `relocation` | Consider scoping a relocation lane THIS sprint if the move is bounded; otherwise surface as "Cross-lane insights NOT scoped this sprint" |
-| `extension` | Decide: small lane this sprint, or recorded for the next |
-| `duplication` | Add a consolidation lane (small) or strengthen `[ACCEPTANCE]` on a lane that touches the implicated files |
+| `relocation` | Consider scoping a relocation step THIS sprint if the move is bounded; otherwise surface as "Cross-lane insights NOT scoped this sprint" |
+| `extension` | Decide: small step this sprint, or recorded for the next |
+| `duplication` | Add a consolidation step (small) or strengthen `[ACCEPTANCE]` on a step that touches the implicated files |
 | `consolidation` | SUBTRACT candidate — schedule per `doctrines/subtract-dont-add.md` |
 | `gap` | Treat as a candidate scope item; the operator decides if it makes this sprint |
-| `nit` | Almost never scoped individually; aggregate 3+ similar nits as a single hygiene lane if warranted |
+| `nit` | Almost never scoped individually; aggregate 3+ similar nits as a single hygiene step if warranted |
 
 For each insight actioned: note its id in the corresponding plan lane. The
 auditor will mark them `actioned_in: <sprint>` at close (via `shctx insights
@@ -362,24 +370,36 @@ author: @engineer (agent-id-<your-id>)
 <bullet list — verbatim from the seed; add a note if Phase 0 forces additional exclusions>
 
 ## Carry-forward checklist
-| GH# | Item | Priority | MUST-LAND? | Size | Coder lane | Patches crossed |
+| GH# | Item | Priority | MUST-LAND? | Size | Coder step (wave) | Patches crossed |
 |---|---|---|---|---|---|---|
 
 (Every CRITICAL/HIGH from the handoff appears here. MUST-LAND=YES is non-negotiable. Patches-crossed reads from the carry-forward ledger.)
 
-## Wave composition
-| Wave | Coder lanes | Parallel? | Depends on | T-shirt total |
-|---|---|---|---|---|
+## Wave composition (`waves × steps` — no lanes here)
+| Wave | Coder steps | Depends on | Wave gate |
+|---|---|---|---|
 
-(Minimum lanes per sprint size: M→3, L→4, XL→4/wave. If you cannot decompose to the minimum, flag it under "Open Questions for Critic" and explain why.)
+(Decompose each wave into many fine-grained **steps** per the substantive LOC floor
+in `agents/engineer.md §Step decomposition discipline`. The plan body has **no
+lanes** — lanes are a post-plan spawn-time projection per
+`doctrines/primitive-axis-binding.md`. If you cannot decompose a wave to substantive
+depth, flag it under "Open Questions for Critic" and explain why.)
 
-**File-scope cap (v5.0.9):** Each coder lane SHOULD own ≤ 3 files in its MAY-MODIFY list. If a lane needs more, decompose into 2 lanes. Exception: a single-file lane with > 300 LOC of expected change may remain one lane. The cap reduces the surface where a coder hits an out-of-scope dependency and must file a `BRIEF-AMENDMENT REQUEST` (per `doctrines/native-coordination.md`; pause-for-dependency retired, #70).
+**File-scope cap (v5.0.9):** Each coder step SHOULD own ≤ 3 files in its MAY-MODIFY list. If a step needs more, decompose into 2 steps. Exception: a single-file step with > 300 LOC of expected change may remain one step. The cap reduces the surface where a coder hits an out-of-scope dependency and must file a `BRIEF-AMENDMENT REQUEST` (per `doctrines/native-coordination.md`; pause-for-dependency retired, #70).
+
+## Lane projection (spawn mode only — append AFTER the plan body)
+Under `[INVOCATION-CONTEXT].dispatcher == root-shepherd`, append a vertical slice of
+the finished `waves × steps` plan into lanes (one teammate-conductor each). Solo mode
+omits this. Full structure + minimums (total lanes, never per-wave): `agents/engineer.md §Lane projection`.
+
+| Lane | Member steps (across waves) | Exclusive file scope |
+|---|---|---|
 
 ## Phase A — <name>  [Wave 1, parallel-safe with B and C]
 **Mission:** <one sentence>
 **Condition:** unconditional | runs if Phase X exits with <criterion>
 
-**Coder Lane A — @coder-A**
+**Coder Step A — @coder** (listed under its wave)
 
 [SKILLS]
 - code-style                 (mandatory per [skills.mandatory])
@@ -389,10 +409,10 @@ author: @engineer (agent-id-<your-id>)
 [CONTEXT-INVENTORY]
 # FULLY POPULATED — conductor copy-pastes verbatim into the brief.
 # Each entry: `Symbol` in `path::module` — one-line description.
-- ... (every type/trait/fn/const this lane will touch or call)
+- ... (every type/trait/fn/const this step will touch or call)
 
 [DO-NOT-DUPLICATE]
-# FULLY POPULATED — every new identifier this lane will introduce, with grep + expected count.
+# FULLY POPULATED — every new identifier this step will introduce, with grep + expected count.
 # Pattern is language-specific; consult the language skill.
 
 [USER-STYLE]
@@ -402,7 +422,7 @@ author: @engineer (agent-id-<your-id>)
 MAY MODIFY:
 - ...
 MUST NOT TOUCH:
-- ... (other lanes own these)
+- ... (other steps own these)
 
 [NON-GOALS]
 - <reserved for Wave 2 / next sprint>
@@ -414,8 +434,8 @@ MUST NOT TOUCH:
 - <runnable command 2>
 - <gate command from [gates] passes — main chat runs>
 
-**Coder Lane B — @coder-B**
-[same seven-section block, file-disjoint from Lane A]
+**Coder Step B — @coder**
+[same seven-section block, file-disjoint from Step A]
 
 **Phase A exit criteria:**
 - <runnable command 1>
@@ -425,7 +445,7 @@ MUST NOT TOUCH:
 [same structure]
 
 ## Tests + benches phase  [Wave 3, optional per scope]
-[lanes per test scope]
+[steps per test scope]
 
 ## Auditor concerns (§3 close dispatch — conductor sets these)
 - code-quality: <files changed this sprint>
@@ -441,7 +461,7 @@ MUST NOT TOUCH:
 # `pipeline.md`. Conductor walks it; deviation IS process violation.
 #
 # Specialize the canonical graph from `pipeline.md` §IV with this sprint's
-# wave count, lane count per wave, hot-fix paths, and any project-doctrine
+# wave count, step count per wave, hot-fix paths, and any project-doctrine
 # nodes (e.g., schema-migrate single-writer node).
 #
 # Required nodes (every plan): seed-verify, mesh, plan-gate, wave-1-impl,
@@ -497,20 +517,21 @@ nodes:
 
 Before delivering the plan, verify every YES below:
 
-- [ ] Every coder lane has all seven bracketed sections fully populated —
+- [ ] Every coder step has all seven bracketed sections fully populated —
       conductor needs zero additional work to dispatch?
 - [ ] `[CONTEXT-INVENTORY]` cites at least one existing symbol per
       package/module touched, with absolute path verified by Read or Grep?
-- [ ] `[DO-NOT-DUPLICATE]` names every new identifier the lane introduces?
-- [ ] `[FILE-SCOPE]` lists are file-disjoint between sibling lanes in the
+- [ ] `[DO-NOT-DUPLICATE]` names every new identifier the step introduces?
+- [ ] `[FILE-SCOPE]` lists are file-disjoint between sibling steps in the
       same wave?
 - [ ] `[ACCEPTANCE]` is runnable greps/commands, not prose?
-- [ ] Wave composition meets the minimum-lane bar for the sprint T-shirt
-      size?
+- [ ] Each wave is decomposed to the substantive step-depth bar for the
+      sprint T-shirt size (and, under spawn, the lane projection meets the
+      total lane minimum)?
 - [ ] Every carry-forward from the handoff appears in the carry-forward
       table?
 - [ ] No silent scope creep beyond what the seed authorized?
-- [ ] Phase 0 mesh findings are reflected in lane decisions (not just
+- [ ] Phase 0 mesh findings are reflected in step decisions (not just
       summarized at the top)?
 - [ ] Drift-risk items from Phase 0 ledger sweep are explicitly listed (not
       silently absorbed)?
@@ -527,7 +548,7 @@ Before delivering the plan, verify every YES below:
       (where applicable), `parallel_with` (Pattern B encoded), and
       `out_edges` (every branch point has an `on-hard-stop` edge)?
 - [ ] **Stage Graph references match wave decomposition** — every
-      `WAVE-N-IMPL` node's lane count equals the corresponding wave's lane
+      `WAVE-N-IMPL` node's step count equals the corresponding wave's step
       count in §"Wave composition"?
 - [ ] **Stage Graph encodes Pattern B** — every `WAVE-N-AUDIT` (N < last
       wave) has `parallel_with: [wave-(N+1)-impl]`?
@@ -583,9 +604,9 @@ surfaces in the auditor sweep as a discipline violation. The right move:
 
 1. Note it in the Phase 0 mesh report under "Latent gate-blockers discovered
    during mesh".
-2. List it as a Wave 0 / Lane 0 lane in the plan with `[FILE-SCOPE]`,
+2. List it as a Wave 0 coder step in the plan with `[FILE-SCOPE]`,
    expected fix, and the gate command that proves the fix.
-3. Let the conductor dispatch a coder against it. The coder is the lane
+3. Let the conductor dispatch a coder against it. The coder is the role
    that writes `.rs`. The engineer authors the brief that gets it written.
 
 This is not bureaucracy — it is the discipline that makes the flock

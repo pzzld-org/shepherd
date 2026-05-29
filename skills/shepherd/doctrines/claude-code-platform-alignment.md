@@ -537,6 +537,15 @@ that doctrine is the execution axis. `doctrines/native-coordination.md` (v6.0.1)
 maps how these two axes plus the subagent primitive jointly replace the
 hand-rolled coordination mechanics (pause-for-dependency / heartbeat / idle-prune).
 
+> **Canonical binding (v6.0.2, #89).** The single source of truth that pins **each
+> axis to its primitive and its ontology unit** is `doctrines/primitive-axis-binding.md`:
+> planning → none → `waves × steps`; teammate-state/parallelization → **Agent Teams** →
+> one teammate-conductor per **lane**; execution → **Dynamic Workflows** → the compiled
+> script over **subagents**; worker → **subagents** → the **steps**. That doctrine is the
+> fix for the v6.0.1 field regression in which a Dynamic Workflow spawned the conductor
+> wave and teammates failed to compile their fan-out (each primitive used for the OTHER's
+> job). The §II primitive map here and the execution-axis doctrine both obey it.
+
 ---
 
 ## VIII. Anti-patterns

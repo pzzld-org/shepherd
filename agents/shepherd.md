@@ -276,17 +276,20 @@ grounded picture every teammate inherits.
       branch + version context, `[INVOCATION-CONTEXT].dispatcher: root-shepherd`,
       `[DISCOVERY-CONTEXT]`, `[INTRO-AUDIT-CONTEXT]`, explicit instruction to
       emit binding `## Stage Graph` per `pipeline.md §XII`.
-- [ ] **Verify plan parallelism is ultra-parallel** before critic gate:
-      - M ≥ 6 coder lanes (ideally 8+)
-      - L ≥ 8 coder lanes (ideally 10+)
-      - XL ≥ 10 coder lanes per wave (ideally 12-15+)
-      - Per-lane scope ≤ 5 files; split mercilessly if exceeded.
+- [ ] **Verify plan decomposition** before critic gate (the plan is
+      `waves × steps`; lanes are the post-plan projection — `doctrines/primitive-axis-binding.md`):
+      - Each wave decomposed into many narrow **steps** to the substantive
+        LOC floor (M ~400, L ~700, XL 1500+).
+      - Per-step scope ≤ 5 files; split mercilessly if exceeded.
       - Per-step granularity 2-5 minutes (bite-sized per
         `superpowers:writing-plans`).
-      - File-disjoint across all lanes in a wave (single build-manifest
-        writer).
-      Failure → return plan to `@engineer` with `RECONSIDER` cap +
-      ultra-parallel guidance.
+      - File-disjoint across all steps in a wave (single build-manifest writer).
+- [ ] **Verify the lane projection** (spawn-only, appended after the plan):
+      total **lanes** ≥ T-shirt minimum (M≥6, L≥8, XL 10–15 — **total** vertical
+      slices, NEVER per-wave); each lane file-disjoint, no `wave:` field; one
+      teammate-conductor per lane.
+      Failure of either → return plan to `@engineer` with `RECONSIDER` cap +
+      decomposition guidance.
 - [ ] Dispatch `@critic` (single agent, sonnet) to gate the plan. Critic's
       verdict must include **justification for any amendments** — pass-2
       flags MUST classify `dispatcher-patch` vs `substantive` with explicit
@@ -309,9 +312,17 @@ The body is teammate orchestration. Per scope:
 
 #### `--scope sprint` (single sprint)
 
-- Spawn ONE teammate-conductor per `commands/spawn.md §Spawn dispatch`.
+- Spawn **one teammate-conductor per lane** (the plan's post-plan lane
+  projection) via Agent Teams, per `commands/spawn.md §Spawn dispatch`. The
+  lane count IS the teammate count. (`--parallel` below is a separate,
+  sprint-level fanout; lane-per-conductor is the within-sprint fanout.)
 - Enter coordinate mode; babysit per `agents/planter.md §Babysitter mode`
   responsibilities (escalation triage, wave-boundary commits, heartbeat).
+  At each wave boundary all lanes sync: every lane's teammate completes its
+  wave-N steps and goes idle, root runs the wave-N gate, then the lanes advance
+  to wave-N+1. Root MAY **refresh** an idle lane's teammate at the boundary
+  (shut it down, spawn a fresh one into the **same** lane for fresh context) —
+  this is **not** a new lane (`doctrines/primitive-axis-binding.md §II.1`).
 - On teammate close: materialize close-report payload to
   `{paths.reports}/<date>-{sprint_slug}-close.md`.
 
@@ -468,7 +479,7 @@ without becoming verbose.
 |---|---|
 | Session start | Mode + scope + parallel-N + seed count + missing-seed count + anomalies. |
 | INTRO-COMBO-WAVE complete | Discovery findings summary + intro-audit grades + drift-risk count. One paragraph. |
-| Engineer report received | Plan path + lane count + parallel-safety verdict + concerns. |
+| Engineer report received | Plan path + wave/step counts + lane-projection count (spawn) + parallel-safety verdict + concerns. |
 | Critic verdict | PROCEED / PROCEED WITH CHANGES / RECONSIDER / REJECT + key concerns + amendments. |
 | Pre-spawn approval gate | Plan summary (one paragraph) + `proceed` prompt. |
 | Each teammate spawned | Teammate name + sprint + worktree path + heartbeat status. |
@@ -557,8 +568,9 @@ matrix. Summary:
    artifact.
 4. **Bypassing dispute escalation.** Two teammates conflicting → critic +
    operator, not silent root decision.
-5. **Allowing ultra-parallel violation in plan.** M<6, L<8, XL<10/wave →
-   reject back to engineer.
+5. **Allowing under-decomposition / under-parallelization.** A wave with too
+   few/too-broad steps, or a spawn lane projection below the total-lane
+   minimum (M<6, L<8, XL<10 — total, never per-wave) → reject back to engineer.
 6. **Resume on hard-stop without operator input.** No.
 7. **Nested spawn.** Refuse — operator-explicit-only.
 8. **Source writes.** `.md` only.
