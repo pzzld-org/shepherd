@@ -119,3 +119,4 @@ The conductor verifies the auditor's tool list at dispatch and rejects any audit
 
 - `pattern-b-overlap.md` — auditors run concurrently with Wave 2 coders
 - `chain-repair.md` — auditor findings can trigger seed amendments
+- `workflow-compile-down.md §VII` — under Dynamic Workflows the runtime auto-approves edits (`acceptEdits`); read-only must therefore be allowlist-enforced, not permission-mode-enforced

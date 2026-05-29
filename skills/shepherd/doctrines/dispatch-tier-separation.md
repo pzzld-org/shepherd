@@ -365,4 +365,5 @@ unaffected. Tier separation activates only under `/shepherd:spawn`.
 - `agents/shepherd.md` — root profile
 - `agents/conductor.md §Conductor modes` — solo vs teammate behavior
 - `agents/engineer.md §Hard prohibitions` — WRONG-TIER-DISPATCH halt code
+- `doctrines/workflow-compile-down.md` — compiled workflow steps must honor the mandatory-`subagent_type` dispatch contract this doctrine defines
 - `agents/critic.md §Hard prohibitions` — WRONG-TIER-DISPATCH halt code

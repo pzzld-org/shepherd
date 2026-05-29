@@ -522,6 +522,19 @@ contract change"); the platform-backend toggle is the kind of
 contract-shift that justifies the bump regardless of any flock
 changes.
 
+### Orthogonal execution axis (v6.0.1) — Dynamic Workflows
+
+The toggle above concerns the *teammate-state* backend (Agent Teams). A
+**second, orthogonal** backend axis — *execution* — is evaluated in
+`doctrines/workflow-compile-down.md`: compiling the critic-gated Stage Graph's
+gate-free, agent-fanout segments to Claude Code **Dynamic Workflows** that the
+platform runtime executes out-of-context. Agent Teams owns teammate-state; a
+compiled workflow owns a segment's execution; **neither subsumes the other**,
+and the two compose. See that doctrine §IV for the faithfulness bar
+(soundness / completeness / determinism), §VI for the canonical-state seam, and
+§IX for the decision criterion. This doctrine's §VII is the teammate-state axis;
+that doctrine is the execution axis.
+
 ---
 
 ## VIII. Anti-patterns

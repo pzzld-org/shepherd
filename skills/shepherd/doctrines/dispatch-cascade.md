@@ -182,3 +182,4 @@ shctx pauses list               # active pause-for-dependency subgraphs
 - `skills/context/scripts/cmd_plan.sh` — `shctx plan extract/topology/validate`
 - `skills/context/scripts/cmd_graph.sh` — `shctx graph status/next/mark/trace`
 - `skills/context/scripts/cmd_pauses.sh` — `shctx pauses list/show/resolve/clear`
+- `doctrines/workflow-compile-down.md` — the workflow projection of the Stage Graph shares this `shctx plan extract` surface (§II); one source, two faithful projections
