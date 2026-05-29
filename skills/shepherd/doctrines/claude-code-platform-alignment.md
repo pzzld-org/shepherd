@@ -533,7 +533,9 @@ compiled workflow owns a segment's execution; **neither subsumes the other**,
 and the two compose. See that doctrine §IV for the faithfulness bar
 (soundness / completeness / determinism), §VI for the canonical-state seam, and
 §IX for the decision criterion. This doctrine's §VII is the teammate-state axis;
-that doctrine is the execution axis.
+that doctrine is the execution axis. `doctrines/native-coordination.md` (v6.0.1)
+maps how these two axes plus the subagent primitive jointly replace the
+hand-rolled coordination mechanics (pause-for-dependency / heartbeat / idle-prune).
 
 ---
 
