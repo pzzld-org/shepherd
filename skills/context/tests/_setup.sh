@@ -1,6 +1,15 @@
 # tests/_setup.sh — sourced by every test file
 set -eu -o pipefail
 
+# Disable commit signing for every throwaway test repo. Runners that enforce
+# signing (e.g. a signing-server-backed `gpg.format`/`commit.gpgsign=true` in
+# global config) otherwise fail `git commit` in these ephemeral repos, breaking
+# the whole suite for environmental reasons. GIT_CONFIG_* applies to all git
+# invocations in the test process regardless of per-repo config.
+export GIT_CONFIG_COUNT=1
+export GIT_CONFIG_KEY_0=commit.gpgsign
+export GIT_CONFIG_VALUE_0=false
+
 SHCTX_TEST_TMP="$(mktemp -d -t shctx-test.XXXXXX)"
 trap 'rm -rf "$SHCTX_TEST_TMP"' EXIT
 

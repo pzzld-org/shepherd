@@ -22,6 +22,16 @@ description: |
 > results live in script variables, not the conversation context. Official
 > docs: `https://code.claude.com/docs/en/workflows`.
 
+> **Status update — v6.0.1 / epic #76 (supersedes the §IX sequencing & §XI line below).**
+> This doctrine was authored as an *evaluation*. Epic #76 adopted compile-down as the
+> **primary** execution path for gate-free agent-fanout segments in the v6.0.1 line —
+> implemented as `shctx graph compile` (#77), wired into `dispatch-cascade.md §IV-bis`,
+> and **not** behind an off-by-default toggle. The §IV faithfulness contract, the §V
+> φ-map, and the §VI canonical-state seam remain binding **as written**; only §IX's
+> "v6.x spike / `[workflows].compile_backend` toggle" sequencing and §XI's "no compile
+> path ships under v6.0.1" line are superseded. The decision is recorded in the v6.0.1
+> release notes (#71).
+
 ## I. Status & scope
 
 This is an **evaluation doctrine**, not a behavioral contract. It documents how
