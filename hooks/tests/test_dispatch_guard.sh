@@ -75,6 +75,13 @@ expect_block "teammate nesting (conductor+team_name)"    dispatch_guard.sh "$(P 
 # §IV-bis.5 — teammate dispatches engineer/critic (root-tier-exclusive)
 expect_block "teammate dispatches engineer"              dispatch_guard.sh "$(P '{"subagent_type":"shepherd:engineer"}')" CLAUDE_TEAMMATE_NAME=lane-a
 expect_block "teammate dispatches critic"                dispatch_guard.sh "$(P '{"subagent_type":"shepherd:critic"}')" CLAUDE_TEAMMATE_NAME=lane-a
+# #93 — env-independent teammate detection via the hook-input `.worktrees/` cwd
+# (the platform exposes NO teammate identity env var; cwd is the reliable signal).
+expect_block "teammate-by-cwd (.worktrees) dispatches engineer" \
+  dispatch_guard.sh '{"session_id":"s1","cwd":"/repo/.worktrees/v6-lane-a","tool_name":"Agent","tool_input":{"subagent_type":"shepherd:engineer"}}'
+# No false positive: a normal (non-worktree) cwd is NOT a teammate — root may dispatch engineer.
+expect_pass  "root-by-cwd (normal) dispatches engineer" \
+  dispatch_guard.sh '{"session_id":"s1","cwd":"/repo","tool_name":"Agent","tool_input":{"subagent_type":"shepherd:engineer"}}'
 
 echo "== bash_guard.sh — #89 inversion 1 (workflow spawns teammates) BLOCKED =="
 mkdir -p .shepherd/graph/compiled

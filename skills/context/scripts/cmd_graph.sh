@@ -68,6 +68,13 @@ shctx graph <status|next|mark|trace|reset> [args]
       git/shell, conductor-inline) never enter the script — they run at the
       conductor (doctrine workflow-compile-down.md §III / §V / §VI).
 
+  diagram [--segment=<node-id>] [--out=<file>] [--stdout]
+      (v6.0.2, GH #77 topology utility) Emit a Mermaid execution diagram of the
+      Stage Graph — nodes + edges + seam/fanout classification (seams are the
+      conductor-inline gates that never compile). With --segment, overlay that
+      compilable fan-out segment as a subgraph. Default writes
+      {workdir}/graph/diagrams/{sprint}.mmd; --stdout prints to stdout.
+
 See doctrines/dispatch-cascade.md and doctrines/workflow-compile-down.md.
 EOF
 }
@@ -744,6 +751,110 @@ PY
 }
 
 # ---------------------------------------------------------------------------
+# diagram — Mermaid execution diagram of the Stage Graph (#77 topology utility)
+#
+# Reads the SAME state.json the walker/compiler consume (one source graph;
+# doctrine workflow-compile-down.md §II). Classifies each node seam vs fanout
+# with the same predicate `compile` uses, so the picture matches what compiles.
+# ---------------------------------------------------------------------------
+_cmd_diagram() {
+  _require_state
+  local segment="" out_file="" to_stdout=0
+  for arg in "$@"; do
+    case "$arg" in
+      --segment=*) segment="${arg#--segment=}" ;;
+      --out=*)     out_file="${arg#--out=}" ;;
+      --stdout)    to_stdout=1 ;;
+      -h|--help)   usage; exit 0 ;;
+      *) echo "ERROR: unknown arg: $arg" >&2; exit 1 ;;
+    esac
+  done
+  local diag_dir; diag_dir="$(shctx_artifacts_root)/graph/diagrams"
+
+  python3 - "$(_state_path)" "$segment" "$diag_dir" "$out_file" "$to_stdout" <<'PY'
+import json, sys, os, re
+
+state_path, seg_arg, diag_dir, out_file, to_stdout_s = sys.argv[1:6]
+to_stdout = to_stdout_s == "1"
+state = json.load(open(state_path))
+nodes = state["nodes"]; edges = state["edges"]
+sprint = state.get("sprint", "unknown")
+
+# Same φ-map classification as `compile` (§V) — seams never compile.
+SEAM_EXACT = {
+    "SEED-VERIFY","CHAIN-REPAIR","PLAN-GATE","DEDUP-GATE","LANE-CLOSE",
+    "CANONICAL-TYPES-REFRESH","CLOSE-FINALIZE","RELEASE","RESUME-LANE",
+    "HARD-STOP","MESH","GATES-DISCOVERY",
+}
+def ntype(n): return (n.get("type") or "UNKNOWN").upper()
+def is_fanout(n):
+    t = ntype(n)
+    if not n.get("agents"):   return False
+    if t in SEAM_EXACT:       return False
+    if t.startswith("PAUSE"): return False
+    if t.endswith("-GATE"):   return False
+    return (t in ("CLOSE-SWARM","INTRO-COMBO-WAVE","DISCOVERY")
+            or "IMPL" in t or "AUDIT" in t
+            or t.startswith("HOTFIX") or t.startswith("WORKER"))
+def mid(nid): return "n_" + re.sub(r'[^A-Za-z0-9]', '_', nid)
+
+# --segment overlay: flood compilable nodes without crossing a seam (compile §III).
+seg_members = set()
+if seg_arg:
+    succ = {k: [] for k in nodes}; pred = {k: [] for k in nodes}
+    for e in edges:
+        if e["from"] in succ and e["to"] in nodes:
+            succ[e["from"]].append(e["to"]); pred[e["to"]].append(e["from"])
+    if seg_arg in nodes and is_fanout(nodes[seg_arg]):
+        stack=[seg_arg]; seg_members={seg_arg}
+        while stack:
+            cur=stack.pop()
+            for p in list(nodes[cur].get("parallel_with") or []) + succ[cur] + pred[cur]:
+                if p in seg_members or p not in nodes or not is_fanout(nodes[p]): continue
+                seg_members.add(p); stack.append(p)
+    elif seg_arg not in nodes:
+        sys.exit(f"ERROR: node '{seg_arg}' not in graph. Run `shctx graph status`.")
+
+L=["%%{init: {'flowchart': {'curve':'basis'}}}%%", "flowchart TD",
+   f"  %% shepherd Stage Graph — sprint {sprint}  (`shctx graph diagram`)"]
+for nid,n in nodes.items():
+    label = nid if nid == ntype(n) else f"{nid}<br/>{ntype(n)}"
+    ag = n.get("agents") or []
+    if ag:
+        label += "<br/>" + ", ".join(f"@{a.get('role')}×{a.get('count',1)}" for a in ag)
+    l,r = ("{{","}}") if not is_fanout(n) else ("[","]")   # hexagon = seam, box = fanout
+    L.append(f'  {mid(nid)}{l}"{label}"{r}')
+for e in edges:
+    if e["from"] in nodes and e["to"] in nodes:
+        lab = (e.get("label") or "").replace("|","/").replace('"',"'")
+        L.append(f'  {mid(e["from"])} -->|{lab}| {mid(e["to"])}' if lab
+                 else f'  {mid(e["from"])} --> {mid(e["to"])}')
+if seg_members:
+    L.append(f'  subgraph SEG["compiled segment: {seg_arg} — Dynamic Workflow (≤16 concurrent, out-of-context)"]')
+    for nid in sorted(seg_members): L.append(f'    {mid(nid)}')
+    L.append("  end")
+L.append("  classDef seam fill:#fde,stroke:#a36,stroke-width:1px;")
+L.append("  classDef fanout fill:#def,stroke:#36a,stroke-width:1px;")
+for nid,n in nodes.items():
+    L.append(f"  class {mid(nid)} {'fanout' if is_fanout(n) else 'seam'};")
+mermaid = "\n".join(L) + "\n"
+
+if to_stdout or out_file == "-":
+    sys.stdout.write(mermaid)
+else:
+    path = out_file or os.path.join(diag_dir, f"{sprint}.mmd")
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    with open(path,"w") as f: f.write(mermaid)
+    png = os.path.splitext(path)[0] + ".png"
+    nfan = sum(1 for n in nodes.values() if is_fanout(n))
+    print(f"diagram written: {path}")
+    print(f"  nodes: {len(nodes)} ({nfan} fanout / {len(nodes)-nfan} seam)  edges: {len(edges)}"
+          + (f"  segment-overlay: {seg_arg} ({len(seg_members)} nodes)" if seg_members else ""))
+    print(f"  render: paste into any Mermaid viewer, or `mmdc -i {path} -o {png}` (mermaid-cli).")
+PY
+}
+
+# ---------------------------------------------------------------------------
 # dispatch
 # ---------------------------------------------------------------------------
 case "$sub" in
@@ -753,6 +864,7 @@ case "$sub" in
   trace)        _cmd_trace "$@" ;;
   reset)        _cmd_reset "$@" ;;
   compile)      _cmd_compile "$@" ;;
+  diagram)      _cmd_diagram "$@" ;;
   ""|-h|--help) usage; exit 0 ;;
   *) echo "ERROR: unknown subcommand: $sub" >&2; usage >&2; exit 1 ;;
 esac

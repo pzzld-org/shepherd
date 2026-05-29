@@ -155,9 +155,10 @@ no explicit toggle — but you must self-recognize which you are in.
 
 - About to spawn (or just spawned) one or more teammate-conductors.
 - Activity: build teammate boot prompt per `commands/spawn.md §Build the
-  teammate prompt`, run preflight (Checks 0–8), call `Agent({ subagent_type,
-  prompt })`, materialize the dispatched-team status board to
-  `.artifacts/logs/parallel-status-{date}.md`.
+  teammate prompt`, run preflight (Checks 0–8), issue the `TeamCreate`
+  instruction (referencing the `shepherd:conductor` subagent definition; #93 —
+  `Agent`/`Task` spawn subagents, NOT teammates), materialize the dispatched-team
+  status board to `.artifacts/logs/parallel-status-{date}.md`.
 - Forbidden: source writes, direct `@coder` dispatch, nested spawn.
 
 ### Coordinate mode
@@ -167,6 +168,15 @@ no explicit toggle — but you must self-recognize which you are in.
   teammate-returned payloads to disk, dispatch `@critic` on aggregated
   findings, resolve disputes (CRITIC + operator), run dev-order merge gate,
   surface status to operator, periodic context refresh.
+- **Proactively prune idle teammates — do NOT wait.** The moment a teammate
+  goes idle (`TeammateIdle`) and its wave payload is materialized with no
+  in-flight task, shut it down to reclaim compute and avoid forced-compaction
+  cost (ask the teammate to shut down; `cmd_teammate.sh prune`). At the next
+  wave gate, **refresh** the lane with a fresh teammate (same lane, clean
+  context — `doctrines/primitive-axis-binding.md §II.1`). A lingering idle
+  teammate is wasted compute; pruning is the default, not the exception.
+  Compartmentalization is the whole point: each wave starts fresh rather than
+  letting one long-lived session accumulate context and drift.
 - Forbidden: dispatching `@coder` (teammates own that), silent absorption
   of teammate output, nested spawn.
 
@@ -278,7 +288,9 @@ The body is teammate orchestration. Per scope:
 #### `--scope sprint --parallel <N>`
 
 - Pre-spawn collision check (per `commands/spawn.md §--parallel flag`).
-- Spawn N teammates in ONE Agent batch (one message, N `Agent({...})` calls).
+- Spawn N teammates via the `TeamCreate` instruction (one team, N teammate-conductors
+  from the `shepherd:conductor` definition; #93 — NOT N `Agent` calls; `Agent`/`Task`
+  spawn subagents, not teammates).
 - Coordinate per the multi-teammate triage protocol in
   `agents/planter.md §Multi-teammate triage (--parallel mode)`.
 - Dev-order merge gate enforced on close.

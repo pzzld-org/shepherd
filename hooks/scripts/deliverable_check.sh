@@ -13,18 +13,20 @@
 # Output (stdout): silent.
 # Output (stderr): `[shctx] N deliverable(s) auto-marked stalled (> 10 min pending)`
 set -euo pipefail
+HERE="$(cd "$(dirname "$0")" && pwd)"
+source "$HERE/_lib.sh"
 
-ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
-[[ -f "$ROOT/.artifacts/root.db" ]] || exit 0
+DB="$(resolve_namespace)/root.db"
+[[ -f "$DB" ]] || exit 0
 
 # Cutoff: 10 minutes (in ms, matching cmd_teammate / cmd_deliverable convention).
 CUTOFF=$(( $(date +%s) * 1000 - 10*60*1000 ))
 
-STALE=$(sqlite3 "$ROOT/.artifacts/root.db" \
+STALE=$(sqlite3 "$DB" \
   "SELECT count(*) FROM deliverables WHERE status='pending' AND promised_at < $CUTOFF;" 2>/dev/null || echo 0)
 
 if [[ "$STALE" -gt 0 ]]; then
-  sqlite3 "$ROOT/.artifacts/root.db" \
+  sqlite3 "$DB" \
     "UPDATE deliverables SET status='stalled' WHERE status='pending' AND promised_at < $CUTOFF;" 2>/dev/null || true
   echo "[shctx] $STALE deliverable(s) auto-marked stalled (> 10 min pending)" >&2
 fi

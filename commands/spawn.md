@@ -35,7 +35,7 @@ description: |
     --auto             ALIAS for --scope patch (preserved for operator muscle memory;
                        deprecated in v5.2.0, removed v6.0.0).
 argument-hint: "[ sprint_slug ] [ --scope sprint|patch|minor|version ] [ --parallel <N> | --auto ]"
-allowed-tools: Agent, Bash, Edit, Glob, Grep, Read, Skill, Write, ToolSearch, TaskCreate, TaskGet, TaskList, TaskUpdate, SendMessage, WebFetch, WebSearch
+allowed-tools: Agent, Bash, Edit, Glob, Grep, Read, Skill, Write, ToolSearch, TeamCreate, TeamDelete, TaskCreate, TaskGet, TaskList, TaskUpdate, SendMessage, WebFetch, WebSearch
 ---
 
 # /shepherd:spawn — Teammate-Conductor Dispatch
@@ -68,7 +68,8 @@ A single-sprint spawn on a green project, no flags, no escalations:
 [3] main chat        adopts planter profile (agents/planter.md, spawn mode)
 [4] main chat        builds teammate boot prompt (seed + handoff + carry-forwards
                      + shepherd.toml snapshot)
-[5] main chat        calls Agent(subagent_type, prompt) → teammate session created
+[5] main chat        issues the natural-language TeamCreate instruction (referencing
+                     the shepherd:conductor subagent definition) → teammate session created
 [6] teammate         loads agents/conductor.md, fires /shepherd:start
 [7] teammate         walks Stage Graph (§1 INTRO → §2 BODY → §3 CLOSE)
 [8] teammate         at each wave boundary: SendMessage(to: lead, halt_code: null)
@@ -117,32 +118,48 @@ expected to know which mode they configured.
 
 ## § Preflight
 
-Run every check before calling `Agent`. Refuse with a clear error if any check fails.
+Run every check before issuing the `TeamCreate` instruction. Refuse with a clear error if any check fails.
 
 ### Check 0 — Operator-only invocation (v5.1.6+)
 
-`/shepherd:spawn` is **operator-explicit-only**. Nested spawn from within a teammate session is forbidden. Detection signals (ANY positive → refuse):
+`/shepherd:spawn` is **operator-explicit-only**. Nested spawn from within a teammate
+session is forbidden.
 
-| # | Signal | Source |
-|---|---|---|
-| 1 | `$CLAUDE_AGENT_TEAMMATE_NAME` is set (non-empty) | env var |
-| 2 | `$CLAUDE_PROJECT_SESSION_TYPE == "teammate"` | env var |
-| 3 | Current session's system prompt addendum contains `INVOCATION-CONTEXT.dispatcher: teammate-conductor` | profile |
-| 4 | Current session was spawned (CLAUDE_AGENT_PARENT_SESSION_ID present) | env var |
+**PRIMARY guarantee is structural, not signal-based.** The Agent Teams platform forbids
+a teammate from creating a team at all — the lead is fixed, no nested teams, one team at
+a time. A non-lead session cannot call `TeamCreate`, so a nested spawn cannot occur even
+if this check were absent. shepherd's operator-explicit-only rule is therefore consistent
+with — and largely redundant to — this platform guarantee. (Source:
+code.claude.com/docs/en/agent-teams.)
 
-If ANY positive:
+**Best-effort secondary signals** (defense in depth; ANY positive → refuse). Note that a
+spawned teammate session receives **NO identity environment variable** — only `CLAUDECODE`
+and `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` are set in its env (per
+`anthropics/claude-code#35447`, closed not-planned; GitHub issue #93, live-docs-verified
+2026-05-29). Any legacy-convention env vars below read **empty** on the live platform — they
+are retained only as a cheap belt-and-suspenders check, never as the load-bearing signal:
+
+| # | Signal | Source | Note |
+|---|---|---|---|
+| 1 | Current session `cwd` is under a shepherd `.worktrees/` path | filesystem | reliable shepherd-controlled signal |
+| 2 | Current session's system prompt addendum contains `INVOCATION-CONTEXT.dispatcher: teammate-conductor` | boot prompt | reliable shepherd-controlled signal |
+| 3 | `$CLAUDE_AGENT_TEAMMATE_NAME` / `$CLAUDE_PROJECT_SESSION_TYPE` / `$CLAUDE_AGENT_PARENT_SESSION_ID` non-empty | legacy env convention | reads EMPTY on live platform (#93); do NOT rely on it |
+
+If ANY positive (or, in practice, if the platform rejects the `TeamCreate` because you are
+not a lead):
 ```
 /shepherd:spawn — REFUSED: nested spawn forbidden.
 
-Subagents and teammate-conductors cannot spawn further teammates. The Agent Teams
-platform forbids nested teams (D-API §12), and shepherd discipline forbids
+Teammate-conductors cannot spawn teammates. The Agent Teams platform forbids a
+non-lead from creating a team (lead is fixed; no nested teams; one team at a time),
+so TeamCreate is structurally unavailable to you, and shepherd discipline forbids
 out-of-tier dispatch (per doctrines/dispatch-tier-separation.md).
 
 If you need plan amendment or scope expansion, surface the request to the root
 shepherd via SendMessage(to: lead, halt_code: PLAN-AUTHORSHIP-REQUEST) instead.
 
-If you are the operator and this error fires unexpectedly, check your environment
-for stale teammate env vars and re-invoke from a clean main-chat session.
+If you are the operator and this error fires unexpectedly, confirm your session is a
+clean main-chat session (not running under a shepherd .worktrees/ path) and re-invoke.
 ```
 
 This check is the FIRST gate. It runs before any other preflight.
@@ -346,8 +363,9 @@ The shepherd profile delegates seed work to planter mode inline when needed (mid
 
 ## § Build the teammate prompt
 
-Construct the teammate's boot prompt before calling `Agent`. The prompt carries all
-inherited context the teammate needs without re-asking main chat.
+Construct the teammate's boot prompt before issuing the `TeamCreate` instruction. The
+prompt carries all inherited context the teammate needs without re-asking main chat, and
+is supplied as the teammate's instructions inside that instruction.
 
 ### Required context block (v5.1.6+ — lane-per-conductor model)
 
@@ -433,9 +451,12 @@ HARD PROHIBITIONS WHILE SPAWNED (v6.0.0 — each tied to a halt code)
     closed-flock-six (no specialist clearance per
     doctrines/specialist-dispatch.md).
       halt_code: DISPATCH-OFF-FLOCK
-  - MUST REFUSE every Agent call that sets `team_name` (any value).
-    You are not a lead; nested teams are forbidden by platform and
-    doctrine.
+  - MUST NOT attempt to spawn teammates — you are not a lead.
+    `TeamCreate` is lead-only and nested teams are platform-forbidden
+    and structurally impossible (the platform rejects a non-lead's
+    team-create). Your dispatches are subagents only (`@coder`/
+    `@auditor`/`@worker`/`@discovery` for your lane) via
+    `Agent`/`Task` — a DISJOINT tool family from teammate spawning.
       halt_code: TEAMMATE-NESTING-ATTEMPT
   - MUST REFUSE writing artifact files (plans, reports, handoffs, close
     docs, audit reports). Return structured payloads via SendMessage;
@@ -507,26 +528,38 @@ TEAMMATE IDENTITY
 
 ## § Spawn dispatch
 
-The lead session calls `Agent` (or `Task`) to create the teammate:
+The lead session spawns teammates via the **`TeamCreate` tool family** (`TeamCreate`,
+`SendMessage`, `TeamDelete`, plus `TaskCreate`/`TaskGet`/`TaskList`/`TaskUpdate`), driven
+by a **natural-language instruction** that describes the team and references the
+**`shepherd:conductor` subagent definition** as each teammate's agent type:
 
 ```
-Agent({
-  subagent_type: "claude-sonnet-4-5",   // or operator-specified; see OQ-1
-  prompt: <the teammate prompt from § Build the teammate prompt>,
-  // Name is encoded in the prompt body under IDENTITY.Name.
-  // No per-teammate config files are supported at spawn time (D-API §9).
-})
+TeamCreate(<natural-language instruction>), e.g.:
+
+  "Create a team to run sprint {sprint_slug}. Spawn one teammate per lane named
+   shepherd-conductor-{sprint_slug}[-{lane_id}], each of agent type
+   shepherd:conductor. Give each teammate the boot/lane context below
+   (from § Build the teammate prompt) as its instructions."
 ```
 
-> **D-API source**: §5 (spawn lifecycle), §6 (dispatch shape): the lead calls
-> `Agent({ subagent_type, prompt })`, which always creates a new session.
-> Internally the lead uses `SendMessage` to talk to running teammates and `Agent`/
-> `Task` to spawn new ones. §9: no per-teammate config beyond team config;
-> teammates inherit the lead's permission mode.
+Each spawned teammate is created **from the `shepherd:conductor` subagent definition**
+(`agents/conductor.md`), so it inherits that definition's `tools:` and `model`. The
+per-teammate boot/lane context (INVOCATION-CONTEXT, INHERITED CONTEXT, lane brief) is
+supplied per § Build the teammate prompt and carried in the `TeamCreate` instruction.
 
-Names are assigned at spawn via `~/.claude/teams/{team-name}/config.json` — written
-and owned by the runtime; do NOT pre-author or edit it. Hook routing keys off the
-predictable `shepherd-conductor-{sprint_slug}` prefix.
+> **Tool-family discipline (live-docs-verified, #93, 2026-05-29):** `Agent`/`Task`
+> spawn **subagents** — the worker primitive — and are a **DISJOINT** tool family from
+> teammate spawning. **Do NOT use `Agent`/`Task` to spawn a teammate**, and there is
+> **no `team_name` parameter** on the `Agent`/`Task` tool. Teammates are created ONLY by
+> the lead via `TeamCreate`. After spawn, the lead uses `SendMessage` as the
+> lead↔teammate channel. (Source: code.claude.com/docs/en/agent-teams +
+> tools-reference.)
+
+Names are lead-chosen in the `TeamCreate` instruction. The runtime materializes the team
+config at `~/.claude/teams/{team-name}/config.json` — written and owned by the runtime; do
+NOT pre-author or edit it. Hook routing keys off the predictable
+`shepherd-conductor-{sprint_slug}` prefix (surfaced as `teammate_name` in team-lifecycle
+hook-input JSON).
 
 ### Post-spawn confirmation
 
@@ -566,9 +599,9 @@ Per D-API §9, **the teammate inherits the lead session's permission mode** — 
 
 ### Planter pre-spawn tool check
 
-Before calling `Agent({ subagent_type, prompt })`, the planter SHOULD verify:
+Before issuing the `TeamCreate` instruction, the planter SHOULD verify:
 
-1. The `Agent` tool is registered in the lead session. If not (e.g. plugin not loaded), HALT with:
+1. The `Agent` tool is registered in the lead session (so the spawned teammate inherits it for flock subagent dispatch — `Agent` spawns subagents, NOT teammates). If not (e.g. plugin not loaded), HALT with:
    ```
    /shepherd:spawn — REFUSED: Agent tool not registered in lead session.
    The teammate-conductor needs Agent tool inheritance to dispatch the flock.
@@ -693,7 +726,7 @@ Base spawn behavior applies per loop iteration. Full loop-boundary contract
 [FOR each dev.N in dev_order]:
 
   [SPAWN]
-    Build teammate prompt + dispatch via Agent.
+    Build teammate prompt + spawn via TeamCreate (referencing shepherd:conductor).
     Emit: "[AUTO] Sprint {N}/{LAST}: shepherd-auto-{sprint_slug} spawned."
 
   [BABYSIT]
@@ -811,7 +844,9 @@ Preflight-driven (Checks 1–3) plus run-state guards:
 4. **Active rebase in progress** — `REBASE_HEAD` or `MERGE_HEAD` present;
    spawning mid-rebase produces undefined teammate branch state.
 5. **Nested-team attempt** — if this command fires inside a teammate session,
-   refuse (D-API §12 forbids nested teams).
+   refuse. The platform forbids a non-lead from creating a team (lead is fixed; no
+   nested teams; one team at a time), so this is structurally impossible as well as
+   doctrinally prohibited (#93, live-docs-verified 2026-05-29).
 
 Parallel-specific and auto-specific hard stops are listed in the respective sections
 above. Failure modes (stall, session drop, SendMessage failure, planter drop) and
@@ -821,23 +856,27 @@ recovery semantics live at `skills/shepherd/doctrines/spawn-escalation.md §VII`
 
 ## § Open questions
 
-Unresolved by the D-API report; flagged for engineer/operator.
+> **Live-docs reconciliation (#93, 2026-05-29):** the live-docs-verified mechanism
+> supersedes the older `.artifacts/docs/handoffs/2026-05-19-teammate-api-discovery.md`
+> "D-API" assumptions wherever they conflict. In particular, teammates are spawned via
+> the lead's `TeamCreate` instruction referencing the `shepherd:conductor` subagent
+> definition — NOT via an `Agent({ subagent_type, prompt })` call — and no
+> teammate-identity env var exists.
 
-- **OQ-1 (CRITICAL): `subagent_type` value for the conductor teammate.** D-API §6
-  documents `Agent({ subagent_type, prompt })` but does not pin the exact
-  `subagent_type` string for a shepherd-profile teammate. Options: model slug
-  (e.g., `"claude-sonnet-4-5"`), custom agent-type referencing `agents/conductor.md`,
-  or omit (inherit lead's model). D-API §4 notes `teammateDefaultModel` is absent,
-  so teammates do NOT inherit by default. Until confirmed via live test: use the
-  operator's intended model slug. Document the confirmed value in
-  `docs/configuration.md §spawn`.
-- **OQ-2 (MEDIUM): Teammate name propagation.** D-API §9 says names are assigned at
-  spawn. Whether the platform parses from `IDENTITY.Name:` in the prompt or requires
-  a dedicated `name:` field on the `Agent` call is unconfirmed.
-- **OQ-3 (LOW): `TeammateIdle` routing on ambiguous `teammate_type`.** D-API
-  Unknown #1: hook payload may show model slug, `"conductor"`, or custom string.
-  Route by predictable `teammate_name` (`shepherd-conductor-{slug}`), not
-  `teammate_type`.
+- **OQ-1 (RESOLVED, #93 2026-05-29): teammate agent type.** The teammate's agent type
+  is the **`shepherd:conductor` subagent definition** (`agents/conductor.md`),
+  referenced by name in the lead's natural-language `TeamCreate` instruction (NOT a
+  model slug on an `Agent` call). The teammate inherits that definition's `model:` and
+  `tools:` frontmatter. No `subagent_type` model-slug decision is required.
+- **OQ-2 (RESOLVED, #93 2026-05-29): teammate name propagation.** Names are
+  **lead-chosen** in the `TeamCreate` natural-language instruction (e.g.,
+  `shepherd-conductor-{sprint_slug}[-{lane_id}]`). The runtime records them in the team
+  config and surfaces them as `teammate_name` in team-lifecycle hook-input JSON. There
+  is no `name:` field on an `Agent` call and no prompt-body parsing involved.
+- **OQ-3 (LOW): `TeammateIdle` routing on ambiguous `teammate_type`.** Hook payload may
+  show a model slug, `"conductor"`, or custom string for `teammate_type`. Route by the
+  predictable `teammate_name` (`shepherd-conductor-{slug}`, lead-chosen at `TeamCreate`),
+  not `teammate_type`.
 - **OQ-4 (MEDIUM, --parallel): Cross-worktree build-manifest contention.** The
   collision check guards `file_scope.exclusive`. Some build tools (cargo shared
   registry cache, npm shared `node_modules`) may still contend on paths outside the
@@ -862,5 +901,5 @@ Unresolved by the D-API report; flagged for engineer/operator.
 - `commands/start.md` — the command the teammate invokes after boot
 - `commands/plant.md` — seed authorship mode (prerequisite for a well-prepared spawn)
 - `docs/configuration.md` — shepherd.toml schema + Agent Teams setup
-- `.artifacts/docs/handoffs/2026-05-19-teammate-api-discovery.md` — D-API report (platform facts source of truth)
+- `.artifacts/docs/handoffs/2026-05-19-teammate-api-discovery.md` — D-API report (historical; superseded by live-docs reconciliation #93 2026-05-29 wherever the spawn call-shape or identity-signal conflicts — see § Open questions)
 - `.artifacts/docs/specs/2026-05-19-v514-spawn-and-profiles-design.md` — v5.1.4 design spec

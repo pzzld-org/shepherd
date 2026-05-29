@@ -33,7 +33,7 @@ Enforcement **types**:
 | # | Invariant | Mechanism | Type | Status | Test |
 |---|---|---|---|---|---|
 | 1 | A lane (teammate) is spawned via **Agent Teams**, never a Dynamic Workflow (inversion 1) | `bash_guard.sh` Check 0-bis: a `*.workflow.js` carrying teammate-spawn markers is denied; **platform also forbids it** (workflows orchestrate subagents only) | hard-block | **live** | `test_dispatch_guard.sh` ("inverted workflow") |
-| 2 | A flock role carries **no `team_name`** (a step is a subagent, not a lane) | `dispatch_guard.sh` Check 3 → `DISPATCH-TEAMMATE-TYPE-MISMATCH` | hard-block | **live** | `test_dispatch_guard.sh` ("coder/auditor-as-teammate") |
+| 2 | A flock role carries **no `team_name`** (a step is a subagent, not a lane) | `dispatch_guard.sh` Check 3 → `DISPATCH-TEAMMATE-TYPE-MISMATCH`; the **mechanical floor is the `subagent_type` discipline (Check 1/5)** — the `team_name` branch is unit-tested defence-in-depth (no such field on real `Agent`/`Task` input, #93) | hard-block (DiD) | **live (tested)** | `test_dispatch_guard.sh` ("coder/auditor-as-teammate") |
 | 3 | A gate-free step fan-out **compiles to a Dynamic Workflow**, not hand-rolled dispatch (inversion 2) | `dispatch_guard.sh` Check 6 (flag) + `dispatch-cascade.md §IV-bis` PRIMARY-path doctrine; **hard compile-correctness is #85 / Wave 2** | flag → (Wave 2 hard) | **partial** | flag asserted; hard block deferred to #85 |
 | 4 | Teammate spawns are Agent Teams; lanes counted, never "lanes per wave" | Wave 0 ontology rewrite + grep Gate 0 | doctrine + lint-candidate | **live (doctrine)** | Gate 0 grep (Wave 0) |
 
@@ -48,10 +48,20 @@ Enforcement **types**:
 | # | Invariant | Mechanism | Type | Status | Test |
 |---|---|---|---|---|---|
 | 5 | Every flock dispatch sets `subagent_type: shepherd:<role>` (no omit / general-purpose / Explore / Chat) | `dispatch_guard.sh` Check 1 → `DISPATCH-MISSING-SUBAGENT-TYPE` | hard-block | **live** | `test_dispatch_guard.sh` |
-| 6 | Only `shepherd:conductor` may carry `team_name` (lane→teammate-conductor) | `dispatch_guard.sh` Check 3 | hard-block | **live** | `test_dispatch_guard.sh` |
+| 6 | Only `shepherd:conductor` may carry `team_name` (lane→teammate-conductor) | `dispatch_guard.sh` Check 3 (defence-in-depth; the real discriminator is the tool family — `Agent`/`Task`=subagent vs `TeamCreate`=teammate, #93) | hard-block (DiD) | **live (tested)** | `test_dispatch_guard.sh` |
 | 7 | `subagent_type` stays inside the closed flock (no `shepherd:<unknown>`) | `dispatch_guard.sh` Check 5 → `DISPATCH-OFF-FLOCK` | hard-block | **live** | `test_dispatch_guard.sh` |
-| 8 | A teammate never spawns its own team | `dispatch_guard.sh` Check 2 → `TEAMMATE-NESTING-ATTEMPT` (teammate-mode + `team_name`) | hard-block | **live** | `test_dispatch_guard.sh` |
-| 9 | A teammate never dispatches `@engineer`/`@critic` | `dispatch_guard.sh` Check 4 → `WRONG-TIER-DISPATCH`; engineer/critic also self-halt on the brief field | hard-block | **live** | `test_dispatch_guard.sh` |
+| 8 | A teammate never spawns its own team | **platform-structural** (a teammate cannot call `TeamCreate`; "no nested teams", #93) + `dispatch_guard.sh` Check 2 as defence-in-depth (best-effort teammate detection via `.worktrees/` cwd + legacy env) | structural + hard-block (DiD) | **live (tested)** | `test_dispatch_guard.sh` |
+| 9 | A teammate never dispatches `@engineer`/`@critic` | `dispatch_guard.sh` Check 4 → `WRONG-TIER-DISPATCH` (teammate detected env-independently via `.worktrees/` cwd, #93); engineer/critic also self-halt on the brief field | hard-block | **live (tested)** | `test_dispatch_guard.sh` |
+
+> **Teammate-spawn mechanism (resolved, #93).** Teammates spawn via the `TeamCreate` tool
+> family + a natural-language lead instruction referencing the `shepherd:conductor` subagent
+> definition — NOT `Agent({team_name})` (no such field) — and a teammate session carries NO
+> identity env var (`anthropics/claude-code#35447`, closed not-planned). Net for this matrix:
+> the **mechanical, always-fires floor** is the `subagent_type` discipline (#5/#7, Check 1/5).
+> The `team_name`-keyed and teammate-mode rows (#2/#6/#8) are **defence-in-depth** — unit-tested,
+> but layered over the platform's own structural guarantees (Dynamic Workflows orchestrate
+> subagents only; teammates cannot nest). Teammate detection for #9 is env-independent via the
+> `.worktrees/` cwd. See `doctrines/claude-code-platform-alignment.md §I (Resolved #93)`.
 
 ## III. The eight #66 field violations — explicit status
 

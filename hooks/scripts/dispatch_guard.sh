@@ -8,28 +8,51 @@
 # primitive; coders were dispatched as teammates; general-purpose agents slipped
 # through). This guard turns each invariant into a hard refusal.
 #
-# It inspects the OUTGOING Agent/Task tool_input (subagent_type, team_name) plus
-# the CURRENT session's tier (teammate vs root/solo, from the platform env vars)
-# and denies the construction when it violates the binding.
+# PLATFORM MECHANISM (verified 2026-05-29, #93 — supersedes shepherd's earlier
+# `Agent({team_name})` assumption):
+#   - Teammates spawn via the TeamCreate tool family + a natural-language lead
+#     instruction referencing the `shepherd:conductor` subagent type. The Agent/
+#     Task tool spawns SUBAGENTS only; there is NO `team_name` parameter on it.
+#   - A teammate session exposes NO identity env var (anthropics/claude-code#35447,
+#     closed not-planned — only CLAUDECODE + CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS
+#     are set). Teammate identity lives in hook-input JSON, not env.
+#   - Teammate nesting is structurally impossible (platform: "lead is fixed",
+#     "no nested teams"). Dynamic Workflows orchestrate subagents only.
 #
-# Input  (stdin): PreToolUse JSON { tool_name, tool_input.{subagent_type,team_name,prompt,description}, ... }
+# WHAT THIS GUARD ENFORCES, and how strongly:
+#   - Checks 1 & 5 (subagent_type discipline / off-flock) are LOAD-BEARING and
+#     MECHANICAL — they fire on the real Agent/Task tool_input on every dispatch,
+#     and are the primary protection against the #66/#89 drift.
+#   - Checks 2/3/4/6 are TIER checks. Reliable teammate-session detection is the
+#     hard part: the platform exposes no teammate env var (#93), so this guard
+#     detects a teammate best-effort from the hook-input `cwd` (a shepherd
+#     `.worktrees/` path) plus legacy/convention env vars. With no signal they
+#     no-op — acceptable, because teammate→team nesting is ALSO guaranteed
+#     impossible by the platform, and the tier contract is additionally carried
+#     by the conductor profile + escalation contract (defence in depth, not the
+#     sole guarantee). The `team_name`-keyed branches (2,3) cannot match real
+#     Agent/Task input (no such field); they are retained as a documented
+#     contract assertion + unit-tested belt-and-suspenders, harmless if dead.
+#
+# Input  (stdin): PreToolUse JSON { tool_name, cwd, tool_input.{subagent_type,prompt,description,team_name?}, ... }
 # Output (stdout):
 #   {"permissionDecision":"deny","message":"..."}   — a forbidden construction (hard block)
 #   {"additionalContext":"..."}                       — a flagged-but-not-blocked pattern
 #   exit 0 silently                                   — a well-formed dispatch
 #
 # Decision table (first match wins; halt codes per dispatch-tier-separation §IV-bis):
-#   1. subagent_type ∈ {∅, general-purpose, Explore, Chat}     → DISPATCH-MISSING-SUBAGENT-TYPE  (deny)
-#   2. teammate-session AND team_name set                       → TEAMMATE-NESTING-ATTEMPT        (deny)
-#   3. team_name set AND subagent_type ≠ shepherd:conductor     → DISPATCH-TEAMMATE-TYPE-MISMATCH (deny)  [#66.1, #61]
+#   1. subagent_type ∈ {∅, general-purpose, Explore, Chat}     → DISPATCH-MISSING-SUBAGENT-TYPE  (deny)  [mechanical]
+#   2. teammate-session AND team_name set                       → TEAMMATE-NESTING-ATTEMPT        (deny)  [defence-in-depth]
+#   3. team_name set AND subagent_type ≠ shepherd:conductor     → DISPATCH-TEAMMATE-TYPE-MISMATCH (deny)  [defence-in-depth; #66.1,#61]
 #   4. teammate-session AND subagent_type ∈ {engineer,critic}   → WRONG-TIER-DISPATCH             (deny)  [#66]
-#   5. subagent_type = shepherd:<x>, x ∉ closed-flock+conductor → DISPATCH-OFF-FLOCK              (deny)
+#   5. subagent_type = shepherd:<x>, x ∉ closed-flock+conductor → DISPATCH-OFF-FLOCK              (deny)  [mechanical]
 #   6. teammate-session AND a flock fan-out role, no compile    → PRIMITIVE-INVERSION (handrolled) (flag) [#89 inversion 2]
 #
-# The lane↔teammate-conductor / step↔subagent assertion is exactly checks 2+3:
-# a lane is the ONLY thing that may carry team_name, and it MUST be a conductor;
-# a step (any flock role) carries NO team_name. Spawning teammates is therefore
-# Agent Teams (Agent + team_name + shepherd:conductor), never anything else.
+# Binding (doctrines/primitive-axis-binding.md): a LANE = one teammate-conductor
+# spawned via Agent Teams (TeamCreate); a STEP = a subagent (Agent/Task). Spawning
+# a lane is NEVER a workflow; a step fan-out is NEVER hand-rolled. This guard is
+# the mechanical half; the platform's structural guarantees + the conductor
+# profile carry the rest.
 
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -44,12 +67,20 @@ case "$tool" in Agent|Task) ;; *) exit 0 ;; esac
 subagent_type=$(json_field "$input" '.tool_input.subagent_type')
 team_name=$(json_field "$input" '.tool_input.team_name')
 session=$(json_field "$input" '.session_id')
+cwd=$(json_field "$input" '.cwd')
 
-# Tier detection: a teammate session sets one of these platform env vars
-# (claude-code-platform-alignment.md; dispatch-tier-separation.md §III).
+# Tier detection (best-effort — the platform exposes NO teammate identity env var,
+# #93 / anthropics/claude-code#35447). PRIMARY signal: a shepherd teammate runs in
+# a `.worktrees/` worktree (commands/spawn.md §Worktree-per-teammate), visible in
+# the PreToolUse `cwd` — env-independent. SECONDARY: legacy/convention env vars
+# (read empty under the live platform; kept for forward-compat + unit tests).
+# Absent any signal these checks no-op; teammate→team nesting is independently
+# impossible per platform, so the subagent_type checks (1,5) remain the mechanical
+# floor (claude-code-platform-alignment.md; dispatch-tier-separation.md §III).
 teammate_mode=0
 if [[ -n "${CLAUDE_TEAMMATE_NAME:-}" || -n "${CLAUDE_AGENT_TEAMMATE_NAME:-}" \
-   || "${CLAUDE_PROJECT_SESSION_TYPE:-}" == "teammate" ]]; then
+   || "${CLAUDE_PROJECT_SESSION_TYPE:-}" == "teammate" \
+   || "$cwd" == */.worktrees/* ]]; then
   teammate_mode=1
 fi
 

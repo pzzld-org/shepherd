@@ -127,7 +127,10 @@ the field. A guard rejects each (mechanism layer, #86 / #89 guard — Wave 1).
 ### III.1 — Spawning teammate-conductors = Agent Teams, NEVER a Dynamic Workflow
 
 To stand up the parallel lanes, root spawns **one teammate-conductor per lane** via
-**Agent Teams** (`Agent({ team_name: ..., subagent_type: "shepherd:conductor" })`).
+**Agent Teams** — the `TeamCreate` tool family + a natural-language lead instruction that
+references the `shepherd:conductor` subagent definition as each teammate's agent type (#93).
+(`Agent`/`Task` have **no `team_name` parameter** — they spawn *subagents*; teammates are a
+disjoint tool family. The discriminator is the TOOL FAMILY, not a field.)
 
 **Forbidden:** instantiating teammate-conductors from inside a Dynamic Workflow, or
 emitting a workflow whose "steps" are teammate-conductors. A workflow orchestrates
@@ -186,13 +189,15 @@ ontology units:
 
 Consequences, enforced by `dispatch-tier-separation.md §IV-bis`:
 
-- A **step** is dispatched as a subagent — `subagent_type: "shepherd:<role>"`,
-  `team_name` UNSET. A step dispatched **as a teammate** is
-  `DISPATCH-TEAMMATE-TYPE-MISMATCH`.
-- A **lane** is owned by a teammate-conductor — `team_name` SET,
-  `subagent_type: "shepherd:conductor"`. A lane stood up **as a subagent** (no team) is
-  the solo/in-context degenerate case; standing one up **as a workflow step** is the
-  §III.1 inversion.
+- A **step** is dispatched as a **subagent** via the `Agent`/`Task` tool family —
+  `subagent_type: "shepherd:<role>"`. A step dispatched **as a teammate** (via `TeamCreate`)
+  is `DISPATCH-TEAMMATE-TYPE-MISMATCH`.
+- A **lane** is owned by a **teammate-conductor**, spawned via the **`TeamCreate`** tool
+  family referencing `subagent_type: "shepherd:conductor"` (#93 — the discriminator is the
+  TOOL FAMILY: `Agent`/`Task` = subagent, `TeamCreate` = teammate; there is no `team_name`
+  parameter on `Agent`/`Task`). A lane stood up **as a subagent** (no team) is the
+  solo/in-context degenerate case; standing one up **as a workflow step** is the §III.1
+  inversion.
 - A **wave gate** is conductor-inline (git/shell/operator) — a **seam** node, never
   compiled into a workflow (`workflow-compile-down.md §VI`).
 

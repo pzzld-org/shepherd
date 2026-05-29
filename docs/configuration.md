@@ -97,6 +97,18 @@ Paths are relative to the repo root. Directories are auto-created on first write
 
 **Namespace default (v5.0.0):** the per-project namespace directory is **`.shepherd/`** by default. Projects that prefer the legacy `.artifacts/` layout opt in by running `shctx init --artifacts`; substitute `.artifacts/` for `.shepherd/` in the snippet above. The `shctx` CLI auto-detects which directory is in use at every invocation (preferring `.shepherd/` when both exist). **The `[paths]` entries here must match the active namespace** — if they diverge, `shctx doctor` will surface a conflict warning. As of v5.0.9, `shctx init` also refuses to scaffold a new namespace when the other is already initialized, preventing this split-brain at the source.
 
+#### `$SHEPHERD_WORKDIR` — work-directory override (v6.0.2)
+
+`$SHEPHERD_WORKDIR` is the first-class, public way to point shepherd at a project-local work directory. Both the `shctx` runtime and the hooks honor it with this precedence:
+
+1. **`$SHEPHERD_WORKDIR`** — if set and non-empty. An absolute path is used as-is; a relative path resolves against the repo root.
+2. `$SHCTX_ROOT_OVERRIDE` — legacy override (kept for backward compat; set by `shctx init --artifacts`).
+3. Existing **`.shepherd/`** (the default).
+4. Existing **`.artifacts/`** (accepted auto-pickup fallback for legacy projects).
+5. Otherwise default to **`.shepherd/`**.
+
+When both `.shepherd/` and `.artifacts/` exist (and no override is set), shepherd picks `.shepherd/` and emits a split-brain warning (suppressed by `SHCTX_QUIET=1`).
+
 ### `[context]` — context registry (new in v5.0.0)
 
 ```toml

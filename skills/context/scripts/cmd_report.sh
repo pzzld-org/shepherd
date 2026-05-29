@@ -4,7 +4,8 @@
 # Kinds: discovery, audit, escalation, close, teammates
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DB="${SHCTX_DB:-$(git rev-parse --show-toplevel 2>/dev/null)/.artifacts/root.db}"
+source "$HERE/_lib.sh"
+DB="${SHCTX_DB:-$(shctx_db_path)}"
 [[ -f "$DB" ]] || { echo "ERR: registry DB not found at $DB" >&2; exit 1; }
 
 usage() { cat <<'U'

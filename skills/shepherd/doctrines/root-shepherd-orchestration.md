@@ -58,9 +58,12 @@ NEVER spawn further teammates (no nested teams).
 
 Wave boundaries: each lane's teammate `SendMessage`s `WAVE-COMPLETE` and goes
 idle; root runs the wave-gate and commits; then the lanes advance to wave `w+1`.
-At that boundary root MAY **refresh** an idle lane's teammate — shut it down and
-spawn a fresh teammate into the **same** lane for the next wave, for fresh context
-and lower compaction cost. **Refreshing a lane's teammate is NOT a new lane**
+Root is **proactive about idle teammates** — it does NOT leave one idling once its
+wave payload is materialized: it prunes the teammate (reclaiming compute, avoiding
+forced-compaction cost) and at the next wave boundary **refreshes** the lane by
+spawning a fresh teammate into the **same** lane for the next wave, for clean
+context and lower compaction cost. Proactive pruning is the default, not the
+exception — a lingering idle teammate is wasted compute. **Refreshing a lane's teammate is NOT a new lane**
 (`doctrines/primitive-axis-binding.md §II.1`): the lane is durable, the teammate
 instance is recyclable. Count **lanes** (constant), never teammate-instances,
 never "lanes per wave."

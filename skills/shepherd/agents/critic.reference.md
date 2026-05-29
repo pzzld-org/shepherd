@@ -75,6 +75,35 @@ below is the working catalog the critic walks through internally.
   the canonical-types index if available.
 - Is the proposed scope the minimum viable shape, or has the author
   over-engineered the "right" solution past the patch-grade bar?
+- **Cargo feature reachability — resolve the FULL feature graph before
+  declaring a dependency or feature "missing".** Direct-declaration absence
+  is NOT the same as feature unreachability. A required feature counts as
+  *reachable* if any one of these holds:
+  - (a) it is named in a crate's `default` feature set;
+  - (b) it is enabled by any other reachable feature in `[features]` —
+    including `foo = ["bar"]` chains and umbrella/SDK `full = [...]`
+    rollups;
+  - (c) it is pulled in through an optional dependency, via `dep:x` or the
+    `x?/feat` weak-dep syntax;
+  - (d) it is requested by a workspace member, by `--features` /
+    `--all-features` on the close-gate command, or by a `cfg(feature = "…")`
+    guard that the gate exercises.
+  Worked example (the v0.3.4-dev.3 false positive this checklist exists to
+  prevent): `bin/node` declares `axiom = { features = ["full"] }`; `axiom`
+  declares `full = ["axiom-rt?/full"]`; `axiom-rt` declares
+  `full = ["native-runtime"]`. So `native-runtime` is already reachable in
+  `bin/node` by transitive feature unification — adding a direct
+  `axiom-rt = { features = ["native-runtime"] }` edge duplicates a
+  dependency and may violate the umbrella-crate convention. Do NOT flag it.
+  Only a feature with **no path from any root** (default, CLI, workspace, or
+  another reachable feature) may be raised — and even then as a
+  **non-CRITICAL observation** carrying a "verify with
+  `cargo tree -e features` / `cargo hack`" instruction, never a hard
+  CRITICAL, unless it gates compiled code that the close-gate
+  `cargo test --workspace --features full` would provably never exercise.
+  When the suspected-missing crate is a dependency of the project's
+  umbrella/SDK crate, check that crate's `full` rollup for the sub-feature
+  before flagging anything at all.
 
 ### 2. Logic & reasoning audit — extended
 

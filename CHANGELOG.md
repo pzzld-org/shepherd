@@ -130,9 +130,74 @@ dispatch-class #66 violations and proves each mechanically blocked; allowlist li
 
 **Wave 1 follow-ups (gaps tracked in the matrix, not yet hard-mechanized):** #66.2/#66.3
 cargo `CARGO_TARGET_DIR` / `--frozen` warns; #59 close-finalize since-last-commit gate;
-#90 spawn boot-prompt SCOPE RULE. **Deferred to later waves:** Wave 2 — #82 seam-export →
-#77 `shctx graph compile` + #85 (the #89 inversion-2 hard block) + #78 + #83; Wave 3 —
-#76 mechanic deletion + #87 telemetry + #71 `release.yml` + #72 critic feature.
+#90 spawn boot-prompt SCOPE RULE.
+
+### Wave 2 + finalization — native substrate, platform reconciliation, productionize
+
+Operator-directed finalization: deliver the governance + context-management core by elegantly
+composing Claude Code's native tools, update the README, and make the repo product-grade.
+Much of the substrate already existed (`shctx graph compile` with a faithfulness diff); this
+wave **reconciles it to the verified platform mechanism, completes the topology tooling, and
+hardens the operational substrate.**
+
+- **#93 RESOLVED — platform mechanism verified against live docs (2026-05-29).** Teammates
+  spawn via the **`TeamCreate`** tool family + a natural-language lead instruction referencing
+  the `shepherd:conductor` subagent definition — there is **no `team_name` parameter on
+  `Agent`/`Task`** (those spawn subagents), and a teammate session exposes **no identity env
+  var** (`anthropics/claude-code#35447`, closed not-planned); identity is delivered only in
+  hook-input JSON. **Dynamic Workflows orchestrate subagents only — never teammates** (confirms
+  the #89 binding; only the call-shape was wrong). Reconciled across `commands/spawn.md`,
+  `agents/conductor.md`, `agents/shepherd.md`, `dispatch_guard.sh`,
+  `claude-code-platform-alignment.md §I` (Open investigation → **Resolved**),
+  `invariant-enforcement-matrix.md`, and `primitive-axis-binding.md §III.1/§IV`.
+- **Honest, env-independent dispatch guard.** `dispatch_guard.sh` now detects a teammate
+  session from the hook-input **`cwd`** (a `.worktrees/` path) — env-independent, since the
+  platform exposes no teammate env var — with the `subagent_type` discipline as the mechanical
+  floor and the `team_name`/teammate-tier checks documented as defence-in-depth (layered over
+  the platform's structural no-nesting guarantee). New `cwd` regression in
+  `test_dispatch_guard.sh`; **hooks 26/26 green.**
+- **`shctx graph diagram` (new, #77 topology utility).** Emits a **Mermaid execution diagram**
+  of the Stage Graph — seam vs fan-out classification (matching the compiler's φ-map), labeled
+  edges, and an optional per-segment compiled-fan-out overlay — to
+  `{workdir}/graph/diagrams/{sprint}.mmd` or stdout. Complements the existing
+  `shctx graph compile` (Dynamic Workflow emission + soundness/completeness/determinism
+  faithfulness diff + manifest seam-export) per `workflow-compile-down.md`.
+- **Operational substrate: `$SHEPHERD_WORKDIR`.** New first-class resolver `resolve_workdir()`
+  (`skills/context/scripts/_lib.sh`, mirrored in `hooks/scripts/_lib.sh`) honors
+  `$SHEPHERD_WORKDIR` → existing `.shepherd` → existing `.artifacts` → default `.shepherd`.
+  **Fixed a canonical-state split-brain bug:** five `cmd_*.sh` (escalate/deliverable/mailbox/
+  report/teammate) and five hooks (teammate_idle/deliverable_check/subagent_telemetry/
+  lock_guard/dedup_write_guard) hardcoded `.artifacts/root.db`, so a `.shepherd`-default project
+  silently used the wrong DB — all now resolve through the namespace. The workdir ships its own
+  `.gitignore` (secrets + runtime trimmed: `*.env`/`*.key`/`*.pem`/`secrets/`/…; design records
+  under `docs/` preserved); the root `.gitignore` mirrors the `.shepherd/` runtime entries. New
+  `skills/context/tests/test_workdir.sh` pins the precedence; documented in
+  `docs/configuration.md`.
+- **Root proactivity + compartmentalization (operator-emphasized).** `agents/shepherd.md`
+  (Coordinate mode) and `root-shepherd-orchestration.md` now make **proactive idle-teammate
+  pruning** a standing root behavior — once a teammate's wave payload is materialized, prune it
+  (reclaim compute, avoid forced compaction) and **refresh** the lane with a fresh teammate at
+  the next wave boundary. Compartmentalizing each wave into fresh context is the default.
+- **#71 `release.yml` fixed** — `actions/checkout@v6`'s credential-persistence breaking change
+  (PR #2286) broke the authenticated `git push` steps once the v6.0.1 `detect` regex fix let
+  the pipeline proceed; pinned checkout to `@v5` + explicit `token:` + `persist-credentials`.
+- **#72 critic false-positive fixed** — the critic's Necessity audit now resolves the full
+  Cargo **feature graph** before flagging reachability (default sets, `foo = ["bar"]` chains,
+  umbrella `full` rollups, optional-dep `dep:`/`x?/feat`, workspace/`--features`), so a
+  transitively-enabled feature (e.g. `native-runtime` via `full`) no longer raises a spurious
+  CRITICAL; genuinely dead features downgrade to a verify-first observation.
+- **README** rewritten to the finalized v6.0.2 story; all six version sources confirmed synced.
+
+**Gate (green):** `hooks/tests/run.sh` 26/26; `test_workdir.sh` passes; `shctx graph diagram`
+verified end-to-end. (Context DB tests require `sqlite3`, absent in this environment —
+environmental, not a regression.)
+
+**Tracked for v6.0.3 (non-core depth — operator-deferred):** adaptability + self-improvement
+mechanisms (filed as issues); the still-tracked matrix gaps (#59 close-gate hard hook, #90
+boot-prompt SCOPE RULE, #66.2/#66.3 cargo warns, #66.6 dead-pane prune); the deeper cross-run
+concurrency budget (#83); the full hand-rolled-mechanic deletion (#70/#53/#58); and
+compile-down telemetry (#87). The governance core + native-substrate execution path are in
+place; these add depth.
 
 ---
 

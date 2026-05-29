@@ -14,7 +14,7 @@ Sprint-by-sprint version-cycle conductor. A production-grade orchestration frame
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
-## v6.0.2 — Primitive↔axis binding + ontology recovery (Wave 0)
+## v6.0.2 — Ontology recovery, mechanical enforcement & native-substrate adoption
 
 v6.0.1's slimming + the introduction of "lanes" blurred shepherd's core ontology
 and broke its mapping of Claude-native primitives to their roles. v6.0.2 restores
@@ -38,6 +38,49 @@ the truth as **canonical doctrine** —
 - **Spawning teammates = Agent Teams, never a workflow.** A teammate's gate-free
   fan-out = **compile to a Dynamic Workflow**, never hand-rolled dispatch. Never invert
   (the v6.0.1 field regression, [#89](https://github.com/FL03/shepherd/issues/89)).
+
+**Mechanical enforcement (not prose).** Every load-bearing invariant is paired with a
+mechanism in
+[`doctrines/invariant-enforcement-matrix.md`](skills/shepherd/doctrines/invariant-enforcement-matrix.md)
+([#86](https://github.com/FL03/shepherd/issues/86)). A PreToolUse guard
+(`hooks/scripts/dispatch_guard.sh`) hard-refuses the dispatch-class drift behind
+[#66](https://github.com/FL03/shepherd/issues/66) — missing/`general-purpose`
+`subagent_type`, off-flock impersonation, wrong-tier `@engineer`/`@critic` from a teammate;
+`bash_guard.sh` blocks the workflow→teammate inversion and backgrounded cargo gates; a
+capability lint pins read-only + least-privilege allowlists across all nine agents
+([#74](https://github.com/FL03/shepherd/issues/74) /
+[#84](https://github.com/FL03/shepherd/issues/84)). Reproduced and proven in `hooks/tests/`.
+
+**Platform mechanism verified ([#93](https://github.com/FL03/shepherd/issues/93)).** Against
+the live Claude Code docs: teammates spawn via the **`TeamCreate`** tool family + a
+natural-language lead instruction referencing the `shepherd:conductor` subagent definition —
+there is **no `team_name` parameter on `Agent`/`Task`** (those spawn subagents), and a
+teammate session exposes **no identity env var**
+([`anthropics/claude-code#35447`](https://github.com/anthropics/claude-code/issues/35447));
+identity arrives only in hook-input JSON. **Dynamic Workflows orchestrate subagents only —
+never teammates.** The spawn command, conductor profile, and guards are reconciled to this;
+the binding above is confirmed (only the call-shape was ever wrong).
+
+**Native substrate (slim, not bespoke).** Execution rides Claude Code's own primitives:
+`shctx graph compile` emits the gate-free fan-out segments of the critic-gated Stage Graph
+as **Dynamic Workflow** scripts (with a soundness / completeness / determinism faithfulness
+diff), and `shctx graph diagram` renders the graph as a **Mermaid execution diagram** (seam
+vs fan-out, with a per-segment overlay). Coordination maps onto the native axes per
+[`doctrines/native-coordination.md`](skills/shepherd/doctrines/native-coordination.md);
+shepherd keeps only the governance core (closed flock, dispatch contract, audited plan,
+SQLite + git canonical state) and proactively prunes idle teammates to compartmentalize work
+and cut compute.
+
+**Operational substrate.** A project-local work directory, named by `$SHEPHERD_WORKDIR`
+(default `.shepherd`; `.artifacts` accepted), holds the per-project SQLite registry, logs,
+mailbox, escalations, and indexes, and ships its own `.gitignore` (secrets + runtime trimmed,
+design records preserved). Path resolution was hardened so the commands and hooks that
+hardcoded `.artifacts/root.db` no longer split-brain a `.shepherd` project.
+
+**Also fixed:** the release workflow
+([#71](https://github.com/FL03/shepherd/issues/71)) and the critic's false-positive on
+transitively-reachable Cargo features
+([#72](https://github.com/FL03/shepherd/issues/72)).
 
 ## v6.0.0 — Dispatch enforcement + planter authority excision
 

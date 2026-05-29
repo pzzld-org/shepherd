@@ -226,14 +226,19 @@ the load-bearing replacement for the prior implicit enforcement.
 
 ### IV-bis.2. `DISPATCH-TEAMMATE-TYPE-MISMATCH`
 
-**Trigger:** an Agent call sets `team_name: <something>` AND `subagent_type
-!= "shepherd:conductor"`. Concretely: `Agent({team_name: "...", subagent_type:
-"shepherd:coder", ...})` or any flock role other than `conductor` paired with
-a `team_name`.
+**Trigger:** a dispatch attempts to stand up a flock role OTHER than
+`shepherd:conductor` as a **teammate** — a `team_name`-bearing dispatch (or, on the
+live platform, a `TeamCreate` referencing a non-conductor agent type) whose
+`subagent_type != "shepherd:conductor"`. *(#93: there is no `team_name` parameter on
+`Agent`/`Task` — those spawn subagents; teammates spawn via the `TeamCreate` family
+referencing `shepherd:conductor`. The real discriminator is the TOOL FAMILY, so the
+`team_name` check is **defence-in-depth** — `dispatch_guard.sh` Check 3 — layered over
+the platform's own behavior. The mechanical floor is the `subagent_type` discipline,
+§IV-bis.1.)*
 
-**Refusal:** root MUST refuse. Teammate-spawning is conductor-only. A coder
-("etc.) is an ephemeral subagent dispatched BY a conductor, never spawned AS
-a teammate.
+**Refusal:** root MUST refuse. Teammate-spawning (a lane) is conductor-only. A coder
+(etc.) is an ephemeral **subagent** dispatched BY a conductor, never spawned AS a
+teammate.
 
 **Why:** axiom v0.3.4-dev.1 (FL03/shepherd #65, 2026-05-26) — root
 dispatched 4 coder teammates instead of conductor teammates. Work landed
@@ -355,9 +360,10 @@ materialization cost and gets the cross-teammate view critic needs.
    Three consecutive `/shepherd:spawn` runs (v0.3.4-dev.0/1/2 on FL03/axiom,
    2026-05-25..27) failed in concurrent failure modes: root treated spawn
    like start (did body work directly instead of fanning out conductors);
-   when teammates were spawned, `Agent({team_name, subagent_type:
-   "shepherd:coder"})` slipped through and produced lane-coder teammates
-   with no conductor coordination; `general-purpose` agents were dispatched
+   when teammates were spawned, lane-**coders** were stood up as teammates
+   (a non-conductor, `team_name`-bearing dispatch — see #93 for the verified
+   teammate-spawn path: `TeamCreate` referencing `shepherd:conductor`) with no
+   conductor coordination; `general-purpose` agents were dispatched
    because `subagent_type` was sometimes omitted entirely. The framework
    describing the correct shape was not enough; the enforcement language
    had been weakened in v5.1.9's dispatch-procedure rewrite without an
