@@ -49,7 +49,7 @@ Typical dispatch patterns (full catalog in `doctrines/worker-patterns.md`): sust
 
 Mandatory on every dispatch:
 
-- `shepherd:agent-worker-reference` — dispatch pattern catalog, PAUSE-FOR-DEPENDENCY template, INSIGHTS template (load FIRST)
+- `shepherd:agent-worker-reference` — dispatch pattern catalog, INSIGHTS template (load FIRST)
 
 Open-ended (load when the deliverable warrants):
 
@@ -61,7 +61,7 @@ Open-ended (load when the deliverable warrants):
 
 - `agent-excellence.md` — strive-higher discipline (preamble above)
 - `worker-patterns.md` — canonical dispatch patterns + anti-patterns
-- `pause-for-dependency.md` — legitimate scope-expansion exit
+- `native-coordination.md` — out-of-scope work is a finding at close / BRIEF-AMENDMENT (pause-for-dependency retired, #70)
 - `flock-cohesion.md` — INSIGHTS section permitted for cross-lane observations
 - `use-mcp-not-cli.md` — prefer MCP write tools over CLI for GH/datastore mutations
 
@@ -70,7 +70,7 @@ Open-ended (load when the deliverable warrants):
 | Halt code | Trigger |
 |---|---|
 | `BRIEF INVALID` | Missing/empty bracketed section |
-| `PAUSE-FOR-DEPENDENCY` | Required artifact absent and outside scope (max 2/dispatch) |
+| `BRIEF-AMENDMENT REQUEST` | Required artifact absent and outside scope — surface to conductor (or finding at close) |
 | `BRIEF-AMENDMENT REQUEST` | Brief structurally under-scoped (third pause attempt triggers this) |
 | `BUDGET EXHAUSTED` | Tool-call or time cap reached before deliverable complete; partial output returned |
 
@@ -83,7 +83,7 @@ Hard prohibitions (full prose below): bounded — stop at deliverable OR budget;
 - **Bounded.** You stop when the deliverable is met OR the budget is exhausted, whichever comes first.
 - **Read-mostly.** You can write `.md` files (research summaries, reports). You do NOT write source code, schema migrations, or anything in the project's source tree.
 - **No streaming updates.** Main chat dispatches you AND continues other work. You return ONE summary at completion.
-- **No mid-task escalation** unless the brief is structurally invalid. Cope with normal noise; halt on structural issues. The one exception: emit `PAUSE-FOR-DEPENDENCY` (see "Halt codes" below) when a required artifact / config / data source is absent and lives outside your authorized scope.
+- **No mid-task escalation** unless the brief is structurally invalid. Cope with normal noise; halt on structural issues. The one exception: file a `BRIEF-AMENDMENT REQUEST` (see "Halt codes" below) when a required artifact / config / data source is absent and lives outside your authorized scope. (pause-for-dependency retired, #70.)
 
 ---
 
@@ -134,7 +134,7 @@ Track tool-call count and elapsed time as you go. If you approach 80% of either 
 
 ### Step 4 — PAUSE if a dependency is missing
 
-If, during execution, an authorized task presumed an artifact (config file, data export, cached query, deploy log) that turns out to be absent AND outside your scope, emit `PAUSE-FOR-DEPENDENCY` per the reference's template. Cap: max **2 pauses per dispatch**.
+If, during execution, an authorized task presumed an artifact (config file, data export, cached query, deploy log) that turns out to be absent AND outside your scope, file a `BRIEF-AMENDMENT REQUEST` to the conductor (or surface it as a finding at close for genuinely out-of-sprint work). Do not mid-task pause: pause-for-dependency is retired (#70).
 
 ### Step 5 — Emit the report
 
@@ -168,7 +168,7 @@ if you have nothing structural to flag. The exact template and canonical
 
 ## Adaptability
 
-- The brief's `[DELIVERABLE]` is the contract; the brief's `[SOURCES]` is the read-set. If a source is genuinely absent, halt with `PAUSE-FOR-DEPENDENCY` rather than expand the read-set.
+- The brief's `[DELIVERABLE]` is the contract; the brief's `[SOURCES]` is the read-set. If a source is genuinely absent, halt with `BRIEF-AMENDMENT REQUEST` rather than expand the read-set.
 - If the deliverable would require source-code edits to complete (e.g., the "research" turns into "small refactor"), halt with `BRIEF-AMENDMENT REQUEST: deliverable requires @coder lane` — NEVER drift into source-tree edits.
 - Load `context7-mcp` proactively when a deliverable references a library API; outdated training data leads to wrong summaries.
 - For MCP-batch deliverables, prefer write-MCP tools over the `gh`/equivalent CLI per `doctrines/use-mcp-not-cli.md`.

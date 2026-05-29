@@ -281,8 +281,12 @@ The body IS the Stage Graph walk. You no longer compose dispatches — you evalu
      a. Group by parallel_with cliques → batches
      b. For each batch:
           - HARD-STOP node → fire and EXIT
-          - conductor-inline node → execute inline
-          - agent batch → dispatch in ONE message (parallel-safety rules apply)
+          - conductor-inline node (gate / git / shell) → execute inline (seam)
+          - gate-free agent-fanout segment → compile + run as a Dynamic Workflow
+            out-of-context (PRIMARY, v6.0.1): shctx graph compile --segment=<entry>
+            --verify (§IV diff MUST pass) → run <seg>.workflow.js; on runtime
+            failure fall back to in-context dispatch
+          - other agent batch → dispatch in ONE message (parallel-safety rules apply)
           - await all returns
      c. Evaluate outgoing edge predicates against each node's output
      d. Mark target nodes' in_predicates satisfied
@@ -295,6 +299,7 @@ The body IS the Stage Graph walk. You no longer compose dispatches — you evalu
 - [ ] **DEDUP-GATE** fires before every WAVE-IMPL: run every lane's `[DO-NOT-DUPLICATE]` greps + mechanically recompute `[SKILLS]`. SQL fast-path: `shctx query dedup-check --name=<symbol>` — a registry hit pre-blocks; a registry miss does NOT skip the grep. Block fires if ANY grep returns > expected. Per `doctrines/zero-duplicate-tolerance.md`.
 - [ ] **Brief validity** passed for every lane before the WAVE-IMPL batch fires. Full checklist in `flock.md` §@coder → Brief-Validity Checklist.
 - [ ] **WAVE-IMPL batch**: N coders + IO-bound `@worker` in **ONE message** (`WORKER-IO.parallel_with = [wave-N-impl]` — graph-encoded).
+- [ ] **Compile-down (v6.0.1, #77 — PRIMARY path for fanout segments)**: a gate-free agent-fanout segment (WAVE-IMPL/AUDIT, CLOSE-SWARM, DISCOVERY, WORKER-IO, HOTFIX) executes via `shctx graph compile --segment=<entry> --verify` → run the emitted `<seg>.workflow.js` out-of-context, then `shctx graph mark` on return. The §IV faithfulness diff (soundness / completeness / determinism) MUST pass before running; a mismatch is a compiler bug — HALT, don't run. Seams (operator gates, `WAVE-GATE` rebase, git/shell, SQLite+git canonical writes) stay conductor-inline. **Mode-agnostic:** solo `/shepherd:start` compiles its own fanout (no team needed); a teammate compiles its lane's fanout. On runtime failure/unavailability → fall back to in-context dispatch (no parallel engine). See `doctrines/dispatch-cascade.md §IV-bis` + `doctrines/workflow-compile-down.md §III–VI`.
 - [ ] **Zero file overlap** across coder scopes in a wave. Single build-manifest writer. Verify before dispatch.
 - [ ] **Brief cache ordering** (v5.1.3+): stable sections first (`[ROLE]` → `[SKILLS]` → `[DOCTRINES]` → `[PROTOCOL-REMINDERS]`), variable sections last (`[FILE-SCOPE]` → `[CONTEXT-INVENTORY]` → `[DO-NOT-DUPLICATE]` → `[ACCEPTANCE]` → `[NON-GOALS]` → `[WORKTREE]` → `[BASE-COMMIT-EXPECTED]`). Per `doctrines/brief-cache-discipline.md`.
 - [ ] **WAVE-GATE** (conductor inline): rebase all worktrees → **gate sequence sequential** (NEVER parallel — `doctrines/cargo-sequential-gates.md`): `{gates.format}` → `{gates.check}` → `{gates.lint}` → language auto-fix if applicable → `git commit -m "fix(dev.N/wave-K): rebase + gate"`. Delete worktrees after gate.
@@ -318,7 +323,12 @@ The body IS the Stage Graph walk. You no longer compose dispatches — you evalu
 | L | 6 | ~400 |
 | XL | 6 per wave | 1000+ |
 
-**PAUSE-FOR-DEPENDENCY subgraph** (v5.0.9): when a coder returns `PAUSE-FOR-DEPENDENCY`, walk the inline satellite subgraph before WAVE-N-GATE. Full protocol: `doctrines/pause-for-dependency.md`. The `agent_pause_detector.sh` hook auto-drafts the satellite brief stub at `<ns>/pauses/<id>.brief.md` — read it, adjust, dispatch.
+**Cross-lane dependencies (v6.0.1; pause-for-dependency retired — #70):** a lane that
+needs a sibling's output is a **graph edge** the engineer composes (the compiled
+segment then `await`-orders it — `doctrines/native-coordination.md`); a coder that
+hits genuinely out-of-scope work surfaces it as a **finding / GH issue at close** or a
+`BRIEF-AMENDMENT REQUEST`, **not** a mid-lane pause. There is no satellite subgraph,
+no pause-detector hook, and no `<ns>/pauses/` registry.
 
 ---
 
@@ -517,7 +527,7 @@ Closes #50. References `doctrines/cargo-sequential-gates.md` and
 24. Engineer ignores `[DISCOVERY-CONTEXT]` / `[INTRO-AUDIT-CONTEXT]` → HIGH findings not addressed in plan → grade-cap C+.
 25. Sprint under-scoped to non-patch-grade → planter + engineer + critic all responsible for catching.
 26. Auditor files finding without Hypothesis + Falsification + Confidence → reject report and re-fire.
-27. Conductor composes PAUSE-FOR-DEPENDENCY satellite brief from scratch → read the hook-auto-drafted stub first.
+27. Conductor walks a PAUSE-FOR-DEPENDENCY satellite subgraph → retired (#70). Cross-lane needs are graph edges (engineer-composed, `await`-ordered in the compiled segment); out-of-scope work is a finding/issue at close per `doctrines/native-coordination.md`.
 28. **Conductor reaches for a non-flock agent because the flock "feels heavy."** Flock-first is the doctrinal default. Every non-flock dispatch routes through the DISPATCH DECISION TREE in `doctrines/specialist-dispatch.md`. Skipping the tree is a process violation; `general-purpose` and `Explore` are explicitly framework-forbidden. If `@worker` or `@discovery` feels heavy, the answer is a tighter brief — not a generic substitute. The discipline shepherd encodes (bounded brief, deliverable, budget, Hypothesis-Falsification-Confidence) IS the value-add; discarding it discards the framework.
 29. **Conductor dispatches a specialist whose description block it has not read this session.** Per `doctrines/specialist-dispatch.md` §SPECIALIST DISCOVERY Step 3. Skim-and-fire produces mis-briefed specialists; mis-briefed specialists produce garbage; garbage carries forward as drift. Re-read the description block (or run `ToolSearch select:<plugin>:<agent>` for the schema) every time, every session.
 30. **Conductor silently degrades a missing specialist to `@worker` without operator-surface annotation.** Same principle as `doctrines/plugin-reload-escape.md` for MCP tools — flag the unavailability, request `/reload-plugins`, then either resume or fall back with explicit annotation. Hidden degradation hides misconfiguration.

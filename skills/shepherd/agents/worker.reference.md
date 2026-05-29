@@ -5,7 +5,7 @@ description: |
   Reference catalog for @worker. Loaded on demand at agent startup via Skill,
   so per-dispatch content stays out of the agent's stable system-prompt prefix.
   Contains the dispatch pattern catalog (Patterns 1–5), the full
-  PAUSE-FOR-DEPENDENCY report template, and the INSIGHTS section template.
+  the INSIGHTS section template.
 metadata:
   triggers:
     - "agent-worker-reference"
@@ -14,7 +14,7 @@ metadata:
 # @worker reference
 
 Loaded once per session. The agent body in `agents/worker.md` cites this file
-for the dispatch pattern catalog, the PAUSE-FOR-DEPENDENCY report shape, and
+for the dispatch pattern catalog and
 the optional INSIGHTS section.
 
 ## Common dispatch patterns
@@ -77,57 +77,25 @@ Note: this pattern is only needed for backfill. Going forward, the
 completeness auditor writes entries at each sprint close automatically (per
 `doctrines/adaptation-loop.md §II`).
 
-## PAUSE-FOR-DEPENDENCY — full report template
+## Cross-lane / missing-artifact dependencies (pause-for-dependency retired — #70)
 
-> Full protocol: `doctrines/pause-for-dependency.md`. Workers are secondary
-> users (after coders) of this primitive. Emit it when an authorized task
-> presumed an artifact (config file, data export, cached query, deploy log)
-> that turns out to be absent AND outside your scope.
+> Superseded by `doctrines/native-coordination.md`. The pause-for-dependency
+> satellite mechanism is deleted in v6.0.1 — no `<ns>/pauses/` registry and no
+> pause-detector hook.
 
-### Trigger conditions (all three must hold)
+If an authorized task presumed an artifact (config file, data export, cached
+query, deploy log) that is **absent AND outside your `[DELIVERABLE]` scope**,
+first verify it isn't already elsewhere (`ls`, `shctx search`,
+`mcp__plugin_*__list_*`). Then:
 
-1. A required input file / data source / config does not exist in the
-   workspace.
-2. Producing it falls outside your `[DELIVERABLE]` scope.
-3. No parallel-sibling agent is producing it.
+- If it belongs to this sprint → file a `BRIEF-AMENDMENT REQUEST` so the conductor
+  sequences the producing work (the engineer composes it as a graph edge; the
+  compiled segment `await`-orders it).
+- If it is genuinely out of this sprint's scope → complete your assigned
+  `[DELIVERABLE]` and surface the gap as a **finding / GH issue at close**.
 
-### Pre-pause verification
-
-Before pausing, verify the thing is not already elsewhere — `ls`, `shctx
-search`, `mcp__plugin_*__list_*` — depending on what is missing.
-
-### Report shape (emit IN PLACE OF the normal WORKER REPORT)
-
-```
-## WORKER REPORT — PAUSE-FOR-DEPENDENCY
-
-- Lane: <brief-id>
-- Halt code: PAUSE-FOR-DEPENDENCY
-- Role: worker
-- Reason: <one sentence>
-- Satellite brief request:
-    target_path:         <file/data path that's missing>
-    file_scope_proposed: <files/artifacts the satellite produces>
-    work:                <what the satellite does — max 3 sentences>
-    estimated_size:      XS | S
-    new_symbol_or_path:  <exact path or identifier needed>
-    satellite_role:      worker  (or coder if code is needed)
-    acceptance:          <runnable command that succeeds when satellite done>
-- State at pause:
-    branch:   n/a
-    wip_sha:  n/a
-- Resume condition: <what I need to see before continuing>
-- Reporter: <agent-id> @ <ISO-8601 timestamp>
-```
-
-### Cap
-
-Max **2 pauses per dispatch**. A 3rd indicates the brief was structurally
-under-scoped; emit `BRIEF-AMENDMENT REQUEST` instead.
-
-The conductor's `agent_pause_detector.sh` hook captures this report and
-writes it to `.shepherd/pauses/<id>.json` automatically. The conductor
-dispatches the satellite, then `SendMessage`s you to resume.
+Do not mid-task pause, and do not expand your read-set to manufacture the missing
+input.
 
 ## Optional: ## INSIGHTS (cross-lane observations)
 
@@ -164,6 +132,6 @@ each entry.
 ## See also
 
 - `skills/shepherd/doctrines/agent-excellence.md` — strive-higher framing
-- `skills/shepherd/doctrines/pause-for-dependency.md` — full PAUSE protocol
+- `skills/shepherd/doctrines/native-coordination.md` — cross-lane deps + out-of-scope handling (pause-for-dependency retired, #70)
 - `skills/shepherd/doctrines/flock-cohesion.md` — INSIGHTS rationale
 - `skills/shepherd/doctrines/adaptation-loop.md` — sprint-patterns registry

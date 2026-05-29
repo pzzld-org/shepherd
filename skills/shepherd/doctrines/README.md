@@ -100,6 +100,8 @@ These get loaded by the conductor at session-open per `[hooks].on_every_dispatch
 | `seed-anchored-by-issues.md` | Every MUST-LAND lane cites a GH#; detail lives in the issue, not the seed |
 | `sprint-as-patch.md` | (v5.1.1+) Every `dev.N` sprint is operator-equivalent to a full patch; planter and engineer size scope at patch-grade |
 | `stage-graph.md` | The plan IS the dispatch contract; off-graph dispatch is a process violation |
+| `workflow-compile-down.md` | (v6.0.1) Compile the Stage Graph's gate-free fanout segments to Claude Code Dynamic Workflows; the faithfulness invariant (soundness / completeness / determinism) gates every compiled segment |
+| `native-coordination.md` | (v6.0.1) Native primitives (workflow in-script ordering, Agent Teams SendMessage, subagents) replace pause-for-dependency / heartbeat-relay / idle-pruning; the proven replacement Lane F deletes against |
 | `subtract-dont-add.md` | Every sprint ends net-negative; deletion is a constraint, not the job |
 | `use-mcp-not-cli.md` | Writes to shared systems use MCP; CLI for read-only enumeration |
 | `work-bound-to-tracking.md` | Every intentional gap in production code cites a GH issue; language-specific stub primitives enumerated |

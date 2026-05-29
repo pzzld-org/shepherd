@@ -36,8 +36,9 @@ jobs:
           ref: main
       - name: Detect release squash commit
         id: detect
-        # Recognize either of two release commit subject conventions:
-        #   • bare        "vX.Y.Z"            (operator PR title convention; gh appends " (#N)" on squash)
+        # Recognize the release commit subject conventions:
+        #   • bare        "vX.Y.Z"            (gh appends " (#N)" on squash)
+        #   • descriptive "vX.Y.Z: <summary>" (operator convention since v6.0.0; the ":" delimiter is accepted — GH #71)
         #   • prefixed    "release: vX.Y.Z"   (kept for back-compat / automation-authored PRs)
         # The extracted version is then cross-checked against .claude-plugin/plugin.json so a
         # stray commit subject can't accidentally fire the pipeline against the wrong version.
@@ -47,7 +48,7 @@ jobs:
         run: |
           set -euo pipefail
           SUBJECT=$(git log -1 --format=%s HEAD)
-          if [[ "$SUBJECT" =~ ^(release:[[:space:]]+)?v([0-9]+\.[0-9]+\.[0-9]+)([[:space:]]|$) ]]; then
+          if [[ "$SUBJECT" =~ ^(release:[[:space:]]+)?v([0-9]+\.[0-9]+\.[0-9]+)([[:space:]:]|$) ]]; then
             SUBJECT_VER="${BASH_REMATCH[2]}"
             PLUGIN_VER=$(jq -r '.version' .claude-plugin/plugin.json)
             if [ "$SUBJECT_VER" = "$PLUGIN_VER" ]; then

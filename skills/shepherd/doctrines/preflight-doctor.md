@@ -75,9 +75,9 @@ shepherd preflight — v5.1.1
   ✓ sprint-patterns.md exists (8 entries)
 
 [HOOKS]
-  ✓ 8 hooks active (session_open, bash_guard, bash_post, lock_guard,
-                    agent_pause_detector, agent_insight_capture,
-                    agent_invocation_tagger, discovery_capture)
+  ✓ 7 hooks active (session_open, bash_guard, bash_post, lock_guard,
+                    agent_insight_capture, agent_invocation_tagger,
+                    discovery_capture)
   ✓ Event log: 47 entries today (15 deny, 8 warn, 24 pass)
   ✓ All scripts executable
 

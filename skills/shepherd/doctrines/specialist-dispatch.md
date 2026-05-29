@@ -287,9 +287,10 @@ Agent({
 
 Note the key differences from a flock dispatch:
 
-- **`subagent_type` IS set** (flock dispatches omit it). The specialist's
-  identity comes from the registered subagent type, not from injecting an
-  `agents/*.md` body.
+- **`subagent_type` IS set** to the specialist's registered type — just as a
+  flock dispatch sets `shepherd:<role>` (MANDATORY since v6.0.0, GH #20). The
+  difference is the *identity source*: a specialist's behavior comes from its
+  own plugin's registered subagent, not from a shepherd `agents/*.md` body.
 - **`prompt` follows the specialist's own brief contract**, not the
   shepherd flock-brief shape. Read the specialist's docs/help first.
 - **`model: sonnet` + high effort** is the default (matches the flock's

@@ -43,7 +43,7 @@ audits the trace.
 | `plan.md` (`## Stage Graph` YAML block) | @engineer at MESH | Append-only after critic GREEN; CHAIN-REPAIR may force re-extract |
 | `<ns>/graph/state.json` | `shctx plan extract` | Re-extracted on each MESH; replaces in place under `--force` |
 | `<ns>/graph/trace.jsonl` | `shctx graph mark` (append-only) | One line per state transition; never rewritten |
-| `<ns>/pauses/<id>.json` | `agent_pause_detector.sh` hook | Created on PAUSE-FOR-DEPENDENCY; cleared by `shctx pauses clear` |
+| `<ns>/graph/compiled/<seg>.workflow.js` | `shctx graph compile` (#77) | Compiled fanout segment; regenerated deterministically from `state.json` |
 
 ## III. The walker contract
 
@@ -62,7 +62,6 @@ The walker is a **state machine**, not a planner. Its rules are mechanical:
    — visible in `shctx graph status` as a stuck node.
 4. **No mid-walk graph mutation by the conductor.** The graph is
    the contract. Extension points are structural:
-   - `PAUSE-FOR-DEPENDENCY` ephemeral subgraph (`doctrines/pause-for-dependency.md`)
    - HOTFIX subgraph (`pipeline.md §VII`)
    - CHAIN-REPAIR seed amendment + MESH re-fire (`doctrines/chain-repair.md`)
    These extensions are described by the doctrine; the walker honors
@@ -84,6 +83,47 @@ while true:
 
 The dispatch step is the only LLM-driven step. Everything else is the
 state machine.
+
+## IV-bis. Compile-down — fanout segments run as Dynamic Workflows (v6.0.1, primary)
+
+For a **gate-free agent-fanout segment** (a maximal run of WAVE-IMPL / WAVE-AUDIT /
+CLOSE-SWARM / DISCOVERY / WORKER-IO / HOTFIX nodes bounded by operator gates and
+conductor-inline FS/git nodes), the **primary** execution path is to compile the
+segment to a Claude Code **Dynamic Workflow** and run it out-of-context, instead
+of walking each `next` batch in the conductor's own context:
+
+```text
+batch <- shctx graph next --json
+if batch is a gate-free agent-fanout segment:
+    shctx graph compile --segment=<entry-node> --verify     # emits <seg>.workflow.js
+    if §IV faithfulness diff FAILS (soundness|completeness|determinism):
+        HALT — a mismatch is a compiler bug, not a plan defect (do NOT run the script)
+    run the compiled workflow on the platform runtime (out-of-context)
+    on runtime failure/unavailability:
+        fall back to in-context dispatch(batch)              # the §IV loop — no parallel engine
+    read the returned result object → shctx graph mark <each node> --state=done --exit=<edge>
+else:
+    dispatch(batch)                                          # seam / single-dispatch: in-context as before
+```
+
+Binding rules (full doctrine: `workflow-compile-down.md` §III–VI):
+
+- **The compiler is the only script author.** The script is `compile(G_seg)` over
+  the critic-gated graph — never free-form (`workflow-compile-down.md §X.1`). The
+  §IV diff gates every compiled segment.
+- **Seams stay at the conductor (§VI).** Operator gates, `WAVE-GATE` rebase,
+  `LANE-CLOSE`, `CLOSE-FINALIZE`, and all SQLite+git canonical writes run at the
+  conductor between segments. The workflow only coordinates agent fanout; the
+  runtime's within-session resume is **never** canonical (`sqlite-canonical-state.md`).
+- **Bounded fanout.** `compile` emits `Promise.all` batches of ≤16 concurrent,
+  ≤1000 total; wider waves are chunked, preserving `parallel_with` semantics.
+- **Read-only is allowlist-enforced (§VII, #74).** Compiled audit/discovery steps
+  carry no edit/mutating tools — the `subagent_type` registry allowlist binds even
+  though the runtime auto-approves edits (`acceptEdits`).
+- **Mode-agnostic (#77 binding comment).** Solo `/shepherd:start` compiles its own
+  fanout segments and gains out-of-context parallelism with **no team spawned**;
+  under `/shepherd:spawn` each teammate-conductor compiles its **own lane's** fanout.
+  No code path requires a team to be present.
 
 ## V. Pattern B is a clique, not a checklist
 
@@ -162,12 +202,18 @@ shctx plan validate
 # At every dispatch tick:
 shctx graph status              # what's where
 shctx graph next                # batch to fire NOW (parallel_with respected)
-# … dispatch via Agent tool …
+
+# Gate-free agent-fanout segment → compile + run out-of-context (PRIMARY, v6.0.1, #77):
+shctx graph compile --segment=<entry-node> --verify   # §IV diff MUST pass before running
+# … run the emitted <seg>.workflow.js on the platform runtime;
+#    on runtime failure, fall back to in-context `dispatch(batch)` …
+# Seam / single dispatch → fire via the Agent tool as before.
+
 shctx graph mark <id> --state=done --exit=<edge>
 
 # Inspect after the fact:
 shctx graph trace --tail=50     # last 50 transitions
-shctx pauses list               # active pause-for-dependency subgraphs
+shctx graph compile --list      # gate-free fanout segments available to compile
 ```
 
 ## X. See also
@@ -176,9 +222,9 @@ shctx pauses list               # active pause-for-dependency subgraphs
 - `agents/engineer.md §Phase 2` — plan template that emits the YAML Stage Graph
 - `doctrines/stage-graph.md` — the plan-IS-dispatch-contract principle
 - `doctrines/pattern-b-overlap.md` — encoded as `parallel_with` clique in the walker
-- `doctrines/pause-for-dependency.md` — ephemeral subgraph extension
+- `doctrines/native-coordination.md` — cross-lane deps via in-script ordering (pause-for-dependency retired, #70)
 - `doctrines/chain-repair.md` — seed-amendment + re-extract path
 - `doctrines/adaptation-loop.md` — sprint-pattern registry; integrates with `trace.jsonl`
 - `skills/context/scripts/cmd_plan.sh` — `shctx plan extract/topology/validate`
-- `skills/context/scripts/cmd_graph.sh` — `shctx graph status/next/mark/trace`
-- `skills/context/scripts/cmd_pauses.sh` — `shctx pauses list/show/resolve/clear`
+- `skills/context/scripts/cmd_graph.sh` — `shctx graph status/next/mark/trace/compile`
+- `doctrines/workflow-compile-down.md` — the workflow projection of the Stage Graph shares this `shctx plan extract` surface (§II); one source, two faithful projections

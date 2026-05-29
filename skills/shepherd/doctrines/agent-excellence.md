@@ -38,8 +38,10 @@ Refuse the lazy path on principle. When the brief's `[FILE-SCOPE]` doesn't
 include a file you need to edit, do NOT silently expand scope; do NOT add
 a TODO; do NOT duplicate. The framework provides three legitimate exits:
 
-- **PAUSE-FOR-DEPENDENCY** — coder/worker requests a satellite dispatch
-  (`doctrines/pause-for-dependency.md`). Capped at 2 per lane.
+- **Out-of-scope dependency** — a needed symbol/artifact lives outside your scope
+  and no sibling owns it; it should have been a graph edge. File a
+  `BRIEF-AMENDMENT REQUEST` or surface a finding at close — do not pause
+  (`doctrines/native-coordination.md`; pause-for-dependency retired, #70).
 - **BRIEF-AMENDMENT REQUEST** — the brief itself is wrong; conductor
   amends and re-dispatches.
 - **SCOPE OVERFLOW** halt — surface and stop.
@@ -149,7 +151,7 @@ The preamble is not optional decoration. It's the framing every invocation reads
 
 - "Always write more code." Wrong — `subtract-don't-add` still rules.
 - "Refuse all duplication mechanically." Wrong — the framework has explicit
-  exit paths (PAUSE-FOR-DEPENDENCY, BRIEF-AMENDMENT, JUSTIFY-NEW). Use them.
+  exit paths (BRIEF-AMENDMENT, finding-at-close, JUSTIFY-NEW). Use them.
 - "Perfectionism." Wrong — patch-grade quality, not infinity quality. The
   goal is *operator-defensible* work, not academic exhaustiveness.
 
@@ -162,5 +164,5 @@ The preamble is not optional decoration. It's the framing every invocation reads
 - `doctrines/subtract-dont-add.md` — addition cost
 - `doctrines/sprint-as-patch.md` — the patch-grade bar
 - `doctrines/auditor-hypothesis-driven.md` — falsify-don't-confirm
-- `doctrines/pause-for-dependency.md` — legitimate scope-expansion path
+- `doctrines/native-coordination.md` — out-of-scope handling: BRIEF-AMENDMENT / finding-at-close (pause-for-dependency retired, #70)
 - `hooks/scripts/dedup_write_guard.sh` — runtime enforcement (v5.1.2)

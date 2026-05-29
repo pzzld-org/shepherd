@@ -48,7 +48,7 @@ Mandatory on every dispatch (in order — skipping any is a process violation; a
 - `adaptation-loop.md` — Phase 0 mesh row 11 (prior-audit signals)
 - `stage-graph.md` — every plan emits a binding dispatch contract
 - `zero-duplicate-tolerance.md` — full `[CONTEXT-INVENTORY]` + `[DO-NOT-DUPLICATE]` per lane
-- `pause-for-dependency.md` — engineer surfaces mesh-discovered blockers
+- `native-coordination.md` — cross-lane deps are engineer-composed graph edges (pause-for-dependency retired, #70)
 
 ## Protocol reminders
 

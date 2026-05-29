@@ -4,6 +4,77 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v6.0.1 — 2026-05-29
+
+### Reposition onto Claude Code's native substrate (Dynamic Workflows + Agent Teams + subagents)
+
+Patch 1 of the v6 line repositions shepherd: **retain the governance core, slim
+the hand-rolled orchestration mechanics, and adopt Claude Code's native
+primitives as the primary execution substrate.** Dynamic Workflows (research
+preview, 2026-05-28) finally make out-of-context agent fan-out a platform
+capability; shepherd now contributes *discipline* (closed flock, hard-refusal
+dispatch contract, audited Stage Graph, canonical SQLite+git state) while the
+platform contributes *execution*. Epic #76.
+
+**Invariants held** (unchanged by the slim): the closed flock + behavioral
+contracts; mandatory `subagent_type` with refusal rules; the critic / wave /
+close gate topology; SQLite + git as canonical state; the engineer-authored,
+critic-gated Stage Graph as the dispatch contract.
+
+**A — capability-enforced read-only reviewers (#74).** Dropped
+`execute_sql` from `@auditor` / `@discovery` allowlists; `Write` is retained but
+path-scoped by the existing `lock_guard.sh` PreToolUse hook (Option B). Added
+`hooks/tests/lint_agent_capabilities.sh` — fails if a read-only reviewer regains
+a mutating verb (or keeps un-scoped `Write`). The read-only contract is now
+allowlist-enforced, holding even under a Dynamic Workflow runtime's `acceptEdits`
+where no orchestrator is in the loop.
+
+**B — `workflow-compile-down.md` doctrine landed (#75).** The compile-down
+evaluation doctrine (the §IV faithfulness contract, §V φ node→construct map, §VI
+canonical-state seam) with cross-links from `platform-alignment §VII`,
+`stage-graph.md`, and the doctrine web.
+
+**C — dispatch-contract consistency (#20, #67).** Verified the mandatory-
+`subagent_type` flip and the seed-template lanes→deliverables rename already
+landed in v6.0.0; reconciled the residual stale text (`specialist-dispatch.md`,
+`agent-briefs.md`, planter density prose).
+
+**D — `shctx graph compile` (#77).** Emits gate-free agent-fanout segments of the
+Stage Graph as Dynamic Workflow scripts — the **primary** path for those
+segments (not a toggle). Built on the existing `shctx plan extract` surface (one
+source, two projections); bounded `Promise.all` (≤16 concurrent / ≤1000 total);
+read-only steps carry no edit tools; CLOSE-SWARM is the default first target. The
+§IV faithfulness diff (`--verify`: soundness / completeness / determinism) gates
+every compiled segment. Wired as primary in `dispatch-cascade.md §IV-bis` and the
+conductor walk; mode-agnostic (solo + teammate); runtime failure degrades to
+in-context dispatch.
+
+**E — native coordination (#78).** `native-coordination.md` maps the retired
+mechanics onto native primitives (in-script ordering / Agent Teams `SendMessage`
+/ subagents) and **demonstrates** parity before deletion.
+
+**F — slim (#70, #53, #58).** Deleted pause-for-dependency entirely
+(`agent_pause_detector.sh`, `cmd_pauses.sh`, `pause-for-dependency.md`, the
+`shctx pauses` verb, the `PAUSE-FOR-DEPENDENCY` / `RESUME-LANE` node types, and
+the satellite subgraph). Coders/workers now file a `BRIEF-AMENDMENT REQUEST` or a
+finding at close; cross-lane deps are engineer-composed graph edges the compiled
+segment `await`-orders. Heartbeat *auto-relay* (#53, never built) and
+idle-*pruning* (#58) are documented as moot; teammate **liveness** + Agent Teams
+state are intentionally kept. `hooks/tests/test_pause_retired.sh` proves no
+residual dependency.
+
+**G — version cycle + release workflow (#71).** Fixed the silently-skipping
+release pipeline: the `detect` regex accepted only a space/EOL after the version
+triple, so descriptive PR titles (`vX.Y.Z: <summary>`, the convention since
+v6.0.0) never matched — the pipeline no-opped (the 9-second runs). The regex now
+accepts the `:` delimiter. Corrected the README "Current version" line that had
+drifted to 5.1.9 because the v6.0.0 bump step never ran.
+
+Suites green: `hooks/tests` 25/25, `skills/context/tests` 35/35 (incl. the new
+compile, capability-lint, and pause-retired tests).
+
+---
+
 ## v6.0.0 — 2026-05-28
 
 ### Dispatch enforcement + planter authority excision

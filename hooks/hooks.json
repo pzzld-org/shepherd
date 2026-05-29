@@ -90,10 +90,6 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/agent_pause_detector.sh"
-          },
-          {
-            "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/agent_insight_capture.sh"
           },
           {
@@ -105,10 +101,6 @@
       {
         "matcher": "Task",
         "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/agent_pause_detector.sh"
-          },
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/agent_insight_capture.sh"
