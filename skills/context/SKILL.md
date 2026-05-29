@@ -1,7 +1,7 @@
 ---
 name: shepherd-context
 slug: shepherd-context
-version: 6.0.0
+version: 6.0.1
 description: |
   Per-project SQLite registry for the shepherd flock. Backs /shepherd:ctx.
   Indexes code symbols, GitHub state (issues, PRs, releases, milestones),
