@@ -115,6 +115,14 @@ The auditor agent's system prompt (in `${CLAUDE_PLUGIN_ROOT}/agents/auditor.md`)
 
 The conductor verifies the auditor's tool list at dispatch and rejects any auditor brief that grants write access outside the report path.
 
+## Capability enforcement (v6.0.1, GH #74)
+
+The read-only contract is **capability-enforced**, not prose- or graph-enforced — it holds even when a non-conductor dispatcher invokes the agent (e.g. a Claude Code Dynamic Workflow runtime, which runs spawned agents in `acceptEdits` and auto-approves edits with no orchestrator in the loop — `workflow-compile-down.md §VII`). Three independent layers:
+
+1. **Allowlist (the primary guarantee).** `agents/auditor.md`'s `tools:` frontmatter grants no `Edit`/`NotebookEdit`, no `mcp__plugin_supabase_supabase__execute_sql`, and no other mutating DB/MCP verb. The runtime grants only the listed tools, so the capability is simply absent. The single audited exception is `mcp__plugin_github_github__issue_write`, retained for finding creation — the conductor has no `issue_write` (`agents/conductor.md`) and the auditor is the sole close-flow issue filer.
+2. **Path-scope hook (the retained `Write` verb).** `hooks/scripts/lock_guard.sh` (PreToolUse(Write|Edit), Check 1) denies any `@auditor` write whose path does not match `{paths.reports}/<date>-(intro-)audit-<concern>.md`. `Write` is retained only because this hook scopes it (GH #74 "Option B"). The role is resolved from the dispatch tag the same way every shepherd write-guard resolves it.
+3. **Lint (regression guard).** `hooks/tests/lint_agent_capabilities.sh` (wired into `hooks/tests/run.sh`) fails if `auditor` — or `discovery`/`critic` — ever regains a mutating verb, or keeps `Write` without the path-scope hook registered.
+
 ## See also
 
 - `pattern-b-overlap.md` — auditors run concurrently with Wave 2 coders

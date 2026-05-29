@@ -10,6 +10,7 @@
 set -eu -o pipefail
 cd "$(dirname "$0")"
 HOOKS_DIR="$(cd .. && pwd)/scripts"
+TESTS_DIR="$(pwd)"
 
 fails=0
 total=0
@@ -89,6 +90,19 @@ run_case "shepherd-prompt"     user_prompt_submit.sh '{"session_id":"s1","hook_e
 echo "== worktree_lifecycle.sh (v5.1.8) =="
 run_case "no-payload"          worktree_lifecycle.sh ''
 run_case "non-worktree-event"  worktree_lifecycle.sh '{"session_id":"s1","hook_event_name":"PreToolUse"}'
+
+# Static lint, not a payload-driven hook: assert the read-only flock reviewers
+# carry no un-scoped mutating capability (GH #74). Runs against the real repo
+# (the lint self-locates its REPO_ROOT), independent of the ephemeral test cwd.
+echo "== lint_agent_capabilities.sh (GH #74 read-only capability lint) =="
+total=$((total+1))
+if lint_out=$(bash "$TESTS_DIR/lint_agent_capabilities.sh" 2>&1); then
+  printf '  PASS  %s\n' "readonly-capability-lint"
+else
+  printf '  FAIL  %-50s\n' "readonly-capability-lint"
+  printf '%s\n' "$lint_out" | sed 's/^/        /'
+  fails=$((fails+1))
+fi
 
 echo "—— $((total-fails))/$total passed ——"
 exit "$fails"
