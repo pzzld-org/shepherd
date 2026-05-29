@@ -167,6 +167,14 @@ dispatching again.
 6. **Cap: 5 concurrent discoveries per Agent batch.** Beyond that, batch
    into one discovery with a broader question.
 
+## Capability enforcement (v6.0.1, GH #74)
+
+The read-only contract is **capability-enforced**, not prose- or graph-enforced — it holds even when a non-conductor dispatcher invokes the agent (e.g. a Claude Code Dynamic Workflow runtime, which runs spawned agents in `acceptEdits` and auto-approves edits with no orchestrator in the loop — `workflow-compile-down.md §VII`). Three independent layers:
+
+1. **Allowlist (the primary guarantee).** `agents/discovery.md`'s `tools:` frontmatter grants no `Edit`/`NotebookEdit`, no `mcp__plugin_supabase_supabase__execute_sql`, no `issue_write`, and no other mutating MCP verb — the absence is the sandbox. The runtime grants only the listed tools.
+2. **Path-scope hook (the retained `Write` verb).** `hooks/scripts/lock_guard.sh` (PreToolUse(Write|Edit), Check 1) denies any `@discovery` write whose path does not match `{paths.reports}/<date>-discovery-<id>.md`. `Write` is retained only because this hook scopes it (GH #74 "Option B"); `bash_guard.sh` additionally blocks state-modifying Bash.
+3. **Lint (regression guard).** `hooks/tests/lint_agent_capabilities.sh` (wired into `hooks/tests/run.sh`) fails if `discovery` — or `auditor`/`critic` — ever regains a mutating verb, or keeps `Write` without the path-scope hook registered.
+
 ## See also
 
 - `agents/discovery.md` — the system prompt body
