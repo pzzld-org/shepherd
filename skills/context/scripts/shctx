@@ -62,11 +62,6 @@ Subcommands (atomic):
                             Workflow script — the PRIMARY path for fanout
                             segments; --verify runs the §IV faithfulness diff.
                             See doctrines/workflow-compile-down.md.
-  pauses <list|show|resolve|clear> [args]            (v5.0.9 pause registry)
-                          list: enumerate captured PAUSE-FOR-DEPENDENCY records.
-                          show <id>: render one record.
-                          resolve <id> --satellite-sha=<sha>: mark resolved.
-                          clear [--older-than-days=N]: prune resolved.
   insights <list|show|export|clear> [args]           (v5.0.9 flock cohesion)
                           list: enumerate captured cross-lane insights.
                           show <id>: render one insight.
@@ -99,7 +94,7 @@ script_for() {
 cmd="${1:-help}"; shift || true
 case "$cmd" in
   help|-h|--help) usage ;;
-  init|status|doctor|refresh|query|search|inject|profile|style|mem|lock|lint|migrate|export|release|handoff|worktree|close-lane|issues|plan|graph|pauses|insights|sync|ready|sprint|audit|watch|discovery|teammate|mailbox|escalate|deliverable|report)
+  init|status|doctor|refresh|query|search|inject|profile|style|mem|lock|lint|migrate|export|release|handoff|worktree|close-lane|issues|plan|graph|insights|sync|ready|sprint|audit|watch|discovery|teammate|mailbox|escalate|deliverable|report)
     impl="$HERE/$(script_for "$cmd")"
     if [[ ! -f "$impl" ]]; then
       echo "ERROR: $cmd not yet implemented (missing $impl)" >&2; exit 2

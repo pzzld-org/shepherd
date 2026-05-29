@@ -64,8 +64,6 @@ Every node in the graph is one of these types. The type determines the dispatch 
 | `WORKER-IO` | One or more `@worker` (bounded; non-competing) | @worker | bounded reports |
 | `HARD-STOP` | Conductor inline (terminal) | Conductor | operator-surfaced halt block |
 | `PAUSE` | Conductor inline (terminal under `/shepherd:start`; bypassed under `/shepherd:spawn --auto`) | Conductor | end-of-sprint waypoint |
-| `PAUSE-FOR-DEPENDENCY` | Conductor inline (validate satellite request + dispatch) | Conductor | satellite brief dispatched; paused coder awaiting resume |
-| `RESUME-LANE` | Conductor inline (SendMessage to paused coder; awaits resumed CODER REPORT) | Conductor | resumed lane commit lands before `WAVE-N-GATE` |
 | `DISCOVERY` | Single or parallel `@discovery` (v5.1.1+) | @discovery | DISCOVERY REPORT at `{paths.reports}/<date>-discovery-<id>.md` |
 | `INTRO-COMBO-WAVE` | Parallel batch of `@discovery` + `@auditor` (intro-mode) (v5.1.1+) | both | Mesh-input bundle: discoveries + regression + carry-forward-disposition reports |
 
@@ -136,7 +134,6 @@ Edges are conditional transitions between nodes. Each edge has a label; the labe
 | `on-grade-cap` | Fires from CLOSE-SWARM when completeness grade-caps (per `subtract-dont-add.md` / `issue-ledger-awareness.md`) — does NOT fail the sprint, but lowers the grade |
 | `on-budget-exceeded` | Fires from WORKER-IO when budget exhausted; informational |
 | `on-coder-complete` | Fires from WAVE-IMPL when ALL coders reported back |
-| `on-pause-dep` | Fires from a WAVE-IMPL coder that returned `PAUSE-FOR-DEPENDENCY` → routes to `PAUSE-FOR-DEPENDENCY` subgraph |
 | `on-rebase-clean` | Fires from WAVE-GATE when rebase-merge applied with no conflicts |
 | `on-dedup-clear` | Fires from DEDUP-GATE when every grep returned the expected count |
 | `on-dedup-block` | Fires from DEDUP-GATE when ANY grep returned > expected; loops back to brief-amendment then re-fires DEDUP-GATE |
@@ -725,33 +722,18 @@ authoring conductor includes either:
 
 See `doctrines/coder-brief-format-shared-artifacts.md`.
 
-## XV-quint. PAUSE-FOR-DEPENDENCY subgraph (v5.0.9)
+## XV-quint. Cross-lane dependencies (PAUSE-FOR-DEPENDENCY subgraph retired — #70)
 
-> Field origin: shepherd v5.0.8 conductor feedback (axiom v0.3.2-dev.0) §1.
+> v6.0.1: the `PAUSE-FOR-DEPENDENCY` / `RESUME-LANE` satellite subgraph is
+> deleted.
 
-When a coder returns `PAUSE-FOR-DEPENDENCY` instead of a normal CODER REPORT,
-the conductor walks a three-node inline subgraph before `WAVE-N-GATE` can fire:
-
-```
-WAVE-N-IMPL ──on-pause-dep──► PAUSE-FOR-DEPENDENCY ──on-satellite-dispatched──►
-  SATELLITE-<lane-id> (HOTFIX shape, ≤ S) ──on-coder-complete──►
-  RESUME-LANE-<lane-id> (SendMessage to paused coder) ──on-coder-complete──►
-  (rejoin WAVE-N-GATE)
-```
-
-**Conductor steps:**
-1. Validate the satellite request (XS or S only; file-disjoint from other lanes; symbol not already present).
-2. If M+ or 3rd pause from the same lane → escalate via `BRIEF-AMENDMENT REQUEST` to engineer instead.
-3. Dispatch `@coder` satellite with `isolation: "worktree"`.
-4. After satellite commits and acceptance greps pass: rebase satellite commit onto sprint branch FIRST.
-5. `SendMessage` to the paused coder (agent ID from their PAUSE report) with the resume signal.
-6. Await resumed CODER REPORT. Then proceed to `WAVE-N-GATE`.
-
-**Cherry-pick order is mandatory:** satellite commit → paused lane resume commit.
-The `WAVE-N-GATE` rebase runs AFTER both commits are staged. The satellite
-providing a symbol must appear before the consumer lane in the git log.
-
-Full protocol and cap rules: `doctrines/pause-for-dependency.md`.
+A cross-lane dependency is a **graph edge** the engineer composes — the
+conductor's compiled segment `await`-orders the producer batch before the
+consumer batch (`doctrines/native-coordination.md`, `doctrines/dispatch-cascade.md
+§IV-bis`). A coder/worker that hits genuinely out-of-scope work files a
+`BRIEF-AMENDMENT REQUEST` (so the engineer re-meshes the edge) or surfaces a
+finding / GH issue at close — it does **not** mid-lane pause. There is no
+satellite dispatch, no resume-condition dance, and no `<ns>/pauses/` registry.
 
 ---
 
@@ -813,7 +795,7 @@ Full doctrine: `doctrines/plugin-reload-escape.md`.
 - `doctrines/carry-forward-refresh.md` — encoded as completeness-auditor input
 - `doctrines/gates-restoration.md` — encoded as the GATES-DISCOVERY conductor-inline node (v5.0.3)
 - `doctrines/conductor-cwd.md` — companion discipline for graph-walk Bash hygiene (v5.0.3)
-- `doctrines/pause-for-dependency.md` — PAUSE-FOR-DEPENDENCY primitive, agent-agnostic (v5.0.9)
+- `doctrines/native-coordination.md` — cross-lane deps via in-script ordering (pause-for-dependency retired, #70)
 - `doctrines/cargo-sequential-gates.md` — cargo must run sequentially at WAVE-GATE (v5.0.9)
 - `doctrines/plugin-reload-escape.md` — /reload-plugins escape hatch for MCP unavailability (v5.0.9)
 - `doctrines/dispatch-cascade.md` — Stage Graph as rule engine; `shctx plan extract` + `shctx graph` mechanize the walk (v5.0.9)

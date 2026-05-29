@@ -68,10 +68,10 @@ jq 'select(.role == "discovery" and .decision == "deny" and .hook == "lock_guard
   .shepherd/logs/hooks/*.jsonl
 ```
 
-### "Show all PAUSE-FOR-DEPENDENCY captures this week"
+### "Show all read-only write-scope denials this week"
 
 ```bash
-jq 'select(.hook == "agent_pause_detector" and .decision == "warn")' \
+jq 'select(.hook == "lock_guard" and .decision == "deny")' \
   .shepherd/logs/hooks/2026-05-*.jsonl | head -20
 ```
 

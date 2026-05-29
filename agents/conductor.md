@@ -323,7 +323,12 @@ The body IS the Stage Graph walk. You no longer compose dispatches — you evalu
 | L | 6 | ~400 |
 | XL | 6 per wave | 1000+ |
 
-**PAUSE-FOR-DEPENDENCY subgraph** (v5.0.9): when a coder returns `PAUSE-FOR-DEPENDENCY`, walk the inline satellite subgraph before WAVE-N-GATE. Full protocol: `doctrines/pause-for-dependency.md`. The `agent_pause_detector.sh` hook auto-drafts the satellite brief stub at `<ns>/pauses/<id>.brief.md` — read it, adjust, dispatch.
+**Cross-lane dependencies (v6.0.1; pause-for-dependency retired — #70):** a lane that
+needs a sibling's output is a **graph edge** the engineer composes (the compiled
+segment then `await`-orders it — `doctrines/native-coordination.md`); a coder that
+hits genuinely out-of-scope work surfaces it as a **finding / GH issue at close** or a
+`BRIEF-AMENDMENT REQUEST`, **not** a mid-lane pause. There is no satellite subgraph,
+no pause-detector hook, and no `<ns>/pauses/` registry.
 
 ---
 
@@ -522,7 +527,7 @@ Closes #50. References `doctrines/cargo-sequential-gates.md` and
 24. Engineer ignores `[DISCOVERY-CONTEXT]` / `[INTRO-AUDIT-CONTEXT]` → HIGH findings not addressed in plan → grade-cap C+.
 25. Sprint under-scoped to non-patch-grade → planter + engineer + critic all responsible for catching.
 26. Auditor files finding without Hypothesis + Falsification + Confidence → reject report and re-fire.
-27. Conductor composes PAUSE-FOR-DEPENDENCY satellite brief from scratch → read the hook-auto-drafted stub first.
+27. Conductor walks a PAUSE-FOR-DEPENDENCY satellite subgraph → retired (#70). Cross-lane needs are graph edges (engineer-composed, `await`-ordered in the compiled segment); out-of-scope work is a finding/issue at close per `doctrines/native-coordination.md`.
 28. **Conductor reaches for a non-flock agent because the flock "feels heavy."** Flock-first is the doctrinal default. Every non-flock dispatch routes through the DISPATCH DECISION TREE in `doctrines/specialist-dispatch.md`. Skipping the tree is a process violation; `general-purpose` and `Explore` are explicitly framework-forbidden. If `@worker` or `@discovery` feels heavy, the answer is a tighter brief — not a generic substitute. The discipline shepherd encodes (bounded brief, deliverable, budget, Hypothesis-Falsification-Confidence) IS the value-add; discarding it discards the framework.
 29. **Conductor dispatches a specialist whose description block it has not read this session.** Per `doctrines/specialist-dispatch.md` §SPECIALIST DISCOVERY Step 3. Skim-and-fire produces mis-briefed specialists; mis-briefed specialists produce garbage; garbage carries forward as drift. Re-read the description block (or run `ToolSearch select:<plugin>:<agent>` for the schema) every time, every session.
 30. **Conductor silently degrades a missing specialist to `@worker` without operator-surface annotation.** Same principle as `doctrines/plugin-reload-escape.md` for MCP tools — flag the unavailability, request `/reload-plugins`, then either resume or fall back with explicit annotation. Hidden degradation hides misconfiguration.
