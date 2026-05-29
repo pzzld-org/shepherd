@@ -63,6 +63,16 @@ v2.1.32 or later; Check 3 verifies no active team owns the lead. Those
 checks are the boundary at which shepherd's enforcement begins — they
 gate spawn entry, not core shepherd discipline.
 
+> **Open investigation (#93, v6.0.2).** Live Agent Teams docs (verified 2026-05-29)
+> spawn teammates via a **natural-language lead instruction**, *not* `Agent({team_name})`,
+> and document **no per-teammate identity env var**. Shepherd's spawn convention — and
+> the v6.0.2 `hooks/scripts/dispatch_guard.sh` — assume the `Agent({team_name})` +
+> `CLAUDE_TEAMMATE_NAME` model, internally consistent with shepherd's existing telemetry/
+> idle hooks but **unverified against the platform**. The rows in §II–§III below describe
+> shepherd's convention; treat the **spawn-call shape and the teammate-identity signal as
+> under-test** until #93 closes (empirical spawn test → keep / migrate / hybrid). #93
+> **gates v6.0.2 Wave 2 (#78, Agent Teams wiring)**.
+
 ---
 
 ## II. Primitive map
