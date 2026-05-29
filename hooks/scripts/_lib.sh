@@ -52,11 +52,13 @@ resolve_namespace() {
 # ---------------------------------------------------------------------------
 
 # Usage: json_field "$input_json" '.tool_input.command'
-# Echoes the field value (empty string if absent).
+# Echoes the field value (empty string if absent OR if the JSON is malformed —
+# fail-open with rc 0 so a sourcing `set -e` hook never dies on bad input, the
+# same contract json_response already guarantees).
 json_field() {
   local input="$1" path="$2"
   if command -v jq &>/dev/null; then
-    printf '%s' "$input" | jq -r "$path // empty" 2>/dev/null
+    printf '%s' "$input" | jq -r "$path // empty" 2>/dev/null || true
   else
     # Convert jq path like '.foo.bar' into a python dict.get chain.
     python3 -c '
@@ -70,7 +72,7 @@ for p in path:
         data = ""
         break
 print(data if isinstance(data, str) else (json.dumps(data) if data else ""))
-' "$path" <<<"$input" 2>/dev/null
+' "$path" <<<"$input" 2>/dev/null || true
   fi
 }
 
