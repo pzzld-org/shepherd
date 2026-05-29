@@ -373,7 +373,7 @@ author: @engineer (agent-id-<your-id>)
 
 (Minimum lanes per sprint size: M→3, L→4, XL→4/wave. If you cannot decompose to the minimum, flag it under "Open Questions for Critic" and explain why.)
 
-**File-scope cap (v5.0.9):** Each coder lane SHOULD own ≤ 3 files in its MAY-MODIFY list. If a lane needs more, decompose into 2 lanes. Exception: a single-file lane with > 300 LOC of expected change may remain one lane. The cap reduces the surface where a coder hits an out-of-scope dependency and must emit `PAUSE-FOR-DEPENDENCY` (per `doctrines/pause-for-dependency.md`).
+**File-scope cap (v5.0.9):** Each coder lane SHOULD own ≤ 3 files in its MAY-MODIFY list. If a lane needs more, decompose into 2 lanes. Exception: a single-file lane with > 300 LOC of expected change may remain one lane. The cap reduces the surface where a coder hits an out-of-scope dependency and must file a `BRIEF-AMENDMENT REQUEST` (per `doctrines/native-coordination.md`; pause-for-dependency retired, #70).
 
 ## Phase A — <name>  [Wave 1, parallel-safe with B and C]
 **Mission:** <one sentence>

@@ -96,5 +96,5 @@ before deleting the hand-rolled mechanics.
 - `workflow-compile-down.md` — the execution axis (in-script ordering, §III–VI)
 - `claude-code-platform-alignment.md` — the teammate-state axis (Agent Teams)
 - `dispatch-tier-separation.md` — the mandatory `subagent_type` contract
-- `pause-for-dependency.md` — the mechanic Lane F (#70) retires
+- `#70` / `CHANGELOG.md` (v6.0.1) — the retired pause-for-dependency mechanic (doctrine deleted in this release)
 - `agents/conductor.md §Teammate-to-teammate communication` — `SendMessage` path

@@ -6,7 +6,7 @@
 # to `<namespace>/insights/<sprint>/<id>.json` for later consumption by the
 # engineer at Phase 0 mesh row 13.
 #
-# This is the OPTIONAL cousin of agent_pause_detector.sh. Agents are NOT
+# Emitting insights is OPTIONAL. Agents are NOT
 # required to emit insights; many reports won't have any. Silent when no
 # INSIGHTS block is present.
 #

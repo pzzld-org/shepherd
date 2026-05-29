@@ -591,7 +591,7 @@ Everything in plant mode, PLUS:
 - `skills/shepherd/doctrines/seed-anchored-by-issues.md` — lane-anchoring discipline
 - `skills/shepherd/doctrines/issue-ledger-awareness.md` — full-ledger Phase 0 sweep
 - `skills/shepherd/doctrines/carry-forward-refresh.md` — chronic flagging
-- `skills/shepherd/doctrines/pause-for-dependency.md` — cross-agent pause protocol (conductor-side)
+- `skills/shepherd/doctrines/native-coordination.md` — native coordination replaces the retired cross-agent pause protocol (#70)
 - `skills/shepherd/doctrines/version-scale-roadmap.md` — patch/dev-sprint sizing tiers
 - `skills/shepherd/doctrines/sprint-as-patch.md` — impactfulness contract
 - `skills/shepherd/flock.md` §"Meta tier" — planter + conductor distinguished from the six flock lanes

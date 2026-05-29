@@ -44,7 +44,7 @@ problem. v5.0.9 ties them together into a coherent **shared substrate**.
 |---|---|---|---|
 | `canonical-types.md` | The workspace's public symbols + canonical homes + aliases-to-avoid | `@worker` at dev.0; coders incremental at land time | Per-patch baseline, refreshed each dev.0 |
 | `<ns>/graph/state.json` + trace | Wave roster, in-flight agents, completed dispatches | `shctx graph` walker | Per-sprint; trace append-only |
-| `<ns>/pauses/<id>.json` | Mid-task dependency requests + resolutions | `agent_pause_detector.sh` hook + `shctx pauses` | Per-sprint; pruned after 30 days |
+| `<ns>/graph/compiled/<seg>.workflow.js` | Compiled fanout segments (#77) | `shctx graph compile` | Regenerated deterministically from `state.json` |
 | `<ns>/insights/<id>.json` | **Cross-lane observations from any agent** — relocations, extensions, duplications, consolidations | `agent_insight_capture.sh` hook + `shctx insights` | Cross-sprint; consumed by engineer at Phase 0 mesh row 13 (v5.0.9) |
 
 The fourth channel is the new addition. The first three existed in pieces
@@ -191,7 +191,7 @@ remembers.
 |---|---|
 | `canonical-types.md` (zero-duplicate-tolerance.md) | The static "what exists where". Insights are the dynamic "what should change about where things exist." |
 | `sprint-patterns.md` (adaptation-loop.md) | Sprint-level outcomes (grade, halts). Insights are sub-sprint agent discoveries. |
-| Pause registry (pause-for-dependency.md) | Agent says "I cannot continue without X" — synchronous block. Insights are async observations. |
+| Native coordination (native-coordination.md) | Cross-lane deps are graph edges (`await`-ordered in the compiled segment); out-of-scope work is a finding at close. Insights are async observations. |
 | Trace log (dispatch-cascade.md) | Mechanical state transitions. Insights are semantic observations. |
 | `[CONTEXT-INVENTORY]` (agent-briefs.md) | What the engineer pre-loaded for the agent. INSIGHTS are what the agent learned that the engineer didn't know. |
 
@@ -235,7 +235,7 @@ keeps the surface minimal and rigorous.
 - `agents/engineer.md` Phase 0 mesh row 13 — insights review
 - `doctrines/zero-duplicate-tolerance.md` — canonical-types static substrate
 - `doctrines/adaptation-loop.md` — sprint-pattern dynamic substrate (cross-sprint)
-- `doctrines/pause-for-dependency.md` — synchronous cross-agent dependency
+- `doctrines/native-coordination.md` — cross-agent dependency handling (pause-for-dependency retired, #70)
 - `doctrines/dispatch-cascade.md` — graph topology + trace
 - `hooks/scripts/agent_insight_capture.sh` — capture hook
 - `skills/context/scripts/cmd_insights.sh` — insight registry CLI

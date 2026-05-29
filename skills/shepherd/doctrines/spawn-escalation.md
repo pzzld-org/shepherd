@@ -462,7 +462,7 @@ a slow one may not. Acceptable for v5.1.4.
 
 ## XII. See also
 
-- `skills/shepherd/doctrines/pause-for-dependency.md` — mid-sprint satellite dispatch (uses `SendMessage` at Step 5)
+- `skills/shepherd/doctrines/native-coordination.md` — native coordination (the pause-for-dependency satellite is retired, #70)
 - `skills/shepherd/doctrines/chain-repair.md` — chain-repair amend-and-resume protocol
 - `skills/shepherd/doctrines/conductor-cwd.md` — conductor git prohibition
 - `agents/conductor.md` — §Escalation protocol, §Side-effect boundary

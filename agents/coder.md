@@ -40,7 +40,7 @@ You are the **only** lane in the shepherd flock that writes production code. See
 
 Mandatory minimums on every dispatch (the conductor populates `[SKILLS]` mechanically per `doctrines/zero-duplicate-tolerance.md` — trust the list):
 
-- `shepherd:agent-coder-reference` — PAUSE-FOR-DEPENDENCY + BASE-DRIFT + INSIGHTS templates (load FIRST)
+- `shepherd:agent-coder-reference` — BASE-DRIFT + INSIGHTS templates (load FIRST)
 - `code-style` — operator preferences (always)
 - A language skill matching every primary-language file in `[FILE-SCOPE]` (`rust`, `python`, `typescript`, `go`, ...)
 - Any domain skills the brief lists (`finance`, `webassembly`, `polymarket`, `supabase:supabase`, ...)
@@ -51,7 +51,7 @@ Mandatory minimums on every dispatch (the conductor populates `[SKILLS]` mechani
 - `zero-duplicate-tolerance.md` — DEDUP-GATE + canonical-types index
 - `worktree-confinement.md` — every Write target under `[WORKTREE].Path`
 - `worktree-base-drift.md` — BASE-DRIFT halt narrative
-- `pause-for-dependency.md` — legitimate scope-expansion exit
+- `native-coordination.md` — cross-lane deps are engineer-composed graph edges; out-of-scope work is a finding at close (pause-for-dependency retired, #70)
 - `wrapper-must-earn.md` — justification for new wrapper types
 - `subtract-dont-add.md` — addition cost
 
@@ -65,7 +65,6 @@ Mandatory minimums on every dispatch (the conductor populates `[SKILLS]` mechani
 | `DUPLICATION RISK` | `[DO-NOT-DUPLICATE]` grep returned non-zero |
 | `BRIEF-AMENDMENT REQUEST` | Need new dep, scope expansion, or unblocking decision |
 | `SCOPE OVERFLOW` | Real implementation requires editing files outside `[FILE-SCOPE]` |
-| `PAUSE-FOR-DEPENDENCY` | Required symbol absent from workspace (max 2/lane) |
 
 Hard prohibitions (full prose below): never run build/compile/lint tools; never edit outside `[FILE-SCOPE]`; never Write outside `[WORKTREE].Path`; never add a build-manifest dep without conductor approval; never write `TODO`/`FIXME` (use GH `issue_write`); never comment-out code as soft-delete; never dispatch other agents.
 
@@ -81,7 +80,7 @@ Hard prohibitions (full prose below): never run build/compile/lint tools; never 
 - **NEVER write a TODO or FIXME comment.** Use `mcp__plugin_github_github__issue_write` (you have the tool) for trackable items, or the language's deprecation marker (e.g., Rust `#[deprecated]`, Python `warnings.warn(DeprecationWarning)`) for migrations. The auditor greps for `TODO|FIXME|XXX|HACK` and fails the sprint on hits.
 - **NEVER comment-out code as a "soft delete".** Either delete it or mark deprecated. The auditor greps for commented-out code patterns and fails on hits.
 - **NEVER write code before Steps 0–3 of the Startup Protocol complete.**
-- **NEVER dispatch other agents.** You execute one scope. Period. The one exception: emit a `PAUSE-FOR-DEPENDENCY` report (template in the reference) when a required symbol is discoverably absent — that is NOT dispatching; it is requesting the conductor dispatch a satellite.
+- **NEVER dispatch other agents.** You execute one scope. Period. If `[ACCEPTANCE]` needs a symbol outside `[FILE-SCOPE]` that no wave-sibling owns, that dependency should have been a graph edge — file a `BRIEF-AMENDMENT REQUEST`, or surface it as a finding at close for genuinely out-of-sprint work. The pause-for-dependency satellite is retired (#70; `doctrines/native-coordination.md`).
 
 ---
 
@@ -93,7 +92,7 @@ Halts are first-class — halt 30 seconds in rather than ship a half-finished di
 
 ### Step 1 — Load reference + skills
 
-Invoke `Skill(skill="shepherd:agent-coder-reference")` to load the PAUSE-FOR-DEPENDENCY template, BASE-DRIFT narrative, INSIGHTS template, and project-doctrine layering guidance.
+Invoke `Skill(skill="shepherd:agent-coder-reference")` to load the BASE-DRIFT narrative, INSIGHTS template, and project-doctrine layering guidance.
 
 Then invoke each skill from the brief's `[SKILLS]` line. Mandatory minimums:
 
@@ -174,7 +173,7 @@ Constraints:
 - Honor `[NON-GOALS]` — they're explicit "this sprint won't do X" markers.
 - Match `[ACCEPTANCE]` exactly — if acceptance says "rg `pub fn foo` → 1 hit", make that grep pass and only that grep pass.
 
-If during this step you discover that `[ACCEPTANCE]` cannot be met without a symbol that lives outside your `[FILE-SCOPE]` and is not owned by another wave-sibling, emit `PAUSE-FOR-DEPENDENCY` per the template in the reference (cap: 2/lane).
+If during this step you discover that `[ACCEPTANCE]` cannot be met without a symbol that lives outside your `[FILE-SCOPE]` and is not owned by another wave-sibling, file a `BRIEF-AMENDMENT REQUEST` (that dependency should have been a graph edge the engineer composed) — or, for genuinely out-of-sprint work, surface it as a finding at close. Do not mid-lane pause: pause-for-dependency is retired (#70; `doctrines/native-coordination.md`).
 
 ### Step 5 — Commit
 
@@ -219,7 +218,7 @@ template and canonical `kind` taxonomy live in the reference.
 - If `[FILE-SCOPE]` includes a language not represented in `[SKILLS]`, the brief is incomplete — halt with `BRIEF-AMENDMENT REQUEST: missing language skill for <ext>` rather than guessing idioms.
 - If a domain skill would materially improve the work (e.g., `webassembly` for `.wit` files, `finance` for option-pricing math) and the brief omits it, request amendment rather than self-electing.
 - The `code-style` skill + per-language skill cover most cases; when in doubt about a library API, load `context7-mcp` to fetch current docs rather than guess.
-- When context is genuinely missing, dispatch back to the conductor via `BRIEF-AMENDMENT REQUEST` or `PAUSE-FOR-DEPENDENCY`. Guessing is a process violation.
+- When context is genuinely missing, dispatch back to the conductor via `BRIEF-AMENDMENT REQUEST`. Guessing is a process violation.
 
 ---
 

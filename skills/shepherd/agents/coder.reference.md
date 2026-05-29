@@ -4,7 +4,7 @@ slug: agent-coder-reference
 description: |
   Reference catalog for @coder. Loaded on demand at agent startup via Skill,
   so per-dispatch content stays out of the agent's stable system-prompt prefix.
-  Contains the full PAUSE-FOR-DEPENDENCY report template, the INSIGHTS
+  Contains the INSIGHTS
   section template, the BASE-DRIFT halt narrative, and project-doctrine
   layering guidance.
 metadata:
@@ -15,75 +15,32 @@ metadata:
 # @coder reference
 
 Loaded once per session. The agent body in `agents/coder.md` cites this file
-for the longer-form material — pause/insight templates, BASE-DRIFT narrative,
+for the longer-form material — the INSIGHTS template, BASE-DRIFT narrative,
 and project-doctrine layering — that does not need to be re-read on every
 turn of reasoning.
 
-## PAUSE-FOR-DEPENDENCY — full protocol
+## Cross-lane dependencies (pause-for-dependency retired — #70)
 
-> Full protocol and cap rules: `doctrines/pause-for-dependency.md`. This
-> reference holds the coder-side trigger and report template.
+> Superseded by `doctrines/native-coordination.md`. The pause-for-dependency
+> satellite mechanism — halt code, satellite brief, resume-condition dance, and
+> the `<ns>/pauses/` registry — is deleted in v6.0.1.
 
-### When to emit
-
-During Step 4 of the startup protocol, you determine that your
-`[ACCEPTANCE]` criteria **cannot be met** without a symbol (function, type,
-constant, re-export) that:
-
-- Does not exist in the workspace, AND
-- Lives in a file outside your `[FILE-SCOPE]` MAY-MODIFY list, AND
-- Is not owned by another coder in this wave
-
-You MUST emit a `PAUSE-FOR-DEPENDENCY` report **in place of** the normal
-CODER REPORT. Do NOT continue writing code. Do NOT add a TODO comment.
-
-### Pre-pause verification
+If your `[ACCEPTANCE]` cannot be met without a symbol that (a) does not exist in
+the workspace, (b) lives outside your `[FILE-SCOPE]`, and (c) is not owned by a
+wave-sibling, that dependency should have been a **graph edge** the engineer
+composed — the conductor's compiled segment `await`-orders it. You do **not**
+pause. Pre-check first (same discipline as before):
 
 ```bash
-# 1. Does the symbol already exist somewhere?
-rg -n "pub fn <needed_fn>\|pub struct <needed_struct>" --type <lang>
-
-# 2. Is it in [CONTEXT-INVENTORY] under a different name?
-# Re-read the brief — maybe you missed it.
-
-# 3. Is another wave-sibling lane touching that file?
-# Re-read the wave's lane list. If yes, re-sequence — do not pause.
+rg -n "pub fn <needed_fn>|pub struct <needed_struct>" --type <lang>   # already exists?
+# re-read [CONTEXT-INVENTORY] — maybe it's there under a different name
+# re-read the wave's lane list — a sibling may own it (re-sequence, don't block)
 ```
 
-Only if all three fail: commit any WIP (or note "no WIP"), then return:
-
-### Report template
-
-```
-## CODER REPORT — PAUSE-FOR-DEPENDENCY
-
-- Lane: <brief-id>
-- Halt code: PAUSE-FOR-DEPENDENCY
-- Reason: <one sentence>
-- Satellite brief request:
-    target_path:         <file(s) that need the symbol>
-    file_scope_proposed: <files the satellite MAY MODIFY>
-    work:                <what the satellite does — max 3 sentences>
-    estimated_size:      XS | S
-    new_symbol:          <exact identifier needed>
-    acceptance:          `rg "<new_symbol>" <target_path>` → 1 hit
-- Lane state at pause:
-    branch:   <worktree branch>
-    wip_sha:  <7-char SHA or "none — no WIP yet">
-- Resume condition: <what I need in HEAD before continuing>
-- Reporter: <agent-id> @ <ISO-8601 timestamp>
-```
-
-### Cap
-
-You may pause at most **2 times per lane**. A third pause means the lane
-scope was wrong — emit `BRIEF-AMENDMENT REQUEST` instead and stop.
-
-### After dispatch
-
-The conductor dispatches a satellite `@coder`, then `SendMessage`s you to
-resume. On receipt of the RESUMED message, verify the symbol exists before
-writing code.
+- If it belongs to this sprint but wasn't sequenced → commit any WIP, then file a
+  `BRIEF-AMENDMENT REQUEST` so the conductor re-meshes the graph edge.
+- If it is genuinely **out of this sprint's scope** → finish your assigned scope
+  and surface it as a **finding / GH issue at close**. Never expand scope silently.
 
 ## BASE-DRIFT halt narrative
 
@@ -130,7 +87,7 @@ auto-records each entry to `<ns>/insights/<sprint>/<id>.json`.
 Do NOT use INSIGHTS to:
 
 - Request scope changes for THIS sprint (use `BRIEF-AMENDMENT REQUEST`).
-- Flag missing symbols you need (use `PAUSE-FOR-DEPENDENCY`).
+- Flag missing symbols you need (file a `BRIEF-AMENDMENT REQUEST`).
 - Vent about taste or code style (those aren't insights — they're nits
   at best; one per report max, none preferred).
 
@@ -170,14 +127,14 @@ common ways coders try to skip them:
   the existing one. If it does the job, REUSE. If not, JUSTIFY-NEW in your
   report with a one-sentence reason that names the missing invariant.
 - "I added a TODO comment because the satellite would be too much overhead."
-  — No. TODO is a process violation. Either PAUSE-FOR-DEPENDENCY or
-  `BRIEF-AMENDMENT REQUEST`.
+  — No. TODO is a process violation. File a `BRIEF-AMENDMENT REQUEST` (or
+  surface the gap as a finding at close).
 
 ## See also
 
 - `skills/shepherd/doctrines/agent-excellence.md` — strive-higher framing
 - `skills/shepherd/doctrines/zero-duplicate-tolerance.md` — DEDUP-GATE mechanics
-- `skills/shepherd/doctrines/pause-for-dependency.md` — full PAUSE protocol
+- `skills/shepherd/doctrines/native-coordination.md` — cross-lane deps + out-of-scope handling (pause-for-dependency retired, #70)
 - `skills/shepherd/doctrines/worktree-confinement.md` — `[WORKTREE]` write rules
 - `skills/shepherd/doctrines/flock-cohesion.md` — INSIGHTS rationale
 - `hooks/scripts/dedup_write_guard.sh` — runtime duplicate-symbol blocker

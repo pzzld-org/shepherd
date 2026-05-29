@@ -70,10 +70,6 @@ run_case "lock-conflict"       lock_guard.sh '{"session_id":"s1","tool_name":"Ed
 run_case "lock-same-session"   lock_guard.sh '{"session_id":"other","tool_name":"Edit","tool_input":{"file_path":"a"}}'
 rm -f .artifacts/shepherd.lock
 
-echo "== agent_pause_detector.sh =="
-run_case "no-pause"            agent_pause_detector.sh '{"session_id":"s1","tool_name":"Agent","tool_response":"plain text"}'
-run_case "non-agent-tool"      agent_pause_detector.sh '{"session_id":"s1","tool_name":"Bash","tool_response":"x"}'
-
 echo "== agent_insight_capture.sh =="
 run_case "no-insights-block"   agent_insight_capture.sh '{"session_id":"s1","tool_name":"Agent","tool_response":"plain text"}'
 run_case "non-agent-tool"      agent_insight_capture.sh '{"session_id":"s1","tool_name":"Bash","tool_response":"x"}'
@@ -101,6 +97,17 @@ if lint_out=$(bash "$TESTS_DIR/lint_agent_capabilities.sh" 2>&1); then
 else
   printf '  FAIL  %-50s\n' "readonly-capability-lint"
   printf '%s\n' "$lint_out" | sed 's/^/        /'
+  fails=$((fails+1))
+fi
+
+# No-residual proof for the pause-for-dependency retirement (Lane F, #70/#53/#58).
+echo "== test_pause_retired.sh (Lane F no-residual) =="
+total=$((total+1))
+if pause_out=$(bash "$TESTS_DIR/test_pause_retired.sh" 2>&1); then
+  printf '  PASS  %s\n' "pause-retired-no-residual"
+else
+  printf '  FAIL  %-50s\n' "pause-retired-no-residual"
+  printf '%s\n' "$pause_out" | sed 's/^/        /'
   fails=$((fails+1))
 fi
 

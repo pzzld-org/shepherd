@@ -43,7 +43,7 @@ audits the trace.
 | `plan.md` (`## Stage Graph` YAML block) | @engineer at MESH | Append-only after critic GREEN; CHAIN-REPAIR may force re-extract |
 | `<ns>/graph/state.json` | `shctx plan extract` | Re-extracted on each MESH; replaces in place under `--force` |
 | `<ns>/graph/trace.jsonl` | `shctx graph mark` (append-only) | One line per state transition; never rewritten |
-| `<ns>/pauses/<id>.json` | `agent_pause_detector.sh` hook | Created on PAUSE-FOR-DEPENDENCY; cleared by `shctx pauses clear` |
+| `<ns>/graph/compiled/<seg>.workflow.js` | `shctx graph compile` (#77) | Compiled fanout segment; regenerated deterministically from `state.json` |
 
 ## III. The walker contract
 
@@ -62,7 +62,6 @@ The walker is a **state machine**, not a planner. Its rules are mechanical:
    — visible in `shctx graph status` as a stuck node.
 4. **No mid-walk graph mutation by the conductor.** The graph is
    the contract. Extension points are structural:
-   - `PAUSE-FOR-DEPENDENCY` ephemeral subgraph (`doctrines/pause-for-dependency.md`)
    - HOTFIX subgraph (`pipeline.md §VII`)
    - CHAIN-REPAIR seed amendment + MESH re-fire (`doctrines/chain-repair.md`)
    These extensions are described by the doctrine; the walker honors
@@ -223,10 +222,9 @@ shctx graph compile --list      # gate-free fanout segments available to compile
 - `agents/engineer.md §Phase 2` — plan template that emits the YAML Stage Graph
 - `doctrines/stage-graph.md` — the plan-IS-dispatch-contract principle
 - `doctrines/pattern-b-overlap.md` — encoded as `parallel_with` clique in the walker
-- `doctrines/pause-for-dependency.md` — ephemeral subgraph extension
+- `doctrines/native-coordination.md` — cross-lane deps via in-script ordering (pause-for-dependency retired, #70)
 - `doctrines/chain-repair.md` — seed-amendment + re-extract path
 - `doctrines/adaptation-loop.md` — sprint-pattern registry; integrates with `trace.jsonl`
 - `skills/context/scripts/cmd_plan.sh` — `shctx plan extract/topology/validate`
-- `skills/context/scripts/cmd_graph.sh` — `shctx graph status/next/mark/trace`
-- `skills/context/scripts/cmd_pauses.sh` — `shctx pauses list/show/resolve/clear`
+- `skills/context/scripts/cmd_graph.sh` — `shctx graph status/next/mark/trace/compile`
 - `doctrines/workflow-compile-down.md` — the workflow projection of the Stage Graph shares this `shctx plan extract` surface (§II); one source, two faithful projections

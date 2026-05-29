@@ -19,8 +19,7 @@ description: |
     • Sprint-as-patch — every dev.N sprint is operator-equivalent to a full
       patch; planter and engineer size scope accordingly
     • Hardened hook layer — shared library, event log, role-tagging, per-role
-      write-path enforcement, auditor cwd guard, auto-drafted dispatch brief
-      stubs for PAUSE-FOR-DEPENDENCY
+      write-path enforcement (capability-enforced read-only, #74), auditor cwd guard
     • shctx doctor — single-command preflight (git / plan / ctx / hooks /
       MCP / lock)
 
@@ -367,7 +366,7 @@ The flock-level set lives in `flock.md` (13 items). Conductor-level lifters
 24. **Engineer ignores `[DISCOVERY-CONTEXT]` / `[INTRO-AUDIT-CONTEXT]`** → injected blocks are not decorative. HIGH intro findings not addressed in plan → completeness auditor grade-caps C+ (`doctrines/intro-combo-wave.md`, v5.1.1).
 25. **Sprint under-scoped to non-patch-grade** → planter / engineer / critic ALL responsible for catching. Under-scope → critic RECONSIDER → planter expands theme (`doctrines/sprint-as-patch.md`, v5.1.1).
 26. **Auditor files finding without Hypothesis + Falsification + Confidence** → conjecture, not finding. Auditor system-prompt requires the triple per v5.1.1; missing triple → reject report and re-fire (`doctrines/auditor-hypothesis-driven.md`).
-27. **Conductor composes PAUSE-FOR-DEPENDENCY satellite brief from scratch** → the `agent_pause_detector.sh` hook v5.1.1+ auto-drafts the satellite brief stub at `<ns>/pauses/<id>.brief.md`. Read the stub; adjust; dispatch. Composing from scratch defeats the nested-subagent feel.
+27. **Conductor walks a PAUSE-FOR-DEPENDENCY satellite subgraph** → retired (#70). Cross-lane deps are engineer-composed graph edges (`await`-ordered in the compiled segment); out-of-scope work is a `BRIEF-AMENDMENT REQUEST` / finding at close (`doctrines/native-coordination.md`).
 
 ---
 
@@ -458,7 +457,7 @@ For `:start` and `:spawn`, sprint is inferred from current branch when no `sprin
 | `doctrines/stage-graph.md` | First sprint-walk decision | Plan-IS-dispatch-contract principle (graph-as-discipline) |
 | `doctrines/conductor-cwd.md` | First worktree inspection | Conductor anchor discipline — cwd / HEAD / worktree all stay on sprint root; bans `cd`, `git switch <agent-branch>`, and `git worktree add` from inside a worktree (v5.0.3 + v5.0.6) |
 | `doctrines/gates-restoration.md` | Sprint opens with red gates | Run GATES-DISCOVERY before Lane 0; brief on full inventory, not narrow subset (v5.0.3) |
-| `doctrines/pause-for-dependency.md` | Any agent returns PAUSE-FOR-DEPENDENCY | Agent-agnostic satellite dispatch protocol (v5.1.1) |
+| `doctrines/native-coordination.md` | Cross-lane dep / out-of-scope work | Native primitives (in-script ordering / SendMessage / subagents) replace pause-for-dependency, heartbeat-relay, idle-prune (v6.0.1, #70 / #53 / #58) |
 | `doctrines/cargo-sequential-gates.md` | Any WAVE-GATE run | Cargo must run sequentially on shared workspace (v5.1.1) |
 | `doctrines/plugin-reload-escape.md` | MCP tool unavailable at session start | /reload-plugins escape hatch + MCP-first preference (v5.1.1) |
 | `doctrines/dispatch-cascade.md` | First sprint-walk decision | Stage Graph rule-engine runtime — `shctx plan extract` + `shctx graph next/mark` mechanize the walk (v5.1.1) |
