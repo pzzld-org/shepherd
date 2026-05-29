@@ -85,6 +85,47 @@ while true:
 The dispatch step is the only LLM-driven step. Everything else is the
 state machine.
 
+## IV-bis. Compile-down — fanout segments run as Dynamic Workflows (v6.0.1, primary)
+
+For a **gate-free agent-fanout segment** (a maximal run of WAVE-IMPL / WAVE-AUDIT /
+CLOSE-SWARM / DISCOVERY / WORKER-IO / HOTFIX nodes bounded by operator gates and
+conductor-inline FS/git nodes), the **primary** execution path is to compile the
+segment to a Claude Code **Dynamic Workflow** and run it out-of-context, instead
+of walking each `next` batch in the conductor's own context:
+
+```text
+batch <- shctx graph next --json
+if batch is a gate-free agent-fanout segment:
+    shctx graph compile --segment=<entry-node> --verify     # emits <seg>.workflow.js
+    if §IV faithfulness diff FAILS (soundness|completeness|determinism):
+        HALT — a mismatch is a compiler bug, not a plan defect (do NOT run the script)
+    run the compiled workflow on the platform runtime (out-of-context)
+    on runtime failure/unavailability:
+        fall back to in-context dispatch(batch)              # the §IV loop — no parallel engine
+    read the returned result object → shctx graph mark <each node> --state=done --exit=<edge>
+else:
+    dispatch(batch)                                          # seam / single-dispatch: in-context as before
+```
+
+Binding rules (full doctrine: `workflow-compile-down.md` §III–VI):
+
+- **The compiler is the only script author.** The script is `compile(G_seg)` over
+  the critic-gated graph — never free-form (`workflow-compile-down.md §X.1`). The
+  §IV diff gates every compiled segment.
+- **Seams stay at the conductor (§VI).** Operator gates, `WAVE-GATE` rebase,
+  `LANE-CLOSE`, `CLOSE-FINALIZE`, and all SQLite+git canonical writes run at the
+  conductor between segments. The workflow only coordinates agent fanout; the
+  runtime's within-session resume is **never** canonical (`sqlite-canonical-state.md`).
+- **Bounded fanout.** `compile` emits `Promise.all` batches of ≤16 concurrent,
+  ≤1000 total; wider waves are chunked, preserving `parallel_with` semantics.
+- **Read-only is allowlist-enforced (§VII, #74).** Compiled audit/discovery steps
+  carry no edit/mutating tools — the `subagent_type` registry allowlist binds even
+  though the runtime auto-approves edits (`acceptEdits`).
+- **Mode-agnostic (#77 binding comment).** Solo `/shepherd:start` compiles its own
+  fanout segments and gains out-of-context parallelism with **no team spawned**;
+  under `/shepherd:spawn` each teammate-conductor compiles its **own lane's** fanout.
+  No code path requires a team to be present.
+
 ## V. Pattern B is a clique, not a checklist
 
 `parallel_with: [wave-1-impl]` on `worker-io` is **declarative**. When both
@@ -162,12 +203,18 @@ shctx plan validate
 # At every dispatch tick:
 shctx graph status              # what's where
 shctx graph next                # batch to fire NOW (parallel_with respected)
-# … dispatch via Agent tool …
+
+# Gate-free agent-fanout segment → compile + run out-of-context (PRIMARY, v6.0.1, #77):
+shctx graph compile --segment=<entry-node> --verify   # §IV diff MUST pass before running
+# … run the emitted <seg>.workflow.js on the platform runtime;
+#    on runtime failure, fall back to in-context `dispatch(batch)` …
+# Seam / single dispatch → fire via the Agent tool as before.
+
 shctx graph mark <id> --state=done --exit=<edge>
 
 # Inspect after the fact:
 shctx graph trace --tail=50     # last 50 transitions
-shctx pauses list               # active pause-for-dependency subgraphs
+shctx graph compile --list      # gate-free fanout segments available to compile
 ```
 
 ## X. See also

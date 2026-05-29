@@ -51,12 +51,17 @@ Subcommands (atomic):
                           extract: parse plan.md `## Stage Graph` → state.json.
                           topology: pretty-print nodes/edges/cliques.
                           validate: acyclic + predicates + parallel_with mutual.
-  graph <status|next|mark|trace|reset> [args]        (v5.0.9 dispatch-cascade)
+  graph <status|next|mark|trace|reset|compile> [args] (v5.0.9 dispatch-cascade)
                           status: nodes by state, completion %.
                           next: next-eligible batch (parallel_with cliques honored).
                           mark <id> --state=... [--exit=<edge>] [--agent=<id>]
                           trace [--tail=N]: append-only event log.
                           reset --force: drop state + trace.
+                          compile [--segment=<id>] [--verify] [--list]: (v6.0.1, #77)
+                            emit a gate-free agent-fanout segment as a Dynamic
+                            Workflow script — the PRIMARY path for fanout
+                            segments; --verify runs the §IV faithfulness diff.
+                            See doctrines/workflow-compile-down.md.
   pauses <list|show|resolve|clear> [args]            (v5.0.9 pause registry)
                           list: enumerate captured PAUSE-FOR-DEPENDENCY records.
                           show <id>: render one record.

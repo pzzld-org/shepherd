@@ -281,8 +281,12 @@ The body IS the Stage Graph walk. You no longer compose dispatches — you evalu
      a. Group by parallel_with cliques → batches
      b. For each batch:
           - HARD-STOP node → fire and EXIT
-          - conductor-inline node → execute inline
-          - agent batch → dispatch in ONE message (parallel-safety rules apply)
+          - conductor-inline node (gate / git / shell) → execute inline (seam)
+          - gate-free agent-fanout segment → compile + run as a Dynamic Workflow
+            out-of-context (PRIMARY, v6.0.1): shctx graph compile --segment=<entry>
+            --verify (§IV diff MUST pass) → run <seg>.workflow.js; on runtime
+            failure fall back to in-context dispatch
+          - other agent batch → dispatch in ONE message (parallel-safety rules apply)
           - await all returns
      c. Evaluate outgoing edge predicates against each node's output
      d. Mark target nodes' in_predicates satisfied
@@ -295,6 +299,7 @@ The body IS the Stage Graph walk. You no longer compose dispatches — you evalu
 - [ ] **DEDUP-GATE** fires before every WAVE-IMPL: run every lane's `[DO-NOT-DUPLICATE]` greps + mechanically recompute `[SKILLS]`. SQL fast-path: `shctx query dedup-check --name=<symbol>` — a registry hit pre-blocks; a registry miss does NOT skip the grep. Block fires if ANY grep returns > expected. Per `doctrines/zero-duplicate-tolerance.md`.
 - [ ] **Brief validity** passed for every lane before the WAVE-IMPL batch fires. Full checklist in `flock.md` §@coder → Brief-Validity Checklist.
 - [ ] **WAVE-IMPL batch**: N coders + IO-bound `@worker` in **ONE message** (`WORKER-IO.parallel_with = [wave-N-impl]` — graph-encoded).
+- [ ] **Compile-down (v6.0.1, #77 — PRIMARY path for fanout segments)**: a gate-free agent-fanout segment (WAVE-IMPL/AUDIT, CLOSE-SWARM, DISCOVERY, WORKER-IO, HOTFIX) executes via `shctx graph compile --segment=<entry> --verify` → run the emitted `<seg>.workflow.js` out-of-context, then `shctx graph mark` on return. The §IV faithfulness diff (soundness / completeness / determinism) MUST pass before running; a mismatch is a compiler bug — HALT, don't run. Seams (operator gates, `WAVE-GATE` rebase, git/shell, SQLite+git canonical writes) stay conductor-inline. **Mode-agnostic:** solo `/shepherd:start` compiles its own fanout (no team needed); a teammate compiles its lane's fanout. On runtime failure/unavailability → fall back to in-context dispatch (no parallel engine). See `doctrines/dispatch-cascade.md §IV-bis` + `doctrines/workflow-compile-down.md §III–VI`.
 - [ ] **Zero file overlap** across coder scopes in a wave. Single build-manifest writer. Verify before dispatch.
 - [ ] **Brief cache ordering** (v5.1.3+): stable sections first (`[ROLE]` → `[SKILLS]` → `[DOCTRINES]` → `[PROTOCOL-REMINDERS]`), variable sections last (`[FILE-SCOPE]` → `[CONTEXT-INVENTORY]` → `[DO-NOT-DUPLICATE]` → `[ACCEPTANCE]` → `[NON-GOALS]` → `[WORKTREE]` → `[BASE-COMMIT-EXPECTED]`). Per `doctrines/brief-cache-discipline.md`.
 - [ ] **WAVE-GATE** (conductor inline): rebase all worktrees → **gate sequence sequential** (NEVER parallel — `doctrines/cargo-sequential-gates.md`): `{gates.format}` → `{gates.check}` → `{gates.lint}` → language auto-fix if applicable → `git commit -m "fix(dev.N/wave-K): rebase + gate"`. Delete worktrees after gate.
