@@ -90,3 +90,4 @@ This protocol mirrors `chain-repair.md` for seed drift, applied to graph drift. 
 - `auditor-readonly.md` — graph constraint: audit nodes cannot fire write-edges
 - `agents/engineer.md` — plan-quality bar requires the Stage Graph section
 - `SKILL.md` §III — sprint sections that the graph specializes
+- `workflow-compile-down.md` — compile-down evaluation; its faithfulness invariant (§IV.1–3: soundness / completeness / determinism) maps directly onto corollaries 1–3 above, now mechanically guaranteed for compiled fanout segments

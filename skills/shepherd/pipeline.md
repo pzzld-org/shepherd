@@ -818,3 +818,4 @@ Full doctrine: `doctrines/plugin-reload-escape.md`.
 - `doctrines/plugin-reload-escape.md` — /reload-plugins escape hatch for MCP unavailability (v5.0.9)
 - `doctrines/dispatch-cascade.md` — Stage Graph as rule engine; `shctx plan extract` + `shctx graph` mechanize the walk (v5.0.9)
 - `commands/spawn.md` — `/shepherd:spawn --auto` (loop the walk algorithm) and `--parallel <N>` (N concurrent walks with cross-graph join at CLOSE-FINALIZE)
+- `doctrines/workflow-compile-down.md` — the φ node→construct map (§V) is derived from this node taxonomy; compiled fanout segments preserve the walk's predicate semantics (§IV)

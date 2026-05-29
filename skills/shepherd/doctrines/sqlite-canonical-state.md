@@ -97,6 +97,7 @@ migrate it to the row-canonical pattern.
 - `agents/critic.md` (closes #52 via deliverable promise/complete)
 - `agents/auditor.md` (closes #52, #44 via same pattern + intro-extras)
 - `agents/conductor.md` (closes #50; references this doctrine in dispatch)
+- `doctrines/workflow-compile-down.md` (canonical-state seam, §VI: the workflow runtime's within-session resume is never canonical — SQLite + git stay conductor-owned)
 - `agents/shepherd.md` (closes #49 via liveness polling)
 
 ## Field origin
