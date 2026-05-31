@@ -238,8 +238,10 @@ live in each:
 The minimum-decomposition disciplines split along the same seam:
 - **Planning discipline** (T-shirt → substantive LOC floor + many fine-grained steps,
   2–5 min each) lives on the *waves × steps* axis. See `agents/engineer.md`.
-- **Parallelization discipline** (T-shirt → minimum **lane** count; "more lanes is
-  better") lives on the *spawn-time lane* axis, and is **never** expressed "per wave."
+- **Parallelization discipline** (T-shirt → a **small** **lane** count of fat vertical
+  slices; **fewer fat lanes beat many thin sessions** — each lane is a subagent cluster,
+  re-spawned per wave) lives on the *spawn-time lane* axis, and is **never** expressed
+  "per wave." Minting a session per step crosses the axes — `PRIMITIVE-INVERSION`.
 
 ---
 

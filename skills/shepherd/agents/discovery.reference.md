@@ -74,7 +74,7 @@ Each maps to a brief template in
 ### Pattern A — PRE-MESH-DISCOVERY (most common)
 
 Fires at sprint start, parallel with seed-verify. Reads prior close report,
-sprint-patterns registry, GH carry-forward state, canonical-types freshness.
+the adaptation registry (`shctx adapt report`), GH carry-forward state, canonical-types freshness.
 Engineer's Phase-0 mesh reads the discovery report as authoritative for
 those rows. Saves the engineer ~30–50% of mesh-row read load.
 

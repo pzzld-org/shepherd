@@ -4,6 +4,69 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v6.0.4 — 2026-05-31
+
+### Adaptation + self-improvement loop, made SQLite-canonical (#94 / #95)
+
+Closes the adaptation / self-improvement loop as a **thin behavioral layer over existing
+substrate — no new engine**. The advisory markdown registry (`{paths.ctx}/sprint-patterns.md`)
+is **retired**; its signal now lives in the project DB and flows back into planning
+automatically.
+
+- **New `shctx adapt` verb** (`skills/context/scripts/cmd_adapt.sh`, registered in `shctx`):
+  - `adapt roll --sprint=<b> --grade=<G> [...]` — at CLOSE-FINALIZE, writes one
+    `sprint_metrics` row **and** harvests this sprint's HIGH/CRITICAL `audit_findings` into
+    `mem_entries(kind='prior')` lessons (deduped by concern → bounded growth). Idempotent.
+  - `adapt priors --metrics|--lessons|--all [--json|--md]` — measured dispatch averages +
+    recent lesson priors; graceful-empty (emits nothing on a cold store).
+  - `adapt report [--md|--json]` — the materialized sprint-patterns view.
+- **Schema** (migrations gap-filled by `cmd_migrate`): `0010_sprint_metrics.sql`
+  (`sprint_metrics` + `v_sprint_metrics_avg`); `0011_mem_entries_prior_kind.sql` —
+  recreate-table migration adding `'prior'` to the `mem_entries.kind` CHECK (preserving rows,
+  both indexes, `v_mem_recent_7d`).
+- **#94 adaptability:** spawn **Check 8** (`commands/spawn.md`) and engineer lane sizing read
+  `shctx adapt priors --metrics` — measured `avg_sprint_minutes` / `avg_api_per_sprint` /
+  `avg_lane_count` replace the static `90`/`200` defaults once history exists. The loop now
+  shapes dispatch *sizing* mechanically, not just plan content.
+- **#95 self-improvement:** harvested priors are injected as **cache-tail** variable content
+  into the engineer + planter `[DB-CONTEXT]` blocks (`cmd_inject.sh`) and into `/shepherd:plant`
+  + engineer Phase-0; a plan/seed that acts on a prior cites its `prior:<mem_id>` (the
+  measurement signal).
+- **Doctrine:** `adaptation-loop.md` rewritten advisory→SQLite-canonical; new
+  `self-improvement.md` (harvest→inject contract); indexed in `doctrines/README.md`; referenced
+  from `agent-excellence.md`. Stale `sprint-patterns.md` references across engineer/critic/
+  auditor/discovery/worker references, `SKILL.md`, `flock.md`, `preflight-doctor.md`,
+  `scope-scale-workload.md`, `flock-cohesion.md`, and the `session_open.sh` hook reconciled to
+  the registry. Harvest source (`shctx audit insert` → `audit_findings`) reachable post the
+  v6.0.3 0007-migration relocation fix.
+
+### Lane-model reconciliation — few fat lanes over many thin sessions
+
+Corrects a standing contradiction: `primitive-axis-binding.md` binds **Agent Teams = lanes,
+Dynamic Workflows = step fan-out, subagents = steps**, yet the lane-count *minimums*
+(M≥6 / L≥8 / XL 10–15, "more lanes is better") pushed lane granularity down to *step*
+granularity — minting a Claude session where a subagent belongs.
+
+- A lane is a **vertical slice run by a teammate-conductor that fans its wave-steps to a
+  cluster of subagents / a Dynamic Workflow** — not one-session-per-step, not a per-wave stage.
+- The inflated minimums become **few-fat-lanes guidance** (typically S 1–2, M 2–4, L 3–5,
+  XL 4–6), sized to genuinely-isolable slices + measured `avg_lane_count` (#94), with **in-lane
+  re-spawn per wave** for fresh context instead of more lanes.
+- Minting a session per step is flagged `PRIMITIVE-INVERSION`; `@critic` now rejects
+  **mis-sized** projections in either direction (too few disjoint slices, or too many thin
+  sessions), replacing the one-directional "under-parallelized" reject.
+- Reconciled across `agents/engineer.md` (canonical §Lane-count guidance), `critic.md`,
+  `conductor.md`, `shepherd.md`, `seed-template.md`, `primitive-axis-binding.md`,
+  `engineer.reference.md`, `flock.md`, `sprint-as-patch.md`, `SKILL.md`.
+
+### Verification
+
+- `bash skills/context/tests/run.sh` — 37/37 (incl. new `test_cmd_adapt.sh`).
+- `bash hooks/tests/run.sh` — 27/27 (incl. modified `session_open.sh`).
+- Fresh-DB migrate `0001 → 0011` clean; empty store ⇒ unchanged cold-start behavior.
+
+---
+
 ## v6.0.3 — 2026-05-30
 
 ### Substrate-defect patch — Agent-Teams orchestration hardening (#97–#103)

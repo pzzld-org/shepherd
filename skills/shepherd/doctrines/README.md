@@ -81,8 +81,9 @@ These get loaded by the conductor at session-open per `[hooks].on_every_dispatch
 
 | Doctrine | Principle |
 |---|---|
-| `adaptation-loop.md` | Self-improvement loop — sprint pattern registry written at close, read at mesh + seed time |
-| `auditor-hypothesis-driven.md` | (v5.1.1+) Auditors load `superpowers:systematic-debugging`; every finding carries Hypothesis + Falsification + Confidence; Bayesian finding-class weighting from sprint-patterns |
+| `adaptation-loop.md` | (v6.0.4 SQLite-canonical, #94) Sprint metrics registry — `shctx adapt roll` writes a `sprint_metrics` row at close; engineer/planter/spawn read measured averages via `shctx adapt priors`; now shapes dispatch *sizing* mechanically (Check 8) |
+| `self-improvement.md` | (v6.0.4 #95) Harvest→inject contract — HIGH/CRITICAL `audit_findings` become `mem_entries(kind='prior')` lessons, injected into the next `/shepherd:plant` + engineer Phase-0 brief; bounded, graceful-empty, citation-measured |
+| `auditor-hypothesis-driven.md` | (v5.1.1+) Auditors load `superpowers:systematic-debugging`; every finding carries Hypothesis + Falsification + Confidence; Bayesian finding-class weighting from the adaptation registry |
 | `auditor-readonly.md` | Auditors file findings; conductor dispatches fixes |
 | `discovery-readonly.md` | (v5.1.1+) `@discovery` is the sixth lane — read-only orientation + research synthesis; never grades, never proposes, never dispatches |
 | `intro-combo-wave.md` | (v5.1.1+) Sprint open dispatches discoveries + intro-mode auditors in parallel before MESH; engineer reads `[DISCOVERY-CONTEXT]` + `[INTRO-AUDIT-CONTEXT]` as authoritative |

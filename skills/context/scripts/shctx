@@ -67,6 +67,13 @@ Subcommands (atomic):
                           show <id>: render one insight.
                           export [--sprint=BRANCH]: markdown for engineer mesh row 13.
                           clear [--older-than-days=N]: prune actioned old insights.
+  adapt <roll|priors|report> [args]                   (v6.0.4 #94/#95)
+                          roll --sprint=B: write a sprint_metrics row at close +
+                          harvest HIGH/CRITICAL audit_findings → mem_entries(prior).
+                          priors --metrics: measured dispatch averages (spawn
+                          Check 8); --lessons: prior lessons for [DB-CONTEXT].
+                          report: materialized sprint-patterns view.
+                          SQLite-canonical (doctrines/adaptation-loop.md).
 
 Pipelines (multi-step automation, v5.0.4):
   sync [--scope=…|--all] [--verbose]
@@ -94,7 +101,7 @@ script_for() {
 cmd="${1:-help}"; shift || true
 case "$cmd" in
   help|-h|--help) usage ;;
-  init|status|doctor|refresh|query|search|inject|profile|style|mem|lock|lint|migrate|export|release|handoff|worktree|close-lane|issues|plan|graph|insights|sync|ready|sprint|audit|watch|discovery|teammate|mailbox|escalate|deliverable|report)
+  init|status|doctor|refresh|query|search|inject|profile|style|mem|lock|lint|migrate|export|release|handoff|worktree|close-lane|issues|plan|graph|insights|adapt|sync|ready|sprint|audit|watch|discovery|teammate|mailbox|escalate|deliverable|report)
     impl="$HERE/$(script_for "$cmd")"
     if [[ ! -f "$impl" ]]; then
       echo "ERROR: $cmd not yet implemented (missing $impl)" >&2; exit 2

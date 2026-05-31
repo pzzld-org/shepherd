@@ -148,34 +148,22 @@ version, in-progress context.
 Per `doctrines/carry-forward-refresh.md`. Read `[ledger.carry_forward_file]`.
 Surface CHRONIC-flagged items prominently in the plan.
 
-### Mesh row 10 — sprint pattern registry
+### Mesh row 10 — adaptation priors (metrics + lessons)
 
-Per `doctrines/adaptation-loop.md`.
+Per `doctrines/adaptation-loop.md §III` + `doctrines/self-improvement.md`. SQLite-canonical — there is no markdown registry file to read.
 
 ```bash
-# If shctx is available:
-shctx query sprint-patterns --last=5 --md
-# Fallback:
-cat {paths.ctx}/sprint-patterns.md | tail -200
+shctx adapt priors --metrics --md   # measured averages: avg_sprint_minutes / avg_api_per_sprint / avg_lane_count
+shctx adapt priors --lessons --md   # recent prior lessons (cap 10), each with its mem id
 ```
 
-If `{paths.ctx}/sprint-patterns.md` does not exist, skip this row and note
-"no pattern history yet" in the mesh summary. Do NOT create the file here —
-the completeness auditor creates it at sprint close.
+Empty store ⇒ both emit nothing; note "no pattern history yet — first adaptation cycle lands at this close" and proceed (identical to a cold start). The registry is written automatically by `shctx adapt roll` at sprint close (conductor in solo / root in spawn) — never create or write it here.
 
-From the registry, extract:
+From the priors, extract and act:
 
-- **Systemic risk concerns** (same concern with 3+ HIGH/CRITICAL across 3+
-  sprints) → add a dedicated coder lane or strengthened `[ACCEPTANCE]`
-  criteria targeting that concern in this sprint's plan.
-- **Chronic carry-forward candidates** (same GH# as carry-forward across 3+
-  sprints) → surface under "Drift-risk items not in this sprint's seed" even
-  if the ledger hasn't applied the `chronic` label yet.
-- **Recurring halt codes** (same halt code in 2+ of last 3 sprints) → note
-  in ENGINEER REPORT to the conductor for pre-dispatch verification.
-- **Clean-streak concerns** (0 CRITICAL/HIGH for 5+ consecutive sprints) →
-  reduce plan emphasis on those concern areas; redirect depth to weaker
-  concerns.
+- **Systemic-risk prior** (a recurring HIGH/CRITICAL `prior:` lesson whose concern is in this sprint's scope) → add a dedicated coder lane or strengthened `[ACCEPTANCE]` targeting it, and **cite the prior id** (`prior:<mem_id>`) in the lane rationale — that citation is the measurement signal (`adaptation-loop.md §VII`).
+- **Measured sizing** (`--metrics` shows `n≥1`) → size wave/lane counts against the real `avg_lane_count` / `avg_sprint_minutes`, not gut feel (`adaptation-loop.md §V`).
+- **Chronic carry-forward candidates** → surface under "Drift-risk items not in this sprint's seed" even if the ledger hasn't applied the `chronic` label yet.
 
 ### Mesh row 11 — prior close-audit reports
 
@@ -284,7 +272,7 @@ Author: @engineer · Date: <YYYY-MM-DD>
 | 7 | prior close   | `<path>`                         | Carry-forwards: ... |
 | 8 | CLAUDE.md     | local read                       | Current state: ... |
 | 9 | carry-forward ledger | `<path>`                  | Chronic items: #... |
-| 10 | sprint-patterns | `{paths.ctx}/sprint-patterns.md` (last 5 entries) | Systemic risks: {list or none}. Recurring halts: {list or none}. Chronic candidates: {GH#s or none}. Clean streaks: {concern list or none}. |
+| 10 | adaptation priors | `shctx adapt priors --metrics --lessons` | Measured averages: {avg_sprint_minutes/api/lanes or none}. Systemic-risk priors: {list+ids or none}. Cite `prior:<id>` when a prior shapes a lane. |
 | 11 | prior audit reports | `{paths.reports}/*-audit-*.md` (last 3) | Deferred-carry findings: {count}. Chronic-candidates: {list or none}. Code-quality pattern: {list or none}. |
 
 ## Drift-risk items not in this sprint's seed
@@ -385,7 +373,7 @@ depth, flag it under "Open Questions for Critic" and explain why.)
 ## Lane projection (spawn mode only — append AFTER the plan body)
 Under `[INVOCATION-CONTEXT].dispatcher == root-shepherd`, append a vertical slice of
 the finished `waves × steps` plan into lanes (one teammate-conductor each). Solo mode
-omits this. Full structure + minimums (total lanes, never per-wave): `agents/engineer.md §Lane projection`.
+omits this. Full structure + lane-count guidance (few fat lanes, total, never per-wave): `agents/engineer.md §Lane projection`.
 
 | Lane | Member steps (across waves) | Exclusive file scope |
 |---|---|---|
@@ -521,8 +509,8 @@ Before delivering the plan, verify every YES below:
       same wave?
 - [ ] `[ACCEPTANCE]` is runnable greps/commands, not prose?
 - [ ] Each wave is decomposed to the substantive step-depth bar for the
-      sprint T-shirt size (and, under spawn, the lane projection meets the
-      total lane minimum)?
+      sprint T-shirt size (and, under spawn, the lane projection is a small set
+      of fat vertical slices — few-fat-lanes, not a "more is better" floor)?
 - [ ] Every carry-forward from the handoff appears in the carry-forward
       table?
 - [ ] No silent scope creep beyond what the seed authorized?
@@ -530,10 +518,10 @@ Before delivering the plan, verify every YES below:
       summarized at the top)?
 - [ ] Drift-risk items from Phase 0 ledger sweep are explicitly listed (not
       silently absorbed)?
-- [ ] **Sprint-pattern registry consulted** (mesh row 10, if
-      `{paths.ctx}/sprint-patterns.md` exists) — systemic risks and
-      recurring halt codes reflected in lane decomposition or surfaced to
-      conductor?
+- [ ] **Adaptation priors consulted** (mesh row 10) — `shctx adapt priors
+      --metrics --lessons`; measured averages informed sizing, and any
+      systemic-risk prior is reflected in lane decomposition + cited as
+      `prior:<id>`?
 - [ ] **Prior audit reports read** (mesh row 11, if any
       `{paths.reports}/*-audit-*.md` exist) — deferred-carry findings added
       to carry-forward checklist; recurring deferred findings flagged as
@@ -612,7 +600,7 @@ for "obvious" fixes.
 
 - `skills/shepherd/doctrines/agent-excellence.md` — the strive-higher framing
 - `skills/shepherd/doctrines/issue-ledger-awareness.md` — mesh row 1 rules
-- `skills/shepherd/doctrines/adaptation-loop.md` — mesh rows 10 + 11
+- `skills/shepherd/doctrines/adaptation-loop.md` + `self-improvement.md` — mesh row 10 (adaptation priors); row 11 (prior close-audit reports)
 - `skills/shepherd/doctrines/flock-cohesion.md` — mesh row 13 (INSIGHTS)
 - `skills/shepherd/doctrines/zero-duplicate-tolerance.md` — canonical-types
 - `skills/shepherd/doctrines/stage-graph.md` — Stage Graph contract

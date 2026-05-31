@@ -165,7 +165,7 @@ Skip the wave for XS sprints or when `shepherd.toml [stage_graph.intro_wave].ena
 - [ ] Session-start branch hygiene executed — orphan dev branches surfaced (`references/branching-model.md` §V.1)
 - [ ] Conductor anchor verified — `pwd` is the primary worktree, `git rev-parse --abbrev-ref HEAD` is `{sprint_branch}`, `git rev-parse --git-dir == --git-common-dir` (per `doctrines/conductor-cwd.md` "Mandatory verification"). HALT on any drift. **Note (v5.1.1+):** if the session open hook didn't fire (e.g., plugin not loaded at session start), run the three-anchor check manually before any git operation. The `session_open.sh` hook performs this automatically when the shepherd plugin is loaded.
 - [ ] Preflight via `shctx doctor` — surfaces git, plan, ctx, hooks, MCP, lock state (per `doctrines/preflight-doctor.md`). Strongly recommended; required before `/shepherd:spawn --auto` and `/shepherd:spawn --parallel`.
-- [ ] Sprint-patterns registry status verified — `ls {paths.ctx}/sprint-patterns.md` (per `doctrines/adaptation-loop.md`). If absent: note "no pattern history yet — first adaptation cycle will land at this sprint close" and continue. If present: read last 3 entries for trend signals before dispatching `@engineer`.
+- [ ] Sprint-patterns registry status verified — run `shctx adapt priors --metrics --lessons --md` (and `shctx adapt report` for the full table) per `doctrines/adaptation-loop.md §III/§IV`. Empty output ⇒ note "no pattern history yet — first adaptation cycle lands at this close" and continue. Otherwise act on the surfaced averages + priors before dispatching `@engineer`.
 - [ ] Verified seed at `{paths.plans}/{sprint_slug}.seed.md` (planter authored or main-chat-inline) — graph-hint section present (per `references/seed-template.md` §7-bis)
 - [ ] **INTRO-COMBO-WAVE dispatched (M+ sprints)** — discoveries + intro auditors in ONE Agent batch BEFORE @engineer. Reports written to `{paths.reports}/<date>-discovery-*.md` and `{paths.reports}/<date>-intro-audit-*.md`.
 - [ ] Dispatched @engineer with seed + prior close report + carry-forward GH#s + `[DISCOVERY-CONTEXT]` + `[INTRO-AUDIT-CONTEXT]` + explicit instruction to run **Phase 0 mesh FIRST** + emit binding `## Stage Graph` per `pipeline.md` §XII
@@ -225,7 +225,7 @@ Deletion counts toward SUBTRACT but NOT toward this quota.
   6. Cut next sprint (mod-10: N+1 if N < 9; release pipeline if N = last) per §II.1.
   7. Worktree + branch cleanup.
   In TEAMMATE mode: steps 3–7 deferred to root via structured `SendMessage` payload.
-- [ ] **Adaptation signal** (v5.0.6+): check `{paths.ctx}/sprint-patterns.md` for trend alerts per `doctrines/adaptation-loop.md §V`. Surface `[TREND]` alert if any trigger fires.
+- [ ] **Adaptation signal** (v5.0.6+): scan `shctx adapt report` for trend alerts per `doctrines/adaptation-loop.md §VI`. Surface `[TREND]` alert if any trigger fires.
 - [ ] **PAUSE** fires after CLOSE-FINALIZE. RELEASE fires on dev.{last} + sprint-through grant.
 
 ### Sprint impactfulness contract (v5.1.1 — sprint-as-patch binding)
@@ -309,7 +309,7 @@ The flock-level set lives in `flock.md` (13 items). Conductor-level lifters
 8. Missing `gh issue create` for new findings → file at the surface, not at close.
 9. Acceptance as prose → use greps + structural assertions.
 10. Tunnel vision on current milestone → Phase 0 enumerates ALL open issues (`[ledger].phase_0_full_ledger`).
-11. Under-decomposed wave (too few / too broad coder steps), or under-parallelized spawn lane projection → reject back to engineer.
+11. Under-decomposed wave (too few / too broad coder steps), or mis-sized spawn lane projection (too few genuinely-disjoint slices, or too many thin sessions) → reject back to engineer.
 12. `cargo` inside a coder dispatch → worktrees share parent `target/` (see `pipeline.md` §XV-bis); conductor runs the gate at sprint root.
 13. Off-graph dispatch → `STAGE-GRAPH-VIOLATION` per `doctrines/stage-graph.md`.
 14. Skipping the dev.0 canonical-types refresh → drift compounds across patches (`doctrines/zero-duplicate-tolerance.md`).

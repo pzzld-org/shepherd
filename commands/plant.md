@@ -39,7 +39,7 @@ Stop. Do not partial-plant on Sonnet — degraded seeds defeat the purpose.
 
 ## Step 2 — Run plant mode
 
-Execute per `${CLAUDE_PLUGIN_ROOT}/agents/planter.md` §"Plant mode — seed authorship" (Steps 2–5): run the 12-row planter mesh, author seeds for the scope argument, run the pre-flight verification checklist on every seed, commit, and emit the PLANTER REPORT. The planter session ends after the report is emitted. Do not dispatch the engineer; do not begin the sprint pipeline.
+Execute per `${CLAUDE_PLUGIN_ROOT}/agents/planter.md` §"Plant mode — seed authorship" (Steps 2–5): run the 12-row planter mesh — row 12 reads the adaptation priors (`shctx adapt priors --lessons`); cite any `prior:<id>` that shapes the seed per `doctrines/self-improvement.md` — author seeds for the scope argument, run the pre-flight verification checklist on every seed, commit, and emit the PLANTER REPORT. The planter session ends after the report is emitted. Do not dispatch the engineer; do not begin the sprint pipeline.
 
 ---
 
@@ -50,3 +50,4 @@ Execute per `${CLAUDE_PLUGIN_ROOT}/agents/planter.md` §"Plant mode — seed aut
 - `${CLAUDE_PLUGIN_ROOT}/skills/shepherd/references/seed-template.md` — canonical seed shape
 - `${CLAUDE_PLUGIN_ROOT}/skills/shepherd/doctrines/seed-anchored-by-issues.md` — lane-anchoring discipline
 - `${CLAUDE_PLUGIN_ROOT}/skills/shepherd/doctrines/chain-repair.md` — when mesh contradicts seed
+- `${CLAUDE_PLUGIN_ROOT}/skills/shepherd/doctrines/self-improvement.md` — adaptation priors (harvested lessons) feed seed authorship

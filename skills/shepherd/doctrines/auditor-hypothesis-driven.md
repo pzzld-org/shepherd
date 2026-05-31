@@ -120,10 +120,11 @@ Before listing carry-forwards, ask: **what did the seed PROMISE that the
 plan delivered (or not)?** Real-work test is the highest-signal check;
 everything else is downstream.
 
-## Bayesian finding-class weighting (sprint-patterns integration)
+## Bayesian finding-class weighting (adaptation registry integration)
 
-The auditor reads `<ns>/sprint-patterns.md` at dispatch time to inform
-finding-class priors. The pattern registry tracks (per finding class):
+The auditor reads the adaptation registry at dispatch time — `shctx adapt report`
++ `shctx adapt priors --lessons` — to inform finding-class priors. The registry
+tracks (per finding class):
 - How many times this class was filed across the last K sprints
 - How many were verified as real by hot-fix landing
 - How many were withdrawn / closed as won't-fix / closed as duplicate
@@ -216,7 +217,7 @@ prior_class_priors: <inline summary of weights used>    # NEW v5.1.1 (optional)
 2. **"It's obviously wrong."** Obvious to whom? Falsify.
 3. **"I'll file it as LOW just to be safe."** LOW findings clog the
    GH-issue surface and dilute the high-signal ones. Filter at the source.
-4. **Auditor reads no historical signal.** Auditing without sprint-patterns
+4. **Auditor reads no historical signal.** Auditing without adaptation-registry
    priors = re-deriving every weight from scratch. The registry exists;
    read it.
 5. **Auditor in intro mode grading.** Intro mode (regression /
@@ -226,6 +227,6 @@ prior_class_priors: <inline summary of weights used>    # NEW v5.1.1 (optional)
 ## See also
 
 - `agents/auditor.md` — system prompt body (v5.1.1+)
-- `doctrines/adaptation-loop.md` — sprint-patterns registry (the Bayesian prior source)
+- `doctrines/adaptation-loop.md` + `self-improvement.md` — adaptation registry (the Bayesian prior source)
 - `doctrines/intro-combo-wave.md` — regression + carry-forward-disposition concerns
 - `superpowers:systematic-debugging` — the skill auditors load on dispatch

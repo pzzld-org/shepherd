@@ -80,7 +80,7 @@ Sprint-open expectations:
 
 - **Body-depth heuristic** in SKILL.md §III is now BINDING, not aspirational:
   decompose each wave to the T-shirt substantive LOC floor (many narrow steps);
-  spawn-mode **total** lane minimums per `agents/engineer.md §Lane projection`.
+  spawn-mode lane-count guidance (few fat lanes) per `agents/engineer.md §Lane projection`.
 - **PAUSE between sprints is meaningful** — each sprint close is a
   patch-equivalent waypoint where the operator may want to:
   - Release-tag intermediate progress
@@ -115,8 +115,9 @@ Plan-gate expectations:
   bug" or "add this one feature", critic verdict is RECONSIDER — escalate
   to engineer to expand the theme to patch-grade.
 - **Under-scoped plan → RECONSIDER.** A body under-decomposed below the
-  T-shirt's substantive step-depth (or, under spawn, an under-parallelized lane
-  projection), or a body that doesn't ship operator-visible value, reject.
+  T-shirt's substantive step-depth (or, under spawn, a mis-sized lane
+  projection — too few disjoint slices or too many thin sessions), or a body
+  that doesn't ship operator-visible value, reject.
 
 ## What does NOT change
 

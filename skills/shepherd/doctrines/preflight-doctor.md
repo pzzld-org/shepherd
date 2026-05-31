@@ -14,7 +14,7 @@ state and outputs a status table. Six sections:
 |---|---|
 | `[GIT]` | HEAD branch matches expected pattern; cwd is sprint root (not sub-worktree); orphan worktree count |
 | `[PLAN]` | plan.md presence for current sprint; Stage Graph YAML block present; canonical-types.md freshness |
-| `[CTX REGISTRY]` | root.db presence + size; schema migration version vs migrations/ latest; sprint-patterns.md entry count |
+| `[CTX REGISTRY]` | root.db presence + size; schema migration version vs migrations/ latest; adaptation registry sprint count (`shctx adapt report`) |
 | `[HOOKS]` | hooks.json validity; each registered script present + executable; event log writable + recently-active |
 | `[MCP]` | each `[mcp].*=true` in shepherd.toml → tool prefix callable |
 | `[LOCK]` | shepherd.lock presence + sessions-id match |
@@ -72,7 +72,7 @@ shepherd preflight — v5.1.1
 [CTX REGISTRY]
   ✓ root.db exists (.shepherd/root.db, 12.4 MB)
   ✓ Schema at migration 0014; latest 0014
-  ✓ sprint-patterns.md exists (8 entries)
+  ✓ adaptation registry: 8 sprints recorded (`sprint_metrics`)
 
 [HOOKS]
   ✓ 7 hooks active (session_open, bash_guard, bash_post, lock_guard,

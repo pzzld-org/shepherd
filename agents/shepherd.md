@@ -256,9 +256,11 @@ grounded picture every teammate inherits.
         `superpowers:writing-plans`).
       - File-disjoint across all steps in a wave (single build-manifest writer).
 - [ ] **Verify the lane projection** (spawn-only, appended after the plan):
-      total **lanes** ≥ T-shirt minimum (M≥6, L≥8, XL 10–15 — **total** vertical
-      slices, NEVER per-wave); each lane file-disjoint, no `wave:` field; one
-      teammate-conductor per lane.
+      a **small** set of fat vertical slices (typically L 3–5, XL 4–6 — **total**,
+      NEVER per-wave), sized to isolable slices + measured `avg_lane_count` (#94),
+      **not** a "more is better" floor; each lane file-disjoint, no `wave:` field;
+      one teammate-conductor per lane (a subagent cluster, re-spawned per wave).
+      Minting a session per step is `PRIMITIVE-INVERSION`.
       Failure of either → return plan to `@engineer` with `RECONSIDER` cap +
       decomposition guidance.
 - [ ] Dispatch `@critic` (single agent, sonnet) to gate the plan. Critic's
@@ -408,6 +410,19 @@ sprint when `--scope > sprint`):
       git worktree prune
       ```
       Release `shepherd.lock` if held. Prune orphan `agent-*` local branches.
+
+- [ ] **Adaptation roll** (#94/#95). Once per sprint close, before PAUSE — root
+      owns the write (teammate-conductors never roll):
+      ```bash
+      shctx adapt roll --sprint={sprint_branch} --grade={grade} \
+        [--size=...] [--lanes=...] [--waves=...] \
+        [--loc-add=...] [--loc-del=...] [--wall-min=...] [--api=...]
+      ```
+      Writes the `sprint_metrics` row + harvests this sprint's HIGH/CRITICAL
+      `audit_findings` → `mem_entries(kind='prior')`. Idempotent; on failure note
+      under anomalies and continue. Supersedes the retired completeness-auditor
+      markdown append. For `--parallel` / `--scope > sprint`: roll once per sprint
+      as each closes. Per `doctrines/adaptation-loop.md` + `doctrines/self-improvement.md`.
 
 - [ ] Emit ROOT CLOSE REPORT to operator (shape below); PAUSE.
 

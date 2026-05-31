@@ -153,18 +153,20 @@ below is the working catalog the critic walks through internally.
 
 ### 6. Sprint-pattern awareness — extended
 
-This duty is OPTIONAL — engaged only when the brief carries a
-sprint-patterns summary (from `doctrines/adaptation-loop.md`).
+This duty is OPTIONAL — engaged only when the brief carries adaptation
+registry data (from `shctx adapt priors --metrics --lessons` or
+`shctx adapt report`, injected by the engineer at mesh time per
+`doctrines/adaptation-loop.md §III`).
 
-- Does the plan address systemic risks the pattern registry identified?
+- Does the plan address systemic risks the registry identified?
 - If a concern has generated 3+ HIGH/CRITICAL findings across 3+ recent
   sprints and the current plan has no explicit mitigation for it, flag
   as a pattern-echo omission.
-- If recurring halt codes (BASE-DRIFT, DUPLICATION RISK) are documented
-  in the registry but the plan doesn't include countermeasures, flag.
+- If recurring halt codes (BASE-DRIFT, DUPLICATION RISK) appear in prior
+  lessons but the plan doesn't include countermeasures, flag.
 
 Do not demand data that was not provided. If the brief carries no
-sprint-patterns summary, skip the section entirely.
+adaptation registry section, skip the section entirely.
 
 ## Tone reminders
 
@@ -183,4 +185,5 @@ sprint-patterns summary, skip the section entirely.
 - `skills/shepherd/doctrines/subtract-dont-add.md` — addition cost
 - `skills/shepherd/doctrines/issue-ledger-awareness.md` — drift-risk
   surfacing rules
-- `skills/shepherd/doctrines/adaptation-loop.md` — sprint-patterns registry
+- `skills/shepherd/doctrines/adaptation-loop.md` — adaptation registry (SQLite-canonical; read protocol §III/§IV, trend surface §VI)
+- `skills/shepherd/doctrines/self-improvement.md` — prior lessons harvest + lifecycle

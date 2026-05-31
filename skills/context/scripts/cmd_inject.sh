@@ -10,7 +10,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 source "$HERE/_lib.sh"
 
 role="${1:-}"
-[[ -n "$role" ]] || { echo "ERROR: usage: shctx inject <engineer|coder|auditor> [--scope=<glob>] [--limit=N] [--full]" >&2; exit 1; }
+[[ -n "$role" ]] || { echo "ERROR: usage: shctx inject <engineer|coder|auditor|planter> [--scope=<glob>] [--limit=N] [--full]" >&2; exit 1; }
 shift
 
 scope_glob=""
@@ -33,6 +33,7 @@ default_limit_for() {
     engineer) echo 80 ;;     # full context surface
     coder)    echo 30 ;;     # file-scope-filtered, smaller cap
     auditor)  echo 25 ;;     # cross-cutting concerns only
+    planter)  echo 60 ;;     # seed-author surface
     *)        echo 50 ;;
   esac
 }
@@ -64,7 +65,12 @@ case "$role" in
     issues=$(bash "$HERE/cmd_query.sh" open-issues --md 2>/dev/null || echo "_(no open issues / gh unavailable)_")
     drift=$(bash "$HERE/cmd_query.sh" drift-risk --md 2>/dev/null || echo "_(no drift-risk index)_")
     types=$(bash "$HERE/cmd_query.sh" canonical-types --md 2>/dev/null | cap_md "$limit")
-    emit_block "$(printf '## Open issues\n%s\n\n## Drift risk\n%s\n\n## Canonical types (top %d)\n%s\n' "$issues" "$drift" "$limit" "$types")"
+    body=$(printf '## Open issues\n%s\n\n## Drift risk\n%s\n\n## Canonical types (top %d)\n%s\n' "$issues" "$drift" "$limit" "$types")
+    # Lesson priors are the most variable content → append LAST (cache-tail per
+    # brief-cache-discipline). Omitted entirely when the store is empty (#95).
+    priors=$(bash "$HERE/cmd_adapt.sh" priors --lessons --md 2>/dev/null || true)
+    [[ -n "$priors" ]] && body=$(printf '%s\n\n%s\n' "$body" "$priors")
+    emit_block "$body"
     ;;
 
   coder)
@@ -90,6 +96,17 @@ case "$role" in
     issues=$(bash "$HERE/cmd_query.sh" open-issues --md 2>/dev/null | cap_md "$limit" || echo "_(none)_")
     prs=$(bash "$HERE/cmd_query.sh" open-prs --md 2>/dev/null | cap_md "$limit" || echo "_(none)_")
     emit_block "$(printf '## Open issues (cross-cutting)\n%s\n\n## Open PRs\n%s\n' "$issues" "$prs")"
+    ;;
+
+  planter)
+    # Seed-author surface (/shepherd:plant): what's open + the lessons to guard.
+    # Priors are the variable tail (cache-discipline), omitted when empty (#95).
+    issues=$(bash "$HERE/cmd_query.sh" open-issues --md 2>/dev/null | cap_md "$limit" || echo "_(no open issues / gh unavailable)_")
+    drift=$(bash "$HERE/cmd_query.sh" drift-risk --md 2>/dev/null || echo "_(no drift-risk index)_")
+    body=$(printf '## Open issues\n%s\n\n## Drift risk\n%s\n' "$issues" "$drift")
+    priors=$(bash "$HERE/cmd_adapt.sh" priors --lessons --md 2>/dev/null || true)
+    [[ -n "$priors" ]] && body=$(printf '%s\n\n%s\n' "$body" "$priors")
+    emit_block "$body"
     ;;
 
   *) echo "ERROR: unknown role: $role" >&2; exit 1 ;;

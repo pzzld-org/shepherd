@@ -37,7 +37,7 @@ Mandatory on every dispatch (in order — skipping any is a process violation; a
 - `sprint-as-patch.md` — patch-grade scope yardstick
 - `version-scale-roadmap.md` — plan-per-patch filename convention
 - `issue-ledger-awareness.md` — Phase 0 mesh row 1 (combats tunnel vision)
-- `adaptation-loop.md` — Phase 0 mesh row 11 (prior-audit signals)
+- `adaptation-loop.md` + `self-improvement.md` — Phase 0 mesh row 10 (adaptation priors: measured metrics + harvested lessons; cite `prior:<id>`)
 - `stage-graph.md` — every plan emits a binding dispatch contract
 - `primitive-axis-binding.md` — author `waves × steps` (no lanes); lanes are a post-plan spawn projection (#88 / #89)
 - `zero-duplicate-tolerance.md` — full `[CONTEXT-INVENTORY]` + `[DO-NOT-DUPLICATE]` per step
@@ -211,16 +211,18 @@ A lane carries **no `wave:` field** — it spans all waves vertically. Root spaw
 
 Carry-over / open-issue disposition is a candidate **dedicated lane** (its own teammate-conductor), not steps folded into the plan body (#88).
 
-### Lane-count minimums (spawn projection — total, never "per wave")
+### Lane-count guidance (spawn projection — few fat lanes; total, never "per wave")
 
-| Sprint T-shirt | Min lanes (total vertical slices) |
+A lane is a **Claude session** (a teammate-conductor) that fans out its wave-steps to a **cluster of subagents / a Dynamic Workflow** — the cheap primitive. A lane is **not** a step and **not** a per-wave stage. So keep the count **small**: prefer **few fat lanes**, each a substantial file-disjoint vertical slice, over many thin sessions.
+
+| Sprint T-shirt | Typical lanes (file-disjoint vertical slices) |
 |---|---|
-| S  | 3 |
-| M  | 6 (ideally 8+) |
-| L  | 8 (ideally 10+) |
-| XL | 10–15 |
+| S  | 1–2 |
+| M  | 2–4 |
+| L  | 3–5 |
+| XL | 4–6 (rarely more) |
 
-These are **total** lane counts — the number of file-disjoint vertical slices the work decomposes into — **never** "lanes per wave." More lanes is better: smaller per-teammate scope = higher cache hit rates, less drift, more parallelism. A projection below the minimum is rejected by `@critic` (`RECONSIDER`, "under-parallelized lane projection"). Split any lane whose exclusive scope exceeds 5 files.
+These are **total** counts — file-disjoint vertical slices — **never** "lanes per wave." The count is driven by how many slices the work *genuinely* decomposes into and by the **measured `avg_lane_count`** from prior sprints (`shctx adapt priors --metrics`, #94) — **not** a "more is better" floor. **Fewer fat lanes beat many thin sessions:** each extra lane is another full session + context window + coordination cost, while depth *within* a lane (subagents/steps) is cheap and cache-friendly. When a lane's context fills, **re-spawn its teammate for the next wave** (fresh context, same slice) rather than minting a new lane. Add a lane only for a genuinely isolable vertical slice; minting a session per step crosses the primitive axes — a **`PRIMITIVE-INVERSION`** (`doctrines/primitive-axis-binding.md`) that `@critic` rejects. Per-**step** scope stays ≤ 5 files (steps are subagents inside a lane); a lane has no file cap beyond disjointness.
 
 ### Why many narrow lanes win (cache + cost economics)
 

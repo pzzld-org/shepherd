@@ -41,17 +41,14 @@ if [[ "${wt_count:-0}" -gt 1 ]]; then
   warnings+=("$((wt_count - 1)) sub-worktree(s) active. Run 'git worktree list' to inspect; prune orphans with 'git worktree remove <path>'.")
 fi
 
-# --- Sprint-patterns.md check (adaptation-loop.md) ---
+# --- Adaptation registry check (adaptation-loop.md, v6.0.4 SQLite-canonical) ---
 ns=$(resolve_namespace)
-ctx_path=""
-for candidate in "$ns/ctx" ".artifacts/ctx" ".shepherd/ctx"; do
-  if [[ -d "$candidate" ]]; then
-    ctx_path="$candidate"
-    break
+db="$ns/root.db"
+if [[ -f "$db" ]] && command -v sqlite3 >/dev/null 2>&1; then
+  n=$(sqlite3 "$db" "SELECT count(*) FROM sprint_metrics;" 2>/dev/null || echo 0)
+  if [[ "${n:-0}" == "0" ]]; then
+    warnings+=("adaptation registry empty — no pattern history yet. First cycle records at CLOSE-FINALIZE via 'shctx adapt roll'.  [adaptation-loop.md]")
   fi
-done
-if [[ -n "$ctx_path" && ! -f "$ctx_path/sprint-patterns.md" ]]; then
-  warnings+=("sprint-patterns.md absent at $ctx_path/sprint-patterns.md — no pattern history yet. First adaptation cycle records at this sprint's CLOSE-SWARM.  [adaptation-loop.md]")
 fi
 
 # --- Plan validity check (v5.1.2) ---
