@@ -217,7 +217,7 @@ Every `/shepherd:*` invocation starts here, no exceptions.
 2. **Session-start branch hygiene.** Run `git rev-parse --abbrev-ref HEAD` and `git worktree list`. Surface any orphan `agent-*` branches or leftover worktrees before proceeding. Full hygiene procedure: `references/branching-model.md` §V.1.
 3. **Conductor anchor.** Verify `pwd` is the primary worktree AND `git rev-parse --git-dir == --git-common-dir`. Per `doctrines/conductor-cwd.md` mandatory check. HALT on any drift.
 4. **Preflight via `shctx doctor`.** Surfaces git, plan, ctx, hooks, MCP, lock state. Per `doctrines/preflight-doctor.md`. Required when spawned under `/shepherd:spawn --auto` or `/shepherd:spawn --parallel <N>`; strongly recommended otherwise.
-5. **Sprint-patterns check.** `ls {paths.ctx}/sprint-patterns.md` — if present, read last 3 entries for trend signals before dispatching `@engineer`.
+5. **Sprint-patterns check.** Read `shctx adapt priors --metrics --lessons --md` (and `shctx adapt report` for the full table) for trend + prior signals before dispatching `@engineer`. Empty store ⇒ "no pattern history yet — first adaptation cycle lands at this close"; proceed unchanged. Per `doctrines/adaptation-loop.md`.
 6. **MCP availability.** If a `[mcp].*` flag is `true` but the tool prefix is not callable: surface the unavailability, request `/reload-plugins`, re-verify. If still unavailable: degrade to CLI and annotate mesh report. Per `doctrines/plugin-reload-escape.md`.
 7. **Dispatch contract reminder.** Before any non-flock dispatch fires later in the sprint, consult the DISPATCH DECISION TREE in `doctrines/specialist-dispatch.md` (§Q1–Q4). Flock-first is the doctrinal default; specialists clear Q3 only when the conductor has READ the specialist's description block in THIS session and the task is purpose-built. `general-purpose` and `Explore` are framework-forbidden — never dispatch them.
 8. **Emit session-start status line** to the planter (or operator if main chat):
@@ -296,7 +296,7 @@ The body IS the Stage Graph walk. You no longer compose dispatches — you evalu
 
 `doctrines/subtract-dont-add.md`: every sprint MUST end net-negative. That is a CONSTRAINT, not a job description. Deletion does not satisfy the real-work test.
 
-**Body-depth minimum** (reject back to `@engineer` if violated). The plan is `waves × steps`; decompose each wave into many narrow **steps** to the substantive LOC floor (spawn-mode total-lane minimums are the engineer's lane projection — `agents/engineer.md §Lane projection`; never "per wave"):
+**Body-depth minimum** (reject back to `@engineer` if violated). The plan is `waves × steps`; decompose each wave into many narrow **steps** to the substantive LOC floor (spawn-mode lane-count **guidance** — few fat lanes — is the engineer's lane projection per `agents/engineer.md §Lane projection`; never "per wave"):
 
 | T-shirt | Min coder steps per wave | Min LOC (substantive) |
 |---|---|---|
@@ -395,7 +395,15 @@ no pause-detector hook, and no `<ns>/pauses/` registry.
   git worktree prune
   ```
 
-  **Step 9 — Adaptation signal** (v5.0.6+): check `{paths.ctx}/sprint-patterns.md` for trend alerts per `doctrines/adaptation-loop.md §V`. If any trend trigger fires (3+ same-concern CRITICAL/HIGH, 3+ same halt code, downward grade trend): surface a `[TREND]` alert. Takes < 1 min.
+  **Step 9 — Adaptation loop** (SOLO mode only; #94/#95). Per `doctrines/adaptation-loop.md` + `doctrines/self-improvement.md`:
+  1. **Record + harvest** (write) — once, before PAUSE:
+     ```bash
+     shctx adapt roll --sprint={sprint_branch} --grade={grade} \
+       [--size={XS|S|M|L|XL}] [--lanes={total coder lanes}] [--waves={N}] \
+       [--loc-add={adds}] [--loc-del={dels}] [--wall-min={session minutes}] [--api={gh calls}]
+     ```
+     Writes one `sprint_metrics` row + harvests this sprint's HIGH/CRITICAL `audit_findings` into `mem_entries(kind='prior')`. Provide `--wall-min`/`--api` when known — they power Check 8 (#94). Idempotent; on failure (DB locked) note under anomalies and continue — never block CLOSE-FINALIZE. **Supersedes** the retired completeness-auditor markdown append.
+  2. **Trend surface** (read): scan `shctx adapt report` for 3+ same-concern HIGH/CRITICAL across sprints, a downward grade trend, or rising cost. If a trigger fires, surface a `[TREND]` alert (informational; does not block PAUSE). Takes < 1 min.
 
 - [ ] **PAUSE** fires after step 9. Under `/shepherd:start` (SOLO): you are done — operator takes over. Under `/shepherd:spawn`: you return control to root. **RELEASE** fires on dev.{last} + sprint-through grant (step 6 above).
 - [ ] **Emit close summary** to planter/operator: "What shipped, what carried forward, next sprint branch name."
@@ -492,7 +500,7 @@ Closes #50. References `doctrines/cargo-sequential-gates.md` and
 8. Missing `gh issue create` for new findings → file at the surface, not at close.
 9. Acceptance as prose → use greps + structural assertions.
 10. Tunnel vision on current milestone → Phase 0 enumerates ALL open issues per `[ledger].phase_0_full_ledger`.
-11. Under-decomposed wave (too few / too broad coder steps), or under-parallelized spawn lane projection → reject back to `@engineer`.
+11. Under-decomposed wave (too few / too broad coder steps), or mis-sized spawn lane projection (too few genuinely-disjoint slices, or too many thin sessions) → reject back to `@engineer`.
 12. `cargo` inside a coder dispatch → worktrees share parent `target/`; conductor runs the gate at sprint root.
 13. Off-graph dispatch → `STAGE-GRAPH-VIOLATION` (grade-caps C+).
 14. Skipping dev.0 canonical-types refresh → drift compounds (`doctrines/zero-duplicate-tolerance.md`).

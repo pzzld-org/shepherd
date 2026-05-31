@@ -366,7 +366,7 @@ Full contract + use-case catalog + cross-sprint reuse rules: `doctrines/discover
 | **Flock agents ONLY — `subagent_type` MANDATORY (v6.0.0)** | Set `subagent_type: "shepherd:<role>"`. Plugin registry loads agent body. Missing → `DISPATCH-MISSING-SUBAGENT-TYPE` halt; never silently defaults to general-purpose. See `doctrines/dispatch-tier-separation.md §IV-bis`. |
 | Parallel coders require zero file overlap | Verify before dispatch; single build-manifest writer at a time |
 | Parallel dispatch rule | Zero-overlap coders MUST be in the same message — sequential dispatch is a process violation |
-| Decompose each wave into many narrow steps (LOC floor per `engineer.md`); spawn-mode total-lane minimums per `engineer.md §Lane projection` | Under-decomposed wave / under-parallelized lane projection → reject back to @engineer |
+| Decompose each wave into many narrow steps (LOC floor per `engineer.md`); spawn-mode lane-count guidance (few fat lanes) per `engineer.md §Lane projection` | Under-decomposed wave / mis-sized lane projection → reject back to @engineer |
 | @critic before every non-XS dispatch | No exceptions for money-path, schema, or arch changes |
 | @auditor always a swarm by concern | 3–5 agents minimum; split by concern, never by file |
 | @auditor overlaps with Wave 2 coders | Pattern B — same message batch (`doctrines/pattern-b-overlap.md`) |
@@ -408,7 +408,7 @@ Full contract + use-case catalog + cross-sprint reuse rules: `doctrines/discover
 6. @engineer dispatched for coder-scope tasks → @engineer is plans only
 7. @critic skipped for M+ scope → no exceptions for "obvious" plans
 8. Workers dispatched after Wave 1 → IO-bound, batch with Wave 1 START (graph encodes `parallel_with: [wave-1-impl]`)
-9. Silent plan rejection → if a wave is under-decomposed (too few/too-broad steps) or a spawn lane projection is under-parallelized, explicitly reject to engineer
+9. Silent plan rejection → if a wave is under-decomposed (too few/too-broad steps) or a spawn lane projection is mis-sized (too few disjoint slices, or too many thin sessions), explicitly reject to engineer
 10. Missing `code-style` on coder briefs → mandatory always
 11. Soft `[CONTEXT-INVENTORY]` → engineer must fully populate inline; conductor cross-checks against `{paths.ctx}/canonical-types.md`
 12. **Skipping the anti-duplication grep** → THE ZERO-TOLERANCE ANTI-PATTERN. Conductor runs every `[DO-NOT-DUPLICATE]` grep BEFORE dispatch (DEDUP-GATE node). Coder-side self-halt is a fallback, not the primary defense.
@@ -416,7 +416,7 @@ Full contract + use-case catalog + cross-sprint reuse rules: `doctrines/discover
 14. **Tunnel vision on current milestone** → Phase 0 must enumerate ALL open issues per `doctrines/issue-ledger-awareness.md`, not just the milestone the seed targets
 15. **Off-graph dispatch** → every Agent batch corresponds to a node in the plan's Stage Graph (per `doctrines/stage-graph.md`); mid-walk improvisation is a process violation
 16. **Stale `{paths.ctx}/canonical-types.md`** → every dev.0 fires the `CANONICAL-TYPES-REFRESH` worker; subsequent sprints' Phase 0 reads it FIRST
-17. **Missing sprint-pattern registry read at mesh time** → if `{paths.ctx}/sprint-patterns.md` exists, the engineer MUST read it as mesh row 10; skipping it means systemic risks accumulate silently (`doctrines/adaptation-loop.md`)
+17. **Missing sprint-pattern registry read at mesh time** → the engineer MUST run `shctx adapt priors --metrics --lessons` as the sprint-patterns mesh row (per `doctrines/adaptation-loop.md §III`); skipping it means systemic risks accumulate silently
 
 ---
 

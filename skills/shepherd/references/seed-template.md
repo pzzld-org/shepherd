@@ -65,8 +65,19 @@ Anchored to current state. Each bullet cites at least one of:
 - A memory entry (per `[memory].project_memory`)
 - A research / design doc (`{paths.plans}/research/*.md`, `{paths.docs}/*.md`)
 - A project doctrine (`[memory].project_doctrines/*.md`)
+- A harvested prior lesson (`prior:<mem_id>` via `shctx adapt priors --lessons`)
 
 Bullets that lack citation are deleted. The seed is not a vibes document.
+
+### 2-bis. Priors / lessons carried forward
+
+Run `shctx adapt priors --lessons --md`. List the prior lessons this sprint must guard against — each with its id and the guard it implies. Write "none (first cycle)" when the registry is empty. A prior that shapes a deliverable or guardrail below is cited as `prior:<mem_id>` — the measurement signal (`doctrines/self-improvement.md`).
+
+```markdown
+| Prior id | Lesson (concern) | Guard this sprint applies |
+|---|---|---|
+| `prior:<mem_id>` | <one-line lesson> | <lane / acceptance / non-goal that addresses it> |
+```
 
 ### 3. Sprint character — one paragraph
 
@@ -221,10 +232,12 @@ The engineer is free to re-group, split, or merge waves based on Phase 0
 mesh findings, file-disjointness analysis, and per-deliverable T-shirt
 sizing. Per `agents/engineer.md`: decompose each wave into many narrow
 **steps** (substantive LOC floor by T-shirt); and under `/shepherd:spawn`,
-the engineer's post-plan **lane projection** meets the **total** lane
-minimum (M ≥ 6, L ≥ 8, XL 10–15 — total vertical slices, **never** per-wave).
-Per-step / per-lane scope ≤ 5 files; split mercilessly if exceeded. These are
-engineer-side, not planter prescription.
+the engineer's post-plan **lane projection** is a **small** set of fat
+file-disjoint vertical slices (typically M 2–4, L 3–5, XL 4–6 — total, **never**
+per-wave; each a subagent cluster re-spawned per wave), sized to isolable slices +
+measured `avg_lane_count` — not a "more is better" floor. Per-**step** scope ≤ 5
+files (steps are subagents inside a lane); split a lane only along genuinely disjoint
+slices. These are engineer-side, not planter prescription.
 
 ### 7-bis. Stage decomposition hint (NON-BINDING — engineer finalizes)
 

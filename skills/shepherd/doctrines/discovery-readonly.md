@@ -10,7 +10,7 @@ acts, grades, or proposes.
 
 Pre-v5.1.1, the conductor and engineer absorbed all read-only exploration
 into their own context. Phase 0 mesh routinely read prior close reports,
-canonical-types.md, sprint-patterns.md, GH issue listings, advisor
+canonical-types.md, `shctx adapt report` (adaptation registry), GH issue listings, advisor
 findings — all before the engineer wrote a single plan line. That cost
 context the deeper reasoning needed.
 

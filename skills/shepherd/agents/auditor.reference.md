@@ -70,9 +70,9 @@ When you formed a hypothesis but the falsification DISPROVED it (the grep return
 
 This is the audit-trail equivalent: future readers see what failure modes the auditor considered and disproved. Zero GH overhead.
 
-## Bayesian finding-class weighting (sprint-patterns integration)
+## Bayesian finding-class weighting (adaptation registry integration)
 
-Read `<ns>/sprint-patterns.md` at dispatch time (per `doctrines/adaptation-loop.md`). The registry records per-class real-vs-false rates from prior sprints. Use it to calibrate effort:
+Read the adaptation registry at dispatch time — `shctx adapt report` + `shctx adapt priors --lessons` (per `doctrines/adaptation-loop.md`). Prior grades and HIGH/CRITICAL lessons (`mem_entries(kind='prior')`) record which finding classes proved real across prior sprints. Use them to calibrate effort:
 
 - **High-real-rate classes** (≥ 70% verified historically): falsify with lower bar; surface with HIGH confidence on weaker evidence.
 - **Low-real-rate classes** (< 30% verified): demand strong falsification before filing HIGH; default to MEDIUM or `## Open questions`.
@@ -145,12 +145,7 @@ Procedure (long-form — see body for cache-extension steps):
 - **`[CODE-STYLE]` block presence.** For every coder lane brief whose `[FILE-SCOPE]` includes source files, verify the conductor injected a `[CODE-STYLE]` block.
 - **`[DB-CONTEXT]` block presence** when applicable.
 - **`[DISCOVERY-CONTEXT]` / `[INTRO-AUDIT-CONTEXT]` consumption (v5.1.1+).** When an INTRO-COMBO-WAVE fired, verify the engineer's plan addressed the HIGH findings surfaced — silent absorption is a process violation, grade-cap C+.
-- **Sprint pattern journal write.** Per `doctrines/adaptation-loop.md §II`, after all other verifications:
-  1. Read CLOSE-SWARM reports from every concern to collect finding counts.
-  2. Collect halt codes from the walk trace.
-  3. Check carry-forward ledger for MUST-LAND items that did not land.
-  4. Append one sprint entry to `{paths.ctx}/sprint-patterns.md`. If file absent, create it with the header block first.
-  5. Note "sprint-pattern entry written" in the AUDITOR REPORT output.
+- **Findings feed the adaptation registry (no manual journal write).** Per `doctrines/adaptation-loop.md §II` + `doctrines/self-improvement.md`: file every finding via `shctx audit insert` (concern / severity / hypothesis / finding) — that is the harvest source. The conductor (solo) / root (spawn) then runs `shctx adapt roll` at CLOSE-FINALIZE, which records the `sprint_metrics` row and harvests this sprint's HIGH/CRITICAL findings into `mem_entries(kind='prior')`. Do NOT hand-write any markdown sprint-patterns file — that step is retired. Note "findings filed for adaptation harvest" in the AUDITOR REPORT.
 - **Brief-order verification (v5.1.3+ — per `doctrines/brief-cache-discipline.md`).** Read the conductor's dispatch run-log entries for this sprint (typically under `.artifacts/runs/` or wherever the `agent_invocation_tagger.sh` hook writes). For each captured brief, verify the bracketed-section ordering matches the doctrine: the stable framing block (`[ROLE]` → `[SKILLS]` → `[DOCTRINES]` → `[PROTOCOL-REMINDERS]`) appears before the variable content block (`[FILE-SCOPE]` → `[CONTEXT-INVENTORY]` → `[DO-NOT-DUPLICATE]` → `[ACCEPTANCE]` → `[NON-GOALS]` → `[WORKTREE]` → `[BASE-COMMIT-EXPECTED]`). File LOW per dispatch on violation; aggregate as MEDIUM if > 30% of captured dispatches violate.
 - **Cache telemetry table (v5.1.3+ — per `doctrines/cache-telemetry.md`).** Run `shctx query cache-usage --sprint={sprint_branch} --md` and embed the table verbatim under `## Cache telemetry` in the report. If the `v_cache_usage` view is absent (telemetry not yet collected), write "telemetry view absent — establishing baseline" and skip. Threshold guidance: aggregate hit-rate < 40% across the sprint is a MEDIUM finding flag for investigation; do NOT grade-cap on this alone in the first three sprints (exploratory baseline period per `doctrines/cache-telemetry.md`).
 
@@ -254,6 +249,6 @@ If the view is absent: write `telemetry view absent — establishing baseline` a
 - `doctrines/agent-excellence.md` — strive-higher framing
 - `doctrines/brief-cache-discipline.md` — brief ordering rule (forward reference; landed in v5.1.3 Lane B)
 - `doctrines/cache-telemetry.md` — telemetry capture + thresholds (forward reference; landed in v5.1.3 Lane C)
-- `doctrines/adaptation-loop.md` — sprint-patterns registry
+- `doctrines/adaptation-loop.md` + `self-improvement.md` — adaptation registry (findings → priors at close)
 - `doctrines/sprint-as-patch.md` — patch-grade calibration
 - `superpowers:systematic-debugging` — skill loaded at dispatch

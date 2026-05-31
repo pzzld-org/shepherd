@@ -55,23 +55,28 @@ same.
 [FORMAT]        Table: branch | last_commit | recommendation | reason
 ```
 
-### Pattern 5 — Sprint pattern registry backfill
+### Pattern 5 — Adaptation registry review / one-off backfill
 
-Use when `{paths.ctx}/sprint-patterns.md` is absent or missing several
-sprints' entries (e.g., after installing the adaptation loop mid-patch-cycle).
+> **v6.0.4:** `{paths.ctx}/sprint-patterns.md` is retired. The registry is
+> three DB tables (`sprint_metrics`, `audit_findings`, `mem_entries(kind='prior')`)
+> written automatically by `shctx adapt roll` at CLOSE-FINALIZE (conductor in
+> solo, root shepherd in spawn). Workers no longer write markdown entries.
+
+Use when the operator asks for a point-in-time review of adaptation state, or
+when a mid-cycle install left sprint_metrics rows missing for earlier sprints.
 
 ```
-[DELIVERABLE]   Read the last N close-time audit reports and synthesize one sprint-patterns.md entry
-                per missing sprint, appending in chronological order.
-[SOURCES]       {paths.reports}/*-close.md, {paths.reports}/*-audit-completeness.md
-[BUDGET]        15 min, 40 tool calls
-[FORMAT]        Append-mode write to {paths.ctx}/sprint-patterns.md (create with header if absent)
-[OUT-OF-SCOPE]  Do NOT modify source code. Do NOT create GH issues. Write only to sprint-patterns.md.
+[DELIVERABLE]   Run `shctx adapt report` (human view) or `shctx adapt priors --metrics --lessons --md`
+                and surface gaps to the operator. For backfill, confirm which sprint branches lack
+                a sprint_metrics row, then report findings — do NOT manually insert rows.
+[SOURCES]       shctx adapt report, shctx adapt priors --metrics --lessons
+[BUDGET]        10 min, 20 tool calls
+[FORMAT]        Summary prose in the WORKER REPORT; no file writes
+[OUT-OF-SCOPE]  Do NOT modify source code. Do NOT create GH issues. Do NOT write markdown registry files.
 ```
 
-Note: this pattern is only needed for backfill. Going forward, the
-completeness auditor writes entries at each sprint close automatically (per
-`doctrines/adaptation-loop.md §II`).
+Note: ongoing writes happen automatically. See `doctrines/adaptation-loop.md §II`
+and `doctrines/self-improvement.md`.
 
 ## Cross-lane / missing-artifact dependencies (pause-for-dependency retired — #70)
 
@@ -130,4 +135,5 @@ each entry.
 - `skills/shepherd/doctrines/agent-excellence.md` — strive-higher framing
 - `skills/shepherd/doctrines/native-coordination.md` — cross-lane deps + out-of-scope handling (pause-for-dependency retired, #70)
 - `skills/shepherd/doctrines/flock-cohesion.md` — INSIGHTS rationale
-- `skills/shepherd/doctrines/adaptation-loop.md` — sprint-patterns registry
+- `skills/shepherd/doctrines/adaptation-loop.md` — adaptation registry (SQLite-canonical; §I registry tables, §II write protocol)
+- `skills/shepherd/doctrines/self-improvement.md` — harvest logic + prior lessons lifecycle

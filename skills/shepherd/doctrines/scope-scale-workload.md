@@ -139,7 +139,7 @@ Worktree count peak: {parallel_N} concurrent worktrees
 ```
 
 Numbers are based on the project's prior-sprint averages (from
-`{paths.ctx}/sprint-patterns.md` if present, else conservative defaults).
+`shctx adapt priors --metrics` when n>0, else conservative defaults).
 
 ---
 

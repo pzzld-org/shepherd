@@ -1,235 +1,152 @@
 ---
 title: adaptation-loop
 description: |
-  Self-improvement loop that accumulates sprint patterns across a patch cycle
-  so the engineer, critic, and planter can make evidence-based adjustments to
-  planning, review, and seeding over time. Requires no operator annotation —
-  the completeness auditor writes entries; everything else reads them.
+  SQLite-canonical self-improvement loop. Each sprint close writes one
+  sprint_metrics row and harvests HIGH/CRITICAL audit_findings into
+  mem_entries(kind='prior'); the engineer, planter, and spawn dispatcher read
+  those measured averages and lessons back. Requires no operator annotation and
+  — as of v6.0.4 — mechanically shapes dispatch sizing, not just plan content.
 introduced: v5.0.6
 ---
 
-# Adaptation Loop — Sprint Pattern Registry
+# Adaptation Loop — Sprint Pattern Registry (SQLite-canonical)
+
+> **v6.0.4 (#94/#95):** re-grounded from an advisory markdown file
+> (`{paths.ctx}/sprint-patterns.md`) onto the registry DB. The markdown file is
+> retired; its human-readable view is now `shctx adapt report`. See
+> `doctrines/sqlite-canonical-state.md` and `doctrines/self-improvement.md`.
 
 ## Why this exists
 
-The shepherd flock has no cross-session memory by default. Each sprint starts from the seed and the prior handoff — which is one sprint old. Over a patch cycle, recurring finding types, persistent halt codes, and grade-cap patterns accumulate without a mechanism to surface them to planning.
+The shepherd flock has no cross-session memory by default. Each sprint starts from the seed and the prior handoff — one sprint old. Over a patch cycle, recurring finding types, persistent halt codes, grade-cap patterns, and real timing/effort costs accumulate with no mechanism to surface them to planning.
 
-The adaptation loop gives the system **sprint-level memory without requiring operator annotation**. The completeness auditor writes a compact pattern entry at sprint close; the engineer reads it at mesh time; the planter reads it at seed time; the conductor surfaces trends at PAUSE. No new infrastructure is required — just a markdown file at `{paths.ctx}/sprint-patterns.md`.
+The adaptation loop gives the system **sprint-level memory without operator annotation**. At each close the conductor records what the sprint cost and what it taught; at each open the engineer, planter, and spawn dispatcher read those facts back. The registry is the project DB (`.shepherd/root.db`) — the canonical store per `doctrines/sqlite-canonical-state.md` — so the signal survives sessions, is queryable, and is bounded by construction.
+
+---
+
+## I. The registry — three DB tables, one view
+
+| Store | Written by | Holds |
+|---|---|---|
+| `sprint_metrics` (one row / sprint, `UNIQUE(project_id,sprint_branch)`) | `shctx adapt roll` at CLOSE-FINALIZE | grade, size, lane/wave counts, LOC delta, **wall_minutes**, **api_calls**, findings summary |
+| `audit_findings` | `shctx audit insert` (auditor, per `doctrines/sqlite-canonical-state.md`) | per-finding concern / severity / hypothesis / finding — the **harvest source** |
+| `mem_entries(kind='prior')` | `shctx adapt roll` (harvested from HIGH/CRITICAL `audit_findings`) | one deduped lesson per recurring concern; tags = concern name(s) |
+
+The human-readable registry — the old `sprint-patterns.md` — is now a **materialized view**: `shctx adapt report [--md|--json]`. Never hand-edit the tables; never re-introduce a markdown registry file.
 
 ---
 
-## I. The sprint pattern registry
+## II. Write protocol — `shctx adapt roll` at CLOSE-FINALIZE
 
-**Location:** `{paths.ctx}/sprint-patterns.md`
+The **conductor** (solo) / **root shepherd** (spawn) runs exactly one `roll` per sprint close, after CLOSE-SWARM and before PAUSE:
 
-Created on first write; append-only thereafter. Never hand-edit mid-sprint.
-
-**File header (written once on creation):**
-
-```markdown
-# Sprint Pattern Registry — {project.name}
-
-*Auto-maintained by the `completeness` auditor at each sprint close.*
-*Read by: @engineer (Phase 0 mesh row 10), @planter (seed authorship), conductor (PAUSE trend surface).*
-*Curator: add entries via the completeness auditor only — do not hand-edit.*
-
----
+```bash
+shctx adapt roll --sprint=<branch> --grade=<G> [--size=XS|S|M|L|XL] \
+                 [--lanes=N] [--waves=N] [--loc-add=N] [--loc-del=N] \
+                 [--wall-min=R] [--api=N]
 ```
 
-**Entry shape (one entry per sprint, appended at close):**
+`roll` does two things atomically:
+1. **Metrics** — `INSERT OR REPLACE` one `sprint_metrics` row (idempotent on the sprint branch; re-running a close is safe).
+2. **Harvest** — for each HIGH/CRITICAL `audit_findings` row of this sprint, upsert a `mem_entries(kind='prior')` lesson titled `prior: <concern>`, deduped by title so growth stays bounded (a recurring concern yields one prior, not one-per-occurrence). See `doctrines/self-improvement.md`.
 
-```markdown
-## {sprint_branch} — {YYYY-MM-DD}
-
-| Property | Value |
-|---|---|
-| Grade | {overall grade from CLOSE-SWARM, e.g. B+} |
-| Sprint size | {XS/S/M/L/XL} |
-| Lane count | {total coder lanes across all waves} |
-| LOC delta | {+adds / -dels on subtract_paths} |
-
-### Findings by concern
-| Concern | CRITICAL | HIGH | MEDIUM |
-|---|---|---|---|
-| code-quality | N | N | N |
-| data-flow | N | N | N |
-| dependency-topology | N | N | N |
-| datastore-state | N | N | N |
-| completeness | N | N | N |
-
-### Halt codes encountered
-{comma-separated list of halt codes (BRIEF INVALID, BASE-DRIFT, DUPLICATION RISK, etc.) or "none"}
-
-### Carry-forward items (unresolved from prior sprint)
-{GH issue numbers that were MUST-LAND but did not land, or "none"}
-
-### Adaptation notes
-- {1–3 bullets: what went well, what triggered a grade-cap or hard-stop, what the planter/engineer should weight differently next sprint}
-```
-
----
-
-## II. Write protocol — completeness auditor at sprint close
-
-The `completeness` auditor is responsible for appending a new entry at each sprint close. This is part of the `CLOSE-SWARM` phase, after all other verifications.
-
-**Steps:**
-1. Read the CLOSE-SWARM audit reports from every concern to collect finding counts.
-2. Read the conductor's walk trace (if `[stage_graph].walk_trace_enabled = true`) or the coder CODER REPORTs for halt codes encountered.
-3. Check the carry-forward ledger (`[ledger.carry_forward_file]`) for MUST-LAND items that did not land.
-4. Write adaptation notes: what drove grade-caps (if any), what the planter should weight differently (if any), what went cleanly.
-5. Append the entry to `{paths.ctx}/sprint-patterns.md`. If the file does not exist, create it with the file header first.
-
-If the pattern file is inaccessible (path missing, permission error), note it in the audit report under "anomalies" and skip. Do NOT block CLOSE-FINALIZE for this.
-
-**On first close** (file doesn't exist yet): create it with the file header, then append the entry. Surface to the conductor: "Sprint-patterns registry initialized — first adaptation cycle recorded."
+This **supersedes** the v5.x step where the completeness auditor hand-appended a markdown entry. The auditor's job is now only to **file findings** via `shctx audit insert`; the conductor's `roll` turns them into durable priors. If `roll` fails (DB locked, etc.), note it in the close report under anomalies and continue — do **not** block CLOSE-FINALIZE.
 
 ---
 
 ## III. Read protocol — engineer at mesh time
 
-**When:** Phase 0 mesh, after the standard mesh rows 1–9, as mesh row 10.
+**When:** Phase 0 mesh, as the sprint-patterns mesh row.
 
-**How:**
 ```bash
-# If shctx is available:
-shctx query sprint-patterns --last=5 --md
-
-# Fallback: read the file directly
-cat {paths.ctx}/sprint-patterns.md | tail -200
+shctx adapt priors --metrics --md   # measured averages
+shctx adapt priors --lessons --md   # recent prior lessons (cap 10), each with its id
 ```
+
+Empty store ⇒ both emit nothing; the engineer notes "no pattern history yet — first adaptation cycle lands at this close" and proceeds (unchanged from a cold start).
 
 **What to act on:**
 
-| Pattern detected | Action |
+| Signal | Action |
 |---|---|
-| Same concern has **3+ HIGH/CRITICAL findings across 3+ sprints** | Classify as **systemic risk** in Phase 0 mesh summary. Add a dedicated coder lane or strengthened `[ACCEPTANCE]` criteria targeting that concern area. |
-| Same GH issue appears as carry-forward in **3+ consecutive sprints** | Flag as **CHRONIC candidate** even if the ledger hasn't applied the label yet. Surface under "Drift-risk items not in this sprint's seed". |
-| Same halt code (BASE-DRIFT, DUPLICATION RISK, etc.) in **2+ of last 3 sprints** | Flag to the conductor in the ENGINEER REPORT: "Recurring halt pattern — recommend conductor verify {halt code prevention step} before next dispatch." |
-| A concern has been **CLEAN (0 CRITICAL/HIGH) for 5+ consecutive sprints** | Note in plan: reduced scrutiny weight for that concern; focus effort on active concern areas. |
-
-**Mesh row format:**
-```
-| 10 | sprint-patterns | {paths.ctx}/sprint-patterns.md (last 5 entries) | Systemic risks: {list or none}. Recurring halts: {list or none}. Chronic candidates: {GH#s or none}. Clean streaks: {concern list or none}. |
-```
+| A `prior:` lesson names a concern relevant to this sprint's scope | Add or strengthen a coder lane / `[ACCEPTANCE]` criterion targeting it. **Cite the prior id** (`prior:<mem_id>`) in the lane rationale — that citation is the measurement signal (§VII). |
+| `--metrics` shows real averages (`n≥1`) | Size lanes/waves against measured `avg_lane_count` and `avg_sprint_minutes`, not gut feel — see §V. |
+| Same concern recurs across multiple priors | Classify as **systemic risk** in the mesh summary; give it a dedicated lane. |
 
 ---
 
 ## IV. Read protocol — planter at seed time
 
-**When:** `/shepherd:plant`, reading context before writing any seed content.
+**When:** `/shepherd:plant`, reading context before writing seed content.
 
-**How:** read `{paths.ctx}/sprint-patterns.md` in full (or last 10 entries for a long-running project).
+```bash
+shctx adapt priors --lessons --md
+```
 
-**What to act on:**
-
-| Pattern detected | Seed action |
+| Signal | Seed action |
 |---|---|
-| Systemic risk concern (3+ HIGH/CRITICAL across 3+ sprints) | Include an explicit mitigation lane in the relevant sprint seed. Name the concern and the mitigation. |
-| Chronic carry-forward (GH# unclosed across 3+ patches) | Include as MUST-LAND CRITICAL lane in the earliest available sprint slot. Do not defer a fourth time without operator signal. |
-| Recurring grade-cap pattern (same reason across 3+ sprints) | Add an explicit non-goal or counter-measure in the seed's "Non-goals / guardrails" section. |
-| Clean streak (concern 0 CRITICAL/HIGH for 5+ sprints) | Reduce seed emphasis on that area. Redirect planning depth toward weaker concerns. |
+| Systemic-risk prior (recurring HIGH/CRITICAL concern) | Add an explicit mitigation lane; name the concern + mitigation. **Cite the prior id** in the seed's guardrails section. |
+| Chronic carry-forward (GH# unclosed across patches, per `carry-forward-refresh.md`) | MUST-LAND CRITICAL lane in the earliest sprint slot. |
+| Clean store / no relevant prior | Seed's "Priors / lessons carried forward" section reads "none (first cycle)". |
 
 ---
 
-## V. Conductor trend surface at PAUSE
+## V. Dispatch sizing — the loop now changes dispatch (v6.0.4)
 
-After `CLOSE-FINALIZE` and before `PAUSE`, the conductor checks the registry for any of these:
+Before v6.0.4 the loop only informed plan *content*. It now **mechanically shapes dispatch sizing**:
 
-- Same concern has 3+ HIGH/CRITICAL findings in last 3 sprints
-- Same halt code has occurred 3+ times in last 3 sprints
-- Sprint grade has trended downward (e.g., A → B → C) for 3 consecutive sprints
+- **Spawn Check 8** (`commands/spawn.md`) reads `shctx adapt priors --metrics`. With `n>0` it uses measured `avg_sprint_minutes` / `avg_api_per_sprint` / `avg_lane_count`, labeled `(from priors: N sprints)`. With an empty store it falls back to the static defaults, labeled `(defaults — no priors yet)`. See `doctrines/scope-scale-workload.md`.
+- **Engineer lane guidance** sizes wave/lane counts against the same measured averages.
 
-If any trigger fires, surface a **TREND ALERT** to the operator before pausing:
+This is the one place the adaptation loop is **not** advisory: a second sprint's estimate provably differs from the cold-start default, traceable to `sprint_metrics` (acceptance #94).
+
+---
+
+## VI. Conductor trend surface at PAUSE
+
+After CLOSE-FINALIZE, before PAUSE, the conductor scans `shctx adapt report` for:
+
+- a concern with HIGH/CRITICAL priors recurring across the last 3 sprints,
+- a sprint grade trending downward (A → B → C) across 3 sprints,
+- `avg_sprint_minutes` / `avg_api_per_sprint` trending up sharply.
+
+If any fires, surface an informational **TREND ALERT** (it does not block PAUSE):
 
 ```
-[TREND] {concern/halt-code/grade-direction} has recurred for {N} consecutive sprints.
+[TREND] {concern | grade-direction | cost} has recurred for {N} sprints.
 Recommendation: {1-sentence concrete suggestion}
 ```
 
-Examples:
-```
-[TREND] data-flow concern has generated HIGH/CRITICAL findings for 3 consecutive sprints.
-Recommendation: add a dedicated data-flow coder lane in the next seed to address the
-recurring signal-correctness gap in the payment path.
+---
 
-[TREND] BASE-DRIFT halt code has fired 3 times in the last 3 sprints.
-Recommendation: verify shctx worktree create-batch is called with --from $SPRINT_BRANCH
-immediately before each WAVE-IMPL dispatch, not at session start.
-```
+## VII. The measurement signal
 
-Trend alerts are **informational** — they do not block PAUSE. The operator decides whether to act.
+The loop is only working if priors are *consumed*, not merely *written*. A plan or seed that acted on a prior **cites it** in its rationale — `prior:<mem_id>` (a harvested lesson) or `metrics(N sprints)` (a sizing decision). Absence of any citation across several sprints with a non-empty store is itself a signal that the read protocol is being skipped.
 
 ---
 
-## V-bis. Node-level telemetry (dispatch-cascade integration, v5.0.9)
+## VIII. Feedback classification — project-specific vs framework-generic
 
-When the conductor uses `shctx plan extract` + `shctx graph mark` (per
-`doctrines/dispatch-cascade.md`), the trace at `<ns>/graph/trace.jsonl`
-gains a per-transition event log. The completeness auditor reads the
-trace at CLOSE-SWARM and augments the sprint-pattern entry with
-**node-level metrics**:
-
-```markdown
-### Node telemetry (this sprint)
-| Node | Type | Duration | Exit edge | Halts |
-|---|---|---|---|---|
-| mesh | MESH | 4m12s | on-no-drift | — |
-| wave-1-impl | WAVE-IMPL | 12m04s | on-coder-complete | 1× PAUSE-FOR-DEPENDENCY (retired v6.0.1; equivalent: await-edge dependency on target_path) |
-| wave-1-gate | WAVE-GATE | 38s | on-fail → on-pass (re-run) | 1× HOTFIX |
-```
-
-This is the substrate for trend detection (`§V` trend alerts) at
-sub-sprint granularity:
-
-| Pattern detected | Action |
-|---|---|
-| Same node-type's avg duration trending up 50%+ across 3 sprints | Flag as "node-type bloat" — engineer reduces lane scope or decomposes |
-| Specific node consistently exits via `on-fail` then `on-pass` | Auto-fixable failure pattern; suggest pre-emptive HOTFIX recipe in next plan |
-| A cross-lane dependency expressed as a graph edge with await ordering fires on the same (source-lane, target-file) pair across 2+ sprints | Surface as a candidate for a dedicated Lane 0 in the next sprint |
-
-If the trace is absent (legacy sprint or `shctx graph` not used), the
-auditor falls back to sprint-level summary as before. Node telemetry is
-additive, not mandatory.
+When the conductor saves a `feedback_*.md` memory mid-sprint (`shctx mem add`), classify it: **project-specific** stays in project memory; **framework-generic** ("every Rust/Python/Go shepherd project will hit this…") is additionally flagged in the close report as a candidate for shepherd doctrine promotion. The conductor never pushes doctrine changes to the shepherd repo — it only flags the candidate.
 
 ---
 
-## VI-bis. Feedback classification — project-specific vs framework-generic (v5.0.9)
+## IX. What the adaptation loop does NOT do
 
-> Field origin: shepherd v5.0.8 conductor feedback §10.
+- **Does not override operator decisions.** Trend alerts are recommendations.
+- **Does not bloat the registry.** One `sprint_metrics` row per sprint (idempotent); priors deduped by concern. Bounded by construction.
+- **Does not create labels.** Chronic labeling stays with `doctrines/carry-forward-refresh.md`; the loop surfaces candidates.
+- **Does not break a cold start.** Empty store ⇒ identical to today's first-sprint behavior; every read is graceful-empty.
 
-When the conductor saves a `feedback_*.md` memory entry mid-sprint (e.g., via
-`shctx mem add`), classify it before writing:
-
-| Classification | Criterion | Write location |
-|---|---|---|
-| Project-specific | Only applies to THIS project's stack, team, or codebase | `{paths.ctx}/feedback/<rule-name>.md` (project memory) |
-| Framework-generic | Would benefit ANY shepherd project (e.g., cargo sequencing, file-scope caps) | `{paths.ctx}/feedback/<rule-name>.md` (project memory) AND note in close report: "Candidate for shepherd doctrine promotion" |
-
-**Framework-generic feedback** is flagged in the close report so the operator
-can promote it to the shepherd repo's doctrine library at their convenience.
-The conductor does NOT push doctrine changes to the shepherd repo — it only
-flags the candidate.
-
-**Rule of thumb:** if the feedback starts "Every Rust/Python/Go shepherd
-project will hit this…" — it's framework-generic.
+> Changed in v6.0.4: it **does** now change dispatch *sizing* (§V) — mechanically, via Check 8 and lane guidance. That is the deliberate exception to the old "does not change dispatch" rule.
 
 ---
 
-## VI. What the adaptation loop does NOT do
+## X. Cross-doctrine references
 
-- **Does not change dispatch rules.** The Stage Graph is still the contract; the adaptation loop informs its *content*, not its execution.
-- **Does not override operator decisions.** Trend alerts are recommendations, not mandates.
-- **Does not bloat the registry.** One entry per sprint; completeness auditor writes it at CLOSE-SWARM. No duplicates, no mid-sprint writes.
-- **Does not require a running DB.** The markdown format works without `shctx`. DB-backed queries (`shctx query sprint-patterns`) are a fast-path for Phase 0 mesh.
-- **Does not create new labels.** Chronic labeling still follows `doctrines/carry-forward-refresh.md`; the adaptation loop surfaces candidates, not labels.
-
----
-
-## VII. Cross-doctrine references
-
-- `doctrines/carry-forward-refresh.md` — chronic-label authority; adaptation loop surfaces candidates, carry-forward-refresh applies labels
-- `doctrines/issue-ledger-awareness.md` — Phase 0 full-ledger sweep; adaptation loop complements it with historical pattern signal
-- `doctrines/stage-graph.md` — graph is still the dispatch contract; adaptation loop informs what the engineer puts in the plan, not how the conductor walks it
-- `doctrines/context-registry.md` — `shctx query sprint-patterns` is the fast-path; markdown file is the fallback
-- `doctrines/subtract-dont-add.md` — SUBTRACT verification feeds into the adaptation entry's LOC delta field
+- `doctrines/self-improvement.md` — the harvest→inject contract (audit_findings → priors → briefs); companion to this doctrine
+- `doctrines/sqlite-canonical-state.md` — why the registry is DB-canonical and the markdown file is a generated view
+- `doctrines/scope-scale-workload.md` — spawn `--scope` sizing; Check 8 consumes `shctx adapt priors --metrics`
+- `references/grading-rubric.md` — the grade fed to `shctx adapt roll --grade`
+- `doctrines/carry-forward-refresh.md` — chronic-label authority; the loop surfaces candidates, this applies labels
+- `doctrines/agent-excellence.md` — lessons feed forward so the flock does not relearn the same failure

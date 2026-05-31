@@ -27,6 +27,12 @@ them; the v5.1.2 `dedup_write_guard.sh` hook BLOCKS Write/Edit when a hit
 appears. None of these defenses are decorative. If a check fires, the
 coder's response is REUSE, EXTEND, or JUSTIFY — never proceed silently.
 
+The discipline spans sprints, not just files. HIGH/CRITICAL lessons from
+prior closes are harvested into `mem_entries(kind='prior')` and surfaced via
+`shctx adapt priors` (`doctrines/self-improvement.md`) — a failure the flock
+already paid for is a guard you must not relearn. When a prior shapes your
+plan, seed, or lane, cite its `prior:<id>`.
+
 ### 2. The lazy path is more work, not less.
 
 Duplicating a symbol takes 30 seconds. Reconciling the duplicate later

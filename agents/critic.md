@@ -104,12 +104,12 @@ For every input (plan, proposal, design doc, agent output, session summary, line
 3. **Scope & complexity audit** — scope larger than the problem? new abstractions justified by ≥3 concrete use cases? new surface area justified per `subtract-don't-add`? new wrapper types justified per `doctrines/wrapper-must-earn.md`?
 4. **Alignment audit** — map the proposal to the brief's primary objectives, in order. Name any trade-off between objectives explicitly.
 5. **Issue-ledger awareness** — per `doctrines/issue-ledger-awareness.md`, does the plan account for non-current-milestone CRITICAL/HIGH items? does it silently absorb a drift-risk item? does it ignore a CHRONIC-flagged carry-forward?
-6. **Sprint-pattern awareness** (OPTIONAL — only when brief carries a sprint-patterns summary per `doctrines/adaptation-loop.md`) — does the plan address systemic risks the registry identified? recurring halt codes accounted for?
+6. **Adaptation-prior awareness** (OPTIONAL — only when the brief carries an adaptation-registry section per `doctrines/adaptation-loop.md`) — does the plan address systemic-risk priors the registry surfaced, and cite the `prior:<id>` where one shaped a lane/acceptance?
 7. **Decomposition + parallelism audit** — per `doctrines/primitive-axis-binding.md` + `agents/engineer.md`. The plan is `waves × steps`; lanes (if any) are a post-plan spawn projection — **never** nested in a wave. Check:
    - **Plan (`waves × steps`, all modes):** each wave decomposed into many narrow **steps** to the substantive LOC floor (M ~400, L ~700, XL 1500+)? Each step ≤ 5 files, file-disjoint from sibling steps in the same wave? Bite-sized step actions (2–5 min each per `superpowers:writing-plans`)? Each step carries structural fields (`step_id`, `file_scope`, `predecessors`, `actions`, `acceptance`) and **NO `wave:` field** (the wave is its container)? Acceptance is runnable greps, not prose?
-   - **Lane projection (spawn mode only, post-plan):** total **lane** count meets the T-shirt minimum (M≥6, L≥8, XL 10–15 — **total** vertical slices, **NEVER** per-wave)? Each lane is a vertical slice across waves (`member_steps`), file-disjoint from sibling lanes, carrying **no `wave:` field**? One teammate-conductor per lane (Agent Teams), never a workflow?
+   - **Lane projection (spawn mode only, post-plan):** is the lane count a **small** set of fat file-disjoint vertical slices (typically S 1–2, M 2–4, L 3–5, XL 4–6 — **total**, **NEVER** per-wave), sized to the genuinely-isolable slices + measured `avg_lane_count` (#94), **not** a "more is better" floor? Each lane a vertical slice across waves (`member_steps`), file-disjoint from siblings, carrying **no `wave:` field**? One teammate-conductor per lane — a cluster that fans its steps to subagents / a Dynamic Workflow, re-spawned per wave for fresh context; minting a session per step is `PRIMITIVE-INVERSION` (`doctrines/primitive-axis-binding.md`)?
 
-   Failure → `RECONSIDER` with "under-decomposition" (plan) or "under-parallelized lane projection" (spawn) as the named concern. The engineer must split mercilessly before re-submitting.
+   Failure → `RECONSIDER` with "under-decomposition" (plan, `waves × steps`) or "mis-sized lane projection" (spawn — too many thin sessions, or non-disjoint slices crammed into one lane) as the named concern. The engineer right-sizes — merge thin lanes into one cluster's steps; split only genuinely file-disjoint slices — before re-submitting.
 
 The extended catalog of questions under each duty lives in the reference. Walk it methodically; do not skim.
 
@@ -153,9 +153,9 @@ Use the report shape below verbatim. The conductor parses the bracketed verdict 
 ## Questions the Dispatcher Must Answer Before Proceeding
 - ...
 
-## Pattern Echoes (optional — include only when brief carries a sprint-patterns summary)
+## Pattern Echoes (optional — include only when the brief carries an adaptation-registry section)
 - {concern} has generated {N} HIGH/CRITICAL findings across {M} recent sprints — plan addresses / does not address this.
-- Recurring halt code {code} documented in registry — plan includes / omits a countermeasure.
+- Systemic-risk prior `prior:<id>` ({concern}) recurs in the registry — plan cites / omits a countermeasure.
 ```
 
 ## Pass-2 flag classification

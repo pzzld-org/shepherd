@@ -192,7 +192,7 @@ remembers.
 | Existing primitive | Relationship |
 |---|---|
 | `canonical-types.md` (zero-duplicate-tolerance.md) | The static "what exists where". Insights are the dynamic "what should change about where things exist." |
-| `sprint-patterns.md` (adaptation-loop.md) | Sprint-level outcomes (grade, halts). Insights are sub-sprint agent discoveries. |
+| `sprint_metrics` + `mem_entries(kind='prior')` — adaptation registry (adaptation-loop.md) | Sprint-level outcomes (grade, halts), viewed via `shctx adapt report`. Insights are sub-sprint agent discoveries. |
 | Native coordination (native-coordination.md) | Cross-lane deps are graph edges (`await`-ordered in the compiled segment); out-of-scope work is a finding at close. Insights are async observations. |
 | Trace log (dispatch-cascade.md) | Mechanical state transitions. Insights are semantic observations. |
 | `[CONTEXT-INVENTORY]` (agent-briefs.md) | What the engineer pre-loaded for the agent. INSIGHTS are what the agent learned that the engineer didn't know. |

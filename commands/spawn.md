@@ -312,8 +312,12 @@ Estimated GitHub API calls: ~{N × avg_api_per_sprint}
 Worktree count peak: {parallel_N} concurrent worktrees
 ```
 
-Estimates use `{paths.ctx}/sprint-patterns.md` averages if present, else conservative
-defaults (avg_sprint_minutes=90, avg_api_per_sprint=200).
+Estimates read `shctx adapt priors --metrics`. With measured history (`n>0`) use the
+real `avg_sprint_minutes` / `avg_api_per_sprint` / `avg_lane_count` from `sprint_metrics`,
+and label the block `(from priors: N sprints)`. With an empty store, fall back to the
+conservative static defaults (avg_sprint_minutes=90, avg_api_per_sprint=200) and label it
+`(defaults — no priors yet)`. The second sprint's estimate therefore provably differs from
+the cold-start default (#94). Per `doctrines/adaptation-loop.md §V`.
 
 ---
 

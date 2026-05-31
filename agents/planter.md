@@ -103,9 +103,9 @@ Before authoring any seed line, gather ground truth across every available surfa
 | 9 | Prior handoff | most recent `{paths.docs}/*-close-handoff.md` | What shipped, what's next, deploy state |
 | 10 | CLAUDE.md | local read | Current state, active version, in-progress context |
 | 11 | Carry-forward ledger | `[ledger.carry_forward_file]` | Chronic items, deferral patterns |
-| 12 | Workspace knowledge silo | `{paths.ctx}/*.md` | Canonical-types, dedup-ledger, feature-matrix, sprint-patterns |
+| 12 | Workspace silo + adaptation priors | `{paths.ctx}/*.md` + `shctx adapt priors --lessons` | Canonical-types, dedup-ledger, feature-matrix; prior lessons to carry forward |
 
-Write the consolidated mesh report to `{paths.reports}/<date>-planter-mesh.md`. ONE file, all findings. Per density discipline (§Density discipline), do not pollute with per-source reports. Row 12 includes the sprint-pattern registry — if `{paths.ctx}/sprint-patterns.md` exists, read it and act on the adaptation signals.
+Write the consolidated mesh report to `{paths.reports}/<date>-planter-mesh.md`. ONE file, all findings. Per density discipline (§Density discipline), do not pollute with per-source reports. Row 12 includes the adaptation registry — run `shctx adapt priors --lessons --md` (and `shctx adapt report` for the full table) and cite any `prior:<id>` that shapes a deliverable or guardrail in the seed (per `doctrines/self-improvement.md`). Empty store ⇒ first adaptation cycle; proceed.
 
 **Mesh row 1 is CRITICAL**: combats tunnel vision per `doctrines/issue-ledger-awareness.md`. Drift-risk items must be surfaced, never silently absorbed into scope.
 
