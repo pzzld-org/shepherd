@@ -20,5 +20,5 @@ SELECT sprint,
        avg_first_turn_creation
 FROM v_cache_usage
 WHERE project_id = :project_id
-  AND (:sprint = '' OR sprint = :sprint)
+  AND (:sprint IS NULL OR sprint = :sprint)
 ORDER BY sprint DESC, role;

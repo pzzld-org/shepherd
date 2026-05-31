@@ -68,8 +68,10 @@ mechanically from the plan's Wave composition. The dispatched agent can:
 
 1. **Avoid duplicating** something a sibling will produce (e.g., "wait,
    Lane B is exposing the symbol I need")
-2. **Coordinate** through PAUSE-FOR-DEPENDENCY if a sibling's output is
-   the dependency
+2. **Coordinate** by expressing the cross-lane dependency as a graph-edge await
+   ordering (engineer-composed); for genuine cross-teammate hand-off use Agent
+   Teams `SendMessage`; out-of-sprint work → file a finding at close.
+   (PAUSE-FOR-DEPENDENCY retired v6.0.1 #70, per `doctrines/native-coordination.md`.)
 3. **Flag** if a sibling's scope overlaps inappropriately
 
 This single section eliminates the largest source of "I re-derived everything
@@ -123,7 +125,7 @@ INSIGHTS section (or no section at all) is fine. Quality > quantity.
 
 ## V. Mechanization — `agent_insight_capture.sh` hook + `shctx insights`
 
-The flow mirrors PAUSE-FOR-DEPENDENCY:
+The flow:
 
 1. `PostToolUse(Agent|Task)` hook (`agent_insight_capture.sh`) — parses
    the agent's final response for `## INSIGHTS` blocks, extracts each
@@ -205,7 +207,8 @@ is asked to "remember" — the substrate persists.
   failing taste, not following doctrine.
 - **Does not let agents mutate siblings' work.** `[SIBLING-LANES]` is
   read-only awareness. Cross-lane action still flows through the
-  conductor (via PAUSE-FOR-DEPENDENCY or via the next-sprint plan).
+  conductor (via graph-edge await ordering or the next-sprint plan;
+  PAUSE-FOR-DEPENDENCY retired v6.0.1 #70, per `doctrines/native-coordination.md`).
 - **Does not eliminate `[DO-NOT-DUPLICATE]` greps.** The substrate is
   additive — it complements but does not replace per-lane verification.
 - **Does not auto-act on insights.** The engineer (with operator

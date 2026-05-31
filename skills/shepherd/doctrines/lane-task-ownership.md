@@ -14,8 +14,11 @@ cannot route a `TaskCompleted` to the correct lane's context.
 1. **Title prefix.** Every `TaskCreate` from a teammate-conductor MUST prefix its title
    with its lane id: `"{lane_id}: <description>"` (e.g. `"L4: W2-impl-obs-init"`).
 2. **Ownership.** Immediately after creating a task, `TaskUpdate(owner: <your-teammate-name>)`.
-   (The `TaskCreated`/`TaskCompleted` hook surfaces this as `assignee`. `TaskCreate` has
-   no owner argument.)
+   (`TaskCreate` has no owner argument — ownership is set only via `TaskUpdate`.)
+   Note: no shepherd hook script is registered for `TaskCreated`/`TaskCompleted` in
+   `hooks/hooks.json`. The platform broadcasts these events to every team session;
+   root routes via the `"{lane_id}: "` title prefix observed in `TeammateIdle` payloads
+   and `SendMessage` WAVE-COMPLETE messages, not via a hook handler.
 3. **Claim discipline.** Only claim/work/complete tasks whose title prefix matches YOUR
    `lane_id`. A different prefix belongs to a sibling lane — leave it.
 4. **Terminal tasks.** Root-owned terminal tasks (e.g. `shepherd-{sprint_slug}-close`)

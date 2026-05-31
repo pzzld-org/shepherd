@@ -195,7 +195,9 @@ operator muscle memory:
 Internal logic is identical. The command file recognizes both flag forms
 and normalizes to `--scope patch` for downstream processing.
 
-`--auto` will be deprecated (with warning) in v5.2.0 and removed in v6.0.0.
+`--auto` is a **preserved alias for `--scope patch`** — the previously documented
+deprecation (v5.2.0) and removal (v6.0.0) timeline is **rescinded**. The alias
+remains live indefinitely to avoid breaking operator muscle memory.
 
 ---
 

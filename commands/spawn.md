@@ -32,8 +32,7 @@ description: |
                        valid for --scope >= patch; ≤ 4 for patch; refused for minor/version
                        in v5.1.6). Within each sprint, lane-per-conductor fanout still
                        applies internally.
-    --auto             ALIAS for --scope patch (preserved for operator muscle memory;
-                       deprecated in v5.2.0, removed v6.0.0).
+    --auto             ALIAS for --scope patch (preserved for operator muscle memory).
 argument-hint: "[ sprint_slug ] [ --scope sprint|patch|minor|version ] [ --parallel <N> | --auto ]"
 allowed-tools: Agent, Bash, Edit, Glob, Grep, Read, Skill, Write, ToolSearch, TeamCreate, TeamDelete, TaskCreate, TaskGet, TaskList, TaskUpdate, SendMessage, WebFetch, WebSearch
 ---
@@ -183,7 +182,7 @@ To enable Agent Teams:
   2. Or add it under env.* in ~/.claude/settings.json
   3. Restart Claude Code and re-invoke /shepherd:spawn
 
-Reference: docs/configuration.md §Agent Teams
+Reference: docs/configuration.md — see § Platform compatibility above for setup steps.
 D-API source: .artifacts/docs/handoffs/2026-05-19-teammate-api-discovery.md §1
 ```
 
@@ -338,7 +337,7 @@ Composition with `--parallel <N>`:
 
 Within EVERY sprint (regardless of scope/parallel), the engineer's post-plan **lane projection** (the vertical slice of the `waves × steps` plan — `doctrines/primitive-axis-binding.md`) determines how many teammate-conductors root spawns: **one per lane** (the lane count, constant across waves — NOT a per-wave count; a lane's teammate may be refreshed per wave for fresh context, which is not a new lane). This is the implicit fanout; no flag controls it (the plan does).
 
-`--auto` is preserved as an alias for `--scope patch`. Both forms work; `--scope patch` is canonical. Deprecation in v5.2.0, removal in v6.0.0.
+`--auto` is preserved as a stable alias for `--scope patch`. Both forms work; `--scope patch` is canonical.
 
 ---
 
@@ -393,7 +392,7 @@ INVOCATION-CONTEXT:
 
 IDENTITY
   Role: conductor (TEAMMATE MODE)
-  Profile: ${CLAUDE_PLUGIN_ROOT}/agents/conductor.md  (load IMMEDIATELY at Step 0; detect TEAMMATE mode via the INVOCATION-CONTEXT above per `agents/conductor.md §Conductor modes`. Run Step T0 §Verify invocation context (commands/start.md) — all four checks MUST pass before any dispatch. Hard prohibitions in TEAMMATE mode (per `agents/conductor.md §Hard prohibitions #13–#17` + the HARD PROHIBITIONS block below) are BINDING.)
+  Profile: ${CLAUDE_PLUGIN_ROOT}/agents/conductor.md  (load IMMEDIATELY at Step 0; detect TEAMMATE mode via the INVOCATION-CONTEXT above per `agents/conductor.md §Conductor modes`. Run Step T0 §Verify invocation context (commands/start.md) — all four checks MUST pass before any dispatch. Hard prohibitions in TEAMMATE mode (per `agents/conductor.md §Hard prohibitions #13–#20` + the HARD PROHIBITIONS block below) are BINDING.)
   Escalation channel: skills/shepherd/doctrines/spawn-escalation.md
   Tier-separation doctrine: skills/shepherd/doctrines/dispatch-tier-separation.md
 

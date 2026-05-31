@@ -36,6 +36,9 @@ while [[ $i -lt ${#bind_keys[@]} ]]; do
   sql=${sql//:$k/\'$v\'}
   i=$((i + 1))
 done
+# Replace any remaining :param tokens (optional params not supplied by the
+# caller) with NULL so that IS-NULL predicates evaluate to match-all.
+sql=$(printf '%s' "$sql" | sed 's/:[a-z_][a-z_0-9]*/NULL/g')
 
 db="$(shctx_db_path)"
 case "$fmt" in

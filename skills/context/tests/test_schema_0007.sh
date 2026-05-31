@@ -14,7 +14,7 @@ for f in "$ROOT/skills/context/schema/0001_init.sql" \
 done
 
 # Apply 0007
-sqlite3 "$TMPDB" < "$ROOT/skills/context/schema/0007_canonical_state.sql"
+sqlite3 "$TMPDB" < "$ROOT/skills/context/schema/migrations/0007_canonical_state.sql"
 
 # Assert tables present
 for t in teammates heartbeats mailbox escalations deliverables \
@@ -29,9 +29,13 @@ for v in v_teammates_live v_mailbox_unread_per_recipient v_escalations_open; do
   [[ "$count" == "1" ]] || { echo "FAIL: view $v missing"; exit 1; }
 done
 
-# Assert schema_versions row
-ver=$(sqlite3 "$TMPDB" "SELECT version FROM schema_versions ORDER BY version DESC LIMIT 1;")
-[[ "$ver" == "7" ]] || { echo "FAIL: schema_versions max != 7 (got: $ver)"; exit 1; }
+# Assert schema_versions populated. NOTE (v6.0.3): migration .sql files no longer
+# self-insert their version row — cmd_migrate.sh records it AFTER applying each file
+# (0007 previously self-inserted v7, which double-counted against the runner). This
+# test applies files directly (not via the runner), so only the 0001 baseline row is
+# present; version-recording is exercised by the migrate-runner path, not here.
+ver=$(sqlite3 "$TMPDB" "SELECT count(*) FROM schema_versions;")
+[[ "$ver" -ge 1 ]] || { echo "FAIL: schema_versions has no rows"; exit 1; }
 
 # Assert WAL still on
 mode=$(sqlite3 "$TMPDB" "PRAGMA journal_mode;")

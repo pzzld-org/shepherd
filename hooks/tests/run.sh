@@ -123,5 +123,17 @@ else
   fails=$((fails+1))
 fi
 
+# DB-roundtrip tests for worktree_lifecycle.sh: WorktreeCreate row insertion,
+# WorktreeRemove status flip, zombie worktree-agent-* ref sweep.
+echo "== test_worktree_lifecycle.sh (worktree DB roundtrip) =="
+total=$((total+1))
+if wl_out=$(bash "$TESTS_DIR/test_worktree_lifecycle.sh" 2>&1); then
+  printf '  PASS  %s\n' "worktree-lifecycle-db-roundtrip"
+else
+  printf '  FAIL  %-50s\n' "worktree-lifecycle"
+  printf '%s\n' "$wl_out" | sed 's/^/        /'
+  fails=$((fails+1))
+fi
+
 echo "—— $((total-fails))/$total passed ——"
 exit "$fails"

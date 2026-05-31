@@ -2,10 +2,11 @@
 name: spawn-escalation
 description: |
   Canonical return-and-resume contract between a spawned teammate-conductor and the
-  main-chat planter/babysitter. Governs every communication path, payload schema,
-  resume shape, heartbeat mechanism, and wave-boundary commit discipline for
+  root shepherd (or planter when delegated). Governs every communication path, payload
+  schema, resume shape, heartbeat mechanism, and wave-boundary commit discipline for
   /shepherd:spawn sessions. Source of truth for teammate communication bugs.
 introduced: v5.1.4
+updated: v6.0.3
 field_origin: v5.1.4 D-API discovery (.artifacts/docs/handoffs/2026-05-19-teammate-api-discovery.md)
 ---
 
@@ -16,10 +17,18 @@ field_origin: v5.1.4 D-API discovery (.artifacts/docs/handoffs/2026-05-19-teamma
 Claude Code Agent Teams (v2.1.144, D-API §11) provides **no session resumption for
 in-process teammates** — `/resume` and `/rewind` cannot restore a stalled, crashed,
 or interrupted teammate. The escalation channel is therefore load-bearing: every
-question the teammate-conductor cannot resolve on its own must reach the planter
-through a specified path. This doctrine specifies that path — channels, payload
-schema, resume shape, heartbeat, and failure semantics — in enough detail that any
-future communication failure traces to a specific broken invariant here.
+question the teammate-conductor cannot resolve on its own must reach the root shepherd
+(or planter when delegated) through a specified path. This doctrine specifies that
+path — channels, payload schema, resume shape, heartbeat, and failure semantics — in
+enough detail that any future communication failure traces to a specific broken
+invariant here.
+
+> **Terminology note (v5.1.6+):** this doctrine was authored in v5.1.4 when the
+> main-chat receiver was always the planter. Under `/shepherd:spawn` (v5.1.6+) the
+> main-chat receiver is the **root shepherd profile** (`agents/shepherd.md`). The
+> planter may be delegated for seed-amendment work per
+> `doctrines/root-shepherd-orchestration.md §V`. All escalation mechanics are
+> identical regardless of which profile is active.
 
 > Platform-facts source of truth:
 > `.artifacts/docs/handoffs/2026-05-19-teammate-api-discovery.md` (D-API report).
@@ -29,14 +38,15 @@ future communication failure traces to a specific broken invariant here.
 
 ## II. Channels
 
-Four complementary channels between teammate-conductor and planter.
+Four complementary channels between teammate-conductor and root shepherd (or planter when delegated).
 
 **Primary: SendMessage mailbox.** Asynchronous; teammate calls
 `SendMessage({ to: lead })`; delivered automatically — no polling on receiver
 (D-API §8). Use for escalation payloads, wave-complete notifications, heartbeat
-status lines. If the planter session is not running, messages queue but no
-response is possible. `SendMessage` auto-resumes stopped agents in background
-since v2.1.77 (D-API §6) — as long as the teammate session still exists.
+status lines. If the root shepherd (or planter when delegated) session is not
+running, messages queue but no response is possible. `SendMessage` auto-resumes
+stopped agents in background since v2.1.77 (D-API §6) — as long as the teammate
+session still exists.
 
 **Durable: shared filesystem.** `~/.claude/tasks/{team-name}/` (team task list)
 and `.artifacts/escalations/{sprint_slug}/` (project-local). Use for transcripts,
@@ -46,24 +56,26 @@ IN ADDITION to the SendMessage call. Do NOT pre-author or edit
 `~/.claude/tasks/{team-name}/config.json` — runtime-owned, overwritten on every
 state update (D-API §7).
 
-**Hook-driven: lifecycle events.** Three hooks fire in the **lead's context**
-(D-API §13):
+**Hook-driven: lifecycle events.** The following platform events are relevant
+to shepherd (D-API §13). Only `TeammateIdle` has a registered shepherd hook script:
 
-| Event | When | Can block? | Payload |
+| Event | When | Can block? | Shepherd handler |
 |---|---|---|---|
-| `TeammateIdle` | Teammate about to idle | Yes (exit 2 / `{continue: false}`) | `teammate_name`, `teammate_type` |
-| `TaskCreated` | Task created via `TaskCreate` | Yes | `task_id`, `task_title`, `task_description`, `assignee` |
-| `TaskCompleted` | Task marked complete | Yes | `task_id`, `task_title`, `task_result`, `assignee` |
+| `TeammateIdle` | Teammate about to idle | Yes (exit 2 / `{continue: false}`) | `hooks/scripts/teammate_idle.sh` (registered in `hooks/hooks.json`) |
+| `TaskCreated` | Task created via `TaskCreate` | Yes (platform) | **No registered hook script.** Root observes via `TeammateIdle` payload and `SendMessage` WAVE-COMPLETE payloads. |
+| `TaskCompleted` | Task marked complete | Yes (platform) | **No registered hook script.** Root reacts via `SendMessage` WAVE-COMPLETE payloads sent by the conductor before completing the task. |
 
 > Lane-routing contract (v6.0.3 — #102): every teammate `task_title` is prefixed
 > `"{lane_id}: "` and `assignee` (set via `TaskUpdate(owner: ...)`) is the owning teammate.
-> Root routes `TaskCompleted` to a lane by the title prefix; a task with NO prefix is
+> Root routes by the title prefix observed in `TeammateIdle` / `SendMessage` WAVE-COMPLETE
+> payloads — NOT via a `TaskCreated`/`TaskCompleted` hook. A task with NO prefix is
 > root-owned (terminal `shepherd-{sprint_slug}-close`).
 
 `TeammateIdle` is BLOCKING — primary pause point for operator-mediated escalation.
-`TaskCompleted` triggers wave-boundary commits (§VI). `TeammateIdle` fires on
-**graceful idle only** — NOT on crash/SIGKILL (D-API Unknown #3); crash detection
-is the heartbeat shim (§V).
+`TaskCompleted` fires automatically when the conductor marks its wave-scope task done;
+wave-boundary commits are triggered by the WAVE-COMPLETE `SendMessage` that precedes it (§VI).
+`TeammateIdle` fires on **graceful idle only** — NOT on crash/SIGKILL (D-API Unknown #3);
+crash detection is the heartbeat shim (§V).
 
 **Heartbeat: shctx PostToolUse row.** No platform heartbeat primitive exists
 (D-API Confirmed Facts); shimmed via a `PostToolUse` hook writing a shctx row per
@@ -121,8 +133,8 @@ sub-agent escalations are separate files (one timestamp each).
 
 ## IV. Resume shape
 
-After triage, planter re-enters the teammate's conductor. Two recommended options;
-Option A primary, Option B durable fallback.
+After triage, the root shepherd (or planter when delegated) re-enters the teammate's
+conductor. Two recommended options; Option A primary, Option B durable fallback.
 
 ### Option A (primary): SendMessage reply payload
 
@@ -187,7 +199,7 @@ VALUES (:team_name, :role, :phase, strftime('%s','now'), :session_id);
 > writes to `.artifacts/logs/heartbeat-{team_name}.jsonl` (append). Planter reads
 > whichever exists.
 
-**Read path (planter side).** Manual polling for v5.1.4: after each `TeammateIdle`
+**Read path (root shepherd / planter side).** Manual polling for v5.1.4: after each `TeammateIdle`
 or operator interaction.
 
 ```bash
@@ -248,7 +260,7 @@ root releases via `TaskUpdate(status: completed)` only after the gate passes. A 
 task cannot be claimed, so the wait is enforced by the task list, not prose. If root never
 releases: `WAVE-GATE-NOT-RELEASED`.
 
-**Planter obligation (main-chat).** On every wave-scope `TaskCompleted`:
+**Root shepherd obligation (main-chat; or planter when delegated).** On every wave-scope `TaskCompleted`:
 (1) read payload — identify files landed; (2) `git status` — confirm branch + no
 uncommitted mid-flight state; (3) stage and commit:
 ```bash
@@ -281,7 +293,7 @@ these without improvising.
 - **Teammate stalls mid-wave.** Detection: heartbeat stale > 5 min (§V). Loss: current wave's uncommitted artifacts. Recovery on operator restart: note last commit SHA, `rm -rf ~/.claude/teams/{team-name}/` (one-team limit), re-invoke `/shepherd:spawn`; teammate re-reads plan + walk trace and continues from next unstarted wave.
 - **Teammate session drops (no TeammateIdle).** Detection: session UUID absent from `~/.claude/sessions/`; heartbeat stopped. Loss: current wave + in-transit payloads. Recovery: same as stall; check `.artifacts/escalations/{sprint_slug}/` for any file written before the drop.
 - **SendMessage delivery fails.** Primary fallback: read `.artifacts/escalations/{sprint_slug}/<timestamp>-<role>.md` (conductor writes here too). Secondary fallback: treat as stall. Resume: write Option B file instead of SendMessage.
-- **Planter session drops.** Teammate continues but no commits land; no escalations answered. Loss: all wave artifacts since last planter commit. Recovery: re-attached planter reads `TeammateIdle` queue + mailbox + filesystem tree; reconstructs state; catch-up commits `git status` deltas. **Hard case**: if teammate already closed, only git-committed portion survives — primary motivation for frequent wave commits.
+- **Root shepherd session drops (or planter session drops when delegated).** Teammate continues but no commits land; no escalations answered. Loss: all wave artifacts since last root commit. Recovery: re-attached root shepherd (or planter) reads `TeammateIdle` queue + mailbox + filesystem tree; reconstructs state; catch-up commits `git status` deltas. **Hard case**: if teammate already closed, only git-committed portion survives — primary motivation for frequent wave commits.
 - **Operator interrupts main chat (Ctrl-C).** Teammate orphaned: no commits land, no escalations answered. Manual cleanup: `~/.claude/teams/shepherd-conductor-{sprint_slug}/`. Prevention: send `SendMessage` "clean stop" before interrupting.
 
 ---
@@ -311,27 +323,26 @@ Explicitly deferred. Do not implement; do not design flows that assume.
 ## X. Multiplexed escalation (--parallel mode)
 
 Under `/shepherd:spawn --parallel <N>`, N teammates may escalate concurrently.
-Base mechanics (§II–§IV) are unchanged per escalation; the planter's **triage
-loop** becomes multiplexed.
+Base mechanics (§II–§IV) are unchanged per escalation; the root shepherd's (or planter's when delegated) **triage loop** becomes multiplexed.
 
 **Routing keys.** Each escalation routes by `teammate_name`
 (`shepherd-parallel-{sprint_slug}` — predictable). `TeammateIdle` payload carries
 `teammate_name` (D-API §13). MUST NOT route by `teammate_type` until OQ-1 resolves.
 Filesystem path encodes sprint slug: `.artifacts/escalations/{sprint_slug}/...`.
-With N teammates, N separate directories; planter reads all N on each
+With N teammates, N separate directories; root shepherd (or planter when delegated) reads all N on each
 `TeammateIdle`.
 
 ### Priority rules
 
 | Priority | Condition | Action |
 |---|---|---|
-| P0 (CRITICAL preempt) | `halt_code` in CRITICAL tier per `agents/conductor.md §Halt codes` | Jumps queue. Multiple simultaneous CRITICAL → operator decision (spawn.md hard stop) |
+| P0 (CRITICAL preempt) | `halt_code` is one of: `HARD-STOP`, `TEAMMATE-GIT-WRITE`, `BASE-DRIFT`, `PARALLEL-COLLISION` | Jumps queue. Multiple simultaneous CRITICAL → operator decision (spawn.md hard stop) |
 | P1 (FIFO) | All other `halt_code` values | First-in-first-out by `TeammateIdle` arrival |
 | P-NOTIFY (non-blocking) | `halt_code: null`, `blocking: false` | Wave-complete; immediate commit + ack; no queue |
 
 ### Multiplex triage protocol
 
-Planter holds `Q = [(teammate_name, payload), ...]`. Triage by `teammate_name`:
+Root shepherd (or planter when delegated) holds `Q = [(teammate_name, payload), ...]`. Triage by `teammate_name`:
 
 - *Scenario A* (triaging A; B non-CRITICAL): `Q.append(B)`; emit
   `[QUEUE] Teammate B escalation received (halt_code: {code}). Queued at position {len(Q)}. Completing A-triage first.`
@@ -341,7 +352,7 @@ Planter holds `Q = [(teammate_name, payload), ...]`. Triage by `teammate_name`:
   (`{suspended_at, triage_stage, reason}`); emit
   `[QUEUE PREEMPT] Interrupting {sprint_A} triage for CRITICAL halt in {sprint_B}`;
   process B to resolution; resume A from bookmark; delete bookmark.
-- *Scenario C* (planter busy): `TeammateIdle` is BLOCKING (exit 2); if `len(Q) > 1`,
+- *Scenario C* (root shepherd / planter busy): `TeammateIdle` is BLOCKING (exit 2); if `len(Q) > 1`,
   exit 2 to hold the idle teammate while clearing queue head. Do NOT hold beyond
   2 min. Deep queue: emit
   `[QUEUE WARNING] {N} escalations pending; teammate {name} held for {elapsed}s`.
@@ -399,24 +410,24 @@ confirmed: treat each `TeammateIdle` as atomic.
 
 ## XI. Sequential autopilot (--auto mode)
 
-Under `/shepherd:spawn --auto` the planter runs a sequential loop. Channel
-mechanics (§II–§IV) are identical to single-spawn — one teammate active at a time,
-no multiplexed queue. This section governs the **loop boundary**: inter-spawn
-behavior, patch-end detection, next-teammate context inheritance.
+Under `/shepherd:spawn --auto` the root shepherd (or planter when delegated) runs
+a sequential loop. Channel mechanics (§II–§IV) are identical to single-spawn — one
+teammate active at a time, no multiplexed queue. This section governs the **loop
+boundary**: inter-spawn behavior, patch-end detection, next-teammate context inheritance.
 
-**`TaskCompleted` → planter-takes-over → spawn-next contract.**
+**`TaskCompleted` → root-shepherd-takes-over → spawn-next contract.**
 
 1. `TaskCompleted` fires for the terminal task (conductor's close-synthesis,
    named `shepherd-{sprint_slug}-close`). Authoritative — not `TeammateIdle`,
    which can fire mid-sprint.
-2. Planter takes over: `TeammateIdle` fires after the terminal `TaskCompleted`.
-   Planter reads the mailbox for CONDUCTOR CLOSE REPORT, verifies, begins
+2. Root shepherd takes over: `TeammateIdle` fires after the terminal `TaskCompleted`.
+   Root shepherd reads the mailbox for CONDUCTOR CLOSE REPORT, verifies, begins
    inter-sprint work (`commands/spawn.md §--auto flag`).
-3. Spawn-next: after all 10 inter-sprint steps complete cleanly, planter
+3. Spawn-next: after all 10 inter-sprint steps complete cleanly, root shepherd
    dispatches via `Agent`; new teammate receives the handoff doc path in its
    boot prompt.
 
-**Critical invariant**: planter MUST NOT spawn next until inter-sprint work is
+**Critical invariant**: root shepherd MUST NOT spawn next until inter-sprint work is
 fully committed to git. Incomplete commit state at spawn-next means the new
 teammate starts on an inconsistent patch branch.
 

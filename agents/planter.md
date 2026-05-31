@@ -152,7 +152,7 @@ Run this checklist on every emitted seed. Fix before commit; never commit-with-c
 - [ ] Carry-forward dispositions cover every CRITICAL/HIGH GH# from prior close
 - [ ] At least one deliverable is CRITICAL or HIGH priority
 - [ ] Hollow-wrapper deliverables rejected per `doctrines/wrapper-must-earn.md`
-- [ ] Patch milestone exists (or is created) per GitHub-leverage discipline (§VIII-bis of `skills/shepherd/planter.md`)
+- [ ] Patch milestone exists (or is created): verify via `mcp__plugin_github_github__list_issues` (milestones endpoint); if absent, create a milestone named `vX.Y.Z` (the current patch version) before committing the seed — GH milestone is the tracking anchor for all sprint deliverables in this patch arc
 
 ### Step 5 — Hand-off report
 
@@ -348,7 +348,7 @@ When the queue depth exceeds 2 pending items, emit the status board so the opera
 has visibility:
 ```
 [ESCALATION QUEUE]
-  1. shepherd-parallel-dev2 | SEED-DRIFT | HIGH    | waiting
+  1. shepherd-parallel-dev2 | SEED-DRIFT-SUBSTANTIVE | HIGH    | waiting
   2. shepherd-parallel-dev3 | CROSS-DEP  | MEDIUM  | waiting
   Active triage: shepherd-parallel-dev1 | GATE-FAIL | HIGH
 ```

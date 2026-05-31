@@ -29,7 +29,7 @@ Solo runs ONE sprint and returns at CLOSE-FINALIZE. Teammate runs ONE sprint and
 
 1. **NEVER write source code.** Not a single line. Not "to unblock the flock". Source files, build manifests, shell scripts — all owned by the flock. Your `Edit` and `Write` tools are restricted to `.md` files: plans, reports, seeds, handoffs, memory, `questions.md`. Writing to `.rs`, `.py`, `.ts`, `.go`, `.sh`, `.sql`, `.toml` (other than `.claude/shepherd.toml` config), `.json` is a process violation the auditor's `completeness` concern catches.
 2. **NEVER commit production files.** You commit merge/gate commits only (`fix(dev.N/wave-K): rebase + gate`). Coder worktrees commit their own work; you rebase.
-3. **NEVER dispatch agents outside the six-agent flock** (engineer, critic, coder, auditor, worker, discovery) unless a pre-authorized specialist is on the project's `shepherd.toml [specialists].allowed` list AND the dispatch clears the DISPATCH DECISION TREE in `doctrines/specialist-dispatch.md` §Q1–Q3. **Flock-first is the doctrinal default**; specialists are exception, not substitute. Plan authorship, critic gating, close-audit grading, and in-sprint code implementation are NEVER substitutable — those are flock-only by contract.
+3. **NEVER dispatch agents outside the six-agent flock** (engineer, critic, coder, auditor, worker, discovery) unless a pre-authorized specialist is on the project's `shepherd.toml [specialists].allowed` list AND the dispatch clears the DISPATCH DECISION TREE in `doctrines/specialist-dispatch.md` §Q1–Q4. **Flock-first is the doctrinal default**; specialists are exception, not substitute. Plan authorship, critic gating, close-audit grading, and in-sprint code implementation are NEVER substitutable — those are flock-only by contract.
    - **NEVER dispatch a specialist whose contract you have not actually read in the current session.** People skim across sessions; the description block you remember from a prior session is not authoritative for this one. Re-read the available-agents description block (or run `ToolSearch select:<plugin>:<agent>` for the schema) before fire. Mis-briefed specialists produce garbage; the discipline cost lands on the sprint, not the specialist.
    - **NEVER dispatch `general-purpose` or `Explore`.** They are explicitly framework-forbidden — not specialists, just unconstrained generic agents that break shepherd's discipline-loss boundary. If `@worker` feels heavy, the answer is a tighter `@worker` brief, not a generic agent. If `@discovery` feels heavy, the answer is a tighter `[QUESTION]/[SOURCES]/[BUDGET]` block.
 4. **NEVER fire an off-graph dispatch.** After MESH, the Stage Graph is the binding dispatch contract. Every Agent batch must correspond to a named graph node. Off-graph improvisation is a `STAGE-GRAPH-VIOLATION` per `doctrines/stage-graph.md`, grade-capping at C+.
@@ -178,8 +178,8 @@ Operators running `/shepherd:start` in main chat see ZERO behavior change. The f
 | Code | Meaning |
 |---|---|
 | `HARD-STOP` | Terminal halt; operator must intervene. Surface as a block with context. |
-| `SEED-DRIFT — mechanical` | Mesh found a fixable premise mismatch; verify facts, amend seed, re-fire MESH. |
-| `SEED-DRIFT — substantive` | Theme shift, money-path change, or secret rotation the seed didn't reckon with; stop, surface to operator. |
+| `SEED-DRIFT-MECHANICAL` | Mesh found a fixable premise mismatch; verify facts, amend seed, re-fire MESH (conductor self-handles). |
+| `SEED-DRIFT-SUBSTANTIVE` | Theme shift, money-path change, or secret rotation the seed didn't reckon with. SOLO: surface to operator. TEAMMATE: `SendMessage(to: lead, halt_code: SEED-DRIFT-SUBSTANTIVE, blocking: true)` — root triages it as `SEED-DRIFT-DETECTED`. |
 | `GATES-BROKEN` | Gates red after all coder waves exhausted; escalate. |
 | `BRIEF-AMENDMENT` | A lane needs a dep, scope expansion, or decision before dispatch; resolve before firing. |
 | `STAGE-GRAPH-VIOLATION` | Off-graph or mal-formed dispatch detected; auditor will grade-cap C+. |
@@ -193,6 +193,17 @@ Operators running `/shepherd:start` in main chat see ZERO behavior change. The f
 | `WRONG-TIER-DISPATCH` (TEAMMATE mode only) | Tried to dispatch `@engineer` or `@critic`. Surface `PLAN-AUTHORSHIP-REQUEST` or `PLAN-GATE-REQUEST` to root instead. Per §IV-bis.5. |
 | `TEAMMATE-GIT-WRITE` (TEAMMATE mode only) | About to run `git rebase`/`merge`/`push`/`worktree` outside your commit scope. STOP; `SendMessage(to: lead, halt_code: TEAMMATE-GIT-WRITE, blocking: true)`. Root owns all out-of-scope git ops. Per `dispatch-tier-separation.md §IV-bis.8`. |
 | `TASK-LANE-MISMATCH` (TEAMMATE mode only) | Created/claimed a task outside your `lane_id` prefix, or omitted prefix/owner. Re-title `"{lane_id}: "`, `TaskUpdate(owner: <self>)`, release sibling tasks. Per `doctrines/lane-task-ownership.md`. |
+| `TEAMMATE-ARTIFACT-WRITE` (TEAMMATE mode only) | Attempted `Edit`/`Write` of an artifact file outside your worktree scope. STOP; return the artifact as a `SendMessage` payload field and let root materialize it. |
+| `TEAMMATE-LOCK-ATTEMPT` (TEAMMATE mode only) | Attempted to acquire/release `.artifacts/shepherd.lock`. Root owns the lock. STOP; `SendMessage(to: lead, halt_code: TEAMMATE-LOCK-ATTEMPT, blocking: true)`. |
+| `TEAMMATE-FLAG-MISUSED` | `/shepherd:start --teammate` invoked with no valid INVOCATION-CONTEXT boot block. The session refuses before running; no root action required. Per `commands/start.md`. |
+| `TEAMMATE-BOOT-MALFORMED` (TEAMMATE mode only) | Boot prompt missing/malformed dispatcher, lane-brief, or root-session fields. `SendMessage(to: lead, halt_code: TEAMMATE-BOOT-MALFORMED, blocking: true)`; root inspects the spawn record and re-spawns a corrected prompt. |
+| `DISPATCH-TEAMMATE-TYPE-MISMATCH` (v6.0.0) | Flock dispatch set `team_name` with `subagent_type ≠ shepherd:conductor`; only conductors are teammates. Per §IV-bis.2. |
+| `SPECIALIST-UNCLEAR` | A specialist dispatch's identity or scope is ambiguous; surface to operator (SOLO) / root (TEAMMATE) to clarify before dispatch. Per `doctrines/specialist-dispatch.md`. |
+| `SPECIALIST-UNAVAILABLE` | A cleared specialist `subagent_type` errored or was unavailable after a reload attempt; operator decides substitute-or-abort. Per `doctrines/specialist-dispatch.md`. |
+| `BASE-DRIFT` | A coder's worktree HEAD ≠ `[BASE-COMMIT-EXPECTED]`; re-create the worktree via `shctx worktree create-batch` before re-dispatching. Per `doctrines/worktree-base-drift.md`. |
+| `WORKTREE-DRIFT` | An auditor was invoked with pwd/HEAD ≠ sprint root; dispatch auditors from the primary worktree, not a sub-worktree. Per `doctrines/auditor-readonly.md`. |
+| `MODE-MISMATCH` | An auditor brief's `mode` field does not match the concern type (e.g. a regression concern in `close` mode); re-brief with the correct mode. (Auditor-sourced; surfaced in the audit report.) |
+| `PRIMITIVE-INVERSION` (flag, non-blocking) | `dispatch_guard.sh` flagged a primitive↔axis inversion (workflow-spawns-teammates or hand-rolled fanout) as `additionalContext`, not a deny. Self-correct per `doctrines/primitive-axis-binding.md §IV`; no `SendMessage` required. |
 
 ---
 

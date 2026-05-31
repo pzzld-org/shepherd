@@ -120,6 +120,13 @@ binding; this profile operationalizes it.
 | `DISPATCH-TEAMMATE-TYPE-MISMATCH` (v6.0.0) | A flock dispatch set `team_name` with `subagent_type ≠ shepherd:conductor`. Only conductors are teammates. Per §IV-bis.2. |
 | `DISPATCH-OFF-FLOCK` (v6.0.0) | `subagent_type` outside the closed-flock-six (or `shepherd:conductor`) without a specialist clearance per `doctrines/specialist-dispatch.md`. Per §IV-bis.3. |
 | `TEAMMATE-NESTING-ATTEMPT` (v6.0.0) | A teammate-conductor tried to spawn its own teammate. Forbidden by platform AND doctrine. Per §IV-bis.4. |
+| `TASK-LANE-MISMATCH` (v6.0.3) | Teammate created/claimed a task outside its `lane_id` prefix. Re-title with the correct prefix, `TaskUpdate(owner: <teammate>)`, release any sibling tasks it wrongly claimed. Per `doctrines/lane-task-ownership.md`. |
+| `TEAMMATE-ARTIFACT-WRITE` (v6.0.3) | Teammate attempted an artifact `Edit`/`Write` outside its worktree; materialize the returned payload yourself and re-confirm the teammate's write boundary. |
+| `TEAMMATE-LOCK-ATTEMPT` (v6.0.3) | Teammate tried to touch `.artifacts/shepherd.lock`; root owns the lock — acknowledge; the teammate refused correctly. |
+| `TEAMMATE-FLAG-MISUSED` (v6.0.3) | `--teammate` used without a valid boot block; the session refused pre-run. Re-spawn with a correct boot prompt if the lane is still required. |
+| `TEAMMATE-BOOT-MALFORMED` (v6.0.3) | Teammate boot prompt was malformed; inspect the spawn record, correct the dispatcher / lane-brief / root-session fields, and re-spawn. |
+| `SEED-DRIFT-DETECTED` | A teammate surfaced `SEED-DRIFT-SUBSTANTIVE`; invoke the planter to amend the seed (`doctrines/root-shepherd-orchestration.md §V`), then re-issue MESH. |
+| `SPECIALIST-UNCLEAR` / `SPECIALIST-UNAVAILABLE` | A specialist dispatch was ambiguous or failed after reload; clarify scope or decide substitute-vs-abort with the operator. Per `doctrines/specialist-dispatch.md`. |
 
 ---
 

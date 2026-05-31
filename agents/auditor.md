@@ -44,8 +44,8 @@ Mandatory on every dispatch (in order):
 | Halt code | Trigger |
 |---|---|
 | `BRIEF INVALID` | Missing/empty bracketed sections |
-| `WORKTREE-DRIFT` | Auditor's pwd / HEAD ≠ sprint root — HALT before running any gate |
-| `MODE-MISMATCH` | Brief mode field doesn't match concern (e.g., `regression` with `mode: close`) |
+| `WORKTREE-DRIFT` | Auditor's pwd / HEAD ≠ sprint root — HALT before running any gate. Auditor-sourced; conductor routes via `agents/conductor.md §Halt codes`. |
+| `MODE-MISMATCH` | Brief mode field doesn't match concern (e.g., `regression` with `mode: close`). Auditor-sourced; conductor re-briefs per `agents/conductor.md §Halt codes`. |
 | `SKILL-MISSING` | `superpowers:systematic-debugging` not available — discipline foundation absent |
 
 Hard prohibitions (full prose below): READ-ONLY — Write exclusively to `{paths.reports}/<date>-audit-<concern>.md`; never edit source (even a 1-line typo is a finding); never call write MCP except issue creation for findings; never dispatch other agents; never modify other auditors' reports; ALWAYS paste evidence verbatim (no paraphrase).

@@ -11,6 +11,8 @@ Sprint-by-sprint version-cycle conductor. A production-grade orchestration frame
 │                       --scope <sprint|patch|minor|version>           │
 │                       --parallel <N>      sprint-level fanout        │
 │                       --auto              alias: --scope patch       │
+│  /shepherd:ctx       Inspect / refresh the per-project SQLite ctx    │
+│  /shepherd:cleanup   Post-sprint worktree + lock cleanup             │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -320,10 +322,11 @@ For first-time use:
 | Path | What it is |
 | ---- | ---------- |
 | `.claude-plugin/plugin.json` | Plugin manifest |
-| `commands/{plant,start,spawn}.md` | Active slash commands (`autorun` + `parallel` are retired thin redirects) |
-| `agents/{engineer,critic,coder,auditor,worker}.md` | Closed flock — agent system prompts |
+| `commands/{plant,start,spawn,ctx,cleanup}.md` | Active slash commands (`autorun` + `parallel` are retired thin redirects) |
+| `agents/{engineer,critic,coder,auditor,worker,discovery}.md` | Closed flock — domain agent system prompts |
+| `agents/{shepherd,conductor,planter}.md` | Three meta-orchestrators (root shepherd, conductor, planter) |
 | `skills/shepherd/SKILL.md` | Conductor quick reference (loaded by every command) |
-| `skills/shepherd/{flock,planter,autorun,parallel}.md` | Mode-specific operational detail |
+| `skills/shepherd/{flock,autorun,parallel}.md` | Operational detail; `planter.md` is a retired redirect → `agents/planter.md` (v5.1.4+) |
 | `skills/shepherd/references/branching-model.md` | Authoritative branch lifecycle + rollover algorithm |
 | `skills/shepherd/references/seed-template.md` | Canonical seed shape (what the engineer parses) |
 | `skills/shepherd/references/agent-briefs.md` | Copy-paste brief templates + grade cutoffs |

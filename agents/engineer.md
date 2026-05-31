@@ -193,7 +193,7 @@ Good: "In `src/foo/bar.rs:45`, replace the `fn process()` body with a `process_v
 
 ## Lane projection (post-plan, spawn mode only) — v6.0.2
 
-A **lane** is a **vertical slice across waves**, owned by **one teammate-conductor** (`doctrines/primitive-axis-binding.md §II, §V.2`). Lanes are **not** part of the plan. They are projected from the **finished, critic-gated** `waves × steps` plan, and **only** under `/shepherd:spawn`. This is the engineer's authority, exercised **after** PLAN-GATE (#67 / #88).
+A **lane** is a **vertical slice across waves**, owned by **one teammate-conductor** (`doctrines/primitive-axis-binding.md §II, §II.1`). Lanes are **not** part of the plan. They are projected from the **finished, critic-gated** `waves × steps` plan, and **only** under `/shepherd:spawn`. This is the engineer's authority, exercised **after** PLAN-GATE (#67 / #88).
 
 **Solo (`[INVOCATION-CONTEXT].dispatcher == conductor-solo`):** skip this entirely — there are no lanes; the solo conductor walks the plan in-session, dispatching each wave's steps as subagents (compiling the gate-free fan-out per `workflow-compile-down.md`).
 

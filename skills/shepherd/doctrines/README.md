@@ -111,6 +111,26 @@ These get loaded by the conductor at session-open per `[hooks].on_every_dispatch
 | `wrapper-must-earn.md` | Wrapper types justify with invariant / lifetime / shared-allocation / substantive-trait |
 | `zero-duplicate-tolerance.md` | DEDUP-GATE runs every grep before dispatch; coder-side halt is the fallback |
 | `lane-task-ownership.md` | Team task list is shared; every teammate task is lane-prefixed + owner-set; root routes by title prefix (`TASK-LANE-MISMATCH`) |
+| `dispatch-tier-separation.md` | (v5.1.6+) Three-tier dispatch hierarchy — root owns engineer/critic/artifact materialization; teammate-conductors own coder/auditor/worker/discovery; forbidden-dispatch halt codes (`TEAMMATE-GIT-WRITE`, `DISPATCH-TEAMMATE-TYPE-MISMATCH`, `WRONG-TIER-DISPATCH`) |
+| `root-shepherd-orchestration.md` | (v5.1.6+) Root-tier responsibilities under `/shepherd:spawn` — wave-gate enforcement, escalation triage, artifact materialization from teammate payloads, dispute resolution, close-swarm coordination |
+| `primitive-axis-binding.md` | (v6.0.2) One primitive per axis: Agent Teams = lanes, Dynamic Workflows = step fan-out, subagents = steps; `PRIMITIVE-INVERSION` flag when axes are crossed |
+| `dispatch-cascade.md` | Stage Graph is the rule engine; conductor walks `shctx graph next`/`mark` mechanically — no fresh sequencing decisions; halts and hot-fixes extend the topology, never bypass it |
+| `spawn-escalation.md` | Canonical return-and-resume contract for spawned teammate-conductors — channels, payload schema, heartbeat, wave-boundary commit discipline, and escalation triage |
+| `scope-scale-workload.md` | (v5.1.6+) `/shepherd:spawn --scope` declares workload scale (sprint/patch/minor/version); scope is NEVER a quality bar; `--auto` is a preserved alias for `--scope patch` |
+| `sqlite-canonical-state.md` | (v5.1.7) `.artifacts/root.db` is canonical for operational state; filesystem is canonical only for human-authored durable artifacts; markdown reports are generated views over DB rows |
+| `claude-code-platform-alignment.md` | (v5.1.8) Binding map between shepherd's teammate-coordination stack and Claude Code's Agent Teams primitive — ownership split, migration trajectory, task-list adoption for wave-gate enforcement (v6.0.3) |
+| `specialist-dispatch.md` | (v5.1.1+) Flock-first dispatch; specialist third-party agents permitted only for self-contained tasks the flock cannot serve; canonical DISPATCH DECISION TREE (Q1–Q4); `SPECIALIST-UNCLEAR` / `SPECIALIST-UNAVAILABLE` halt codes |
+| `invariant-enforcement-matrix.md` | (v6.0.2) Coverage map of every load-bearing shepherd invariant paired with its enforcement mechanism (hard-block / flag / lint / auditor) and live/deferred/gap status |
+| `flock-cohesion.md` | (v5.0.9) Agents as a coordinated group — sibling-awareness in briefs, INSIGHTS channel, insight registry, sprint-pattern registry; closes the isolated-dispatch structural gap |
+| `agent-excellence.md` | (v5.1.1+) Greatness is the bar; six rules every flock agent reads — READ/REUSE first, refuse the lazy path, no scope overflow, no silent drift; `SCOPE OVERFLOW` is a halt code |
+| `brief-cache-discipline.md` | (v5.1.3) Stable framing first, variable content last — brief ordering that maximizes prompt-cache prefix reuse; ordering sections between blocks invalidates the cache |
+| `cache-telemetry.md` | (v5.1.3) Measurement layer for prompt-caching health — `SubagentStop` hook aggregates per-dispatch cache-read vs cache-creation token ratios; proves brief-cache-discipline is producing wins |
+| `cargo-sequential-gates.md` | (v5.0.9) Cargo invocations on the same workspace MUST be sequential (`&&`); parallel cargo deadlocks on `target/` lock; applies to conductor WAVE-GATE runs and `@worker` build verification |
+| `dir-watch.md` | (v5.1.1+) `shctx watch` tracks per-path content hashes (git tree-object or fs shasum) so agents can ask "has this changed?" without redundant reads when state is stable |
+| `plugin-reload-escape.md` | (v5.0.9) When MCP tools declared in `shepherd.toml [mcp]` are unloadable, operator runs `/reload-plugins`; conductor flags unavailability explicitly rather than silently falling back to shell |
+| `seed-naming.md` | (v5.1.1+) Branches keep dots; filenames collapse them — seed/plan files use slug form (`v512-dev3.seed.md`), never the dotted branch form (`v5.1.2-dev.3.seed.md`) |
+| `version-scale-roadmap.md` | (v5.1.3) Binding scale factor: version → 1000 sprints, minor → 100, patch → 10, dev sprint → 1; scope is workload-scale NEVER a quality bar; "it's just a patch" is documented malpractice |
+| `workspace-member-isolation-gate.md` | (v5.1.7) Acceptance gate for workspace-topology changes MUST include per-member isolated builds, not only the workspace-unified build; silently satisfied deps are a shipping hazard |
 
 ## Doctrine promotion pipeline
 

@@ -175,7 +175,7 @@ trace at CLOSE-SWARM and augments the sprint-pattern entry with
 | Node | Type | Duration | Exit edge | Halts |
 |---|---|---|---|---|
 | mesh | MESH | 4m12s | on-no-drift | — |
-| wave-1-impl | WAVE-IMPL | 12m04s | on-coder-complete | 1× PAUSE-FOR-DEPENDENCY |
+| wave-1-impl | WAVE-IMPL | 12m04s | on-coder-complete | 1× PAUSE-FOR-DEPENDENCY (retired v6.0.1; equivalent: await-edge dependency on target_path) |
 | wave-1-gate | WAVE-GATE | 38s | on-fail → on-pass (re-run) | 1× HOTFIX |
 ```
 
@@ -186,7 +186,7 @@ sub-sprint granularity:
 |---|---|
 | Same node-type's avg duration trending up 50%+ across 3 sprints | Flag as "node-type bloat" — engineer reduces lane scope or decomposes |
 | Specific node consistently exits via `on-fail` then `on-pass` | Auto-fixable failure pattern; suggest pre-emptive HOTFIX recipe in next plan |
-| PAUSE-FOR-DEPENDENCY fires at the same `target_path` across 2+ sprints | Surface as a candidate for a dedicated Lane 0 in the next sprint |
+| A cross-lane dependency expressed as a graph edge with await ordering fires on the same (source-lane, target-file) pair across 2+ sprints | Surface as a candidate for a dedicated Lane 0 in the next sprint |
 
 If the trace is absent (legacy sprint or `shctx graph` not used), the
 auditor falls back to sprint-level summary as before. Node telemetry is

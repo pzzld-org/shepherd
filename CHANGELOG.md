@@ -46,7 +46,41 @@ but Agent-Teams *coordination* gaps. Fixes:
 No closed-flock contract change; no new commands. Patch-level: dispatch-logic + brief
 templates + one new doctrine (`lane-task-ownership.md`) + two updated doctrines. The
 tracked-for-v6.0.3 feature depth (#94/#95 adaptability + self-improvement) remains
-operator-deferred.
+operator-deferred to v6.0.4 (this cycle's foundation work is the prerequisite).
+
+### Coherence remediation (full-repo passover)
+
+A 7-concern read-only audit of the v6.0.x plugin surfaced ~35 coherence findings from the
+rapid v6.0.0→v6.0.2 evolution. All fixed:
+
+- **CRITICAL — migration foundation.** `schema/0007_canonical_state.sql` sat in `schema/`
+  root, which `cmd_migrate.sh` never globs — so the v5.1.7 operational tables (`teammates`,
+  `mailbox`, `escalations`, `deliverables`, `discovery_findings`, `audit_findings`,
+  `heartbeats`) were **never created in any consumer DB**. Relocated to
+  `migrations/0007_canonical_state.sql` (idempotent), removed its self-inserted
+  `schema_versions` row, and switched the runner to **gap-fill** (apply any version absent
+  from `schema_versions`, repairing DBs stranded past the orphan). Verified end-to-end.
+- **HIGH — `shctx sprint open` unbroken.** `--mode=sprint` violated the `locks_history`
+  CHECK (rc=19 every call); `0009_locks_mode_sprint.sql` recreates it with `sprint`/`spawn`.
+- **CRITICAL — task-list contradictions.** `claude-code-platform-alignment.md` claimed the
+  task list is "not consumed" (contradicting the #100/#102 wave-gate mechanics), and the
+  "TaskCreated/TaskCompleted hook" routing in `spawn-escalation.md`/`lane-task-ownership.md`
+  was a phantom (no such hook registered). Both reconciled: the task list is consumed for
+  lane-routing + wave-gating; root routes by the `"{lane_id}: "` title prefix observed via
+  `TeammateIdle`/`SendMessage`, not a hook.
+- **Halt-code registry.** Added ~12 referenced-but-undefined codes to the canonical
+  `conductor.md` table + `shepherd.md` root-side triage; canonicalized `SEED-DRIFT` into
+  `-MECHANICAL`/`-SUBSTANTIVE`/`-DETECTED`; standardized `SCOPE OVERFLOW`.
+- **Retired-mechanic purge.** `PAUSE-FOR-DEPENDENCY` (retired v6.0.1 #70) was still injected
+  into every `@coder` brief + live in four doctrines — replaced with the native
+  await-edge / `SendMessage` / finding-at-close pattern.
+- **Doc sync.** Doctrine index completed (30→50 rows); `--auto` reaffirmed as a stable
+  `--scope patch` alias (rescinded the never-honored removal); `workflow-compile-down.md`
+  marked binding (the primary path); meta-orchestrator count corrected to three across
+  `CLAUDE.md`/`README.md`/`SKILL.md`; v5.1.7 tables documented; stale §-anchors fixed.
+
+Verification: both test harnesses green (context 36/36, hooks 27/27); fresh-DB migrate
+applies 0001→0009 with every operational table present.
 
 ---
 
