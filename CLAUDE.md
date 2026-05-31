@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A dedicated repository for the **shepherd** Claude Code plugin, authored by FL03 (github.com/FL03). The plugin lives at the repo root — the repo *is* the plugin. A self-hosted marketplace manifest at `.claude-plugin/marketplace.json` makes it installable via `/plugin marketplace add fl03/shepherd`.
 
-Shepherd is a sprint-by-sprint version-cycle conductor. A six-agent flock (engineer, critic, coder, auditor, worker, discovery) on a three-section pipeline (INTRODUCTION → BODY → CLOSE), with two meta-orchestrators above (planter, conductor), driven by a project-local `shepherd.toml` in each consumer repo.
+Shepherd is a sprint-by-sprint version-cycle conductor. A six-agent flock (engineer, critic, coder, auditor, worker, discovery) on a three-section pipeline (INTRODUCTION → BODY → CLOSE), with three meta-orchestrators above (root shepherd, conductor, planter), driven by a project-local `shepherd.toml` in each consumer repo.
 
 There is no build system. Plugin assets are markdown briefs, YAML frontmatter, and shell scripts under `skills/context/scripts/` (the `shctx` runtime).
 
@@ -15,10 +15,10 @@ There is no build system. Plugin assets are markdown briefs, YAML frontmatter, a
 ```bash
 .claude-plugin/
   plugin.json                  # shepherd plugin manifest (this repo IS the plugin)
-  marketplace.json             # single-plugin marketplace; source = "."
+  marketplace.json             # single-plugin marketplace; source = {"source":"github","repo":"FL03/shepherd"}
 
 agents/{engineer,critic,coder,auditor,worker,discovery}.md   # full system prompts per flock lane
-agents/{conductor,planter}.md                               # meta-orchestrator profiles (v5.1.4+)
+agents/{shepherd,conductor,planter}.md                      # meta-orchestrator profiles (shepherd: root v5.1.6+; conductor + planter: v5.1.4+)
 commands/{plant,start,spawn,ctx,cleanup}.md                 # slash-command entry points
 commands/{autorun,parallel}.md                              # retired commands (thin delta notes; v5.1.4+)
 docs/                          # operator docs (configuration, integration, customization)
@@ -33,7 +33,7 @@ skills/
   shepherd/                    # conductor quick-reference + doctrines + references
     SKILL.md                   # entry point for every /shepherd:* invocation
     {flock,pipeline}.md                          # active skill support files
-    planter.md                                   # 5-line redirect → agents/planter.md (v5.1.4+)
+    planter.md                                   # retired redirect → agents/planter.md (v5.1.4+)
     {autorun,parallel}.md                        # thin delta notes; behaviors retired to /shepherd:spawn (v5.1.4+)
     doctrines/*.md             # framework-intrinsic rules
     references/*.md            # branching-model, seed-template, grading-rubric, etc.
@@ -101,7 +101,7 @@ When editing shepherd, these invariants must hold:
 - **`agents/conductor.md`** — canonical conductor profile (Tier 2). Adopted by `/shepherd:start` (SOLO mode) and by spawned teammate sessions (TEAMMATE mode). Dual-mode behavior is binding (v5.1.6+): solo retains full surface; teammate is restricted. **Model: sonnet** (downgraded v5.1.6 from `inherit`).
 - **`agents/planter.md`** — canonical planter profile (parallel meta). Adopted by `/shepherd:plant`; also loaded by shepherd profile mid-spawn for delegated seed work. Covers escalation response, git custody, cleanup stewardship.
 - **`skills/shepherd/doctrines/*.md`** — framework-intrinsic rules. New doctrines go here; project-specific doctrines go in the consumer repo's `.claude/doctrines/`. v5.1.6 doctrines: `root-shepherd-orchestration.md`, `dispatch-tier-separation.md`, `scope-scale-workload.md`. v5.1.7 doctrine: `sqlite-canonical-state.md`. v5.1.8 doctrine: `claude-code-platform-alignment.md` (maps shepherd's teammate model to Claude Code v2.1.32+ Agent Teams).
-- **`hooks/hooks.json`** — wires Claude Code lifecycle events to shepherd's hook scripts. As of v5.1.8, registered events: `SessionStart`, `PreToolUse` (Bash/Write/Edit/Agent/Task), `PostToolUse` (Bash/Agent/Task/Edit|Write), `SubagentStop`, `TeammateIdle`, `Stop`, `CwdChanged` (v5.1.8+), `UserPromptSubmit` (v5.1.8+), `WorktreeCreate` (v5.1.8+), `WorktreeRemove` (v5.1.8+). v5.1.8 also introduces shepherd's first uses of `type: "agent"` hooks — embedded prompts that spawn a Haiku subagent to verify Phase 0 mesh "landed in tree" claims (`PostToolUse(Edit|Write)` with `if: "Edit(*.plan.md)"`) and wave-gate cherry-pick state on `Stop`. Both fast-path to `ok: true` when no work is needed; default-on but bounded in cost.
+- **`hooks/hooks.json`** — wires Claude Code lifecycle events to shepherd's hook scripts. As of v6.0.3 (unchanged from v5.1.8), registered events: `SessionStart`, `PreToolUse` (Bash/Write/Edit/Agent/Task), `PostToolUse` (Bash/Agent/Task/Edit|Write), `SubagentStop`, `TeammateIdle`, `Stop`, `CwdChanged` (v5.1.8+), `UserPromptSubmit` (v5.1.8+), `WorktreeCreate` (v5.1.8+), `WorktreeRemove` (v5.1.8+). v5.1.8 also introduces shepherd's first uses of `type: "agent"` hooks — embedded prompts that spawn a Haiku subagent to verify Phase 0 mesh "landed in tree" claims (`PostToolUse(Edit|Write)` with `if: "Edit(*.plan.md)"`) and wave-gate cherry-pick state on `Stop`. Both fast-path to `ok: true` when no work is needed; default-on but bounded in cost. Note: the `PostToolUse(Edit|Write)` `type: "agent"` hook fires on both `Edit` and `Write` tool calls matching `*.plan.md`. Note: `TaskCreated` and `TaskCompleted` events fire on the platform when Agent Teams are enabled but are NOT currently handled by a registered hook script; root must route via the task title prefix observed in `TeammateIdle` or via `SendMessage` WAVE-COMPLETE payloads. See `skills/shepherd/doctrines/claude-code-platform-alignment.md §V`.
 - **`skills/context/styles/<lang>.md`** are the bundled per-language style defaults shipped with the plugin. `shctx style init <lang>` copies them into a consumer project's `.artifacts/styles/<lang>.md`. The conductor auto-injects the project-local copy into every coder brief whose `[FILE-SCOPE]` matches.
 - The flock remains closed at six domain agents (engineer, critic, coder, auditor, worker, discovery), with **three meta-orchestrators** above (v5.1.6+): root `agents/shepherd.md`, conductor `agents/conductor.md`, parallel-meta `agents/planter.md`. The meta tier does NOT open the closed-flock contract. Non-code work goes to `@worker` per `skills/shepherd/doctrines/worker-patterns.md`.
 

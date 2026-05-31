@@ -98,7 +98,7 @@ the same sprint wherever possible.
 - Greatness is the bar. Mediocrity is a halt code.
 - READ before writing. REUSE before creating.
 - Step 2 (read canonical-types) is mandatory. Step 3 (dedup grep) is mandatory.
-- Halt codes are first-class: PAUSE-FOR-DEPENDENCY, BRIEF-AMENDMENT, SCOPE-OVERFLOW, BASE-DRIFT, WORKTREE-DRIFT.
+- Halt codes are first-class: BRIEF-AMENDMENT, SCOPE OVERFLOW, BASE-DRIFT, WORKTREE-DRIFT. Express cross-lane dependencies as graph-edge await ordering (engineer-composed); for genuine cross-teammate hand-off use Agent Teams `SendMessage`; out-of-sprint work → file a finding at close. (PAUSE-FOR-DEPENDENCY retired v6.0.1 #70, per `doctrines/native-coordination.md`.)
 - Writes confined to the assigned worktree. Do NOT cd; use git -C <path>.
 - Conserve tokens — every line you write into the report is a paid line.
 

@@ -1,7 +1,7 @@
 ---
 name: shepherd
 slug: shepherd
-version: 6.0.2
+version: 6.0.3
 description: "Sprint-by-sprint version-cycle conductor. Six-agent flock (engineer, critic, coder, auditor, worker, discovery) on an INTRO/BODY/CLOSE pipeline with planter/conductor/shepherd meta tiers."
 metadata:
   triggers:
@@ -9,6 +9,7 @@ metadata:
     - "/shepherd:plant"
     - "/shepherd:start"
     - "/shepherd:spawn"
+    - "/shepherd:cleanup"
 ---
 
 # /shepherd — Conductor Quick Reference
@@ -430,7 +431,7 @@ For `:start` and `:spawn`, sprint is inferred from current branch when no `sprin
 | `doctrines/hook-event-log.md` | When inspecting hook behavior | NEW v5.1.1 — `<ns>/logs/hooks/YYYY-MM-DD.jsonl` schema, jq queries, retention |
 | `doctrines/preflight-doctor.md` | Before sprint open | NEW v5.1.1 — `shctx doctor` invocation, exit codes, integration with `/shepherd:start` |
 | `doctrines/*.md` | Referenced by name throughout | Framework-intrinsic rules (subtract-don't-add, wrapper-must-earn, pattern-b-overlap, chain-repair, stage-graph, conductor-cwd, gates-restoration, adaptation-loop, ...) |
-| `${CLAUDE_PLUGIN_ROOT}/agents/<role>.md` | Each flock dispatch | Agent system prompt (injected into brief) — six domain lanes + conductor + planter meta-orchestrators |
+| `${CLAUDE_PLUGIN_ROOT}/agents/<role>.md` | Each flock dispatch | Agent system prompt (injected into brief) — six domain lanes + three meta-orchestrators (root shepherd, conductor, planter) |
 | `doctrines/spawn-escalation.md` | `/shepherd:spawn` active | NEW v5.1.4 — escalation channel contract (file paths, payload schema, resume shape, heartbeat, wave-boundary commits; §X multiplexed; §XI sequential autopilot) |
 | `${CLAUDE_PLUGIN_ROOT}/commands/<cmd>.md` | Slash-command fire | Slash-command behavior |
 | `${CLAUDE_PLUGIN_ROOT}/docs/configuration.md` | First invocation per session | shepherd.toml schema + defaults + validation |

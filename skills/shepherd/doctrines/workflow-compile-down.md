@@ -1,16 +1,17 @@
 ---
 title: workflow-compile-down
-status: evaluation
-targets: v6.0.1
+status: binding
+since: v6.0.1
 description: |
-  Evaluation doctrine for compiling shepherd's binding Stage Graph DOWN to a
-  Claude Code Dynamic Workflow orchestration script. The engineer still authors
-  the graph and the critic still gates it; shepherd then EMITS the gate-free,
-  agent-fanout segments of that graph as workflow scripts the platform runtime
-  executes out-of-context. The plan moves into code without the conductor
-  inventing dispatches. No behavioral change ships under this doctrine — it
-  records the design, the faithfulness contract, and the decision criterion for
-  a v6.x spike. Implementation is dispatched to @coder.
+  Binding doctrine for compiling shepherd's Stage Graph DOWN to a Claude Code
+  Dynamic Workflow orchestration script. As of v6.0.1 (epic #76), compile-down
+  IS the primary execution path for gate-free agent-fanout segments via
+  `shctx graph compile`; hand-rolled in-context dispatch is the fallback on
+  workflow-runtime unavailability. The engineer still authors the graph and the
+  critic still gates it; shepherd then EMITS the gate-free, agent-fanout
+  segments as workflow scripts the platform runtime executes out-of-context.
+  The plan moves into code without the conductor inventing dispatches.
+  Implementation is dispatched to @coder.
 ---
 
 # Workflow compile-down — the Stage Graph IS the orchestration script
@@ -22,22 +23,15 @@ description: |
 > results live in script variables, not the conversation context. Official
 > docs: `https://code.claude.com/docs/en/workflows`.
 
-> **Status update — v6.0.1 / epic #76 (supersedes the §IX sequencing & §XI line below).**
-> This doctrine was authored as an *evaluation*. Epic #76 adopted compile-down as the
-> **primary** execution path for gate-free agent-fanout segments in the v6.0.1 line —
-> implemented as `shctx graph compile` (#77), wired into `dispatch-cascade.md §IV-bis`,
-> and **not** behind an off-by-default toggle. The §IV faithfulness contract, the §V
-> φ-map, and the §VI canonical-state seam remain binding **as written**; only §IX's
-> "v6.x spike / `[workflows].compile_backend` toggle" sequencing and §XI's "no compile
-> path ships under v6.0.1" line are superseded. The decision is recorded in the v6.0.1
-> release notes (#71).
-
 ## I. Status & scope
 
-This is an **evaluation doctrine**, not a behavioral contract. It documents how
-shepherd *would* relate to Dynamic Workflows under the **compile-down** model and
-fixes the correctness bar any implementation must meet. Nothing here changes
-dispatch behavior until a spike ships and a decision is recorded (§IX).
+As of **v6.0.1 (epic #76)**, this is a **binding doctrine**. Compile-down IS the
+primary execution path for gate-free agent-fanout segments, implemented as
+`shctx graph compile` (#77) and wired into `dispatch-cascade.md §IV-bis` — not
+behind an off-by-default toggle. Hand-rolled in-context dispatch remains the
+fallback when the workflow runtime is unavailable. The §IV faithfulness contract,
+the §V φ-map, and the §VI canonical-state seam are binding as written. The
+decision is recorded in the v6.0.1 release notes (#71).
 
 The thesis in one line: **shepherd keeps authoring and gating a static Stage
 Graph; the platform runtime executes it.** shepherd contributes *discipline*
@@ -287,9 +281,12 @@ conditional bump when `compile_backend = true`.
 
 ## XI. What this doctrine does NOT do
 
-- It does not change dispatch behavior. No compile path ships under v6.0.1.
-- It does not open the closed flock. The six domain agents and three
-  meta-orchestrators are unchanged; the runtime executes the same roles.
+- It does not open the closed flock. As of v6.0.1 (epic #76), compile-down IS
+  the primary execution path for gate-free fanout segments via `shctx graph
+  compile`; hand-rolled in-context dispatch is the fallback on
+  workflow-runtime unavailability. The six domain agents and three
+  meta-orchestrators (root shepherd, conductor, planter) are unchanged; the
+  runtime executes the same roles.
 - It does not delegate canonical state to the platform. SQLite/git stay
   shepherd-owned.
 - It does not mandate Dynamic Workflows. The default remains the

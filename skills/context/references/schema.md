@@ -10,7 +10,7 @@ Per-project SQLite registry, shepherd v5.0.0 baseline. WAL mode, FK enforcement 
 
 ### `projects`
 
-One row per consumer project. Inserted by `shctx init`; UUIDv7 persisted to `.artifacts/project.json`.
+One row per consumer project. Inserted by `shctx init`; UUIDv7 persisted to `.shepherd/project.json` (legacy: `.artifacts/project.json` for projects initialized with `--artifacts`).
 
 | Column | Type | Notes |
 |---|---|---|
@@ -155,13 +155,55 @@ Constraint: `UNIQUE(project_id, path)`. Indexes: `idx_artifacts_project_kind`, `
 
 ### `locks_history`
 
-The live lock is `.artifacts/shepherd.lock` (file-locked via `flock(2)`); this table records acquisition/release events. Columns: autoinc `id`, `project_id` (FK), `session_id TEXT NOT NULL`, `mode` CHECK in `{'autorun','parallel','start','plant','context'}`, `acquired_at`/`released_at INTEGER` (release nullable), `released_by` CHECK in `{'normal','reap','force'}`, nullable JSON `metadata`.
+The live lock is `.shepherd/shepherd.lock` (file-locked via `flock(2)`; legacy: `.artifacts/shepherd.lock`); this table records acquisition/release events. Columns: autoinc `id`, `project_id` (FK), `session_id TEXT NOT NULL`, `mode` CHECK in `{'autorun','parallel','start','plant','context'}`, `acquired_at`/`released_at INTEGER` (release nullable), `released_by` CHECK in `{'normal','reap','force'}`, nullable JSON `metadata`.
 
 ---
 
-## Sprint metadata (deferred — milestone d)
+## Sprint metadata (NOT IMPLEMENTED — deferred)
 
-`sprints_runs`, `sprints_lanes`, `sprints_findings`, `sprints_stage_graph`. DDL ships in migration `0003_sprints.sql` (re-numbered after the addendum's `0002_styles.sql`). Until then, `sprints_*` tables do not exist.
+`sprints_runs`, `sprints_lanes`, `sprints_findings`, `sprints_stage_graph` were planned but never implemented. The referenced migration `0003_sprints.sql` does not exist (migration 0003 is `0003_canonical_types_filter.sql`). The `sprints_*` tables do not exist and are not expected at any current migration level.
+
+---
+
+## Operational state (v5.1.7+)
+
+Seven tables added by migration `0007_canonical_state.sql` (in `schema/migrations/`). All are canonical — not recoverable from source; persistence required.
+
+### `teammates`
+
+One row per spawned teammate-conductor. Columns: `id TEXT PK` (UUIDv7), `project_id` (FK), `sprint_branch TEXT NOT NULL`, `lane_id TEXT NOT NULL`, `session_id TEXT`, `status TEXT NOT NULL` CHECK in `{'active','idle','completed','crashed','removed'}`, `task_id TEXT`, `spawned_at INTEGER NOT NULL`, `last_heartbeat_at INTEGER`, `metadata TEXT` (JSON). Index: `idx_teammates_sprint_lane(project_id, sprint_branch, lane_id)`.
+
+### `heartbeats`
+
+Periodic liveness signals from active teammates. Columns: `id INTEGER PK AUTOINCREMENT`, `project_id` (FK), `teammate_id TEXT NOT NULL` (FK → `teammates`), `ts INTEGER NOT NULL`, `status TEXT`, `payload TEXT` (JSON). Index: `idx_heartbeats_teammate_ts(teammate_id, ts)`.
+
+### `mailbox`
+
+SendMessage envelope store. Columns: `id TEXT PK` (UUIDv7), `project_id` (FK), `from_session TEXT NOT NULL`, `to_session TEXT NOT NULL`, `message_type TEXT NOT NULL`, `payload TEXT NOT NULL` (JSON), `sent_at INTEGER NOT NULL`, `delivered_at INTEGER`, `ack_at INTEGER`. Index: `idx_mailbox_to_session(to_session, delivered_at)`.
+
+### `escalations`
+
+Halt-code escalations from teammate-conductors to root. Columns: `id TEXT PK` (UUIDv7), `project_id` (FK), `teammate_id TEXT NOT NULL` (FK → `teammates`), `halt_code TEXT NOT NULL`, `tier TEXT NOT NULL` CHECK in `{'CRITICAL','BLOCKING','NOTIFY'}`, `payload TEXT` (JSON), `raised_at INTEGER NOT NULL`, `resolved_at INTEGER`, `resolved_by TEXT`, `resolution TEXT`. Index: `idx_escalations_project_open(project_id, resolved_at) WHERE resolved_at IS NULL`.
+
+### `deliverables`
+
+Structured payload returns from teammate-conductors (artifact writes, carry-forward, etc.). Columns: `id TEXT PK` (UUIDv7), `project_id` (FK), `teammate_id TEXT NOT NULL` (FK → `teammates`), `kind TEXT NOT NULL` CHECK in `{'artifact','carry-forward','wave-complete','close'}`, `payload TEXT NOT NULL` (JSON), `submitted_at INTEGER NOT NULL`, `materialized_at INTEGER`, `materialized_by TEXT`. Index: `idx_deliverables_teammate_kind(teammate_id, kind)`.
+
+### `discovery_findings`
+
+Findings emitted by `@discovery` lanes. Columns: `id TEXT PK` (UUIDv7), `project_id` (FK), `sprint_branch TEXT NOT NULL`, `lane_id TEXT`, `severity TEXT NOT NULL` CHECK in `{'CRITICAL','HIGH','MEDIUM','LOW'}`, `title TEXT NOT NULL`, `body TEXT NOT NULL`, `source_file TEXT`, `gh_issue_id TEXT`, `filed_at INTEGER NOT NULL`. Index: `idx_discovery_sprint_severity(project_id, sprint_branch, severity)`.
+
+### `audit_findings`
+
+Findings emitted by `@auditor` lanes. Same column set as `discovery_findings` with an additional `concern TEXT NOT NULL` (auditor concern type: `code-quality`, `data-flow`, `dependency-topology`, `datastore-state`, `completeness`, `regression`). Index: `idx_audit_sprint_concern(project_id, sprint_branch, concern)`.
+
+### Views added by `0007_canonical_state.sql`
+
+| View | Definition (paraphrased) |
+|---|---|
+| `v_active_teammates` | `teammates WHERE status IN ('active','idle') ORDER BY spawned_at ASC` |
+| `v_open_escalations` | `escalations WHERE resolved_at IS NULL ORDER BY raised_at ASC` |
+| `v_pending_deliverables` | `deliverables WHERE materialized_at IS NULL ORDER BY submitted_at ASC` |
 
 ---
 

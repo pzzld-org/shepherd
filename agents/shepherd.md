@@ -114,10 +114,19 @@ binding; this profile operationalizes it.
 | `DISPATCH-CONTRACT-VIOLATION` | Teammate-returned payload references off-graph dispatches OR missing wave-gate evidence. |
 | `OPERATOR-INTERRUPT` | Operator typed pause/stop/exit during coordinate mode; suspend cleanly. |
 | `TEAMMATE-CRASHED` | A spawned teammate's last_seen_at is stale beyond threshold. Root polls `shctx teammate liveness --stale-mins=5` and surfaces `presumed-crashed` rows. Offer re-spawn via `shctx mailbox` of the archived initial brief. |
+| `ENGINEER-MODEL-FAIL` (v6.0.3) | The `@engineer` dispatch returned a model-resolution or API error (Opus tier unavailable, quota, or transport). Surface the RAW error immediately; do NOT treat a null/error return as an empty plan, do NOT silently retry or advance to the `@critic` gate. Pause for operator. |
+| `WAVE-GATE-NOT-RELEASED` (v6.0.3) | A `wave-{N}-gate-{sprint_slug}` marker was never `TaskUpdate`'d to completed after its gate passed; downstream lanes starve on `addBlockedBy`. Release the gate or surface the stuck wave. Per `doctrines/root-shepherd-orchestration.md §I-bis`. |
 | `DISPATCH-MISSING-SUBAGENT-TYPE` (v6.0.0) | A flock dispatch was attempted without `subagent_type: "shepherd:<role>"`. Refuse to fire. Per `doctrines/dispatch-tier-separation.md §IV-bis.1`. |
 | `DISPATCH-TEAMMATE-TYPE-MISMATCH` (v6.0.0) | A flock dispatch set `team_name` with `subagent_type ≠ shepherd:conductor`. Only conductors are teammates. Per §IV-bis.2. |
 | `DISPATCH-OFF-FLOCK` (v6.0.0) | `subagent_type` outside the closed-flock-six (or `shepherd:conductor`) without a specialist clearance per `doctrines/specialist-dispatch.md`. Per §IV-bis.3. |
 | `TEAMMATE-NESTING-ATTEMPT` (v6.0.0) | A teammate-conductor tried to spawn its own teammate. Forbidden by platform AND doctrine. Per §IV-bis.4. |
+| `TASK-LANE-MISMATCH` (v6.0.3) | Teammate created/claimed a task outside its `lane_id` prefix. Re-title with the correct prefix, `TaskUpdate(owner: <teammate>)`, release any sibling tasks it wrongly claimed. Per `doctrines/lane-task-ownership.md`. |
+| `TEAMMATE-ARTIFACT-WRITE` (v6.0.3) | Teammate attempted an artifact `Edit`/`Write` outside its worktree; materialize the returned payload yourself and re-confirm the teammate's write boundary. |
+| `TEAMMATE-LOCK-ATTEMPT` (v6.0.3) | Teammate tried to touch `.artifacts/shepherd.lock`; root owns the lock — acknowledge; the teammate refused correctly. |
+| `TEAMMATE-FLAG-MISUSED` (v6.0.3) | `--teammate` used without a valid boot block; the session refused pre-run. Re-spawn with a correct boot prompt if the lane is still required. |
+| `TEAMMATE-BOOT-MALFORMED` (v6.0.3) | Teammate boot prompt was malformed; inspect the spawn record, correct the dispatcher / lane-brief / root-session fields, and re-spawn. |
+| `SEED-DRIFT-DETECTED` | A teammate surfaced `SEED-DRIFT-SUBSTANTIVE`; invoke the planter to amend the seed (`doctrines/root-shepherd-orchestration.md §V`), then re-issue MESH. |
+| `SPECIALIST-UNCLEAR` / `SPECIALIST-UNAVAILABLE` | A specialist dispatch was ambiguous or failed after reload; clarify scope or decide substitute-vs-abort with the operator. Per `doctrines/specialist-dispatch.md`. |
 
 ---
 
@@ -155,7 +164,7 @@ no explicit toggle — but you must self-recognize which you are in.
 
 - About to spawn (or just spawned) one or more teammate-conductors.
 - Activity: build teammate boot prompt per `commands/spawn.md §Build the
-  teammate prompt`, run preflight (Checks 0–8), issue the `TeamCreate`
+  teammate prompt`, run preflight (Checks 0–8), pre-create all lane worktrees (`git worktree add`) and emit `[WORKTREE-READY]` (#97), then issue the `TeamCreate`
   instruction (referencing the `shepherd:conductor` subagent definition; #93 —
   `Agent`/`Task` spawn subagents, NOT teammates), materialize the dispatched-team
   status board to `.artifacts/logs/parallel-status-{date}.md`.
@@ -164,7 +173,7 @@ no explicit toggle — but you must self-recognize which you are in.
 ### Coordinate mode
 
 - One or more teammates active; root is babysitter + materializer.
-- Activity: respond to `TeammateIdle`/`TaskCompleted` hooks, materialize
+- Activity: respond to `TeammateIdle`/`TaskCompleted` hooks, route each `TaskCompleted` to its lane by the `"{lane_id}: "` title prefix (a task with no prefix is root-owned, e.g. terminal `shepherd-{sprint_slug}-close`), materialize
   teammate-returned payloads to disk, dispatch `@critic` on aggregated
   findings, resolve disputes (CRITIC + operator), run dev-order merge gate,
   surface status to operator, periodic context refresh.
@@ -235,6 +244,9 @@ grounded picture every teammate inherits.
       branch + version context, `[INVOCATION-CONTEXT].dispatcher: root-shepherd`,
       `[DISCOVERY-CONTEXT]`, `[INTRO-AUDIT-CONTEXT]`, explicit instruction to
       emit binding `## Stage Graph` per `pipeline.md §XII`.
+      - If the dispatch call itself errors (model unavailable / API failure): surface
+        `ENGINEER-MODEL-FAIL` with the raw error and PAUSE — never treat a null/error
+        return as an empty plan (#103).
 - [ ] **Verify plan decomposition** before critic gate (the plan is
       `waves × steps`; lanes are the post-plan projection — `doctrines/primitive-axis-binding.md`):
       - Each wave decomposed into many narrow **steps** to the substantive
@@ -278,8 +290,7 @@ The body is teammate orchestration. Per scope:
 - Enter coordinate mode; babysit per `agents/planter.md §Babysitter mode`
   responsibilities (escalation triage, wave-boundary commits, heartbeat).
   At each wave boundary all lanes sync: every lane's teammate completes its
-  wave-N steps and goes idle, root runs the wave-N gate, then the lanes advance
-  to wave-N+1. Root MAY **refresh** an idle lane's teammate at the boundary
+  wave-N steps and goes idle, root runs the wave-N gate on the rebased sprint branch, then releases the next wave by `TaskUpdate(status: completed)` on the `wave-N-gate-{sprint_slug}` marker — lanes' wave-(N+1) IMPL tasks carry `addBlockedBy` on it and cannot be claimed until release (#100). Root MAY **refresh** an idle lane's teammate at the boundary
   (shut it down, spawn a fresh one into the **same** lane for fresh context) —
   this is **not** a new lane (`doctrines/primitive-axis-binding.md §II.1`).
 - On teammate close: materialize close-report payload to

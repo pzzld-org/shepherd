@@ -96,7 +96,7 @@ No new build-manifest dependencies without conductor approval.
 - {any project-doctrines from shepherd.toml [doctrines]}
 
 [PROTOCOL-REMINDERS]
-- Halt codes: DUPLICATION RISK, BASE-DRIFT, SCOPE OVERFLOW, PAUSE-FOR-DEPENDENCY
+- Halt codes: DUPLICATION RISK, BASE-DRIFT, SCOPE OVERFLOW
 - Read agents/coder.md Step 0.5 before editing (verify [BASE-COMMIT-EXPECTED] SHA).
 - Run agents/coder.md Step 3 (fallback dedup grep) before introducing any new symbol.
 
@@ -132,8 +132,11 @@ MUST NOT TOUCH:
 [SIBLING-LANES]
 # Read-only awareness (v5.0.9, flock-cohesion.md). The OTHER lanes firing in
 # this same Agent batch. You may NOT modify their MAY-MODIFY paths. If you
-# need a symbol they're producing, emit PAUSE-FOR-DEPENDENCY (do NOT silently
-# wait or duplicate). If you see scope overlap, flag SCOPE OVERFLOW.
+# need a symbol they're producing: express the dependency as a graph-edge await
+# ordering (engineer-composed); for genuine cross-teammate hand-off use Agent
+# Teams SendMessage; out-of-sprint work → file a finding at close.
+# (PAUSE-FOR-DEPENDENCY retired v6.0.1 #70, per `doctrines/native-coordination.md`.)
+# If you see scope overlap, flag SCOPE OVERFLOW.
 - {Lane B} (@{role}) — {file_scope summary}        — produces: {symbols/artifacts}
 - {Lane C} (@{role}) — {file_scope summary}        — produces: {symbols/artifacts}
 - ...

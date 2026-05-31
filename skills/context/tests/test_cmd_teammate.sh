@@ -10,7 +10,7 @@ export SHCTX_DB="$TMPDIR_T/root.db"
 # Bootstrap schema
 for f in "$ROOT/skills/context/schema/0001_init.sql" \
          "$ROOT/skills/context/schema/migrations/"*.sql \
-         "$ROOT/skills/context/schema/0007_canonical_state.sql"; do
+         "$ROOT/skills/context/schema/migrations/0007_canonical_state.sql"; do
   sqlite3 "$SHCTX_DB" < "$f"
 done
 sqlite3 "$SHCTX_DB" "INSERT INTO projects (id, name, created_at, updated_at) VALUES ('test-proj', 'test', $(date +%s)000, $(date +%s)000);"

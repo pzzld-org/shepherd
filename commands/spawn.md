@@ -32,8 +32,7 @@ description: |
                        valid for --scope >= patch; ≤ 4 for patch; refused for minor/version
                        in v5.1.6). Within each sprint, lane-per-conductor fanout still
                        applies internally.
-    --auto             ALIAS for --scope patch (preserved for operator muscle memory;
-                       deprecated in v5.2.0, removed v6.0.0).
+    --auto             ALIAS for --scope patch (preserved for operator muscle memory).
 argument-hint: "[ sprint_slug ] [ --scope sprint|patch|minor|version ] [ --parallel <N> | --auto ]"
 allowed-tools: Agent, Bash, Edit, Glob, Grep, Read, Skill, Write, ToolSearch, TeamCreate, TeamDelete, TaskCreate, TaskGet, TaskList, TaskUpdate, SendMessage, WebFetch, WebSearch
 ---
@@ -68,6 +67,8 @@ A single-sprint spawn on a green project, no flags, no escalations:
 [3] main chat        adopts planter profile (agents/planter.md, spawn mode)
 [4] main chat        builds teammate boot prompt (seed + handoff + carry-forwards
                      + shepherd.toml snapshot)
+[4.5] main chat      pre-creates all lane worktrees (git worktree add) and emits
+                     [WORKTREE-READY] BEFORE TeamCreate (#97)
 [5] main chat        issues the natural-language TeamCreate instruction (referencing
                      the shepherd:conductor subagent definition) → teammate session created
 [6] teammate         loads agents/conductor.md, fires /shepherd:start
@@ -181,7 +182,7 @@ To enable Agent Teams:
   2. Or add it under env.* in ~/.claude/settings.json
   3. Restart Claude Code and re-invoke /shepherd:spawn
 
-Reference: docs/configuration.md §Agent Teams
+Reference: docs/configuration.md — see § Platform compatibility above for setup steps.
 D-API source: .artifacts/docs/handoffs/2026-05-19-teammate-api-discovery.md §1
 ```
 
@@ -336,7 +337,7 @@ Composition with `--parallel <N>`:
 
 Within EVERY sprint (regardless of scope/parallel), the engineer's post-plan **lane projection** (the vertical slice of the `waves × steps` plan — `doctrines/primitive-axis-binding.md`) determines how many teammate-conductors root spawns: **one per lane** (the lane count, constant across waves — NOT a per-wave count; a lane's teammate may be refreshed per wave for fresh context, which is not a new lane). This is the implicit fanout; no flag controls it (the plan does).
 
-`--auto` is preserved as an alias for `--scope patch`. Both forms work; `--scope patch` is canonical. Deprecation in v5.2.0, removal in v6.0.0.
+`--auto` is preserved as a stable alias for `--scope patch`. Both forms work; `--scope patch` is canonical.
 
 ---
 
@@ -391,7 +392,7 @@ INVOCATION-CONTEXT:
 
 IDENTITY
   Role: conductor (TEAMMATE MODE)
-  Profile: ${CLAUDE_PLUGIN_ROOT}/agents/conductor.md  (load IMMEDIATELY at Step 0; detect TEAMMATE mode via the INVOCATION-CONTEXT above per `agents/conductor.md §Conductor modes`. Run Step T0 §Verify invocation context (commands/start.md) — all four checks MUST pass before any dispatch. Hard prohibitions in TEAMMATE mode (per `agents/conductor.md §Hard prohibitions #13–#17` + the HARD PROHIBITIONS block below) are BINDING.)
+  Profile: ${CLAUDE_PLUGIN_ROOT}/agents/conductor.md  (load IMMEDIATELY at Step 0; detect TEAMMATE mode via the INVOCATION-CONTEXT above per `agents/conductor.md §Conductor modes`. Run Step T0 §Verify invocation context (commands/start.md) — all four checks MUST pass before any dispatch. Hard prohibitions in TEAMMATE mode (per `agents/conductor.md §Hard prohibitions #13–#20` + the HARD PROHIBITIONS block below) are BINDING.)
   Escalation channel: skills/shepherd/doctrines/spawn-escalation.md
   Tier-separation doctrine: skills/shepherd/doctrines/dispatch-tier-separation.md
 
@@ -404,6 +405,7 @@ INHERITED CONTEXT
   Prior close handoff:     {paths.docs}/{prior_handoff_filename}
   Carry-forward GH issues: {comma-separated #NNN from handoff}
   Worktree path:           {abs_path}/.worktrees/{sprint_slug}-{lane_id}
+  worktree_status:         pre-created   # root created this before you booted (#97); do NOT git worktree add
   shepherd.toml snapshot:  inline below
 
 --- shepherd.toml snapshot ---
@@ -433,7 +435,13 @@ ESCALATION RULES — summary; full contract at spawn-escalation doctrine
        (schema in spawn-escalation §III).
     3. Call SendMessage(to: lead) with the same payload.
     4. Do NOT proceed until you receive a resume reply.
-    5. Heartbeat: emit a status row at every phase boundary.
+    5. Heartbeat (v6.0.3 — #98):
+       a. SendMessage a one-line status at EVERY major phase boundary — even when
+          blocked on a background task (e.g. a long cargo test).
+       b. If you go idle WITHOUT having sent WAVE-COMPLETE, then on your next wake
+          SendMessage(to: lead) a status within 1 turn carrying
+          {phase, last_node, in_flight_task}. Canonical rule: spawn-escalation §V
+          "Idle-without-WAVE-COMPLETE".
 
 HARD PROHIBITIONS WHILE SPAWNED (v6.0.0 — each tied to a halt code)
   Each prohibition is BINDING. If you find yourself constructing the
@@ -497,6 +505,15 @@ WAVE-BOUNDARY COMMIT PROTOCOL
   Root shepherd commits your lane's work after ALL lanes in your wave have
   closed (per dev-order or peer-order merge gate; see spawn-escalation §VI).
 
+  WAVE-GATE MECHANICAL DEPENDENCY (v6.0.3 — #100):
+    Root TaskCreates a "wave-{N}-gate-{sprint_slug}" marker per wave boundary at
+    spawn. Each lane's wave-(N+1) IMPL task is then TaskUpdate'd with
+    addBlockedBy:["<gate task id>"] (addBlockedBy is a TaskUpdate field, NOT a
+    TaskCreate arg). A task with unresolved blockedBy CANNOT be claimed, so no lane
+    starts wave N+1 until root releases the gate via
+    TaskUpdate(taskId:"<gate>", status:"completed") after the wave-N gate passes.
+    Do NOT begin a next-wave step whose task is still blocked.
+
 PEER COMMUNICATION (where supported by platform)
   Sibling teammates in the same wave are listed in INVOCATION-CONTEXT.peer_teammate_names.
   You MAY SendMessage(to: peer_name) for:
@@ -523,6 +540,21 @@ TEAMMATE IDENTITY
 | `{carry-forward GH issues}` | handoff doc's carry-forward section |
 | `shepherd.toml snapshot` | full contents of `.claude/shepherd.toml` |
 | `{sprint_slug}` | `shepherd.toml [branching].sprint_branch_pattern` + current dev.N |
+
+---
+
+### Pre-spawn worktree creation (v6.0.3 — #97)
+
+Root MUST create every lane worktree on disk BEFORE issuing `TeamCreate`. Path +
+branch are deterministic from `lane_id`:
+
+    for each lane:  git worktree add .worktrees/{sprint_slug}-{lane_id} {sprint_branch}
+    git worktree list      # verify every lane worktree exists
+
+Emit a `[WORKTREE-READY]` block (lane → worktree path). `TeamCreate` is GATED on it:
+it MUST NOT fire until all lane worktrees exist. A teammate never creates its own
+worktree — that is a `TEAMMATE-GIT-WRITE` violation. Eliminates the boot-time
+`ANOMALY: worktree missing` round-trip.
 
 ---
 
@@ -615,7 +647,11 @@ Before issuing the `TeamCreate` instruction, the planter SHOULD verify:
 - **Conversation history.** The teammate boots fresh. Inject all needed context via the boot prompt (per § Build the teammate prompt).
 - **Open file context** the lead had loaded. The teammate must `Read` files it needs.
 - **Permission grants** beyond the default permission mode. Auto-approved tool calls in the lead don't carry over.
-- **Task list.** The teammate creates its own via `TaskCreate`.
+- **Task list.** Teammates share ONE team list. Every TaskCreate title MUST be
+  prefixed "{lane_id}: <description>" and you MUST TaskUpdate(owner: <your-teammate-name>)
+  immediately after creating it. Only claim/work/complete tasks whose title prefix
+  matches YOUR lane id. Violations: TASK-LANE-MISMATCH. Canonical:
+  doctrines/lane-task-ownership.md.
 
 ### In-process mode caveat
 

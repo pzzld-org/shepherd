@@ -37,7 +37,7 @@ This doctrine is the binding map between the two.
 | Claude Code TaskCompleted hook | `https://code.claude.com/docs/en/hooks#taskcompleted` | v2.1.33+ |
 | Opt-in flag | `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` (env or `settings.json`) | v2.1.32+ |
 
-**Adoption posture as of v5.1.8:**
+**Adoption posture as of v6.0.3:**
 
 1. **Document the mapping.** This doctrine. Every shepherd contributor and
    every operator who reaches into Claude Code's Agent Teams docs needs
@@ -45,9 +45,11 @@ This doctrine is the binding map between the two.
 2. **Continue consuming `TeammateIdle` (already done).** The platform
    fires the event; shepherd handles it in
    `hooks/scripts/teammate_idle.sh` (registered in `hooks/hooks.json`).
-3. **Track `TaskCreated` / `TaskCompleted` for v5.2.0 evaluation.** Not
-   currently consumed by shepherd. Reserved for the v5.2.0 task-list
-   integration decision.
+3. **Use `TaskCreate`/`TaskUpdate` for lane routing and wave-gate enforcement
+   (v6.0.3, #100/#102).** Every teammate uses lane-prefixed tasks; root
+   creates and releases the `wave-{N}-gate-{sprint_slug}` marker. No hook
+   script is registered for `TaskCreated`/`TaskCompleted`; root routes via
+   `TeammateIdle` payloads and `SendMessage` WAVE-COMPLETE messages.
 4. **Do NOT depend on platform Agent Teams for shepherd's core flow.**
    The platform feature is experimental (per
    `https://code.claude.com/docs/en/agent-teams §Limitations`). Operators
@@ -109,10 +111,10 @@ rules.
 | Teammate status | `teammates` table (`booting` → `active` → `idle` / `crashed` / `retired`) per `skills/context/scripts/cmd_teammate.sh` | Implicit; in-process or tmux process state with no explicit status column exposed to hooks | shepherd | Per `https://code.claude.com/docs/en/agent-teams §Limitations` the platform has no rich status; shepherd's richer model is the only liveness index. |
 | Heartbeat | `heartbeats` table + `cmd_teammate.sh heartbeat`; emitted from `hooks/scripts/subagent_telemetry.sh` when `CLAUDE_TEAMMATE_NAME` is set | Not exposed | shepherd | Platform has no heartbeat primitive. Shepherd's `cmd_teammate.sh liveness --stale-mins=N` is the stale-teammate detector. **#93 caveat:** `CLAUDE_TEAMMATE_NAME` reads empty on the live platform, so the telemetry-emitted heartbeat is currently inert; **`TeammateIdle` (hook-JSON identity) is the working liveness/idle signal** that drives proactive pruning. A `cwd`-derived heartbeat is tracked for v6.0.3. See `doctrines/sqlite-canonical-state.md §Allow-list`. |
 | Mailbox | `mailbox` table + `cmd_mailbox.sh {send,recv,ack,stale}` per `skills/context/scripts/cmd_mailbox.sh` | `SendMessage` tool — direct message between live teammates per `https://code.claude.com/docs/en/agent-teams §Talk to teammates directly` | DUAL — see §IV | Both work. Shepherd's mailbox persists across sessions; platform's `SendMessage` is in-session and is not durable across teammate restart. |
-| Task list | NOT a first-class shepherd primitive. Shepherd's task surface is the engineer plan (`{paths.plans}/<sprint>.plan.md`) + GH issue tree | Shared task list at `~/.claude/tasks/{team-name}/` per `https://code.claude.com/docs/en/agent-teams §Architecture` | platform (when Agent Teams enabled) | Shepherd lanes are not platform tasks. A v5.2.0 evaluation may mirror them — see §VII. |
+| Task list | Used for lane routing and wave-gate enforcement (v6.0.3, #100/#102). Every teammate uses `TaskCreate` with `"{lane_id}: "` title prefix + `TaskUpdate(owner: <self>)`; root creates the `wave-{N}-gate-{sprint_slug}` marker task and releases it via `TaskUpdate(status: completed)` after each wave passes. Shepherd's *structural* task surface remains the engineer plan (`{paths.plans}/<sprint>.plan.md`) + GH issue tree. | Shared task list at `~/.claude/tasks/{team-name}/` per `https://code.claude.com/docs/en/agent-teams §Architecture` | DUAL | Shepherd now uses the platform task list for wave-gate enforcement. Root routes `TaskCompleted` by the `"{lane_id}: "` title prefix observed via `TeammateIdle` / `SendMessage` WAVE-COMPLETE payloads (no registered `TaskCreated`/`TaskCompleted` hook script — see §V). |
 | TeammateIdle event | Hooked by `hooks/scripts/teammate_idle.sh` (registered `TeammateIdle` in `hooks/hooks.json`) | Fired by platform; payload schema per `https://code.claude.com/docs/en/hooks#teammateidle` | platform fires; shepherd handles | Already integrated in v5.1.7. Shepherd marks the teammate idle in DB; lists open escalations + stalled deliverables to stderr. |
-| TaskCreated event | NOT consumed | Fired by platform when `TaskCreate` runs; payload schema per `https://code.claude.com/docs/en/hooks#taskcreated` | platform (when consumed) | Reserved for v5.2.0 — see §VII. |
-| TaskCompleted event | NOT consumed | Fired by platform when a task is marked complete; payload schema per `https://code.claude.com/docs/en/hooks#taskcompleted` | platform (when consumed) | Reserved for v5.2.0. Note: shepherd's wave-boundary commits are governed by `doctrines/spawn-escalation.md §VI`, not by this hook. |
+| TaskCreated event | Consumed for lane routing and wave-gate enforcement (v6.0.3, #100/#102). No registered hook script — root observes via `TeammateIdle` payload and `SendMessage` WAVE-COMPLETE payloads; the `"{lane_id}: "` title prefix in the task title is the routing key. | Fired by platform when `TaskCreate` runs; payload schema per `https://code.claude.com/docs/en/hooks#taskcreated` | DUAL | Shepherd uses `TaskCreate`/`TaskUpdate` for lane-prefixed tasks and the `wave-{N}-gate-{sprint_slug}` marker. No shepherd hook handler is registered for `TaskCreated` in `hooks/hooks.json`; routing happens via title prefix observed in teammate idle/message payloads. |
+| TaskCompleted event | Consumed for lane routing and wave-gate enforcement (v6.0.3, #100/#102). Root routes by `"{lane_id}: "` title prefix; absence of prefix marks root-owned terminal tasks. Wave-boundary commits are triggered by `TaskCompleted` per `doctrines/spawn-escalation.md §VI`. | Fired by platform when a task is marked complete; payload schema per `https://code.claude.com/docs/en/hooks#taskcompleted` | DUAL | No shepherd hook handler is registered for `TaskCompleted` in `hooks/hooks.json`; root reacts via `SendMessage` WAVE-COMPLETE payloads. The `wave-{N}-gate-{sprint_slug}` marker task is released by root via `TaskUpdate(status: completed)` only after the wave gate passes. |
 | SubagentStop event | Hooked by `hooks/scripts/subagent_telemetry.sh` (cache telemetry); also feeds `cmd_teammate.sh heartbeat` when `CLAUDE_TEAMMATE_NAME` is set | Fired per `https://code.claude.com/docs/en/hooks` (event #13) | shepherd | Pre-Agent-Teams shepherd primitive; behavior under test for whether it coexists cleanly with `TeammateIdle` for spawned teammates. |
 | Escalation | `escalations` table + `cmd_escalate.sh {create,list,resolve}` per `skills/context/scripts/cmd_escalate.sh` | None | shepherd-only | The escalation contract (`PLAN-AUTHORSHIP-REQUEST`, `PLAN-GATE-REQUEST`, `WRONG-TIER-DISPATCH`, `CROSS-TEAMMATE-DISPUTE`, etc.) per `doctrines/dispatch-tier-separation.md §IV` and `doctrines/spawn-escalation.md` has no platform counterpart. |
 | Deliverable | `deliverables` table + `cmd_deliverable.sh {promise,complete,stalled}` per `skills/context/scripts/cmd_deliverable.sh` | None | shepherd-only | The promise/complete pattern (stalled-detector via `Stop` hook `hooks/scripts/deliverable_check.sh`) per `doctrines/sqlite-canonical-state.md §Allow-list` has no platform counterpart. |
@@ -348,62 +350,55 @@ Per `doctrines/sqlite-canonical-state.md §Cited from`, this hook closes
 issue #49 (TEAMMATE-CRASHED halt code + crashed-teammate detection in
 `agents/shepherd.md`).
 
-### `TaskCreated` — NOT consumed; v5.2.0 evaluation
+### `TaskCreated` — Consumed for lane routing and wave-gate enforcement (v6.0.3, #100/#102)
 
 **Platform schema** (per `https://code.claude.com/docs/en/hooks#taskcreated`):
 identical to `TeammateIdle` schema. Fires when a task is created via
 `TaskCreate`; exit code 2 rolls back the task creation.
 
-**Shepherd handler:** None.
+**Shepherd handler:** No registered hook script in `hooks/hooks.json`.
+Root observes `TaskCreated` indirectly — via the `TeammateIdle` hook
+payload and `SendMessage` WAVE-COMPLETE payloads. The `"{lane_id}: "`
+title prefix in the task title is the routing key that tells root which
+lane created the task.
 
-**Why not consumed in v5.1.8:** Shepherd's task surface is the engineer
-plan (`{paths.plans}/<sprint>.plan.md`) + GH issue tree per
-`doctrines/issue-ledger-awareness.md`. Platform tasks (stored at
-`~/.claude/tasks/{team-name}/`) are not a shepherd primitive. Shepherd
-teammates do call `TaskCreate` (the `tools:` frontmatter on
-`agents/conductor.md` lists it), but those tasks are internal to the
-teammate session for its own walk tracking; they do not flow into
-shepherd's canonical state.
+**How shepherd uses `TaskCreate`/`TaskCreated` (v6.0.3):**
+- Every teammate-conductor calls `TaskCreate` with a `"{lane_id}: "` title
+  prefix for every wave-scope work unit, then immediately calls
+  `TaskUpdate(owner: <self>)` to set the assignee.
+- Root creates a `wave-{N}-gate-{sprint_slug}` marker task at the start of
+  each wave; each lane's wave-(N+1) IMPL task carries `addBlockedBy` on it.
+  Root releases the gate via `TaskUpdate(status: completed)` after the gate
+  passes (per `doctrines/spawn-escalation.md §VI`).
+- No hook script fires on `TaskCreated`; root reasons from the platform
+  task list via tool calls, not from a hook payload.
 
-**v5.2.0 evaluation:** if shepherd adopts the platform task list as a
-co-canonical surface, `TaskCreated` would write a row to a new
-`tasks` table (schema TBD; would respect
-`doctrines/sqlite-canonical-state.md`); a new `shctx tasks {sync,list}`
-subverb would query/materialize. Decision criteria:
-1. Does the platform task list survive teammate crash? (Per the docs,
-   "Task status can lag" suggests no strong guarantee.)
-2. Does the platform expose a dependency graph rich enough to encode
-   the Stage Graph? (Current docs describe pending/in-progress/completed
-   with simple dependencies — likely insufficient for shepherd's edge
-   predicates per `doctrines/stage-graph.md`.)
-3. Does a hybrid (platform tasks for atomic units + shepherd plan for
-   structure) reduce operator cognitive load or increase it?
-
-Until the v5.2.0 evaluation closes, shepherd does not consume
-`TaskCreated`.
-
-### `TaskCompleted` — NOT consumed; v5.2.0 evaluation
+### `TaskCompleted` — Consumed for lane routing and wave-gate enforcement (v6.0.3, #100/#102)
 
 **Platform schema** (per `https://code.claude.com/docs/en/hooks#taskcompleted`):
 identical schema. Fires when a task is being marked complete; exit
 code 2 prevents completion.
 
-**Shepherd handler:** None in v5.1.8.
+**Shepherd handler:** No registered hook script in `hooks/hooks.json`.
+Root observes `TaskCompleted` via `SendMessage` WAVE-COMPLETE payloads
+from the teammate-conductor; the platform fires the event but shepherd
+does not intercept it with a hook script.
 
-**Relation to wave-boundary commits:** `commands/spawn.md §Platform
-compatibility` states that `TaskCompleted` "arrived in v2.1.33 and is
-required for the wave-boundary commit discipline". However, the
-current implementation in `doctrines/spawn-escalation.md §VI` uses
-`SendMessage(to: lead, halt_code: null, blocking: false)` as the
-wave-complete signal, not `TaskCompleted`. Behavior under test:
-whether `TaskCompleted` and the `SendMessage` wave-complete signal
-both fire, or whether one supersedes the other. The current shepherd
-posture uses `SendMessage` as canonical; `TaskCompleted` is an
-adjacent signal that shepherd does not yet consume.
-
-If the v5.2.0 task-list adoption evaluation concludes positively,
-`TaskCompleted` becomes the trigger for wave-boundary commit; the
-`SendMessage`-based path remains as fallback for non-platform deployments.
+**How shepherd uses `TaskCompleted` (v6.0.3):**
+- The wave-complete signal is `SendMessage(to: lead, halt_code: null,
+  blocking: false, context_files: [<wave-gate-output>])` (per
+  `doctrines/spawn-escalation.md §VI`); `TaskCompleted` fires
+  automatically when the conductor completes its wave-scope task.
+- Root routes `TaskCompleted` by the `"{lane_id}: "` title prefix.
+  Terminal tasks (e.g. `shepherd-{sprint_slug}-close`) carry NO lane
+  prefix; root uses that absence to distinguish them from wave-scope tasks.
+- The `wave-{N}-gate-{sprint_slug}` marker task is released by root via
+  `TaskUpdate(status: completed)` only after the wave gate passes. A
+  blocked IMPL task cannot be claimed until the gate releases — the wait
+  is enforced by the task list, not prose.
+- No hook script fires on `TaskCompleted`; root reacts via the
+  `SendMessage` WAVE-COMPLETE payload that the conductor sends
+  immediately before the task completion.
 
 ### `SubagentStop` — shepherd primitive, predates Agent Teams
 
@@ -505,29 +500,23 @@ cleanly.
 release manager); v5.1.8 plugin manifest references the doctrine in
 SKILL.md doctrines map.
 
-### v5.2.0 — Evaluate consuming `TaskCreated` / `TaskCompleted`
+### v6.0.3 — `TaskCreated` / `TaskCompleted` adopted for wave-gate (done)
 
-- Spike: implement `hooks/scripts/task_created.sh` and
-  `hooks/scripts/task_completed.sh` against a v5.1.8 fork. Mirror
-  platform tasks into a new `tasks` table (additive schema migration,
-  per `doctrines/sqlite-canonical-state.md §Migration guidance`).
-- New `shctx tasks {sync,list,status}` subverb.
-- Decision criterion: does the platform task list improve walk
-  visibility for operators? If yes, ship as co-canonical (mirror, not
-  replace). If no, leave the spike as a documented evaluation only.
-- If shipped: `commands/spawn.md` Check 2 minimum version may rise to
-  the Claude Code version that stabilizes `TaskCreated` /
-  `TaskCompleted` (currently v2.1.33; behavior under test).
+- Shepherd now uses `TaskCreate`/`TaskUpdate` for lane-prefixed tasks and the
+  `wave-{N}-gate-{sprint_slug}` marker (per `doctrines/spawn-escalation.md §VI`).
+- No hook scripts registered for `TaskCreated`/`TaskCompleted`; root routes
+  via `SendMessage` WAVE-COMPLETE payloads and platform task-list tool calls.
+- Future optional step: register `hooks/scripts/task_created.sh` /
+  `hooks/scripts/task_completed.sh` to mirror platform tasks into a `tasks`
+  table for richer DB-backed visibility. Decision deferred past v6.0.3.
 
-**Acceptance:** v5.2.0 release notes carry the decision either way.
-No commitment is made in this doctrine.
+**Acceptance:** v6.0.3 landing (this doctrine update).
 
-### v5.2.0 — Deprecate `--auto` alias
+### `--auto` alias — preserved
 
-Already scheduled per `commands/spawn.md §--scope flag` ("`--auto` is
-preserved as an alias for `--scope patch`. Deprecation in v5.2.0,
-removal in v6.0.0."). Unrelated to platform alignment except that
-post-removal `commands/autorun.md` (thin delta) can also be retired.
+`--auto` is a preserved stable alias for `--scope patch` per the PINNED
+policy (rescinded removal timeline). Unrelated to platform alignment.
+`commands/autorun.md` remains as a thin delta reference.
 
 ### v6.0.0 — Evaluate platform backend toggle
 
@@ -606,11 +595,14 @@ all are catchable by operators or code review.
    (implicit via `/shepherd:start --teammate` flow). Behavior under
    test: whether the flow always runs register, or whether some boot
    paths skip it.
-6. **Treating `TaskCreated` / `TaskCompleted` hook payload as
-   shepherd-canonical without writing to the DB.** Per §V the hooks
-   are NOT consumed in v5.1.8. If they become consumed in v5.2.0+, the
-   handler MUST write to the canonical `tasks` table (schema TBD).
-   Markdown-only logging of task lifecycle is an anti-pattern per
+6. **Treating `TaskCreated` / `TaskCompleted` hook payload as a
+   registered shepherd hook that fires into a script.** Per §V, no
+   hook script is registered for these events in `hooks/hooks.json`
+   (v6.0.3). Root observes task lifecycle via `SendMessage` WAVE-COMPLETE
+   payloads and platform tool calls; it does NOT receive a hook
+   invocation. If a future version registers hook scripts for these
+   events, the handler MUST write to the canonical `tasks` table (schema
+   TBD). Markdown-only logging of task lifecycle is an anti-pattern per
    `doctrines/sqlite-canonical-state.md §Anti-patterns #2`.
 7. **Nesting `/shepherd:spawn` from within a platform-spawned
    teammate.** Refused by `commands/spawn.md` Check 0; refused by the

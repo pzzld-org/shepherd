@@ -1,7 +1,7 @@
 ---
 name: shepherd-context
 slug: shepherd-context
-version: 6.0.2
+version: 6.0.3
 description: "Per-project SQLite registry backing /shepherd:ctx and the flock's Phase-0 fast-paths. Indexes code symbols, GitHub state, artifacts, memories, profiles, locks, and event logs."
 metadata:
   triggers:
@@ -61,7 +61,8 @@ See `${CLAUDE_PLUGIN_ROOT}/skills/shepherd/doctrines/context-registry.md` for th
 | Zone | Tables | Mode |
 |---|---|---|
 | **Cache** | `index_*`, `logs_events` (last 10K) | Rebuildable from source/MCP at any time. Safe to delete. |
-| **Canonical** | `projects`, `sessions`, `profiles_defs`, `mem_entries`, `artifacts`, `locks_history`, `schema_versions` | Not recoverable elsewhere. Persistence required. |
+| **Canonical (core)** | `projects`, `sessions`, `profiles_defs`, `mem_entries`, `artifacts`, `locks_history`, `schema_versions` | Not recoverable elsewhere. Persistence required. |
+| **Canonical (v5.1.7+ operational)** | `teammates`, `heartbeats`, `mailbox`, `escalations`, `deliverables`, `discovery_findings`, `audit_findings` | Operational state added by migration `0007_canonical_state.sql`. Not recoverable elsewhere. Persistence required. |
 
 The DB is gitignored by default. Treat it as a build artifact unless your team has a specific reason to commit it.
 

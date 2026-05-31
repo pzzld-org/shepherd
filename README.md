@@ -1,4 +1,4 @@
-# shepherd — v6.0.2
+# shepherd — v6.0.3
 
 Sprint-by-sprint version-cycle conductor. A production-grade orchestration framework that turns a single Claude Code session into a disciplined release engineer driving a closed six-agent flock (engineer, critic, coder, auditor, worker, discovery) through repeatable sprint pipelines.
 
@@ -11,8 +11,14 @@ Sprint-by-sprint version-cycle conductor. A production-grade orchestration frame
 │                       --scope <sprint|patch|minor|version>           │
 │                       --parallel <N>      sprint-level fanout        │
 │                       --auto              alias: --scope patch       │
+│  /shepherd:ctx       Inspect / refresh the per-project SQLite ctx    │
+│  /shepherd:cleanup   Post-sprint worktree + lock cleanup             │
 └──────────────────────────────────────────────────────────────────────┘
 ```
+
+## v6.0.3 — Agent-Teams orchestration hardening
+
+A substrate-defect patch closing operational gaps (#97–#103) found in live `/shepherd:spawn` runs on the v6.0.x native substrate. Diagnostics confirmed the failures were Agent-Teams *coordination* gaps — **not** the model and **not** Dynamic-Workflow dispatch (`opus[1m]` and 16-way Sonnet fan-out both probed clean). Worktrees are now pre-created before `TeamCreate`; wave-gates are mechanically enforced via task `addBlockedBy` (a `TaskUpdate` field); teammate git-writes, lane-task ownership, stall heartbeats, and engineer-dispatch errors are codified with halt codes (`TEAMMATE-GIT-WRITE`, `TASK-LANE-MISMATCH`, `WAVE-GATE-NOT-RELEASED`, `ENGINEER-MODEL-FAIL`). The `@engineer` `opus[1m]` pin is retained (probe-cleared; single once-per-sprint dispatch). Full detail in the [CHANGELOG](CHANGELOG.md).
 
 ## v6.0.2 — Ontology recovery, mechanical enforcement & native-substrate adoption
 
@@ -316,10 +322,11 @@ For first-time use:
 | Path | What it is |
 | ---- | ---------- |
 | `.claude-plugin/plugin.json` | Plugin manifest |
-| `commands/{plant,start,spawn}.md` | Active slash commands (`autorun` + `parallel` are retired thin redirects) |
-| `agents/{engineer,critic,coder,auditor,worker}.md` | Closed flock — agent system prompts |
+| `commands/{plant,start,spawn,ctx,cleanup}.md` | Active slash commands (`autorun` + `parallel` are retired thin redirects) |
+| `agents/{engineer,critic,coder,auditor,worker,discovery}.md` | Closed flock — domain agent system prompts |
+| `agents/{shepherd,conductor,planter}.md` | Three meta-orchestrators (root shepherd, conductor, planter) |
 | `skills/shepherd/SKILL.md` | Conductor quick reference (loaded by every command) |
-| `skills/shepherd/{flock,planter,autorun,parallel}.md` | Mode-specific operational detail |
+| `skills/shepherd/{flock,autorun,parallel}.md` | Operational detail; `planter.md` is a retired redirect → `agents/planter.md` (v5.1.4+) |
 | `skills/shepherd/references/branching-model.md` | Authoritative branch lifecycle + rollover algorithm |
 | `skills/shepherd/references/seed-template.md` | Canonical seed shape (what the engineer parses) |
 | `skills/shepherd/references/agent-briefs.md` | Copy-paste brief templates + grade cutoffs |
@@ -345,7 +352,7 @@ Shepherd follows semver:
 - **MINOR** bumps add new commands, new doctrines, new config keys (backward-compatible).
 - **PATCH** bumps fix bugs in dispatch logic, doctrines, brief templates.
 
-Current version: **6.0.2**
+Current version: **6.0.3**
 
 See [`CHANGELOG.md`](CHANGELOG.md) for the per-version history.
 

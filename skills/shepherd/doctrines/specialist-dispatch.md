@@ -337,11 +337,12 @@ Agent({
 
 ### Example B — Investigating an unfamiliar Claude Code feature mid-sprint
 
-**Trigger:** mid-sprint, `@coder` returns `PAUSE-FOR-DEPENDENCY` asking
+**Trigger:** mid-sprint, `@coder` files a `BRIEF-AMENDMENT REQUEST` asking
 how Claude Code's `SubagentStop` hook event fires when a teammate session
 exits abnormally. The conductor does not have this fact at hand; neither
 do shepherd's doctrines. `@discovery` could synthesize from public docs,
 but `claude-code-guide` is purpose-built for exactly this question class.
+Express cross-lane dependencies as graph-edge await ordering (engineer-composed); for genuine cross-teammate hand-off use Agent Teams `SendMessage`; out-of-sprint work → file a finding at close. (PAUSE-FOR-DEPENDENCY retired v6.0.1 #70, per `doctrines/native-coordination.md`.)
 
 **Why specialist (Q3 clears):**
 - `@discovery` would burn time re-deriving Claude Code platform mechanics.

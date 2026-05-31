@@ -307,11 +307,22 @@ discipline).
 | Teammate dispatches `@engineer`/`@critic` | `WRONG-TIER-DISPATCH` | engineer/critic on receipt |
 | SOLO mode spawning OR TEAMMATE mode running SOLO ops | `MODE-MISUSE` | conductor |
 | Mode-detection signals contradict | `MODE-DETECTION-AMBIGUOUS` | conductor |
+| Teammate runs git rebase/merge/push/worktree | `TEAMMATE-GIT-WRITE` | teammate-conductor |
 
 These halt codes are **terminal for the offending dispatch**. Root does
 NOT auto-resume on `WRONG-TIER-DISPATCH` or `TEAMMATE-NESTING-ATTEMPT` —
 the teammate brief is malformed and needs operator review per
 `agents/shepherd.md §Halt codes (root-side)`.
+
+### IV-bis.8. TEAMMATE-GIT-WRITE — teammate git custody (v6.0.3 — #99)
+
+A teammate-conductor's git authority is bounded to commits on its OWN worktree branch.
+It MUST NOT run `git rebase`, `git merge`, `git push`, or `git worktree` (add/remove) —
+those are root-tier operations. Root rebases every lane onto the sprint branch at each
+wave-gate; a teammate never rebases itself, even when behind. On reaching for any such
+command: STOP and `SendMessage(to: lead, halt_code: TEAMMATE-GIT-WRITE, blocking: true)`.
+Cross-ref: `agents/conductor.md §Hard prohibitions #19` + `§Side-effect boundary`.
+Propagates the halt code already defined in `commands/spawn.md`.
 
 ---
 

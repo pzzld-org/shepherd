@@ -4,6 +4,86 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v6.0.3 — 2026-05-30
+
+### Substrate-defect patch — Agent-Teams orchestration hardening (#97–#103)
+
+Operational defects surfaced during live `/shepherd:spawn` runs on the v6.0.x native
+substrate (Agent Teams + Dynamic Workflows). A diagnostic pass first isolated the failure
+class: a 4-cell Dynamic-Workflow dispatch probe + a 16-way concurrent fan-out probe
+confirmed that **`opus[1m]` resolves correctly in subagent dispatch and DW handles large
+Sonnet fan-out cleanly** — the failures were neither the model nor the dispatch substrate,
+but Agent-Teams *coordination* gaps. Fixes:
+
+- **#97 — worktree pre-creation.** Root now `git worktree add`s every lane worktree and
+  emits `[WORKTREE-READY]` *before* `TeamCreate`; the teammate boot prompt's INHERITED
+  CONTEXT carries `worktree_status: pre-created`. Eliminates the boot-time
+  `ANOMALY: worktree missing` round-trip that blocked every lane. (`commands/spawn.md`,
+  `agents/shepherd.md`)
+- **#98 — stall heartbeat.** Conductors must heartbeat at every phase boundary even when
+  blocked on a background task, and on idle-without-`WAVE-COMPLETE` must send a status
+  (`{phase, last_node, in_flight_task}`) within 1 turn. New canonical rule in
+  `spawn-escalation.md §V`. (`agents/conductor.md`, `commands/spawn.md`)
+- **#99 — `TEAMMATE-GIT-WRITE`.** Teammate git authority is bounded to its own
+  worktree-branch commits; `git rebase`/`merge`/`push`/`worktree` halt with
+  `TEAMMATE-GIT-WRITE`. Reinforced at every decision point (Hard prohibition #19,
+  halt-codes table, Side-effect boundary) + new `dispatch-tier-separation.md §IV-bis.8`.
+- **#100 — mechanical wave-gate.** Wave advancement is enforced by the task list, not
+  prose: root TaskCreates a `wave-{N}-gate-{sprint_slug}` marker, each lane's next-wave
+  IMPL task carries `addBlockedBy` (set via `TaskUpdate`, *not* a `TaskCreate` arg),
+  released via `TaskUpdate(status: completed)` after the gate passes. A task with an
+  unresolved `blockedBy` cannot be claimed, so no lane jumps the gate. New
+  `WAVE-GATE-NOT-RELEASED` (root-side).
+- **#102 — lane-task ownership.** New doctrine `lane-task-ownership.md`: every teammate
+  task title is prefixed `"{lane_id}: "` and `TaskUpdate(owner:)`-set; root routes
+  `TaskCompleted` by prefix; terminal tasks carry none. New `TASK-LANE-MISMATCH`
+  (Hard prohibition #20).
+- **#103 — engineer dispatch hardening.** New `ENGINEER-MODEL-FAIL`: root surfaces the
+  raw error and PAUSEs instead of treating a null/error `@engineer` return as an empty
+  plan. The `@engineer` `opus[1m]` pin is **retained** (probe-cleared; single
+  once-per-sprint dispatch, not a large-set surface; 1M headroom for XL plan authorship).
+
+No closed-flock contract change; no new commands. Patch-level: dispatch-logic + brief
+templates + one new doctrine (`lane-task-ownership.md`) + two updated doctrines. The
+tracked-for-v6.0.3 feature depth (#94/#95 adaptability + self-improvement) remains
+operator-deferred to v6.0.4 (this cycle's foundation work is the prerequisite).
+
+### Coherence remediation (full-repo passover)
+
+A 7-concern read-only audit of the v6.0.x plugin surfaced ~35 coherence findings from the
+rapid v6.0.0→v6.0.2 evolution. All fixed:
+
+- **CRITICAL — migration foundation.** `schema/0007_canonical_state.sql` sat in `schema/`
+  root, which `cmd_migrate.sh` never globs — so the v5.1.7 operational tables (`teammates`,
+  `mailbox`, `escalations`, `deliverables`, `discovery_findings`, `audit_findings`,
+  `heartbeats`) were **never created in any consumer DB**. Relocated to
+  `migrations/0007_canonical_state.sql` (idempotent), removed its self-inserted
+  `schema_versions` row, and switched the runner to **gap-fill** (apply any version absent
+  from `schema_versions`, repairing DBs stranded past the orphan). Verified end-to-end.
+- **HIGH — `shctx sprint open` unbroken.** `--mode=sprint` violated the `locks_history`
+  CHECK (rc=19 every call); `0009_locks_mode_sprint.sql` recreates it with `sprint`/`spawn`.
+- **CRITICAL — task-list contradictions.** `claude-code-platform-alignment.md` claimed the
+  task list is "not consumed" (contradicting the #100/#102 wave-gate mechanics), and the
+  "TaskCreated/TaskCompleted hook" routing in `spawn-escalation.md`/`lane-task-ownership.md`
+  was a phantom (no such hook registered). Both reconciled: the task list is consumed for
+  lane-routing + wave-gating; root routes by the `"{lane_id}: "` title prefix observed via
+  `TeammateIdle`/`SendMessage`, not a hook.
+- **Halt-code registry.** Added ~12 referenced-but-undefined codes to the canonical
+  `conductor.md` table + `shepherd.md` root-side triage; canonicalized `SEED-DRIFT` into
+  `-MECHANICAL`/`-SUBSTANTIVE`/`-DETECTED`; standardized `SCOPE OVERFLOW`.
+- **Retired-mechanic purge.** `PAUSE-FOR-DEPENDENCY` (retired v6.0.1 #70) was still injected
+  into every `@coder` brief + live in four doctrines — replaced with the native
+  await-edge / `SendMessage` / finding-at-close pattern.
+- **Doc sync.** Doctrine index completed (30→50 rows); `--auto` reaffirmed as a stable
+  `--scope patch` alias (rescinded the never-honored removal); `workflow-compile-down.md`
+  marked binding (the primary path); meta-orchestrator count corrected to three across
+  `CLAUDE.md`/`README.md`/`SKILL.md`; v5.1.7 tables documented; stale §-anchors fixed.
+
+Verification: both test harnesses green (context 36/36, hooks 27/27); fresh-DB migrate
+applies 0001→0009 with every operational table present.
+
+---
+
 ## v6.0.2 — 2026-05-29
 
 ### Groove-recovery patch — Wave 0: define the truth (ontology + primitive↔axis binding)

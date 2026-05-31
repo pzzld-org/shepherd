@@ -5,8 +5,9 @@ description: |
   IS the topology. Once the engineer's plan is extracted (`shctx plan extract`),
   the conductor walks the graph mechanically via `shctx graph next` / `mark` —
   no fresh sequencing decisions, no re-reading flock.md mid-sprint, no
-  checklist-juggling. Halts, hot-fixes, and PAUSE-FOR-DEPENDENCY subgraphs
-  are structural — they extend the topology, they don't bypass it.
+  checklist-juggling. Halts and hot-fixes are structural — they extend the
+  topology, they don't bypass it. (PAUSE-FOR-DEPENDENCY subgraphs retired
+  v6.0.1 #70; cross-lane deps are now graph-edge await ordering.)
 introduced: v5.0.9
 field_origin: |
   Operator request 2026-05-13: "any chance we could create some type of rule
@@ -144,7 +145,7 @@ the walker's interface:
 
 | Extension | Trigger | Topology change | Visible in trace |
 |---|---|---|---|
-| PAUSE-FOR-DEPENDENCY | Agent returns `Halt code: PAUSE-FOR-DEPENDENCY` | Insert 3-node ephemeral subgraph upstream of `WAVE-N-GATE` | `node_pause`, `subgraph_inserted`, `node_resumed` |
+| ~~PAUSE-FOR-DEPENDENCY~~ | *(retired v6.0.1 #70 — replaced by in-script await ordering, `doctrines/native-coordination.md`)* | — | — |
 | HOTFIX | WAVE-AUDIT returns `on-finding` | Insert HOTFIX node + WAVE-GATE-RERUN | `subgraph_inserted` |
 | CHAIN-REPAIR | MESH returns `on-mechanical-drift` | Conductor edits seed + re-fires MESH | `chain_repair`, `mesh_re_extract` |
 
@@ -163,7 +164,7 @@ per-node telemetry:
 - **Duration** per node (exited_at − started_at)
 - **Halt rate** per node-type across sprints (`shctx graph trends`, v5.0.10+)
 - **Edge frequency**: how often `on-finding` vs `on-no-finding`, etc.
-- **Pause-per-lane** rate: do certain lane types reliably trigger PAUSE-FOR-DEPENDENCY?
+- **Await-edge-per-lane** rate: do certain lane types reliably produce cross-lane graph-edge await dependencies?
 
 The auditor's sprint-pattern entry (per `adaptation-loop.md §I`) records
 node-level summaries. The engineer at the next sprint's Phase 0 mesh
@@ -172,7 +173,7 @@ node-level summaries. The engineer at the next sprint's Phase 0 mesh
 - "MESH took 4× longer than the prior 3 sprints' average → seed may be
   ambiguous; surface to operator."
 - "WAVE-2-IMPL has fired HOTFIX 4/5 sprints → wave too large; decompose."
-- "PAUSE-FOR-DEPENDENCY fired on `crates/engine` 3 sprints in a row →
+- "Await-edge dependency on `crates/engine` fired 3 sprints in a row →
   add a Lane 0 to expose its public API more broadly."
 
 This converts the framework from "graph-as-documentation" to
