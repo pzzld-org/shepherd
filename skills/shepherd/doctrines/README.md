@@ -110,6 +110,7 @@ These get loaded by the conductor at session-open per `[hooks].on_every_dispatch
 | `worktree-confinement.md` | All coder writes inside the worktree path |
 | `wrapper-must-earn.md` | Wrapper types justify with invariant / lifetime / shared-allocation / substantive-trait |
 | `zero-duplicate-tolerance.md` | DEDUP-GATE runs every grep before dispatch; coder-side halt is the fallback |
+| `lane-task-ownership.md` | Team task list is shared; every teammate task is lane-prefixed + owner-set; root routes by title prefix (`TASK-LANE-MISMATCH`) |
 
 ## Doctrine promotion pipeline
 

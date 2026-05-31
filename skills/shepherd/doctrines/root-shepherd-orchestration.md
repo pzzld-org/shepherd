@@ -56,8 +56,13 @@ compiling the gate-free step fan-out to a **Dynamic Workflow** (execution axis �
 Teammate-conductors NEVER dispatch `@engineer`/`@critic` (the plan is fixed) and
 NEVER spawn further teammates (no nested teams).
 
-Wave boundaries: each lane's teammate `SendMessage`s `WAVE-COMPLETE` and goes
-idle; root runs the wave-gate and commits; then the lanes advance to wave `w+1`.
+Wave boundaries (mechanical, v6.0.3 — #100): each lane's teammate `SendMessage`s
+`WAVE-COMPLETE` and goes idle; root runs the wave-gate and commits. Advancement is
+enforced by the task list, not prose: root TaskCreates a `wave-{N}-gate-{sprint_slug}`
+marker at spawn; each lane's wave-(N+1) IMPL task carries `addBlockedBy` on it (set via
+`TaskUpdate`); root releases via `TaskUpdate(status: completed)` after the gate passes,
+which unblocks the next wave. A blocked task cannot be claimed, so no lane jumps the
+gate. If root fails to release: `WAVE-GATE-NOT-RELEASED`.
 Root is **proactive about idle teammates** — it does NOT leave one idling once its
 wave payload is materialized: it prunes the teammate (reclaiming compute, avoiding
 forced-compaction cost) and at the next wave boundary **refreshes** the lane by

@@ -1,4 +1,4 @@
-# shepherd — v6.0.2
+# shepherd — v6.0.3
 
 Sprint-by-sprint version-cycle conductor. A production-grade orchestration framework that turns a single Claude Code session into a disciplined release engineer driving a closed six-agent flock (engineer, critic, coder, auditor, worker, discovery) through repeatable sprint pipelines.
 
@@ -13,6 +13,10 @@ Sprint-by-sprint version-cycle conductor. A production-grade orchestration frame
 │                       --auto              alias: --scope patch       │
 └──────────────────────────────────────────────────────────────────────┘
 ```
+
+## v6.0.3 — Agent-Teams orchestration hardening
+
+A substrate-defect patch closing operational gaps (#97–#103) found in live `/shepherd:spawn` runs on the v6.0.x native substrate. Diagnostics confirmed the failures were Agent-Teams *coordination* gaps — **not** the model and **not** Dynamic-Workflow dispatch (`opus[1m]` and 16-way Sonnet fan-out both probed clean). Worktrees are now pre-created before `TeamCreate`; wave-gates are mechanically enforced via task `addBlockedBy` (a `TaskUpdate` field); teammate git-writes, lane-task ownership, stall heartbeats, and engineer-dispatch errors are codified with halt codes (`TEAMMATE-GIT-WRITE`, `TASK-LANE-MISMATCH`, `WAVE-GATE-NOT-RELEASED`, `ENGINEER-MODEL-FAIL`). The `@engineer` `opus[1m]` pin is retained (probe-cleared; single once-per-sprint dispatch). Full detail in the [CHANGELOG](CHANGELOG.md).
 
 ## v6.0.2 — Ontology recovery, mechanical enforcement & native-substrate adoption
 

@@ -4,6 +4,52 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v6.0.3 — 2026-05-30
+
+### Substrate-defect patch — Agent-Teams orchestration hardening (#97–#103)
+
+Operational defects surfaced during live `/shepherd:spawn` runs on the v6.0.x native
+substrate (Agent Teams + Dynamic Workflows). A diagnostic pass first isolated the failure
+class: a 4-cell Dynamic-Workflow dispatch probe + a 16-way concurrent fan-out probe
+confirmed that **`opus[1m]` resolves correctly in subagent dispatch and DW handles large
+Sonnet fan-out cleanly** — the failures were neither the model nor the dispatch substrate,
+but Agent-Teams *coordination* gaps. Fixes:
+
+- **#97 — worktree pre-creation.** Root now `git worktree add`s every lane worktree and
+  emits `[WORKTREE-READY]` *before* `TeamCreate`; the teammate boot prompt's INHERITED
+  CONTEXT carries `worktree_status: pre-created`. Eliminates the boot-time
+  `ANOMALY: worktree missing` round-trip that blocked every lane. (`commands/spawn.md`,
+  `agents/shepherd.md`)
+- **#98 — stall heartbeat.** Conductors must heartbeat at every phase boundary even when
+  blocked on a background task, and on idle-without-`WAVE-COMPLETE` must send a status
+  (`{phase, last_node, in_flight_task}`) within 1 turn. New canonical rule in
+  `spawn-escalation.md §V`. (`agents/conductor.md`, `commands/spawn.md`)
+- **#99 — `TEAMMATE-GIT-WRITE`.** Teammate git authority is bounded to its own
+  worktree-branch commits; `git rebase`/`merge`/`push`/`worktree` halt with
+  `TEAMMATE-GIT-WRITE`. Reinforced at every decision point (Hard prohibition #19,
+  halt-codes table, Side-effect boundary) + new `dispatch-tier-separation.md §IV-bis.8`.
+- **#100 — mechanical wave-gate.** Wave advancement is enforced by the task list, not
+  prose: root TaskCreates a `wave-{N}-gate-{sprint_slug}` marker, each lane's next-wave
+  IMPL task carries `addBlockedBy` (set via `TaskUpdate`, *not* a `TaskCreate` arg),
+  released via `TaskUpdate(status: completed)` after the gate passes. A task with an
+  unresolved `blockedBy` cannot be claimed, so no lane jumps the gate. New
+  `WAVE-GATE-NOT-RELEASED` (root-side).
+- **#102 — lane-task ownership.** New doctrine `lane-task-ownership.md`: every teammate
+  task title is prefixed `"{lane_id}: "` and `TaskUpdate(owner:)`-set; root routes
+  `TaskCompleted` by prefix; terminal tasks carry none. New `TASK-LANE-MISMATCH`
+  (Hard prohibition #20).
+- **#103 — engineer dispatch hardening.** New `ENGINEER-MODEL-FAIL`: root surfaces the
+  raw error and PAUSEs instead of treating a null/error `@engineer` return as an empty
+  plan. The `@engineer` `opus[1m]` pin is **retained** (probe-cleared; single
+  once-per-sprint dispatch, not a large-set surface; 1M headroom for XL plan authorship).
+
+No closed-flock contract change; no new commands. Patch-level: dispatch-logic + brief
+templates + one new doctrine (`lane-task-ownership.md`) + two updated doctrines. The
+tracked-for-v6.0.3 feature depth (#94/#95 adaptability + self-improvement) remains
+operator-deferred.
+
+---
+
 ## v6.0.2 — 2026-05-29
 
 ### Groove-recovery patch — Wave 0: define the truth (ontology + primitive↔axis binding)

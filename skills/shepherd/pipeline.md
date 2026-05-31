@@ -282,6 +282,12 @@ The conductor's runtime, post-plan, is this loop:
 4. When ready_set is empty AND no node is in-flight: graph is complete → terminal
 ```
 
+> **WAVE-GATE inline step — spawn mode (v6.0.3 — #100):** When executing a
+> WAVE-GATE node as conductor-inline, root releases the next wave via
+> `TaskUpdate(status: completed)` on the `wave-{N}-gate-{sprint_slug}` marker;
+> lanes' wave-(N+1) IMPL tasks carry `addBlockedBy` on it and cannot be claimed
+> until release (#100). Mechanical, not prose.
+
 The conductor does NOT add ad-hoc nodes mid-walk. If a need emerges that the graph doesn't anticipate (e.g., a fourth hot-fix wave when the graph allows three), that IS a graph violation — the conductor surfaces to the operator and either amends the plan (re-running through `PLAN-GATE` with the new graph) or escalates.
 
 This is the discipline that prevents drift: the graph is the contract; the walk is mechanical; deviation is structural and visible.

@@ -55,6 +55,11 @@ state update (D-API §7).
 | `TaskCreated` | Task created via `TaskCreate` | Yes | `task_id`, `task_title`, `task_description`, `assignee` |
 | `TaskCompleted` | Task marked complete | Yes | `task_id`, `task_title`, `task_result`, `assignee` |
 
+> Lane-routing contract (v6.0.3 — #102): every teammate `task_title` is prefixed
+> `"{lane_id}: "` and `assignee` (set via `TaskUpdate(owner: ...)`) is the owning teammate.
+> Root routes `TaskCompleted` to a lane by the title prefix; a task with NO prefix is
+> root-owned (terminal `shepherd-{sprint_slug}-close`).
+
 `TeammateIdle` is BLOCKING — primary pause point for operator-mediated escalation.
 `TaskCompleted` triggers wave-boundary commits (§VI). `TeammateIdle` fires on
 **graceful idle only** — NOT on crash/SIGKILL (D-API Unknown #3); crash detection
@@ -197,6 +202,15 @@ shctx query --team=shepherd-conductor-{sprint_slug} last_heartbeat
 accommodates large Agent dispatches that produce no intermediate tool calls.
 Operator may extend manually. **Beyond threshold: alert; do NOT auto-recover.**
 
+### Idle-without-WAVE-COMPLETE rule (v6.0.3 — #98)
+
+A conductor that goes idle WITHOUT having sent `WAVE-COMPLETE` (lane not closed) MUST,
+on its next wake, send a status `SendMessage(to: lead)` within 1 turn carrying
+`{phase, last_node, in_flight_task}`. Root treats a `TeammateIdle` with no preceding
+`WAVE-COMPLETE` as a `TEAMMATE-STALL` trigger (not a new halt code). The conductor MUST
+also heartbeat at every major phase boundary even while blocked on a background task —
+a silent block is indistinguishable from a stall.
+
 ### HEARTBEAT ALERT format
 
 ```
@@ -224,7 +238,15 @@ task complete (`TaskCompleted` fires automatically); (3) wait for resume signal
 before next wave — timeout `[spawn].wave_ack_timeout_sec` (default 60s); on
 timeout, emit heartbeat and continue (planter is responsible for committing; loss
 horizon extends but sprint not blocked). Conductor does NOT call git operations
-(`agents/conductor.md §Hard prohibitions #12`, `§Side-effect boundary`).
+(`agents/conductor.md §Hard prohibitions #12`, `§Side-effect boundary`). Every
+`TaskCreate` carries a `"{lane_id}: "` title prefix and is `TaskUpdate(owner: <self>)`'d
+immediately (per `lane-task-ownership.md`).
+
+Wave-gate is mechanical (v6.0.3 — #100): root TaskCreates a `wave-{N}-gate-{sprint_slug}`
+marker; each lane's wave-(N+1) IMPL task carries `addBlockedBy` on it (set via `TaskUpdate`);
+root releases via `TaskUpdate(status: completed)` only after the gate passes. A blocked
+task cannot be claimed, so the wait is enforced by the task list, not prose. If root never
+releases: `WAVE-GATE-NOT-RELEASED`.
 
 **Planter obligation (main-chat).** On every wave-scope `TaskCompleted`:
 (1) read payload — identify files landed; (2) `git status` — confirm branch + no
@@ -453,6 +475,8 @@ have a predictable name for the planter to distinguish from wave-scope
 `TaskCompleted`. Current proposal: `shepherd-{sprint_slug}-close`. If conductor
 names differently, planter mis-classifies as wave-complete and commits rather
 than triggering inter-sprint work. Confirm with conductor profile author.
+RESOLVED (v6.0.3 — #102): terminal tasks carry NO lane prefix; that absence is how root
+distinguishes them from wave-scope lane tasks. Terminal name remains `shepherd-{sprint_slug}-close`.
 
 **OQ-XI2 (LOW): Operator interrupt during countdown.** 5-second countdown is
 approximated (no daemon timer); a fast operator interrupts before the next turn,
