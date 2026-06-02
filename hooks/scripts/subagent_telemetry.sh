@@ -265,14 +265,12 @@ emit_event "$event_json"
 log_event "subagent_telemetry" "pass" "SubagentStop" "$role" "$session_id" \
   "$(emit_json_obj agent_id "$agent_id" sprint "$sprint" events_file "$events_file")"
 
-# v5.1.7: emit teammate heartbeat if running inside a teammate session.
-if [[ -n "${CLAUDE_TEAMMATE_NAME:-}" ]]; then
-  ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
-  if [[ -n "$ROOT" && -f "$ns/root.db" ]]; then
-    bash "$ROOT/skills/context/scripts/cmd_teammate.sh" \
-      heartbeat "$CLAUDE_TEAMMATE_NAME" \
-      --tool="${CLAUDE_TOOL_NAME:-unknown}" 2>/dev/null || true
-  fi
-fi
+# v6.0.5: the v5.1.7 per-tool teammate-heartbeat emission was RETIRED here. It
+# keyed on $CLAUDE_TEAMMATE_NAME, which reads EMPTY on the live Agent Teams
+# platform (#93), so this block never fired — dead machinery for a signal the
+# platform now provides natively. Teammate liveness is driven by the native
+# `TeammateIdle` hook (hooks/scripts/teammate_idle.sh — routes by teammate_name
+# OR session_id) plus the `shctx teammate liveness --stale-mins` staleness poll.
+# See doctrines/claude-code-platform-alignment.md §V + sqlite-canonical-state.md.
 
 exit 0

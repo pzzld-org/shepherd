@@ -77,9 +77,13 @@ wave-boundary commits are triggered by the WAVE-COMPLETE `SendMessage` that prec
 `TeammateIdle` fires on **graceful idle only** — NOT on crash/SIGKILL (D-API Unknown #3);
 crash detection is the heartbeat shim (§V).
 
-**Heartbeat: shctx PostToolUse row.** No platform heartbeat primitive exists
-(D-API Confirmed Facts); shimmed via a `PostToolUse` hook writing a shctx row per
-teammate tool call. Mechanism in §V.
+**Heartbeat: native `TeammateIdle` + staleness poll.** No platform heartbeat
+primitive exists (D-API Confirmed Facts). The original per-tool heartbeat shim was
+**retired in v6.0.5** (it keyed on `CLAUDE_TEAMMATE_NAME`, which reads empty on the
+live platform, so it never fired). Liveness now derives from the native
+`TeammateIdle` hook (`hooks/scripts/teammate_idle.sh`, routing by `teammate_name` OR
+`session_id`) plus the `shctx teammate liveness --stale-mins=N` staleness detector.
+Mechanism in §V.
 
 ---
 
@@ -179,36 +183,27 @@ Source: `agents/planter.md §Babysitter mode §1`.
 
 ## V. Heartbeat mechanism
 
-No platform primitive (D-API Confirmed Facts, Unknown #3). Shimmed via shepherd's
-`PostToolUse` hook.
+No platform heartbeat primitive (D-API Confirmed Facts, Unknown #3). **v6.0.5:** the
+original per-tool `SubagentStop`/`PostToolUse` heartbeat shim was **retired** (it keyed
+on `$CLAUDE_TEAMMATE_NAME`, which reads empty on the live platform, so it never fired).
+Liveness now derives from native signals written to the canonical `teammates` table.
 
-**Write path (teammate side).** `PostToolUse` fires after every teammate tool call:
+**Write path.** `teammates.last_seen_at` + `status` are updated by:
 
-```sql
-INSERT OR REPLACE INTO teammate_heartbeats
-  (team_name, role, phase, last_seen, session_id)
-VALUES (:team_name, :role, :phase, strftime('%s','now'), :session_id);
-```
+- `cmd_teammate.sh register` — on spawn (status `booting`);
+- `cmd_teammate.sh heartbeat <name>` — flips `booting`→`active` and appends a row to
+  the `heartbeats` table (phase/tool note); called by the `TeammateIdle` hook when a
+  teammate name is present, and available for explicit phase notes;
+- the native **`TeammateIdle`** hook (`hooks/scripts/teammate_idle.sh`) — flips a
+  teammate to `idle`, routing by `teammate_name` OR `session_id` (the live payload
+  carries `session_id`, not always `teammate_name`), and fails loud on no-match.
 
-- `team_name` = `shepherd-conductor-{sprint_slug}` (env or hook input)
-- `role` = active sub-agent role (last `TaskCreate`, or `conductor`)
-- `phase` = current graph phase (conductor status line)
-- `session_id` = teammate's session UUID
-
-> v5.1.4 addition; migration in `skills/context/schema/`. Until migrated, hook
-> writes to `.artifacts/logs/heartbeat-{team_name}.jsonl` (append). Planter reads
-> whichever exists.
-
-**Read path (root shepherd / planter side).** Manual polling for v5.1.4: after each `TeammateIdle`
-or operator interaction.
+**Read path (root side).** Poll the canonical store, not log files:
 
 ```bash
-tail -1 .artifacts/logs/heartbeat-shepherd-conductor-{sprint_slug}.jsonl
-# Or post-migration:
-shctx query --team=shepherd-conductor-{sprint_slug} last_heartbeat
+shctx teammate liveness --stale-mins=5     # per-teammate verdict: ok | presumed-crashed
+shctx teammate status <name>               # one teammate's row
 ```
-
-`shctx parallel status` (auto-surfacing) is v5.1.5.
 
 **Staleness threshold: 5 minutes** of no new heartbeat → alert. Window
 accommodates large Agent dispatches that produce no intermediate tool calls.

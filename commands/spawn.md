@@ -319,6 +319,13 @@ conservative static defaults (avg_sprint_minutes=90, avg_api_per_sprint=200) and
 `(defaults — no priors yet)`. The second sprint's estimate therefore provably differs from
 the cold-start default (#94). Per `doctrines/adaptation-loop.md §V`.
 
+**Cache-TTL recommendation (v6.0.5).** For `--scope >= patch` and long `--auto` loops,
+surface a one-line nudge to set **`ENABLE_PROMPT_CACHING_1H=1`** (1-hour prompt-cache
+TTL). A multi-wave run outlives the 5-minute default between waves, so without it the
+cached brief/system prefixes expire and re-bill at full input rate. Claude
+subscriptions request 1h automatically; API-key / Bedrock / Vertex / Foundry need the
+flag. Per `doctrines/cache-telemetry.md` + `docs/configuration.md §[spawn]`.
+
 ---
 
 ## § --scope flag (v5.1.6+)

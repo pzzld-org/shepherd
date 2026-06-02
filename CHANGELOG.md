@@ -78,6 +78,39 @@ and post-`WAVE-COMPLETE` prune was deferred (#112).
   registration), `doctrines/spawn-escalation.md §XII`, `doctrines/README.md` index,
   `docs/configuration.md` (new `[spawn]` section).
 
+### Caching + native-leverage hardening (live-docs rigor audit)
+
+A documentation-rigor audit against the **live** Claude Code docs (Agent Teams / hooks /
+sub-agents / Dynamic Workflows / prompt-caching, verified 2026-06-02) confirmed the
+coordinate-active-drive claims (`Stop {"decision":"block"}`, `SendMessage` lead
+auto-resume v2.1.77, the event-driven wake model, no `team_name` on subagents) and
+surfaced these fixes:
+
+- **`TeammateIdle` routing hardened.** The live payload carries `session_id` (+ optional
+  `agent_id`/`agent_type`) but **not** `teammate_name`; `teammate_idle.sh` now routes by
+  `teammate_name` when present, **falls back to `session_id`**, and **fails loud** if
+  neither matches — so the coordinate-drive backstop can't silently no-op on schema drift.
+- **Dead heartbeat machinery retired.** The v5.1.7 per-tool teammate-heartbeat emission in
+  `subagent_telemetry.sh` keyed on `$CLAUDE_TEAMMATE_NAME` (empty on the live platform) and
+  never fired — removed in favor of native `TeammateIdle`-driven liveness + the
+  `shctx teammate liveness` staleness poll. `spawn-escalation.md §V` +
+  `claude-code-platform-alignment.md §V` reconciled.
+- **Caching corrected + optimized.** `brief-cache-discipline.md` reframed — the prior
+  "implicit breakpoints *inside* the brief" model was inaccurate; the genuinely-cached
+  prefix is the agent system prompt (`agents/<role>.md`) + tools, and the brief's
+  stable-first ordering earns *coherence* + a reusable conversation prefix. Biggest dollar
+  lever is TTL: **`ENABLE_PROMPT_CACHING_1H=1`** for `--scope >= patch` (surfaced in
+  `docs/configuration.md §[spawn]` + spawn preflight). Brief tails made deterministic
+  (`open-issues.sql` `ORDER BY number`, dropped volatile `updated_at`) and the coder
+  `[ROLE]` line made cross-sprint-stable (dropped `{sprint_branch}`).
+- **Doc accuracy:** hook event count 29 → 31; `sqlite-canonical-state.md` path made
+  namespace-neutral (`.shepherd` default); `workflow-compile-down.md` reconciled
+  (binding *model* vs opt-in spike *backend*).
+
+The 3 sanctioned mechanizations (adaptation/self-improvement, code-styles, context-DB
+comms) were audited as cleanly mechanized + queryable-without-reindex — on-philosophy,
+no change. hooks 28/28; context 37/37.
+
 ## v6.0.4 — 2026-05-31
 
 ### Adaptation + self-improvement loop, made SQLite-canonical (#94 / #95)

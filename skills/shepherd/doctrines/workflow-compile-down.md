@@ -33,6 +33,15 @@ fallback when the workflow runtime is unavailable. The §IV faithfulness contrac
 the §V φ-map, and the §VI canonical-state seam are binding as written. The
 decision is recorded in the v6.0.1 release notes (#71).
 
+> **Binding model vs spike backend (v6.0.5 reconciliation).** Do not conflate two
+> things this doctrine governs: (1) the compile-down **model** — the gate-free
+> fan-out IS expressed as a Dynamic Workflow over subagents, plus the §IV/§V/§VI
+> contracts — is **binding**; (2) the `shctx graph compile` **backend** that emits
+> the workflow script is an **opt-in spike** (see the `shctx graph compile` spike +
+> decision section below) whose acceptance criteria gate whether it runs by default.
+> Until those criteria are met the **runtime defaults to in-context dispatch** (the
+> documented fallback). Binding *intent*, opt-in *backend* — the two are consistent.
+
 The thesis in one line: **shepherd keeps authoring and gating a static Stage
 Graph; the platform runtime executes it.** shepherd contributes *discipline*
 (closed flock, hard-refusal dispatch contract, audited plan, canonical state);
