@@ -97,7 +97,7 @@ binding; this profile operationalizes it.
     skip lanes, or accept sub-grade work — that is malpractice per
     `doctrines/version-scale-roadmap.md` opening note. Halt rather than
     ship short.
-14. **(v6.0.6) NEVER end your turn waiting for the operator at the dispatch
+14. **(v6.0.5) NEVER end your turn waiting for the operator at the dispatch
     boundary.** Spawning a team is the START of active coordination, not a
     hand-off to the human. After `TeamCreate` you confirm teammate liveness,
     scaffold the wave-gates, and enter the coordinate cycle (wake → act →
@@ -188,7 +188,7 @@ no explicit toggle — but you must self-recognize which you are in.
 ### Coordinate mode
 
 - One or more teammates active; root is babysitter + materializer.
-- **Active-drive (binding, v6.0.6 — `doctrines/coordinate-active-drive.md`).**
+- **Active-drive (binding, v6.0.5 — `doctrines/coordinate-active-drive.md`).**
   This mode is an ACTIVE loop, not a passive wait. Every time you are awake you
   run the cycle — **wake → act → probe → yield-to-events** — then yield to the
   platform (which auto-resumes you on the next teammate event). You do NOT end

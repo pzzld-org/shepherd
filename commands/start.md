@@ -62,7 +62,7 @@ Execute the three-section pipeline per `${CLAUDE_PLUGIN_ROOT}/agents/conductor.m
 
 When invoked as `/shepherd:start --teammate`, the session is a spawned teammate. The execution path is materially different.
 
-> **Begin immediately (v6.0.6).** A spawned teammate invokes `/shepherd:start --teammate` on its FIRST turn, without waiting for a "go" message from root — the lane brief in the boot prompt is the instruction to start. A teammate that idles waiting to be told to begin is the teammate side of the dispatch-boundary deadlock the root's active-drive contract closes (`doctrines/coordinate-active-drive.md §III`).
+> **Begin immediately (v6.0.5).** A spawned teammate invokes `/shepherd:start --teammate` on its FIRST turn, without waiting for a "go" message from root — the lane brief in the boot prompt is the instruction to start. A teammate that idles waiting to be told to begin is the teammate side of the dispatch-boundary deadlock the root's active-drive contract closes (`doctrines/coordinate-active-drive.md §III`).
 
 ### Step T0 — Verify invocation context (v6.0.0 — hardened checklist)
 

@@ -336,7 +336,7 @@ This is the integration point with locally developed skills — `code-style` is 
 
 ```toml
 [spawn]
-# v6.0.6 — the coordinate-mode active-drive backstop (hooks/scripts/
+# v6.0.5 — the coordinate-mode active-drive backstop (hooks/scripts/
 # coordinate_drive_guard.sh, a Stop hook). Controls what happens when the root
 # shepherd tries to END ITS TURN while a spawn session still has actionable,
 # root-clearable coordinate state (an idle teammate, or unread lead mail) — i.e.

@@ -4,11 +4,11 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
-## v6.0.6 — 2026-06-02
+## v6.0.5 — 2026-06-02
 
 ### Schema migrations: fix `ALTER TABLE … RENAME` view-dangling on SQLite ≥ 3.25 (debug-session find)
 
-A debug session on the v6.0.6 cut surfaced a **pre-existing, release-blocking** defect
+A debug session on the v6.0.5 cut surfaced a **pre-existing, release-blocking** defect
 unrelated to the spawn work: migrations `0009_locks_mode_sprint.sql` and
 `0011_mem_entries_prior_kind.sql` (recreate-table migrations) ran `DROP TABLE` + `ALTER
 TABLE … RENAME TO` **while the dependent view still existed** (`v_active_locks` /
@@ -77,11 +77,6 @@ and post-`WAVE-COMPLETE` prune was deferred (#112).
   orchestration.md §II`, `doctrines/claude-code-platform-alignment.md §V` (Stop-hook
   registration), `doctrines/spawn-escalation.md §XII`, `doctrines/README.md` index,
   `docs/configuration.md` (new `[spawn]` section).
-
-## v6.0.5 — 2026-05-31
-
-Version-sync bump (`6.0.4 → 6.0.5`) across the six version sources of truth; no
-behavioral change.
 
 ## v6.0.4 — 2026-05-31
 
