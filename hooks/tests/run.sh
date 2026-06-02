@@ -135,10 +135,10 @@ else
   fails=$((fails+1))
 fi
 
-# Coordinate-mode active-drive backstop (v6.0.6, #113/#98/#112): the Stop hook
+# Coordinate-mode active-drive backstop (v6.0.5, #113/#98/#112): the Stop hook
 # blocks a premature root halt while teammates are idle / lead mail is unread,
 # fast-paths outside spawn sessions, and is runaway-bounded.
-echo "== test_coordinate_drive_guard.sh (v6.0.6 — spawn active-drive) =="
+echo "== test_coordinate_drive_guard.sh (v6.0.5 — spawn active-drive) =="
 total=$((total+1))
 if cdg_out=$(bash "$TESTS_DIR/test_coordinate_drive_guard.sh" 2>&1); then
   printf '  PASS  %s\n' "coordinate-drive-guard-blocks-passive-wait"

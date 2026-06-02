@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# shepherd hook — Stop: coordinate-mode active-drive guard (v6.0.6).
+# shepherd hook — Stop: coordinate-mode active-drive guard (v6.0.5).
 #
 # Backstop for doctrines/coordinate-active-drive.md. Fires at Stop (root about to
 # end its turn). If a /shepherd:spawn session is live AND the root is stopping

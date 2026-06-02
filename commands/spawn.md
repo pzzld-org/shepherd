@@ -419,7 +419,7 @@ INHERITED CONTEXT
 FIRST ACTION
   Invoke /shepherd:start --teammate. (v5.1.6+) Do this on your FIRST turn,
   immediately, WITHOUT waiting for a kickoff message from root — your lane
-  brief below IS the instruction to begin (v6.0.6,
+  brief below IS the instruction to begin (v6.0.5,
   doctrines/coordinate-active-drive.md §III). Idling to be told to start is the
   teammate side of the dispatch-boundary deadlock.
 
@@ -584,7 +584,7 @@ TeamCreate(<natural-language instruction>), e.g.:
    /shepherd:start --teammate) — it does NOT wait for a further go-signal."
 ```
 
-> **Kickoff is part of the dispatch (v6.0.6).** A teammate that waits for a
+> **Kickoff is part of the dispatch (v6.0.5).** A teammate that waits for a
 > "begin" message while the root waits for a teammate event is a mutual-wait
 > deadlock that looks exactly like the passive-wait pause. The instruction above
 > states the teammate self-starts; the root then **confirms liveness**

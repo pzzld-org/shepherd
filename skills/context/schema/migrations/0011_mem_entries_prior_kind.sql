@@ -15,7 +15,7 @@ BEGIN;
 -- `ALTER TABLE ... RENAME` validates every view in the schema; if
 -- `v_mem_recent_7d` still references `mem_entries` while we drop+rename it, the
 -- RENAME aborts with "error in view v_mem_recent_7d: no such table:
--- main.mem_entries". Drop first, recreate after the rename. (shepherd v6.0.6
+-- main.mem_entries". Drop first, recreate after the rename. (shepherd v6.0.5
 -- debug-session fix; same antipattern as the original 0009.)
 DROP VIEW IF EXISTS v_mem_recent_7d;
 

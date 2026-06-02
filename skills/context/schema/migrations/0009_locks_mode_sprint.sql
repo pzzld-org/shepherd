@@ -15,7 +15,7 @@ BEGIN;
 -- RENAME aborts with "error in view v_active_locks: no such table:
 -- main.locks_history" and the whole migration chain halts (0010/0011 never
 -- apply, `shctx sprint open` breaks on SQLite >= 3.25). Drop first, recreate
--- after the rename. (shepherd v6.0.6 debug-session fix; 0011 had the same bug.)
+-- after the rename. (shepherd v6.0.5 debug-session fix; 0011 had the same bug.)
 DROP VIEW IF EXISTS v_active_locks;
 
 CREATE TABLE locks_history_new (

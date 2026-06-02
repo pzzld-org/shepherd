@@ -436,7 +436,7 @@ additional hooks not currently consumed by shepherd. Of note:
   `hooks/hooks.json`). These are git-substrate hooks, not Agent Teams
   hooks; included here for completeness.
 - **`Stop`** (event #16) — consumed by three registered hooks:
-  `hooks/scripts/coordinate_drive_guard.sh` (v6.0.6 — the coordinate-mode
+  `hooks/scripts/coordinate_drive_guard.sh` (v6.0.5 — the coordinate-mode
   active-drive backstop; blocks a premature root halt while a spawn session has
   idle teammates / unread lead mail, per `doctrines/coordinate-active-drive.md
   §VII`; fast-paths to exit 0 outside spawn sessions, runaway-bounded, config
@@ -638,8 +638,8 @@ all are catchable by operators or code review.
 - `hooks/scripts/teammate_idle.sh` — `TeammateIdle` handler (v5.1.7+)
 - `hooks/scripts/subagent_telemetry.sh` — `SubagentStop` handler (cache + heartbeat v5.1.7)
 - `hooks/scripts/deliverable_check.sh` — `Stop` hook stalled-deliverable detector
-- `hooks/scripts/coordinate_drive_guard.sh` — `Stop` hook coordinate-mode active-drive backstop (v6.0.6)
-- `doctrines/coordinate-active-drive.md` — dispatch→coordinate active-drive contract (v6.0.6; #113/#98/#112)
+- `hooks/scripts/coordinate_drive_guard.sh` — `Stop` hook coordinate-mode active-drive backstop (v6.0.5)
+- `doctrines/coordinate-active-drive.md` — dispatch→coordinate active-drive contract (v6.0.5; #113/#98/#112)
 - `skills/context/scripts/cmd_teammate.sh` — register / heartbeat / status / liveness / prune / retire
 - `skills/context/scripts/cmd_mailbox.sh` — send / recv / ack / stale
 - `skills/context/scripts/cmd_escalate.sh` — create / list / resolve

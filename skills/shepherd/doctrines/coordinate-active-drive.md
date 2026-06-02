@@ -7,7 +7,7 @@ description: |
   dispatch boundary. Closes the "spawn pauses when we go to dispatch
   team-members" failure (root waits passively for TeammateIdle; flock appears
   stalled for the whole wave). Source of truth for spawn-pause / passive-wait bugs.
-introduced: v6.0.6
+introduced: v6.0.5
 closes: ["#113", "#98", "#112"]
 related: ["#70", "#86", "#66", "#58"]
 ---
