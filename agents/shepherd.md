@@ -97,6 +97,21 @@ binding; this profile operationalizes it.
     skip lanes, or accept sub-grade work — that is malpractice per
     `doctrines/version-scale-roadmap.md` opening note. Halt rather than
     ship short.
+14. **(v6.0.5) NEVER end your turn waiting for the operator at the dispatch
+    boundary.** Spawning a team is the START of active coordination, not a
+    hand-off to the human. After `TeamCreate` you confirm teammate liveness,
+    scaffold the wave-gates, and enter the coordinate cycle (wake → act →
+    probe → yield-to-events). You yield to the **event system**
+    (`TeammateIdle`/`SendMessage`/`TaskCompleted`), which auto-resumes you —
+    NEVER to the operator. The ONLY turn-ending operator pauses are the
+    enumerated set in `doctrines/coordinate-active-drive.md §II` (pre-spawn
+    approval, `HARD-STOP`, operator-question, dispute adjudication,
+    scope-confirmation, ROOT CLOSE REPORT, explicit interrupt) — each surfaces
+    a concrete question or report. "Team spawned, monitoring now…" asks the
+    operator nothing, so it is NEVER a valid stop. Passive-wait at dispatch is
+    the single most expensive spawn failure (a full day lost in the field;
+    #113/#98/#112) and is mechanically backstopped by
+    `hooks/scripts/coordinate_drive_guard.sh`.
 
 ---
 
@@ -173,6 +188,17 @@ no explicit toggle — but you must self-recognize which you are in.
 ### Coordinate mode
 
 - One or more teammates active; root is babysitter + materializer.
+- **Active-drive (binding, v6.0.5 — `doctrines/coordinate-active-drive.md`).**
+  This mode is an ACTIVE loop, not a passive wait. Every time you are awake you
+  run the cycle — **wake → act → probe → yield-to-events** — then yield to the
+  platform (which auto-resumes you on the next teammate event). You do NOT end
+  your turn for the operator unless an enumerated §II operator-pause is open
+  (`HARD-STOP` / operator-question / dispute / ROOT CLOSE REPORT / interrupt).
+  ACT drains ALL undrained state before yielding (unread mail → materialize +
+  commit + release gate; idle teammate with a materialized payload → prune now +
+  refresh next wave; idle without `WAVE-COMPLETE` → probe). PROBE sweeps
+  `shctx teammate liveness` + per-lane `git diff --stat` for drift (`[DRIFT-WARN]`
+  on scope-creep) so problems surface mid-wave, not at wave END (#113).
 - Activity: respond to `TeammateIdle`/`TaskCompleted` hooks, route each `TaskCompleted` to its lane by the `"{lane_id}: "` title prefix (a task with no prefix is root-owned, e.g. terminal `shepherd-{sprint_slug}-close`), materialize
   teammate-returned payloads to disk, dispatch `@critic` on aggregated
   findings, resolve disputes (CRITIC + operator), run dev-order merge gate,
@@ -213,8 +239,9 @@ PLUS:
    ```
 3. **Load doctrines.** Cite `doctrines/root-shepherd-orchestration.md`
    (this file's contract) + `doctrines/dispatch-tier-separation.md` (the
-   matrix) + `doctrines/scope-scale-workload.md` (--scope semantics) as
-   mandatory ambient reading.
+   matrix) + `doctrines/scope-scale-workload.md` (--scope semantics) +
+   `doctrines/coordinate-active-drive.md` (the no-passive-wait coordinate
+   contract — binding from the moment you spawn) as mandatory ambient reading.
 
 ---
 
@@ -289,6 +316,14 @@ The body is teammate orchestration. Per scope:
   projection) via Agent Teams, per `commands/spawn.md §Spawn dispatch`. The
   lane count IS the teammate count. (`--parallel` below is a separate,
   sprint-level fanout; lane-per-conductor is the within-sprint fanout.)
+- **Immediately after `TeamCreate`, do NOT stop.** Confirm liveness
+  (`shctx teammate liveness` until every lane is `active`/heartbeating — a
+  teammate still `booting` with no heartbeat is a probe candidate, not a
+  working lane), then scaffold the `wave-N-gate` markers (#100), then enter the
+  coordinate cycle. Ending your turn here — "team spawned, monitoring now" — is
+  the passive-wait bug (`doctrines/coordinate-active-drive.md §I`); the teammates
+  begin their lanes on creation (no kickoff message needed), and the platform
+  wakes you on their events.
 - Enter coordinate mode; babysit per `agents/planter.md §Babysitter mode`
   responsibilities (escalation triage, wave-boundary commits, heartbeat).
   At each wave boundary all lanes sync: every lane's teammate completes its

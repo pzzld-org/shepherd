@@ -4,6 +4,113 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v6.0.5 — 2026-06-02
+
+### Schema migrations: fix `ALTER TABLE … RENAME` view-dangling on SQLite ≥ 3.25 (debug-session find)
+
+A debug session on the v6.0.5 cut surfaced a **pre-existing, release-blocking** defect
+unrelated to the spawn work: migrations `0009_locks_mode_sprint.sql` and
+`0011_mem_entries_prior_kind.sql` (recreate-table migrations) ran `DROP TABLE` + `ALTER
+TABLE … RENAME TO` **while the dependent view still existed** (`v_active_locks` /
+`v_mem_recent_7d`), dropping the view only afterward. On SQLite ≥ 3.25.0 `RENAME`
+validates every view/trigger in the schema, so the rename aborted with `error in view
+…: no such table: …`. Because `0009` halts mid-chain, `0010`/`0011` never applied —
+**every fresh `shctx init` and `shctx sprint open` was broken on modern SQLite**
+(observed on 3.45.1), and the context test suite ran **24/37**.
+
+- Fix: drop the dependent view **before** the table swap in both migrations; recreate it
+  after the rename. Net schema is identical — only the statement order changes to satisfy
+  SQLite's modern `RENAME` validation. Idempotent migrations already applied on older
+  SQLite are unaffected (the `schema_versions` guard prevents re-run).
+- After the fix: full migration chain applies (11 versions), all three dependent views
+  query, and the context suite is **37/37** (was 24/37).
+- **Root-cause note:** this shipped because **no CI runs the test suites** (only
+  `release.yml` exists). Recommend adding a workflow that runs `hooks/tests/run.sh` +
+  `skills/context/tests/run.sh` on a modern SQLite — tracked as a follow-up.
+
+### Coordinate-mode active-drive — `/shepherd:spawn` no longer pauses at the dispatch boundary (#113 / #98 / #112)
+
+Closes the single most expensive `/shepherd:spawn` failure: **the root pausing the
+moment it dispatches teammate-conductors.** After `TeamCreate` the root's turn ended
+and it waited passively — there was no contract for the window between "team spawned"
+and "first teammate event," and the default LLM behavior in that gap is to stop. The
+operator (who chose spawn precisely to step away) returned to a session paused at the
+dispatch boundary with nothing shipped (a full day lost in the field report that
+motivated this). Passive `TeammateIdle` waiting "only fires when a conductor goes idle
+— typically at the END of its work" (#113), idle teammates surfaced no signal (#98),
+and post-`WAVE-COMPLETE` prune was deferred (#112).
+
+- **New doctrine `doctrines/coordinate-active-drive.md`** — the binding contract:
+  - **Two kinds of stop, rigorously separated:** the enumerated, closed set of
+    legitimate *operator-pauses* (pre-spawn approval, `HARD-STOP`, operator-question,
+    dispute adjudication, scope-confirmation, ROOT CLOSE REPORT, explicit interrupt)
+    vs *passive-wait* (ending the turn with undrained coordinate state and no operator
+    question pending — the bug). One-line rule: **yield to events, never to the
+    operator — unless the operator is the only one who can answer the open question.**
+  - **Kickoff guarantee (§III):** teammates BEGIN their lane on creation (first action
+    `/shepherd:start --teammate`, no go-signal); root **confirms liveness** before
+    treating dispatch as complete. Closes the mutual-wait deadlock (teammate waits for
+    a kickoff while root waits for a teammate event).
+  - **The coordinate cycle (§IV):** `wake → act (drain mail/idle) → probe (liveness +
+    per-lane `git diff --stat` drift, `[DRIFT-WARN]`) → yield-to-events`. The same
+    turn-end mechanic as passive-wait, opposite correctness: yield is cheap and
+    auto-resumes; passive-wait leaves work undrained and implicitly asks the operator.
+  - **Idle-without-signal (§VI, #98)** proactive probe; **active inspection cadence
+    (§V, #113)** realizable subset (event-anchored sweeps; honest about no wall-clock timer).
+- **Mechanical backstop `hooks/scripts/coordinate_drive_guard.sh`** (`Stop` hook,
+  per the #86/#66 "mechanize prose-only invariants" lesson): blocks a premature root
+  halt while a live spawn session has an `idle` teammate or lead-bound unread mail.
+  - **Fast-path:** no DB / zero live teammates → exit 0. Solo `/shepherd:start`,
+    `/shepherd:plant`, and ALL non-spawn work are never touched — the guard only ever
+    engages inside an active spawn session.
+  - **Runaway-bounded (#114 class):** a per-session 2-nudge cap then **fails OPEN**, so
+    a deliberate "stop with idle teammates" is never trapped; fails open on any error;
+    `[spawn].coordinate_drive_guard = block (default) | warn | off`.
+  - 9-case dedicated test (`hooks/tests/test_coordinate_drive_guard.sh`, wired into
+    `hooks/tests/run.sh`) — fast-path, block, lead-vs-teammate-bound mail, runaway cap,
+    config off/warn. Full suite **28/28**.
+- **Wired into:** `agents/shepherd.md` (Hard prohibition #14 — no dispatch-boundary
+  operator-pause; coordinate-mode active-drive; Step 2 confirm-liveness-then-drive),
+  `agents/conductor.md` (teammate begins-on-boot), `commands/spawn.md` (`TeamCreate`
+  kickoff wording; post-spawn confirmation is not a turn-end; active-drive responsibility
+  row), `commands/start.md` (teammate begin-immediately), `doctrines/root-shepherd-
+  orchestration.md §II`, `doctrines/claude-code-platform-alignment.md §V` (Stop-hook
+  registration), `doctrines/spawn-escalation.md §XII`, `doctrines/README.md` index,
+  `docs/configuration.md` (new `[spawn]` section).
+
+### Caching + native-leverage hardening (live-docs rigor audit)
+
+A documentation-rigor audit against the **live** Claude Code docs (Agent Teams / hooks /
+sub-agents / Dynamic Workflows / prompt-caching, verified 2026-06-02) confirmed the
+coordinate-active-drive claims (`Stop {"decision":"block"}`, `SendMessage` lead
+auto-resume v2.1.77, the event-driven wake model, no `team_name` on subagents) and
+surfaced these fixes:
+
+- **`TeammateIdle` routing hardened.** The live payload carries `session_id` (+ optional
+  `agent_id`/`agent_type`) but **not** `teammate_name`; `teammate_idle.sh` now routes by
+  `teammate_name` when present, **falls back to `session_id`**, and **fails loud** if
+  neither matches — so the coordinate-drive backstop can't silently no-op on schema drift.
+- **Dead heartbeat machinery retired.** The v5.1.7 per-tool teammate-heartbeat emission in
+  `subagent_telemetry.sh` keyed on `$CLAUDE_TEAMMATE_NAME` (empty on the live platform) and
+  never fired — removed in favor of native `TeammateIdle`-driven liveness + the
+  `shctx teammate liveness` staleness poll. `spawn-escalation.md §V` +
+  `claude-code-platform-alignment.md §V` reconciled.
+- **Caching corrected + optimized.** `brief-cache-discipline.md` reframed — the prior
+  "implicit breakpoints *inside* the brief" model was inaccurate; the genuinely-cached
+  prefix is the agent system prompt (`agents/<role>.md`) + tools, and the brief's
+  stable-first ordering earns *coherence* + a reusable conversation prefix. Biggest dollar
+  lever is TTL: **`ENABLE_PROMPT_CACHING_1H=1`** for `--scope >= patch` (surfaced in
+  `docs/configuration.md §[spawn]` + spawn preflight). Brief tails made deterministic
+  (`open-issues.sql` `ORDER BY number`, dropped volatile `updated_at`) and the coder
+  `[ROLE]` line made cross-sprint-stable (dropped `{sprint_branch}`).
+- **Doc accuracy:** hook event count 29 → 31; `sqlite-canonical-state.md` path made
+  namespace-neutral (`.shepherd` default); `workflow-compile-down.md` reconciled
+  (binding *model* vs opt-in spike *backend*).
+
+The 3 sanctioned mechanizations (adaptation/self-improvement, code-styles, context-DB
+comms) were audited as cleanly mechanized + queryable-without-reindex — on-philosophy,
+no change. hooks 28/28; context 37/37.
+
 ## v6.0.4 — 2026-05-31
 
 ### Adaptation + self-improvement loop, made SQLite-canonical (#94 / #95)

@@ -109,13 +109,13 @@ rules.
 | Teammate | Spawned teammate-conductor (`agents/conductor.md` in TEAMMATE mode) via `commands/spawn.md §Spawn dispatch` | "teammate" Claude Code session spawned by the lead | shepherd | Shepherd's teammate is a conductor profile with restricted dispatch surface per `doctrines/dispatch-tier-separation.md §II`. Platform teammates are generic Claude Code sessions. |
 | Teammate naming | `shepherd-{lane\|parallel\|auto}-{sprint_slug}[-{lane_id}]` per `commands/spawn.md §Spawn dispatch` | Name assigned at spawn; lead chooses or generates per `https://code.claude.com/docs/en/agent-teams §Specify teammates and models` | DUAL | Shepherd assigns predictable names so the `TeammateIdle` hook can route via the `shepherd-` prefix; platform owns the actual name persistence in `~/.claude/teams/{team-name}/config.json`. |
 | Teammate status | `teammates` table (`booting` → `active` → `idle` / `crashed` / `retired`) per `skills/context/scripts/cmd_teammate.sh` | Implicit; in-process or tmux process state with no explicit status column exposed to hooks | shepherd | Per `https://code.claude.com/docs/en/agent-teams §Limitations` the platform has no rich status; shepherd's richer model is the only liveness index. |
-| Heartbeat | `heartbeats` table + `cmd_teammate.sh heartbeat`; emitted from `hooks/scripts/subagent_telemetry.sh` when `CLAUDE_TEAMMATE_NAME` is set | Not exposed | shepherd | Platform has no heartbeat primitive. Shepherd's `cmd_teammate.sh liveness --stale-mins=N` is the stale-teammate detector. **#93 caveat:** `CLAUDE_TEAMMATE_NAME` reads empty on the live platform, so the telemetry-emitted heartbeat is currently inert; **`TeammateIdle` (hook-JSON identity) is the working liveness/idle signal** that drives proactive pruning. A `cwd`-derived heartbeat is tracked for v6.0.3. See `doctrines/sqlite-canonical-state.md §Allow-list`. |
+| Heartbeat | `heartbeats` table + `cmd_teammate.sh heartbeat` (called by `teammate_idle.sh` when a teammate name is present, and by `register`) | Not exposed | shepherd | Platform has no heartbeat primitive. **v6.0.5:** the inert per-tool emission from `subagent_telemetry.sh` (keyed on `CLAUDE_TEAMMATE_NAME`, which reads empty on the live platform, #93, so it never fired) is **RETIRED**. The working liveness/idle signal is native **`TeammateIdle`** (hook-JSON identity, routed by `teammate_name` OR `session_id` per `teammate_idle.sh`), with `cmd_teammate.sh liveness --stale-mins=N` as the stale-teammate detector. A finer `cwd`-derived poll remains a future option. See `doctrines/sqlite-canonical-state.md`. |
 | Mailbox | `mailbox` table + `cmd_mailbox.sh {send,recv,ack,stale}` per `skills/context/scripts/cmd_mailbox.sh` | `SendMessage` tool — direct message between live teammates per `https://code.claude.com/docs/en/agent-teams §Talk to teammates directly` | DUAL — see §IV | Both work. Shepherd's mailbox persists across sessions; platform's `SendMessage` is in-session and is not durable across teammate restart. |
 | Task list | Used for lane routing and wave-gate enforcement (v6.0.3, #100/#102). Every teammate uses `TaskCreate` with `"{lane_id}: "` title prefix + `TaskUpdate(owner: <self>)`; root creates the `wave-{N}-gate-{sprint_slug}` marker task and releases it via `TaskUpdate(status: completed)` after each wave passes. Shepherd's *structural* task surface remains the engineer plan (`{paths.plans}/<sprint>.plan.md`) + GH issue tree. | Shared task list at `~/.claude/tasks/{team-name}/` per `https://code.claude.com/docs/en/agent-teams §Architecture` | DUAL | Shepherd now uses the platform task list for wave-gate enforcement. Root routes `TaskCompleted` by the `"{lane_id}: "` title prefix observed via `TeammateIdle` / `SendMessage` WAVE-COMPLETE payloads (no registered `TaskCreated`/`TaskCompleted` hook script — see §V). |
 | TeammateIdle event | Hooked by `hooks/scripts/teammate_idle.sh` (registered `TeammateIdle` in `hooks/hooks.json`) | Fired by platform; payload schema per `https://code.claude.com/docs/en/hooks#teammateidle` | platform fires; shepherd handles | Already integrated in v5.1.7. Shepherd marks the teammate idle in DB; lists open escalations + stalled deliverables to stderr. |
 | TaskCreated event | Consumed for lane routing and wave-gate enforcement (v6.0.3, #100/#102). No registered hook script — root observes via `TeammateIdle` payload and `SendMessage` WAVE-COMPLETE payloads; the `"{lane_id}: "` title prefix in the task title is the routing key. | Fired by platform when `TaskCreate` runs; payload schema per `https://code.claude.com/docs/en/hooks#taskcreated` | DUAL | Shepherd uses `TaskCreate`/`TaskUpdate` for lane-prefixed tasks and the `wave-{N}-gate-{sprint_slug}` marker. No shepherd hook handler is registered for `TaskCreated` in `hooks/hooks.json`; routing happens via title prefix observed in teammate idle/message payloads. |
 | TaskCompleted event | Consumed for lane routing and wave-gate enforcement (v6.0.3, #100/#102). Root routes by `"{lane_id}: "` title prefix; absence of prefix marks root-owned terminal tasks. Wave-boundary commits are triggered by `TaskCompleted` per `doctrines/spawn-escalation.md §VI`. | Fired by platform when a task is marked complete; payload schema per `https://code.claude.com/docs/en/hooks#taskcompleted` | DUAL | No shepherd hook handler is registered for `TaskCompleted` in `hooks/hooks.json`; root reacts via `SendMessage` WAVE-COMPLETE payloads. The `wave-{N}-gate-{sprint_slug}` marker task is released by root via `TaskUpdate(status: completed)` only after the wave gate passes. |
-| SubagentStop event | Hooked by `hooks/scripts/subagent_telemetry.sh` (cache telemetry); also feeds `cmd_teammate.sh heartbeat` when `CLAUDE_TEAMMATE_NAME` is set | Fired per `https://code.claude.com/docs/en/hooks` (event #13) | shepherd | Pre-Agent-Teams shepherd primitive; behavior under test for whether it coexists cleanly with `TeammateIdle` for spawned teammates. |
+| SubagentStop event | Hooked by `hooks/scripts/subagent_telemetry.sh` (cache telemetry ONLY; the v5.1.7 teammate-heartbeat emission was retired in v6.0.5 — see the Heartbeat row) | Fired per `https://code.claude.com/docs/en/hooks` (event #13) | shepherd | Pre-Agent-Teams shepherd primitive; coexists with `TeammateIdle` for spawned teammates. |
 | Escalation | `escalations` table + `cmd_escalate.sh {create,list,resolve}` per `skills/context/scripts/cmd_escalate.sh` | None | shepherd-only | The escalation contract (`PLAN-AUTHORSHIP-REQUEST`, `PLAN-GATE-REQUEST`, `WRONG-TIER-DISPATCH`, `CROSS-TEAMMATE-DISPUTE`, etc.) per `doctrines/dispatch-tier-separation.md §IV` and `doctrines/spawn-escalation.md` has no platform counterpart. |
 | Deliverable | `deliverables` table + `cmd_deliverable.sh {promise,complete,stalled}` per `skills/context/scripts/cmd_deliverable.sh` | None | shepherd-only | The promise/complete pattern (stalled-detector via `Stop` hook `hooks/scripts/deliverable_check.sh`) per `doctrines/sqlite-canonical-state.md §Allow-list` has no platform counterpart. |
 | Dispatch tier | `doctrines/dispatch-tier-separation.md §I-II` — three-tier hierarchy (root / meta / flock) | None | shepherd-only | Platform's lead/teammate split is two-tier; shepherd adds a flock tier underneath the conductor. Tier discipline is core shepherd value-add, NOT inherited from platform. |
@@ -327,11 +327,16 @@ ones.
 
 Per the docs, the platform fires `TeammateIdle` "when a teammate is
 about to go idle"; exit code 2 with stderr blocks the idle state and
-keeps the teammate working. Behavior under test: whether the hook
-payload always carries `teammate_name` (the shepherd handler reads
-`.teammate_name` from stdin JSON per `hooks/scripts/teammate_idle.sh`
-line 22); the documented schema does not list `teammate_name`
-explicitly.
+keeps the teammate working. **Resolved (live-docs-verified 2026-06-02):**
+the documented `TeammateIdle` payload carries `session_id` (+ optional
+`agent_id` / `agent_type`) but does **NOT** list `teammate_name`. The
+shepherd handler therefore routes by `teammate_name` when present and
+**falls back to `session_id`** (which the teammate registered via
+`cmd_teammate.sh register --session=`), and **fails loud** to stderr if
+neither matches a row — so payload-schema drift cannot silently no-op the
+idle flip that the coordinate-drive backstop
+(`hooks/scripts/coordinate_drive_guard.sh`) depends on. See
+`hooks/scripts/teammate_idle.sh` (routing hardened v6.0.5).
 
 **Shepherd handler:** `hooks/scripts/teammate_idle.sh` (registered as
 `TeammateIdle` in `hooks/hooks.json`).
@@ -407,8 +412,9 @@ as `SubagentStop` in `hooks/hooks.json`).
 
 **Effect:** Captures per-dispatch cache telemetry (input/output tokens,
 cache read/creation tokens) to `<ns>/logs/events-YYYY-MM-DD.jsonl` per
-`doctrines/cache-telemetry.md`. When `CLAUDE_TEAMMATE_NAME` is set, also
-emits a teammate heartbeat to the DB (v5.1.7 extension).
+`doctrines/cache-telemetry.md`. (The v5.1.7 teammate-heartbeat emission was
+**retired in v6.0.5** — it keyed on `CLAUDE_TEAMMATE_NAME`, which reads empty
+on the live platform, so it never fired; liveness is native `TeammateIdle`-driven.)
 
 **Overlap with `TeammateIdle`:** Per `commands/spawn.md`,
 `SubagentStop` fires when a subagent finishes (anywhere — main session,
@@ -435,9 +441,17 @@ additional hooks not currently consumed by shepherd. Of note:
   consumed by `hooks/scripts/worktree_lifecycle.sh` (per
   `hooks/hooks.json`). These are git-substrate hooks, not Agent Teams
   hooks; included here for completeness.
-- **`Stop`** (event #16) — already consumed by
-  `hooks/scripts/deliverable_check.sh` for stalled-deliverable
-  detection (v5.1.7). Distinct from `SubagentStop`.
+- **`Stop`** (event #16) — consumed by three registered hooks:
+  `hooks/scripts/coordinate_drive_guard.sh` (v6.0.5 — the coordinate-mode
+  active-drive backstop; blocks a premature root halt while a spawn session has
+  idle teammates / unread lead mail, per `doctrines/coordinate-active-drive.md
+  §VII`; fast-paths to exit 0 outside spawn sessions, runaway-bounded, config
+  via `[spawn].coordinate_drive_guard`), `hooks/scripts/deliverable_check.sh`
+  (v5.1.7 — stalled-deliverable detection), and two `type: "agent"` hooks
+  (wave-gate cherry-pick #21, close-finalize #60). Distinct from `SubagentStop`.
+  The `coordinate_drive_guard.sh` block is the ONLY shepherd `Stop` consumer that
+  returns a `{"decision":"block"}` from a command hook; it is bounded by a
+  2-nudge cap and fails open on any error so it can never trap a session.
 
 Adoption of any of these is documented here when it lands; shepherd
 contributors should NOT add new hook consumers without amending §V of
@@ -628,8 +642,10 @@ all are catchable by operators or code review.
 - `commands/spawn.md` — preflight Checks 0–8; platform prerequisites; teammate boot prompt; OQ-1..OQ-6
 - `hooks/hooks.json` — registered hook entries (`TeammateIdle`, `Stop`, `SubagentStop`, `WorktreeCreate`, etc.)
 - `hooks/scripts/teammate_idle.sh` — `TeammateIdle` handler (v5.1.7+)
-- `hooks/scripts/subagent_telemetry.sh` — `SubagentStop` handler (cache + heartbeat v5.1.7)
+- `hooks/scripts/subagent_telemetry.sh` — `SubagentStop` handler (cache telemetry; teammate-heartbeat emission retired v6.0.5)
 - `hooks/scripts/deliverable_check.sh` — `Stop` hook stalled-deliverable detector
+- `hooks/scripts/coordinate_drive_guard.sh` — `Stop` hook coordinate-mode active-drive backstop (v6.0.5)
+- `doctrines/coordinate-active-drive.md` — dispatch→coordinate active-drive contract (v6.0.5; #113/#98/#112)
 - `skills/context/scripts/cmd_teammate.sh` — register / heartbeat / status / liveness / prune / retire
 - `skills/context/scripts/cmd_mailbox.sh` — send / recv / ack / stale
 - `skills/context/scripts/cmd_escalate.sh` — create / list / resolve
@@ -653,7 +669,7 @@ all are catchable by operators or code review.
 - `https://code.claude.com/docs/en/hooks#teammateidle` — `TeammateIdle` payload + decision control
 - `https://code.claude.com/docs/en/hooks#taskcreated` — `TaskCreated` payload + decision control
 - `https://code.claude.com/docs/en/hooks#taskcompleted` — `TaskCompleted` payload + decision control
-- `https://code.claude.com/docs/en/hooks` — complete hook event list (29 events as of fetch date)
+- `https://code.claude.com/docs/en/hooks` — complete hook event list (31 events, live-docs-verified 2026-06-02)
 
 ### Issue references (GitHub)
 

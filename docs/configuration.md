@@ -332,6 +332,40 @@ quiet_warnings = false
 
 This is the integration point with locally developed skills — `code-style` is the canonical example, but you can wire any skill you want into the dispatch.
 
+### `[spawn]` — teammate-spawn coordination (`/shepherd:spawn`)
+
+```toml
+[spawn]
+# v6.0.5 — the coordinate-mode active-drive backstop (hooks/scripts/
+# coordinate_drive_guard.sh, a Stop hook). Controls what happens when the root
+# shepherd tries to END ITS TURN while a spawn session still has actionable,
+# root-clearable coordinate state (an idle teammate, or unread lead mail) — i.e.
+# the "spawn pauses at the dispatch boundary" failure (doctrines/
+# coordinate-active-drive.md). Outside a live spawn session the guard fast-paths
+# and never fires, so solo /shepherd:start and all non-spawn work are untouched.
+#   block (default) — re-engage the root (Stop "decision: block") so it drains
+#                     the work before yielding. Bounded by a 2-nudge runaway cap
+#                     (then fails open) so a deliberate stop is never trapped.
+#   warn            — never block; emit a one-line stderr nudge only.
+#   off             — disable the guard entirely (fast-path exit).
+coordinate_drive_guard = "block"
+
+# Wave-ack / cross-dependency timeouts consumed by the escalation contract
+# (doctrines/spawn-escalation.md). Optional; defaults shown.
+wave_ack_timeout_sec  = 60     # conductor waits this long for a wave-ack before continuing
+cross_dep_timeout_sec = 300    # CROSS-DEP-WAIT escalates to operator after this
+```
+
+> **Prompt-cache TTL (caching optimization, v6.0.5).** A multi-wave sprint easily
+> exceeds the **5-minute** default cache TTL between waves (gates, audits, operator
+> pauses), so cached brief/system prefixes silently expire and get re-created at full
+> input rate. For `--scope >= patch` (and any long autorun) set
+> **`ENABLE_PROMPT_CACHING_1H=1`** in your environment to opt into the **1-hour** TTL
+> (unified flag, April 2026; works on API key / Bedrock / Vertex / Foundry — Claude
+> *subscriptions* already request 1h automatically, so this matters most for API-key
+> use). This is the single highest-leverage token win for long runs. Refs:
+> `https://code.claude.com/docs/en/prompt-caching`, `doctrines/cache-telemetry.md`.
+
 ## Path interpolation
 
 Any `{X}/{Y}/{Z}/{N}` placeholder in `branching`, `release`, or `ledger` is interpolated at runtime. Any `{paths.*}` reference is resolved against `[paths]`. So:

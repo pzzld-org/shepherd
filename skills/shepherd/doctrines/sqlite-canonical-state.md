@@ -9,10 +9,15 @@ since: v5.1.7
 
 ## Rule
 
-`.artifacts/root.db` is the canonical store for operational and ephemeral
-state. The filesystem is canonical only for human-authored durable artifacts.
-Markdown reports are materialized views over DB rows, generated on demand
-via `shctx report <kind>`.
+`<namespace>/root.db` (default **`.shepherd/root.db`**; legacy `.artifacts/root.db`
+for projects that opted into the old namespace — auto-detected) is the canonical
+store for operational and ephemeral state. The filesystem is canonical only for
+human-authored durable artifacts. Markdown reports are materialized views over DB
+rows, generated on demand via `shctx report <kind>`.
+
+> The cache-vs-canonical split is detailed in `doctrines/context-registry.md` (the
+> canonical reference); this allow-list is its operational-state extension. Keep the
+> two — and `skills/context/SKILL.md §Cache vs canonical` — in sync.
 
 ## Allow-list
 
@@ -75,8 +80,8 @@ class.
    agent has nothing to query.
 
 3. **Reading the markdown view to "verify" rows landed.** Query the rows
-   directly: `sqlite3 .artifacts/root.db "SELECT count(*) FROM <table>
-   WHERE <filter>;"`
+   directly: `sqlite3 .shepherd/root.db "SELECT count(*) FROM <table>
+   WHERE <filter>;"` (legacy namespace: `.artifacts/root.db`).
 
 4. **Locking the markdown file to coordinate writes.** Use SQLite WAL +
    transactional inserts. The DB handles concurrency.

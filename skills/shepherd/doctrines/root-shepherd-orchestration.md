@@ -131,12 +131,22 @@ mode the root is in to interpret its prompts and escalations correctly.
 
 - One or more teammates are active and the root is the babysitter +
   artifact-materializer.
+- **Active-drive (binding — `doctrines/coordinate-active-drive.md`).**
+  Coordinate mode is an ACTIVE loop. The root never ends its turn waiting for
+  the operator at or after the dispatch boundary; it runs **wake → act → probe
+  → yield-to-events** on every wake and yields only to the platform event
+  system (which auto-resumes it), reserving operator pauses for the enumerated
+  decision points (`coordinate-active-drive.md §II`). Passive-wait after
+  `TeamCreate` — the root sitting idle until a teammate finishes "typically at
+  the END of its work" (#113) — is the failure this contract closes.
 - Allowed activity: respond to escalations, materialize teammate-returned
   payloads as artifact files, dispatch `@critic` on aggregated findings,
   resolve disputes between teammates, run dev-order merge gate, surface
   status to operator, periodic context refresh.
 - Prohibited: dispatching `@coder` (teammates own that); nested spawn;
-  silent absorption of teammate findings; bypassing dispute escalation.
+  silent absorption of teammate findings; bypassing dispute escalation;
+  **ending the turn for the operator with undrained coordinate state**
+  (passive-wait, backstopped by `hooks/scripts/coordinate_drive_guard.sh`).
 
 ---
 
