@@ -327,11 +327,16 @@ ones.
 
 Per the docs, the platform fires `TeammateIdle` "when a teammate is
 about to go idle"; exit code 2 with stderr blocks the idle state and
-keeps the teammate working. Behavior under test: whether the hook
-payload always carries `teammate_name` (the shepherd handler reads
-`.teammate_name` from stdin JSON per `hooks/scripts/teammate_idle.sh`
-line 22); the documented schema does not list `teammate_name`
-explicitly.
+keeps the teammate working. **Resolved (live-docs-verified 2026-06-02):**
+the documented `TeammateIdle` payload carries `session_id` (+ optional
+`agent_id` / `agent_type`) but does **NOT** list `teammate_name`. The
+shepherd handler therefore routes by `teammate_name` when present and
+**falls back to `session_id`** (which the teammate registered via
+`cmd_teammate.sh register --session=`), and **fails loud** to stderr if
+neither matches a row — so payload-schema drift cannot silently no-op the
+idle flip that the coordinate-drive backstop
+(`hooks/scripts/coordinate_drive_guard.sh`) depends on. See
+`hooks/scripts/teammate_idle.sh` (routing hardened v6.0.5).
 
 **Shepherd handler:** `hooks/scripts/teammate_idle.sh` (registered as
 `TeammateIdle` in `hooks/hooks.json`).
@@ -663,7 +668,7 @@ all are catchable by operators or code review.
 - `https://code.claude.com/docs/en/hooks#teammateidle` — `TeammateIdle` payload + decision control
 - `https://code.claude.com/docs/en/hooks#taskcreated` — `TaskCreated` payload + decision control
 - `https://code.claude.com/docs/en/hooks#taskcompleted` — `TaskCompleted` payload + decision control
-- `https://code.claude.com/docs/en/hooks` — complete hook event list (29 events as of fetch date)
+- `https://code.claude.com/docs/en/hooks` — complete hook event list (31 events, live-docs-verified 2026-06-02)
 
 ### Issue references (GitHub)
 
