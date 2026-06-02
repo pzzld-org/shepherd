@@ -11,6 +11,14 @@ PRAGMA foreign_keys = OFF;
 
 BEGIN;
 
+-- Drop the dependent view BEFORE the table swap. On SQLite >= 3.25.0,
+-- `ALTER TABLE ... RENAME` validates every view in the schema; if
+-- `v_mem_recent_7d` still references `mem_entries` while we drop+rename it, the
+-- RENAME aborts with "error in view v_mem_recent_7d: no such table:
+-- main.mem_entries". Drop first, recreate after the rename. (shepherd v6.0.6
+-- debug-session fix; same antipattern as the original 0009.)
+DROP VIEW IF EXISTS v_mem_recent_7d;
+
 CREATE TABLE mem_entries_new (
   id          TEXT PRIMARY KEY,
   project_id  TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE ON UPDATE CASCADE,
@@ -36,8 +44,7 @@ ALTER TABLE mem_entries_new RENAME TO mem_entries;
 CREATE INDEX idx_mem_project_kind   ON mem_entries(project_id, kind);
 CREATE INDEX idx_mem_project_pinned ON mem_entries(project_id, pinned) WHERE pinned = 1;
 
--- Rebind the recent-memory view to the recreated table (recreate defensively).
-DROP VIEW IF EXISTS v_mem_recent_7d;
+-- Recreate the view on the renamed table (it was dropped at the top of the txn).
 CREATE VIEW v_mem_recent_7d AS
   SELECT * FROM mem_entries
   WHERE created_at >= unixepoch() - 7 * 86400 OR pinned = 1

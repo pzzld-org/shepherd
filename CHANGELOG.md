@@ -6,6 +6,28 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ## v6.0.6 — 2026-06-02
 
+### Schema migrations: fix `ALTER TABLE … RENAME` view-dangling on SQLite ≥ 3.25 (debug-session find)
+
+A debug session on the v6.0.6 cut surfaced a **pre-existing, release-blocking** defect
+unrelated to the spawn work: migrations `0009_locks_mode_sprint.sql` and
+`0011_mem_entries_prior_kind.sql` (recreate-table migrations) ran `DROP TABLE` + `ALTER
+TABLE … RENAME TO` **while the dependent view still existed** (`v_active_locks` /
+`v_mem_recent_7d`), dropping the view only afterward. On SQLite ≥ 3.25.0 `RENAME`
+validates every view/trigger in the schema, so the rename aborted with `error in view
+…: no such table: …`. Because `0009` halts mid-chain, `0010`/`0011` never applied —
+**every fresh `shctx init` and `shctx sprint open` was broken on modern SQLite**
+(observed on 3.45.1), and the context test suite ran **24/37**.
+
+- Fix: drop the dependent view **before** the table swap in both migrations; recreate it
+  after the rename. Net schema is identical — only the statement order changes to satisfy
+  SQLite's modern `RENAME` validation. Idempotent migrations already applied on older
+  SQLite are unaffected (the `schema_versions` guard prevents re-run).
+- After the fix: full migration chain applies (11 versions), all three dependent views
+  query, and the context suite is **37/37** (was 24/37).
+- **Root-cause note:** this shipped because **no CI runs the test suites** (only
+  `release.yml` exists). Recommend adding a workflow that runs `hooks/tests/run.sh` +
+  `skills/context/tests/run.sh` on a modern SQLite — tracked as a follow-up.
+
 ### Coordinate-mode active-drive — `/shepherd:spawn` no longer pauses at the dispatch boundary (#113 / #98 / #112)
 
 Closes the single most expensive `/shepherd:spawn` failure: **the root pausing the
