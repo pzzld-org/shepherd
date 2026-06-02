@@ -37,7 +37,7 @@ jobs:
         # `detect`. v5 is the last major with the header-based helper. `token:` +
         # `persist-credentials: true` are set explicitly so the pushed git auth is
         # robust regardless of checkout's internal credential plumbing.
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
           fetch-tags: true
