@@ -435,9 +435,17 @@ additional hooks not currently consumed by shepherd. Of note:
   consumed by `hooks/scripts/worktree_lifecycle.sh` (per
   `hooks/hooks.json`). These are git-substrate hooks, not Agent Teams
   hooks; included here for completeness.
-- **`Stop`** (event #16) — already consumed by
-  `hooks/scripts/deliverable_check.sh` for stalled-deliverable
-  detection (v5.1.7). Distinct from `SubagentStop`.
+- **`Stop`** (event #16) — consumed by three registered hooks:
+  `hooks/scripts/coordinate_drive_guard.sh` (v6.0.6 — the coordinate-mode
+  active-drive backstop; blocks a premature root halt while a spawn session has
+  idle teammates / unread lead mail, per `doctrines/coordinate-active-drive.md
+  §VII`; fast-paths to exit 0 outside spawn sessions, runaway-bounded, config
+  via `[spawn].coordinate_drive_guard`), `hooks/scripts/deliverable_check.sh`
+  (v5.1.7 — stalled-deliverable detection), and two `type: "agent"` hooks
+  (wave-gate cherry-pick #21, close-finalize #60). Distinct from `SubagentStop`.
+  The `coordinate_drive_guard.sh` block is the ONLY shepherd `Stop` consumer that
+  returns a `{"decision":"block"}` from a command hook; it is bounded by a
+  2-nudge cap and fails open on any error so it can never trap a session.
 
 Adoption of any of these is documented here when it lands; shepherd
 contributors should NOT add new hook consumers without amending §V of
@@ -630,6 +638,8 @@ all are catchable by operators or code review.
 - `hooks/scripts/teammate_idle.sh` — `TeammateIdle` handler (v5.1.7+)
 - `hooks/scripts/subagent_telemetry.sh` — `SubagentStop` handler (cache + heartbeat v5.1.7)
 - `hooks/scripts/deliverable_check.sh` — `Stop` hook stalled-deliverable detector
+- `hooks/scripts/coordinate_drive_guard.sh` — `Stop` hook coordinate-mode active-drive backstop (v6.0.6)
+- `doctrines/coordinate-active-drive.md` — dispatch→coordinate active-drive contract (v6.0.6; #113/#98/#112)
 - `skills/context/scripts/cmd_teammate.sh` — register / heartbeat / status / liveness / prune / retire
 - `skills/context/scripts/cmd_mailbox.sh` — send / recv / ack / stale
 - `skills/context/scripts/cmd_escalate.sh` — create / list / resolve

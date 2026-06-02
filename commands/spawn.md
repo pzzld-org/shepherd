@@ -417,7 +417,11 @@ INHERITED CONTEXT
 --- end snapshot ---
 
 FIRST ACTION
-  Invoke /shepherd:start --teammate. (v5.1.6+)
+  Invoke /shepherd:start --teammate. (v5.1.6+) Do this on your FIRST turn,
+  immediately, WITHOUT waiting for a kickoff message from root — your lane
+  brief below IS the instruction to begin (v6.0.6,
+  doctrines/coordinate-active-drive.md §III). Idling to be told to start is the
+  teammate side of the dispatch-boundary deadlock.
 
   The --teammate flag signals lane-execute mode:
     - Skip Phase 0 mesh / INTRO-COMBO-WAVE / @engineer / @critic (root already did those).
@@ -575,8 +579,18 @@ TeamCreate(<natural-language instruction>), e.g.:
   "Create a team to run sprint {sprint_slug}. Spawn one teammate per lane named
    shepherd-conductor-{sprint_slug}[-{lane_id}], each of agent type
    shepherd:conductor. Give each teammate the boot/lane context below
-   (from § Build the teammate prompt) as its instructions."
+   (from § Build the teammate prompt) as its instructions. Each teammate
+   BEGINS ITS LANE IMMEDIATELY upon creation (its first action is
+   /shepherd:start --teammate) — it does NOT wait for a further go-signal."
 ```
+
+> **Kickoff is part of the dispatch (v6.0.6).** A teammate that waits for a
+> "begin" message while the root waits for a teammate event is a mutual-wait
+> deadlock that looks exactly like the passive-wait pause. The instruction above
+> states the teammate self-starts; the root then **confirms liveness**
+> (`shctx teammate liveness` until each lane is `active`/heartbeating) BEFORE it
+> considers the dispatch complete. A lane still `booting` with no heartbeat is a
+> probe candidate, not a working lane. Per `doctrines/coordinate-active-drive.md §III`.
 
 Each spawned teammate is created **from the `shepherd:conductor` subagent definition**
 (`agents/conductor.md`), so it inherits that definition's `tools:` and `model`. The
@@ -606,7 +620,15 @@ hook-input JSON).
         Babysitter mode: active. Monitoring TeammateIdle + TaskCompleted hooks.
         Heartbeat threshold: 5 min. Alert on staleness.
         Sprint: {sprint_slug}
+        Coordinate cycle: ENTERING NOW — root does not pause for the operator.
 ```
+
+**This confirmation is NOT a turn-end.** Emit it, then proceed in the SAME flow
+into the coordinate cycle (confirm liveness → scaffold wave-gates → wake → act →
+probe → yield-to-events). The root ends its turn only to yield to the platform
+event system (which auto-resumes it) or at an enumerated operator-pause, never as
+a passive wait after the `[SPAWN]` line. Per `doctrines/coordinate-active-drive.md
+§II/§IV`; backstopped by `hooks/scripts/coordinate_drive_guard.sh`.
 
 ---
 
@@ -859,6 +881,7 @@ Summary (one screen):
 
 | Responsibility | Trigger | Action | Source |
 |---|---|---|---|
+| **Active-drive loop** | Every coordinate wake (incl. right after `TeamCreate`) | wake → act (drain mail/idle) → probe (liveness + per-lane `git diff --stat`) → yield-to-events; NEVER passive-wait for operator | `coordinate-active-drive.md` §IV |
 | Hook monitoring | `TeammateIdle` / `TaskCreated` / `TaskCompleted` fires | Read mailbox; route by `halt_code` | doctrine §II, §VI |
 | Mailbox polling | `TeammateIdle` BLOCKING | Inspect `halt_code`; null+`blocking:false` = wave-complete; non-null = escalation | doctrine §III |
 | Wave-boundary commit | `TaskCompleted` on wave-scope task | `git commit -m "chore(dev.N/wave-K): wave-complete via spawn"` (DO NOT defer) | doctrine §VI |

@@ -1,4 +1,4 @@
-# shepherd — v6.0.4
+# shepherd — v6.0.6
 
 Sprint-by-sprint version-cycle conductor. A production-grade orchestration framework that turns a single Claude Code session into a disciplined release engineer driving a closed six-agent flock (engineer, critic, coder, auditor, worker, discovery) through repeatable sprint pipelines.
 
@@ -15,6 +15,24 @@ Sprint-by-sprint version-cycle conductor. A production-grade orchestration frame
 │  /shepherd:cleanup   Post-sprint worktree + lock cleanup             │
 └──────────────────────────────────────────────────────────────────────┘
 ```
+
+## v6.0.6 — Coordinate-mode active-drive (spawn no longer pauses at dispatch)
+
+Closes the most expensive `/shepherd:spawn` failure: **the root pausing the moment
+it dispatches teammate-conductors.** After `TeamCreate` the root's turn ended and it
+waited passively — there was no contract for the window between "team spawned" and
+"first teammate event," so the default LLM behavior (stop) left the flock paused at the
+dispatch boundary for the whole wave (a full day lost in the field). New doctrine
+[`coordinate-active-drive.md`](skills/shepherd/doctrines/coordinate-active-drive.md)
+([#113](https://github.com/FL03/shepherd/issues/113) /
+[#98](https://github.com/FL03/shepherd/issues/98) /
+[#112](https://github.com/FL03/shepherd/issues/112)) makes coordinate mode an **active
+loop** — `wake → act → probe → yield-to-events` — that ends the turn only at an
+enumerated *operator-pause*, never as a passive wait; teammates **begin on boot**; and a
+new `Stop` hook [`coordinate_drive_guard.sh`](hooks/scripts/coordinate_drive_guard.sh)
+mechanically blocks a premature root halt while teammates are idle / lead mail is unread
+(fast-pathing outside spawn sessions, runaway-bounded, `[spawn].coordinate_drive_guard`
+config). Proven in `hooks/tests/` (28/28). Full detail in the [CHANGELOG](CHANGELOG.md).
 
 ## v6.0.3 — Agent-Teams orchestration hardening
 
@@ -352,7 +370,7 @@ Shepherd follows semver:
 - **MINOR** bumps add new commands, new doctrines, new config keys (backward-compatible).
 - **PATCH** bumps fix bugs in dispatch logic, doctrines, brief templates.
 
-Current version: **6.0.5**
+Current version: **6.0.6**
 
 See [`CHANGELOG.md`](CHANGELOG.md) for the per-version history.
 

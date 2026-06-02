@@ -497,6 +497,7 @@ a slow one may not. Acceptable for v5.1.4.
 
 ## XII. See also
 
+- `skills/shepherd/doctrines/coordinate-active-drive.md` — the root's no-passive-wait coordinate contract (v6.0.6, #113/#98/#112); this doctrine specifies the CHANNEL, that one specifies the root's DRIVE of it (wake→act→probe→yield-to-events; never pause for the operator at dispatch)
 - `skills/shepherd/doctrines/native-coordination.md` — native coordination (the pause-for-dependency satellite is retired, #70)
 - `skills/shepherd/doctrines/chain-repair.md` — chain-repair amend-and-resume protocol
 - `skills/shepherd/doctrines/conductor-cwd.md` — conductor git prohibition
