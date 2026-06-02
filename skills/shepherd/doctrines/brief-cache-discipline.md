@@ -12,13 +12,28 @@ prefix across dispatches.
 
 ## The principle
 
-A flock brief is a user message. The conductor builds it inline. The Claude
-Code runtime places implicit cache breakpoints at major content transitions;
-everything BEFORE a breakpoint is eligible for reuse across dispatches in the
-same conductor session. Therefore: **stable framing first, variable content
-last**. The prefix is what gets cached. The variable tail is what changes.
-Reordering one section between the two blocks invalidates the prefix and
-the dispatch pays the system-prompt creation cost again.
+A flock brief is a **user message** in the dispatched subagent's request. What the
+platform actually caches is the **request prefix** — tools → system prompt →
+message history — gated by `cache_control` breakpoints (Anthropic prompt caching;
+`https://code.claude.com/docs/en/prompt-caching`). Two corollaries the brief author
+must internalize (corrected v6.0.5 after a live-docs audit):
+
+1. **The genuinely-cached prefix for a `subagent_type: shepherd:<role>` dispatch is
+   the agent system prompt (`agents/<role>.md`) + tools** — injected identically by
+   the registry on every dispatch of that role — **not** the brief's internal
+   section ordering. Keeping `agents/<role>.md` stable is the load-bearing cache
+   win; the dispatch path (`Agent`/`Task`) exposes no `cache_control` knob to the
+   brief author, so shepherd cannot set a mid-brief breakpoint.
+2. **Ordering the brief still matters, for two real reasons:** (a) *coherence* (the
+   dominant benefit — see below), and (b) keeping the leading stable portion of the
+   user message **byte-identical** across dispatches so the runtime's
+   conversation-prefix cache is reused rather than busted. Hence: **stable framing
+   first, variable content last.**
+
+> The earlier framing — "the runtime places implicit cache breakpoints at content
+> transitions *inside* the brief" — was inaccurate and is retired (v6.0.5). Caching
+> keys on the request prefix + explicit breakpoints, not on transitions the runtime
+> auto-detects mid-user-message.
 
 ## Stable framing block (top of every brief)
 
@@ -108,29 +123,35 @@ the same sprint wherever possible.
 ...
 ```
 
-The block above (header through the comment line) is the cacheable prefix.
-A coder dispatched twice in the same sprint sees this exact text twice; the
-runtime caches it once, replays the cache breakpoint on the second dispatch,
-and only pays full input rate on the variable tail.
+The block above (header through the comment line) is the stable leading portion of
+the user message — keep it byte-identical across dispatches so the conversation
+prefix stays reusable; the variable tail is what changes per lane.
+
+> **Keep the stable block thin (v6.0.5).** `[ROLE]`/`[SKILLS]`/`[PROTOCOL-REMINDERS]`
+> deliberately *point at* `agents/<role>.md` rather than restate it — that agent body
+> is the genuinely-cached system prefix, so re-emitting its content in the brief only
+> adds tail tokens. Emit the minimum needed for coherence + a stable prefix; let the
+> agent body carry the framing.
 
 ## Why ordering matters
 
-The Claude Code runtime places implicit cache breakpoints at major content
-transitions in a long user message. When the stable framing block sits at
-the top of every dispatch in a sprint, the runtime caches that prefix on
-first emit and replays it on every subsequent dispatch — paying the
-cache-read rate (≈10% of input) instead of the full input rate. Across a
-sprint of 15–30 dispatches, that turns into a measurable spend reduction;
-across an autorun of 200+ dispatches, it dominates the cost budget.
+**Coherence is the primary, always-real benefit.** When every dispatch of a role
+sees the same `[ROLE]` + `[SKILLS]` + `[PROTOCOL-REMINDERS]` prefix, the model's
+behavior on those sections is stable across the sprint — the same skills load, the
+same halt codes apply, the same prohibitions hold. When the prefix shuffles, the
+model re-reads framing it has already absorbed, burns context on re-orientation, and
+produces subtly different behavior dispatch to dispatch. Cache-first ordering
+eliminates that variable regardless of what the cache does.
 
-The consistency benefit is at least as important as the dollar benefit.
-When every dispatch sees the same `[ROLE]` + `[SKILLS]` + `[PROTOCOL-REMINDERS]`
-prefix, the model's behavior on those sections is stable across the sprint —
-the same skills load, the same halt codes apply, the same prohibitions hold.
-When the prefix shuffles, the model re-reads framing it has already absorbed,
-burns context window on re-orientation, and produces subtly different
-behavior dispatch to dispatch. The drift is hard to attribute and harder to
-debug. Cache-first ordering eliminates the variable.
+**The token/dollar benefit is real but rides on the request prefix, not the brief's
+internals.** The reused prefix is the agent system prompt (`agents/<role>.md`) +
+tools at the cache-read rate (≈10% of input); keeping that body stable, and the
+brief's leading stable block byte-identical, is what earns that rate across a sprint
+of 15–30 dispatches (and dominates an autorun of 200+). The single biggest dollar
+lever, though, is **TTL**: a multi-wave run outlives the default **5-minute** cache,
+so set **`ENABLE_PROMPT_CACHING_1H=1`** for `--scope >= patch` / long autoruns to
+hold the prefix for an hour (Claude subscriptions request 1h automatically). See
+`docs/configuration.md §[spawn]` + `doctrines/cache-telemetry.md`.
 
 What breaks if you intersperse: any variable section emitted before any
 stable section invalidates the prefix from that point forward. A brief that

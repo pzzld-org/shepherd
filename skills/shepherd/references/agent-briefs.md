@@ -62,7 +62,7 @@ The engineer's full Phase 0 mesh + plan-authorship contract lives in `${CLAUDE_P
 Use this template as the canonical coder brief. The bracketed structure is non-negotiable.
 
 ```
-[ROLE] @coder — implementation lane for {sprint_branch}
+[ROLE] @coder — implementation lane
 
 Repo: {abs_path}, branch `{sprint_branch}`. Implementation task.
 Commit template: fix(dev.{N}/{track}): {subject}
