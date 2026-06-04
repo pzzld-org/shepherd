@@ -9,6 +9,7 @@ metadata:
     - "/shepherd:plant"
     - "/shepherd:start"
     - "/shepherd:spawn"
+    - "/shepherd:loop"
     - "/shepherd:cleanup"
 ---
 
@@ -379,6 +380,7 @@ The walk trace (optional, per `[stage_graph].walk_trace_enabled`) is the O(1) re
 | `/shepherd:plant [scope]` | `agents/planter.md` (Opus required) | Author drift-resistant sprint seeds. Scope: nothing (next-sprint+future), `dev.N`, `dev.N..dev.M`, `arc`, or `next-version`. See `${CLAUDE_PLUGIN_ROOT}/commands/plant.md`. |
 | `/shepherd:start` | `agents/conductor.md` (SOLO mode) — model: sonnet | One complete sprint, then PAUSE. Backward-compatible with all prior versions; tier separation does NOT apply (conductor IS root in solo). See `${CLAUDE_PLUGIN_ROOT}/commands/start.md`. |
 | `/shepherd:spawn [sprint_slug] [--scope sprint\|patch\|minor\|version] [--parallel <N> \| --auto]` | `agents/shepherd.md` (root, v5.1.6+) | Main chat adopts root-shepherd; spawns one teammate-conductor **per lane** (the post-plan vertical projection of the `waves × steps` plan), via Agent Teams. `--scope` declares workload scale (default `sprint`). `--auto` is alias for `--scope patch`. `--parallel <N>` fans out N sibling teammates for sprint-level concurrency (`--scope >= patch` only). See `${CLAUDE_PLUGIN_ROOT}/commands/spawn.md`. **Operator-explicit invocation only — refuses from teammate sessions (nested spawn forbidden).** |
+| `/shepherd:loop [task] [--max <N>] [--agent <worker\|discovery>] [--interval <duration>] [--resume <loop-id>]` | Sonnet | **NEW v6.0.7** — Run Pattern 6 (Loop-Until-Done) as a first-class command. Dispatches `@worker` or `@discovery` repeatedly until `new_findings: false` or `--max` cap is reached. `--interval` delegates scheduling to the native Claude Code `/loop` skill. See `${CLAUDE_PLUGIN_ROOT}/commands/loop.md`. |
 | `/shepherd:cleanup` | Sonnet | Prune stale/crashed teammate entries from the canonical-state registry (closes #51). Operator-confirmed; never auto-prune live entries. |
 
 For `:start` and `:spawn`, sprint is inferred from current branch when no `sprint_slug` is given. For `:plant`, scope arg controls how many seeds to emit. For `:spawn`, `--scope` controls workload scale; `--parallel` controls sprint-level fanout; the per-lane fanout within each sprint is implicit (the engineer's post-plan lane projection of the gated plan — no flag controls it).
@@ -430,6 +432,8 @@ For `:start` and `:spawn`, sprint is inferred from current branch when no `sprin
 | `doctrines/sprint-as-patch.md` | Every planter, engineer, critic, auditor dispatch | NEW v5.1.1 — sprint scope = patch-equivalent; binding for planner sizing, plan-gate, close grade |
 | `doctrines/hook-event-log.md` | When inspecting hook behavior | NEW v5.1.1 — `<ns>/logs/hooks/YYYY-MM-DD.jsonl` schema, jq queries, retention |
 | `doctrines/preflight-doctor.md` | Before sprint open | NEW v5.1.1 — `shctx doctor` invocation, exit codes, integration with `/shepherd:start` |
+| `references/workflow-templates.md` | Phase 0 seed analysis; plan authoring; PLAN-GATE | **NEW v6.0.7 — six canonical workflow patterns** (Classify-And-Act, Fanout-And-Synthesize, Adversarial Verification, Generate-And-Filter, Tournament, Loop-Until-Done). Stage Graph shapes, flock agent bindings, compose notes, anti-patterns. |
+| `doctrines/workflow-patterns.md` | Phase 0 seed analysis; PLAN-GATE; every Stage Graph composition decision | **NEW v6.0.7 — binding selection doctrine**: decision tree (Q1–Q4), composition grammar, circuit-breaker invariants, halt codes, pattern-to-flock alignment table, escalation laddering, composition depth limit (≤3). |
 | `doctrines/*.md` | Referenced by name throughout | Framework-intrinsic rules (subtract-don't-add, wrapper-must-earn, pattern-b-overlap, chain-repair, stage-graph, conductor-cwd, gates-restoration, adaptation-loop, ...) |
 | `${CLAUDE_PLUGIN_ROOT}/agents/<role>.md` | Each flock dispatch | Agent system prompt (injected into brief) — six domain lanes + three meta-orchestrators (root shepherd, conductor, planter) |
 | `doctrines/spawn-escalation.md` | `/shepherd:spawn` active | NEW v5.1.4 — escalation channel contract (file paths, payload schema, resume shape, heartbeat, wave-boundary commits; §X multiplexed; §XI sequential autopilot) |
