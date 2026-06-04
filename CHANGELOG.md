@@ -4,6 +4,44 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v6.0.7 — 2026-06-04
+
+### Close-finalize hook false-positive fix — CRITICAL (#122, #127)
+
+The Stop hook's close-finalize agent prompt triggered a false-positive mid-sprint that proposed `git push origin --delete <live-sprint-branch>`, which would orphan active lane worktrees and in-flight deploy refs. Root cause: three defects compounded:
+
+1. `find . -path '*reports*' -name '*close*' -newer .git/HEAD` was unanchored (recursed into `.worktrees/`), not sprint-slug-scoped, and compared mtime (refreshed by worktree creation) instead of authorship.
+2. The second condition (`git ls-remote --heads origin` non-empty) is always true mid-sprint under the proactive-push doctrine.
+3. The destructive remediation (`git push origin --delete`) required only ONE positive signal.
+
+**Fix:** The prompt now requires **two independent signals** before flagging: (a) a close report committed in git (`git log --diff-filter=A --all`) AND (b) the sprint branch still on origin. Replaced `find`-mtime detection with git-log-based authorship check scoped to the sprint slug. Added a subworktree fast-path (step 2) since `git rev-parse --show-toplevel` ≠ `pwd` when inside a worktree. Removed the destructive `--delete` command from the prompt entirely — the hook now directs the operator to conductor §CLOSE-FINALIZE steps rather than prescribing destructive remediation directly.
+
+### Namespace drift fix — resolve_namespace defaults to .artifacts (#121)
+
+Hook scripts created `.shepherd/logs/` unconditionally as the default namespace while docs and seed-template consistently use `.artifacts/`. When both directories co-existed, `.shepherd` won (checked first), causing a permanent split and a perpetual shctx warning.
+
+**Fix:** `_lib.sh` `resolve_namespace()` now checks `.artifacts` before `.shepherd` and defaults to `.artifacts`. Projects with only `.shepherd` (older installs) continue to work via the fallback. Projects using `SHEPHERD_WORKDIR` are unaffected.
+
+### Hardcoded MCP tool names removed from planter and seed-template (#124)
+
+`agents/planter.md` hardcoded `mcp__plugin_github_github__*`, `mcp__plugin_sentry_*`, and `mcp__plugin_supabase_*` tool IDs in its YAML `tools` frontmatter and mesh table. In harness setups where GitHub MCP runs under a different server name (e.g. `mcp__github__*`, Docker MCP gateway, or CLI-only), those names are dead and agents silently fail to fetch the issue ledger.
+
+**Fix:** Removed all `mcp__plugin_*` names from planter's YAML `tools` frontmatter; added `ToolSearch`. Added a callout box in the mesh section instructing the planter to discover available GitHub/Sentry/Supabase tools via `ToolSearch` at session start, with `gh` CLI as the fallback for GitHub. Updated `seed-template.md` Phase 0 mesh rows 1, 5, and 6 to the same ToolSearch-first pattern. Conductor's MCP tool list is unchanged (read-only tools, standard harness assumption).
+
+### Plant bootstrap path for missing shepherd.toml (#120)
+
+`/shepherd:plant` Step 1 assumed `.claude/shepherd.toml` existed and had no fallback for a first-ever plant. On a fresh project the planter hand-derived config from `examples/axiom/shepherd.toml`, producing inconsistent results.
+
+**Fix:** `commands/plant.md` Step 1 now includes a bootstrap clause: if `.claude/shepherd.toml` is missing, the planter surfaces a clear instruction to copy from `${CLAUDE_PLUGIN_ROOT}/examples/minimal/shepherd.toml` and halts rather than guessing config values inline.
+
+### Background process prohibition — conductor hard prohibition #21 (#108)
+
+Conductor and worker agents repeatedly used `run_in_background: true` on long-running commands (`cargo check`, `cargo test`, build daemons). Background processes lose context on compaction, cannot be monitored turn-to-turn, and orphan when the session ends.
+
+**Fix:** Added hard prohibition #21 to `agents/conductor.md`: `run_in_background: true` is forbidden in any tool call for both SOLO and TEAMMATE modes. Long-running work goes to `@worker` with explicit monitor-and-report briefs. `@worker` is also forbidden from backgrounding. Violation code: `BACKGROUND-PROCESS-SPAWN`.
+
+---
+
 ## v6.0.5 — 2026-06-02
 
 ### Schema migrations: fix `ALTER TABLE … RENAME` view-dangling on SQLite ≥ 3.25 (debug-session find)

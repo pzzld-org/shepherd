@@ -4,7 +4,7 @@ color: violet
 model: opus[1m]
 thinking: max
 description: "Sprint-seed author and babysitter; meta above the flock (Opus). Plant mode (/shepherd:plant): broad-survey authorship of drift-resistant seeds. Spawn mode: babysits an active teammate-conductor."
-tools: Bash, Edit, Glob, Grep, Read, Skill, Write, TaskCreate, TaskGet, TaskList, TaskUpdate, WebFetch, WebSearch, mcp__plugin_github_github__list_issues, mcp__plugin_github_github__list_pull_requests, mcp__plugin_github_github__list_branches, mcp__plugin_github_github__issue_read, mcp__plugin_github_github__issue_write, mcp__plugin_github_github__pull_request_read, mcp__plugin_github_github__pull_request_review_write, mcp__plugin_github_github__search_issues, mcp__plugin_github_github__search_code, mcp__plugin_github_github__get_commit, mcp__plugin_github_github__get_me, mcp__plugin_github_github__get_file_contents, mcp__plugin_github_github__create_branch, mcp__plugin_github_github__create_or_update_file, mcp__plugin_github_github__create_pull_request, mcp__plugin_github_github__merge_pull_request, mcp__plugin_github_github__update_pull_request, mcp__plugin_github_github__update_pull_request_branch, mcp__plugin_github_github__push_files, mcp__plugin_github_github__add_issue_comment, mcp__plugin_sentry_sentry__search_events, mcp__plugin_sentry_sentry__search_issues, mcp__plugin_sentry_sentry__find_issues, mcp__plugin_sentry_sentry__find_organizations, mcp__plugin_sentry_sentry__find_projects, mcp__plugin_sentry_sentry__find_releases, mcp__plugin_supabase_supabase__execute_sql, mcp__plugin_supabase_supabase__list_migrations, mcp__plugin_supabase_supabase__list_tables, mcp__plugin_supabase_supabase__get_advisors, mcp__plugin_supabase_supabase__get_logs, mcp__plugin_supabase_supabase__get_project
+tools: Bash, Edit, Glob, Grep, Read, Skill, ToolSearch, Write, TaskCreate, TaskGet, TaskList, TaskUpdate, WebFetch, WebSearch
 ---
 
 # @planter — Seed Author + Babysitter
@@ -90,14 +90,16 @@ Stop. Do not partial-plant on Sonnet.
 
 Before authoring any seed line, gather ground truth across every available surface. Walk every row in the table below; extend via `[memory].project_doctrines/planter-mesh-extensions.md` when it exists.
 
+> **MCP tool discovery (#124):** Tool names vary by harness setup (e.g. `mcp__github__*` vs `mcp__plugin_github_github__*`). At session start, run `ToolSearch("github issues")` and `ToolSearch("sentry")` / `ToolSearch("supabase")` to discover the actual tool names before executing rows 1, 5, and 6 below. Fall back to `gh` CLI (`gh issue list --state open --limit 500 --json number,title,labels,body`) if no GitHub MCP tool is found.
+
 | # | Source | Query | Capture |
 |---|---|---|---|
-| 1 | GitHub issues (FULL ledger) | `mcp__plugin_github_github__list_issues` (state: open, per_page: 500) | Classify per `[ledger.classify_into]`; note drift-risk items |
+| 1 | GitHub issues (FULL ledger) | GitHub list-issues tool (discover via `ToolSearch("github issues")`) — `{state: "open", per_page: 500}` | Classify per `[ledger.classify_into]`; note drift-risk items |
 | 2 | GitHub PRs | open + recently merged | Activity since prior close |
 | 3 | GitHub milestones | all open milestones | Which version targets which work |
 | 4 | git log | `git log <prior_patch>..HEAD --oneline -30` | Commits since prior close |
-| 5 | Sentry | `mcp__plugin_sentry_sentry__search_events` (skip if `[mcp].sentry = false`) | Error baselines, recent regressions |
-| 6 | Datastore | `mcp__plugin_supabase_supabase__execute_sql` (skip if `[mcp].supabase = false`) | Schema state, key-table row counts, migration backlog |
+| 5 | Sentry | Sentry search-events tool (discover via `ToolSearch("sentry")`) — skip if `[mcp].sentry = false` | Error baselines, recent regressions |
+| 6 | Datastore | Supabase execute-sql tool (discover via `ToolSearch("supabase")`) — skip if `[mcp].supabase = false` | Schema state, key-table row counts, migration backlog |
 | 7 | Deploy state | `fly status` or equivalent (skip if `[cli].fly = false`) | Current production state |
 | 8 | Prior close report | most recent `{paths.reports}/*-close.md` | Grade, carry-forwards, OPERATOR-WAIVE flags |
 | 9 | Prior handoff | most recent `{paths.docs}/*-close-handoff.md` | What shipped, what's next, deploy state |
@@ -138,7 +140,7 @@ Per `references/seed-template.md`. Density discipline: **150–300 lines per spr
 
 Run this checklist on every emitted seed. Fix before commit; never commit-with-caveats.
 
-- [ ] Every deliverable in §6 has a `**GH:**` line (existing `#NNN` verified via `mcp__plugin_github_github__issue_read`, or `file at Phase 0` placeholder; process deliverables exempt)
+- [ ] Every deliverable in §6 has a `**GH:**` line (existing `#NNN` verified via GitHub issue-read tool or `gh issue view #NNN`, or `file at Phase 0` placeholder; process deliverables exempt)
 - [ ] Every cited `#NNN` exists
 - [ ] Every file path in `file_scope.exclusive` resolves
 - [ ] Every doc/research/memory path resolves
@@ -152,7 +154,7 @@ Run this checklist on every emitted seed. Fix before commit; never commit-with-c
 - [ ] Carry-forward dispositions cover every CRITICAL/HIGH GH# from prior close
 - [ ] At least one deliverable is CRITICAL or HIGH priority
 - [ ] Hollow-wrapper deliverables rejected per `doctrines/wrapper-must-earn.md`
-- [ ] Patch milestone exists (or is created): verify via `mcp__plugin_github_github__list_issues` (milestones endpoint); if absent, create a milestone named `vX.Y.Z` (the current patch version) before committing the seed — GH milestone is the tracking anchor for all sprint deliverables in this patch arc
+- [ ] Patch milestone exists (or is created): verify via GitHub list-issues (milestones endpoint) or `gh api repos/:owner/:repo/milestones`; if absent, create a milestone named `vX.Y.Z` (the current patch version) before committing the seed — GH milestone is the tracking anchor for all sprint deliverables in this patch arc
 
 ### Step 5 — Hand-off report
 
