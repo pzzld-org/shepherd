@@ -164,9 +164,8 @@
             "timeout": 30
           },
           {
-            "type": "agent",
-            "prompt": "Close-finalize completion check (shepherd GH #60; false-positive fix #122/#127). Require TWO independent positive signals before flagging incomplete. (1) Run: git rev-parse --abbrev-ref HEAD 2>/dev/null. If HEAD does NOT match *-dev.[0-9]*, respond {\"ok\": true} — not in a sprint context. (2) Subworktree guard: compare output of git rev-parse --show-toplevel 2>/dev/null with pwd. If they differ, respond {\"ok\": true} — worktree creation refreshes mtimes on historical close reports; skip check. (3) BRANCH = branch name from step 1. Derive sprint slug: strip leading 'v', collapse version dots, e.g. v0.3.4-dev.9 → slug '034-dev9'. (4) Signal A — close report committed in git (do NOT use mtime or find): run git log --oneline --diff-filter=A --all -- \"*${slug}*close*.md\" 2>/dev/null | head -1. If empty → respond {\"ok\": true} (no committed close report for this sprint; sprint still in progress). (5) Signal B — sprint branch still on origin: git ls-remote --heads origin \"${BRANCH}\" 2>/dev/null | head -1. If empty → respond {\"ok\": true} (branch already gone from origin; finalize complete). (6) Both signals positive (committed close report found AND sprint branch still on origin): respond {\"ok\": false, \"reason\": \"CLOSE-FINALIZE INCOMPLETE: close report committed for ${BRANCH} but sprint branch still present on origin. Verify dev→patch merge: git log origin/<patch_branch>..${BRANCH} --oneline should be empty if merged. Then run conductor §CLOSE-FINALIZE steps 4–6 via explicit operator-confirmed commands.\"}. Max 4 tool calls. Default ok=true on any error or ambiguity. Be terse.",
-            "timeout": 30
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/close_finalize_check.sh"
           }
         ]
       }

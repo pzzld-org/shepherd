@@ -6,6 +6,28 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ## v6.0.7 — 2026-06-04
 
+### Stop hook: close-finalize check converted to deterministic script (#127 fires #1–17)
+
+The `type: "agent"` close-finalize Stop hook prompt has been replaced with a deterministic shell script (`hooks/scripts/close_finalize_check.sh`). This closes the long-running false-positive chain (#127) that survived the v6.0.6 prompt hardening.
+
+**Fire #17 (trigger for this fix):** `/shepherd:plant` for `v0.3.5-dev.0` committed a planter mesh report (`2026-06-04-planter-mesh.md`) to `.artifacts/reports/`. The agent saw "a report committed to reports/ on a dev branch that exists on origin" and emitted CLOSE-FINALIZE INCOMPLETE, ignoring that the filename doesn't match the `*v035-dev0-close.md` slug pattern. Plant-mode artifacts in the reports directory are a new context trigger for the agent's free-form failure mode.
+
+**Root cause (shared by all 17 fires):** an agent-type hook free-forms `ok: false` from session context rather than mechanically applying detection logic. Fire #10 showed the hook can "correctly diagnose everything... and still return ok:false." A script cannot override its own logic with narrative context.
+
+**Script invariants vs prior agent prompt:**
+
+| Check | Old (agent prompt) | New (script) |
+|-------|--------------------|-------------|
+| Sprint-branch guard | agent regex | `[[ $BRANCH =~ -dev\.[0-9]+$ ]]` |
+| Subworktree guard | agent compare | `pwd -P == git show-toplevel` |
+| Slug derivation | agent inference | `sed` — strict `^[0-9]+-dev[0-9]+$` sanity |
+| Signal A scope | `--all` (all refs!) | `HEAD` only — excludes other branches/worktrees |
+| Signal A pattern | `*${slug}*close*.md` (loose) | `{NS}/reports/*-v${slug}-close.md` (exact convention) |
+| Plant-mode artifacts | not excluded (fire #17) | don't match strict pattern; implicitly excluded |
+| Signal A empty → | agent may override | `exit 0` — hard coded, no override possible |
+| Destructive remediation | `git push origin --delete` in reason | removed entirely |
+| Failure mode | free-form ok:false | exit 0 (fail-open on every error) |
+
 ### Six canonical workflow pattern templates (`references/workflow-templates.md`)
 
 Added a new reference defining the **six canonical workflow patterns** that form the structural vocabulary for every Stage Graph authored under `/shepherd:plant`:
