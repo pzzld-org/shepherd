@@ -148,5 +148,18 @@ else
   fails=$((fails+1))
 fi
 
+# Deterministic close-finalize completion check (v6.0.7, #127 fires #1–17):
+# fast-paths for non-sprint branches, subworktrees, plant-mode artifacts, and
+# missing signals; blocks only when close report committed AND branch on origin.
+echo "== test_close_finalize_check.sh (v6.0.7 — #127 deterministic script) =="
+total=$((total+1))
+if cfc_out=$(bash "$TESTS_DIR/test_close_finalize_check.sh" 2>&1); then
+  printf '  PASS  %s\n' "close-finalize-check-deterministic"
+else
+  printf '  FAIL  %-50s\n' "close-finalize-check"
+  printf '%s\n' "$cfc_out" | sed 's/^/        /'
+  fails=$((fails+1))
+fi
+
 echo "—— $((total-fails))/$total passed ——"
 exit "$fails"

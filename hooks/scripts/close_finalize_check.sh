@@ -76,7 +76,7 @@ SIG_B="$(git ls-remote --heads origin "$BRANCH" 2>/dev/null | head -1 || true)"
 
 # ── 6. Both signals positive → flag incomplete finalize ──────────────────────
 # No destructive remediation suggested (issue #127 root cause: --delete on live branch).
-REASON="CLOSE-FINALIZE INCOMPLETE: close report committed for ${BRANCH} (${SIG_A}) but sprint branch still on origin. Verify dev→patch merge is complete: run \`git log origin/<patch_branch>..${BRANCH} --oneline\` (should be empty if merged). Then run conductor §CLOSE-FINALIZE steps 4–6 via explicit operator-confirmed commands. Do not run git push origin --delete until merge is confirmed."
+REASON="CLOSE-FINALIZE INCOMPLETE: close report committed for ${BRANCH} (${SIG_A}) but sprint branch still on origin. Verify dev→patch merge is complete: run \`git log origin/<patch_branch>..${BRANCH} --oneline\` (should be empty if merged). Then run conductor §CLOSE-FINALIZE steps 4–6 via explicit operator-confirmed commands. Confirm merge before removing the sprint branch from origin."
 
 log_event "close_finalize_check" "block" "Stop" "shepherd" "" \
   "$(emit_json_obj branch "$BRANCH" slug "$SLUG" sig_a "${SIG_A:0:80}")" 2>/dev/null || true
