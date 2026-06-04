@@ -42,6 +42,23 @@ Conductor and worker agents repeatedly used `run_in_background: true` on long-ru
 
 ---
 
+### Sprint numbering: planter starts new patch arcs at dev.0, not dev.1 (field issue: FL03/pzzld v0.0.8)
+
+When `/shepherd:plant` was invoked for a brand-new patch arc (no prior dev.N branches on origin), the planter derived the first sprint number from the prior patch's last sprint (e.g., v0.0.7-dev.5 → dev.6 for v0.0.8) rather than resetting to dev.0. This violates the hard invariant in `references/branching-model.md`: *"The sprint AFTER dev.{last} is dev.0 of the NEXT PATCH — never dev.{sprints_per_patch}."*
+
+**Root cause:** `agents/planter.md` Step 3 documented scope dispatch but gave no algorithm for deriving N, leaving the model to infer from ambient context — which is wrong at patch-arc boundaries.
+
+**Fix:** Added an explicit N-derivation block to Step 3:
+1. Run `git ls-remote --heads origin 'v{X}.{Y}.{Z}-dev.*'` for the current patch version
+2. If no dev.N branches exist → N = 0 (hard rule; brand-new patch arc)
+3. If dev.N branches exist → N_next = highest existing N + 1
+4. Explicit callout: do NOT use the prior patch's sprint counter as a base
+
+Also updated `commands/plant.md` argument-hint and Step 2 note to surface this rule at invocation time.
+
+---
+
+
 ## v6.0.5 — 2026-06-02
 
 ### Schema migrations: fix `ALTER TABLE … RENAME` view-dangling on SQLite ≥ 3.25 (debug-session find)

@@ -113,9 +113,25 @@ Write the consolidated mesh report to `{paths.reports}/<date>-planter-mesh.md`. 
 
 ### Step 3 — Author seeds per scope argument
 
+**N-derivation (run BEFORE interpreting scope) — always resolve N explicitly from git:**
+
+```bash
+# 1. Current patch version from shepherd.toml [branching].patch_branch (e.g. v0.0.8)
+# 2. List existing dev.N branches on origin for that patch:
+git ls-remote --heads origin 'v{X}.{Y}.{Z}-dev.*' | grep -oE 'dev\.[0-9]+' | grep -oE '[0-9]+' | sort -n | tail -1
+```
+
+| Situation | N |
+|---|---|
+| No dev.N branches exist on origin for the current patch version (brand-new patch arc) | **N = 0** — hard rule per `references/branching-model.md` "next sprint is always dev.0" corollary |
+| dev.N branches exist on origin | N_next = highest existing N + 1 |
+| Scope explicitly provides `dev.N` | Use the operator-supplied N directly — no derivation needed |
+
+> **Common mistake (#128):** Do NOT derive N from a prior patch's dev.N branches (e.g., v0.0.7-dev.5 → dev.6 is wrong for v0.0.8). The sprint counter always resets to 0 at each new patch. Do NOT use `prior_sprint`'s N as a base — `prior_sprint` may refer to the last sprint of the prior patch.
+
 | Scope arg | Meaning |
 |---|---|
-| (nothing) | Author next-sprint seed + skeletons for the rest of the patch (default) |
+| (nothing) | Author next-sprint seed (N derived above) + skeletons for the rest of the patch |
 | `dev.N` | Author exactly `{paths.plans}/{sprint_slug with N}.seed.md` |
 | `dev.N..dev.M` | Author seeds for sprints N through M inclusive (dev-order) |
 | `arc` | Author patch-arc seed `{paths.plans}/{patch_slug}.seed.md` + skeletons for every dev.N |

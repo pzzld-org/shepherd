@@ -1,7 +1,7 @@
 ---
 name: plant
 description: Opus-pinned seed authorship mode. Reads everything available (prior plans, close reports, GH milestones, deploy/error/datastore state, project memory) and emits drift-resistant, dense, multi-phase sprint seeds the @engineer can translate into plans with minimal expansion.
-argument-hint: "[ scope ]   scopes: nothing (next-sprint+future), dev.N, dev.N..dev.M, arc, next-version"
+argument-hint: "[ scope ]   scopes: nothing (next-sprint+future), dev.N, dev.N..dev.M, arc, next-version  — NOTE: for a brand-new patch arc N always starts at 0, not 1"
 allowed-tools: Bash, Edit, Glob, Grep, Read, Skill, Write, ToolSearch, TaskCreate, TaskGet, TaskList, TaskUpdate, WebFetch, WebSearch
 ---
 
@@ -41,6 +41,8 @@ Stop. Do not partial-plant on Sonnet — degraded seeds defeat the purpose.
 ## Step 2 — Run plant mode
 
 Execute per `${CLAUDE_PLUGIN_ROOT}/agents/planter.md` §"Plant mode — seed authorship" (Steps 2–5): run the 12-row planter mesh — row 12 reads the adaptation priors (`shctx adapt priors --lessons`); cite any `prior:<id>` that shapes the seed per `doctrines/self-improvement.md` — author seeds for the scope argument, run the pre-flight verification checklist on every seed, commit, and emit the PLANTER REPORT. The planter session ends after the report is emitted. Do not dispatch the engineer; do not begin the sprint pipeline.
+
+> **Sprint numbering:** Before authoring any seed, run the N-derivation step in `agents/planter.md §Step 3` to determine the correct starting sprint number. For a brand-new patch arc (no `dev.*` branches on origin for this patch version), N is always **0** — never infer it from a prior patch's sprint counter.
 
 ---
 
