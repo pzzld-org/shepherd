@@ -92,12 +92,12 @@ The 12-row default (project-extensible via `[memory].project_doctrines/planter-m
 ```markdown
 | # | Source | Query | Pass condition |
 |---|--------|-------|----------------|
-| 1 | GitHub issues (FULL ledger sweep) | `mcp__plugin_github_github__list_issues({state: "open", per_page: 500})` | classify per `[ledger.classify_into]`; surface drift-risk count |
+| 1 | GitHub issues (FULL ledger sweep) | GitHub list-issues tool — discover via `ToolSearch("github issues")` before use; tool name varies by harness (e.g. `mcp__github__*`). Fallback: `gh issue list --state open --limit 500`. Args: `{state: "open", per_page: 500}` | classify per `[ledger.classify_into]`; surface drift-risk count |
 | 2 | GitHub PRs                         | open + recently merged                                                | recent activity since prior close |
 | 3 | GitHub milestones                  | walk all open milestones                                              | which version targets which work |
 | 4 | git log                            | `git log {patch_branch}..HEAD --oneline -30`                          | commits since branch cut |
-| 5 | Sentry (if `[mcp].sentry`)         | `mcp__plugin_sentry_sentry__search_events`                            | error baselines vs prior sprint |
-| 6 | Datastore (if `[mcp].supabase`)    | schema query + key-table row counts                                   | schema state, migration backlog |
+| 5 | Sentry (if `[mcp].sentry`)         | Sentry search-events tool — discover via `ToolSearch("sentry")` before use | error baselines vs prior sprint |
+| 6 | Datastore (if `[mcp].supabase`)    | schema query + key-table row counts — discover Supabase tool via `ToolSearch("supabase")` | schema state, migration backlog |
 | 7 | Deploy state (if `[cli].fly`)      | `fly status`                                                          | deploy healthy, last image timestamp |
 | 8 | Prior close                        | `{paths.reports}/<date>-<prior sprint>-close.md`                      | grade, blockers, carry-forwards |
 | 9 | Prior handoff                      | `{paths.docs}/<date>-<prior sprint>-close-handoff.md`                 | what shipped, what's next |
@@ -178,7 +178,7 @@ process` and keep the inline shape:
 
 ### GH issue body template (what the seed POINTS to)
 
-When a seed lane says "file at Phase 0", the engineer's Phase 0 mesh runs `mcp__plugin_github_github__issue_write` with this body:
+When a seed lane says "file at Phase 0", the engineer's Phase 0 mesh creates the issue (via GitHub issue-write tool — discover with `ToolSearch("github")` or `gh issue create`) with this body:
 
 ```markdown
 ## Summary

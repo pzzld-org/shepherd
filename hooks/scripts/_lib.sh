@@ -4,7 +4,7 @@
 # Sourced by every hook script. Exports:
 #
 #   is_shepherd_project              — returns 0 if .claude/shepherd.toml exists
-#   resolve_namespace                — echoes $SHEPHERD_WORKDIR, else .shepherd (default) or .artifacts (legacy)
+#   resolve_namespace                — echoes $SHEPHERD_WORKDIR, else .artifacts (default) or .shepherd (legacy)
 #   emit_context "<msg>"             — emit {"additionalContext":"<msg>"} and exit 0
 #   emit_deny "<msg>"                — emit {"permissionDecision":"deny","message":"<msg>"} and exit 0
 #   log_event hook decision tool role session fields_json
@@ -27,7 +27,7 @@ is_shepherd_project() {
 # Echoes the project-local work directory. Mirrors the skills-lib
 # resolve_workdir precedence (kept dependency-free so hooks stay fast):
 #   SHEPHERD_WORKDIR (absolute as-is, else relative to repo_root) →
-#   existing .shepherd → existing .artifacts → default .shepherd.
+#   existing .artifacts → existing .shepherd → default .artifacts.
 resolve_namespace() {
   local repo_root
   repo_root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
@@ -38,13 +38,13 @@ resolve_namespace() {
     esac
     return 0
   fi
-  for cand in "$repo_root/.shepherd" "$repo_root/.artifacts"; do
+  for cand in "$repo_root/.artifacts" "$repo_root/.shepherd"; do
     if [[ -d "$cand" ]]; then
       printf '%s' "$cand"
       return 0
     fi
   done
-  printf '%s' "$repo_root/.shepherd"
+  printf '%s' "$repo_root/.artifacts"
 }
 
 # ---------------------------------------------------------------------------
