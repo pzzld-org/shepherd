@@ -4,6 +4,53 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v6.0.7 — 2026-06-04
+
+### Six canonical workflow pattern templates (`references/workflow-templates.md`)
+
+Added a new reference defining the **six canonical workflow patterns** that form the structural vocabulary for every Stage Graph authored under `/shepherd:plant`:
+
+| # | Pattern | Flock binding | Key use |
+|---|---------|---------------|---------|
+| 1 | **Classify-And-Act** | `@discovery` → branch → target agent | Unknown task routing |
+| 2 | **Fanout-And-Synthesize** | parallel `@coders`/`@workers` → synthesizer | Parallel decomposable work |
+| 3 | **Adversarial Verification** | producer → `@auditor` swarm (no shared context) | High-stakes artifact validation |
+| 4 | **Generate-And-Filter** | parallel generators → `@critic` gate (rubric + dedupe) | Multiple viable approaches, rubric selects |
+| 5 | **Tournament** | N attempts → bracket `@critic` pairs → final judge | Comparative ranking over rubric scoring |
+| 6 | **Loop-Until-Done** | `@worker`/`@discovery` → check node → conditional back-edge | Convergent iteration; `max_iterations` required |
+
+Each pattern entry covers: ASCII diagram, when-to-use trigger conditions, Stage Graph shape with YAML node/edge notation, flock agent binding table, composition notes, and anti-patterns. A composition index maps the six legal cross-pattern compositions (prefix routing, sequential pipeline, layered verification, nested iteration, competitive implementation, routed competition).
+
+### Workflow pattern selection doctrine (`doctrines/workflow-patterns.md`)
+
+Added a new **binding doctrine** that makes pattern selection an explicit, enforced Phase 0 decision rather than an implicit conductor judgment:
+
+- **Decision tree (Q1–Q4):** deterministic selection from "task type unknown?" through "parallel decomposable?" through "adversarial challenge needed?" through "convergent iteration?" to direct dispatch for XS leaf nodes.
+- **Composition grammar:** legal vs illegal pattern nestings, with three axes (prefix routing, sequential pipeline, nested iteration). Illegal compositions include Generate-And-Filter inside Tournament, Loop inside Fanout body, and Adversarial Verification as classifier.
+- **Circuit-breaker invariants per pattern:** non-overlapping scope guarantee (Pattern 2), rubric-before-dispatch invariant (Pattern 4), bracket-declaration and match-isolation requirements (Pattern 5), mandatory `max_iterations` and structured `new_findings` field (Pattern 6).
+- **Rigor additions:** checkpoint nodes for L/XL compositions (materializes state to `shctx sprint record` at composition boundaries), escalation laddering (L1–L4 escalation levels replace bare HALTs), and a composition depth limit of ≤3 levels (critic gates justification for deeper nesting, `COMPOSITION-TOO-DEEP` halt code).
+- **Enforcement surface:** nine new halt codes wired to existing enforcement points (dispatch guard, PLAN-GATE, preflight doctor, conductor inline).
+- **Pattern-to-flock alignment table:** canonical role bindings per pattern — wrong agent type for a role is `DISPATCH-WRONG-ROLE`.
+
+### `/shepherd:loop` command (`commands/loop.md`) — NEW v6.0.7
+
+Added a first-class slash command that runs **Pattern 6 (Loop-Until-Done)** directly from the operator interface:
+
+- **Flags:** `--max <N>` (iteration ceiling, default 5; > 10 requires operator acknowledgement), `--agent <worker|discovery>`, `--interval <duration>`, `--until <field>`, `--resume <loop-id>`
+- **In-session mode:** shepherd drives the `wake → act → probe → yield` coordinate cycle directly, dispatching one iteration per turn until convergence or cap
+- **Interval mode:** when `--interval` is set, shepherd registers the loop state in SQLite then delegates recurring scheduling to the native Claude Code `/loop` skill (`/loop <duration> /shepherd:loop --resume <loop-id>`); each wake-up runs exactly one iteration and exits
+- **Circuit breakers:** `--max` is mandatory (validated in preflight); values > 10 require live operator confirmation; cap-exceeded emits `LOOP-CAP` halt rather than silently exiting; missing `new_findings` field emits `LOOP-REPORT-INVALID`
+- **SQLite state:** `shctx loop init / record / close / status / list` verbs manage loop lifecycle in `.artifacts/root.db`
+- **Halt codes:** `LOOP-INVALID-AGENT`, `LOOP-INVALID-INTERVAL`, `LOOP-REPORT-INVALID`, `LOOP-CAP`, `LOOP-STATE-MISSING`
+- SKILL.md `metadata.triggers` updated to include `/shepherd:loop`; command added to §X invocation table
+
+### SKILL.md §XI updated
+
+Added `references/workflow-templates.md` and `doctrines/workflow-patterns.md` to the §XI file map with load-trigger annotations ("Phase 0 seed analysis; plan authoring; PLAN-GATE").
+Added `commands/loop.md` to the §X invocation table.
+
+---
+
 ## v6.0.6 — 2026-06-04
 
 ### Close-finalize hook false-positive fix — CRITICAL (#122, #127)
