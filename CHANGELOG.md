@@ -4,7 +4,7 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
-## v6.0.7 — 2026-06-04
+## v6.0.6 — 2026-06-04
 
 ### Close-finalize hook false-positive fix — CRITICAL (#122, #127)
 
