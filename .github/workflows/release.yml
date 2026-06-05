@@ -1,14 +1,16 @@
 name: release
 
-# Mechanical patch-release pipeline. Implements the shepherd skill §III sequence:
-# tag → release → cut next patch → bump versions → draft PR →
-# orphan sweep → milestone roll. Triggered by the squash-merge of a patch PR
-# landing on main whose subject is either "vX.Y.Z" (operator convention, with the
-# gh-appended " (#N)" suffix tolerated) or "release: vX.Y.Z" (back-compat). The
-# extracted version is cross-checked against .claude-plugin/plugin.json;
-# non-release pushes are skipped.
+# Patch-release pipeline. Triggered by the squash-merge of a sprint PR landing on
+# a patch branch (v*.*.*) whose subject is "vX.Y.Z", "vX.Y.Z: <summary>", or
+# "release: vX.Y.Z" (gh appends " (#N)" on squash — tolerated). The extracted
+# version is cross-checked against .claude-plugin/plugin.json; non-release pushes
+# are skipped cleanly.
 #
-# Branch protection on main MUST require PR + linear history + no force-push for
+# Sequence: detect → tag → release → cut next patch (from current patch, NOT main)
+#           → bump versions → draft PR vNEXT → main → release PR vCURRENT → main
+#           → orphan sweep → milestone roll
+#
+# Branch protection on v*.*.* MUST require PR + linear history + no force-push for
 # the trigger to be reliable (configured outside this file).
 
 concurrency:
@@ -17,7 +19,7 @@ concurrency:
 
 on:
   push:
-    branches: [ main ]
+    branches: ['v[0-9]*.[0-9]*.[0-9]*']
   workflow_dispatch:
 
 jobs:
@@ -29,22 +31,23 @@ jobs:
       pull-requests: write
       issues: write
     steps:
-      - name: Checkout main with full history + tags
-        # `token:` + `persist-credentials: true` ensure the later `git push` steps
-        # are authenticated regardless of checkout's internal credential plumbing.
+      - name: Checkout patch branch with full history + tags
+        # Checks out the patch branch that received the release commit, not main.
+        # `token:` + `persist-credentials: true` ensure later `git push` steps are
+        # authenticated regardless of checkout's internal credential plumbing.
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
           fetch-tags: true
-          ref: main
+          ref: ${{ github.ref_name }}
           token: ${{ secrets.GITHUB_TOKEN }}
           persist-credentials: true
 
-      - name: Detect release squash commit
+      - name: Detect release commit
         id: detect
-        # Recognise release commit subjects:
+        # Recognise release commit subjects (squash-merged sprint PRs on vX.Y.Z):
         #   "vX.Y.Z"            — bare (gh may append " (#N)")
-        #   "vX.Y.Z: <summary>" — descriptive (operator convention since v6.0.0)
+        #   "vX.Y.Z: <summary>" — descriptive
         #   "release: vX.Y.Z"   — back-compat / automation-authored
         # Extracted version is cross-checked against .claude-plugin/plugin.json so
         # a stray commit subject can't accidentally fire the pipeline against the
@@ -59,7 +62,7 @@ jobs:
             PLUGIN_VER=$(jq -r '.version' .claude-plugin/plugin.json)
             if [ "$SUBJECT_VER" = "$PLUGIN_VER" ]; then
               echo "proceed=true" >> "$GITHUB_OUTPUT"
-              printf 'Release commit detected: %s (v%s)\n' "$SUBJECT" "$SUBJECT_VER"
+              printf 'Release commit detected: %s (v%s) on %s\n' "$SUBJECT" "$SUBJECT_VER" "${{ github.ref_name }}"
             else
               echo "proceed=false" >> "$GITHUB_OUTPUT"
               printf '::warning::Subject version (v%s) does not match plugin.json (v%s); skipping.\n' "$SUBJECT_VER" "$PLUGIN_VER"
@@ -158,7 +161,7 @@ jobs:
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG already exists; skipping create."
           else
-            gh release create "$TAG" --target main --title "$TAG" --notes-file "$NOTES"
+            gh release create "$TAG" --target "${{ github.ref_name }}" --title "$TAG" --notes-file "$NOTES"
           fi
 
       - name: Create GitHub Release (auto-generated notes)
@@ -173,16 +176,17 @@ jobs:
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG already exists; skipping create."
           else
-            gh release create "$TAG" --target main --title "$TAG" --generate-notes
+            gh release create "$TAG" --target "${{ github.ref_name }}" --title "$TAG" --generate-notes
           fi
 
-      # ─── Next patch: cut branch + bump all version refs ────────────────────
+      # ─── Next patch: cut from current patch branch + bump all version refs ──
       - name: Cut next patch branch + bump all version refs
         if: steps.detect.outputs.proceed == 'true'
         env:
           CURRENT: ${{ steps.ver.outputs.current }}
           NEXT: ${{ steps.ver.outputs.next }}
           PATCH: ${{ steps.ver.outputs.patch_branch }}
+          CURRENT_REF: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           if git ls-remote --exit-code --heads origin "$PATCH" >/dev/null 2>&1; then
@@ -190,7 +194,10 @@ jobs:
             git fetch origin "$PATCH"
             git checkout -B "$PATCH" "origin/$PATCH"
           else
-            git checkout -b "$PATCH" main
+            # Cut next patch from the current patch branch — NOT from main.
+            # main does not yet contain this release; the PR vCURRENT → main
+            # is opened below and merged by the operator post-pipeline.
+            git checkout -b "$PATCH" "origin/${CURRENT_REF}"
           fi
 
           # ── Claude plugin: bump version in plugin + marketplace manifests ──
@@ -234,7 +241,7 @@ jobs:
             . || true
           echo "::endgroup::"
 
-      - name: Commit + push patch branch with version bump
+      - name: Commit + push next patch branch with version bump
         if: steps.detect.outputs.proceed == 'true'
         env:
           CURRENT: ${{ steps.ver.outputs.current }}
@@ -270,6 +277,22 @@ jobs:
             gh pr create --base main --head "$PATCH" --draft \
               --title "release: v${NEXT}" \
               --body "Draft PR — accumulates dev.0..dev.9 of v${NEXT}. Generated by .github/workflows/release.yml."
+          fi
+
+      - name: Open release PR vCURRENT → main
+        if: steps.detect.outputs.proceed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CURRENT: ${{ steps.ver.outputs.current }}
+          CURRENT_REF: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if gh pr view "$CURRENT_REF" --json number >/dev/null 2>&1; then
+            echo "Release PR for $CURRENT_REF already exists; skipping."
+          else
+            gh pr create --base main --head "$CURRENT_REF" \
+              --title "release: v${CURRENT}" \
+              --body "Release PR — merges v${CURRENT} into main. Merge this to close the patch. Generated by .github/workflows/release.yml."
           fi
 
       # ─── Housekeeping: orphan sweep + milestone roll ───────────────────────
