@@ -195,9 +195,23 @@ Nested pattern compositions beyond **three levels** (e.g., Classify → Loop →
 
 ---
 
+## Named composite wave templates
+
+Composites are fixed, named instantiations of the six patterns. When a composite name
+appears in a Stage Graph, use its full definition — do not re-derive or improvise.
+
+| Name | Pattern basis | Phase | Key agents |
+|------|--------------|-------|-----------|
+| `INTRO-COMBO-WAVE` | Pattern 2 | INTRODUCTION | `@discovery` × N + `@auditor` × M (regression + carry-forward) |
+| `DISCOVERY-COMBO-WAVE` | Pattern 2 | BODY | `@auditor` × X + `@discovery` × Y + `@worker` × Z (opt.) |
+
+Full definitions: `doctrines/intro-combo-wave.md`, `doctrines/discovery-combo-wave.md`.
+
+---
+
 ## See also
 
-- `references/workflow-templates.md` — full pattern definitions with Stage Graph shapes, flock agent bindings, compose notes, and anti-patterns
+- `references/workflow-templates.md` — full pattern definitions with Stage Graph shapes, flock agent bindings, compose notes, anti-patterns, and named composite index
 - `doctrines/stage-graph.md` — the plan IS the dispatch contract; corollaries map directly onto pattern invariants
 - `doctrines/dispatch-tier-separation.md` — tier restrictions on which patterns' nodes may be dispatched by whom
 - `doctrines/pattern-b-overlap.md` — Pattern 2 specialization: WAVE-N-AUDIT ∥ WAVE-(N+1)-IMPL
