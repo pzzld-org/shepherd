@@ -19,7 +19,7 @@ concurrency:
 
 on:
   push:
-    branches: ['v[0-9]*.[0-9]*.[0-9]*']
+    branches: [main, master]
   workflow_dispatch:
 
 jobs:
@@ -31,10 +31,7 @@ jobs:
       pull-requests: write
       issues: write
     steps:
-      - name: Checkout patch branch with full history + tags
-        # Checks out the patch branch that received the release commit, not main.
-        # `token:` + `persist-credentials: true` ensure later `git push` steps are
-        # authenticated regardless of checkout's internal credential plumbing.
+      - name: Checkout
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
@@ -42,7 +39,6 @@ jobs:
           ref: ${{ github.ref_name }}
           token: ${{ secrets.GITHUB_TOKEN }}
           persist-credentials: true
-
       - name: Detect release commit
         id: detect
         # Recognise release commit subjects (squash-merged sprint PRs on vX.Y.Z):
