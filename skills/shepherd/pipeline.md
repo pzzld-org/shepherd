@@ -80,7 +80,11 @@ out_edges      — list of {label, target-node-id}
 
 **HOTFIX-DYNAMIC cardinality.** Unlike `HOTFIX` (count pre-declared in plan), a
 `HOTFIX-DYNAMIC` node derives its coder count at walk-time from the gate-error
-cluster analysis:
+cluster analysis. The **dispatch vehicle** for that count follows the cardinality
+ladder (`doctrines/hotfix-dispatch.md`, #135): `H = 1` cluster → ONE single
+subagent (never a teammate); `H ∈ (1,5]` → ONE batched dynamic workflow
+dispatched directly by root; `H ≥ 6` → a dedicated HOT-FIX lane. The coder count
+is derived as:
 
 1. Run the gate with structured JSON output (`{gates.lint} --message-format=json
    --keep-going > .shepherd/runs/w{N}-gate.json 2>&1` for tools that support it,
@@ -805,5 +809,6 @@ Full doctrine: `doctrines/plugin-reload-escape.md`.
 - `doctrines/cargo-sequential-gates.md` — cargo must run sequentially at WAVE-GATE (v5.0.9)
 - `doctrines/plugin-reload-escape.md` — /reload-plugins escape hatch for MCP unavailability (v5.0.9)
 - `doctrines/dispatch-cascade.md` — Stage Graph as rule engine; `shctx plan extract` + `shctx graph` mechanize the walk (v5.0.9)
+- `doctrines/hotfix-dispatch.md` — hot-fix dispatch cardinality ladder: `H=1` single subagent, `(1,5]` root-batched dynamic workflow, `H≥6` dedicated lane (v6.0.8, #135)
 - `commands/spawn.md` — `/shepherd:spawn --auto` (loop the walk algorithm) and `--parallel <N>` (N concurrent walks with cross-graph join at CLOSE-FINALIZE)
 - `doctrines/workflow-compile-down.md` — the φ node→construct map (§V) is derived from this node taxonomy; compiled fanout segments preserve the walk's predicate semantics (§IV)

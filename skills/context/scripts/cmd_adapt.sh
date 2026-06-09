@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# shctx adapt <roll|priors|report> [args]   (v6.0.4 #94/#95)
+# shctx adapt <roll|priors|report|recommend> [args]   (v6.0.4 #94/#95; v6.0.8)
 #
 # The SQLite-canonical adaptation loop. Replaces the advisory markdown
 # sprint-patterns.md registry (see doctrines/adaptation-loop.md).
@@ -9,6 +9,9 @@
 #       Write one sprint_metrics row at CLOSE-FINALIZE (idempotent on
 #       UNIQUE(project,sprint_branch)) AND harvest this sprint's HIGH/CRITICAL
 #       audit_findings into mem_entries(kind='prior') lessons (deduped by title).
+#       v6.0.8: every recurrence touches the prior's updated_at (last-seen);
+#       unpinned priors not re-seen within SHCTX_ADAPT_DECAY_SPRINTS sprint
+#       closes (default 6) are pruned so the store self-cleans (bounded arc).
 #
 #   priors [--metrics|--lessons|--all] [--json|--md]
 #       Read priors at sprint open. --metrics feeds dispatch sizing
@@ -16,9 +19,17 @@
 #       [DB-CONTEXT] brief block. Graceful when empty (emits nothing) so the
 #       caller falls back to static defaults / omits the section.
 #
-#   report [--md|--json]
+#   report [--md|--json] [--trends]
 #       Render the materialized sprint-patterns view (the markdown registry's
-#       SQLite-canonical replacement).
+#       SQLite-canonical replacement). --trends mechanizes adaptation-loop.md
+#       §VI: deterministic TREND ALERT (recurring concern / grade trending
+#       down / cost rising) over the last 3 sprints; emits nothing when
+#       history is insufficient (graceful).
+#
+#   recommend [--md|--json]
+#       Turn measured averages + recurring priors into a concrete dispatch
+#       RECOMMENDATION (suggested lane count, t-shirt band, watch-concerns).
+#       Empty store ⇒ "no history yet, use defaults" (graceful).
 
 set -eu -o pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -26,12 +37,14 @@ source "$HERE/_lib.sh"
 
 usage() {
   cat <<'EOF'
-shctx adapt <roll|priors|report> [args]   (v6.0.4 #94/#95)
+shctx adapt <roll|priors|report|recommend> [args]   (v6.0.4 #94/#95; v6.0.8)
 
   roll --sprint=<branch> [--grade=G --size=XS|S|M|L|XL --lanes=N --waves=N
                           --loc-add=N --loc-del=N --wall-min=R --api=N]
       Record one sprint_metrics row (idempotent) + harvest HIGH/CRITICAL
       audit_findings into mem_entries(kind='prior'). Run at CLOSE-FINALIZE.
+      Touches recurring priors' last-seen + prunes stale unpinned priors
+      (SHCTX_ADAPT_DECAY_SPRINTS, default 6; pinned priors are never pruned).
 
   priors [--metrics|--lessons|--all] [--json|--md]
       --metrics  measured averages: avg_sprint_minutes, avg_api_per_sprint,
@@ -39,8 +52,16 @@ shctx adapt <roll|priors|report> [args]   (v6.0.4 #94/#95)
       --lessons  recent kind='prior' lessons (cap 10) for brief injection.
       --all      both (default). --json for tooling, --md for briefs.
 
-  report [--md|--json]
-      Materialized sprint-patterns table + averages.
+  report [--md|--json] [--trends]
+      Materialized sprint-patterns table + averages. --trends emits a
+      deterministic TREND ALERT over the last 3 sprints (recurring HIGH/
+      CRITICAL concern, grade trending down, cost rising sharply); nothing
+      when history is insufficient. Mechanizes adaptation-loop.md §VI.
+
+  recommend [--md|--json]
+      Dispatch RECOMMENDATION from measured averages + recurring priors:
+      suggested lane count, t-shirt size band, watch-concerns. Empty store
+      ⇒ "no history yet, use defaults".
 
 Doctrine: skills/shepherd/doctrines/adaptation-loop.md (SQLite-canonical),
           skills/shepherd/doctrines/self-improvement.md (harvest→inject).
@@ -121,7 +142,14 @@ _cmd_roll() {
     title="prior: ${concern}"
     title_esc="${title//\'/\'\'}"
     dup=$(shctx_sql "SELECT 1 FROM mem_entries WHERE project_id='$pid' AND kind='prior' AND title='$title_esc' LIMIT 1;")
-    [[ -n "$dup" ]] && continue
+    # Recurrence: the concern already has a prior — refresh its last-seen
+    # (updated_at) so decay never prunes a still-recurring lesson, then skip
+    # the re-insert (dedup-by-title keeps the store bounded).
+    if [[ -n "$dup" ]]; then
+      shctx_sql "UPDATE mem_entries SET updated_at=$now
+                 WHERE project_id='$pid' AND kind='prior' AND title='$title_esc';"
+      continue
+    fi
     body="[$sev] sprint $sprint: ${gist}"
     body_esc="${body//\'/\'\'}"
     tags=$(jq -cn --arg c "$concern" '[$c]')
@@ -132,7 +160,43 @@ _cmd_roll() {
     harvested=$((harvested+1))
   done
 
-  echo "adapt roll: sprint_metrics row ($sprint) + $harvested prior(s) harvested"
+  local pruned
+  pruned=$(_decay_priors)
+
+  echo "adapt roll: sprint_metrics row ($sprint) + $harvested prior(s) harvested + $pruned stale prior(s) pruned"
+}
+
+# Prune unpinned 'prior' rows whose last-seen (updated_at) has fallen outside
+# the decay window, so the store stays bounded over long version arcs even as
+# concerns rotate (doctrines/self-improvement.md "Bounded & graceful").
+#
+# Window = SHCTX_ADAPT_DECAY_SPRINTS sprint closes (default 6). The cutoff is
+# gap-based on the close cadence, not wall-clock: a prior is stale once MORE
+# than `window` recorded sprint closes carry a created_at strictly newer than
+# the prior's updated_at — i.e. it went un-refreshed across `window` closes.
+# This is collision-proof against same-second rolls (a prior refreshed THIS
+# close has updated_at = now, so zero closes are newer ⇒ never pruned). Pinned
+# priors are NEVER pruned. Graceful when <2 closes are recorded (no cadence to
+# measure) — emits 0 and prunes nothing. Echoes the prune count.
+_decay_priors() {
+  local window="${SHCTX_ADAPT_DECAY_SPRINTS:-6}"
+  [[ "$window" =~ ^[0-9]+$ ]] || window=6
+  # Need ≥2 closes before a decay cadence is meaningful; otherwise no cutoff.
+  local nsprints
+  nsprints=$(shctx_sql "SELECT count(*) FROM sprint_metrics WHERE project_id='$pid';")
+  [[ "${nsprints:-0}" -ge 2 ]] || { printf '0'; return 0; }
+  # Count closes strictly newer than each prior's last-seen; prune when that
+  # count exceeds the window. Single correlated DELETE keeps it atomic.
+  local n
+  n=$(shctx_sql "SELECT count(*) FROM mem_entries m
+                 WHERE m.project_id='$pid' AND m.kind='prior' AND m.pinned=0
+                   AND (SELECT count(*) FROM sprint_metrics s
+                        WHERE s.project_id='$pid' AND s.created_at > m.updated_at) > $window;")
+  shctx_sql "DELETE FROM mem_entries
+             WHERE project_id='$pid' AND kind='prior' AND pinned=0
+               AND (SELECT count(*) FROM sprint_metrics s
+                    WHERE s.project_id='$pid' AND s.created_at > mem_entries.updated_at) > $window;"
+  printf '%s' "${n:-0}"
 }
 
 # ---------------------------------------------------------------------------
@@ -212,15 +276,18 @@ _cmd_priors() {
 # report — materialized sprint-patterns view
 # ---------------------------------------------------------------------------
 _cmd_report() {
-  local fmt="md"
+  local fmt="md" trends=0
   for arg in "$@"; do
     case "$arg" in
-      --md)   fmt="md" ;;
-      --json) fmt="json" ;;
+      --md)     fmt="md" ;;
+      --json)   fmt="json" ;;
+      --trends) trends=1 ;;
       -h|--help) usage; exit 0 ;;
       *) echo "ERROR: unknown arg: $arg" >&2; exit 1 ;;
     esac
   done
+
+  (( trends )) && { _emit_trends "$fmt"; return 0; }
 
   if [[ "$fmt" == "json" ]]; then
     shctx_sql "SELECT json_group_array(json_object(
@@ -258,9 +325,172 @@ _cmd_report() {
   _emit_metrics md
 }
 
+# ---------------------------------------------------------------------------
+# report --trends — deterministic TREND ALERT (mechanizes adaptation-loop.md §VI)
+# ---------------------------------------------------------------------------
+# Three signals computed over the last 3 recorded sprint closes:
+#   (a) a HIGH/CRITICAL audit concern recurring across ALL of the last 3 sprints
+#   (b) sprint grade trending strictly worse (best→worst, e.g. A→B→C)
+#   (c) cost rising sharply: newest wall_minutes OR api_calls ≥ 1.5× the oldest
+# Insufficient history (<3 closes) ⇒ emit nothing (graceful). All signals are
+# pure SQL window functions over sprint_metrics — no heuristics, no clock.
+_emit_trends() {
+  local fmt="$1"
+  # The last 3 closes, newest first. Need exactly 3 to assess a 3-point trend.
+  local n3
+  n3=$(shctx_sql "SELECT count(*) FROM (SELECT 1 FROM sprint_metrics
+                  WHERE project_id='$pid' ORDER BY created_at DESC, id DESC LIMIT 3);")
+  [[ "${n3:-0}" -ge 3 ]] || return 0
+
+  # The 3 most-recent sprint branches (newest → oldest), as a CTE we can reuse.
+  local last3="WITH last3 AS (
+                 SELECT sprint_branch, grade, wall_minutes, api_calls, created_at, id,
+                        ROW_NUMBER() OVER (ORDER BY created_at DESC, id DESC) AS rn
+                 FROM sprint_metrics WHERE project_id='$pid'
+                 ORDER BY created_at DESC, id DESC LIMIT 3)"
+
+  # (a) concern present as HIGH/CRITICAL in every one of the last-3 sprints.
+  local concern
+  concern=$(shctx_sql "$last3
+                       SELECT af.concern FROM audit_findings af
+                       WHERE af.project_id='$pid' AND af.severity IN ('high','critical')
+                         AND af.sprint_branch IN (SELECT sprint_branch FROM last3)
+                       GROUP BY af.concern
+                       HAVING COUNT(DISTINCT af.sprint_branch) = 3
+                       ORDER BY af.concern LIMIT 1;")
+
+  # (b) grade trending strictly worse from oldest→newest of the last 3. Map the
+  # letter grade to a rank (A=0 … F=5); strictly increasing rank == worse.
+  local grade_down
+  grade_down=$(shctx_sql "$last3,
+                  g AS (SELECT rn,
+                          CASE substr(UPPER(grade),1,1)
+                            WHEN 'A' THEN 0 WHEN 'B' THEN 1 WHEN 'C' THEN 2
+                            WHEN 'D' THEN 3 WHEN 'E' THEN 4 WHEN 'F' THEN 5 END AS gr
+                        FROM last3)
+                  SELECT CASE WHEN
+                    (SELECT gr FROM g WHERE rn=1) > (SELECT gr FROM g WHERE rn=2)
+                    AND (SELECT gr FROM g WHERE rn=2) > (SELECT gr FROM g WHERE rn=3)
+                    AND (SELECT count(*) FROM g WHERE gr IS NOT NULL) = 3
+                  THEN 1 ELSE 0 END;")
+
+  # (c) cost rising sharply: newest (rn=1) ≥ 1.5× oldest (rn=3) on wall or api.
+  local cost_up
+  cost_up=$(shctx_sql "$last3
+                  SELECT CASE WHEN
+                    ((SELECT wall_minutes FROM last3 WHERE rn=1) >=
+                       1.5 * (SELECT wall_minutes FROM last3 WHERE rn=3)
+                     AND (SELECT wall_minutes FROM last3 WHERE rn=3) > 0)
+                    OR
+                    ((SELECT api_calls FROM last3 WHERE rn=1) >=
+                       1.5 * (SELECT api_calls FROM last3 WHERE rn=3)
+                     AND (SELECT api_calls FROM last3 WHERE rn=3) > 0)
+                  THEN 1 ELSE 0 END;")
+
+  # Nothing fired ⇒ emit nothing (graceful — no noise on a healthy streak).
+  [[ -z "$concern" && "${grade_down:-0}" != "1" && "${cost_up:-0}" != "1" ]] && return 0
+
+  if [[ "$fmt" == "json" ]]; then
+    jq -cn \
+      --arg c "${concern:-}" \
+      --argjson rc "$([[ -n "$concern" ]] && echo true || echo false)" \
+      --argjson gd "$([[ "${grade_down:-0}" == "1" ]] && echo true || echo false)" \
+      --argjson cu "$([[ "${cost_up:-0}" == "1" ]] && echo true || echo false)" \
+      '{trend_alert:true, recurring_concern:$rc, concern:$c,
+        grade_trending_down:$gd, cost_rising:$cu}'
+    return 0
+  fi
+
+  echo "### TREND ALERT — last 3 sprints (\`shctx adapt report --trends\`)"
+  echo
+  [[ -n "$concern" ]] && \
+    echo "- **Recurring concern:** \`$concern\` raised HIGH/CRITICAL in all of the last 3 sprints — give it a dedicated lane / acceptance criterion."
+  [[ "${grade_down:-0}" == "1" ]] && \
+    echo "- **Grade trending DOWN** across the last 3 sprints — scope may be outrunning capacity; size the next sprint smaller."
+  [[ "${cost_up:-0}" == "1" ]] && \
+    echo "- **Cost rising sharply** (newest ≥ 1.5× oldest wall/api over 3 sprints) — review lane fan-out and wave count."
+  # Explicit success — never let the last optional `&&` line above set the
+  # function's exit status (a fired alert must not exit non-zero under `set -e`).
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# recommend — concrete dispatch recommendation from measured averages + priors
+# ---------------------------------------------------------------------------
+# Turns sprint_metrics averages + recurring priors into a suggested lane count,
+# a t-shirt size band, and watch-concerns. Empty store ⇒ "no history yet, use
+# defaults" (graceful — caller omits the section, same contract as priors).
+_emit_recommend() {
+  local fmt="$1"
+  local row n awm aac alc
+  row=$(shctx_sql "SELECT n, COALESCE(avg_wall_minutes,0), COALESCE(avg_api_calls,0),
+                          COALESCE(avg_lane_count,0)
+                   FROM v_sprint_metrics_avg WHERE project_id='$pid';")
+  if [[ -z "$row" ]]; then
+    [[ "$fmt" == "json" ]] && jq -cn '{history:false,note:"no history yet, use defaults"}' \
+      || echo "_(no history yet, use defaults)_"
+    return 0
+  fi
+  IFS='|' read -r n awm aac alc <<< "$row"
+  if [[ -z "$n" || "$n" == "0" ]]; then
+    [[ "$fmt" == "json" ]] && jq -cn '{history:false,note:"no history yet, use defaults"}' \
+      || echo "_(no history yet, use defaults)_"
+    return 0
+  fi
+
+  # Suggested lanes: round the measured average to the nearest whole lane, floor 1.
+  local lanes
+  lanes=$(shctx_sql "SELECT MAX(1, CAST(ROUND($alc) AS INTEGER));")
+  # T-shirt band from measured avg wall minutes (mirrors scope-scale defaults).
+  local band
+  band=$(shctx_sql "SELECT CASE
+                      WHEN $awm < 30  THEN 'XS'
+                      WHEN $awm < 60  THEN 'S'
+                      WHEN $awm < 120 THEN 'M'
+                      WHEN $awm < 240 THEN 'L'
+                      ELSE 'XL' END;")
+  # Watch-concerns: the recurring prior concerns (tags), most-recent first.
+  local concerns
+  concerns=$(shctx_sql "SELECT group_concat(c, ', ') FROM (
+                          SELECT DISTINCT json_extract(tags,'\$[0]') AS c
+                          FROM mem_entries
+                          WHERE project_id='$pid' AND kind='prior'
+                            AND json_extract(tags,'\$[0]') IS NOT NULL
+                          ORDER BY updated_at DESC, id DESC LIMIT 5);")
+
+  if [[ "$fmt" == "json" ]]; then
+    jq -cn --argjson h true --argjson n "$n" \
+       --argjson l "$lanes" --arg b "$band" --arg w "${concerns:-}" \
+       '{history:$h, n:$n, suggested_lanes:$l, size_band:$b, watch_concerns:$w}'
+    return 0
+  fi
+
+  printf '### Dispatch recommendation — measured (%s prior sprint(s))\n' "$n"
+  printf -- '- suggested lanes: %s _(measured avg_lane_count %.1f)_\n' "$lanes" "$alc"
+  printf -- '- t-shirt band: %s _(measured avg %s min/sprint)_\n' "$band" "$(printf '%.0f' "$awm")"
+  [[ -n "$concerns" ]] && printf -- '- watch-concerns: %s\n' "$concerns"
+  # Explicit success — a healthy recommendation with no watch-concerns must not
+  # inherit the trailing `[[ ]] &&` non-zero status under `set -e`.
+  return 0
+}
+
+_cmd_recommend() {
+  local fmt="md"
+  for arg in "$@"; do
+    case "$arg" in
+      --md)   fmt="md" ;;
+      --json) fmt="json" ;;
+      -h|--help) usage; exit 0 ;;
+      *) echo "ERROR: unknown arg: $arg" >&2; exit 1 ;;
+    esac
+  done
+  _emit_recommend "$fmt"
+}
+
 case "$sub" in
-  roll)   _cmd_roll   "$@" ;;
-  priors) _cmd_priors "$@" ;;
-  report) _cmd_report "$@" ;;
+  roll)      _cmd_roll      "$@" ;;
+  priors)    _cmd_priors    "$@" ;;
+  report)    _cmd_report    "$@" ;;
+  recommend) _cmd_recommend "$@" ;;
   *) echo "ERROR: unknown subcommand: adapt $sub" >&2; usage >&2; exit 1 ;;
 esac

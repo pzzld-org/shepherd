@@ -67,12 +67,17 @@ Subcommands (atomic):
                           show <id>: render one insight.
                           export [--sprint=BRANCH]: markdown for engineer mesh row 13.
                           clear [--older-than-days=N]: prune actioned old insights.
-  adapt <roll|priors|report> [args]                   (v6.0.4 #94/#95)
+  adapt <roll|priors|report|recommend> [args]         (v6.0.4 #94/#95; v6.0.8)
                           roll --sprint=B: write a sprint_metrics row at close +
-                          harvest HIGH/CRITICAL audit_findings → mem_entries(prior).
+                          harvest HIGH/CRITICAL audit_findings → mem_entries(prior);
+                          refresh + prune stale priors (decay, default 6 sprints).
                           priors --metrics: measured dispatch averages (spawn
                           Check 8); --lessons: prior lessons for [DB-CONTEXT].
-                          report: materialized sprint-patterns view.
+                          report [--trends]: materialized view; --trends emits a
+                          deterministic TREND ALERT (recurring concern / grade /
+                          cost) over the last 3 sprints.
+                          recommend: dispatch recommendation (lanes, t-shirt band,
+                          watch-concerns) from measured averages.
                           SQLite-canonical (doctrines/adaptation-loop.md).
 
 Pipelines (multi-step automation, v5.0.4):

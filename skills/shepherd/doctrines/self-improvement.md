@@ -52,6 +52,7 @@ A plan or seed that acted on a prior **cites its id** (`prior:<mem_id>`) in the 
 ## Bounded & graceful — the invariants
 
 - **Bounded:** dedup-by-title caps priors at one-per-concern; only HIGH/CRITICAL harvested.
+- **Bounded over long arcs (decay):** every recurrence refreshes a prior's last-seen (`updated_at`); an **unpinned** prior not re-seen across `SHCTX_ADAPT_DECAY_SPRINTS` sprint closes (default 6) is pruned on the next `roll`. So as concerns rotate across a multi-patch version arc the store self-cleans and stays bounded — stale lessons drop out, **pinned** lessons never do.
 - **Graceful-empty:** an empty store makes every read emit nothing; plant and Phase-0 behave exactly as a cold start. Empty store == today's behavior.
 - **Idempotent:** re-running a close's `roll` neither duplicates the metrics row nor re-harvests existing priors.
 

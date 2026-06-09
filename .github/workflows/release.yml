@@ -218,8 +218,15 @@ jobs:
             fi
           done
 
-          # ── README: bump current-version line if present ──
+          # ── README: bump the title heading + the current-version line ──
           if [ -f README.md ]; then
+            # Title heading "# shepherd — vX.Y.Z". Structural match (any version
+            # → NEXT) so a title left behind a few patches self-heals instead of
+            # sticking — the failure mode that left it at v6.0.5 through v6.0.7.
+            sed -i.bak -E \
+              "s/^# shepherd — v[0-9]+\.[0-9]+\.[0-9]+/# shepherd — v${NEXT}/" \
+              README.md
+            # Current-version line (specific CURRENT → NEXT).
             sed -i.bak -E \
               "s/Current version: \*\*${CURRENT}\*\*/Current version: **${NEXT}**/" \
               README.md

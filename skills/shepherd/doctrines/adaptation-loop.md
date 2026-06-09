@@ -20,7 +20,7 @@ introduced: v5.0.6
 
 The shepherd flock has no cross-session memory by default. Each sprint starts from the seed and the prior handoff — one sprint old. Over a patch cycle, recurring finding types, persistent halt codes, grade-cap patterns, and real timing/effort costs accumulate with no mechanism to surface them to planning.
 
-The adaptation loop gives the system **sprint-level memory without operator annotation**. At each close the conductor records what the sprint cost and what it taught; at each open the engineer, planter, and spawn dispatcher read those facts back. The registry is the project DB (`.shepherd/root.db`) — the canonical store per `doctrines/sqlite-canonical-state.md` — so the signal survives sessions, is queryable, and is bounded by construction.
+The adaptation loop gives the system **sprint-level memory without operator annotation**. At each close the conductor records what the sprint cost and what it taught; at each open the engineer, planter, and spawn dispatcher read those facts back. The registry is the project DB (`${SHEPHERD_WORKDIR}/root.db` — default `.shepherd/root.db`, or `.artifacts/root.db` for legacy projects; auto-detected) — the canonical store per `doctrines/sqlite-canonical-state.md` — so the signal survives sessions, is queryable, and is bounded by construction.
 
 ---
 
@@ -102,20 +102,28 @@ This is the one place the adaptation loop is **not** advisory: a second sprint's
 
 ---
 
-## VI. Conductor trend surface at PAUSE
+## VI. Conductor trend surface at PAUSE — mechanized
 
-After CLOSE-FINALIZE, before PAUSE, the conductor scans `shctx adapt report` for:
+After CLOSE-FINALIZE, before PAUSE, the conductor runs one command — it does **not** eyeball the report:
 
-- a concern with HIGH/CRITICAL priors recurring across the last 3 sprints,
-- a sprint grade trending downward (A → B → C) across 3 sprints,
-- `avg_sprint_minutes` / `avg_api_per_sprint` trending up sharply.
-
-If any fires, surface an informational **TREND ALERT** (it does not block PAUSE):
-
+```bash
+shctx adapt report --trends   # deterministic; emits nothing on a healthy streak
 ```
-[TREND] {concern | grade-direction | cost} has recurred for {N} sprints.
-Recommendation: {1-sentence concrete suggestion}
-```
+
+`--trends` computes the three §VI signals in pure SQL over the **last 3 recorded sprints** and prints an informational **TREND ALERT** block (it does **not** block PAUSE) when any fires:
+
+- a HIGH/CRITICAL `audit_findings` concern recurring across **all** of the last 3 sprints,
+- a sprint **grade trending strictly downward** (e.g. A → B → C) across those 3 sprints,
+- **cost rising sharply** — newest `wall_minutes` or `api_calls` ≥ 1.5× the oldest of the last 3.
+
+Insufficient history (< 3 closes) ⇒ it emits nothing (graceful), exactly like a cold start. Because the detection is mechanized, the conductor surfaces the block verbatim instead of re-deriving the trend from a table read — no judgement call, no skipped scan on exhausted context.
+
+### VI.b — `shctx adapt recommend` and prior decay
+
+Two companion surfaces keep the loop actionable and bounded:
+
+- **`shctx adapt recommend [--md|--json]`** turns the measured `sprint_metrics` averages + recurring priors into a concrete dispatch **RECOMMENDATION** — a suggested lane count, a t-shirt size band, and watch-concerns. Empty store ⇒ `no history yet, use defaults` (graceful). The engineer `[DB-CONTEXT]` injects `recommend --md` (omit-when-empty) so the next plan opens with measured sizing guidance, not gut feel.
+- **Prior decay** runs inside `shctx adapt roll`. Every recurring concern refreshes its prior's `updated_at` (last-seen); any **unpinned** prior not re-seen across `SHCTX_ADAPT_DECAY_SPRINTS` sprint closes (default **6**) is pruned. **Pinned priors are never pruned.** Decay is what keeps the store bounded over a long version arc even as concerns rotate — see `doctrines/self-improvement.md` "Bounded & graceful".
 
 ---
 

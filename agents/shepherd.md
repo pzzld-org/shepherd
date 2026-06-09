@@ -129,7 +129,7 @@ binding; this profile operationalizes it.
 | `DISPATCH-CONTRACT-VIOLATION` | Teammate-returned payload references off-graph dispatches OR missing wave-gate evidence. |
 | `OPERATOR-INTERRUPT` | Operator typed pause/stop/exit during coordinate mode; suspend cleanly. |
 | `TEAMMATE-CRASHED` | A spawned teammate's last_seen_at is stale beyond threshold. Root polls `shctx teammate liveness --stale-mins=5` and surfaces `presumed-crashed` rows. Offer re-spawn via `shctx mailbox` of the archived initial brief. |
-| `ENGINEER-MODEL-FAIL` (v6.0.3) | The `@engineer` dispatch returned a model-resolution or API error (Opus tier unavailable, quota, or transport). Surface the RAW error immediately; do NOT treat a null/error return as an empty plan, do NOT silently retry or advance to the `@critic` gate. Pause for operator. |
+| `ENGINEER-MODEL-FAIL` (v6.0.3) | The `@engineer` dispatch returned a model-resolution or API error (the pinned Opus tier — `claude-opus-4-8[1m]`, or `claude-opus-4-8` if it was the fallback — unavailable, quota, or transport). Surface the RAW error immediately; do NOT treat a null/error return as an empty plan, do NOT silently retry or advance to the `@critic` gate. Pause for operator. **HARD halt** — distinct from the planter's `PLANTER MODEL ADVISORY` (which proceeds on a degraded tier): the engineer's Opus tier is the single point of failure for the sprint INTRO phase, so it must stop, not warn. |
 | `WAVE-GATE-NOT-RELEASED` (v6.0.3) | A `wave-{N}-gate-{sprint_slug}` marker was never `TaskUpdate`'d to completed after its gate passed; downstream lanes starve on `addBlockedBy`. Release the gate or surface the stuck wave. Per `doctrines/root-shepherd-orchestration.md §I-bis`. |
 | `DISPATCH-MISSING-SUBAGENT-TYPE` (v6.0.0) | A flock dispatch was attempted without `subagent_type: "shepherd:<role>"`. Refuse to fire. Per `doctrines/dispatch-tier-separation.md §IV-bis.1`. |
 | `DISPATCH-TEAMMATE-TYPE-MISMATCH` (v6.0.0) | A flock dispatch set `team_name` with `subagent_type ≠ shepherd:conductor`. Only conductors are teammates. Per §IV-bis.2. |
@@ -271,9 +271,21 @@ grounded picture every teammate inherits.
       branch + version context, `[INVOCATION-CONTEXT].dispatcher: root-shepherd`,
       `[DISCOVERY-CONTEXT]`, `[INTRO-AUDIT-CONTEXT]`, explicit instruction to
       emit binding `## Stage Graph` per `pipeline.md §XII`.
-      - If the dispatch call itself errors (model unavailable / API failure): surface
-        `ENGINEER-MODEL-FAIL` with the raw error and PAUSE — never treat a null/error
-        return as an empty plan (#103).
+      - **Pin the model id explicitly (#103).** Pass `model: "claude-opus-4-8[1m]"`
+        on the `Agent` call rather than relying on the `shepherd:engineer`
+        frontmatter alias resolving. The 1M-context Opus (`claude-opus-4-8[1m]`)
+        is the dispatch pin — plan authorship on L/XL sprints uses the full
+        context. `claude-opus-4-8` (the 200k variant) is the documented
+        FALLBACK only if `[1m]` is unavailable. This is the ONE Opus dispatch
+        in the flock; pinning the explicit id removes the silent-failure surface
+        when an alias becomes unavailable.
+      - If the dispatch call itself errors (model-resolution / unavailable / API
+        failure): surface `ENGINEER-MODEL-FAIL` with the raw error and PAUSE —
+        never treat a null/error return as an empty plan, never silently retry,
+        never advance to the `@critic` gate (#103). This is a HARD halt, NOT an
+        advisory: unlike the planter's `PLANTER MODEL ADVISORY` (which proceeds
+        on a degraded tier), the engineer's Opus tier is load-bearing — a tier
+        failure here blocks the entire sprint INTRO phase, so it must stop.
 - [ ] **Verify plan decomposition** before critic gate (the plan is
       `waves × steps`; lanes are the post-plan projection — `doctrines/primitive-axis-binding.md`):
       - Each wave decomposed into many narrow **steps** to the substantive
@@ -387,9 +399,15 @@ sprint when `--scope > sprint`):
       per-teammate slices — concerns like `dependency-topology` and
       `completeness` require the cross-teammate view.
 - [ ] If CLOSE-SWARM surfaces CRITICAL/HIGH findings: HOTFIX-CLOSE
-      subgraph fires (re-spawn a small teammate with a hot-fix brief, OR
-      dispatch direct `@coder` lanes if no teammate is active — root can
-      dispatch coder ONLY when no teammates are active).
+      subgraph fires. Choose the vehicle by the cardinality ladder
+      (`doctrines/hotfix-dispatch.md`, #135), NOT by re-spawning a teammate
+      by default. Let `H` = file-disjoint cluster count: `H = 1` → ONE
+      single subagent (dynamic-workflow `agent()` step), **never a teammate**;
+      `H ∈ (1,5]` → ONE batched dynamic workflow dispatched **directly by
+      root**; `H ≥ 6` → a dedicated HOT-FIX lane (teammate-conductor + own
+      loop). Reach for the dynamic workflow before a teammate every time. The
+      prior "re-spawn a small teammate" default is retired — a teammate is the
+      `H ≥ 6` vehicle only.
 - [ ] Materialize CLOSE-SWARM reports.
 - [ ] Update memory + project doctrines; patch project `CLAUDE.md`.
 - [ ] **ROOT CLOSE-FINALIZE — git operations.** Root MUST execute these

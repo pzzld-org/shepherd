@@ -1,10 +1,10 @@
-# shepherd — v6.0.5
+# shepherd — v6.0.8
 
 Sprint-by-sprint version-cycle conductor. A production-grade orchestration framework that turns a single Claude Code session into a disciplined release engineer driving a closed six-agent flock (engineer, critic, coder, auditor, worker, discovery) through repeatable sprint pipelines.
 
 ```bash
 ┌──────────────────────────────────────────────────────────────────────┐
-│  /shepherd:plant     Opus-pinned seed authorship (upstream)          │
+│  /shepherd:plant     Seed authorship — Opus recommended (upstream)   │
 │  /shepherd:start     One sprint end-to-end, then PAUSE               │
 │                       --teammate    lane-execute (spawned sessions)  │
 │  /shepherd:spawn     Root-shepherd + teammate-conductors             │
@@ -204,7 +204,7 @@ Shepherd is the framework. **Three meta tiers** orchestrate a closed **six-agent
 | ---- | ------- | ----- | ---------- | ---- |
 | 3 (root) | `agents/shepherd.md` | inherit | Main chat under `/shepherd:spawn` | Engineer/critic dispatch, artifact materialization, dispute resolution, close-swarm |
 | 2 (meta) | `agents/conductor.md` | sonnet | Main chat under `/shepherd:start` (solo) OR teammate session (teammate) | Sprint/lane execution; dual-mode |
-| PARALLEL | `agents/planter.md` | opus[1m] | Main chat under `/shepherd:plant`; mid-spawn delegated | Seed authorship + cleanup stewardship |
+| PARALLEL | `agents/planter.md` | opus[1m] (recommended; Fable 5 superior; Sonnet/Haiku allowed, degraded) | Main chat under `/shepherd:plant`; mid-spawn delegated | Seed authorship + cleanup stewardship |
 
 **The flock** (closed at six):
 
@@ -217,7 +217,7 @@ Shepherd is the framework. **Three meta tiers** orchestrate a closed **six-agent
 | `@worker` | Sonnet | Single or parallel | Bounded execution: monitoring, research, ops |
 | `@discovery` | Sonnet | Single or parallel | Read-only orientation, comprehension, synthesis |
 
-The flock is **closed**. Plus an upstream **planter** mode (Opus, conductor variant — not a sixth lane) that authors drift-resistant seeds.
+The flock is **closed**. Plus an upstream **planter** mode (Opus recommended — Fable 5 superior, Sonnet/Haiku allowed with a degraded-seed warning; conductor variant — not a sixth lane) that authors drift-resistant seeds.
 
 ## What it solves
 
@@ -317,7 +317,7 @@ A working example for the Axiom project lives at [`examples/axiom/shepherd.toml`
 ## Usage
 
 ```bash
-# Author seeds for upcoming sprints (Opus session required)
+# Author seeds for upcoming sprints (Opus recommended; Fable 5 superior; Sonnet/Haiku allowed with a degraded-seed warning)
 /shepherd:plant
 /shepherd:plant dev.5
 /shepherd:plant arc
@@ -339,7 +339,7 @@ For first-time use:
 
 1. Author your project's `shepherd.toml` (see above).
 2. (Optional) author a patch-arc seed by hand at `.artifacts/plans/v{X}.{Y}.{Z}.seed.md` describing the patch's theme.
-3. Run `/shepherd:plant` in an Opus session to author the dev.0 seed.
+3. Run `/shepherd:plant` to author the dev.0 seed (Opus recommended — Fable 5 is the superior upgrade; Sonnet/Haiku will plant but produce lower-quality seeds).
 4. Switch back to Sonnet and run `/shepherd:start`.
 
 ## File map
@@ -377,7 +377,7 @@ Shepherd follows semver:
 - **MINOR** bumps add new commands, new doctrines, new config keys (backward-compatible).
 - **PATCH** bumps fix bugs in dispatch logic, doctrines, brief templates.
 
-Current version: **6.0.7**
+Current version: **6.0.8**
 
 See [`CHANGELOG.md`](CHANGELOG.md) for the per-version history.
 

@@ -8,6 +8,7 @@
 #     2. Subworktree (pwd != git show-toplevel)
 #     3. Sprint branch + no close report committed (normal mid-sprint state)
 #     4. Sprint branch + planter-mesh committed (fire #17 variant — plant-mode)
+#     4b. PRIOR-sprint close report in HEAD + current LIVE branch (GH #122 — slug scope)
 #     5. Sprint branch + close report + branch GONE from origin (already finalized)
 #     6. Invalid slug form — branch unparseable → fail-open
 #
@@ -110,6 +111,30 @@ for name in "2026-06-04-phase0-discovery.md" "v035-dev0.seed.md" "2026-06-04-v03
     fail "non-close-artifact ($name): no block" "should not match slug-close pattern; out=$out"
   fi
 done
+
+# ---------------------------------------------------------------------------
+# 4b. GH #122 REGRESSION — PRIOR-sprint close report in HEAD + current LIVE
+#     sprint branch on origin → must NOT block.
+#     Scenario: v0.3.4-dev.8 closed (its close report committed), then
+#     v0.3.4-dev.9 was cut FROM dev.8 (so dev.8's close report is reachable
+#     from dev.9 HEAD) and pushed LIVE. The old `-newer .git/HEAD` detector
+#     matched the prior slug and instructed deleting the LIVE dev.9 branch.
+#     Slug-scoping (Signal A = *-v035-dev9-close.md, derived from the CURRENT
+#     branch) must make dev.8's report invisible → fast-path, no block.
+# ---------------------------------------------------------------------------
+total=$((total+1))
+git checkout -q v0.3.5-dev.0
+git checkout -q -b v0.3.5-dev.1                       # prior sprint
+commit_report "2026-06-03-v035-dev1-close.md" "close(v0.3.5-dev.1): prior sprint"
+git checkout -q -b v0.3.5-dev.2                       # current sprint, cut FROM dev.1
+git push -q origin v0.3.5-dev.2 2>/dev/null           # dev.2 is LIVE on origin
+out=$(run_check)
+if ! is_block "$out"; then
+  pass "prior-sprint-close-report + live-current-branch: no block (#122)"
+else
+  fail "prior-sprint-close-report + live-current-branch: no block (#122)" "dev.1 close report must not match dev.2 slug; out=$out"
+fi
+git checkout -q v0.3.5-dev.0
 
 # ---------------------------------------------------------------------------
 # 5. Sprint branch + committed close report + branch GONE from origin.
