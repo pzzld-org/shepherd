@@ -1,15 +1,18 @@
 name: release
 
-# Mechanical patch-release pipeline. Implements the shepherd skill §III sequence:
-# tag → release → cut next patch → bump versions → draft PR →
-# orphan sweep → milestone roll. Triggered by the squash-merge of a patch PR
-# landing on main whose subject is either "vX.Y.Z" (operator convention, with the
-# gh-appended " (#N)" suffix tolerated) or "release: vX.Y.Z" (back-compat). The
-# extracted version is cross-checked against .claude-plugin/plugin.json;
-# non-release pushes are skipped.
+# Patch-release pipeline. Triggered when a patch branch (v*.*.*) merges into the
+# default branch (main): the merge commit subject is "vX.Y.Z", "vX.Y.Z:
+# <summary>", or "release: vX.Y.Z" (gh appends " (#N)" on squash — tolerated).
+# The extracted version is cross-checked against .claude-plugin/plugin.json;
+# non-release pushes to main are skipped cleanly.
 #
-# Branch protection on main MUST require PR + linear history + no force-push for
-# the trigger to be reliable (configured outside this file).
+# Flow: v*.*.* → main → release & tag vCURRENT → compute v*.*.*+1 → bump version
+#       refs → commit & push to the new vNEXT branch → open draft PR vNEXT → main
+#       → orphan sweep → milestone roll.
+#
+# The merge into main IS the release event — there is NO separate "release PR
+# vCURRENT → main" step (that PR is the one that just merged). Branch protection
+# on main MUST require PR + linear history + no force-push for a reliable trigger.
 
 concurrency:
   cancel-in-progress: false
@@ -17,7 +20,7 @@ concurrency:
 
 on:
   push:
-    branches: [ main ]
+    branches: [main, master]
   workflow_dispatch:
 
 jobs:
@@ -29,22 +32,19 @@ jobs:
       pull-requests: write
       issues: write
     steps:
-      - name: Checkout main with full history + tags
-        # `token:` + `persist-credentials: true` ensure the later `git push` steps
-        # are authenticated regardless of checkout's internal credential plumbing.
+      - name: Checkout
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
           fetch-tags: true
-          ref: main
+          ref: ${{ github.ref_name }}
           token: ${{ secrets.GITHUB_TOKEN }}
           persist-credentials: true
-
-      - name: Detect release squash commit
+      - name: Detect release commit
         id: detect
-        # Recognise release commit subjects:
+        # Recognise release commit subjects (squash-merged sprint PRs on vX.Y.Z):
         #   "vX.Y.Z"            — bare (gh may append " (#N)")
-        #   "vX.Y.Z: <summary>" — descriptive (operator convention since v6.0.0)
+        #   "vX.Y.Z: <summary>" — descriptive
         #   "release: vX.Y.Z"   — back-compat / automation-authored
         # Extracted version is cross-checked against .claude-plugin/plugin.json so
         # a stray commit subject can't accidentally fire the pipeline against the
@@ -59,7 +59,7 @@ jobs:
             PLUGIN_VER=$(jq -r '.version' .claude-plugin/plugin.json)
             if [ "$SUBJECT_VER" = "$PLUGIN_VER" ]; then
               echo "proceed=true" >> "$GITHUB_OUTPUT"
-              printf 'Release commit detected: %s (v%s)\n' "$SUBJECT" "$SUBJECT_VER"
+              printf 'Release commit detected: %s (v%s) on %s\n' "$SUBJECT" "$SUBJECT_VER" "${{ github.ref_name }}"
             else
               echo "proceed=false" >> "$GITHUB_OUTPUT"
               printf '::warning::Subject version (v%s) does not match plugin.json (v%s); skipping.\n' "$SUBJECT_VER" "$PLUGIN_VER"
@@ -158,7 +158,7 @@ jobs:
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG already exists; skipping create."
           else
-            gh release create "$TAG" --target main --title "$TAG" --notes-file "$NOTES"
+            gh release create "$TAG" --target "${{ github.ref_name }}" --title "$TAG" --notes-file "$NOTES"
           fi
 
       - name: Create GitHub Release (auto-generated notes)
@@ -173,16 +173,17 @@ jobs:
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG already exists; skipping create."
           else
-            gh release create "$TAG" --target main --title "$TAG" --generate-notes
+            gh release create "$TAG" --target "${{ github.ref_name }}" --title "$TAG" --generate-notes
           fi
 
-      # ─── Next patch: cut branch + bump all version refs ────────────────────
+      # ─── Next patch: cut from current patch branch + bump all version refs ──
       - name: Cut next patch branch + bump all version refs
         if: steps.detect.outputs.proceed == 'true'
         env:
           CURRENT: ${{ steps.ver.outputs.current }}
           NEXT: ${{ steps.ver.outputs.next }}
           PATCH: ${{ steps.ver.outputs.patch_branch }}
+          CURRENT_REF: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           if git ls-remote --exit-code --heads origin "$PATCH" >/dev/null 2>&1; then
@@ -190,7 +191,10 @@ jobs:
             git fetch origin "$PATCH"
             git checkout -B "$PATCH" "origin/$PATCH"
           else
-            git checkout -b "$PATCH" main
+            # Cut the next patch branch from main — which NOW contains this
+            # release (the v${CURRENT} patch branch just merged in, which is
+            # what triggered this run). CURRENT_REF is the default branch.
+            git checkout -b "$PATCH" "origin/${CURRENT_REF}"
           fi
 
           # ── Claude plugin: bump version in plugin + marketplace manifests ──
@@ -211,8 +215,15 @@ jobs:
             fi
           done
 
-          # ── README: bump current-version line if present ──
+          # ── README: bump the title heading + the current-version line ──
           if [ -f README.md ]; then
+            # Title heading "# shepherd — vX.Y.Z". Structural match (any version
+            # → NEXT) so a title left behind a few patches self-heals instead of
+            # sticking — the failure mode that left it at v6.0.5 through v6.0.7.
+            sed -i.bak -E \
+              "s/^# shepherd — v[0-9]+\.[0-9]+\.[0-9]+/# shepherd — v${NEXT}/" \
+              README.md
+            # Current-version line (specific CURRENT → NEXT).
             sed -i.bak -E \
               "s/Current version: \*\*${CURRENT}\*\*/Current version: **${NEXT}**/" \
               README.md
@@ -234,7 +245,7 @@ jobs:
             . || true
           echo "::endgroup::"
 
-      - name: Commit + push patch branch with version bump
+      - name: Commit + push next patch branch with version bump
         if: steps.detect.outputs.proceed == 'true'
         env:
           CURRENT: ${{ steps.ver.outputs.current }}

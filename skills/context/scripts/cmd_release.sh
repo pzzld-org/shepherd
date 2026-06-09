@@ -183,8 +183,13 @@ bump_file() {
   local tmp="$full.shctx-bump.$$"
   case "$fmt" in
     json)
-      # Patch top-level "version" key. Uses jq for safety.
-      jq --arg v "$new_version" '.version = $v' "$full" > "$tmp"
+      # Patch top-level "version" key, plus any nested plugins[].version
+      # (marketplace.json carries both — the nested block drifted before #130).
+      # plugin.json has no `plugins` key, so the guarded branch is a no-op there.
+      jq --arg v "$new_version" '
+        .version = $v
+        | (if has("plugins") then .plugins |= map(.version = $v) else . end)
+      ' "$full" > "$tmp"
       mv "$tmp" "$full"
       ;;
     yaml)

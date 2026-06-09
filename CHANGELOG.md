@@ -4,6 +4,50 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v6.0.8 — 2026-06-09
+
+<!-- GROUPING CONVENTION (#130): within a patch section, organize `###` headings into concern buckets in this fixed order — Planter / Models, Hotfix dispatch, Adaptation, Namespace / Hooks, Foundation. Each `###` heading names its concern and cites its issue refs inline as `(#NNN)`. One heading per coherent change; a change spanning files stays one heading. This keeps multi-lane patches coherent without a separate index. -->
+
+### Planter model policy + discovery wave — hard ABORT becomes soft ADVISORY, root engineer pin hardened (#119, #103)
+
+The planter's wrong-model gate no longer aborts. Opus (`claude-opus-4-8` / `claude-opus-4-8[1m]`) remains the RECOMMENDED default; Fable 5 (`claude-fable-5`) is documented as the SUPERIOR (pricier) upgrade; Sonnet (`claude-sonnet-4-6`) and Haiku (`claude-haiku-4-5-20251001`) are ALLOWED with a degraded-seed-quality WARNING.
+
+- **`commands/plant.md` + `agents/planter.md`:** the `## Step 0 — Model gate` hard-ABORT block (`PLANTER ABORT — wrong model`) is replaced by `## Step 0 — Model advisory` — a tier table (Fable 5 superior · Opus recommended · Sonnet/Haiku allowed-degraded) that emits a one-shot `PLANTER MODEL ADVISORY` and then proceeds. Planting never refuses on tier. The frontmatter descriptions, the "You are model opus because…" prose, the halt-code table row, and the "every minute of planter Opus time…" closing line are all reframed from necessity to recommendation. The planter `model:` frontmatter default stays `opus[1m]` (the recommended default is unchanged — only the gate softens).
+- **Bounded discovery wave (#119):** the planter's Hard-prohibition #1 carves a strictly bounded exception — in plant mode, for a broad/unfamiliar scope, the planter MAY fan out a read-only `@discovery` wave (1–3 parallel lanes, `subagent_type=shepherd:discovery`, never the flock pipeline) that feeds the 12-row planter mesh. A new `§Step 2-bis` documents the bounds (read-only, scope-partitioned, Pattern A/F) and reconciles it against `intro-combo-wave.md` / `discovery-combo-wave.md`. The `Agent` tool is granted at the front of the planter `tools:` list to enable this dispatch; `hooks/tests/lint_agent_capabilities.sh` pins the grant to its documented read-only `shepherd:discovery` scope (a planter that grants `Agent` must document the discovery-only bound), so the grant cannot silently broaden to `@coder`/`@auditor` without the prose contract.
+- **Root engineer model pin HARDENED (#103) — kept HARD, contrasted with the soft planter advisory.** The single root `@engineer` dispatch (`agents/shepherd.md`) now pins the explicit model id `claude-opus-4-8[1m]` at the dispatch site (with the 200k `claude-opus-4-8` documented as a fallback if `[1m]` is unavailable) rather than relying on the frontmatter alias resolving silently. A model-resolution / unavailable / API error surfaces `ENGINEER-MODEL-FAIL` and PAUSES — never treated as an empty plan, never silently retried, never advanced to the `@critic` gate. This is a **HARD halt**, explicitly distinguished from the planter's **SOFT** `PLANTER MODEL ADVISORY`: the engineer's Opus tier is the single point of failure for the sprint INTRO phase, so it must stop, not warn. The planter softening deliberately does NOT leak into the engineer pin.
+
+### Hotfix dispatch ladder — reach for a dynamic workflow before a teammate (#135)
+
+New binding doctrine `skills/shepherd/doctrines/hotfix-dispatch.md` defines the hotfix cardinality ladder over `H` = the count of file-disjoint independent hot-fixes:
+
+- **`H = 1`** → ONE single subagent via a dynamic-workflow `agent()` step — **NEVER a teammate** (and only after confirming the fix is not merely awaiting another agent's result; re-count first). Fixes the v6.0.x defect where the shepherd spun up a hot-fix teammate for a single-coder dispatch.
+- **`H ∈ (1, 5]`** (domain notation; excludes 1, includes 5) → ONE batched dynamic workflow dispatched **directly by the root shepherd** (conductor inline in solo) — not delegated to a teammate.
+- **`H ≥ 6`** → a dedicated HOT-FIX lane: one teammate-conductor instance with its own Stage-Graph loop to drive the batch to convergence (spawn-mode only; solo surfaces a `HARD-STOP` recommendation). The `H = 6` boundary is hard.
+
+The ladder selects the **vehicle**; the existing **≤3 concurrent coders** and **3 HOTFIX iterations** caps are orthogonal and still bind inside whichever vehicle is chosen. Wired into `agents/conductor.md` (new HOTFIX-vehicle walk-tick bullet), `agents/shepherd.md` (the HOTFIX-CLOSE default — formerly "re-spawn a small teammate" — now follows the ladder), `skills/shepherd/pipeline.md` (§II HOTFIX-DYNAMIC cardinality cross-ref + §XVI See also), and `skills/shepherd/doctrines/workflow-patterns.md` (named-composite `HOTFIX-BATCH` row for the `(1,5]` Pattern-2 fanout + See also).
+
+### Adaptation surface — trends report, prior decay, recommend verb (#103)
+
+Three slim, SQLite-canonical, graceful-on-empty additions to the `shctx adapt` surface (no schema migration — `updated_at` already exists):
+
+- **`shctx adapt report --trends`** mechanizes `doctrines/adaptation-loop.md §VI` deterministically: a pure-SQL `TREND ALERT` over the last 3 sprints detecting (a) a HIGH/CRITICAL concern recurring in ≥2 of 3 sprints, (b) sprint grade trending strictly worse (A→B→C), and (c) avg wall/api cost rising sharply (newest ≥ 1.5× oldest). Emits nothing on insufficient history; `--md`/`--json`.
+- **Prior decay in `shctx adapt roll`:** every recurrence touches the prior's `updated_at` (last-seen); unpinned `kind='prior'` rows not re-seen within `SHCTX_ADAPT_DECAY_SPRINTS` sprint closes (default 6) are pruned via a measured inter-sprint-gap cutoff, so the store self-cleans over long arcs. Bounded (deletes only), idempotent, pin-protected, and graceful (a young store with <2 sprints never prunes).
+- **`shctx adapt recommend [--md|--json]`** turns measured `sprint_metrics` averages + recurring priors into a concrete dispatch RECOMMENDATION (suggested lane count, t-shirt size band, watch-concerns); empty store ⇒ "no history yet, use defaults". Wired into the engineer `[DB-CONTEXT]` (omit-when-empty), routed through the dispatcher usage stanza, and covered by new `test_cmd_adapt.sh` cases (trends fire / graceful-empty, decay prune-vs-pin, recommend md/json fields).
+
+### Namespace resolution — hooks/skills parity, single `${SHEPHERD_WORKDIR}` point (#121, #122)
+
+- **(#121) Hooks/skills namespace split-brain fixed.** `hooks/scripts/_lib.sh::resolve_namespace` auto-detected `.artifacts` before `.shepherd` and defaulted to `.artifacts`, contradicting the documented contract and the skills-side `resolve_workdir`. A default-`.shepherd/` consumer's 12 hook scripts would write event logs / dispatch tags / locks into a different directory than the shctx runtime reads. Fixed: precedence realigned to `SHEPHERD_WORKDIR` → `SHCTX_ROOT_OVERRIDE` → existing `.shepherd/` (tie-break winner) → existing `.artifacts/` → default `.shepherd/`, exactly matching the skills lib and `docs/configuration.md §SHEPHERD_WORKDIR`. The header comment was corrected, `adaptation-loop.md §23` brought in line with the resolved-path phrasing, and a new `hooks/tests/test_resolve_namespace.sh` (6 cases, registered in `hooks/tests/run.sh`) pins the contract so the divergence cannot silently return. Behavior-neutral for this repo and the axiom project (both run a single pre-existing `.artifacts/` tree).
+- **(#122) Close-finalize false-positive — regression test pinned.** The destructive-instruction false positive (a PRIOR sprint's close report committed and reachable from the current LIVE branch's HEAD triggering a delete of the live branch) was already fixed by the v6.0.7 `#127` slug-scoped `close_finalize_check.sh` rewrite. Verified by live repro and now pinned by a new step-4b regression case in `hooks/tests/test_close_finalize_check.sh` (prior-sprint close report in HEAD + current live sprint branch on origin → no block).
+
+### Foundation — version bump, changelog grouping, release mechanics (#130)
+
+- Version bumped 6.0.7 → 6.0.8 across the six sources of truth.
+- Introduced the **#130 CHANGELOG concern-bucket grouping convention** (this section's structure; recorded as an HTML comment at the top of each patch section): a fixed bucket order — Planter/Models, Hotfix, Adaptation, Namespace/Hooks, Foundation — over the repo's existing flat `### <concern> (#refs)` heading idiom, so multi-lane patches stay coherent without a separate index.
+- **`shctx release` JSON bumper fix:** `bump_file()`'s `json)` case now patches BOTH the top-level `.version` AND any nested `plugins[].version` (guarded by `has("plugins")`), so `marketplace.json`'s nested plugin-block version stops silently drifting at release time. `plugin.json` has no `plugins` key, so the guard makes it a no-op there.
+- `CLAUDE.md` `## Shepherd file contracts` inventory updated for the new `hotfix-dispatch.md` doctrine (plus the already-shipped v6.0.7 `workflow-patterns.md`), the planter advisory-model + discovery-wave change, the marketplace dual-key version-sync note, and the `${SHEPHERD_WORKDIR}` hook namespace-resolution contract.
+
+---
+
 ## v6.0.7 — 2026-06-04
 
 ### Stop hook: close-finalize check converted to deterministic script (#127 fires #1–17)

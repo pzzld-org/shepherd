@@ -1,7 +1,7 @@
 ---
 name: shepherd
 slug: shepherd
-version: 6.0.7
+version: 6.0.8
 description: "Sprint-by-sprint version-cycle conductor. Six-agent flock (engineer, critic, coder, auditor, worker, discovery) on an INTRO/BODY/CLOSE pipeline with planter/conductor/shepherd meta tiers."
 metadata:
   triggers:
@@ -377,7 +377,7 @@ The walk trace (optional, per `[stage_graph].walk_trace_enabled`) is the O(1) re
 
 | Command | Profile loaded | Action |
 |---------|---|--------|
-| `/shepherd:plant [scope]` | `agents/planter.md` (Opus required) | Author drift-resistant sprint seeds. Scope: nothing (next-sprint+future), `dev.N`, `dev.N..dev.M`, `arc`, or `next-version`. See `${CLAUDE_PLUGIN_ROOT}/commands/plant.md`. |
+| `/shepherd:plant [scope]` | `agents/planter.md` (Opus recommended; Fable 5 superior; Sonnet/Haiku allowed, degraded) | Author drift-resistant sprint seeds. Scope: nothing (next-sprint+future), `dev.N`, `dev.N..dev.M`, `arc`, or `next-version`. See `${CLAUDE_PLUGIN_ROOT}/commands/plant.md`. |
 | `/shepherd:start` | `agents/conductor.md` (SOLO mode) — model: sonnet | One complete sprint, then PAUSE. Backward-compatible with all prior versions; tier separation does NOT apply (conductor IS root in solo). See `${CLAUDE_PLUGIN_ROOT}/commands/start.md`. |
 | `/shepherd:spawn [sprint_slug] [--scope sprint\|patch\|minor\|version] [--parallel <N> \| --auto]` | `agents/shepherd.md` (root, v5.1.6+) | Main chat adopts root-shepherd; spawns one teammate-conductor **per lane** (the post-plan vertical projection of the `waves × steps` plan), via Agent Teams. `--scope` declares workload scale (default `sprint`). `--auto` is alias for `--scope patch`. `--parallel <N>` fans out N sibling teammates for sprint-level concurrency (`--scope >= patch` only). See `${CLAUDE_PLUGIN_ROOT}/commands/spawn.md`. **Operator-explicit invocation only — refuses from teammate sessions (nested spawn forbidden).** |
 | `/shepherd:loop [task] [--max <N>] [--agent <worker\|discovery>] [--interval <duration>] [--resume <loop-id>]` | Sonnet | **NEW v6.0.7** — Run Pattern 6 (Loop-Until-Done) as a first-class command. Dispatches `@worker` or `@discovery` repeatedly until `new_findings: false` or `--max` cap is reached. `--interval` delegates scheduling to the native Claude Code `/loop` skill. See `${CLAUDE_PLUGIN_ROOT}/commands/loop.md`. |

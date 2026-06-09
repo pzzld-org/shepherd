@@ -161,5 +161,18 @@ else
   fails=$((fails+1))
 fi
 
+# Namespace-resolution parity (GH #121): the hooks resolve_namespace must agree
+# with the skills resolve_workdir / docs §SHEPHERD_WORKDIR precedence, or hooks
+# write into a different namespace than the shctx runtime reads (split-brain).
+echo "== test_resolve_namespace.sh (#121 — hooks/skills namespace parity) =="
+total=$((total+1))
+if rns_out=$(bash "$TESTS_DIR/test_resolve_namespace.sh" 2>&1); then
+  printf '  PASS  %s\n' "resolve-namespace-precedence-matches-contract"
+else
+  printf '  FAIL  %-50s\n' "resolve-namespace"
+  printf '%s\n' "$rns_out" | sed 's/^/        /'
+  fails=$((fails+1))
+fi
+
 echo "—— $((total-fails))/$total passed ——"
 exit "$fails"

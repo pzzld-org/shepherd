@@ -70,6 +70,14 @@ case "$role" in
     # brief-cache-discipline). Omitted entirely when the store is empty (#95).
     priors=$(bash "$HERE/cmd_adapt.sh" priors --lessons --md 2>/dev/null || true)
     [[ -n "$priors" ]] && body=$(printf '%s\n\n%s\n' "$body" "$priors")
+    # Dispatch recommendation (v6.0.8) — measured lane/size guidance, appended
+    # after priors. Emits nothing on an empty store, so the section is omitted
+    # for cold starts (graceful, same omit-if-empty contract as priors).
+    rec=$(bash "$HERE/cmd_adapt.sh" recommend --md 2>/dev/null || true)
+    case "$rec" in
+      *'no history yet'*|'') : ;;
+      *) body=$(printf '%s\n\n%s\n' "$body" "$rec") ;;
+    esac
     emit_block "$body"
     ;;
 

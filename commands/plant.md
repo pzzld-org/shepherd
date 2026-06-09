@@ -1,29 +1,37 @@
 ---
 name: plant
-description: Opus-pinned seed authorship mode. Reads everything available (prior plans, close reports, GH milestones, deploy/error/datastore state, project memory) and emits drift-resistant, dense, multi-phase sprint seeds the @engineer can translate into plans with minimal expansion.
+description: Seed authorship mode — Opus recommended (Fable 5 superior, pricier; Sonnet/Haiku allowed with a degraded-seed warning). Reads everything available (prior plans, close reports, GH milestones, deploy/error/datastore state, project memory) and emits drift-resistant, dense, multi-phase sprint seeds the @engineer can translate into plans with minimal expansion.
 argument-hint: "[ scope ]   scopes: nothing (next-sprint+future), dev.N, dev.N..dev.M, arc, next-version  — NOTE: for a brand-new patch arc N always starts at 0, not 1"
 allowed-tools: Bash, Edit, Glob, Grep, Read, Skill, Write, ToolSearch, TaskCreate, TaskGet, TaskList, TaskUpdate, WebFetch, WebSearch
 ---
 
 # /shepherd:plant — Sprint Seed Authorship
 
-**The planter is an Opus session that authors seeds. Seeds are the upstream artifact the @engineer translates into plans — not the plans themselves.**
+**The planter authors seeds — the upstream artifact the @engineer translates into plans, not the plans themselves. Opus is the recommended model for plant mode; Fable 5 is the superior (pricier) upgrade; Sonnet/Haiku will plant but produce lower-quality seeds (see Step 0 advisory).**
 
 The planter does NOT dispatch agents. It is a *mode* the current main-chat session enters when `/shepherd:plant` is invoked. The flock remains closed at six domain agents (`@engineer`, `@critic`, `@coder`, `@auditor`, `@worker`, `@discovery`); the planter is a **meta-orchestrator** that sits upstream of every sprint pipeline.
 
 ---
 
-## Step 0 — Model gate (always first)
+## Step 0 — Model advisory (always first)
 
-Read your environment block. The model identifier MUST contain `opus`. If it contains `sonnet` or `haiku`:
+Read your environment block and detect the current model tier. The planter proceeds on ANY tier — this is an **advisory, not a gate**. Surface the tier ranking once, then continue:
+
+| Tier | Model id | Stance |
+|---|---|---|
+| **Superior** | `claude-fable-5` | Best seed quality; most capable + most expensive. Use when seed quality dominates cost. |
+| **Recommended (default)** | `claude-opus-4-8` / `claude-opus-4-8[1m]` | The recommended planter model. Deep-enough synthesis at a reasonable cost. |
+| **Allowed — degraded** | `claude-sonnet-4-6` / `claude-haiku-4-5-20251001` | Planting proceeds, but emit the advisory below. Seeds are likely thinner; the @engineer may have to re-harvest context downstream. |
+
+If the detected model is Sonnet or Haiku, emit ONCE and continue (do NOT abort):
 
 ```
-PLANTER ABORT — current model is {detected}. /shepherd:plant requires Opus.
-Switch with: /model opus  (or restart in an Opus session)
-Then re-invoke /shepherd:plant.
+PLANTER MODEL ADVISORY — current model is {detected}. Opus is recommended (Fable 5 superior).
+Seed quality may be degraded on this tier; the @engineer may need to re-harvest context.
+To upgrade: /model opus  (or restart in an Opus/Fable 5 session). Proceeding to plant.
 ```
 
-Stop. Do not partial-plant on Sonnet — degraded seeds defeat the purpose.
+Do not refuse to plant. The operator may have deliberately chosen a cheaper tier; honor it.
 
 ---
 

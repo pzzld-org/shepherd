@@ -195,12 +195,28 @@ Nested pattern compositions beyond **three levels** (e.g., Classify → Loop →
 
 ---
 
+## Named composite wave templates
+
+Composites are fixed, named instantiations of the six patterns. When a composite name
+appears in a Stage Graph, use its full definition — do not re-derive or improvise.
+
+| Name | Pattern basis | Phase | Key agents |
+|------|--------------|-------|-----------|
+| `INTRO-COMBO-WAVE` | Pattern 2 | INTRODUCTION | `@discovery` × N + `@auditor` × M (regression + carry-forward) |
+| `DISCOVERY-COMBO-WAVE` | Pattern 2 | BODY | `@auditor` × X + `@discovery` × Y + `@worker` × Z (opt.) |
+| `HOTFIX-BATCH` | Pattern 2 | BODY / CLOSE | `@coder` × H clusters (`H ∈ (1,5]`), one batched dynamic workflow dispatched directly by root |
+
+Full definitions: `doctrines/intro-combo-wave.md`, `doctrines/discovery-combo-wave.md`, `doctrines/hotfix-dispatch.md`.
+
+---
+
 ## See also
 
-- `references/workflow-templates.md` — full pattern definitions with Stage Graph shapes, flock agent bindings, compose notes, and anti-patterns
+- `references/workflow-templates.md` — full pattern definitions with Stage Graph shapes, flock agent bindings, compose notes, anti-patterns, and named composite index
 - `doctrines/stage-graph.md` — the plan IS the dispatch contract; corollaries map directly onto pattern invariants
 - `doctrines/dispatch-tier-separation.md` — tier restrictions on which patterns' nodes may be dispatched by whom
 - `doctrines/pattern-b-overlap.md` — Pattern 2 specialization: WAVE-N-AUDIT ∥ WAVE-(N+1)-IMPL
+- `doctrines/hotfix-dispatch.md` — hot-fix dispatch cardinality ladder (#135); the `(1,5]` batch band is a Pattern-2 fanout whose circuit-breakers apply, the `H≥6` band escalates to a dedicated HOT-FIX lane
 - `doctrines/auditor-hypothesis-driven.md` — Pattern 3 verifier contract
 - `doctrines/coordinate-active-drive.md` — Pattern 6 runtime instance at root-shepherd level
 - `doctrines/invariant-enforcement-matrix.md` — full coverage map of all invariants; this doctrine's enforcement rows are a subset

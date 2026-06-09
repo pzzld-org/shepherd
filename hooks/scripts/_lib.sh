@@ -4,7 +4,7 @@
 # Sourced by every hook script. Exports:
 #
 #   is_shepherd_project              — returns 0 if .claude/shepherd.toml exists
-#   resolve_namespace                — echoes $SHEPHERD_WORKDIR, else .artifacts (default) or .shepherd (legacy)
+#   resolve_namespace                — echoes $SHEPHERD_WORKDIR, else existing .shepherd/.artifacts, else default .shepherd
 #   emit_context "<msg>"             — emit {"additionalContext":"<msg>"} and exit 0
 #   emit_deny "<msg>"                — emit {"permissionDecision":"deny","message":"<msg>"} and exit 0
 #   log_event hook decision tool role session fields_json
@@ -25,9 +25,16 @@ is_shepherd_project() {
 }
 
 # Echoes the project-local work directory. Mirrors the skills-lib
-# resolve_workdir precedence (kept dependency-free so hooks stay fast):
-#   SHEPHERD_WORKDIR (absolute as-is, else relative to repo_root) →
-#   existing .artifacts → existing .shepherd → default .artifacts.
+# resolve_workdir precedence EXACTLY (kept dependency-free so hooks stay fast):
+#   1. SHEPHERD_WORKDIR (absolute as-is, else relative to repo_root)
+#   2. SHCTX_ROOT_OVERRIDE (legacy; set by `shctx init --artifacts`)
+#   3. existing .shepherd/  (the v5.0.0 default; wins the tie-break)
+#   4. existing .artifacts/ (legacy auto-pickup fallback)
+#   5. default .shepherd/   (matches `shctx init` for new projects)
+# Contract source of truth: docs/configuration.md §SHEPHERD_WORKDIR and
+# skills/context/scripts/_lib.sh resolve_workdir. These MUST agree or hooks
+# write event logs / dispatch tags / locks into a different namespace than the
+# shctx runtime reads (split-brain — GH #121).
 resolve_namespace() {
   local repo_root
   repo_root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
@@ -38,13 +45,17 @@ resolve_namespace() {
     esac
     return 0
   fi
-  for cand in "$repo_root/.artifacts" "$repo_root/.shepherd"; do
+  if [[ -n "${SHCTX_ROOT_OVERRIDE:-}" ]]; then
+    printf '%s' "$repo_root/$SHCTX_ROOT_OVERRIDE"
+    return 0
+  fi
+  for cand in "$repo_root/.shepherd" "$repo_root/.artifacts"; do
     if [[ -d "$cand" ]]; then
       printf '%s' "$cand"
       return 0
     fi
   done
-  printf '%s' "$repo_root/.artifacts"
+  printf '%s' "$repo_root/.shepherd"
 }
 
 # ---------------------------------------------------------------------------

@@ -380,9 +380,25 @@ Full binding rules for composition — selection decision tree, invariants, circ
 
 ---
 
+## Named composite wave templates
+
+Composites are fixed instantiations of one or more patterns with a canonical agent mix,
+scaling table, and aggregate shape. Use the name — not a prose description — in Stage
+Graph YAML. A conductor that re-derives a named composite from scratch is improvising
+off-template.
+
+| Name | Phase | Structure | Defined in |
+|------|-------|-----------|------------|
+| `INTRO-COMBO-WAVE` | INTRODUCTION (before MESH) | N `@discovery` + M `@auditor` (regression + carry-forward) | `doctrines/intro-combo-wave.md` |
+| `DISCOVERY-COMBO-WAVE` | BODY (during sprint execution) | X `@auditor` + Y `@discovery` + Z `@worker` (optional) — single parallel batch | `doctrines/discovery-combo-wave.md` |
+
+---
+
 ## See also
 
 - `doctrines/workflow-patterns.md` — binding doctrine: selection decision tree, composition invariants, circuit-breakers
+- `doctrines/intro-combo-wave.md` — INTRO-COMBO-WAVE: sprint-open parallel orientation composite
+- `doctrines/discovery-combo-wave.md` — DISCOVERY-COMBO-WAVE: body-phase parallel audit + research composite
 - `doctrines/stage-graph.md` — the plan IS the dispatch contract; patterns encode as graph nodes/edges
 - `doctrines/pattern-b-overlap.md` — Pattern 2 specialization: WAVE-N-AUDIT ∥ WAVE-(N+1)-IMPL
 - `doctrines/auditor-hypothesis-driven.md` — Pattern 3 verifier contract: Hypothesis + Falsification + Confidence
