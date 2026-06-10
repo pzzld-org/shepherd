@@ -4,6 +4,22 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v6.1.0 — 2026-06-09
+
+### Spawn pane-massacre containment — blanket worktree teardown can no longer run mid-sprint (#141)
+
+A `/shepherd:spawn` session tore down every live teammate's worktree mid-sprint. A root re-engaged by the coordinate-drive `Stop` hook ran the blanket `git worktree list | grep agent- | … remove --force` loop (followed by `git worktree prune`) **while teammates were still live in their tmux panes** — every pane's worktree vanished, every teammate session died, and the lead quit with them. Compounding it, teammates had booted at the lead session's Opus-4.8 model instead of the conductor's pinned `sonnet`, multiplying cost by the lane count. Five guards close the gap:
+
+- **`teammate_git_guard.sh`** now denies `git worktree add|remove|prune` from teammate sessions (previously only `merge|rebase|push|cherry-pick`), while still allowing read-only `git worktree list`. The missing coverage was exactly the command that caused the incident.
+- **New `worktree_teardown_guard.sh`** (`PreToolUse(Bash)`, registered in `hooks/hooks.json`) hard-denies blanket `git worktree prune` and `list | … | remove` sweeps whenever `v_teammates_live > 0`, emitting the `WORKTREE-TEARDOWN-LIVE` halt code. Scoped single-lane `git worktree remove .worktrees/<slug>-<lane>` is still allowed. Config-gated via `[spawn].worktree_teardown_guard = block | warn | off`; fail-open on any uncertainty.
+- **`agents/conductor.md` Step 8 + `agents/shepherd.md` RF-5** gate the blanket teardown loop on `v_teammates_live == 0` — it is a CLOSE-only sweep, never a mid-sprint action.
+- **`doctrines/coordinate-active-drive.md` + `coordinate_drive_guard.sh`** redefine idle-prune as scoped, per-lane worktree removal by explicit path, never the blanket loop — killing the trigger path where the `Stop` hook nudged the root to "prune idle teammates."
+- **`commands/spawn.md`** makes an explicit `model: sonnet` pin mandatory in the `TeamCreate` instruction and adds a pre-spawn Opus cost advisory — teammates were inheriting the lead session's model rather than the `shepherd:conductor` definition's frontmatter.
+
+Verification: 35/35 hook smoke tests pass (`bash hooks/tests/run.sh`), including the extended `test_teammate_git_guard.sh` (worktree cases) and the new `test_worktree_teardown_guard.sh` (#141 blanket-teardown gate).
+
+---
+
 ## v6.0.9 — 2026-06-09
 
 <!-- GROUPING CONVENTION (#130): buckets in fixed order — Focus loop / Compaction, Template loops, Hotfix dispatch, Teammate integration, Telemetry, Foundation. Each `###` heading names its concern + issue refs. -->

@@ -342,6 +342,13 @@ The body is teammate orchestration. Per scope:
   projection) via Agent Teams, per `commands/spawn.md §Spawn dispatch`. The
   lane count IS the teammate count. (`--parallel` below is a separate,
   sprint-level fanout; lane-per-conductor is the within-sprint fanout.)
+- **MODEL PIN (mandatory — v6.0.9).** The `TeamCreate` instruction MUST
+  explicitly pin `model: sonnet` for every teammate. Do NOT rely on the
+  `shepherd:conductor` subagent-definition's `model: sonnet` frontmatter
+  inheritance — empirically, teammates have inherited the lead session's
+  model instead (v6.0.9 cost regression, Opus 4.8 billed for every lane).
+  The pin must be explicit in the instruction text. See
+  `commands/spawn.md §Spawn dispatch → Model pin requirement`.
 - **Immediately after `TeamCreate`, do NOT stop.** Confirm liveness
   (`shctx teammate liveness` until every lane is `active`/heartbeating — a
   teammate still `booting` with no heartbeat is a probe candidate, not a
@@ -476,11 +483,26 @@ sprint when `--scope > sprint`):
       ```
 
       **RF-5. Cleanup stewardship.**
+
+      > **WARNING — blanket worktree teardown while ANY teammate is live removes
+      > sibling panes' worktrees and kills their sessions (v6.0.9 pane-massacre
+      > regression). This block is CLOSE-only: run it ONLY after `v_teammates_live`
+      > is zero — i.e., after all teammate close-report payloads have been
+      > materialized and every lane's worktree has been removed individually via
+      > `git worktree remove .worktrees/{sprint_slug}-{lane_id}` as each lane
+      > closed. The blanket loop below is a final sweep for any leftover orphans.**
+
       ```bash
-      git worktree list | grep 'agent-' | awk '{print $1}' | while read wp; do
-        git worktree remove --force "$wp" 2>/dev/null || true
-      done
-      git worktree prune
+      ns="$(shctx __ns 2>/dev/null || echo .artifacts)"
+      live="$(sqlite3 "$ns/root.db" 'SELECT count(*) FROM v_teammates_live;' 2>/dev/null || echo 0)"
+      if [ "$live" != "0" ]; then
+        echo "ABORT: live teammates present — blanket worktree teardown is CLOSE-only. Remove individual lanes via 'git worktree remove .worktrees/{sprint_slug}-{lane_id}' after each lane closes."
+      else
+        git worktree list | grep 'agent-' | awk '{print $1}' | while read wp; do
+          git worktree remove --force "$wp" 2>/dev/null || true
+        done
+        git worktree prune
+      fi
       ```
       Release `shepherd.lock` if held. Prune orphan `agent-*` local branches.
 

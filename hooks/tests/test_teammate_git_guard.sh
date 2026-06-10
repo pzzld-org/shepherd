@@ -15,6 +15,11 @@
 #  11. Teammate session + git status → PASS (read-only).
 #  12. Non-Bash tool → PASS (guard ignores Edit, Agent, etc).
 #  13. Retired teammate + git merge → PASS (status=retired, guard does not block).
+#  14. Teammate + git worktree remove → DENY with TEAMMATE-GIT-WRITE.
+#  15. Teammate + git worktree prune → DENY with TEAMMATE-GIT-WRITE.
+#  16. Teammate + git worktree add → DENY with TEAMMATE-GIT-WRITE.
+#  17. Teammate + git worktree list → PASS (read-only subcommand).
+#  18. Non-teammate + git worktree remove → PASS (not this guard's concern).
 
 set -eu -o pipefail
 cd "$(dirname "$0")"
@@ -229,6 +234,61 @@ if ! is_deny "$out"; then
   pass "retired-teammate + git merge: PASS"
 else
   fail "retired-teammate + git merge: PASS" "unexpected deny: ${out:0:80}"
+fi
+
+# ---------------------------------------------------------------------------
+# 14. Teammate + git worktree remove → DENY + TEAMMATE-GIT-WRITE.
+# ---------------------------------------------------------------------------
+total=$((total+1))
+out=$(run_hook "$(P_BASH_CMD "$TM_SESSION" 'git worktree remove --force .worktrees/x')")
+if is_deny "$out" && has_code "$out"; then
+  pass "teammate + git worktree remove: DENY + TEAMMATE-GIT-WRITE"
+else
+  fail "teammate + git worktree remove: DENY + TEAMMATE-GIT-WRITE" "out=${out:0:120}"
+fi
+
+# ---------------------------------------------------------------------------
+# 15. Teammate + git worktree prune → DENY + TEAMMATE-GIT-WRITE.
+# ---------------------------------------------------------------------------
+total=$((total+1))
+out=$(run_hook "$(P_BASH_CMD "$TM_SESSION" 'git worktree prune')")
+if is_deny "$out" && has_code "$out"; then
+  pass "teammate + git worktree prune: DENY + TEAMMATE-GIT-WRITE"
+else
+  fail "teammate + git worktree prune: DENY + TEAMMATE-GIT-WRITE" "out=${out:0:120}"
+fi
+
+# ---------------------------------------------------------------------------
+# 16. Teammate + git worktree add → DENY + TEAMMATE-GIT-WRITE.
+# ---------------------------------------------------------------------------
+total=$((total+1))
+out=$(run_hook "$(P_BASH_CMD "$TM_SESSION" 'git worktree add .worktrees/y main')")
+if is_deny "$out" && has_code "$out"; then
+  pass "teammate + git worktree add: DENY + TEAMMATE-GIT-WRITE"
+else
+  fail "teammate + git worktree add: DENY + TEAMMATE-GIT-WRITE" "out=${out:0:120}"
+fi
+
+# ---------------------------------------------------------------------------
+# 17. Teammate + git worktree list → PASS (read-only subcommand).
+# ---------------------------------------------------------------------------
+total=$((total+1))
+out=$(run_hook "$(P_BASH_CMD "$TM_SESSION" 'git worktree list')")
+if ! is_deny "$out"; then
+  pass "teammate + git worktree list: PASS (read-only)"
+else
+  fail "teammate + git worktree list: PASS" "unexpected deny: ${out:0:80}"
+fi
+
+# ---------------------------------------------------------------------------
+# 18. Non-teammate + git worktree remove → PASS (root session; not blocked).
+# ---------------------------------------------------------------------------
+total=$((total+1))
+out=$(run_hook "$(P_BASH_CMD "$ROOT_SESSION" 'git worktree remove --force .worktrees/x')")
+if ! is_deny "$out"; then
+  pass "root-session + git worktree remove: PASS (not a teammate)"
+else
+  fail "root-session + git worktree remove: PASS" "unexpected deny: ${out:0:80}"
 fi
 
 echo "—— $((total-fails))/$total passed ——"

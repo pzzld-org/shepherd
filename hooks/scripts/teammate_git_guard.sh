@@ -13,12 +13,16 @@
 #   • git add, git commit (in-worktree local commits — these are legitimate
 #     lane commits, never blocked)
 #   • git log, git status, git diff, git branch, git fetch (read-only)
+#   • git worktree list (read-only worktree subcommand — allowed)
 #
 # A teammate session MUST NOT:
 #   • git merge (onto any branch, but especially dev/main)
 #   • git rebase (onto a shared/dev branch)
 #   • git push (any remote write)
 #   • git cherry-pick (onto dev — indicates integration intent)
+#   • git worktree add (spawns a new worktree — root-exclusive)
+#   • git worktree remove (destroys a worktree — root-exclusive)
+#   • git worktree prune (prunes stale worktree refs — root-exclusive)
 #
 # These integration commands are ROOT-EXCLUSIVE via the LANE-INTEGRATE seam.
 # When denied, route to root via TEAMMATE-GIT-WRITE halt code.
@@ -36,16 +40,18 @@
 # If sqlite3 / root.db unavailable → pass (fail-open).
 #
 # INTEGRATION-COMMAND DETECTION:
-#   Blocked: git merge, git rebase, git push, git cherry-pick
+#   Blocked: git merge, git rebase, git push, git cherry-pick,
+#            git worktree add, git worktree remove, git worktree prune
 #   Allowed: git add, git commit, git log, git status, git diff, git fetch,
-#            git branch, git show, git stash, git tag (read-only / local)
+#            git branch, git show, git stash, git tag (read-only / local),
+#            git worktree list (read-only)
 #
 # CAVEAT: This is a heuristic regex pass — it does not parse git argument trees
-# fully. It matches any `git <forbidden-verb>` occurrence in the command string.
-# No attempt is made to detect "rebase onto THIS branch" vs "rebase onto a safe
-# branch" — any git rebase from a teammate session is blocked because integration
-# direction is not knowable at the PreToolUse layer without parsing the full
-# command tree. This is the conservative, safe default.
+# fully. It matches any `git <forbidden-verb>` or `git worktree <forbidden-subverb>`
+# occurrence in the command string. No attempt is made to detect "rebase onto THIS
+# branch" vs "rebase onto a safe branch" — any git rebase from a teammate session
+# is blocked because integration direction is not knowable at the PreToolUse layer
+# without parsing the full command tree. This is the conservative, safe default.
 
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -74,8 +80,15 @@ printf '%s' "$CMD" | grep -qE '(^|[[:space:];|&])git[[:space:]]' 2>/dev/null || 
 # Check these first to avoid false-positive on legitimate lane commits.
 # Strategy: if the ONLY git verbs in the command are from the allowed set,
 # skip the DB lookup entirely.
+#
+# Two patterns cover the two blocked command shapes:
+#   FORBIDDEN_PATTERN         — single-token verbs: merge, rebase, push, cherry-pick
+#   FORBIDDEN_WORKTREE_PATTERN — two-token: git worktree (add|remove|prune)
+#                                Note: git worktree list is read-only and ALLOWED.
 FORBIDDEN_PATTERN='(^|[[:space:];|&])git[[:space:]]+(merge|rebase|push|cherry-pick)[[:space:]]?'
-if ! printf '%s' "$CMD" | grep -qE "$FORBIDDEN_PATTERN" 2>/dev/null; then
+FORBIDDEN_WORKTREE_PATTERN='(^|[[:space:];|&])git[[:space:]]+worktree[[:space:]]+(add|remove|prune)([[:space:]]|$)'
+if ! printf '%s' "$CMD" | grep -qE "$FORBIDDEN_PATTERN" 2>/dev/null && \
+   ! printf '%s' "$CMD" | grep -qE "$FORBIDDEN_WORKTREE_PATTERN" 2>/dev/null; then
   # No forbidden verb present — pass without DB lookup.
   exit 0
 fi
@@ -99,13 +112,20 @@ if [[ "$TEAMMATE_COUNT" -eq 0 ]]; then
 fi
 
 # --- this IS a teammate and the command contains a forbidden git verb ---
-# (We already confirmed the forbidden pattern is present above.)
+# (We already confirmed at least one forbidden pattern is present above.)
 
 # Identify which forbidden verb(s) are present for the deny message.
 VERBS=""
 for verb in merge rebase push cherry-pick; do
   if printf '%s' "$CMD" | grep -qE "(^|[[:space:];|&])git[[:space:]]+${verb}([[:space:]]|$)"; then
     VERBS="${VERBS:+$VERBS, }git ${verb}"
+  fi
+done
+# Two-token worktree subcommands (add/remove/prune) — check separately because
+# the subverb follows "git worktree", not "git" directly.
+for wt_subverb in add remove prune; do
+  if printf '%s' "$CMD" | grep -qE "(^|[[:space:];|&])git[[:space:]]+worktree[[:space:]]+${wt_subverb}([[:space:]]|$)"; then
+    VERBS="${VERBS:+$VERBS, }git worktree ${wt_subverb}"
   fi
 done
 [[ -n "$VERBS" ]] || VERBS="forbidden git integration command"
@@ -116,8 +136,8 @@ MSG+="  Command    : ${CMD:0:200}"$'\n'
 MSG+="  Verb(s)    : ${VERBS}"$'\n'
 MSG+="Integration is ROOT-EXCLUSIVE (LANE-INTEGRATE seam). Teammate-conductors own"$'\n'
 MSG+="in-worktree commits (git add + git commit) only. Merging, rebasing, pushing,"$'\n'
-MSG+="and cherry-picking onto dev are root-tier decisions — they require a diff"$'\n'
-MSG+="review before the dev branch moves."$'\n'
+MSG+="cherry-picking onto dev, and worktree add/remove/prune are root-tier decisions"$'\n'
+MSG+="— they require a diff review or explicit root orchestration before execution."$'\n'
 MSG+="Action: surface SendMessage(to: lead, halt_code: TEAMMATE-GIT-WRITE) and"$'\n'
 MSG+="describe the integration you need. Root will execute LANE-INTEGRATE."$'\n'
 MSG+="See doctrines/teammate-integration-authority.md + agents/shepherd.md LANE-INTEGRATE."

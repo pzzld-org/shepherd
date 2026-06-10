@@ -138,6 +138,18 @@ event system:
      (`shctx teammate prune`/shutdown request) and **refresh** the lane with a
      fresh teammate at the next wave boundary (#58 / #112). Pruning is an action
      taken in this wake, not a plan for later.
+
+     > **WARNING — scoped per-lane removal only (v6.0.9 pane-massacre
+     > regression).** Pruning ONE idle teammate means removing ONLY that lane's
+     > worktree: `git worktree remove .worktrees/{sprint_slug}-{that_lane}`.
+     > **NEVER** run the blanket `git worktree list | grep agent- | ... remove`
+     > loop, and **NEVER** run `git worktree prune`, while sibling teammates are
+     > still live — doing so removes every in-flight lane's worktree and kills
+     > all active sessions simultaneously. The blanket loop is a CLOSE-FINALIZE
+     > sweep run by RF-5 in `agents/shepherd.md` AFTER `v_teammates_live` reaches
+     > zero, not a per-idle-prune tool. Coordinate_drive_guard re-engaging the
+     > root with "prune each idle teammate" means prune that ONE lane — scoped,
+     > targeted, never bulk.
    - **Idle teammate with no `WAVE-COMPLETE`** → §VI proactive probe.
    - **Open `operator-question` / `HARD-STOP`** → surface to the operator with a
      concrete question (this is the legitimate §II pause — take it).
