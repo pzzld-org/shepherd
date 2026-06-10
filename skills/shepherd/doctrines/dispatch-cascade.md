@@ -162,7 +162,7 @@ auditor at CLOSE-SWARM reads the trace alongside reports to compute
 per-node telemetry:
 
 - **Duration** per node (exited_at − started_at)
-- **Halt rate** per node-type across sprints (`shctx graph trends`, v5.0.10+)
+- **Halt rate** per node-type across sprints (`shctx adapt report --trends`)
 - **Edge frequency**: how often `on-finding` vs `on-no-finding`, etc.
 - **Await-edge-per-lane** rate: do certain lane types reliably produce cross-lane graph-edge await dependencies?
 

@@ -192,7 +192,8 @@ Operators running `/shepherd:start` in main chat see ZERO behavior change. The f
 | `DISPATCH-OFF-FLOCK` (v6.0.0) | `subagent_type` outside the closed-flock-six (no specialist clearance). Per §IV-bis.3. |
 | `TEAMMATE-NESTING-ATTEMPT` (v6.0.0, TEAMMATE mode only) | Attempted `TeamCreate` / teammate spawn while in TEAMMATE mode (lead-only; nested teams structurally impossible per platform, #93). SendMessage to root with this code, blocking. Per §IV-bis.4. |
 | `WRONG-TIER-DISPATCH` (TEAMMATE mode only) | Tried to dispatch `@engineer` or `@critic`. Surface `PLAN-AUTHORSHIP-REQUEST` or `PLAN-GATE-REQUEST` to root instead. Per §IV-bis.5. |
-| `TEAMMATE-GIT-WRITE` (TEAMMATE mode only) | About to run `git rebase`/`merge`/`push`/`worktree` outside your commit scope. STOP; `SendMessage(to: lead, halt_code: TEAMMATE-GIT-WRITE, blocking: true)`. Root owns all out-of-scope git ops. Per `dispatch-tier-separation.md §IV-bis.8`. |
+| `TEAMMATE-GIT-WRITE` (TEAMMATE mode only) | About to run `git rebase`/`merge`/`push`/`worktree` outside your commit scope. STOP; `SendMessage(to: lead, halt_code: TEAMMATE-GIT-WRITE, blocking: true)`. Root owns all out-of-scope git ops. Per `dispatch-tier-separation.md §IV-bis.8`. Cross-ref `hooks/scripts/teammate_git_guard.sh`. |
+| `WRONG-VEHICLE` (v6.0.9, BOTH MODES) | Attempted teammate / `TeamCreate` spawn for a single-cluster (`H = 1`) hotfix. Dispatch ONE `@coder` subagent instead; never a teammate. Per `doctrines/hotfix-dispatch.md` single-HF rule. Cross-ref `hooks/scripts/hotfix_vehicle_guard.sh`. |
 | `TASK-LANE-MISMATCH` (TEAMMATE mode only) | Created/claimed a task outside your `lane_id` prefix, or omitted prefix/owner. Re-title `"{lane_id}: "`, `TaskUpdate(owner: <self>)`, release sibling tasks. Per `doctrines/lane-task-ownership.md`. |
 | `TEAMMATE-ARTIFACT-WRITE` (TEAMMATE mode only) | Attempted `Edit`/`Write` of an artifact file outside your worktree scope. STOP; return the artifact as a `SendMessage` payload field and let root materialize it. |
 | `TEAMMATE-LOCK-ATTEMPT` (TEAMMATE mode only) | Attempted to acquire/release `.artifacts/shepherd.lock`. Root owns the lock. STOP; `SendMessage(to: lead, halt_code: TEAMMATE-LOCK-ATTEMPT, blocking: true)`. |
@@ -245,6 +246,12 @@ The INTRODUCTION phase produces **alignment** — same ground state for every ac
 - [ ] Plan addresses every HIGH/CRITICAL finding from INTRO-COMBO-WAVE as Wave 1 steps. Silent absorption is a process violation.
 - [ ] PLAN-GATE fired (`@critic`, single dispatch). YELLOW → PLAN-REVISION (`@engineer` revises once) → re-fire PLAN-GATE. RED → HARD-STOP.
 - [ ] Materialize graph: run `shctx plan extract {plan_path}` → `<ns>/graph/state.json` per `doctrines/dispatch-cascade.md`.
+- [ ] **Write focus record** (SEED-VERIFY boundary, v6.0.9): open the FOCUS-LOOP and write the initial focus record:
+  ```bash
+  focus_loop_id=$(shctx loop init --kind=focus --task="focus: {sprint_slug}" --max=50)
+  shctx loop focus upsert --sprint={sprint_slug} --objective="<one-para north-star>" --invariants='<JSON array>'
+  ```
+  Capture `$focus_loop_id` — CLOSE-FINALIZE references it to close the loop. This is the `FOCUS-LOOP` orientation anchor (Pattern 6; `doctrines/workflow-patterns.md`). It lives in the registry and survives compaction; the PreCompact snapshot captures it for rehydration.
 
 **PLAN-GATE result** is a mandatory surface moment. Emit even on GREEN: "critic cleared; N concerns folded into briefs."
 
@@ -284,7 +291,7 @@ The body IS the Stage Graph walk. You no longer compose dispatches — you evalu
 - [ ] **Compile-down (v6.0.1, #77 — PRIMARY path for fanout segments)**: a gate-free agent-fanout segment (WAVE-IMPL/AUDIT, CLOSE-SWARM, DISCOVERY, WORKER-IO, HOTFIX) executes via `shctx graph compile --segment=<entry> --verify` → run the emitted `<seg>.workflow.js` out-of-context, then `shctx graph mark` on return. The §IV faithfulness diff (soundness / completeness / determinism) MUST pass before running; a mismatch is a compiler bug — HALT, don't run. Seams (operator gates, `WAVE-GATE` rebase, git/shell, SQLite+git canonical writes) stay conductor-inline. **Mode-agnostic:** solo `/shepherd:start` compiles its own fanout (no team needed); a teammate compiles its lane's fanout. On runtime failure/unavailability → fall back to in-context dispatch (no parallel engine). See `doctrines/dispatch-cascade.md §IV-bis` + `doctrines/workflow-compile-down.md §III–VI`.
 - [ ] **Zero file overlap** across coder scopes in a wave. Single build-manifest writer. Verify before dispatch.
 - [ ] **Brief cache ordering** (v5.1.3+): stable sections first (`[ROLE]` → `[SKILLS]` → `[DOCTRINES]` → `[PROTOCOL-REMINDERS]`), variable sections last (`[FILE-SCOPE]` → `[CONTEXT-INVENTORY]` → `[DO-NOT-DUPLICATE]` → `[ACCEPTANCE]` → `[NON-GOALS]` → `[WORKTREE]` → `[BASE-COMMIT-EXPECTED]`). Per `doctrines/brief-cache-discipline.md`.
-- [ ] **WAVE-GATE** (conductor inline): rebase all worktrees → **gate sequence sequential** (NEVER parallel — `doctrines/cargo-sequential-gates.md`): `{gates.format}` → `{gates.check}` → `{gates.lint}` → language auto-fix if applicable → `git commit -m "fix(dev.N/wave-K): rebase + gate"`. Delete worktrees after gate.
+- [ ] **WAVE-GATE** (conductor inline): rebase all worktrees → **gate sequence sequential** (NEVER parallel — `doctrines/cargo-sequential-gates.md`): `{gates.format}` → `{gates.check}` → `{gates.lint}` → language auto-fix if applicable → `git commit -m "fix(dev.N/wave-K): rebase + gate"`. Delete worktrees after gate. Then refresh focus record: `shctx loop focus upsert --sprint={sprint_slug} --active-node=<next-node> --ready-set="<comma-ids>" --obligations='<JSON>'` (WAVE-GATE boundary write-point, v6.0.9). The FOCUS-LOOP composite (`doctrines/workflow-patterns.md`) is the runtime shape of orchestrator drive; updating here ensures any post-compaction rehydration resumes from the correct wave position.
 - [ ] **Pattern B** encoded as `parallel_with`: `WAVE-N-AUDIT.parallel_with = [WAVE-(N+1)-IMPL]`. Fire them in the **same message batch**. Sequential dispatch of Pattern B siblings is a process violation.
 - [ ] **HOTFIX subgraph** fires on `on-finding` from WAVE-AUDIT. Cap: ≤ 3 parallel coders, ≤ S scope each, max 3 iterations before HARD-STOP. Conductor does NOT compose hot-fix briefs from scratch — the auditor's report includes a `Suggested hot-fix lane` block; paste it verbatim into the HOTFIX node brief.
 - [ ] **HOTFIX-DYNAMIC**: cluster gate errors by file-disjoint scope; dispatch ONE coder per cluster in ONE batch. After all HF coders return, re-run the gate ONCE. Per `pipeline.md` §II (HOTFIX-DYNAMIC cardinality).
@@ -334,6 +341,12 @@ no pause-detector hook, and no `<ns>/pauses/` registry.
 - [ ] `completeness` auditor verifies: real-work test, issue-ledger discipline from §1, carry-forward refresh, Stage Graph discipline (no off-graph commits, no skipped Pattern B). `on-grade-cap` fires — grade lowers, walk continues to CLOSE-FINALIZE.
 - [ ] `dependency-topology` auditor runs wrapper-grep gate per `doctrines/wrapper-must-earn.md`.
 - [ ] If CLOSE-SWARM emits `on-finding` (CRITICAL/HIGH): HOTFIX-CLOSE subgraph fires before CLOSE-FINALIZE.
+- [ ] **Finalize focus record** (CLOSE-FINALIZE boundary, v6.0.9): write the terminal focus state, then close the FOCUS-LOOP itself:
+  ```bash
+  shctx loop focus upsert --sprint={sprint_slug} --active-node=CLOSE-FINALIZE --obligations='[]'
+  shctx loop close --id=<focus_loop_id> --status=converged
+  ```
+  `<focus_loop_id>` is the id emitted by `shctx loop init --kind=focus` at SEED-VERIFY. Run both before the step-by-step close procedure below.
 - [ ] **CLOSE-FINALIZE** — mechanical procedure (like `.github/workflows/release.yml` handles patch→main, this handles dev.N→patch). Execute steps **in order**; do NOT skip or reorder. TEAMMATE mode: skip to step 7.
 
   **Step 1 — Reports.**
@@ -536,7 +549,7 @@ The conductor is the operator's agent. Keep the operator (or planter, if spawned
 | Session start | One-line status: branch, pipeline position, anomalies. |
 | Phase 0 mesh complete | Drift-risk items + carry-forward count before `@engineer` dispatch. One short paragraph. |
 | PLAN-GATE result | Verdict + key concerns (even GREEN warrants a one-liner). |
-| Each WAVE-GATE | `[NODE] wave-N-gate → {pass\|fail} \| LOC delta: +X/-Y` |
+| Each WAVE-GATE | `[NODE] wave-N-gate → {pass\|fail} \| LOC delta: +X/-Y` (also: focus record refreshed) |
 | CLOSE-SWARM result | Grades per concern + grade-cap reasons + trend alert (if triggered). |
 | PAUSE / close | One-paragraph summary: what shipped, what carried forward, next sprint branch. |
 

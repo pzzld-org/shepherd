@@ -52,11 +52,16 @@ shctx adapt <roll|priors|report|recommend> [args]   (v6.0.4 #94/#95; v6.0.8)
       --lessons  recent kind='prior' lessons (cap 10) for brief injection.
       --all      both (default). --json for tooling, --md for briefs.
 
-  report [--md|--json] [--trends]
+  report [--md|--json] [--trends] [--compile-telemetry]
       Materialized sprint-patterns table + averages. --trends emits a
       deterministic TREND ALERT over the last 3 sprints (recurring HIGH/
       CRITICAL concern, grade trending down, cost rising sharply); nothing
       when history is insufficient. Mechanizes adaptation-loop.md §VI.
+      --compile-telemetry emits the "## Compile-down telemetry" close-
+      report subsection (per-segment faithfulness, peak concurrency, seam
+      outcomes, degradation events) from the compile_runs table (migration
+      0014). Emits nothing gracefully when no runs recorded. Mirrors the
+      "## Cache telemetry" precedent (migration 0006, v_cache_usage).
 
   recommend [--md|--json]
       Dispatch RECOMMENDATION from measured averages + recurring priors:
@@ -276,18 +281,20 @@ _cmd_priors() {
 # report — materialized sprint-patterns view
 # ---------------------------------------------------------------------------
 _cmd_report() {
-  local fmt="md" trends=0
+  local fmt="md" trends=0 compile_tel=0
   for arg in "$@"; do
     case "$arg" in
-      --md)     fmt="md" ;;
-      --json)   fmt="json" ;;
-      --trends) trends=1 ;;
+      --md)                  fmt="md" ;;
+      --json)                fmt="json" ;;
+      --trends)              trends=1 ;;
+      --compile-telemetry)   compile_tel=1 ;;
       -h|--help) usage; exit 0 ;;
       *) echo "ERROR: unknown arg: $arg" >&2; exit 1 ;;
     esac
   done
 
-  (( trends )) && { _emit_trends "$fmt"; return 0; }
+  (( trends ))      && { _emit_trends "$fmt"; return 0; }
+  (( compile_tel )) && { _emit_compile_telemetry "$fmt"; return 0; }
 
   if [[ "$fmt" == "json" ]]; then
     shctx_sql "SELECT json_group_array(json_object(
@@ -411,6 +418,126 @@ _emit_trends() {
     echo "- **Cost rising sharply** (newest ≥ 1.5× oldest wall/api over 3 sprints) — review lane fan-out and wave count."
   # Explicit success — never let the last optional `&&` line above set the
   # function's exit status (a fired alert must not exit non-zero under `set -e`).
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# _emit_compile_telemetry — "## Compile-down telemetry" close-report subsection
+# (v6.0.9, #87; mirrors the "## Cache telemetry" precedent from migration 0006)
+# ---------------------------------------------------------------------------
+# Reads the compile_runs table (migration 0014) and emits a per-segment rollup
+# for the close report: segment count/sizes, peak concurrency vs ceiling, §IV
+# faithfulness pass/fail per dimension, seam-handoff outcomes, and degradation
+# events with cause + recovery status.
+#
+# Graceful when no compile_runs rows exist (migration absent OR no compile-down
+# runs recorded yet) — emits nothing, so callers omit the subsection cleanly.
+# parse_error rows are excluded (honest measurements only, mirroring v_cache_usage
+# from migration 0006).
+#
+# Called at CLOSE-FINALIZE as:
+#   shctx adapt report --compile-telemetry [--md|--json]
+_emit_compile_telemetry() {
+  local fmt="$1"
+
+  # Graceful: if compile_runs table doesn't exist yet (migration not applied),
+  # emit nothing instead of crashing.
+  local tbl_exists
+  tbl_exists=$(shctx_sql "SELECT count(*) FROM sqlite_master
+                           WHERE type='table' AND name='compile_runs';")
+  [[ "${tbl_exists:-0}" == "1" ]] || return 0
+
+  # Check for any data for this sprint.
+  local sprint_branch sprint_esc
+  sprint_branch=$(current_sprint)
+  sprint_esc="${sprint_branch//\'/\'\'}"
+
+  local any
+  any=$(shctx_sql "SELECT 1 FROM compile_runs
+                   WHERE project_id='$pid' AND sprint='$sprint_esc'
+                     AND parse_error IS NULL
+                   LIMIT 1;")
+  [[ -n "$any" ]] || return 0
+
+  if [[ "$fmt" == "json" ]]; then
+    shctx_sql "SELECT json_group_array(json_object(
+                 'segment',               segment,
+                 'runs',                  runs,
+                 'node_count',            node_count,
+                 'max_agents',            max_agents,
+                 'avg_peak_concurrency',  ROUND(avg_peak_concurrency,1),
+                 'concurrency_ceiling',   concurrency_ceiling,
+                 'faithfulness_pass_rate',ROUND(faithfulness_pass_rate,2),
+                 'soundness_failures',    soundness_failures,
+                 'completeness_failures', completeness_failures,
+                 'determinism_failures',  determinism_failures,
+                 'seam_exports_present',  seam_exports_present,
+                 'seam_exports_consumed', seam_exports_consumed,
+                 'degradation_events',    degradation_events,
+                 'recovered_events',      recovered_events,
+                 'degradation_causes',    degradation_causes
+               ))
+               FROM v_compile_runs_sprint
+               WHERE project_id='$pid' AND sprint='$sprint_esc'
+               ORDER BY segment;"
+    return 0
+  fi
+
+  # Markdown subsection (mirrors "## Cache telemetry" style from migration 0006).
+  echo "## Compile-down telemetry (\`shctx adapt report --compile-telemetry\`)"
+  echo
+  echo "| segment | runs | nodes | agents | peak_conc/ceil | §IV ok | degrade | recovered | seam |"
+  echo "|---|---|---|---|---|---|---|---|---|"
+  shctx_sql "SELECT
+               '| ' || segment
+            || ' | ' || runs
+            || ' | ' || COALESCE(node_count,'·')
+            || ' | ' || COALESCE(max_agents,'·')
+            || ' | ' || COALESCE(CAST(ROUND(avg_peak_concurrency) AS INTEGER),'·')
+                      || '/' || concurrency_ceiling
+            || ' | ' || CASE
+                           WHEN faithfulness_pass_rate IS NULL THEN '·'
+                           WHEN faithfulness_pass_rate = 1.0   THEN '✓'
+                           ELSE 'FAIL(' ||
+                             CASE WHEN soundness_failures    > 0 THEN 'S' ELSE '' END ||
+                             CASE WHEN completeness_failures > 0 THEN 'C' ELSE '' END ||
+                             CASE WHEN determinism_failures  > 0 THEN 'D' ELSE '' END ||
+                           ')'
+                         END
+            || ' | ' || COALESCE(degradation_events,'0')
+            || ' | ' || COALESCE(recovered_events,'·')
+            || ' | ' || CASE
+                           WHEN seam_exports_present IS NULL THEN '·'
+                           WHEN seam_exports_consumed = seam_exports_present
+                            AND seam_exports_present > 0 THEN 'ok'
+                           ELSE COALESCE(CAST(seam_exports_consumed AS TEXT),'·')
+                                || '/' || COALESCE(CAST(seam_exports_present AS TEXT),'·')
+                         END
+            || ' |'
+             FROM v_compile_runs_sprint
+             WHERE project_id='$pid' AND sprint='$sprint_esc'
+             ORDER BY segment;"
+  echo
+
+  # Degradation detail block — only emitted when events were recorded.
+  local deg_count
+  deg_count=$(shctx_sql "SELECT COALESCE(SUM(degradation_events),0)
+                          FROM v_compile_runs_sprint
+                          WHERE project_id='$pid' AND sprint='$sprint_esc';")
+  if [[ "${deg_count:-0}" -gt 0 ]]; then
+    echo "**Degradation events** (direct-dispatch fallback activated):"
+    shctx_sql "SELECT '- **' || segment || '**: '
+                   || COALESCE(degradation_causes,'(cause unrecorded)')
+                   || ' — ' || COALESCE(recovered_events,0)
+                   || '/' || degradation_events || ' recovered'
+               FROM v_compile_runs_sprint
+               WHERE project_id='$pid' AND sprint='$sprint_esc'
+                 AND degradation_events > 0
+               ORDER BY segment;"
+    echo
+  fi
+  # Explicit success — the trailing conditional above must not leave a non-zero
+  # exit status under `set -e` (mirrors _emit_trends / _emit_recommend pattern).
   return 0
 }
 

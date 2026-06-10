@@ -174,5 +174,56 @@ else
   fails=$((fails+1))
 fi
 
+# PreCompact snapshot hook (v6.0.9, #134): captures focus record + walk trace
+# to a JSON snapshot before context compaction fires; fast-paths when no sprint
+# is active or the DB is absent.
+echo "== test_precompact_snapshot.sh (v6.0.9 — PreCompact focus snapshot) =="
+total=$((total+1))
+if pcs_out=$(bash "$TESTS_DIR/test_precompact_snapshot.sh" 2>&1); then
+  printf '  PASS  %s\n' "precompact-snapshot-captures-focus-record"
+else
+  printf '  FAIL  %-50s\n' "precompact-snapshot"
+  printf '%s\n' "$pcs_out" | sed 's/^/        /'
+  fails=$((fails+1))
+fi
+
+# Focus rehydrate hook (v6.0.9, #134): reads the PreCompact snapshot on
+# SessionStart and re-upserts the focus record into root.db so the conductor
+# resumes from the correct wave position after compaction.
+echo "== test_focus_rehydrate.sh (v6.0.9 — PostCompact focus rehydration) =="
+total=$((total+1))
+if fr_out=$(bash "$TESTS_DIR/test_focus_rehydrate.sh" 2>&1); then
+  printf '  PASS  %s\n' "focus-rehydrate-restores-focus-record"
+else
+  printf '  FAIL  %-50s\n' "focus-rehydrate"
+  printf '%s\n' "$fr_out" | sed 's/^/        /'
+  fails=$((fails+1))
+fi
+
+# Hotfix vehicle guard (v6.0.9, #135): blocks teammate/TeamCreate spawns for a
+# single-cluster (H=1) hotfix; passes through multi-cluster dispatch unchanged.
+echo "== test_hotfix_vehicle_guard.sh (v6.0.9 — #135 hotfix cardinality gate) =="
+total=$((total+1))
+if hvg_out=$(bash "$TESTS_DIR/test_hotfix_vehicle_guard.sh" 2>&1); then
+  printf '  PASS  %s\n' "hotfix-vehicle-guard-blocks-wrong-vehicle"
+else
+  printf '  FAIL  %-50s\n' "hotfix-vehicle-guard"
+  printf '%s\n' "$hvg_out" | sed 's/^/        /'
+  fails=$((fails+1))
+fi
+
+# Teammate git guard (v6.0.9): blocks dev-branch integration commands
+# (merge/rebase/push/cherry-pick onto dev branch) from teammate-conductor
+# sessions; fast-paths outside teammate mode and for allowed commit ops.
+echo "== test_teammate_git_guard.sh (v6.0.9 — teammate integration-authority gate) =="
+total=$((total+1))
+if tgg_out=$(bash "$TESTS_DIR/test_teammate_git_guard.sh" 2>&1); then
+  printf '  PASS  %s\n' "teammate-git-guard-blocks-integration-commands"
+else
+  printf '  FAIL  %-50s\n' "teammate-git-guard"
+  printf '%s\n' "$tgg_out" | sed 's/^/        /'
+  fails=$((fails+1))
+fi
+
 echo "—— $((total-fails))/$total passed ——"
 exit "$fails"

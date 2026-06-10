@@ -33,8 +33,6 @@ insert_final_newline = false
 [*.{md,mdx}]
 indent_size = 2
 
-# WebDev
-
 ## JavaScript / TypeScript
 [*.{ts,tsx,js,jsx,cjs,mjs}]
 indent_size = 2
