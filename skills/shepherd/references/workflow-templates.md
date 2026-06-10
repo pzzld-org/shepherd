@@ -387,10 +387,262 @@ scaling table, and aggregate shape. Use the name — not a prose description —
 Graph YAML. A conductor that re-derives a named composite from scratch is improvising
 off-template.
 
+The three composites below (`FOCUS-LOOP`, `CONVERGENCE-LOOP`, `WATCH-LOOP`) are the first
+with **Pattern basis = Pattern 6** (Loop-Until-Done). Each is a Loop-OUTER composite: the
+loop is the outermost structural container, and the sub-work (wake/act, gate checks,
+monitoring) runs *inside* each iteration body. None is nested inside a Fanout-And-Synthesize
+iteration body — they are always at or above the fanout level, so no illegal composition is
+implied (see `doctrines/workflow-patterns.md` composition grammar).
+
+---
+
+### FOCUS-LOOP — orchestrator self-orientation loop
+
+**Intent.** The orchestrator (root shepherd under `/shepherd:spawn`, or solo conductor under
+`/shepherd:start`) runs this loop across an entire sprint to maintain drive continuity. Each
+iteration: wake (read the focus record + rehydration digest), act (dispatch / coordinate /
+advance the Stage Graph cursor), then probe (check whether CLOSE-FINALIZE has been reached).
+The loop is the runtime shape of the coordinate-mode active-drive cycle described in
+`doctrines/coordinate-active-drive.md`. Interval mode (long-horizon cadence) delegates the
+wake clock to the native `/loop` command.
+
+**Compaction resilience.** The focus record lives in `root.db` and survives compaction
+natively. A `PreCompact` snapshot captures the in-context drive cursor (ready/in\_flight
+sets, trace tail, undrained mailbox) into `<ns>/snapshots/precompact-<sid>-<epoch>.json`.
+After compaction the `SessionStart(source=compact)` rehydration consumer (with a guaranteed
+`UserPromptSubmit` fallback) re-injects the snapshot digest as `additionalContext`, so the
+orchestrator resumes without re-reading the full conversation.
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  FOCUS-LOOP (orchestrator as iterator)                       │
+│                                                              │
+│  FocusInit ──> Wake ──> Act ──> Probe                        │
+│                  ↑               │                           │
+│                  │   continue    │  sprint not closed         │
+│                  └───────────────┘  AND i < max_iterations   │
+│                                 │                            │
+│                   closed / cap  ↓                            │
+│                              LOOP-DONE                       │
+└──────────────────────────────────────────────────────────────┘
+  Compaction may fire at any point; snapshot+rehydrate restores
+  the cursor. Focus record in root.db survives natively.
+```
+
+#### Flock agent binding
+
+| Role | Agent | Job |
+|------|-------|-----|
+| Iterator / loop body | Orchestrator (root or conductor) | Wake: read focus record + rehydration digest. Act: dispatch / coordinate / advance Stage Graph cursor |
+| Focus record keeper | Conductor inline (writes to `loops` + `focus` tables) | Write focus record at SEED-VERIFY; refresh at each WAVE-GATE; finalize at CLOSE-FINALIZE |
+| Interval wake clock | Native `/loop` (when `interval` is set) | Emits a wake event on cadence; delegates scheduling; auto-expires after 3 days |
+
+`@discovery` and `@worker` may be dispatched **within** the Act phase (as inner sub-tasks),
+but they are not the loop iterator — the orchestrator drives the loop.
+
+#### Stage Graph shape
+
+```yaml
+FOCUS-LOOP-INIT (conductor):
+  kind: focus
+  max_iterations: 8           # default from shepherd.toml [focus].loop_max_default; justify > 10
+  interval: null              # set to e.g. '5m' to delegate cadence to native /loop
+  iteration: 0
+  action: shctx loop init --kind=focus --task="sprint-drive" --max=8 --agent=orchestrator
+  on-start: → FOCUS-WAKE
+
+FOCUS-WAKE (conductor):
+  brief: read focus record + rehydration digest
+  action: shctx loop status --id=$loop_id
+  on-ready: → FOCUS-ACT
+
+FOCUS-ACT (conductor):
+  brief: advance Stage Graph cursor (dispatch / coordinate)
+  emits: new_findings: true|false   # true = sprint still open; false = CLOSE-FINALIZE reached
+  action: shctx loop record --id=$loop_id --iteration=$i --new_findings=$new_findings
+  on-findings (new_findings: true, $i < max):  → FOCUS-WAKE (iteration: $i + 1)
+  on-empty (new_findings: false):              → FOCUS-LOOP-DONE
+  on-cap ($i >= max):                          → FOCUS-LOOP-CAPPED (conductor): surface LOOP-CAP
+
+FOCUS-LOOP-DONE (conductor):
+  action: shctx loop close --id=$loop_id --status=converged
+  emit: "## Focus loop summary" with iteration count, final Stage Graph node, obligations drained
+```
+
+#### Compose notes
+
+- `max_iterations` default is `[focus].loop_max_default` in `shepherd.toml` (default: 8). Values > 10 require critic sign-off at PLAN-GATE.
+- When `interval` is non-null, the wake cadence is delegated to native `/loop` (`/loop <interval> /shepherd:loop --resume <id>`). The native `/loop` auto-expires after 3 days, which acts as a hard outer bound in addition to `max_iterations`.
+- Compaction safety is non-optional: `[compaction].precompact_snapshot` must be `"on"` (default) for FOCUS-LOOP to survive a mid-sprint compaction deterministically.
+- The focus record is updated at three mandatory boundaries: SEED-VERIFY (objective + invariants), each WAVE-GATE (active\_node + ready\_set + obligations), and CLOSE-FINALIZE (terminal state).
+- FOCUS-LOOP is Loop-OUTER: it is never nested inside a Fanout-And-Synthesize iteration body. Inner fanout waves run **within** the FOCUS-ACT phase.
+
+#### Anti-patterns
+
+- **Running FOCUS-LOOP without a focus record.** A bare loop counter without the `focus` table record is Pattern 6 generic, not FOCUS-LOOP — the rehydration path will have nothing to re-inject.
+- **Setting `interval` without native `/loop` delegation.** If `interval` is set, the wake clock MUST be delegated to `/loop` — do not poll with an inner wait. Wall-clock cadence is native `/loop`'s job.
+- **Omitting PreCompact snapshot.** Without the snapshot hook, a mid-sprint compaction loses the in-context cursor. The focus record survives but the conductor wakes disoriented.
+- **Nesting FOCUS-LOOP inside another loop.** This is a multi-level loop — restructure as a single FOCUS-LOOP whose FOCUS-ACT dispatches inner convergence work.
+
+---
+
+### CONVERGENCE-LOOP — gate-rerun-until-green
+
+**Intent.** Run a check-and-fix cycle until a defined gate turns green (all tests pass, no
+linter errors, no new audit findings). Generalizes the H ≥ 6 HOT-FIX lane loop and the
+fix-until-gates-green idiom. The iterator is `@coder` or `@worker`; the check is a
+deterministic gate query. Mandatory `max_iterations` cap prevents runaway rework.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  CONVERGENCE-LOOP                                           │
+│                                                             │
+│  LoopInit ──> Fix ──> Check ──┐                            │
+│                 ↑             │  failures remain            │
+│                 │             │  AND i < max_iterations     │
+│                 └─────────────┘                             │
+│                               │                            │
+│                  green / cap  ↓                             │
+│                            LOOP-DONE                        │
+└─────────────────────────────────────────────────────────────┘
+```
+
+#### Flock agent binding
+
+| Role | Agent | Job |
+|------|-------|-----|
+| Iterator (Fix) | `@coder` (code changes) or `@worker` (config / script fixes) | Apply one round of fixes; emit `new_findings: true\|false` where `true` = failures remain |
+| Gate check | Conductor inline (or `@worker` running deterministic gate) | Run gate (tests / lint / audit query); produce pass/fail result for the iterator's `new_findings` field |
+| Terminator | Conductor inline | On green gate OR cap: emit `## Convergence summary` with round count and final gate state |
+
+#### Stage Graph shape
+
+```yaml
+CONVERGENCE-LOOP-INIT (conductor):
+  kind: convergence
+  max_iterations: 5           # mandatory; values > 5 require engineer justification; > 10 require critic sign-off
+  iteration: 0
+  gate: <gate-expression>     # e.g. "tests-green AND lint-clean"; declared in seed
+  action: shctx loop init --kind=convergence --task="<gate-expression>" --max=5 --agent=coder
+  on-start: → CONV-FIX
+
+CONV-FIX (coder or worker):
+  brief: convergence-fix
+  gate_failures: $gate_failures   # injected from prior CONV-CHECK result
+  iteration: $i
+  emits: new_findings: true|false   # true = gate still failing; false = gate green
+  action: shctx loop record --id=$loop_id --iteration=$i --new_findings=$new_findings
+  on-findings (new_findings: true, $i < max):  → CONV-FIX (iteration: $i + 1)
+  on-empty (new_findings: false):              → CONV-LOOP-DONE
+  on-cap ($i >= max):                          → CONV-LOOP-CAPPED (conductor): surface LOOP-CAP
+
+CONV-LOOP-DONE (conductor):
+  action: shctx loop close --id=$loop_id --status=converged
+  emit: "## Convergence summary" with round count, final gate state, fix inventory
+```
+
+#### Compose notes
+
+- The gate expression must be **declared in the seed** before dispatch — a post-hoc gate assembled after observing failures is a CIRCULAR-RUBRIC analog.
+- CONVERGENCE-LOOP naturally follows Pattern 2 (Fanout-And-Synthesize): the fanout implements a feature; CONVERGENCE-LOOP then drives it to gate-green. The fanout is OUTER to the loop (fanout completes, then loop begins).
+- For the H ≥ 6 HOT-FIX lane: the CONVERGENCE-LOOP wraps the rework cycle within the dedicated HOT-FIX lane conductor; it is not a separate top-level sprint loop.
+- CONVERGENCE-LOOP is Loop-OUTER: it sits above any inner fanout of fix sub-tasks within a single CONV-FIX iteration.
+
+#### Anti-patterns
+
+- **Unbounded fix cycles.** No `max_iterations` on a convergence loop is a `PLAN-MISSING-LOOP-CAP` halt at preflight.
+- **Combining fix and check in one node.** The Fix node emits `new_findings` based on gate state; the gate query must be deterministic and reproducible so the conductor can verify the termination condition independently.
+- **Using CONVERGENCE-LOOP for known-finite fix lists.** If the set of failing items is enumerable at loop start, dispatch them as a Fanout-And-Synthesize (Pattern 2) and verify with Adversarial Verification (Pattern 3) — no loop needed.
+- **Nesting CONVERGENCE-LOOP inside a FOCUS-LOOP Act phase without a separate loop ID.** Each loop instance must have its own `loop_id`; reusing the FOCUS-LOOP's ID conflates sprint drive with fix convergence.
+
+---
+
+### WATCH-LOOP — interval monitoring via native `/loop`
+
+**Intent.** Bounded, wall-clock-scheduled monitoring: watch a deployment, Sentry error
+stream, or service health endpoint at a fixed interval and surface anomalies. The iterator
+is `@worker` (bounded, read-only or alerting only). **This is the ONLY named composite that
+uses wall-clock interval scheduling** — the scheduling is delegated entirely to the native
+`/loop` command, not implemented as a back-edge in the Stage Graph. The native `/loop`
+3-day auto-expiry is the outer hard bound; `max_iterations` is the explicit inner cap.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  WATCH-LOOP (wall-clock cadence via native /loop)               │
+│                                                                  │
+│  LoopInit ──> [native /loop tick] ──> Probe ──┐                 │
+│                       ↑                       │  no anomaly     │
+│                       │                       │  AND i < max    │
+│                       └───────────────────────┘                 │
+│                                               │                  │
+│                             anomaly / cap     ↓                  │
+│                                           LOOP-DONE              │
+└──────────────────────────────────────────────────────────────────┘
+  Native /loop auto-expires after 3 days regardless of max_iterations.
+```
+
+#### Flock agent binding
+
+| Role | Agent | Job |
+|------|-------|-----|
+| Probe iterator | `@worker` (bounded, read-only or alert-only) | On each tick: query endpoint / Sentry / logs; emit `new_findings: true\|false` where `true` = anomaly detected |
+| Interval scheduler | Native `/loop` | Emits a wake event on cadence; auto-expires after 3 days |
+| Terminator | Conductor inline | On anomaly: surface alert to operator. On cap or expiry: emit `## Watch summary` with observation log |
+
+`@discovery` is NOT a valid probe iterator for ongoing monitoring — it is for orientation within
+a sprint, not for live service observation. Use `@worker` for all WATCH-LOOP probe iterations.
+
+#### Stage Graph shape
+
+```yaml
+WATCH-LOOP-INIT (conductor):
+  kind: watch
+  max_iterations: <N>         # mandatory; also bounded by native /loop 3-day auto-expiry
+  interval: <duration>        # e.g. '15m', '1h' — delegated to native /loop; REQUIRED for WATCH-LOOP
+  target: <endpoint-or-query> # e.g. "sentry:project/env" or "deploy:prod/health"
+  action: shctx loop init --kind=watch --task="monitor <target>" --max=<N> --interval=<duration> --agent=worker
+  on-start: → WATCH-PROBE (via native /loop scheduling)
+
+WATCH-PROBE (worker):
+  brief: watch-probe
+  target: $target
+  iteration: $i
+  emits: new_findings: true|false   # true = anomaly; false = nominal
+  action: shctx loop record --id=$loop_id --iteration=$i --new_findings=$new_findings
+  on-empty (new_findings: false, $i < max):  → WATCH-PROBE (iteration: $i + 1, via /loop tick)
+  on-findings (new_findings: true):          → WATCH-ALERT (conductor): surface anomaly to operator
+  on-cap ($i >= max):                        → WATCH-LOOP-DONE
+  on-expiry (native /loop expired):          → WATCH-LOOP-DONE
+
+WATCH-LOOP-DONE (conductor):
+  action: shctx loop close --id=$loop_id --status=converged
+  emit: "## Watch summary" with observation count, anomalies found (if any), final status
+```
+
+#### Compose notes
+
+- `interval` is **mandatory** for WATCH-LOOP. A WATCH-LOOP without an `interval` is structurally indistinguishable from CONVERGENCE-LOOP — select the correct composite.
+- The native `/loop` auto-expiry (3 days) is non-overridable. For monitoring horizons beyond 3 days, re-initialize a new WATCH-LOOP after expiry.
+- WATCH-LOOP is always a **leaf composite** in the Stage Graph: it does not contain inner loops or fanout sub-tasks within its probe body. If probe work is non-trivial, delegate to a bounded `@worker` sub-task and return findings to the loop.
+- When an anomaly is detected, the WATCH-LOOP terminates and surfaces to the operator. The operator decides the remediation action — WATCH-LOOP itself does not dispatch remediation.
+- WATCH-LOOP is Loop-OUTER with respect to any inner `@worker` sub-tasks, but in practice the probe body should be simple enough to require no inner fanout.
+
+#### Anti-patterns
+
+- **Wall-clock cadence without native `/loop` delegation.** Implementing a wait-and-poll inner loop in the Stage Graph is forbidden — wall-clock scheduling belongs to native `/loop` exclusively.
+- **Using `@discovery` as probe iterator.** Discovery is sprint-orientation read-only; it is not a monitoring agent. Use `@worker`.
+- **Unbounded WATCH-LOOP.** Even with the 3-day native `/loop` expiry, `max_iterations` is mandatory. The two bounds are independent: the native expiry is a platform ceiling; `max_iterations` is the plan-declared ceiling. Both must be declared.
+- **Dispatching remediation from within WATCH-LOOP.** The loop's job is to detect and surface; remediation is the operator's decision. Embedding a CONVERGENCE-LOOP inside a WATCH-LOOP anomaly handler violates the leaf-composite constraint and exceeds the depth-3 composition limit.
+
+---
+
 | Name | Phase | Structure | Defined in |
 |------|-------|-----------|------------|
 | `INTRO-COMBO-WAVE` | INTRODUCTION (before MESH) | N `@discovery` + M `@auditor` (regression + carry-forward) | `doctrines/intro-combo-wave.md` |
 | `DISCOVERY-COMBO-WAVE` | BODY (during sprint execution) | X `@auditor` + Y `@discovery` + Z `@worker` (optional) — single parallel batch | `doctrines/discovery-combo-wave.md` |
+| `FOCUS-LOOP` | INTRODUCTION → CLOSE (full sprint) | Orchestrator iterator; wake → act → probe; focus record convergence anchor; `max_iterations` mandatory | this file (`references/workflow-templates.md`) |
+| `CONVERGENCE-LOOP` | BODY / CLOSE | `@coder` or `@worker` iterator; fix → gate-check cycle; `max_iterations` mandatory | this file (`references/workflow-templates.md`) |
+| `WATCH-LOOP` | BODY / POST-CLOSE monitoring | `@worker` probe iterator; wall-clock interval via native `/loop`; `max_iterations` + 3-day expiry mandatory | this file (`references/workflow-templates.md`) |
 
 ---
 

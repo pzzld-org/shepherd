@@ -4,6 +4,46 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v6.0.9 — 2026-06-09
+
+<!-- GROUPING CONVENTION (#130): buckets in fixed order — Focus loop / Compaction, Template loops, Hotfix dispatch, Teammate integration, Telemetry, Foundation. Each `###` heading names its concern + issue refs. -->
+
+### Focus Loop + compaction resilience — survive compaction by snapshot + rehydrate, not by self-trigger (#134)
+
+Honest framing first: current Claude Code exposes **no** way for an agent to trigger or steer its own compaction, and **no** machine-readable context-budget surface. The only official threshold lever is the global env var `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`. So "stay on-track through compactions" is implemented as making compaction **safe** (snapshot the drive-state + rehydrate) and **predictable** (documented threshold), keyed off a durable focus record — not as the (impossible) self-timed compaction.
+
+- **Loop foundation (closes the v6.0.7 overclaim).** `/shepherd:loop` advertised `shctx loop init|record|close|status|list` but had no backing — no `cmd_loop.sh`, no `loop` table, no dispatcher entry. New `skills/context/scripts/cmd_loop.sh` + migration `0012_loop_state.sql` (`loops` + `loop_iterations` + `v_loops_active`) + a `loop` entry in the `shctx` allowlist implement the full verb surface, plus a `focus <upsert|show>` verb.
+- **Focus record.** Migration `0013_focus.sql` (`focus` table + `v_focus_current`) — the sprint north-star: objective, active node, ready-set, obligations, invariants. It lives in `root.db`, so it survives compaction natively; written at SEED-VERIFY, refreshed at each WAVE-GATE, finalized at CLOSE-FINALIZE (wired into `agents/conductor.md` + `agents/shepherd.md`).
+- **PreCompact snapshot.** New `hooks/scripts/precompact_snapshot.sh` on the new `PreCompact` event captures the in-context drive cursor (`state.json` ready/in_flight, `trace.jsonl` tail, undrained `mailbox`, `shepherd.lock`, focus digest) to `<ns>/snapshots/`, sets a rehydrate-pending flag, trims to `[compaction] snapshot_retention` (default 5), and **never blocks compaction** (exit 0).
+- **Rehydration.** New `hooks/scripts/focus_rehydrate.sh` on `SessionStart` + `UserPromptSubmit` drains the pending flag once and re-injects the snapshot digest as `additionalContext`, so the orchestrator resumes its drive deterministically after a compaction.
+- **Threshold doctrine.** `docs/configuration.md` documents the sole official knob (`CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`) — global, no per-model form, opt-in, **no shipped default** — with a ~70 suggestion for long Sonnet-root sprints. New `[compaction]` / `[focus]` config sections (both examples updated).
+- **`/shepherd:focus`** (`commands/focus.md`) wraps `loop --kind=focus`; interval mode delegates to the native Claude Code `/loop`.
+
+### Template loops — first Pattern-6 named composites (operator request)
+
+Three named loop composites added to `skills/shepherd/references/workflow-templates.md` and the `skills/shepherd/doctrines/workflow-patterns.md` composite table — the **first** composites with `Pattern basis = Pattern 6` (alongside the existing Pattern-2 `INTRO-COMBO-WAVE` / `DISCOVERY-COMBO-WAVE` / `HOTFIX-BATCH`): **FOCUS-LOOP** (orchestrator self-orientation; the runtime shape of coordinate-mode drive), **CONVERGENCE-LOOP** (gate-rerun-until-green), **WATCH-LOOP** (interval monitoring via the native `/loop`). All declare a mandatory `max_iterations`, are Loop-OUTER (never nested inside a fanout iteration body, per the existing illegal-composition rule), and reuse the existing `PLAN-MISSING-LOOP-CAP` / `LOOP-REPORT-INVALID` / `LOOP-CAP` halt codes (no new codes).
+
+### Hotfix dispatch — mechanical guard for the H=1 rule (#135)
+
+The v6.0.8 cardinality ladder was doctrine-complete but **unenforced**. New `hooks/scripts/hotfix_vehicle_guard.sh` (`PreToolUse` Agent|Task) denies a teammate / `TeamCreate` spawn whose context is a single-cluster (`H = 1`) hotfix, emitting the now-registered **`WRONG-VEHICLE`** halt code (added to the halt-code tables in both `agents/conductor.md` and `agents/shepherd.md`). The doctrine itself is unchanged — this closes the enforcement gap, not a wording gap.
+
+### Teammate integration authority — root-only merge, reviewed (#99 + operator)
+
+Team-based conductors must **never** integrate their own worktree into the dev branch. New `hooks/scripts/teammate_git_guard.sh` (`PreToolUse` Bash) denies dev-branch integration commands (`git merge` / `rebase` / `push` / `cherry-pick`) from teammate sessions — keyed on the `teammates` table by `session_id` — while still allowing legitimate in-worktree `git add` / `git commit`, emitting the registered **`TEAMMATE-GIT-WRITE`** halt code. A new **`LANE-INTEGRATE`** seam (`skills/shepherd/pipeline.md` + `agents/shepherd.md`) makes integration a root-exclusive, **size-gated reviewed** decision: small diffs root-reviews inline; lanes ≥ 200 changed lines get an `@auditor` diff-review concern before merge. New binding doctrine `skills/shepherd/doctrines/teammate-integration-authority.md`.
+
+### Compile-down telemetry — measurable pilot feedback (#87)
+
+New migration `0014_compile_runs.sql` (`compile_runs` + `v_compile_runs_sprint`) captures, per compiled segment per run: segment size, peak concurrency vs the ceiling, the §IV faithfulness-diff result (the structured object `shctx graph compile --verify` already emits), seam-handoff outcome, and every degradation-to-direct-dispatch event with its cause. `shctx adapt` gains a `## Compile-down telemetry` close-report subsection (mirroring the existing cache-telemetry precedent over `v_cache_usage`). The dead `shctx graph trends` reference in `dispatch-cascade.md §VII` (never implemented) is repointed to the live `shctx adapt report --trends`. A **deliberate degradation test** (`skills/context/tests/test_compile_telemetry.sh`) exercises the direct-dispatch fallback — the path #87 flagged as the real risk.
+
+### Foundation — design spec, tests, namespace discipline
+
+- Authoritative design-of-record: `.artifacts/docs/specs/2026-06-09-v609-focus-loop-and-compaction-resilience.spec.md` (four-pass: goals/deliverables, assumptions/constraints, diagrams, derivations).
+- New tests, all registered in their harnesses: `skills/context/tests/test_loop_lifecycle.sh`, `test_compile_telemetry.sh`; `hooks/tests/test_precompact_snapshot.sh`, `test_focus_rehydrate.sh`, `test_hotfix_vehicle_guard.sh`, `test_teammate_git_guard.sh`.
+- All new hook scripts honor house style — `set -uo pipefail`, source `_lib.sh || exit 0`, **exit 0 always** (decision via stdout JSON), config-gated, runaway-bounded, and namespace-resolved via `resolve_namespace` / `resolve_workdir` (never hardcoding `.artifacts` / `.shepherd`, per #121).
+- Version already at 6.0.9 across the six sources of truth (bumped at branch cut); this section is the hand-authored record.
+
+---
+
 ## v6.0.8 — 2026-06-09
 
 <!-- GROUPING CONVENTION (#130): within a patch section, organize `###` headings into concern buckets in this fixed order — Planter / Models, Hotfix dispatch, Adaptation, Namespace / Hooks, Foundation. Each `###` heading names its concern and cites its issue refs inline as `(#NNN)`. One heading per coherent change; a change spanning files stays one heading. This keeps multi-lane patches coherent without a separate index. -->

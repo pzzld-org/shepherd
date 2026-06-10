@@ -54,6 +54,7 @@ Every node in the graph is one of these types. The type determines the dispatch 
 | `WAVE-IMPL` | Parallel batch of N `@coder` (one per step) + `@worker` IO-bound batch in the SAME message | @coder + @worker | committed worktrees |
 | `WAVE-GATE` | Conductor inline (rebase + four-step gate) | Conductor | gate-pass boolean + rebased commit |
 | `LANE-CLOSE` | Conductor inline (`shctx close-lane <lane-id>`) — fires after each `WAVE-GATE` per lane | Conductor | carry-forward + dedup ledger auto-resolved (per v5.0.3 §2.7) |
+| `LANE-INTEGRATE` | Root-owned conductor inline (seam; never compiled into a Dynamic Workflow) — fires after a teammate lane completes and before root merges the lane diff into the dev branch. Root reviews the diff; large diffs (≥ 200 lines changed) get an `@auditor` diff-review concern first. Integration is root-exclusive in spawn mode; solo conductor IS root so it integrates directly. v6.0.9, #99. | Root (spawn) / Conductor (solo) | lane diff reviewed + merged into dev branch OR blocked for auditor concern |
 | `CANONICAL-TYPES-REFRESH` | Single `@worker` (bounded; non-competing) — fires at every dev.0 | @worker | refreshed `{paths.ctx}/canonical-types.md` |
 | `WAVE-AUDIT` | Parallel batch of M `@auditor` (concern-split, scoped to wave N) | @auditor | per-wave audit reports + GH findings |
 | `HOTFIX` | One or more `@coder` (≤ 3 concurrent, ≤ S each) — count pre-declared in plan | @coder | committed worktrees per finding |
@@ -509,6 +510,23 @@ nodes:
 
   # ... wave-1-audit, wave-2-impl (Pattern B parallel_with), etc.
 
+  # LANE-INTEGRATE: root-owned seam between teammate-lane close and dev-branch merge.
+  # Fires after each lane's WAVE-COMPLETE; never compiled into a Dynamic Workflow.
+  # Size-gated: small diffs root-reviews inline; large diffs (≥ 200 lines changed)
+  # get an @auditor diff-review concern before the merge is allowed to proceed.
+  # Integration authority is root-exclusive (spawn mode); solo conductor integrates directly.
+  - id: lane-integrate-L1
+    type: LANE-INTEGRATE
+    in_predicates: [{ predecessor: wave-N-gate, edge: on-pass }]
+    lane: L1                             # which teammate lane's diff is under review
+    size_gate_threshold: 200             # lines changed; above → auditor concern required
+    agents:
+      - { role: auditor, count: 1, concern: diff-review, condition: "diff_lines >= size_gate_threshold" }
+    out_edges:
+      - { label: on-integrate-clean, target: next-wave-or-close }
+      - { label: on-integrate-blocked, target: auditor-diff-review }
+      - { label: on-hard-stop, target: hard-stop }
+
   - id: close-swarm
     type: CLOSE-SWARM
     in_predicates: [{ predecessor: wave-N-gate, edge: on-pass }]
@@ -551,6 +569,7 @@ The `completeness` auditor verifies graph discipline at close:
 7. **CHAIN-REPAIR without amend-and-loop edge** — drift was found but seed wasn't amended — graph-validity check.
 8. **WAVE-IMPL without preceding DEDUP-GATE** — per `doctrines/zero-duplicate-tolerance.md`, every WAVE-IMPL has a DEDUP-GATE predecessor with `on-dedup-clear` edge. Skipping it is how duplicate code lands.
 9. **dev.0 plan without CANONICAL-TYPES-REFRESH worker** — the workspace catalog at `{paths.ctx}/canonical-types.md` must be refreshed at every patch's dev.0; a plan that omits it ships stale catalog and produces duplicate-prone subsequent sprints.
+10. **Teammate lane merged without `LANE-INTEGRATE` review (v6.0.9)** — root must execute `LANE-INTEGRATE` before merging any lane diff into the dev branch. A teammate that attempts the merge itself triggers `TEAMMATE-GIT-WRITE`; a root that skips the review step bypasses the `doctrines/teammate-integration-authority.md` contract.
 
 A graph that fails any of these checks gets a `STAGE-GRAPH-VIOLATION` finding and grade-caps at C+ (per `subtract-dont-add` precedent).
 
@@ -810,5 +829,6 @@ Full doctrine: `doctrines/plugin-reload-escape.md`.
 - `doctrines/plugin-reload-escape.md` — /reload-plugins escape hatch for MCP unavailability (v5.0.9)
 - `doctrines/dispatch-cascade.md` — Stage Graph as rule engine; `shctx plan extract` + `shctx graph` mechanize the walk (v5.0.9)
 - `doctrines/hotfix-dispatch.md` — hot-fix dispatch cardinality ladder: `H=1` single subagent, `(1,5]` root-batched dynamic workflow, `H≥6` dedicated lane (v6.0.8, #135)
+- `doctrines/teammate-integration-authority.md` — binding doctrine: teammate-conductors never integrate to the dev branch; `LANE-INTEGRATE` is the root-owned review gate (v6.0.9, #99)
 - `commands/spawn.md` — `/shepherd:spawn --auto` (loop the walk algorithm) and `--parallel <N>` (N concurrent walks with cross-graph join at CLOSE-FINALIZE)
 - `doctrines/workflow-compile-down.md` — the φ node→construct map (§V) is derived from this node taxonomy; compiled fanout segments preserve the walk's predicate semantics (§IV)

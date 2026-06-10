@@ -142,6 +142,8 @@ binding; this profile operationalizes it.
 | `TEAMMATE-BOOT-MALFORMED` (v6.0.3) | Teammate boot prompt was malformed; inspect the spawn record, correct the dispatcher / lane-brief / root-session fields, and re-spawn. |
 | `SEED-DRIFT-DETECTED` | A teammate surfaced `SEED-DRIFT-SUBSTANTIVE`; invoke the planter to amend the seed (`doctrines/root-shepherd-orchestration.md §V`), then re-issue MESH. |
 | `SPECIALIST-UNCLEAR` / `SPECIALIST-UNAVAILABLE` | A specialist dispatch was ambiguous or failed after reload; clarify scope or decide substitute-vs-abort with the operator. Per `doctrines/specialist-dispatch.md`. |
+| `TEAMMATE-GIT-WRITE` (v6.0.3 / v6.0.9) | A teammate-conductor attempted a dev-branch integration command (`git merge`, `git rebase`, `git push`, or `git cherry-pick` onto the dev branch). Integration is root-exclusive. Acknowledge the halt; run the integration yourself via the `LANE-INTEGRATE` review step; then send a resume reply. The teammate refused correctly. Cross-ref `hooks/scripts/teammate_git_guard.sh` + `doctrines/teammate-integration-authority.md`. |
+| `WRONG-VEHICLE` (v6.0.9) | Teammate or `TeamCreate` spawn was attempted for a single-cluster (`H = 1`) hotfix. Dispatch ONE `@coder` subagent; never a teammate. Per `doctrines/hotfix-dispatch.md` single-HF rule. Cross-ref `hooks/scripts/hotfix_vehicle_guard.sh`. |
 
 ---
 
@@ -194,6 +196,12 @@ no explicit toggle — but you must self-recognize which you are in.
   platform (which auto-resumes you on the next teammate event). You do NOT end
   your turn for the operator unless an enumerated §II operator-pause is open
   (`HARD-STOP` / operator-question / dispute / ROOT CLOSE REPORT / interrupt).
+  The **FOCUS-LOOP** composite (Pattern 6, `doctrines/workflow-patterns.md`) is the
+  runtime shape of this coordinate drive: the focus record is the convergence anchor
+  that survives compaction; the wake → act → probe cycle is one iteration of the loop.
+  This composite is also why the focus-record write points at SEED-VERIFY, WAVE-GATE,
+  and CLOSE-FINALIZE are mandatory — they keep the loop's orientation anchor current
+  across the entire spawn session.
   ACT drains ALL undrained state before yielding (unread mail → materialize +
   commit + release gate; idle teammate with a materialized payload → prune now +
   refresh next wave; idle without `WAVE-COMPLETE` → probe). PROBE sweeps
@@ -312,6 +320,12 @@ grounded picture every teammate inherits.
 - [ ] Materialize the FINAL plan to `{paths.plans}/{sprint_slug}.plan.md`.
       Operator approval gate (one-paragraph plan summary + a `proceed`
       prompt) BEFORE any teammate spawn.
+- [ ] **Write focus record** (SEED-VERIFY boundary, v6.0.9): open the FOCUS-LOOP and write the initial focus record:
+  ```bash
+  focus_loop_id=$(shctx loop init --kind=focus --task="focus: {sprint_slug}" --max=50)
+  shctx loop focus upsert --sprint={sprint_slug} --objective="<one-para north-star>" --invariants='<JSON array>'
+  ```
+  Capture `$focus_loop_id` — CLOSE-FINALIZE references it to close the loop. The focus record is the FOCUS-LOOP orientation anchor (Pattern 6 composite, `doctrines/workflow-patterns.md`); it lives in `root.db`, survives compaction natively, and is captured by the PreCompact snapshot for rehydration. Write it here, before any teammate spawn.
 
 The INTRODUCTION ends with a PLAN-READY signal and operator approval. No
 spawn fires until both are present.
@@ -339,7 +353,7 @@ The body is teammate orchestration. Per scope:
 - Enter coordinate mode; babysit per `agents/planter.md §Babysitter mode`
   responsibilities (escalation triage, wave-boundary commits, heartbeat).
   At each wave boundary all lanes sync: every lane's teammate completes its
-  wave-N steps and goes idle, root runs the wave-N gate on the rebased sprint branch, then releases the next wave by `TaskUpdate(status: completed)` on the `wave-N-gate-{sprint_slug}` marker — lanes' wave-(N+1) IMPL tasks carry `addBlockedBy` on it and cannot be claimed until release (#100). Root MAY **refresh** an idle lane's teammate at the boundary
+  wave-N steps and goes idle, root runs the wave-N gate on the rebased sprint branch, then releases the next wave by `TaskUpdate(status: completed)` on the `wave-N-gate-{sprint_slug}` marker — lanes' wave-(N+1) IMPL tasks carry `addBlockedBy` on it and cannot be claimed until release (#100). **After each wave-gate passes, refresh the focus record** (WAVE-GATE boundary write-point, v6.0.9): `shctx loop focus upsert --sprint={sprint_slug} --active-node=<next-node> --ready-set="<comma-ids>" --obligations='<JSON>'`. This keeps the FOCUS-LOOP composite (`doctrines/workflow-patterns.md`) current so any post-compaction rehydration resumes from the correct wave position. Root MAY **refresh** an idle lane's teammate at the boundary
   (shut it down, spawn a fresh one into the **same** lane for fresh context) —
   this is **not** a new lane (`doctrines/primitive-axis-binding.md §II.1`).
 - On teammate close: materialize close-report payload to
@@ -410,6 +424,12 @@ sprint when `--scope > sprint`):
       `H ≥ 6` vehicle only.
 - [ ] Materialize CLOSE-SWARM reports.
 - [ ] Update memory + project doctrines; patch project `CLAUDE.md`.
+- [ ] **Finalize focus record** (CLOSE-FINALIZE boundary, v6.0.9): write the terminal focus state, then close the FOCUS-LOOP itself:
+  ```bash
+  shctx loop focus upsert --sprint={sprint_slug} --active-node=CLOSE-FINALIZE --obligations='[]'
+  shctx loop close --id=<focus_loop_id> --status=converged
+  ```
+  `<focus_loop_id>` is the id emitted by `shctx loop init --kind=focus` at SEED-VERIFY. Run both before the git operations below.
 - [ ] **ROOT CLOSE-FINALIZE — git operations.** Root MUST execute these
       directly (never delegate to planter or expect a teammate to handle
       them). This mirrors the mechanical rigor of `.github/workflows/release.yml`
@@ -564,6 +584,7 @@ Teammate-conductors are forbidden from these writes per
 | `.artifacts/logs/parallel-status-*.md` | Root | Multi-teammate status board |
 | Git commits (non-source) | Root | Plans, reports, handoffs, seeds |
 | Git rebase-merge sprint → patch | Root | At sprint close, dev-order gated |
+| `LANE-INTEGRATE` (v6.0.9) | Root | Review-before-merge seam after each teammate lane completes. Small diffs root-reviews inline; large diffs (≥ 200 lines changed) get an `@auditor` diff-review concern first. Enforced by `hooks/scripts/teammate_git_guard.sh` + halt code `TEAMMATE-GIT-WRITE`. Per `doctrines/teammate-integration-authority.md`. |
 | `git worktree remove` after teammate close | Root | Cleanup |
 | `agent-*` branch deletion | Root | Post-merge cleanup |
 | `shepherd.lock` release | Root | After all teammates close |

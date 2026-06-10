@@ -32,6 +32,7 @@ This skill is a quick reference. Operational detail lives in the sibling files (
 - `shctx export <kind> [--out=path]` — markdown/JSON snapshot of a query or table.
 - `shctx close-lane <lane-id> --sprint=<branch> [--issues=#a,#b] [--status=clean|partial|failed]` *(v5.0.3)* — record mid-sprint lane closure; auto-resolves carry-forward via `gh issue view --json state`; emits markdown patch for the ledger.
 - `shctx worktree <list|gc|merge>` *(v5.0.3)* — worktree hygiene: list with age, prune stale `.claude/worktrees/agent-*` (`gc --older-than=<hours>`), cherry-pick + cleanup (`merge <agent-id> --strategy=theirs|prompt`).
+- `shctx loop <init|status|record|close|list|focus>` *(v6.0.9)* — SQLite-backed Loop-Until-Done state. Backs `/shepherd:loop` and the Focus Loop runtime. Loop state is canonical (survives compaction). `init --task --max [--kind --agent --until --interval]` emits a `loop-id` of form `loop-YYYYMMDD-NNN`; `status --id`; `record --id --iteration --new_findings --summary`; `close --id --status`; `list [--active|--all]`. Sixth verb `focus <upsert|show> --sprint` reads/writes the focus record (objective, active_node, ready_set, obligations, invariants) from migration `0013_focus.sql`.
 
 All subcommands are project-scoped to the row in `projects` written by `init`.
 
@@ -63,6 +64,7 @@ See `${CLAUDE_PLUGIN_ROOT}/skills/shepherd/doctrines/context-registry.md` for th
 | **Cache** | `index_*`, `logs_events` (last 10K) | Rebuildable from source/MCP at any time. Safe to delete. |
 | **Canonical (core)** | `projects`, `sessions`, `profiles_defs`, `mem_entries`, `artifacts`, `locks_history`, `schema_versions` | Not recoverable elsewhere. Persistence required. |
 | **Canonical (v5.1.7+ operational)** | `teammates`, `heartbeats`, `mailbox`, `escalations`, `deliverables`, `discovery_findings`, `audit_findings` | Operational state added by migration `0007_canonical_state.sql`. Not recoverable elsewhere. Persistence required. |
+| **Canonical (v6.0.9 loop/focus)** | `loops`, `loop_iterations`, `focus` | Loop state and focus record added by migrations `0012_loop_state.sql` + `0013_focus.sql`. Survive compaction natively. Persistence required. |
 
 The DB is gitignored by default. Treat it as a build artifact unless your team has a specific reason to commit it.
 

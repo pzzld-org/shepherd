@@ -60,3 +60,15 @@ driver = "operator"
 
 [hooks]
 on_every_dispatch = ["code-style"]
+
+[compaction]
+# Snapshot drive-state before every compaction event (on by default).
+# Disable with "off" if you do not use /shepherd:spawn or long-running sprints.
+# precompact_snapshot = "on"   # on (default) | off
+# snapshot_retention  = 5      # keep N most-recent snapshots
+
+[focus]
+# Re-inject the latest snapshot as additionalContext after compaction.
+# Controls both the SessionStart(compact) path and the UserPromptSubmit fallback.
+# rehydrate        = "on"   # on (default) | off
+# loop_max_default = 8      # default max_iterations for FOCUS-LOOP (Pattern 6)

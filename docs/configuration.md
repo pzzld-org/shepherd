@@ -366,6 +366,66 @@ cross_dep_timeout_sec = 300    # CROSS-DEP-WAIT escalates to operator after this
 > use). This is the single highest-leverage token win for long runs. Refs:
 > `https://code.claude.com/docs/en/prompt-caching`, `doctrines/cache-telemetry.md`.
 
+### `[compaction]` — compaction resilience (v6.0.9)
+
+```toml
+[compaction]
+# Snapshot drive-state to disk immediately before any compaction event
+# (manual /compact or auto-compact). The PreCompact hook writes a JSON
+# snapshot of state.json ready/in_flight sets, trace tail, undrained mailbox,
+# shepherd.lock, and the current focus digest into
+# <namespace>/snapshots/precompact-<session>-<epoch>.json.
+# Never blocks compaction — the hook always exits 0.
+precompact_snapshot = "on"   # on (default) | off
+
+# How many precompact snapshots to retain per namespace. Older snapshots
+# are pruned on each PreCompact firing. Set 0 for unlimited (not recommended).
+snapshot_retention  = 5      # int — keep N most-recent snapshots
+```
+
+Snapshots land in `<namespace>/snapshots/` (created automatically). They survive compaction because compaction truncates only the conversation, not the filesystem.
+
+#### Auto-compaction threshold — `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`
+
+The **only** official knob for tuning when automatic compaction fires is the environment variable `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` (integer 1–100). Set it in your `settings.json` under `env`:
+
+```json
+{
+  "env": {
+    "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "70"
+  }
+}
+```
+
+**Important constraints and honest caveats:**
+
+- **Global only.** This variable affects every Claude Code session on the machine — shepherd sessions, plain coding sessions, everything. There is no per-model, per-project, or per-session form.
+- **No disable toggle.** There is no documented way to turn auto-compaction off entirely.
+- **Agents cannot self-trigger or steer compaction.** There is no tool, slash command, SDK call, or hook return value that lets the model initiate `/compact`. The model also cannot read its own live context percentage — `/context` is display-only. Shepherd therefore cannot time compaction deliberately (e.g., at a wave boundary); it can only make each compaction event *safe* (snapshot) and statistically *earlier/cheaper* (lower threshold).
+- **No recommended default is shipped.** Lowering the threshold (e.g., to 70%) makes compactions fire earlier and more often, which tends to cluster them at lower-context moments near wave boundaries — useful for long Sonnet-root spawns. But it also increases compaction frequency, which trades against the snapshot+rehydrate overhead. Operators running long `--scope patch` or `--scope minor` sprints with Sonnet as root may find ~70 a reasonable starting point. Operators who rarely hit the context limit should leave it unset (platform default, typically 95%).
+
+### `[focus]` — focus loop rehydration (v6.0.9)
+
+```toml
+[focus]
+# Re-inject the latest precompact snapshot as additionalContext after a
+# compaction event, so the orchestrator resumes its drive deterministically.
+# Primary path: SessionStart with source == "compact".
+# Guaranteed fallback: UserPromptSubmit that drains the rehydration-pending
+# flag once (drain-once, runaway-bounded).
+# Gating this off disables both paths; the snapshot file is still written
+# (controlled separately by [compaction].precompact_snapshot).
+rehydrate        = "on"   # on (default) | off
+
+# Default max_iterations for FOCUS-LOOP pattern instances (Pattern 6,
+# FOCUS-LOOP composite). Each /shepherd:focus or shctx loop init call that
+# does not supply an explicit --max inherits this value. Raise for very long
+# sprints; lower for bounded sub-loops.
+loop_max_default = 8      # int — default max_iterations for FOCUS-LOOP
+```
+
+The focus record itself (objective, active Stage-Graph node, ready-set, outstanding obligations, invariants) lives in `root.db` (`focus` table) and survives compaction natively. The rehydration consumer reads the latest snapshot + focus digest and emits them as `additionalContext` so the model's drive cursor is restored without manual re-orientation.
+
 ## Path interpolation
 
 Any `{X}/{Y}/{Z}/{N}` placeholder in `branching`, `release`, or `ledger` is interpolated at runtime. Any `{paths.*}` reference is resolved against `[paths]`. So:

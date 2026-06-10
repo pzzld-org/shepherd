@@ -205,8 +205,30 @@ appears in a Stage Graph, use its full definition — do not re-derive or improv
 | `INTRO-COMBO-WAVE` | Pattern 2 | INTRODUCTION | `@discovery` × N + `@auditor` × M (regression + carry-forward) |
 | `DISCOVERY-COMBO-WAVE` | Pattern 2 | BODY | `@auditor` × X + `@discovery` × Y + `@worker` × Z (opt.) |
 | `HOTFIX-BATCH` | Pattern 2 | BODY / CLOSE | `@coder` × H clusters (`H ∈ (1,5]`), one batched dynamic workflow dispatched directly by root |
+| `FOCUS-LOOP` | Pattern 6 | INTRODUCTION → CLOSE (full sprint) | Orchestrator iterator; wake → act → probe; focus record convergence anchor |
+| `CONVERGENCE-LOOP` | Pattern 6 | BODY / CLOSE | `@coder` or `@worker` iterator; fix → gate-check cycle until gate green |
+| `WATCH-LOOP` | Pattern 6 | BODY / POST-CLOSE monitoring | `@worker` probe iterator; wall-clock cadence via native `/loop` |
 
-Full definitions: `doctrines/intro-combo-wave.md`, `doctrines/discovery-combo-wave.md`, `doctrines/hotfix-dispatch.md`.
+Full definitions for Pattern-2 composites: `doctrines/intro-combo-wave.md`, `doctrines/discovery-combo-wave.md`, `doctrines/hotfix-dispatch.md`.
+Full definitions for Pattern-6 composites: `references/workflow-templates.md` (FOCUS-LOOP, CONVERGENCE-LOOP, WATCH-LOOP subsections).
+
+### Pattern-6 composite composition notes
+
+`FOCUS-LOOP`, `CONVERGENCE-LOOP`, and `WATCH-LOOP` are all **Loop-OUTER** composites: the
+loop is the outermost structural container, and sub-work runs *inside* each iteration body.
+None is nested inside a Fanout-And-Synthesize iteration body, so none implies the illegal
+composition "Loop-Until-Done inside Fanout-And-Synthesize iteration body" — they always sit
+at or above the fanout level in the graph.
+
+No new halt codes are required for these composites. They reuse the existing Pattern-6 halt
+codes without extension:
+- `PLAN-MISSING-LOOP-CAP` — fires at preflight (`shctx doctor`) and PLAN-GATE if any of the three composites is declared without a `max_iterations`.
+- `LOOP-REPORT-INVALID` — fires on any iteration report that omits the `new_findings: true|false` field.
+- `LOOP-CAP` — fires when `iterations >= max_iterations` on any of the three; surfaces the iteration inventory to the operator for extension or acceptance.
+
+The `max_iterations` ceiling, the `shctx loop` backing, and the structured `new_findings`
+field are mandatory for all three composites — the same circuit-breaker invariants that govern
+generic Pattern 6 apply without exception.
 
 ---
 
