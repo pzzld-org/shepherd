@@ -225,5 +225,18 @@ else
   fails=$((fails+1))
 fi
 
+# Worktree teardown guard (v6.1.0, #141): blocks blanket/destructive worktree
+# teardown (git worktree prune, list|remove sweeps) when live teammates exist;
+# passes scoped single-lane remove and all non-worktree commands.
+echo "== test_worktree_teardown_guard.sh (v6.1.0 — #141 blanket teardown gate) =="
+total=$((total+1))
+if wtg_out=$(bash "$TESTS_DIR/test_worktree_teardown_guard.sh" 2>&1); then
+  printf '  PASS  %s\n' "worktree-teardown-guard-blocks-blanket-teardown"
+else
+  printf '  FAIL  %-50s\n' "worktree-teardown-guard"
+  printf '%s\n' "$wtg_out" | sed 's/^/        /'
+  fails=$((fails+1))
+fi
+
 echo "—— $((total-fails))/$total passed ——"
 exit "$fails"

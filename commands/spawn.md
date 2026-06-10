@@ -604,6 +604,40 @@ Each spawned teammate is created **from the `shepherd:conductor` subagent defini
 per-teammate boot/lane context (INVOCATION-CONTEXT, INHERITED CONTEXT, lane brief) is
 supplied per § Build the teammate prompt and carried in the `TeamCreate` instruction.
 
+### Model pin requirement (mandatory — v6.0.9)
+
+**Every teammate MUST be spawned with an explicit `model: sonnet` pin in the
+`TeamCreate` instruction.** Do NOT rely on the `shepherd:conductor` subagent
+definition's `model: sonnet` frontmatter to propagate — empirically, teammates
+have inherited the lead session's model instead of the subagent definition's
+(v6.0.9 regression: an Opus 4.8 lead session caused every teammate to run at
+Opus 4.8, multiplying costs by the lane count). The intended conductor model is
+`sonnet` per `agents/conductor.md` frontmatter; enforce it explicitly.
+
+**Include the pin in the natural-language instruction**, e.g.:
+
+```
+"Create a team to run sprint {sprint_slug}. Spawn one teammate per lane named
+ shepherd-conductor-{sprint_slug}[-{lane_id}], each of agent type
+ shepherd:conductor, model: sonnet. ..."
+```
+
+**PRE-SPAWN COST ADVISORY.** Check the lead session's active model before
+issuing `TeamCreate`:
+
+```bash
+# If the lead session is pinned to an Opus-tier model:
+echo "[COST ADVISORY] Lead session is Opus. Without an explicit 'model: sonnet' pin
+in the TeamCreate instruction, every teammate may inherit Opus 4.8 (cost ↑↑↑ — one
+lane × {N} lanes × Opus token rates). Verify the pin is present before proceeding,
+or provide an explicit operator override confirming Opus is intentional."
+```
+
+If the operator explicitly authorizes Opus teammates (e.g. an L/XL sprint where
+plan quality justifies the cost), record the override in the session-start status
+block and proceed. Otherwise, refuse `TeamCreate` until the `model: sonnet` pin
+is present in the instruction.
+
 > **Tool-family discipline (live-docs-verified, #93, 2026-05-29):** `Agent`/`Task`
 > spawn **subagents** — the worker primitive — and are a **DISJOINT** tool family from
 > teammate spawning. **Do NOT use `Agent`/`Task` to spawn a teammate**, and there is

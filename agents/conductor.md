@@ -403,11 +403,25 @@ no pause-detector hook, and no `<ns>/pauses/` registry.
   Root handles steps 3–6 after all teammates close.
 
   **Step 8 — Worktree + branch cleanup.** (SOLO mode only.)
+
+  > **WARNING — blanket teardown is CLOSE-only.** Running `git worktree remove`
+  > in a loop across all `agent-*` worktrees while ANY teammate is live removes
+  > sibling panes' worktrees and kills their sessions (v6.0.9 pane-massacre
+  > regression). This block MUST NOT execute until `v_teammates_live` is zero.
+  > In SOLO mode there are no teammates, so the guard always passes; the check
+  > is belt-and-suspenders against copy-paste into a spawn context.
+
   ```bash
-  git worktree list | grep 'agent-' | awk '{print $1}' | while read wp; do
-    git worktree remove --force "$wp" 2>/dev/null || true
-  done
-  git worktree prune
+  ns="$(shctx __ns 2>/dev/null || echo .artifacts)"
+  live="$(sqlite3 "$ns/root.db" 'SELECT count(*) FROM v_teammates_live;' 2>/dev/null || echo 0)"
+  if [ "$live" != "0" ]; then
+    echo "ABORT: live teammates present — blanket worktree teardown is CLOSE-only. Remove individual lanes via 'git worktree remove .worktrees/{sprint_slug}-{lane_id}' after each lane closes."
+  else
+    git worktree list | grep 'agent-' | awk '{print $1}' | while read wp; do
+      git worktree remove --force "$wp" 2>/dev/null || true
+    done
+    git worktree prune
+  fi
   ```
 
   **Step 9 — Adaptation loop** (SOLO mode only; #94/#95). Per `doctrines/adaptation-loop.md` + `doctrines/self-improvement.md`:
