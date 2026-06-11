@@ -4,7 +4,7 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
-## v6.2.0 — 2026-06-11
+## v6.1.2 — 2026-06-11
 
 The self-improvement-substrate release: a persistent **tool toolkit** so a session never forgets a capability, a standardized + back-compatible workdir layout, **per-flock-role loop templates**, discovery waves on Dynamic Workflows, and a flock-profile polish pass.
 
@@ -41,7 +41,7 @@ Description-field shrink for the two genuinely bloated meta profiles — `conduc
 
 ### Foundation
 
-- Version moved to 6.2.0 across the six sources of truth (`plugin.json`, `marketplace.json` ×2 keys, both `SKILL.md` frontmatters, `README.md`, this file).
+- Version moved to 6.1.2 across the six sources of truth (`plugin.json`, `marketplace.json` ×2 keys, both `SKILL.md` frontmatters, `README.md`, this file).
 - Removed a stray tracked `err.txt` and the dogfood repo's `.artifacts/` tree reorganized onto the standard layout (`plans/`+`reports/` → `docs/`).
 - All new bash honors house style — `set -uo pipefail`, source `_lib.sh || exit 0`, exit-0-always hooks, `resolve_namespace`/`resolve_workdir` (never hardcoding `.artifacts`/`.shepherd`), and graceful-empty reads. New test auto-discovered by `skills/context/tests/run.sh`.
 

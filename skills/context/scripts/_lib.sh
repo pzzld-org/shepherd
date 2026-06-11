@@ -46,7 +46,7 @@ resolve_workdir() {
 # Retained as the legacy name; delegates to resolve_workdir so all callers
 # (and shctx_db_path/shctx_lock_path/shctx_project_id_path) inherit $SHEPHERD_WORKDIR.
 shctx_artifacts_root() { resolve_workdir; }
-# DB path: prefer shepherd.db (v6.2.0+ standard); fall back to root.db when it
+# DB path: prefer shepherd.db (v6.1.2+ standard); fall back to root.db when it
 # already exists (legacy projects untouched); default to shepherd.db for new
 # projects where neither file is present yet.
 shctx_db_path() {

@@ -6,7 +6,7 @@ description: |
   tool-memory — MCP servers, CLI targets, skills, plugins — merged and injected
   into Claude's context at SessionStart and into engineer/coder/planter briefs.
   Bounded, graceful-empty, never a secrets store.
-introduced: v6.2.0
+introduced: v6.1.2
 ---
 
 # Toolkit — persistent tool-memory, surfaced every session

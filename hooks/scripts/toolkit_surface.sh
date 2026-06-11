@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# shepherd hook — SessionStart: toolkit surface (v6.2.0)
+# shepherd hook — SessionStart: toolkit surface (v6.1.2)
 #
 # WHY: Project-local and user-global tool registries (toolkit.json) hold tools
 # the operator has registered — MCP servers, CLI targets, skills, plugins. Without

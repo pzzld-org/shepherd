@@ -794,7 +794,7 @@ Key highlights:
 - `commands/loop.md` — `/shepherd:loop` command; `--agent` flag selects the iterator; all
   templates are invocable via this command
 - `doctrines/loop-templates.md` — binding doctrine: principle, circuit-breaker invariants,
-  cross-references; introduced v6.2.0
+  cross-references; introduced v6.1.2
 - `doctrines/workflow-patterns.md §Pattern 6` — selection decision tree; circuit-breaker
   invariants; enforcement surface
 - `doctrines/workflow-patterns.md §Circuit-breaker invariants — Pattern 6` — `max_iterations`

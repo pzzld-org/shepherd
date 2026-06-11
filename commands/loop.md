@@ -318,7 +318,7 @@ that needs a plan revision before it fires.
 ## See also
 
 - `skills/shepherd/references/loop-templates.md` — per-role loop template catalog; copy-paste Stage Graph shapes for coder, discovery, worker, auditor, engineer, and orchestrator
-- `skills/shepherd/doctrines/loop-templates.md` — binding doctrine: principle, circuit-breaker invariants, enforcement surface; introduced v6.2.0
+- `skills/shepherd/doctrines/loop-templates.md` — binding doctrine: principle, circuit-breaker invariants, enforcement surface; introduced v6.1.2
 - `skills/shepherd/references/workflow-templates.md` §Pattern 6 — Loop-Until-Done — full pattern definition
 - `doctrines/workflow-patterns.md` §Circuit-breaker invariants — Pattern 6 — binding invariants
 - `doctrines/coordinate-active-drive.md` — `wake → act → probe → yield` cycle that in-session loops implement

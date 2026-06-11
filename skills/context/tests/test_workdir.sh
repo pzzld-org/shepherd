@@ -54,7 +54,7 @@ reset_dirs
 out="$(SHEPHERD_WORKDIR=bar shctx_artifacts_root)"
 assert_eq "legacy-name-delegates" "$out" "$TMP/bar"
 
-# Derived path helpers inherit the override. DB filename (v6.2.0): the new
+# Derived path helpers inherit the override. DB filename (v6.1.2): the new
 # default is shepherd.db; a pre-existing root.db is honored (legacy back-compat);
 # shepherd.db wins when both are present.
 mkdir -p "$TMP/bar"

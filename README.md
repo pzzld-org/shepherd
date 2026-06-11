@@ -110,7 +110,7 @@ shctx status                 # verify
 shctx style init --all       # scaffold per-language code-style files
 ```
 
-The workdir follows a standardized internal layout (v6.2.0) — `docs/{plans,reports,diagrams,handoffs,specs,journal}/`, `logs/`, `archive/`, `cache/`, `scripts/`, `templates/`, `types/`, plus `toolkit.json` and `shepherd.db`. Projects on the legacy shape (top-level `plans/`+`reports/`, `root.db`, `.artifacts/`) keep working untouched; `shctx migrate --layout v2` performs the opt-in move.
+The workdir follows a standardized internal layout (v6.1.2) — `docs/{plans,reports,diagrams,handoffs,specs,journal}/`, `logs/`, `archive/`, `cache/`, `scripts/`, `templates/`, `types/`, plus `toolkit.json` and `shepherd.db`. Projects on the legacy shape (top-level `plans/`+`reports/`, `root.db`, `.artifacts/`) keep working untouched; `shctx migrate --layout v2` performs the opt-in move.
 
 ### Tool toolkit
 
@@ -310,8 +310,8 @@ See [`docs/integration.md`](docs/integration.md) for the full integration model 
 | `skills/context/schema/` | SQL migrations + views for the SQLite registry |
 | `skills/context/scripts/` | `shctx` + `cmd_*` implementations (bash) |
 | `skills/context/styles/<lang>.md` | Bundled per-language code-style defaults |
-| `skills/context/references/toolkit.schema.json` | Toolkit entry JSON Schema (v6.2.0) |
-| `skills/shepherd/references/loop-templates.md` | Per-flock-role loop catalog (v6.2.0) |
+| `skills/context/references/toolkit.schema.json` | Toolkit entry JSON Schema (v6.1.2) |
+| `skills/shepherd/references/loop-templates.md` | Per-flock-role loop catalog (v6.1.2) |
 | `hooks/hooks.json` | Event registrations wiring Claude Code lifecycle → hook scripts |
 | `hooks/scripts/` | Hook implementations (sourced from `_lib.sh`) |
 | `hooks/tests/` | Smoke harness — `bash hooks/tests/run.sh` |
@@ -331,7 +331,7 @@ Shepherd follows semver:
 
 Version sources of truth that must move together: `plugin.json`, `marketplace.json`, `skills/shepherd/SKILL.md` frontmatter, `skills/context/SKILL.md` frontmatter, `README.md` header, `CHANGELOG.md`. `shctx release` automates the five non-CHANGELOG files.
 
-Current version: **6.2.0**. See [`CHANGELOG.md`](CHANGELOG.md) for the per-version history.
+Current version: **6.1.2**. See [`CHANGELOG.md`](CHANGELOG.md) for the per-version history.
 
 ---
 

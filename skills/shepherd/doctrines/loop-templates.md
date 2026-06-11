@@ -6,7 +6,7 @@ description: |
   the iterator agent, the termination predicate, the default --max cap, and the
   named Pattern-6 composite it specializes. A loop without a template alignment is a
   loop without an audit surface: reject it at PLAN-GATE.
-introduced: v6.2.0
+introduced: v6.1.2
 ---
 
 # Loop Templates — per-role loop discipline
