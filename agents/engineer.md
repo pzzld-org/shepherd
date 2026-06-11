@@ -31,6 +31,8 @@ Mandatory on every dispatch (in order — skipping any is a process violation; a
 - Per-language skill per `shepherd.toml [project].language`
 - Domain skills per `[skills.by_domain]` whose `[skills.detection]` patterns match the sprint file scope
 
+**Toolkit awareness:** before concluding a tool or capability is unavailable, consult the project toolkit (`shctx toolkit list`, also surfaced in session context and injected as `[TOOLKIT]` in your brief) — it enumerates known MCP/skill/plugin/CLI tools (e.g., ssh targets, context7). See `doctrines/toolkit.md`.
+
 ## Doctrines this role honors
 
 - `agent-excellence.md` — strive-higher discipline (preamble above)

@@ -54,8 +54,20 @@ reset_dirs
 out="$(SHEPHERD_WORKDIR=bar shctx_artifacts_root)"
 assert_eq "legacy-name-delegates" "$out" "$TMP/bar"
 
-# Derived path helpers inherit the override.
+# Derived path helpers inherit the override. DB filename (v6.2.0): the new
+# default is shepherd.db; a pre-existing root.db is honored (legacy back-compat);
+# shepherd.db wins when both are present.
+mkdir -p "$TMP/bar"
 out="$(SHEPHERD_WORKDIR=bar shctx_db_path)"
-assert_eq "db-path-inherits" "$out" "$TMP/bar/root.db"
+assert_eq "db-path-default-shepherd" "$out" "$TMP/bar/shepherd.db"
+
+: > "$TMP/bar/root.db"
+out="$(SHEPHERD_WORKDIR=bar shctx_db_path)"
+assert_eq "db-path-legacy-rootdb" "$out" "$TMP/bar/root.db"
+
+: > "$TMP/bar/shepherd.db"
+out="$(SHEPHERD_WORKDIR=bar shctx_db_path)"
+assert_eq "db-path-prefers-shepherd" "$out" "$TMP/bar/shepherd.db"
+rm -f "$TMP/bar/root.db" "$TMP/bar/shepherd.db"
 
 echo "PASS: workdir"

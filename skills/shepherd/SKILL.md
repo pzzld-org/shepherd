@@ -1,7 +1,7 @@
 ---
 name: shepherd
 slug: shepherd
-version: 6.1.2
+version: 6.2.0
 description: "Sprint-by-sprint version-cycle conductor. Six-agent flock (engineer, critic, coder, auditor, worker, discovery) on an INTRO/BODY/CLOSE pipeline with planter/conductor/shepherd meta tiers."
 metadata:
   triggers:
@@ -10,6 +10,7 @@ metadata:
     - "/shepherd:start"
     - "/shepherd:spawn"
     - "/shepherd:loop"
+    - "/shepherd:toolkit"
     - "/shepherd:cleanup"
 ---
 
@@ -381,6 +382,7 @@ The walk trace (optional, per `[stage_graph].walk_trace_enabled`) is the O(1) re
 | `/shepherd:start` | `agents/conductor.md` (SOLO mode) — model: sonnet | One complete sprint, then PAUSE. Backward-compatible with all prior versions; tier separation does NOT apply (conductor IS root in solo). See `${CLAUDE_PLUGIN_ROOT}/commands/start.md`. |
 | `/shepherd:spawn [sprint_slug] [--scope sprint\|patch\|minor\|version] [--parallel <N> \| --auto]` | `agents/shepherd.md` (root, v5.1.6+) | Main chat adopts root-shepherd; spawns one teammate-conductor **per lane** (the post-plan vertical projection of the `waves × steps` plan), via Agent Teams. `--scope` declares workload scale (default `sprint`). `--auto` is alias for `--scope patch`. `--parallel <N>` fans out N sibling teammates for sprint-level concurrency (`--scope >= patch` only). See `${CLAUDE_PLUGIN_ROOT}/commands/spawn.md`. **Operator-explicit invocation only — refuses from teammate sessions (nested spawn forbidden).** |
 | `/shepherd:loop [task] [--max <N>] [--agent <worker\|discovery>] [--interval <duration>] [--resume <loop-id>]` | Sonnet | **NEW v6.0.7** — Run Pattern 6 (Loop-Until-Done) as a first-class command. Dispatches `@worker` or `@discovery` repeatedly until `new_findings: false` or `--max` cap is reached. `--interval` delegates scheduling to the native Claude Code `/loop` skill. See `${CLAUDE_PLUGIN_ROOT}/commands/loop.md`. |
+| `/shepherd:toolkit [list\|add\|rm\|pin\|md ...]` | Sonnet | **NEW v6.2.0** — manage the project **toolkit** (`toolkit.json`, local ⊕ user-global). Wraps `shctx toolkit`; registered tools (mcp\|skill\|plugin\|cli — e.g. ssh targets, context7) are surfaced at session start + injected as `[TOOLKIT]` in briefs so a session never forgets a capability exists. See `${CLAUDE_PLUGIN_ROOT}/commands/toolkit.md` + `doctrines/toolkit.md`. |
 | `/shepherd:cleanup` | Sonnet | Prune stale/crashed teammate entries from the canonical-state registry (closes #51). Operator-confirmed; never auto-prune live entries. |
 
 For `:start` and `:spawn`, sprint is inferred from current branch when no `sprint_slug` is given. For `:plant`, scope arg controls how many seeds to emit. For `:spawn`, `--scope` controls workload scale; `--parallel` controls sprint-level fanout; the per-lane fanout within each sprint is implicit (the engineer's post-plan lane projection of the gated plan — no flag controls it).
@@ -434,6 +436,9 @@ For `:start` and `:spawn`, sprint is inferred from current branch when no `sprin
 | `doctrines/preflight-doctor.md` | Before sprint open | NEW v5.1.1 — `shctx doctor` invocation, exit codes, integration with `/shepherd:start` |
 | `references/workflow-templates.md` | Phase 0 seed analysis; plan authoring; PLAN-GATE | **NEW v6.0.7 — six canonical workflow patterns** (Classify-And-Act, Fanout-And-Synthesize, Adversarial Verification, Generate-And-Filter, Tournament, Loop-Until-Done). Stage Graph shapes, flock agent bindings, compose notes, anti-patterns. |
 | `doctrines/workflow-patterns.md` | Phase 0 seed analysis; PLAN-GATE; every Stage Graph composition decision | **NEW v6.0.7 — binding selection doctrine**: decision tree (Q1–Q4), composition grammar, circuit-breaker invariants, halt codes, pattern-to-flock alignment table, escalation laddering, composition depth limit (≤3). |
+| `references/loop-templates.md` | Authoring a per-role loop | **NEW v6.2.0 — per-flock-role loop catalog**: CODER-CONVERGENCE, DISCOVERY-EXHAUST, WORKER-WATCH/CONVERGENCE, AUDITOR-REFINE, ENGINEER-PLAN-REFINE, shepherd/conductor FOCUS-LOOP. Selection table + `--max` caps + terminate-on predicates. Specializes the `workflow-templates.md` composites. |
+| `doctrines/loop-templates.md` | Any loop dispatch | **NEW v6.2.0 — binding loop doctrine**: every loop is bounded, role-shaped, and terminates on a measurable predicate; circuit-breaker invariants; pointer to the per-role catalog. |
+| `doctrines/toolkit.md` | Session start; any "is tool X available?" question | **NEW v6.2.0 — tool registry doctrine**: local ⊕ user-global `toolkit.json`; three surfaces (SessionStart hook, `shctx toolkit` CLI, `[TOOLKIT]` brief block); bounded + graceful-empty; tool-memory sibling of the adaptation loop; never store secrets. |
 | `doctrines/*.md` | Referenced by name throughout | Framework-intrinsic rules (subtract-don't-add, wrapper-must-earn, pattern-b-overlap, chain-repair, stage-graph, conductor-cwd, gates-restoration, adaptation-loop, ...) |
 | `${CLAUDE_PLUGIN_ROOT}/agents/<role>.md` | Each flock dispatch | Agent system prompt (injected into brief) — six domain lanes + three meta-orchestrators (root shepherd, conductor, planter) |
 | `doctrines/spawn-escalation.md` | `/shepherd:spawn` active | NEW v5.1.4 — escalation channel contract (file paths, payload schema, resume shape, heartbeat, wave-boundary commits; §X multiplexed; §XI sequential autopilot) |

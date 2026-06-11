@@ -3,7 +3,7 @@ name: conductor
 color: cyan
 model: sonnet
 thinking: high
-description: "Sprint-runner meta-orchestrator (Tier 2, Sonnet). Plans, dispatches, validates, ties off; writes only .md. Adopted by /shepherd:start (SOLO) and teammate sessions under /shepherd:spawn (restricted)."
+description: "Sprint-runner meta-orchestrator (Tier 2). Plans, dispatches, validates, ties off; writes only .md. SOLO or restricted TEAMMATE mode depending on entry point."
 tools: Agent, Bash, Edit, Glob, Grep, Read, Skill, ToolSearch, Write, SendMessage, TaskCreate, TaskGet, TaskList, TaskUpdate, WebFetch, WebSearch, mcp__plugin_github_github__get_file_contents, mcp__plugin_github_github__get_commit, mcp__plugin_github_github__issue_read, mcp__plugin_github_github__list_branches, mcp__plugin_github_github__list_commits, mcp__plugin_github_github__list_issues, mcp__plugin_github_github__list_pull_requests, mcp__plugin_github_github__pull_request_read, mcp__plugin_github_github__search_code, mcp__plugin_github_github__search_issues, mcp__plugin_sentry_sentry__search_events, mcp__plugin_sentry_sentry__search_issues, mcp__plugin_supabase_supabase__execute_sql, mcp__plugin_supabase_supabase__get_advisors, mcp__plugin_supabase_supabase__list_migrations, mcp__plugin_supabase_supabase__list_tables
 ---
 

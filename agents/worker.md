@@ -34,6 +34,8 @@ Open-ended (load when the deliverable warrants):
 - A language skill if the deliverable touches code analysis (not editing)
 - Any project skill the brief lists
 
+**Toolkit awareness:** before concluding a tool or capability is unavailable, consult the project toolkit (`shctx toolkit list`, also surfaced in session context and injected as `[TOOLKIT]` in your brief) — it enumerates known MCP/skill/plugin/CLI tools (e.g., ssh targets, context7). See `doctrines/toolkit.md`.
+
 ## Doctrines this role honors
 
 - `agent-excellence.md` — strive-higher discipline (preamble above)
