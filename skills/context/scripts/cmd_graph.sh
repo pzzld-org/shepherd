@@ -404,10 +404,16 @@ def is_compilable(n):
     if t in SEAM_EXACT:          return False
     if t.startswith("PAUSE"):    return False      # pause → segment boundary
     if t.endswith("-GATE"):      return False      # WAVE-1-GATE etc. → seam
-    # φ-map compilable families:
+    # φ-map compilable families (doctrine §V). The discovery WAVES below need NO
+    # special-case emission: `spawns_for_node` (and the clique→fanout loop) expand
+    # EVERY agent in a node's `agents` block regardless of role mix, so a mixed
+    # @discovery‖@auditor‖@worker node compiles to ONE Promise.all batch exactly
+    # like the single-role WAVE-IMPL / CLOSE-SWARM nodes. READONLY_ROLES tags the
+    # auditor/discovery spawns read-only (§VII); worker spawns stay edit-capable.
     if t == "CLOSE-SWARM":       return True
-    if t == "INTRO-COMBO-WAVE":  return True
-    if t == "DISCOVERY":         return True
+    if t == "INTRO-COMBO-WAVE":  return True        # intro: @discovery ‖ @auditor (sprint-open)
+    if t == "DISCOVERY-COMBO-WAVE": return True      # body: @discovery ‖ @auditor ‖ @worker
+    if t == "DISCOVERY":         return True        # incl. plant-mode 1–3 read-only lanes (#119)
     if "IMPL"  in t:             return True        # WAVE-1-IMPL ...
     if "AUDIT" in t:             return True        # WAVE-1-AUDIT, CLOSE-AUDIT
     if t.startswith("HOTFIX"):   return True        # HOTFIX-DYNAMIC / HOTFIX-CLOSE
@@ -793,7 +799,9 @@ def is_fanout(n):
     if t in SEAM_EXACT:       return False
     if t.startswith("PAUSE"): return False
     if t.endswith("-GATE"):   return False
-    return (t in ("CLOSE-SWARM","INTRO-COMBO-WAVE","DISCOVERY")
+    # Mirror of `is_compilable` in _cmd_compile (§V φ map) — keep in sync so the
+    # diagram's seam/fanout split matches exactly what compiles.
+    return (t in ("CLOSE-SWARM","INTRO-COMBO-WAVE","DISCOVERY-COMBO-WAVE","DISCOVERY")
             or "IMPL" in t or "AUDIT" in t
             or t.startswith("HOTFIX") or t.startswith("WORKER"))
 def mid(nid): return "n_" + re.sub(r'[^A-Za-z0-9]', '_', nid)

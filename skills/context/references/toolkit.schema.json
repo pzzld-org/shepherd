@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/FL03/shepherd/skills/context/references/toolkit.schema.json",
+  "title": "ToolkitRegistry",
+  "description": "shepherd toolkit.json — project-local and user-global registry of commonly-used tools so a Claude Code session never forgets a capability exists.",
+  "type": "object",
+  "required": ["version", "scope", "updated_at", "tools"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Schema version. Always 1 for this release."
+    },
+    "scope": {
+      "type": "string",
+      "enum": ["local", "global"],
+      "description": "Whether this file lives in the project workdir (local) or the user-global config dir (global)."
+    },
+    "updated_at": {
+      "type": "integer",
+      "description": "Unix epoch (seconds) of the last write to this file."
+    },
+    "tools": {
+      "type": "array",
+      "description": "Ordered list of registered tools. Local entries override global on name collision when scope=all is merged.",
+      "items": { "$ref": "#/$defs/ToolEntry" }
+    }
+  },
+  "$defs": {
+    "ToolEntry": {
+      "type": "object",
+      "title": "ToolEntry",
+      "description": "A single registered tool. Required: name, scope, type, capabilities, description.",
+      "required": ["name", "scope", "type", "capabilities", "description"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Unique key within a scope. Used as the lookup key for show/rm/pin/unpin."
+        },
+        "scope": {
+          "type": "string",
+          "enum": ["local", "global"],
+          "description": "Storage routing: local → project workdir toolkit.json; global → user-global toolkit.json."
+        },
+        "type": {
+          "type": "string",
+          "description": "Tool category. Canonical: mcp | skill | plugin | cli. Non-canonical values (e.g. service, ssh) are permitted but will trigger a WARN during validate. Note: cli covers ssh/remote-shell targets (e.g. `ssh user@host`).",
+          "examples": ["mcp", "skill", "plugin", "cli"]
+        },
+        "capabilities": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" },
+          "description": "Short capability slugs — what this tool can do (e.g. library-docs, api-reference, issue-tracking)."
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "description": "One-line human description. Shown in list/md output and injected into agent briefs."
+        },
+        "invocation": {
+          "type": "string",
+          "description": "How to invoke the tool (e.g. MCP tool name, slash command, CLI binary). Optional but strongly recommended for mcp/skill types."
+        },
+        "when": {
+          "type": "string",
+          "description": "Prose hint for the agent: when should this tool be reached for? Injected into md output."
+        },
+        "tags": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Free-form grouping/filtering tags."
+        },
+        "pinned": {
+          "type": "boolean",
+          "default": false,
+          "description": "Pinned tools appear first in list/md output regardless of insertion order."
+        },
+        "added": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "description": "ISO 8601 date (YYYY-MM-DD) when this entry was registered."
+        },
+        "last_used": {
+          "type": "integer",
+          "description": "Unix epoch (seconds) of the most recent use. Updated by the operator or a hook; not managed by shctx automatically."
+        }
+      }
+    }
+  }
+}

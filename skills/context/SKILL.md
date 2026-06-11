@@ -1,8 +1,8 @@
 ---
 name: shepherd-context
 slug: shepherd-context
-version: 6.1.2
-description: "Per-project SQLite registry backing /shepherd:ctx and the flock's Phase-0 fast-paths. Indexes code symbols, GitHub state, artifacts, memories, profiles, locks, and event logs."
+version: 6.2.0
+description: "Per-project SQLite registry backing /shepherd:ctx and the flock's Phase-0 fast-paths. Indexes code symbols, GitHub state, artifacts, memories, profiles, locks, event logs, and the tool toolkit."
 metadata:
   triggers:
     - "/shepherd:ctx"
@@ -10,7 +10,7 @@ metadata:
 
 # /shepherd:ctx — Per-project Context Registry
 
-You are reading the entry skill for `/shepherd:ctx`. The CLI lives at `${CLAUDE_PLUGIN_ROOT}/skills/context/scripts/shctx`. The DB lives at `.shepherd/root.db` in the consumer project (or `.artifacts/root.db` for projects that opted into the legacy namespace via `init --artifacts`). Auto-detection prefers whichever directory already exists.
+You are reading the entry skill for `/shepherd:ctx`. The CLI lives at `${CLAUDE_PLUGIN_ROOT}/skills/context/scripts/shctx`. The DB lives at `.shepherd/shepherd.db` in the consumer project (or `.artifacts/shepherd.db` for the legacy namespace). Legacy `root.db` is auto-detected for projects that predate v6.2.0. Auto-detection prefers whichever directory + filename already exists.
 
 This skill is a quick reference. Operational detail lives in the sibling files (see "See also" below). When this file points at one, load it.
 
@@ -18,7 +18,7 @@ This skill is a quick reference. Operational detail lives in the sibling files (
 
 ## Quick reference
 
-- `shctx init [--artifacts]` — scaffold per-project namespace (`.shepherd/` by default; `--artifacts` opts into the legacy `.artifacts/`), create `root.db`, register host project (UUIDv7). Auto-detects an existing namespace dir if present.
+- `shctx init [--artifacts]` — scaffold per-project namespace (`.shepherd/` by default; `--artifacts` opts into the legacy `.artifacts/`), create `shepherd.db` (legacy `root.db` honored), register host project (UUIDv7). Auto-detects an existing namespace dir if present.
 - `shctx status` — row counts, refresh staleness, lock state, lint summary.
 - `shctx refresh [--scope=symbols|github|artifacts|all]` — idempotent rebuild of cache zones.
 - `shctx query <name> [--json|--md] [--key=val ...]` — run a named query from `queries/`.
@@ -26,6 +26,7 @@ This skill is a quick reference. Operational detail lives in the sibling files (
 - `shctx inject <engineer|coder|auditor>` — emit a `[DB-CONTEXT]` block sized for that role.
 - `shctx profile <list|show|enable|disable|sync>` — TOML profiles in `<namespace>/profiles/` ↔ `profiles_defs`.
 - `shctx mem <add|search|list|pin|unpin>` — project memories (replaces external `remember` plugin).
+- `shctx toolkit <list|add|rm|pin|unpin|show|md|init|validate>` *(v6.2.0)* — the tool registry (`toolkit.json`, local ⊕ user-global). Commonly-used MCP/skill/plugin/CLI tools so a session never forgets a capability exists; surfaced at session start and injected as `[TOOLKIT]` in briefs.
 - `shctx lock <show|acquire|release|reap>` — file lock at `<namespace>/shepherd.lock`.
 - `shctx lint` — naming-convention check over the active namespace directory.
 - `shctx migrate` — apply pending schema migrations from `schema/migrations/`.

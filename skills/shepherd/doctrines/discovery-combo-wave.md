@@ -12,8 +12,23 @@ A named graph node type for BODY-phase sprint work. Dispatches:
 - **Y `@discovery` lanes** (1–5, scope-partitioned, read-only orientation/research)
 - **Z `@worker` lanes** (0–2, bounded write ops only — omit entirely if not needed)
 
-…as a **single parallel Agent batch** in one message. NOT sequential sub-dispatches.
-NOT one big prompt. One message → N simultaneous agents → conductor aggregates inline.
+…as a **single parallel fan-out** — all lanes concurrent, NOT sequential
+sub-dispatches, NOT one big prompt. N simultaneous agents → conductor aggregates
+inline.
+
+**Dispatch mechanism (v6.0.x).** DISCOVERY-COMBO-WAVE is a gate-free,
+parallel-safe agent-fanout node, so it **compiles to a Dynamic Workflow** via
+`shctx graph compile` — the primary execution path, identical to how
+WAVE-IMPL / WAVE-AUDIT / CLOSE-SWARM compile (see
+`doctrines/workflow-compile-down.md §V`, φ map). The compiler emits all X auditor
++ Y discovery + Z worker lanes as one bounded `Promise.all([...])` batch
+(≤ `MAX_CONCURRENT`); the conductor reads the returned result object and runs
+`BODY-AGGREGATE` inline (a §VI seam, never inside the workflow). The wave
+satisfies the §IV faithfulness contract because every lane is independent
+(scope-partitioned discoveries, concern-split auditors, non-waiting workers) and
+auditor/discovery spawns are read-only by allowlist (§VII). Hand-rolled
+in-context Agent dispatch is the fallback only when the workflow runtime is
+unavailable.
 
 ```
 DISCOVERY-COMBO-WAVE (single parallel batch)
@@ -40,7 +55,11 @@ The core structure is invariant across every sprint that uses it. Formalizing it
 
 ```yaml
 DISCOVERY-COMBO-WAVE (mixed swarm):
-  type: dynamic_workflow          # single parallel batch — NOT sequential sub-dispatches
+  type: DISCOVERY-COMBO-WAVE       # the node TYPE the engineer authors; `shctx graph compile`
+                                  # recognizes it (cmd_graph.sh is_compilable) and emits ONE
+                                  # Promise.all batch (workflow-compile-down.md §V φ map) —
+                                  # NOT sequential sub-dispatches. The compiled artifact is the
+                                  # Dynamic Workflow; the node type stays DISCOVERY-COMBO-WAVE.
   agents:
     auditors: <X>                 # int 1–5; concern-split required; see scaling table
     discoveries: <Y>              # int 1–5; scope-partitioned; see scaling table
@@ -148,7 +167,7 @@ Common triggers:
 
 ## Anti-patterns
 
-1. **Sequential dispatch.** Dispatching auditor-1, waiting for it, then dispatching discovery-1, then waiting — that is sequential, not DISCOVERY-COMBO-WAVE. All lanes must fire in a single parallel batch in ONE message.
+1. **Sequential dispatch.** Dispatching auditor-1, waiting for it, then dispatching discovery-1, then waiting — that is sequential, not DISCOVERY-COMBO-WAVE. All lanes must fire as one parallel batch — the compiled `Promise.all` (`shctx graph compile`), or, on runtime fallback, one Agent message. Authoring the fan-out ad hoc instead of compiling it is `workflow-compile-down.md` anti-pattern X.1.
 2. **Synthesizer `@worker`.** Adding a `@worker` lane whose only job is to aggregate the auditor/discovery reports. The conductor aggregates inline. A synthesis worker is waste + an extra dispatch.
 3. **Discovery lane writing.** A discovery agent that creates files, edits code, or installs deps is not discovery — it is a `@worker`. Reclassify.
 4. **Auditor lane researching.** An auditor that spends its brief doing orientation synthesis rather than filing hypothesis-driven findings is not an auditor. Reclassify as `@discovery`.
@@ -158,6 +177,7 @@ Common triggers:
 ## See also
 
 - `doctrines/intro-combo-wave.md` — sprint-open equivalent (INTRODUCTION phase)
+- `doctrines/workflow-compile-down.md §V` — DISCOVERY-COMBO-WAVE is a φ-map compile target (gate-free mixed fan-out → `Promise.all`)
 - `references/workflow-templates.md` — Pattern 2 (Fanout-And-Synthesize) is the underlying structure
 - `doctrines/workflow-patterns.md` — Pattern 2 circuit-breaker invariants apply
 - `doctrines/pattern-b-overlap.md` — Pattern 2 specialization: audit ∥ next implementation wave

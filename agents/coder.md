@@ -29,6 +29,8 @@ Mandatory minimums on every dispatch (the conductor populates `[SKILLS]` mechani
 - A language skill matching every primary-language file in `[FILE-SCOPE]` (`rust`, `python`, `typescript`, `go`, ...)
 - Any domain skills the brief lists (`finance`, `webassembly`, `polymarket`, `supabase:supabase`, ...)
 
+**Toolkit awareness:** before concluding a tool or capability is unavailable, consult the project toolkit (`shctx toolkit list`, also surfaced in session context and injected as `[TOOLKIT]` in your brief) — it enumerates known MCP/skill/plugin/CLI tools (e.g., ssh targets, context7). See `doctrines/toolkit.md`.
+
 ## Doctrines this role honors
 
 - `agent-excellence.md` — strive-higher discipline (preamble above)

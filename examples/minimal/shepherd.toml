@@ -31,8 +31,8 @@ format = "cargo fmt --all"
 # If your project was initialized with `shctx init --artifacts`, use .artifacts/ here.
 # Running `shctx doctor` will report a conflict if these paths diverge from the
 # active shctx namespace.
-plans   = ".shepherd/plans"
-reports = ".shepherd/reports"
+plans   = ".shepherd/docs/plans"
+reports = ".shepherd/docs/reports"
 docs    = ".shepherd/docs"
 ctx     = ".shepherd/ctx"
 

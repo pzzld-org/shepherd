@@ -40,7 +40,16 @@ if [[ ! -d "$root" ]]; then
   fi
 fi
 
-mkdir -p "$root"/{ctx,plans,reports,docs/{handoffs,specs,diagrams,journal},logs,tmp,profiles}
+mkdir -p "$root"/{archive,cache,ctx,docs/{plans,reports,handoffs,specs,diagrams,journal},logs,scripts,templates,tmp,types,profiles,styles}
+
+# .gitkeep placeholders for new TRACKED dirs that git won't persist when empty.
+for _d in archive scripts templates types docs/plans docs/reports; do
+  [[ ! -f "$root/$_d/.gitkeep" ]] && touch "$root/$_d/.gitkeep"
+done
+# Retained dirs that already carry .gitkeep in mature trees get the same treatment.
+for _d in docs/journal docs/handoffs docs/diagrams; do
+  [[ ! -f "$root/$_d/.gitkeep" ]] && touch "$root/$_d/.gitkeep"
+done
 
 # Per-project .gitignore (idempotent — only writes if absent).
 gi="$root/.gitignore"
@@ -48,6 +57,13 @@ if [[ ! -f "$gi" ]]; then
   cat > "$gi" <<'EOF'
 # shepherd context registry — gitignored by default.
 # Remove these lines to commit the registry to the repo.
+#
+# New standard DB name (v6.1.0+):
+shepherd.db
+shepherd.db-journal
+shepherd.db-wal
+shepherd.db-shm
+# Legacy DB name (retained for back-compat — do not remove):
 root.db
 root.db-journal
 root.db-wal
@@ -74,7 +90,8 @@ pauses/
 secrets/
 credentials*
 
-# Tracked subtrees stay tracked: docs/ styles/ reports/ plans/ profiles/ ctx/
+# Tracked subtrees stay tracked:
+# docs/ styles/ profiles/ ctx/ archive/ scripts/ templates/ types/ toolkit.json
 EOF
 fi
 

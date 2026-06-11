@@ -14,12 +14,13 @@ for arg in "$@"; do
       cat <<'EOF'
 shctx init [--artifacts|--shepherd]
 
-Scaffold the per-project shepherd namespace tree, create root.db, and register
-the host project.
+Scaffold the per-project shepherd namespace tree, create shepherd.db, and
+register the host project.
 
 Default: .shepherd/ (v5.0.0+). If either .shepherd/ or .artifacts/ already
 exists in the repo, that one is used (auto-detect). Use --artifacts to force
 the legacy .artifacts/ namespace for a NEW init.
+Legacy projects using root.db are detected automatically and left untouched.
 EOF
       exit 0 ;;
     *)
@@ -63,7 +64,7 @@ echo "shctx: project_id = $pid"
 # (macOS bash 3.2: no globstar, so we use find for the recursive walk.)
 root="$(shctx_artifacts_root)"
 preexisting_count=0
-for d in plans reports docs; do
+for d in plans reports docs/plans docs/reports docs; do
   if [[ -d "$root/$d" ]]; then
     n=$(find "$root/$d" -type f -name '*.md' 2>/dev/null | wc -l | tr -d ' ')
     preexisting_count=$((preexisting_count + n))

@@ -180,7 +180,9 @@ script — they are seam nodes (§VI).
 |---|---|
 | `WAVE-IMPL` (N coders ‖ worker, `parallel_with`) | bounded `Promise.all` of agent spawns (≤16 concurrent) |
 | `WAVE-AUDIT` / `CLOSE-SWARM` (M auditors, concern-split) | `Promise.all` of auditor agents → aggregate verdict object |
-| `DISCOVERY` / `INTRO-COMBO-WAVE` | parallel agent spawns → mesh-input bundle in a script variable |
+| `INTRO-COMBO-WAVE` (N `@discovery` ‖ M intro `@auditor`, sprint-open) | one bounded `Promise.all` mixing both roles → mesh-input bundle (`[DISCOVERY-CONTEXT]` + `[INTRO-AUDIT-CONTEXT]`) in a script variable; conductor-inline Lane 0 (patch-branch-advancement check) is a §VI seam that runs *before* the batch, never inside it |
+| `DISCOVERY-COMBO-WAVE` (X `@auditor` ‖ Y `@discovery` ‖ Z `@worker`, body-phase) | one bounded `Promise.all` mixing all three roles → returned to the conductor's `BODY-AGGREGATE` (a §VI seam); auditor/discovery spawns are read-only (allowlist, §VII), worker spawns are bounded write ops |
+| `DISCOVERY` (single or parallel `@discovery`; **incl. plant-mode 1–3 read-only lanes**, #119) | parallel read-only agent spawns → research bundle in a script variable. The planter's plant-mode discovery wave (1–3 `@discovery` lanes, never the flock pipeline) compiles to the SAME `Promise.all` batch shape |
 | sequential edge (`on-pass` / `on-fail`) | `await` + `if` on the predecessor's returned verdict |
 | `HOTFIX-DYNAMIC` | loop with count read from the upstream cluster-analysis result |
 | `WORKER-IO` (bounded, non-competing) | `Promise.all` of worker agents |
@@ -201,6 +203,41 @@ return { wave1, audit1 };                      // results stay in script vars
 ```
 
 The binding artifact is `G` and the φ table — not this snippet.
+
+**Why the discovery waves are compile targets (faithfulness preconditions).** The
+three discovery-fanout families — `INTRO-COMBO-WAVE`
+(`doctrines/intro-combo-wave.md`), `DISCOVERY-COMBO-WAVE`
+(`doctrines/discovery-combo-wave.md`), and the planter's plant-mode `DISCOVERY`
+wave (#119) — each satisfy the §III compile preconditions and the §IV
+faithfulness contract *as authored*, so they compile exactly like
+WAVE-IMPL / WAVE-AUDIT / CLOSE-SWARM:
+
+- **Gate-free.** None contains an operator-approval boundary or a conductor-inline
+  FS/git node *inside* the fanout. INTRO-COMBO-WAVE's Lane 0 (patch-branch
+  advancement) and the body wave's `BODY-AGGREGATE` run at the conductor *between*
+  segments (§VI), not as in-batch steps — exactly the seam treatment WAVE-GATE
+  gets. The fan-out itself is one uninterrupted batch.
+- **Parallel-safe.** Every lane is independent by construction: discovery lanes
+  are scope-partitioned (non-overlapping read targets), auditor lanes are
+  concern-split, and any worker lanes are bounded write ops that cannot wait on
+  audit/discovery output. No lane reads another's result before the batch
+  returns, so the §IV.1 soundness and §IV.2 completeness obligations hold under a
+  single `Promise.all` — this is the structural reason they may be a batch rather
+  than a sequence.
+- **Read-only enforced by allowlist (§VII).** Auditor and discovery spawns in
+  these waves carry no edit tools; the compiler tags them `readonly` (the
+  `auditor-readonly` / `discovery-readonly` graph constraint becomes a compiler
+  invariant). Worker lanes in DISCOVERY-COMBO-WAVE are the only edit-capable
+  spawns, and only for their declared bounded artifact.
+- **Bounded.** Each wave is capped (`[stage_graph.intro_wave].parallel_max` for
+  intro; `[coder].max_parallel_lanes` for the body wave; 1–3 for plant-mode), all
+  well under the ≤16-concurrent / ≤1000-total ceiling — the `fanout()` chunker
+  applies unchanged.
+
+These waves therefore are **not** an exception to the compile model; they are
+ordinary gate-free agent-fanout segments and were always meant to be emitted by
+`shctx graph compile`, not dispatched as ad-hoc in-context Agent batches
+(anti-pattern X.1). The §IV verification hook (`--verify`) diffs them the same way.
 
 ## VI. The seam — what stays at the conductor
 

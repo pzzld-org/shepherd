@@ -16,42 +16,70 @@ The same table is mirrored to `<namespace>/CONVENTIONS.md` on `shctx init` for q
 
 ## Filesystem layout (recap)
 
+Standard layout scaffolded by `shctx init` for **new projects** (v6.1.0+):
+
 ```
-.artifacts/
-  root.db                       # SQLite registry (gitignored by default)
-  shepherd.lock                 # JSON lock file (gitignored)
-  CONVENTIONS.md                # auto-scaffolded; documents naming rules
-  project.json                  # { "id": "<UUIDv7>", "scaffolded_at": <epoch> }
-  ctx/                          # markdown knowledge silo
-  plans/                        # *.plan.md, *.seed.md
-  reports/                      # *.phase0.md, *.close.md, *.walk.md
+${SHEPHERD_WORKDIR}/              # .shepherd/ by default; .artifacts/ for legacy opt-in
+  shepherd.db (+ -wal/-shm/-journal)   # SQLite registry (gitignored)
+  shepherd.lock                   # JSON lock file (gitignored)
+  project.json                    # { "id": "<UUIDv7>", "scaffolded_at": <epoch> } (gitignored)
+  toolkit.json                    # tool registry (TRACKED)
+  CONVENTIONS.md                  # auto-scaffolded; documents naming rules
+  .gitignore                      # auto-scaffolded
+  archive/                        # retired artifacts (tracked)
+  cache/                          # ephemeral caches (gitignored)
+  ctx/                            # markdown knowledge silo (tracked)
   docs/
-    handoffs/                   # *.handoff.md
-    specs/                      # *.spec.md, *.design.md
-    diagrams/                   # *.svg, *.png, *.dot
-    journal/                    # YYYY-MM-DD.md (one file per day, append-mode)
-  logs/                         # events-YYYY-MM-DD.jsonl (append-only)
-  tmp/                          # *.jsonl scratch (cleared on init / age-out)
-  profiles/                     # *.toml profile defs (sync into profiles_defs)
-  styles/                       # <lang>.md per-language code-style files (addendum §A2)
+    plans/                        # *.plan.md, *.seed.md (tracked)
+    reports/                      # *.phase0.md, *.close.md, *.walk.md (tracked)
+    handoffs/                     # *.handoff.md (tracked)
+    specs/                        # *.spec.md, *.design.md (tracked)
+    diagrams/                     # *.svg, *.png, *.dot (tracked)
+    journal/                      # YYYY-MM-DD.md (one file per day, append-mode; tracked)
+  logs/                           # {date}.log.jsonl + hooks/ (gitignored)
+  profiles/                       # *.toml profile defs (tracked)
+  scripts/                        # project-local scripts (tracked)
+  styles/                         # <lang>.md per-language code-style files (tracked)
+  templates/                      # project-local templates (tracked)
+  tmp/                            # scratch (gitignored)
+  types/                          # JSON schemas / type defs (tracked)
 ```
+
+### Back-compatibility
+
+Legacy projects using **`.artifacts/`**, **`root.db`**, and **top-level `plans/`+`reports/`** are fully supported and auto-detected — no action required. The resolver (`resolve_workdir`) checks `SHEPHERD_WORKDIR` → `SHCTX_ROOT_OVERRIDE` → existing `.shepherd/` → existing `.artifacts/` → defaults to `.shepherd/`. The DB resolver (`shctx_db_path`) checks for `shepherd.db` first, then falls back to `root.db` when it already exists; new projects default to `shepherd.db`.
+
+To opt into the new layout:
+
+```bash
+shctx migrate --layout v2
+```
+
+This moves `plans/*` → `docs/plans/`, `reports/*` → `docs/reports/`, renames `root.db*` → `shepherd.db*`, and creates the new directories. It is safe, idempotent, and re-runnable — it never clobbers existing destination files.
 
 ---
 
-## Pattern table (spec §4 — verbatim)
+## Pattern table (spec §4)
 
-| Pattern | Used for |
-|---|---|
-| `*.seed.md` | Sprint or patch seeds |
-| `*.plan.md` | Sprint plans |
-| `*.phase0.md` | Phase 0 mesh reports |
-| `*.close.md` | Sprint close reports |
-| `*.walk.md` | Stage Graph walk traces |
-| `*.handoff.md` | Sprint handoff docs |
-| `*.spec.md` | Design specs (after brainstorming) |
-| `*.design.md` | Design documents |
-| `YYYY-MM-DD.md` | Daily journal entries (in `docs/journal/`) — one file per day, sections within for multiple events |
-| `events-YYYY-MM-DD.jsonl` | Daily event log (in `logs/`) — append-only |
+Artifact filenames follow the convention `<slug>.<group>.<ext>` where `<slug>` is a sprint identifier or date, `<group>` is a semantic type tag, and `<ext>` is the file extension. The same convention that seeds and plans already use (e.g. `v512-dev3.seed.md`) applies uniformly.
+
+`<group>` ∈ {`seed`, `plan`, `phase0`, `close`, `walk`, `handoff`, `spec`, `design`, `log`, ...} — extensible via `[context.naming].extra_patterns`.
+
+| Pattern | Location | Used for |
+|---|---|---|
+| `*.seed.md` | `docs/plans/` (new) / `plans/` (legacy) | Sprint or patch seeds |
+| `*.plan.md` | `docs/plans/` (new) / `plans/` (legacy) | Sprint plans |
+| `*.phase0.md` | `docs/reports/` (new) / `reports/` (legacy) | Phase 0 mesh reports |
+| `*.close.md` | `docs/reports/` (new) / `reports/` (legacy) | Sprint close reports |
+| `*.walk.md` | `docs/reports/` (new) / `reports/` (legacy) | Stage Graph walk traces |
+| `*.handoff.md` | `docs/handoffs/` | Sprint handoff docs |
+| `*.spec.md` | `docs/specs/` | Design specs (after brainstorming) |
+| `*.design.md` | `docs/specs/` | Design documents |
+| `YYYY-MM-DD.md` | `docs/journal/` | Daily journal entries — one file per day, sections within for multiple events |
+| `events-YYYY-MM-DD.jsonl` | `logs/` | Legacy daily event log — append-only |
+| `YYYY-MM-DD.log.md` | `logs/` | Human-readable daily log (new; `<group>=log`) |
+| `YYYY-MM-DD.log.jsonl` | `logs/` | Machine event stream, date-granularity (new) |
+| `YYYY-MM-DDTHH-MM-SS.log.jsonl` | `logs/` | Machine event stream, timestamp-granularity (new) |
 
 ---
 
@@ -60,14 +88,14 @@ The same table is mirrored to `<namespace>/CONVENTIONS.md` on `shctx init` for q
 **Date-only filenames** (`YYYY-MM-DD`) for **human-editable** artifacts:
 
 - Journal entries (`docs/journal/YYYY-MM-DD.md`) — one file per day; sections within use `## HH:MM — <topic>` headings.
-- Daily reports.
-- Daily event-log files (`logs/events-YYYY-MM-DD.jsonl`).
+- Human-readable daily logs (`logs/YYYY-MM-DD.log.md`).
+- Daily event-log files (`logs/events-YYYY-MM-DD.jsonl` legacy; `logs/YYYY-MM-DD.log.jsonl` new).
 
 **Timestamped filenames** (`YYYY-MM-DDTHH-MM-SS.*`) reserved for **machine-generated** ephemerals:
 
 - `tmp/*.jsonl` scratch.
 - Internal cache writes.
-- Per-event log files where granularity below daily is required.
+- Per-event log files where granularity below daily is required (`logs/YYYY-MM-DDTHH-MM-SS.log.jsonl`).
 
 The rule, summarized: **date-only for human-editable, timestamped for machine-generated.**
 
@@ -79,11 +107,11 @@ Why: timestamped human files fragment context across N files per day. Date-only 
 
 Many of the patterns above pair with a sprint identifier. Conventions:
 
-- `plans/{sprint_slug}.plan.md` — e.g. `plans/v5.0.0-dev.0.plan.md`.
-- `plans/{sprint_slug}.seed.md`.
-- `reports/<date>-{sprint_branch}-close.md` — e.g. `reports/2026-05-04-v5.0.0-dev.0-close.md`.
-- `reports/<date>-{sprint_branch}-walk.md`.
-- `reports/<date>-{sprint_branch}-phase0.md`.
+- `docs/plans/{sprint_slug}.plan.md` — e.g. `docs/plans/v5.0.0-dev.0.plan.md` (new). Legacy: `plans/{sprint_slug}.plan.md`.
+- `docs/plans/{sprint_slug}.seed.md` (new). Legacy: `plans/{sprint_slug}.seed.md`.
+- `docs/reports/<date>-{sprint_branch}-close.md` — e.g. `docs/reports/2026-05-04-v5.0.0-dev.0-close.md` (new). Legacy: `reports/<date>-{sprint_branch}-close.md`.
+- `docs/reports/<date>-{sprint_branch}-walk.md` (new). Legacy: `reports/<date>-{sprint_branch}-walk.md`.
+- `docs/reports/<date>-{sprint_branch}-phase0.md` (new). Legacy: `reports/<date>-{sprint_branch}-phase0.md`.
 - `docs/handoffs/<date>-dev{N}-close-handoff.md`.
 
 `{sprint_branch}` resolves from `[branching].sprint_branch_pattern`. `<date>` is `YYYY-MM-DD` of the report's authoring day.
@@ -106,6 +134,10 @@ The `<topic>` slug is kebab-case, descriptive, and unique within the day.
 
 - `profiles/<name>.toml` — basename matches the `name = "..."` field inside the file.
 - `styles/<lang>.md` — `<lang>` is the language slug (e.g. `rust`, `python`, `typescript`, `go`, `shell`, `sql`). Per addendum §A2; bundled defaults under `${CLAUDE_PLUGIN_ROOT}/skills/context/styles/`.
+
+## SQLite registry filename
+
+The database file is **`shepherd.db`** in v6.1.0+ (new projects and migrated projects). Legacy projects using `root.db` are honored automatically — `shctx_db_path()` detects whichever file exists (preferring `shepherd.db`). Run `shctx migrate --layout v2` to rename `root.db` → `shepherd.db` on an existing project.
 
 ---
 

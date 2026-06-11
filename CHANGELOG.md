@@ -4,6 +4,49 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v6.2.0 — 2026-06-11
+
+The self-improvement-substrate release: a persistent **tool toolkit** so a session never forgets a capability, a standardized + back-compatible workdir layout, **per-flock-role loop templates**, discovery waves on Dynamic Workflows, and a flock-profile polish pass.
+
+### Toolkit — persistent tool memory (operator request)
+
+The flagship of this version. A mutable registry (`toolkit.json`) of commonly-used tools — MCP servers, skills, plugins, CLIs, ssh targets — so a Claude Code session never forgets a capability exists and the operator never has to re-explain it (e.g. `ssh pzzld@laptop` for a self-hosted dev surface, the `context7` MCP). It is the **tool-memory sibling** of the adaptation loop's lesson-memory (`doctrines/self-improvement.md`).
+
+- **Two tiers, merged at read time.** Project-local `<namespace>/toolkit.json` (tracked) ⊕ user-global `$XDG_CONFIG_HOME/shepherd/toolkit.json`; the `scope` field routes each entry, and local overrides global on name collision — so cross-project tools live once, globally.
+- **Entry schema.** Required `{ name, scope (local|global), type (mcp|skill|plugin|cli), capabilities[], description }` plus optional `invocation`, `when`, `tags`, `pinned`. JSON Schema at `skills/context/references/toolkit.schema.json`; the validator warns (never fails) on a non-canonical `type` so ssh/service targets are permitted.
+- **CLI.** New `skills/context/scripts/cmd_toolkit.sh` (registered in `shctx`): `toolkit list|add|rm|pin|unpin|show|md|init|validate`. Lazily creates the file on first `add`; `md` emits compact markdown (graceful-empty — nothing on an empty registry, exactly like `shctx adapt priors`).
+- **Three surfaces keep it in front of the model.** (1) A SessionStart hook `hooks/scripts/toolkit_surface.sh` injects a compact, ≤12-entry, pinned-first roster every session (fail-open; suppressed by `[hooks].quiet_warnings`); (2) the `shctx toolkit` CLI; (3) a `[TOOLKIT]` block injected into engineer/coder/planter briefs via `cmd_inject.sh` (variable-tail, cache-discipline-preserving).
+- **Doctrine + command + examples.** `skills/shepherd/doctrines/toolkit.md` (bounded / graceful-empty / never-store-secrets), `commands/toolkit.md` (`/shepherd:toolkit`), `examples/{axiom,minimal}/toolkit.json`, and the five tool-using agents (engineer, coder, worker, discovery, planter) gained a one-line toolkit-awareness nudge. Test: `skills/context/tests/test_toolkit.sh`.
+
+### Standardized workdir layout — one consistent tree, totally back-compatible (operator request)
+
+The per-project workdir now follows a standardized internal tree — `docs/{plans,reports,diagrams,handoffs,specs,journal}/`, `logs/`, `archive/`, `cache/`, `scripts/`, `templates/`, `tmp/`, `types/`, plus `toolkit.json` (tracked) and `shepherd.db` (gitignored). Adopted **additively** per the `#121` "never mass-rename" invariant.
+
+- **`root.db` → `shepherd.db`, with auto-detection.** `shctx_db_path()` prefers `shepherd.db`, falls back to legacy `root.db`, defaults to `shepherd.db` for new projects — mirroring the existing `.shepherd/`↔`.artifacts/` resolution. Zero change for legacy trees.
+- **`plans/` + `reports/` now nest under `docs/`.** `[paths]` defaults updated; `scaffold.sh` scaffolds the full tree with `.gitkeep` for tracked-but-empty dirs.
+- **Opt-in migration.** `shctx migrate --layout v2` `git mv`s `plans/`→`docs/plans/`, `reports/`→`docs/reports/`, renames `root.db`→`shepherd.db`, and creates the new dirs — idempotent, no-clobber.
+- **`*.{group}.{ext}` naming, formalized.** `references/naming-conventions.md` documents the uniform `<slug>.<group>.<ext>` rule and adds log patterns `{date}.log.md` (human) + `{ts}.log.jsonl` (machine); `cmd_lint.sh` accepts both the legacy and new locations + log groups. `.gitignore` covers `shepherd.db*` under both namespaces and keeps `toolkit.json` tracked.
+
+### Per-role loop templates — bounded, role-shaped Loop-Until-Done (operator request)
+
+`/shepherd:loop` (Pattern 6) gains a per-flock-role catalog so the loop primitive is reusable per agent. New `skills/shepherd/references/loop-templates.md` defines seven templates — **CODER-CONVERGENCE** (fix-until-green), **DISCOVERY-EXHAUST** (research-until-comprehensive), **WORKER-WATCH** / **WORKER-CONVERGENCE**, **AUDITOR-REFINE**, **ENGINEER-PLAN-REFINE**, and the orchestrator's **FOCUS-LOOP** — each specializing an existing composite, each with a hard `--max` cap and a measurable terminate-on predicate. New binding doctrine `skills/shepherd/doctrines/loop-templates.md`; `commands/loop.md` points operators at the catalog. No new halt codes (reuses the v6.0.9 circuit-breaker set).
+
+### Discovery waves compile to Dynamic Workflows (operator request)
+
+All discovery fan-out now compiles like coder/audit fan-out instead of dispatching as inline Agent batches. `doctrines/workflow-compile-down.md` §V documents `INTRO-COMBO-WAVE` and `DISCOVERY-COMBO-WAVE` as compile targets (gate-free, parallel-safe → one `Promise.all` of discovery + auditor [+ worker] spawns); `intro-combo-wave.md` and `discovery-combo-wave.md` adopt the compile framing; `pipeline.md` gains the missing `DISCOVERY-COMBO-WAVE` taxonomy row. The compiler `cmd_graph.sh` was already role-agnostic (`spawns_for_node` expands any role mix) and verified end-to-end — the change is a clarifying comment plus a fixed latent bug where a node typed `dynamic_workflow` would not have matched the compiler's literal node-type key.
+
+### Flock profile polish
+
+Description-field shrink for the two genuinely bloated meta profiles — `conductor` (198→157 chars) and `shepherd` (195→152) — moving mode/tier detail into the body; `planter`/`auditor` tightened further. Frontmatter already consistent across all nine (`name → color → model → thinking → description → tools`); no value changes.
+
+### Foundation
+
+- Version moved to 6.2.0 across the six sources of truth (`plugin.json`, `marketplace.json` ×2 keys, both `SKILL.md` frontmatters, `README.md`, this file).
+- Removed a stray tracked `err.txt` and the dogfood repo's `.artifacts/` tree reorganized onto the standard layout (`plans/`+`reports/` → `docs/`).
+- All new bash honors house style — `set -uo pipefail`, source `_lib.sh || exit 0`, exit-0-always hooks, `resolve_namespace`/`resolve_workdir` (never hardcoding `.artifacts`/`.shepherd`), and graceful-empty reads. New test auto-discovered by `skills/context/tests/run.sh`.
+
+---
+
 ## v6.1.0 — 2026-06-09
 
 ### Spawn pane-massacre containment — blanket worktree teardown can no longer run mid-sprint (#141)
