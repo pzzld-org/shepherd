@@ -449,6 +449,14 @@ rehydrate        = "on"   # on (default) | off
 # does not supply an explicit --max inherits this value. Raise for very long
 # sprints; lower for bounded sub-loops.
 loop_max_default = 8      # int — default max_iterations for FOCUS-LOOP
+
+# Whether the root (under /shepherd:spawn) and long-running conductors enter
+# the FOCUS-LOOP by default on team initialization / lane start. "on" means
+# active coordination is the primary operating mode (wake → act → probe),
+# not a fallback; coordinate_drive_guard.sh is the backstop that catches
+# lapses, not the mechanism. Set "off" to suppress and rely on the backstop
+# alone — not recommended.
+loop_default     = "on"   # on (default) | off — root (under /shepherd:spawn) and long-running conductors adopt the FOCUS-LOOP by default to stay active/focused (Pattern 6; doctrines/coordinate-active-drive.md)
 ```
 
 The focus record itself (objective, active Stage-Graph node, ready-set, outstanding obligations, invariants) lives in `root.db` (`focus` table) and survives compaction natively. The rehydration consumer reads the latest snapshot + focus digest and emits them as `additionalContext` so the model's drive cursor is restored without manual re-orientation.

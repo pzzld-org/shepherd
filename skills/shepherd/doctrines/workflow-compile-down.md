@@ -42,6 +42,20 @@ decision is recorded in the v6.0.1 release notes (#71).
 > Until those criteria are met the **runtime defaults to in-context dispatch** (the
 > documented fallback). Binding *intent*, opt-in *backend* — the two are consistent.
 
+**Who compiles — mode-agnostic (B2 operational requirement).** Both the
+root-shepherd and each teammate-conductor compile their respective gate-free
+fanout segments. Under `/shepherd:start` (solo), the single conductor compiles
+its own fanout and gains out-of-context parallelism with no team present. Under
+`/shepherd:spawn`, the root compiles any cross-lane or root-tier gate-free
+segments it owns directly, and **each teammate-conductor is operationally required
+to compile its own lane's gate-free fanout** via `shctx graph compile
+--segment=<entry> --verify` → run → `shctx graph mark`. This is not implied or
+optional: a teammate that hand-rolls in-context `Agent(...)` step fan-out where a
+compiled Dynamic Workflow is required is off-substrate. Fall back to in-context
+dispatch only on runtime failure or unavailability. Cross-ref:
+`dispatch-cascade.md §IV-bis` (mode-agnostic binding comment),
+`primitive-axis-binding.md`.
+
 The thesis in one line: **shepherd keeps authoring and gating a static Stage
 Graph; the platform runtime executes it.** shepherd contributes *discipline*
 (closed flock, hard-refusal dispatch contract, audited plan, canonical state);

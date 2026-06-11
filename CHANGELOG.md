@@ -35,6 +35,17 @@ The per-project workdir now follows a standardized internal tree — `docs/{plan
 
 All discovery fan-out now compiles like coder/audit fan-out instead of dispatching as inline Agent batches. `doctrines/workflow-compile-down.md` §V documents `INTRO-COMBO-WAVE` and `DISCOVERY-COMBO-WAVE` as compile targets (gate-free, parallel-safe → one `Promise.all` of discovery + auditor [+ worker] spawns); `intro-combo-wave.md` and `discovery-combo-wave.md` adopt the compile framing; `pipeline.md` gains the missing `DISCOVERY-COMBO-WAVE` taxonomy row. The compiler `cmd_graph.sh` was already role-agnostic (`spawns_for_node` expands any role mix) and verified end-to-end — the change is a clarifying comment plus a fixed latent bug where a node typed `dynamic_workflow` would not have matched the compiler's literal node-type key.
 
+### Spawn flow — per-sprint context certification, teammate Dynamic Workflows, default FOCUS-LOOP (operator request)
+
+Four coordinated `/shepherd:spawn` fixes so the team substrate behaves as designed:
+
+- **Per-sprint context-certification wave.** The spawn-flow walkthrough now makes the root's INTRO-COMBO-WAVE explicit (it was mandated in `agents/shepherd.md` but omitted from `commands/spawn.md`'s flow): `@discovery` × N gather ground-truth, intro-mode `@auditor` × 2 **certify** it (regression / carry-forward / freshness) — the sprint's own certifiable current context. Always-on under spawn (every T-shirt) and **fresh per sprint** — each `--scope patch`/`--auto` sprint and each `--parallel` sibling certifies its own; a prior sprint's context is never inherited. `intro-combo-wave.md` gains the spawn framing.
+- **Teammate-conductors compile their lane fan-out.** The contract required it (`dispatch-cascade.md §IV-bis`, `conductor.md`) but no operational instruction existed, so teammates dispatched in-context. Added the explicit `shctx graph compile --segment=<entry> --verify` → run → `shctx graph mark` sequence (in-context fallback only on confirmed runtime failure) to the `commands/spawn.md` teammate boot prompt and `agents/conductor.md` Step 2 + hard-prohibition #22; hand-rolled in-context step fan-out is a `PRIMITIVE-INVERSION` off-substrate violation. Reconciled the self-contradictory `SKILL.md §X`: under spawn, **both** root and each teammate compile their respective fan-out (mode-agnostic).
+- **Root adopts the FOCUS-LOOP by default on team init.** Coordinate mode is reframed as *operating* the Pattern-6 FOCUS-LOOP (wake → act → probe, opened at SEED-VERIFY), entered the instant teammates spawn — the active engine, not a passive focus-record write backstopped only by `coordinate_drive_guard.sh`. The root stays engaged and drives until CLOSE-FINALIZE.
+- **Long-running conductors adopt their own FOCUS-LOOP.** A teammate-conductor opens a lane-keyed focus loop at Step 0 (lane start, before any node — so a teammate that skips INTRO still gets one) and runs wake → act → probe over its lane micro-Stage-Graph, refreshing at each wave so a long lane doesn't drift.
+
+All four default-on, config-gatable via the new `[focus].loop_default` key; doctrine framing in `coordinate-active-drive.md`.
+
 ### Flock profile polish
 
 Description-field shrink for the two genuinely bloated meta profiles — `conductor` (198→157 chars) and `shepherd` (195→152) — moving mode/tier detail into the body; `planter`/`auditor` tightened further. Frontmatter already consistent across all nine (`name → color → model → thinking → description → tools`); no value changes.

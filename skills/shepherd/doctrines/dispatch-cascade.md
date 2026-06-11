@@ -124,7 +124,13 @@ Binding rules (full doctrine: `workflow-compile-down.md` §III–VI):
 - **Mode-agnostic (#77 binding comment).** Solo `/shepherd:start` compiles its own
   fanout segments and gains out-of-context parallelism with **no team spawned**;
   under `/shepherd:spawn` each teammate-conductor compiles its **own lane's** fanout.
-  No code path requires a team to be present.
+  No code path requires a team to be present. **Operational requirement (B2):** a
+  teammate-conductor that hand-rolls in-context `Agent(...)` step fan-out where a
+  compiled Dynamic Workflow is required is **off-substrate** — this is not an
+  optimization the teammate may skip, defer, or substitute with ad-hoc in-context
+  dispatch. The teammate boot prompt is the instruction to compile; the absence of a
+  team does not relax this requirement (cross-ref `workflow-compile-down.md §I` B2
+  and `primitive-axis-binding.md`).
 
 ## V. Pattern B is a clique, not a checklist
 
