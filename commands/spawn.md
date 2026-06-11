@@ -58,33 +58,53 @@ the post-sprint merge sequence.
 A single-sprint spawn on a green project, no flags, no escalations:
 
 ```
-[1] operator types:  /shepherd:spawn
-[2] preflight        Check 1 (feature flag)         → OK
-                     Check 2 (Claude ≥ v2.1.32)     → OK
-                     Check 3 (no active team)       → OK
-                     Check 4 (shepherd.toml)        → OK
-                     (Check 5 skipped — no --parallel / --auto)
-[3] main chat        adopts planter profile (agents/planter.md, spawn mode)
-[4] main chat        builds teammate boot prompt (seed + handoff + carry-forwards
-                     + shepherd.toml snapshot)
-[4.5] main chat      pre-creates all lane worktrees (git worktree add) and emits
-                     [WORKTREE-READY] BEFORE TeamCreate (#97)
-[5] main chat        issues the natural-language TeamCreate instruction (referencing
-                     the shepherd:conductor subagent definition) → teammate session created
-[6] teammate         loads agents/conductor.md, fires /shepherd:start
-[7] teammate         walks Stage Graph (§1 INTRO → §2 BODY → §3 CLOSE)
-[8] teammate         at each wave boundary: SendMessage(to: lead, halt_code: null)
-                     → planter commits the wave via TaskCompleted hook
-[9] teammate         at CLOSE-FINALIZE: emits CONDUCTOR CLOSE REPORT, idles
-[10] planter         verifies close report → rebase-merge → cuts next dev branch
-                     → updates carry-forward ledger → runs cleanup stewardship
-[11] planter         emits PLANTER REPORT and hands back to the operator
+[1]  operator types:  /shepherd:spawn
+[2]  preflight        Check 1 (feature flag)         → OK
+                      Check 2 (Claude ≥ v2.1.32)     → OK
+                      Check 3 (no active team)       → OK
+                      Check 4 (shepherd.toml)        → OK
+                      (Check 5 skipped — no --parallel / --auto)
+[3]  main chat        adopts root-shepherd profile (agents/shepherd.md)
+[4]  root             INTRO-COMBO-WAVE — dispatches in parallel:
+                        • @discovery × N (gather sprint ground-truth: repo state,
+                          open issues, prior-close artifacts, dependency graph)
+                        • @auditor × 2 (intro mode: regression audit + carry-forward
+                          + freshness certification of discovered context)
+                      ↳ wave completes → sprint context is CERTIFIED current
+[5]  root             materializes INTRO context artifacts from wave payloads
+[6]  root             dispatches @engineer (plan authorship) → @critic (plan gate)
+                        → plan-approval gate passes
+[7]  root             projects approved plan into vertical LANES
+                      builds per-lane teammate boot prompts (seed + certified context
+                      + handoff + carry-forwards + shepherd.toml snapshot)
+[8]  root             pre-creates all lane worktrees (git worktree add) and emits
+                      [WORKTREE-READY] BEFORE TeamCreate (#97)
+[9]  root             issues the natural-language TeamCreate instruction (referencing
+                      the shepherd:conductor subagent definition, model: sonnet)
+                      → teammate sessions created
+[10] root             ENTERS FOCUS-LOOP (wake → act → probe; see [10a] below)
+[10a] root            confirms liveness (shctx teammate liveness until each lane
+                      active/heartbeating); scaffolds wave-gate tasks; iterates
+                      coordinate cycle until CLOSE-FINALIZE
+[11] teammate         loads agents/conductor.md (TEAMMATE mode), fires
+                      /shepherd:start --teammate; walks lane micro-Stage-Graph
+[12] teammate         at lane close: SendMessage(to: lead, halt_code: null,
+                      phase: "body-wave-N-lane-{id}") → root commits wave via
+                      TaskCompleted hook
+[13] teammate         at CLOSE-FINALIZE: emits CONDUCTOR CLOSE REPORT, idles
+[14] root             verifies close report → rebase-merge → cuts next dev branch
+                      → updates carry-forward ledger → runs cleanup stewardship
+[15] root             emits PLANTER REPORT and hands back to the operator
 ```
 
-For `--parallel <N>` the smooth path forks at [5]: N teammates spawn into N
-worktrees after a collision pre-check; planter babysits all N in parallel;
-merges land in dev-order. For `--auto` the loop wraps [4]–[10] per sprint with
-planter-authored inter-sprint handoffs between iterations.
+> **Multi-sprint scopes (`--scope patch`/`--auto`/`--parallel`):** the INTRO-COMBO-WAVE
+> fires **fresh per sprint** — discovery + intro-auditors re-run from the new baseline
+> at the top of each iteration. No sprint inherits a stale prior wave result.
+
+For `--parallel <N>` the smooth path forks at [9]: N teammates spawn into N
+worktrees after a collision pre-check; root babysits all N in parallel;
+merges land in dev-order. For `--auto` the loop wraps [4]–[14] per sprint with
+root-authored inter-sprint handoffs between iterations.
 
 Escalations interrupt this path — consult `skills/shepherd/doctrines/spawn-escalation.md`
 for the full halt → resume contract.
@@ -435,6 +455,12 @@ FIRST ACTION
     - Load agents/conductor.md and self-detect TEAMMATE mode.
     - Read the lane brief from this INHERITED CONTEXT block.
     - Walk lane micro-Stage-Graph: DEDUP-GATE → IMPL (@coder for lane scope) → LANE-CLOSE.
+    - For EACH gate-free agent fan-out segment in your lane (e.g. WAVE-IMPL coders,
+      lane AUDIT): run `shctx graph compile --segment=<entry-node> --verify`, execute
+      the emitted `<seg>.workflow.js` out-of-context, then `shctx graph mark <nodes>`.
+      Fall back to an in-context `Agent(...)` batch ONLY if the runtime is unavailable.
+      Do NOT hand-roll in-context Agent step fan-out where a compiled workflow is required.
+      (doctrines/workflow-compile-down.md + dispatch-cascade.md §IV-bis)
     - Surface WAVE-COMPLETE via SendMessage.
 
   Do NOT invoke /shepherd:start without --teammate — that triggers SOLO mode
@@ -663,6 +689,15 @@ hook-input JSON).
         Sprint: {sprint_slug}
         Coordinate cycle: ENTERING NOW — root does not pause for the operator.
 ```
+
+**Root now enters the FOCUS-LOOP by default.** Immediately after emitting the
+`[SPAWN]` block, root activates the `focus_loop_id` opened at SEED-VERIFY
+(`shctx loop init --kind=focus`) and drives coordinate mode as repeating
+**wake → act → probe** iterations until CLOSE-FINALIZE. Root does NOT yield to the
+operator at the dispatch boundary — operating the FOCUS-LOOP is the default
+coordinate-mode driver, not merely a backstop. Gatable via `[focus].loop_default`
+(default "on"). Per `doctrines/coordinate-active-drive.md`; backstopped by
+`hooks/scripts/coordinate_drive_guard.sh`.
 
 **This confirmation is NOT a turn-end.** Emit it, then proceed in the SAME flow
 into the coordinate cycle (confirm liveness → scaffold wave-gates → wake → act →

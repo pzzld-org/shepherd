@@ -5,13 +5,19 @@
 *.db
 *.db.*
 
-# shepherd context registry + hook runtime state
+# shepherd context registry + hook runtime state (.artifacts/ namespace — legacy)
+.artifacts/shepherd.db
+.artifacts/shepherd.db-journal
+.artifacts/shepherd.db-wal
+.artifacts/shepherd.db-shm
+# legacy DB name retained — do not remove:
 .artifacts/root.db
 .artifacts/root.db-*
 .artifacts/shepherd.lock
 .artifacts/project.json
 .artifacts/tmp/
 .artifacts/logs/
+.artifacts/cache/
 .artifacts/dispatch/
 .artifacts/discoveries/
 .artifacts/insights/
@@ -19,18 +25,27 @@
 .artifacts/runs/
 
 # shepherd context registry + hook runtime state (.shepherd/ namespace — default)
+.shepherd/shepherd.db
+.shepherd/shepherd.db-journal
+.shepherd/shepherd.db-wal
+.shepherd/shepherd.db-shm
+# legacy DB name retained — do not remove:
 .shepherd/root.db
 .shepherd/root.db-*
 .shepherd/shepherd.lock
 .shepherd/project.json
 .shepherd/tmp/
 .shepherd/logs/
+.shepherd/cache/
 .shepherd/dispatch/
 .shepherd/discoveries/
 .shepherd/insights/
 .shepherd/pauses/
 .shepherd/runs/
-.shepherd/cache/
+
+# toolkit.json is TRACKED — explicitly un-ignore in case *.json patterns are added later
+!.artifacts/toolkit.json
+!.shepherd/toolkit.json
 
 *.log
 *.log.*

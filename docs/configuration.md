@@ -87,13 +87,15 @@ subtract_paths = [
 
 ```toml
 [paths]
-plans   = ".shepherd/plans"     # seeds + plans live here
-reports = ".shepherd/reports"   # close reports + audit reports
-docs    = ".shepherd/docs"      # handoffs + release notes
-ctx     = ".shepherd/ctx"       # workspace knowledge silo (canonical-types, dedup-ledger, etc.)
+plans   = ".shepherd/docs/plans"     # seeds + plans (v6.1.2 standard — now under docs/)
+reports = ".shepherd/docs/reports"   # close reports + audit reports (under docs/)
+docs    = ".shepherd/docs"           # handoffs, specs, diagrams, journal, release notes
+ctx     = ".shepherd/ctx"            # workspace knowledge silo (canonical-types, dedup-ledger, etc.)
 ```
 
 Paths are relative to the repo root. Directories are auto-created on first write.
+
+**Standard layout (v6.1.2).** The per-project workdir now follows a consistent internal tree — `docs/{plans,reports,diagrams,handoffs,specs,journal}/`, `logs/`, `archive/`, `cache/`, `scripts/`, `templates/`, `tmp/`, `types/`, plus `toolkit.json` (tracked) and `shepherd.db` (gitignored). `shctx init` scaffolds it for new projects. **Back-compat is total:** projects on the legacy shape (top-level `plans/`+`reports/`, `root.db`, `.artifacts/`) keep working untouched — the runtime auto-detects both. To migrate an existing project to the standard tree, run the opt-in `shctx migrate --layout v2` (idempotent; `git mv`s `plans/`→`docs/plans/`, `reports/`→`docs/reports/`, renames `root.db`→`shepherd.db`). See `skills/context/references/naming-conventions.md`.
 
 **Namespace default (v5.0.0):** the per-project namespace directory is **`.shepherd/`** by default. Projects that prefer the legacy `.artifacts/` layout opt in by running `shctx init --artifacts`; substitute `.artifacts/` for `.shepherd/` in the snippet above. The `shctx` CLI auto-detects which directory is in use at every invocation (preferring `.shepherd/` when both exist). **The `[paths]` entries here must match the active namespace** — if they diverge, `shctx doctor` will surface a conflict warning. As of v5.0.9, `shctx init` also refuses to scaffold a new namespace when the other is already initialized, preventing this split-brain at the source.
 
@@ -114,7 +116,7 @@ When both `.shepherd/` and `.artifacts/` exist (and no override is set), shepher
 ```toml
 [context]
 enabled         = true                       # opt-out is valid in v5.0.0-c (DB-optional); rejected in v5.0.0-d (DB mandatory)
-db_path         = ".shepherd/root.db"        # SQLite cache backing the registry (.artifacts/ for legacy opt-in)
+db_path         = ".shepherd/shepherd.db"    # SQLite registry (v6.1.2; legacy root.db auto-detected; .artifacts/ for legacy namespace)
 lock_path       = ".shepherd/shepherd.lock"  # file-based single-writer lock
 project_id_path = ".shepherd/project.json"   # stable project_id (multi-project backbone)
 auto_refresh    = ["on-sprint-open"]         # triggers that fire `shctx refresh --scope=all`
@@ -138,7 +140,12 @@ handoff  = "*.handoff.md"
 spec     = "*.spec.md"
 design   = "*.design.md"
 journal  = "????-??-??.md"
+log      = "*.log.md"          # human-readable daily logs (v6.1.2; in logs/)
+log_jsonl = "*.log.jsonl"      # machine event streams (v6.1.2; in logs/ or tmp/)
+toolkit  = "toolkit.json"      # tool registry (v6.1.2; tracked, namespace root)
 ```
+
+The `<slug>.<group>.<ext>` convention is uniform: a filename is a kebab/slug stem, a `<group>` tag (`seed`, `plan`, `phase0`, `close`, `walk`, `handoff`, `spec`, `design`, `log`, …), and an extension. Seeds/plans already use it (`v512-dev3.seed.md`); logs extend it (`2026-06-11.log.md`, `2026-06-11T14-32-45.log.jsonl`).
 
 The context registry is a per-project SQLite cache that backs:
 
@@ -187,6 +194,26 @@ Bundled views (`schema/views/*.sql`):
 | `v_active_locks` | currently held locks |
 
 Plus `queries/dedup-check.sql` — a parameterized SQL template bound at call time by `shctx query dedup-check --name=<symbol>`.
+
+### Toolkit registry (v6.1.2)
+
+The **toolkit** is a mutable registry of commonly-used tools — MCP servers, skills, plugins, CLIs, ssh targets — so a session never forgets a capability exists (e.g. `ssh pzzld@laptop`, the `context7` MCP). It is the tool-memory sibling of the adaptation loop's lesson-memory. Two tiers, merged at read time (local overrides global on name collision):
+
+| Tier | File | Holds |
+|---|---|---|
+| `local` | `<namespace>/toolkit.json` (tracked) | project-specific tools |
+| `global` | `$XDG_CONFIG_HOME/shepherd/toolkit.json` | cross-project tools (reused in every repo) |
+
+Each entry carries the required `{ name, scope (local\|global), type (mcp\|skill\|plugin\|cli), capabilities[], description }` plus optional `invocation`, `when`, `tags`, `pinned`. It is **file + CLI managed** — no toml block required:
+
+```bash
+shctx toolkit add --name=context7 --type=mcp --scope=global \
+  --description="library docs; prefer over web search" --capabilities=docs --pin
+shctx toolkit list --scope=all          # merged roster (local ⊕ global)
+shctx toolkit md   --scope=all          # markdown for brief / session injection
+```
+
+Three surfaces keep it in front of the model: (1) a **SessionStart hook** (`toolkit_surface.sh`) injects a compact roster every session — suppress it with `[hooks].quiet_warnings = true`; (2) the `shctx toolkit` CLI; (3) a `[TOOLKIT]` block injected into engineer/coder/planter briefs. **Never store secrets or credentials in the toolkit.** See `skills/shepherd/doctrines/toolkit.md`.
 
 ### `[skills]` — local-skill integration
 
@@ -422,6 +449,14 @@ rehydrate        = "on"   # on (default) | off
 # does not supply an explicit --max inherits this value. Raise for very long
 # sprints; lower for bounded sub-loops.
 loop_max_default = 8      # int — default max_iterations for FOCUS-LOOP
+
+# Whether the root (under /shepherd:spawn) and long-running conductors enter
+# the FOCUS-LOOP by default on team initialization / lane start. "on" means
+# active coordination is the primary operating mode (wake → act → probe),
+# not a fallback; coordinate_drive_guard.sh is the backstop that catches
+# lapses, not the mechanism. Set "off" to suppress and rely on the backstop
+# alone — not recommended.
+loop_default     = "on"   # on (default) | off — root (under /shepherd:spawn) and long-running conductors adopt the FOCUS-LOOP by default to stay active/focused (Pattern 6; doctrines/coordinate-active-drive.md)
 ```
 
 The focus record itself (objective, active Stage-Graph node, ready-set, outstanding obligations, invariants) lives in `root.db` (`focus` table) and survives compaction natively. The rehydration consumer reads the latest snapshot + focus digest and emits them as `additionalContext` so the model's drive cursor is restored without manual re-orientation.
@@ -463,8 +498,8 @@ lint   = "cargo clippy --workspace -- -D warnings"
 format = "cargo fmt --all"
 
 [paths]
-plans   = ".shepherd/plans"
-reports = ".shepherd/reports"
+plans   = ".shepherd/docs/plans"
+reports = ".shepherd/docs/reports"
 docs    = ".shepherd/docs"
 ctx     = ".shepherd/ctx"
 

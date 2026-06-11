@@ -46,7 +46,16 @@ resolve_workdir() {
 # Retained as the legacy name; delegates to resolve_workdir so all callers
 # (and shctx_db_path/shctx_lock_path/shctx_project_id_path) inherit $SHEPHERD_WORKDIR.
 shctx_artifacts_root() { resolve_workdir; }
-shctx_db_path()         { echo "$(shctx_artifacts_root)/root.db"; }
+# DB path: prefer shepherd.db (v6.1.2+ standard); fall back to root.db when it
+# already exists (legacy projects untouched); default to shepherd.db for new
+# projects where neither file is present yet.
+shctx_db_path() {
+  local wd; wd="$(shctx_artifacts_root)"
+  if   [[ -f "$wd/shepherd.db" ]]; then echo "$wd/shepherd.db"
+  elif [[ -f "$wd/root.db"     ]]; then echo "$wd/root.db"
+  else                                   echo "$wd/shepherd.db"
+  fi
+}
 shctx_lock_path()       { echo "$(shctx_artifacts_root)/shepherd.lock"; }
 shctx_project_id_path() { echo "$(shctx_artifacts_root)/project.json"; }
 shctx_skill_root()      { echo "${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"; }

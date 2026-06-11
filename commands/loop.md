@@ -288,8 +288,37 @@ Per `doctrines/workflow-patterns.md §Circuit-breaker invariants — Pattern 6`:
 
 ---
 
+## Per-role loop templates
+
+Every applicable flock role and meta-orchestrator has a ready-to-use loop template in
+`skills/shepherd/references/loop-templates.md`. Templates declare intent, iterator agent,
+loop body shape (Probe → Act → Branch), termination predicate, default `--max`, the named
+composite they specialize, and anti-patterns.
+
+The `--agent` flag selects the iterator. The templates map to `--agent` as follows:
+
+| `--agent` | Template | Composite | Default `--max` |
+|-----------|----------|-----------|-----------------|
+| `worker` (state-reconcile) | WORKER-CONVERGENCE | CONVERGENCE-LOOP | 5 |
+| `worker` (monitoring) | WORKER-WATCH | WATCH-LOOP | 20 |
+| `discovery` | DISCOVERY-EXHAUST | Pattern 6 generic | 4 |
+
+The `--agent` flag currently accepts `worker` and `discovery`. The `@coder`,
+`@auditor`, and `@engineer` loop variants (CODER-CONVERGENCE, AUDITOR-REFINE,
+ENGINEER-PLAN-REFINE) and the orchestrator FOCUS-LOOP are authored directly in Stage Graph
+YAML by the engineer — they are not driven via the `/shepherd:loop` command entry point. Full
+template definitions for all roles are in `references/loop-templates.md`.
+
+When in doubt about which template to use, consult the quick-selection table at the top of
+`references/loop-templates.md`. A loop whose template alignment cannot be stated is a loop
+that needs a plan revision before it fires.
+
+---
+
 ## See also
 
+- `skills/shepherd/references/loop-templates.md` — per-role loop template catalog; copy-paste Stage Graph shapes for coder, discovery, worker, auditor, engineer, and orchestrator
+- `skills/shepherd/doctrines/loop-templates.md` — binding doctrine: principle, circuit-breaker invariants, enforcement surface; introduced v6.1.2
 - `skills/shepherd/references/workflow-templates.md` §Pattern 6 — Loop-Until-Done — full pattern definition
 - `doctrines/workflow-patterns.md` §Circuit-breaker invariants — Pattern 6 — binding invariants
 - `doctrines/coordinate-active-drive.md` — `wake → act → probe → yield` cycle that in-session loops implement

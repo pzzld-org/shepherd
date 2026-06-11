@@ -7,13 +7,29 @@
 ## What it is
 
 A graph-node type that fires between `SEED-VERIFY` and `MESH`. Dispatches
-N discoveries + M intro-mode auditors as ONE parallel Agent batch. Both
+N discoveries + M intro-mode auditors as ONE parallel fan-out. Both
 streams produce reports the engineer consumes as Phase-0 mesh input
 (`[DISCOVERY-CONTEXT]` + `[INTRO-AUDIT-CONTEXT]` in the engineer's brief).
 
+**Dispatch mechanism (v6.0.x).** INTRO-COMBO-WAVE is a gate-free,
+parallel-safe agent-fanout node, so it **compiles to a Dynamic Workflow** via
+`shctx graph compile` — the primary execution path, identical to how
+WAVE-IMPL / WAVE-AUDIT / CLOSE-SWARM compile (see
+`doctrines/workflow-compile-down.md §V`, φ map). The compiler emits all N
+discovery + M intro-auditor lanes as one bounded `Promise.all([...])` batch
+(≤ `[stage_graph.intro_wave].parallel_max`) returning a mesh-input bundle in a
+script variable; the conductor reads it and injects the
+`[DISCOVERY-CONTEXT]` + `[INTRO-AUDIT-CONTEXT]` blocks into the MESH brief. The
+wave satisfies the §IV faithfulness contract because every lane is independent
+(scope-partitioned discoveries, concern-split intro auditors) and all spawns are
+read-only by allowlist (§VII). Lane 0 (patch-branch-advancement check, below) is
+a §VI seam: it runs at the conductor *before* the batch is launched, never inside
+the workflow. Hand-rolled in-context Agent dispatch is the fallback only when the
+workflow runtime is unavailable.
+
 ```
 SEED-VERIFY ──on-green──► INTRO-COMBO-WAVE ──on-intro-wave-complete──► MESH ──► PLAN-GATE ──► ...
-                              │  (single Agent batch)
+                              │  (compiled Promise.all batch; runtime-fallback: one Agent batch)
                               ├─ @discovery: prior-close-audit-summary
                               ├─ @discovery: canonical-types-freshness
                               ├─ @discovery: gh-state-inventory
@@ -28,7 +44,8 @@ regressing now"**. Both feed MESH.
 ## Why combine
 
 - **Parallel-safety.** Both are read-only. Maximum concurrent batch size
-  without contention.
+  without contention — the structural reason the wave compiles to a single
+  `Promise.all` rather than a sequence (`workflow-compile-down.md §V`).
 - **Information density.** Discoveries surface neutral facts; intro audits
   surface graded findings on the same surface. Engineer reads both as
   complementary inputs.
@@ -172,15 +189,36 @@ Engineer is NOT required to redo the reads — that defeats the purpose. The
 engineer IS required to ACT on the findings (e.g., a HIGH regression finding
 must be addressed as a Wave 1 hotfix lane in the plan).
 
+## Certifiable current context under `/shepherd:spawn` (always-on)
+
+Under `/shepherd:spawn`, the INTRO-COMBO-WAVE is the sprint's **certifiable
+current context**: discovery gathers ground-truth facts; intro-auditors certify
+regression/carry-forward/freshness. It is **always-on under spawn** regardless
+of T-shirt size (the `disable_for_tshirt` XS exemption applies to solo
+`/shepherd:start` only — see table below). The wave MUST fire **fresh per
+sprint**:
+
+- Each sprint in a `--scope patch`/`--auto` run certifies its OWN current context
+  before proceeding to MESH. Never carry over the prior sprint's wave output as a
+  substitute.
+- Each `--parallel <N>` sibling sprint certifies its OWN current context
+  independently — sibling sprints share a repo snapshot, not a wave result.
+- The "certifiable" framing means the engineer's Phase-0 mesh acts on verified,
+  not assumed, ground truth. Skipping the wave (under spawn) means MESH is
+  operating on potentially stale prior-sprint context — treat it as a process
+  violation equivalent to skipping PLAN-GATE.
+
+Under `/shepherd:start` (solo), the existing T-shirt defaults apply unchanged.
+
 ## When the wave fires vs. when it doesn't
 
-| Sprint scope | Default behavior |
-|---|---|
-| XS | skip (low ROI on dispatch overhead) |
-| S | optional — depends on `disable_for_tshirt` |
-| M | fire (3 discoveries + 2 auditors default) |
-| L | fire (3 discoveries + 2 auditors default; engineer plan may scale up) |
-| XL | fire with potential lane expansion |
+| Sprint scope | `/shepherd:start` (solo) | `/shepherd:spawn` |
+|---|---|---|
+| XS | skip (low ROI on dispatch overhead) | **fire** (always-on; certifiable ground truth required) |
+| S | optional — depends on `disable_for_tshirt` | **fire** |
+| M | fire (3 discoveries + 2 auditors default) | **fire** |
+| L | fire (3 discoveries + 2 auditors default; engineer plan may scale up) | **fire** |
+| XL | fire with potential lane expansion | **fire** |
 
 A sprint that catches HIGH/CRITICAL findings in the intro wave should NOT
 proceed straight to MESH — the engineer's plan must address the findings as
@@ -204,7 +242,10 @@ Wave 1 hotfix lanes. The intro wave is the early-warning surface.
 
 - `pipeline.md` §II stage taxonomy — INTRO-COMBO-WAVE node type
 - `pipeline.md` §IV canonical sprint graph — wave placement
+- `doctrines/workflow-compile-down.md §V` — INTRO-COMBO-WAVE is a φ-map compile target (gate-free fan-out → `Promise.all`)
+- `doctrines/discovery-combo-wave.md` — body-phase equivalent (BODY phase; allows `@worker` lanes)
 - `doctrines/discovery-readonly.md` — discovery contract
 - `doctrines/auditor-hypothesis-driven.md` — auditor discipline applies to intro mode
 - `doctrines/sprint-as-patch.md` — why intro-wave findings matter (patch-grade scope)
 - `agents/auditor.md` — regression + carry-forward-disposition concerns documented
+- `commands/spawn.md` — `/shepherd:spawn` always-on + fresh-per-sprint requirement

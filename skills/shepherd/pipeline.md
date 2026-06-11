@@ -65,8 +65,9 @@ Every node in the graph is one of these types. The type determines the dispatch 
 | `WORKER-IO` | One or more `@worker` (bounded; non-competing) | @worker | bounded reports |
 | `HARD-STOP` | Conductor inline (terminal) | Conductor | operator-surfaced halt block |
 | `PAUSE` | Conductor inline (terminal under `/shepherd:start`; bypassed under `/shepherd:spawn --auto`) | Conductor | end-of-sprint waypoint |
-| `DISCOVERY` | Single or parallel `@discovery` (v5.1.1+) | @discovery | DISCOVERY REPORT at `{paths.reports}/<date>-discovery-<id>.md` |
-| `INTRO-COMBO-WAVE` | Parallel batch of `@discovery` + `@auditor` (intro-mode) (v5.1.1+) | both | Mesh-input bundle: discoveries + regression + carry-forward-disposition reports |
+| `DISCOVERY` | Single or parallel `@discovery` (v5.1.1+) — gate-free fan-out, **compiles to a Dynamic Workflow** (φ map, `doctrines/workflow-compile-down.md §V`; incl. plant-mode 1–3 read-only lanes, #119) | @discovery | DISCOVERY REPORT at `{paths.reports}/<date>-discovery-<id>.md` |
+| `INTRO-COMBO-WAVE` | Parallel batch of `@discovery` + `@auditor` (intro-mode) (v5.1.1+) — gate-free fan-out, **compiles to a Dynamic Workflow** (φ map, `doctrines/workflow-compile-down.md §V`); conductor-inline Lane 0 (patch-branch advancement) is a §VI seam run before the batch | both | Mesh-input bundle: discoveries + regression + carry-forward-disposition reports |
+| `DISCOVERY-COMBO-WAVE` | Parallel batch of `@auditor` + `@discovery` + optional `@worker` (body-phase) (v6.0.8+) — gate-free fan-out, **compiles to a Dynamic Workflow** (φ map, `doctrines/workflow-compile-down.md §V`); see `doctrines/discovery-combo-wave.md` | all three | `BODY-AGGREGATE` (conductor inline) → feeds next wave or PLAN-GATE |
 
 Each node carries:
 

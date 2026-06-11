@@ -16,6 +16,8 @@ Welcome, the **shepherd** plugin is *an adaptive, sprint-by-sprint version-cycle
 │                       --scope <sprint|patch|minor|version>           │
 │                       --parallel <N>      sprint-level fanout        │
 │                       --auto              alias: --scope patch       │
+│  /shepherd:loop      Bounded loop-until-done (per-role templates)    │
+│  /shepherd:toolkit   Tool registry — never forget a capability       │
 │  /shepherd:ctx       Inspect / refresh the per-project SQLite ctx    │
 │  /shepherd:cleanup   Post-sprint worktree + lock cleanup             │
 └──────────────────────────────────────────────────────────────────────┘
@@ -30,6 +32,7 @@ Shepherd is an orchestration framework for long-running engineering work in Clau
 - A **three-section pipeline** (INTRODUCTION → BODY → CLOSE) with wave-gated execution
 - **Mechanical enforcement** via hooks that refuse dispatch drift before it happens
 - A **per-project SQLite registry** that indexes symbols, issues, artifacts, and memories
+- A **tool toolkit** (`toolkit.json`, project-local ⊕ user-global) that remembers your commonly-used MCP/skill/plugin/CLI tools — so a session never forgets a capability exists
 - A **project-agnostic config** via `shepherd.toml` — branch topology, gates, paths, and skill wiring live in your repo, not in the framework
 
 Shepherd is a plugin for Claude Code installed via the marketplace or a symlink. There is no build system — assets are markdown briefs, YAML frontmatter, and shell scripts.
@@ -69,7 +72,7 @@ Every sprint runs three sections:
 2. **BODY** — coder waves with between-wave gates (`check`, `lint`, `format`); auditor swarm overlaps Wave 2 (Pattern B)
 3. **CLOSE** — merge, tag, squash-to-main, carry-forward refresh, close report
 
-Under `/shepherd:spawn`, the BODY is fanned out as **lanes** (vertical slices across waves), each owned by one teammate-conductor running via Agent Teams. Gate-free step fan-out compiles to Dynamic Workflows. Root stays active between waves — no passive waits.
+Under `/shepherd:spawn`, the BODY is fanned out as **lanes** (vertical slices across waves), each owned by one teammate-conductor running via Agent Teams. Gate-free agent fan-out — coder waves, audit swarms, **and discovery/intro waves** — compiles to Dynamic Workflows. Root stays active between waves — no passive waits.
 
 ---
 
@@ -98,14 +101,39 @@ Every sprint opens with a structured ground-truth audit: open issues + PRs, rece
 
 ### SQLite context registry
 
-`/shepherd:ctx` manages a per-project SQLite database at `.shepherd/root.db` (or `.artifacts/root.db` for legacy projects). It indexes code symbols, GitHub issues/PRs/releases, artifact files, project memories, flock profiles, lock history, and the event log.
+`/shepherd:ctx` manages a per-project SQLite database at `.shepherd/shepherd.db` (legacy `.artifacts/root.db` is auto-detected). It indexes code symbols, GitHub issues/PRs/releases, artifact files, project memories, flock profiles, lock history, and the event log.
 
 ```bash
-shctx init                   # scaffold .shepherd/, create root.db
+shctx init                   # scaffold .shepherd/ (standard layout), create shepherd.db
 shctx refresh --scope=all    # populate caches
 shctx status                 # verify
 shctx style init --all       # scaffold per-language code-style files
 ```
+
+The workdir follows a standardized internal layout (v6.1.2) — `docs/{plans,reports,diagrams,handoffs,specs,journal}/`, `logs/`, `archive/`, `cache/`, `scripts/`, `templates/`, `types/`, plus `toolkit.json` and `shepherd.db`. Projects on the legacy shape (top-level `plans/`+`reports/`, `root.db`, `.artifacts/`) keep working untouched; `shctx migrate --layout v2` performs the opt-in move.
+
+### Tool toolkit
+
+The toolkit (`toolkit.json`) is a mutable registry of commonly-used tools so a session never forgets a capability exists — the tool-memory sibling of the self-improvement loop's lesson-memory. Two tiers, merged at read time (local overrides global on name):
+
+- **local** — `<namespace>/toolkit.json` (tracked): project-specific tools
+- **global** — `$XDG_CONFIG_HOME/shepherd/toolkit.json`: cross-project tools reused in every repo (your ssh dev box, `context7`, …)
+
+Each entry is `{ name, scope, type (mcp|skill|plugin|cli), capabilities[], description }` (+ optional `invocation`, `when`, `tags`, `pinned`). It surfaces three ways: a **SessionStart hook** injects a compact roster every session, the `shctx toolkit` CLI manages it, and a `[TOOLKIT]` block is injected into engineer/coder/planter briefs.
+
+```bash
+shctx toolkit add --name=pzzld-laptop --type=cli --scope=global \
+  --description="ssh pzzld@laptop — self-hosted dev surface" --capabilities=remote-shell
+shctx toolkit add --name=context7 --type=mcp --scope=global \
+  --description="library docs; prefer over web search" --pin
+shctx toolkit list --scope=all
+```
+
+Never store secrets or credentials in the toolkit. See [`skills/shepherd/doctrines/toolkit.md`](skills/shepherd/doctrines/toolkit.md).
+
+### Per-role loop templates
+
+`/shepherd:loop` runs Pattern 6 (Loop-Until-Done) as a first-class, bounded loop. Each flock role gets a ready-made template in [`skills/shepherd/references/loop-templates.md`](skills/shepherd/references/loop-templates.md) — `@coder` fix-until-green (CODER-CONVERGENCE), `@discovery` research-until-comprehensive (DISCOVERY-EXHAUST), `@worker` monitor/reconcile (WORKER-WATCH / WORKER-CONVERGENCE), `@auditor` progressive-audit (AUDITOR-REFINE), plus the orchestrator's own FOCUS-LOOP. Every template declares a hard `--max` cap and a measurable termination predicate — loops are never open-ended.
 
 ### Per-language style files
 
@@ -137,7 +165,7 @@ The `completeness` auditor diffs the GitHub issue ledger against the sprint's se
 
 ### Doctrines
 
-Framework-intrinsic behavioral rules live in `skills/shepherd/doctrines/`. These are not prose guidance — each doctrine is paired with a mechanism (hook, guard, or halt code) in the invariant-enforcement matrix. Current doctrines include: `subtract-dont-add`, `wrapper-must-earn`, `dispatch-tier-separation`, `coordinate-active-drive`, `hotfix-dispatch`, `workflow-patterns`, `sqlite-canonical-state`, `brief-cache-discipline`, and 20+ others.
+Framework-intrinsic behavioral rules live in `skills/shepherd/doctrines/`. These are not prose guidance — each doctrine is paired with a mechanism (hook, guard, or halt code) in the invariant-enforcement matrix. Current doctrines include: `subtract-dont-add`, `wrapper-must-earn`, `dispatch-tier-separation`, `coordinate-active-drive`, `hotfix-dispatch`, `workflow-patterns`, `loop-templates`, `toolkit`, `self-improvement`, `adaptation-loop`, `sqlite-canonical-state`, `brief-cache-discipline`, and 25+ others.
 
 ---
 
@@ -199,8 +227,8 @@ lint   = "cargo clippy --workspace -- -D warnings"
 format = "cargo fmt --all"
 
 [paths]
-plans   = ".shepherd/plans"
-reports = ".shepherd/reports"
+plans   = ".shepherd/docs/plans"
+reports = ".shepherd/docs/reports"
 docs    = ".shepherd/docs"
 ctx     = ".shepherd/ctx"
 
@@ -221,7 +249,7 @@ A working example for a real Rust/Polymarket project lives at [`examples/axiom/s
 
 1. Create `shepherd.toml` (see above).
 2. Run `/shepherd:ctx` to initialize the SQLite registry.
-3. Optionally author a patch-arc seed at `.shepherd/plans/v{X}.{Y}.{Z}.seed.md` describing the patch's theme.
+3. Optionally author a patch-arc seed at `.shepherd/docs/plans/v{X}.{Y}.{Z}.seed.md` describing the patch's theme.
 4. Run `/shepherd:plant` (Opus recommended — Fable 5 superior; Sonnet/Haiku allowed with degraded-seed advisory) to author the dev.0 sprint seed.
 5. Switch to Sonnet and run `/shepherd:start` for your first sprint.
 
@@ -274,7 +302,7 @@ See [`docs/integration.md`](docs/integration.md) for the full integration model 
 | `.claude-plugin/marketplace.json` | Self-hosted marketplace entry |
 | `agents/{engineer,critic,coder,auditor,worker,discovery}.md` | Closed flock — full system prompts per lane |
 | `agents/{shepherd,conductor,planter}.md` | Three meta-orchestrators |
-| `commands/{plant,start,spawn,ctx,cleanup}.md` | Active slash-command entry points |
+| `commands/{plant,start,spawn,loop,toolkit,ctx,cleanup}.md` | Active slash-command entry points |
 | `skills/shepherd/SKILL.md` | Conductor quick reference (loaded by every `/shepherd:*` invocation) |
 | `skills/shepherd/doctrines/*.md` | Framework-intrinsic behavioral rules |
 | `skills/shepherd/references/` | Branching model, seed template, agent-brief templates, grading rubric |
@@ -282,6 +310,8 @@ See [`docs/integration.md`](docs/integration.md) for the full integration model 
 | `skills/context/schema/` | SQL migrations + views for the SQLite registry |
 | `skills/context/scripts/` | `shctx` + `cmd_*` implementations (bash) |
 | `skills/context/styles/<lang>.md` | Bundled per-language code-style defaults |
+| `skills/context/references/toolkit.schema.json` | Toolkit entry JSON Schema (v6.1.2) |
+| `skills/shepherd/references/loop-templates.md` | Per-flock-role loop catalog (v6.1.2) |
 | `hooks/hooks.json` | Event registrations wiring Claude Code lifecycle → hook scripts |
 | `hooks/scripts/` | Hook implementations (sourced from `_lib.sh`) |
 | `hooks/tests/` | Smoke harness — `bash hooks/tests/run.sh` |
@@ -301,7 +331,7 @@ Shepherd follows semver:
 
 Version sources of truth that must move together: `plugin.json`, `marketplace.json`, `skills/shepherd/SKILL.md` frontmatter, `skills/context/SKILL.md` frontmatter, `README.md` header, `CHANGELOG.md`. `shctx release` automates the five non-CHANGELOG files.
 
-Current version: **6.1.1**. See [`CHANGELOG.md`](CHANGELOG.md) for the per-version history.
+Current version: **6.1.2**. See [`CHANGELOG.md`](CHANGELOG.md) for the per-version history.
 
 ---
 

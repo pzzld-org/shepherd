@@ -18,8 +18,8 @@ sprints_per_patch     = 10
 main_branch           = "main"
 
 [paths]
-plans   = ".artifacts/plans"
-reports = ".artifacts/reports"
+plans   = ".artifacts/docs/plans"
+reports = ".artifacts/docs/reports"
 docs    = ".artifacts/docs"
 ctx     = ".artifacts/ctx"
 

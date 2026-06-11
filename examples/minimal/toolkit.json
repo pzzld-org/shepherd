@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "scope": "local",
+  "updated_at": 1749600000,
+  "tools": [
+    {
+      "name": "just",
+      "scope": "local",
+      "type": "cli",
+      "capabilities": ["task-runner", "build", "test"],
+      "description": "Project task runner (justfile). Prefer over raw cargo/make for standard project tasks.",
+      "invocation": "just",
+      "when": "user asks to build, test, lint, or run a project task",
+      "tags": ["build", "dev"],
+      "pinned": false,
+      "added": "2026-06-11"
+    },
+    {
+      "name": "github",
+      "scope": "local",
+      "type": "mcp",
+      "capabilities": ["issues", "pull-requests", "code-search", "releases"],
+      "description": "GitHub API via MCP — read/write issues, PRs, code, and releases without leaving the session.",
+      "invocation": "mcp__github__*",
+      "when": "user asks about issues, PRs, CI status, or wants to create/update GitHub resources",
+      "tags": ["vcs", "ci"],
+      "pinned": true,
+      "added": "2026-06-11"
+    }
+  ]
+}
