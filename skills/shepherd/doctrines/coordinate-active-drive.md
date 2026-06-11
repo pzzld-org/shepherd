@@ -2,12 +2,17 @@
 name: coordinate-active-drive
 description: |
   Binding contract for the dispatch→coordinate transition under /shepherd:spawn.
-  The root shepherd must ACTIVELY DRIVE the coordinate loop after spawning
-  teammate-conductors — it never ends its turn waiting on the operator at the
-  dispatch boundary. Closes the "spawn pauses when we go to dispatch
-  team-members" failure (root waits passively for TeammateIdle; flock appears
-  stalled for the whole wave). Source of truth for spawn-pause / passive-wait bugs.
+  On team initialization (liveness confirmed), the root shepherd ENTERS THE
+  FOCUS-LOOP (Pattern 6 composite; wake → act → probe) as its DEFAULT PRIMARY
+  OPERATING MODE — it does not merely avoid stopping, it OPERATES the loop until
+  CLOSE-FINALIZE. Long-running conductors adopt their own scoped FOCUS-LOOP for
+  the same reason. coordinate_drive_guard.sh is the backstop that catches lapses;
+  the behavioral contract here is the primary mechanism. Config gate:
+  [focus].loop_default (default "on"). Closes the "spawn pauses at the dispatch
+  boundary" failure (root waits passively for TeammateIdle; flock stalled for the
+  whole wave). Source of truth for spawn-pause / passive-wait bugs.
 introduced: v6.0.5
+updated: v6.1.2
 closes: ["#113", "#98", "#112"]
 related: ["#70", "#86", "#66", "#58"]
 ---
@@ -44,8 +49,8 @@ It is the unifying fix behind a cluster of field issues:
 |---|---|---|
 | #113 | Root waits passively for `TeammateIdle`; scope-creep/Cargo drift invisible until wave end | §V active inspection sweep at every wake + before every yield |
 | #98 | Teammate goes idle with no escalation payload; root left blind, must manually probe | §VI proactive status probe on idle-without-`WAVE-COMPLETE` |
-| #112 | Conductors sit idle 10–30 min post-`WAVE-COMPLETE` while root "plans"; delayed prune | §IV act-on-idle-immediately (prune + refresh in the same wake) |
-| #58 | Idle teammates reused context-starved instead of pruned + refreshed | §IV pruning is an action, not a deferral |
+| #112 | Conductors sit idle 10–30 min post-`WAVE-COMPLETE` while root "plans"; delayed prune | §IV-b act-on-idle-immediately (prune + refresh in the same wake) |
+| #58 | Idle teammates reused context-starved instead of pruned + refreshed | §IV-b pruning is an action, not a deferral |
 
 ---
 
@@ -84,7 +89,7 @@ Ending the turn at the dispatch boundary, or after acknowledging a
 `WAVE-COMPLETE`, or while teammates are mid-wave, **with no operator question
 pending**, is the bug. The root has work to do (kickoff confirmation, wave-gate
 scaffolding, materialization, gate release, prune+refresh, liveness sweep) and a
-cheaper way to wait (yield to the event system, §IV). Passive-wait does neither.
+cheaper way to wait (yield to the event system, §IV-b). Passive-wait does neither.
 
 > **The rule, one line:** *yield to events, never to the operator — unless the
 > operator is the only one who can answer the open question.*
@@ -118,7 +123,38 @@ the coordinate cycle.
 
 ---
 
-## IV. The coordinate cycle — wake → act → probe → yield
+## IV. The FOCUS-LOOP — root's default coordinate engine under `/shepherd:spawn`
+
+The coordinate cycle described below IS the root's **default FOCUS-LOOP**
+(Pattern 6 composite; `references/workflow-templates.md` + `references/loop-
+templates.md` — the `FOCUS-LOOP` entry). When the root adopts the
+`agents/shepherd.md` profile under `/shepherd:spawn` and the team
+initializes (liveness confirmed, per §III), it enters this loop as its
+**primary operating mode**, not as a fallback or optional behaviour. The
+loop runs until `CLOSE-FINALIZE` completes. Config gate:
+`[focus].loop_default` in `shepherd.toml` (default `"on"`; set `"off"` to
+suppress and rely on `coordinate_drive_guard.sh` alone — not recommended).
+
+**The framing shift matters.** Prior to this doctrine update the root was
+described as "not stopping" (a negative constraint). The correct framing is
+affirmative: the root **OPERATES** the FOCUS-LOOP; the `coordinate_drive_guard.sh`
+Stop hook (§VII) is the **backstop** that catches a lapse if the prose erodes —
+it is not, and never was, the primary mechanism.
+
+### Long-running conductors — own FOCUS-LOOP (B4)
+
+A teammate-conductor assigned a **long or multi-wave lane** (typically L/XL
+scope, or any lane spanning ≥ 2 waves) MUST adopt its OWN FOCUS-LOOP keyed
+to its lane objective to avoid drift. The conductor does not merely walk its
+graph to completion and yield; it operates a bounded loop (max from
+`[focus].loop_max_default`) whose objective condition is the lane's
+`CLOSE-FINALIZE` or final `WAVE-GATE` node. The same wake → act → probe
+structure applies, scoped to the conductor's assigned lane rather than the
+full team. Short-lived conductors (S/XS scope, single-wave lanes) are exempt
+— their work terminates naturally without a loop. See `references/loop-
+templates.md §FOCUS-LOOP` for the conductor-specific template.
+
+## IV-b. The coordinate cycle — wake → act → probe → yield
 
 While any teammate is live, the root is in **coordinate mode**
 (`doctrines/root-shepherd-orchestration.md §II`). Every time the root is awake
@@ -184,7 +220,7 @@ an implicit ask of the operator.** Same turn-end mechanic, opposite correctness.
 self-scheduling timer and **must not** `sleep`-spin to fake one. The realizable,
 honest cadence is **event-anchored**:
 
-- The root runs the §IV.3 PROBE **at every wake and before every yield** — so a
+- The root runs the §IV-b.3 PROBE **at every wake and before every yield** — so a
   drift/liveness check lands on every `TeammateIdle`, every `WAVE-COMPLETE`, and
   every heartbeat-driven wake. In a healthy wave the teammate heartbeats per
   major phase boundary (`spawn-escalation.md §V`), giving the root multiple
@@ -239,7 +275,7 @@ a `Stop` hook, not left to prose alone.
 - **Engaged (live teammates present):** if there is **actionable, root-clearable
   coordinate state** — an `idle` teammate, or lead-bound unread mail — the root
   is trying to stop with work undrained (the passive-wait bug). The hook emits
-  `{"decision":"block","reason": <the §IV cycle, abbreviated>}` so the platform
+  `{"decision":"block","reason": <the §IV-b cycle, abbreviated>}` so the platform
   re-engages the root to drain it instead of pausing.
 - **Legitimate-pause aware:** the block `reason` explicitly authorizes the §II
   operator-pauses ("if you are stopping to surface a HARD-STOP or
@@ -269,7 +305,7 @@ the fix; the hook catches the regression when the prose erodes.
 To keep the guard and the contract from over-firing, these are explicitly fine:
 
 - **Yielding while teammates are genuinely `active`** (recent heartbeats, mailbox
-  drained, probe clean). That is §IV.4 working as designed — the guard does not
+  drained, probe clean). That is §IV-b.4 working as designed — the guard does not
   block it (no `idle` row, no unread).
 - **The enumerated §II operator-pauses.** Surfacing a `HARD-STOP`,
   operator-question, dispute verdict, or the ROOT CLOSE REPORT and stopping is
@@ -289,6 +325,9 @@ To keep the guard and the contract from over-firing, these are explicitly fine:
 - `doctrines/native-coordination.md` — no `sleep`-spin; event-driven coordination
 - `doctrines/claude-code-platform-alignment.md §V` — `Stop` hook registration (`coordinate_drive_guard.sh`)
 - `doctrines/invariant-enforcement-matrix.md` — prose→mechanism coverage (#86)
+- `references/loop-templates.md §FOCUS-LOOP` — per-role loop catalog; root FOCUS-LOOP entry + conductor-specific template (long-running lane variant, B4)
+- `doctrines/loop-templates.md` — binding loop doctrine: bounded, role-shaped, terminates on measurable predicate
+- `docs/configuration.md §[focus]` — `loop_default` key; `loop_max_default`
 - `commands/spawn.md` — §Spawn dispatch (kickoff wording); §Root-shepherd responsibilities
 - `commands/start.md` — §Teammate path (begin-immediately)
 - `hooks/scripts/coordinate_drive_guard.sh` — the backstop implementation

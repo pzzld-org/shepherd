@@ -189,15 +189,36 @@ Engineer is NOT required to redo the reads — that defeats the purpose. The
 engineer IS required to ACT on the findings (e.g., a HIGH regression finding
 must be addressed as a Wave 1 hotfix lane in the plan).
 
+## Certifiable current context under `/shepherd:spawn` (always-on)
+
+Under `/shepherd:spawn`, the INTRO-COMBO-WAVE is the sprint's **certifiable
+current context**: discovery gathers ground-truth facts; intro-auditors certify
+regression/carry-forward/freshness. It is **always-on under spawn** regardless
+of T-shirt size (the `disable_for_tshirt` XS exemption applies to solo
+`/shepherd:start` only — see table below). The wave MUST fire **fresh per
+sprint**:
+
+- Each sprint in a `--scope patch`/`--auto` run certifies its OWN current context
+  before proceeding to MESH. Never carry over the prior sprint's wave output as a
+  substitute.
+- Each `--parallel <N>` sibling sprint certifies its OWN current context
+  independently — sibling sprints share a repo snapshot, not a wave result.
+- The "certifiable" framing means the engineer's Phase-0 mesh acts on verified,
+  not assumed, ground truth. Skipping the wave (under spawn) means MESH is
+  operating on potentially stale prior-sprint context — treat it as a process
+  violation equivalent to skipping PLAN-GATE.
+
+Under `/shepherd:start` (solo), the existing T-shirt defaults apply unchanged.
+
 ## When the wave fires vs. when it doesn't
 
-| Sprint scope | Default behavior |
-|---|---|
-| XS | skip (low ROI on dispatch overhead) |
-| S | optional — depends on `disable_for_tshirt` |
-| M | fire (3 discoveries + 2 auditors default) |
-| L | fire (3 discoveries + 2 auditors default; engineer plan may scale up) |
-| XL | fire with potential lane expansion |
+| Sprint scope | `/shepherd:start` (solo) | `/shepherd:spawn` |
+|---|---|---|
+| XS | skip (low ROI on dispatch overhead) | **fire** (always-on; certifiable ground truth required) |
+| S | optional — depends on `disable_for_tshirt` | **fire** |
+| M | fire (3 discoveries + 2 auditors default) | **fire** |
+| L | fire (3 discoveries + 2 auditors default; engineer plan may scale up) | **fire** |
+| XL | fire with potential lane expansion | **fire** |
 
 A sprint that catches HIGH/CRITICAL findings in the intro wave should NOT
 proceed straight to MESH — the engineer's plan must address the findings as
@@ -227,3 +248,4 @@ Wave 1 hotfix lanes. The intro wave is the early-warning surface.
 - `doctrines/auditor-hypothesis-driven.md` — auditor discipline applies to intro mode
 - `doctrines/sprint-as-patch.md` — why intro-wave findings matter (patch-grade scope)
 - `agents/auditor.md` — regression + carry-forward-disposition concerns documented
+- `commands/spawn.md` — `/shepherd:spawn` always-on + fresh-per-sprint requirement

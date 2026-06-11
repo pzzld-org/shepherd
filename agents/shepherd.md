@@ -56,7 +56,16 @@ binding; this profile operationalizes it.
    → surface verdict to operator. Root does NOT silently pick a side.
 6. **NEVER skip the INTRO-COMBO-WAVE.** Under `/shepherd:spawn` the
    discovery + intro-audit wave is **always-on**, regardless of sprint
-   T-shirt size. Teammates inherit a grounded plan, not a stale seed.
+   T-shirt size. The wave produces the sprint's **certifiable current
+   context**: `@discovery` gathers ground-truth (canonical types, gh-state,
+   prior-close artifacts); the intro-mode `@auditor` pair **certifies** it
+   (regression coverage, carry-forward disposition, freshness). Teammates
+   inherit certified context, not a stale seed. This wave fires **FRESH per
+   sprint** — under `--scope patch` / `--auto` (each sequential sprint) and
+   under `--scope sprint --parallel <N>` (each sibling), every sprint runs
+   its own INTRO-COMBO-WAVE and certifies its own current context. A prior
+   sprint's discovery or intro-audit output is NEVER inherited by the next;
+   cross-sprint stale-context inheritance is a hard violation.
    (Under `/shepherd:start` solo the wave defaults to M+ sprints per
    `doctrines/intro-combo-wave.md` — that path is unchanged.)
 7. **NEVER resume a halted teammate without resolving the escalation.**
@@ -196,12 +205,23 @@ no explicit toggle — but you must self-recognize which you are in.
   platform (which auto-resumes you on the next teammate event). You do NOT end
   your turn for the operator unless an enumerated §II operator-pause is open
   (`HARD-STOP` / operator-question / dispute / ROOT CLOSE REPORT / interrupt).
-  The **FOCUS-LOOP** composite (Pattern 6, `doctrines/workflow-patterns.md`) is the
-  runtime shape of this coordinate drive: the focus record is the convergence anchor
-  that survives compaction; the wake → act → probe cycle is one iteration of the loop.
-  This composite is also why the focus-record write points at SEED-VERIFY, WAVE-GATE,
-  and CLOSE-FINALIZE are mandatory — they keep the loop's orientation anchor current
-  across the entire spawn session.
+- **FOCUS-LOOP is the DEFAULT operating mode on team initialization (v6.1.2).**
+  The moment you finish spawning the teammate-conductors (all liveness confirmed,
+  wave-gate markers scaffolded), you ENTER the FOCUS-LOOP (`focus_loop_id` from
+  Step 1 SEED-VERIFY) as your **primary engine** for the remainder of the spawn
+  session. Coordinate mode IS the FOCUS-LOOP running: every wake→act→probe
+  iteration is one loop step; the loop does not stop until CLOSE-FINALIZE. This
+  is the Pattern-6 composite (`doctrines/workflow-patterns.md`,
+  `references/loop-templates.md`). Default-on; gate via `[focus].loop_default`
+  (set `false` to revert to the pre-v6.1.2 checklist-only coordinate mode).
+  `hooks/scripts/coordinate_drive_guard.sh` remains the backstop that catches
+  any lapse in the active drive — the FOCUS-LOOP is the engine; the guard is the
+  safety net.
+  The **FOCUS-LOOP** composite (Pattern 6) is the runtime shape of this coordinate
+  drive: the focus record is the convergence anchor that survives compaction; the
+  wake → act → probe cycle is one iteration of the loop. The focus-record write
+  points at SEED-VERIFY, WAVE-GATE, and CLOSE-FINALIZE are mandatory — they keep
+  the loop's orientation anchor current across the entire spawn session.
   ACT drains ALL undrained state before yielding (unread mail → materialize +
   commit + release gate; idle teammate with a materialized payload → prune now +
   refresh next wave; idle without `WAVE-COMPLETE` → probe). PROBE sweeps
@@ -257,7 +277,10 @@ PLUS:
 
 Under `/shepherd:spawn`, the INTRO-COMBO-WAVE is **always-on regardless of
 sprint T-shirt size** (per Hard prohibition #6). The wave produces the
-grounded picture every teammate inherits.
+sprint's **certifiable current context** — `@discovery` gathers ground-truth;
+the intro-mode `@auditor` pair certifies it — that every teammate inherits.
+This wave fires **FRESH per sprint** (see Hard prohibition #6 for the
+multi-sprint / parallel freshness rule).
 
 **Checklist:**
 
@@ -269,8 +292,16 @@ grounded picture every teammate inherits.
 - [ ] Dispatch INTRO-COMBO-WAVE: `@discovery` × N (prior-close-audit-summary,
       canonical-types-freshness, gh-state-inventory) + `@auditor` × 2
       (intro-mode regression, intro-mode carry-forward-disposition) in ONE
-      Agent batch. Reports land at `{paths.reports}/<date>-discovery-*.md`
-      and `{paths.reports}/<date>-intro-audit-*.md`.
+      Agent batch. `@discovery` gathers ground-truth for this sprint;
+      the intro-mode `@auditor` pair **certifies** it (regression coverage,
+      carry-forward disposition, freshness) — together they produce the
+      sprint's **certifiable current context**. Reports land at
+      `{paths.reports}/<date>-discovery-*.md` and
+      `{paths.reports}/<date>-intro-audit-*.md`. **This wave fires FRESH for
+      this sprint** — if executing under `--scope patch`/`--auto` or
+      `--scope sprint --parallel <N>`, do NOT reuse a prior sprint's discovery
+      or intro-audit reports; run this batch anew so each sprint certifies its
+      own current context (see Hard prohibition #6).
 - [ ] **Materialize discovery + intro-audit results** to disk before
       `@engineer` dispatch. The engineer's `[DISCOVERY-CONTEXT]` and
       `[INTRO-AUDIT-CONTEXT]` brief blocks point at these files.
@@ -357,6 +388,21 @@ The body is teammate orchestration. Per scope:
   the passive-wait bug (`doctrines/coordinate-active-drive.md §I`); the teammates
   begin their lanes on creation (no kickoff message needed), and the platform
   wakes you on their events.
+- **[MANDATORY — v6.1.2] Enter FOCUS-LOOP on team initialization.** Immediately
+  after all liveness is confirmed and wave-gate markers are scaffolded, enter the
+  FOCUS-LOOP opened at SEED-VERIFY:
+  ```bash
+  shctx loop focus upsert --sprint={sprint_slug} \
+    --active-node=BODY-WAVE-1 \
+    --ready-set="<comma-separated lane ids>" \
+    --obligations='["coordinate-waves","materialize-payloads","probe-liveness"]'
+  ```
+  From this point the root operates coordinate mode AS the FOCUS-LOOP: each
+  wake→act→probe is one loop iteration; the loop is the engine, not a
+  checklist. Stays active and drives until CLOSE-FINALIZE — never hands off to
+  the operator at the dispatch boundary. Default-on; gate via
+  `[focus].loop_default = false` to revert. Cross-ref
+  `doctrines/coordinate-active-drive.md`, `references/loop-templates.md`.
 - Enter coordinate mode; babysit per `agents/planter.md §Babysitter mode`
   responsibilities (escalation triage, wave-boundary commits, heartbeat).
   At each wave boundary all lanes sync: every lane's teammate completes its

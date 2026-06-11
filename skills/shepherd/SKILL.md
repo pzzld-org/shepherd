@@ -374,7 +374,7 @@ The walk trace (optional, per `[stage_graph].walk_trace_enabled`) is the O(1) re
 
 ## X. Invocation
 
-**`/shepherd:spawn` is the primary command** for substantive sprint work — root-shepherd + teammate-conductor **lanes** (Agent Teams) with **Dynamic Workflow** step execution (the full parallel substrate). **`/shepherd:start` is the solo, lightweight path** — one sprint in main chat, **no teams, no lanes** (the conductor walks the plan in-session and compiles its own gate-free fan-out). They are **disjoint execution paths**, not a wrapper relationship (`doctrines/root-shepherd-orchestration.md §I-bis`). `/shepherd:plant` (Opus) is upstream of both — it authors seeds.
+**`/shepherd:spawn` is the primary command** for substantive sprint work — root-shepherd + teammate-conductor **lanes** (Agent Teams). Under `/shepherd:spawn`, BOTH the root AND each teammate-conductor compile their respective gate-free fan-out segments to **Dynamic Workflows** (`shctx graph compile --segment=<entry> --verify` → run → `shctx graph mark`); the root also operates a **FOCUS-LOOP** by default (wake → act → probe, until CLOSE-FINALIZE) as its primary coordinate engine (`doctrines/coordinate-active-drive.md §IV`; config: `[focus].loop_default`). This is mode-agnostic: compile-down is not a root-only step. **`/shepherd:start` is the solo, lightweight path** — one sprint in main chat, **no teams, no lanes** (the conductor walks the plan in-session and compiles its own gate-free fan-out). They are **disjoint execution paths**, not a wrapper relationship (`doctrines/root-shepherd-orchestration.md §I-bis`). `/shepherd:plant` (Opus) is upstream of both — it authors seeds.
 
 | Command | Profile loaded | Action |
 |---------|---|--------|
