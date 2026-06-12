@@ -11,7 +11,7 @@ assert_file "$SHCTX_TEST_TMP/.shepherd/shepherd.db"
 assert_file "$SHCTX_TEST_TMP/.shepherd/project.json"
 assert_file "$SHCTX_TEST_TMP/.shepherd/CONVENTIONS.md"
 assert_file "$SHCTX_TEST_TMP/.shepherd/.gitignore"
-for d in ctx plans reports docs/handoffs docs/specs docs/diagrams docs/journal logs tmp profiles; do
+for d in ctx docs/plans docs/reports docs/handoffs docs/specs docs/diagrams docs/journal logs tmp profiles; do
   [[ -d "$SHCTX_TEST_TMP/.shepherd/$d" ]] || { echo "FAIL: missing dir: .shepherd/$d" >&2; exit 1; }
 done
 # Default mode MUST NOT create .artifacts/.
@@ -47,7 +47,7 @@ assert_file "$SHCTX_TEST_TMP2/.artifacts/shepherd.db"
 assert_file "$SHCTX_TEST_TMP2/.artifacts/project.json"
 assert_file "$SHCTX_TEST_TMP2/.artifacts/CONVENTIONS.md"
 assert_file "$SHCTX_TEST_TMP2/.artifacts/.gitignore"
-for d in ctx plans reports docs/handoffs docs/specs docs/diagrams docs/journal logs tmp profiles; do
+for d in ctx docs/plans docs/reports docs/handoffs docs/specs docs/diagrams docs/journal logs tmp profiles; do
   [[ -d "$SHCTX_TEST_TMP2/.artifacts/$d" ]] || { echo "FAIL: missing dir: .artifacts/$d" >&2; exit 1; }
 done
 # Opt-in mode MUST NOT create .shepherd/.

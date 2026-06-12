@@ -87,8 +87,9 @@ fi
 
 # --- 3. db + schema ---
 db="$(shctx_db_path)"
+db_name="$(basename "$db")"   # shepherd.db (or legacy root.db) — report the real file
 if [[ -f "$db" ]]; then
-  add ok db "root.db" "$(du -h "$db" 2>/dev/null | cut -f1)" ""
+  add ok db "$db_name" "$(du -h "$db" 2>/dev/null | cut -f1)" ""
   schema_ver=$(shctx_sql "SELECT MAX(version) FROM schema_versions;" 2>/dev/null || echo "")
   if [[ -n "$schema_ver" && "$schema_ver" != "null" ]]; then
     add ok db "schema_version" "$schema_ver" ""
@@ -114,7 +115,7 @@ if [[ -f "$db" ]]; then
     add ok db "pending migrations" "none" ""
   fi
 else
-  add fail db "root.db" "missing" "run 'shctx init' or 'shctx ready'"
+  add fail db "$db_name" "missing" "run 'shctx init' or 'shctx ready'"
 fi
 
 # --- 4. lock state ---
