@@ -37,8 +37,6 @@ Shepherd is an orchestration framework for long-running engineering work in Clau
 
 Shepherd is a plugin for Claude Code installed via the marketplace or a symlink. There is no build system — assets are markdown briefs, YAML frontmatter, and shell scripts.
 
----
-
 ## Architecture
 
 ### Three meta tiers
@@ -202,13 +200,13 @@ Create `.claude/shepherd.toml` at the project root. Shepherd surfaces a warning 
 
 Config search order (first found wins):
 
-```
+```text
 .claude/shepherd.toml         ← project-pinned, checked into the repo
 .claude/shepherd.local.toml   ← project-pinned, gitignored (operator overrides)
 $XDG_CONFIG_HOME/shepherd.toml ← user-global default
 ```
 
-Minimal example:
+### Minimal example
 
 ```toml
 [project]
@@ -337,4 +335,4 @@ Current version: **6.1.3**. See [`CHANGELOG.md`](CHANGELOG.md) for the per-versi
 
 ## License
 
-Apache-2.0. See `LICENSE` at the repo root.
+Apache-2.0. See [`LICENSE`](LICENSE) at the repo root.
