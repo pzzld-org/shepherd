@@ -7,7 +7,7 @@ SHCTX="$SHCTX_SKILL_ROOT/scripts/shctx"
 # ---- Mode 1: default (.shepherd/) ----
 "$SHCTX" init
 
-assert_file "$SHCTX_TEST_TMP/.shepherd/root.db"
+assert_file "$SHCTX_TEST_TMP/.shepherd/shepherd.db"
 assert_file "$SHCTX_TEST_TMP/.shepherd/project.json"
 assert_file "$SHCTX_TEST_TMP/.shepherd/CONVENTIONS.md"
 assert_file "$SHCTX_TEST_TMP/.shepherd/.gitignore"
@@ -19,7 +19,7 @@ done
 
 # Exactly one project row, with id matching project.json.
 pid=$(jq -r '.id' "$SHCTX_TEST_TMP/.shepherd/project.json")
-db_pid=$(sqlite3 "$SHCTX_TEST_TMP/.shepherd/root.db" "SELECT id FROM projects;")
+db_pid=$(sqlite3 "$SHCTX_TEST_TMP/.shepherd/shepherd.db" "SELECT id FROM projects;")
 assert_eq "project_id" "$db_pid" "$pid"
 
 # Idempotent: second init does NOT overwrite project.json.
@@ -43,7 +43,7 @@ trap 'rm -rf "$SHCTX_TEST_TMP" "$SHCTX_TEST_TMP2"' EXIT
   "$SHCTX" init --artifacts
 )
 
-assert_file "$SHCTX_TEST_TMP2/.artifacts/root.db"
+assert_file "$SHCTX_TEST_TMP2/.artifacts/shepherd.db"
 assert_file "$SHCTX_TEST_TMP2/.artifacts/project.json"
 assert_file "$SHCTX_TEST_TMP2/.artifacts/CONVENTIONS.md"
 assert_file "$SHCTX_TEST_TMP2/.artifacts/.gitignore"

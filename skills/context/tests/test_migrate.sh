@@ -22,7 +22,7 @@ SQL
 out=$("$SHCTX" migrate)
 assert_contains "applied" "$out" "0099"
 
-v=$(sqlite3 "$SHCTX_TEST_TMP/.shepherd/root.db" "SELECT MAX(version) FROM schema_versions;")
+v=$(sqlite3 "$SHCTX_TEST_TMP/.shepherd/shepherd.db" "SELECT MAX(version) FROM schema_versions;")
 assert_eq "max_version" "$v" "99"
 
 # Idempotent: re-run is a no-op.

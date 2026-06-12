@@ -25,5 +25,5 @@ out=$("$SHCTX" style list)
 assert_contains "list" "$out" "rust.md"
 
 # DB row created for each language.
-n=$(sqlite3 "$SHCTX_TEST_TMP/.shepherd/root.db" "SELECT COUNT(*) FROM styles;")
+n=$(sqlite3 "$SHCTX_TEST_TMP/.shepherd/shepherd.db" "SELECT COUNT(*) FROM styles;")
 [[ "$n" -ge 6 ]] || { echo "FAIL: expected >=6 styles rows, got $n"; exit 1; }

@@ -31,7 +31,7 @@ EOF
 command -v cargo >/dev/null || { echo "skip: cargo not installed"; exit 0; }
 "$SHCTX" refresh --scope=symbols >/dev/null
 
-db=".shepherd/root.db"
+db=".shepherd/shepherd.db"
 # Verify single re-export (Bar) was indexed
 n=$(sqlite3 "$db" "SELECT COUNT(*) FROM index_symbols WHERE name='Bar' AND kind='re-export';")
 [[ "$n" -ge 1 ]] || { echo "FAIL: 'pub use foo::Bar' not indexed as re-export (got n=$n)" >&2; sqlite3 "$db" "SELECT name,kind,signature FROM index_symbols;"; exit 1; }

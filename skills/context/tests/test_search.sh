@@ -15,7 +15,7 @@ Project state for the BookSnapshot type used by the QuestDB writer.
 EOF
 "$SHCTX" refresh --scope=artifacts >/dev/null
 
-db=".shepherd/root.db"
+db=".shepherd/shepherd.db"
 project_id=$(jq -r '.id' .shepherd/project.json)
 now=$(date +%s)
 sqlite3 "$db" <<SQL

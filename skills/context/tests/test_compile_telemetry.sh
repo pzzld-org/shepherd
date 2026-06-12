@@ -3,7 +3,7 @@
 # "## Compile-down telemetry" close-report subsection (v6.0.9, #87).
 #
 # Strategy:
-#   1. Spin up a throwaway DB via SHEPHERD_WORKDIR (never touches .artifacts/root.db).
+#   1. Spin up a throwaway DB via SHEPHERD_WORKDIR (never touches .artifacts/shepherd.db).
 #   2. Apply schema through migration 0014 (compile_runs).
 #   3. Seed one clean compile-run row (CLOSE-SWARM, no degradation) and one
 #      deliberately degraded row (WAVE-1-IMPL: injected runtime failure + direct-
@@ -21,13 +21,13 @@
 # Or via the suite (auto-registered by run.sh glob `test_*.sh`):
 #   bash skills/context/tests/run.sh
 #
-# DOES NOT edit the repo's .artifacts/root.db — SHEPHERD_WORKDIR is always
+# DOES NOT edit the repo's .artifacts/shepherd.db — SHEPHERD_WORKDIR is always
 # pointed at a mktemp-created throwaway directory.
 
 source "$(dirname "$0")/_setup.sh"
 source "$(dirname "$0")/_assert.sh"
 
-# ---- throwaway namespace (never touches .artifacts/root.db) -----------------
+# ---- throwaway namespace (never touches .artifacts/shepherd.db) -----------------
 THROWAWAY_ROOT="$(mktemp -d -t compile-tel.XXXXXX)"
 trap 'rm -rf "$THROWAWAY_ROOT"' EXIT
 export SHEPHERD_WORKDIR="${THROWAWAY_ROOT}/.shepherd"
@@ -41,7 +41,7 @@ mkdir -p "$SHEPHERD_WORKDIR"
 
 "$SHCTX" init --shepherd >/dev/null          # init in SHEPHERD_WORKDIR
 "$SHCTX" migrate >/dev/null                  # applies all migrations including 0014
-DB="${SHEPHERD_WORKDIR}/root.db"
+DB="${SHEPHERD_WORKDIR}/shepherd.db"
 
 # ---- verify migration 0014 was applied --------------------------------------
 assert_table "$DB" "compile_runs"

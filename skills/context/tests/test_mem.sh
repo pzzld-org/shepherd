@@ -10,10 +10,10 @@ id=$("$SHCTX" mem add --kind=note --title="t" --body="b")
 out=$("$SHCTX" mem list)
 assert_contains "list" "$out" "t"
 "$SHCTX" mem pin "$id"
-n=$(sqlite3 "$SHCTX_TEST_TMP/.shepherd/root.db" "SELECT pinned FROM mem_entries WHERE id='$id';")
+n=$(sqlite3 "$SHCTX_TEST_TMP/.shepherd/shepherd.db" "SELECT pinned FROM mem_entries WHERE id='$id';")
 assert_eq "pinned" "$n" "1"
 "$SHCTX" mem unpin "$id"
-n=$(sqlite3 "$SHCTX_TEST_TMP/.shepherd/root.db" "SELECT pinned FROM mem_entries WHERE id='$id';")
+n=$(sqlite3 "$SHCTX_TEST_TMP/.shepherd/shepherd.db" "SELECT pinned FROM mem_entries WHERE id='$id';")
 assert_eq "unpinned" "$n" "0"
 out=$("$SHCTX" mem search --q=t)
 assert_contains "search" "$out" "t"

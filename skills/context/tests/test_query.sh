@@ -8,7 +8,7 @@ out=$("$SHCTX" query open-issues --json)
 assert_eq "empty_json" "$out" ""
 
 # Insert a row directly and query it.
-db="$SHCTX_TEST_TMP/.shepherd/root.db"
+db="$SHCTX_TEST_TMP/.shepherd/shepherd.db"
 pid=$(jq -r .id "$SHCTX_TEST_TMP/.shepherd/project.json")
 sqlite3 "$db" "INSERT INTO index_issues VALUES ('x','$pid','github',1,'t','open','[]',NULL,'[]','b','u',1,1,1);"
 out=$("$SHCTX" query open-issues --json)

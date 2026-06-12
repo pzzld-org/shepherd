@@ -25,7 +25,7 @@ shctx_test_repo() {
 
 # Produce a fresh, empty DB initialized with schema 0001.
 shctx_test_db() {
-  local db="$SHCTX_TEST_TMP/.shepherd/root.db"
+  local db="$SHCTX_TEST_TMP/.shepherd/shepherd.db"
   mkdir -p "$SHCTX_TEST_TMP/.shepherd"
   sqlite3 "$db" < "$SHCTX_SKILL_ROOT/schema/0001_init.sql" >/dev/null
   echo "$db"

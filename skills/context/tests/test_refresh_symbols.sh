@@ -23,9 +23,9 @@ command -v cargo >/dev/null || { echo "skip: cargo not installed"; exit 0; }
 
 "$SHCTX" refresh --scope=symbols
 
-count=$(sqlite3 "$SHCTX_TEST_TMP/.shepherd/root.db" \
+count=$(sqlite3 "$SHCTX_TEST_TMP/.shepherd/shepherd.db" \
   "SELECT COUNT(*) FROM index_symbols WHERE language='rust';")
 [[ "$count" -ge 3 ]] || { echo "FAIL: expected ≥3 symbols, got $count" >&2; exit 1; }
-sqlite3 "$SHCTX_TEST_TMP/.shepherd/root.db" \
+sqlite3 "$SHCTX_TEST_TMP/.shepherd/shepherd.db" \
   "SELECT name FROM index_symbols WHERE name='DriftCircuit';" \
   | grep -q DriftCircuit || { echo "FAIL: DriftCircuit not indexed" >&2; exit 1; }
