@@ -19,6 +19,7 @@ Pattern-6 circuit-breaker invariants apply to every template below without excep
 | `@discovery` | DISCOVERY-EXHAUST | Loop-Until-Done (generic Pattern 6) | 4 | `new_findings: false` |
 | `@worker` (state-reconcile) | WORKER-CONVERGENCE | CONVERGENCE-LOOP | 5 | State predicate met |
 | `@worker` (monitoring) | WORKER-WATCH | WATCH-LOOP | 20 | Anomaly detected OR cap reached |
+| `@worker` (outcome soak) | SOAK-LOOP | WATCH-LOOP | 6 | A seeded predicate regressed OR all hold at cap |
 | `@auditor` | AUDITOR-REFINE | Loop-Until-Done (generic Pattern 6) | 3 | Confidence plateau (`new_findings: false`) |
 | `@engineer` | ENGINEER-PLAN-REFINE | Loop-Until-Done (generic Pattern 6) | 3 | Critic gate green |
 | shepherd / conductor | FOCUS-LOOP | FOCUS-LOOP (named composite) | 8 | CLOSE-FINALIZE reached |
@@ -455,6 +456,124 @@ definition from `references/workflow-templates.md` applies.
   in the WATCH-LOOP definition.
 - **Monitoring horizon beyond 3 days in a single loop.** The native `/loop` auto-expiry is
   non-overridable. For longer horizons, re-initialize a new WORKER-WATCH loop after expiry.
+
+---
+
+## @worker loop — SOAK-LOOP (post-delivery outcome re-verification variant)
+
+### Intent
+
+Confirm that a *closed* sprint's seeded **outcomes** stay true after delivery. Shepherd is
+strong at landing code and green gates, but a gate-green close is not proof the seeded outcome
+holds — a deploy can regress p99, a migration can drop a row count, an error rate can climb a
+day later. SOAK-LOOP re-runs the sprint's seeded **acceptance predicates** (`seed §6`,
+`doctrines/outcome-enforcement.md`) against live state on a post-close interval (e.g. T+1d,
+T+7d) and surfaces any predicate that *was promised true and is now false*. It is the
+detection half of outcome-enforcement that runs **after** the close gate, on wall-clock time.
+
+### Composite
+
+Specializes **WATCH-LOOP** from `references/workflow-templates.md §WATCH-LOOP`. SOAK-LOOP is
+WORKER-WATCH re-pointed from "anomaly criteria" to "the seeded acceptance predicates" — the
+target is the sprint's own promises rather than a generic health signal. All WATCH-LOOP
+invariants apply: `--interval` is mandatory; the native `/loop` 3-day auto-expiry is the outer
+hard bound; the probe body is simple (run the predicates, classify, yield) with no inner
+fanout; `@worker` is the only valid probe iterator.
+
+### Flock agent binding
+
+| Role | Agent | Job |
+|------|-------|-----|
+| Probe iterator | `@worker` (bounded, read-only) | On each tick: re-run each seeded acceptance predicate against live state; emit `new_findings: true\|false` where `true` = a predicate regressed |
+| Interval scheduler | Native `/loop` | Emits wake event on cadence (`--interval`); auto-expires after 3 days |
+| Terminator | Conductor / root inline | On regression: surface `OUTCOME-REGRESSION` to operator. On all-hold-at-cap: emit `## Soak summary` |
+
+### Loop body — Probe → Act → Branch
+
+```
+Probe:  Run each seeded acceptance predicate at live HEAD / live service (the same checks the
+        seed §6 declared and the close auditor ran — greps, row counts, latency/error queries).
+Act:    Classify each predicate result against its promised truth value from the seed.
+Branch: new_findings: false (all predicates still hold) → yield to next /loop tick
+        new_findings: true (a predicate regressed)      → SOAK-ALERT; surface OUTCOME-REGRESSION; terminate
+        i >= max OR /loop expiry                         → SOAK-LOOP-DONE; emit Soak summary
+```
+
+### Termination predicate
+
+`new_findings: true` when any seeded predicate that was promised true now returns false — i.e.
+an outcome **regressed** after close. `new_findings: false` means every predicate still holds
+this tick; the scheduler drives the next wake. Cap-or-expiry terminates regardless.
+
+The predicates are NOT authored by the soak worker — they are the seed's own acceptance
+checks, carried forward from `seed §6` (and re-run by the close auditor per
+`doctrines/outcome-enforcement.md`). A soak loop that invents new checks is scope creep; it
+verifies the *promised* outcomes only.
+
+Example predicate sets (carried from the seed, not invented here):
+
+```yaml
+soak_predicates:
+  - "grep -rc 'impl Trait for' crates/ | awk -F: '{s+=$2} END{exit !(s==5)}'"   # struct count == 5
+  - "curl -fsS https://app/health | jq -e '.p99_ms < 100'"                       # latency SLO holds
+  - "sentry error_rate project:app env:prod < 1/min"                             # error budget intact
+```
+
+### Stage Graph shape
+
+```yaml
+SOAK-LOOP-INIT (conductor / root):
+  kind: watch
+  max_iterations: 6           # default for a T+1d / T+7d soak window; bounded by native /loop 3-day expiry
+  interval: <duration>        # MANDATORY — e.g. '1d', '6h'; delegated to native /loop
+  soak_predicates: <list>     # carried from the closed sprint's seed §6 — NOT invented here
+  action: shctx loop init --kind=watch --task="soak outcomes <sprint>" --max=6 --interval=<dur> --agent=worker
+  on-start: → SOAK-PROBE (via native /loop scheduling)
+
+SOAK-PROBE (worker):
+  brief: worker-soak-probe
+  soak_predicates: $soak_predicates
+  iteration: $i
+  constraint: read-only; re-run the seeded predicates ONLY; no remediation, no new checks
+  emits: new_findings: true|false   # true = a promised-true predicate now returns false
+  action: shctx loop record --id=$loop_id --iteration=$i --new_findings=$new_findings
+  on-empty (new_findings: false, $i < max):  → SOAK-PROBE (iteration: $i + 1, via /loop tick)
+  on-findings (new_findings: true):          → SOAK-ALERT (root): surface OUTCOME-REGRESSION; terminate
+  on-cap ($i >= max):                        → SOAK-LOOP-DONE
+  on-expiry (native /loop expired):          → SOAK-LOOP-DONE
+
+SOAK-LOOP-DONE (conductor / root):
+  action: shctx loop close --id=$loop_id --status=converged
+  emit: "## Soak summary" with predicate roster, per-predicate pass/fail history, final verdict
+```
+
+### Default `--max`
+
+**6**. A soak window is typically a handful of post-close checkpoints (e.g. T+1d, T+3d, T+7d),
+not continuous monitoring. The 3-day native `/loop` auto-expiry is the outer hard bound; for a
+T+7d soak, re-initialize the loop after the first expiry. Set `--max` to the number of planned
+checkpoints at the chosen interval.
+
+### Which composite
+
+Specializes **WATCH-LOOP**. When SOAK-LOOP appears in a Stage Graph, the full WATCH-LOOP
+definition from `references/workflow-templates.md` applies, with the anomaly target bound to
+the seeded acceptance predicates.
+
+### Anti-patterns
+
+- **Soaking outcomes that were never declared.** SOAK-LOOP re-runs `seed §6` predicates. If
+  the seed declared no machine-checkable outcomes, there is nothing to soak — fix that at the
+  seed/plan-gate (`doctrines/outcome-enforcement.md`), not by inventing checks in the loop.
+- **Remediating inside the probe.** Like WORKER-WATCH, the probe detects and surfaces; it does
+  not fix. A regression opens a *new* hotfix/sprint decision for the operator — embedding a
+  CODER-CONVERGENCE in the alert handler violates the depth-3 composition limit.
+- **Soak as a substitute for the close gate.** Outcome-enforcement is verified *at close*
+  first (`doctrines/outcome-enforcement.md §Seam 2`); the soak loop catches *post-close* drift.
+  A sprint that skips the close-gate predicate run and "leaves it to soak" has shipped an
+  unverified outcome.
+- **`@discovery` or a teammate-conductor as probe iterator.** Use `@worker` — a soak probe is
+  a bounded read-only tick, not orientation research and not a lane.
 
 ---
 

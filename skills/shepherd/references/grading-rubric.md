@@ -56,6 +56,14 @@ The conductor computes the sprint-level grade in three steps:
      pre-auth → sprint grade ≤ **C+** (cap).
    - Any **MISSING-`[CODE-STYLE]`** or **MISSING-`[DB-CONTEXT]`**
      auditor finding → first occurrence cap **C+**, repeat **F**.
+   - Any unresolved **OUTCOME-REGRESSION** — a seeded acceptance
+     predicate (`seed §6`) that was promised true and now returns
+     false at close — caps the **completeness** concern grade: no
+     A/A- while a seeded outcome is false. The cap is on completeness
+     (weight 0.35), so it anchors the synthesized headline downward
+     even when other concerns are strong. Per `doctrines/outcome-enforcement.md §Seam 3`,
+     the close auditor re-runs the predicates before grading; a
+     promised-true predicate that regressed is a HIGH finding.
 4. **Otherwise**, round the numeric average to the nearest letter grade.
 
 ## Worked example (axiom dev.5)

@@ -237,6 +237,11 @@ Every `/shepherd:*` invocation starts here, no exceptions.
      --invariants='<JSON array of lane file-scope and gate invariants>'
    ```
    Config-gatable via `[focus].loop_default` (default `"on"`). The FOCUS-LOOP IS the lane's default driver — wake → act → probe over the micro-Stage-Graph. Refresh at every WAVE-GATE (probe); include `focus_state` in every `WAVE-COMPLETE` payload so root can observe lane orientation. A teammate that skips this is at risk of drifting from its lane objective across compaction events. (For SOLO mode, focus-loop init is Step 1 / SEED-VERIFY boundary — see the INTRODUCTION checklist.)
+10. **W0-GATE check — confirm INTRO is certified before ANY body dispatch (#100).** The body depends on a certified ground state. A conductor MUST NOT fire a single coder/worker/discovery body batch until the **W0-GATE** (INTRO ground-truth certification: INTRO-COMBO-WAVE complete, regressions dispositioned, PLAN-GATE cleared, Stage Graph materialized) has PASSED for this sprint. Verify it explicitly before the Step 2 walk:
+    - **SOLO mode:** the W0-GATE passes when YOU complete the Step 1 INTRODUCTION checklist (INTRO-COMBO-WAVE landed, PLAN-GATE GREEN/YELLOW-resolved, graph materialized to `<ns>/graph/state.json`). Do not enter the Step 2 walk until that checklist is fully green.
+    - **TEAMMATE mode:** you skip INTRO — root runs it — so the gate is ROOT's to certify. Before your first WAVE-IMPL dispatch, confirm the boot prompt / lane brief carries the INTRO-certified plan AND the W0-GATE marker is resolvable (materialized graph present; the `wave-0`/`wave-1` gate task per the lane-per-conductor wave-gate mechanism not blocking). If the signal is NOT yet present, **BLOCK and re-check on your next wake** — do NOT begin lane work on an uncertified INTRO. Wait on the gate task (`addBlockedBy`); if it never arrives, surface `SendMessage(to: lead, halt_code: TEAMMATE-BOOT-MALFORMED, blocking: true)` rather than improvising a body batch.
+
+    This is a hard precondition, not a soft reminder: starting lanes before W0-GATE is the gate-dependency bug (#100) where body work races ahead of certified INTRO ground truth. The remedy is always block-and-recheck, never proceed-and-hope.
 
 ---
 
@@ -393,6 +398,11 @@ no pause-detector hook, and no `<ns>/pauses/` registry.
 
 - [ ] `completeness` auditor verifies: real-work test, issue-ledger discipline from §1, carry-forward refresh, Stage Graph discipline (no off-graph commits, no skipped Pattern B). `on-grade-cap` fires — grade lowers, walk continues to CLOSE-FINALIZE.
 - [ ] `dependency-topology` auditor runs wrapper-grep gate per `doctrines/wrapper-must-earn.md`.
+- [ ] **Seeded-acceptance-predicate re-run** (Seam 3, v6.1.3; `doctrines/outcome-enforcement.md §Seam 3`): the close auditor re-runs every seeded acceptance predicate against current HEAD / live state and compares each to its promised truth value **BEFORE final grade synthesis** — this is the enforcement point, not a post-grade annotation. A predicate promised true that now returns false is an `OUTCOME-REGRESSION` HIGH finding that **caps the completeness grade** (no A/A- while a seeded outcome is false) per `references/grading-rubric.md`. All predicates holding → grade proceeds normally. Reuses the auditor's read-only re-run machinery (the same one INTRO runs on the prior sprint), pointed at *this* sprint's seed.
+- [ ] **SOAK-LOOP recommendation** (Seam 4, v6.1.3; optional, post-close): when the seed declared post-delivery-sensitive outcomes (latency / error-rate / deploy-health / row-counts — anything that can regress after a green close), the close report RECOMMENDS a SOAK-LOOP (`references/loop-templates.md §SOAK-LOOP`) so the operator can keep re-verifying the predicates on wall-clock time. Emit the exact invocation in the close report — detection only, never auto-started:
+  ```
+  /shepherd:loop "soak outcomes for {sprint_slug}" --agent worker --interval 1d --max 6
+  ```
 - [ ] If CLOSE-SWARM emits `on-finding` (CRITICAL/HIGH): HOTFIX-CLOSE subgraph fires before CLOSE-FINALIZE.
 - [ ] **Finalize FOCUS-LOOP** (CLOSE-FINALIZE boundary, v6.0.9 / v6.1.2): write the terminal focus state and close the loop. This is the final **probe** of the wake → act → probe cycle — the loop converges here.
 

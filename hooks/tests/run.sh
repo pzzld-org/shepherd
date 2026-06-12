@@ -238,5 +238,31 @@ else
   fails=$((fails+1))
 fi
 
+# Toolkit surface hook (v6.1.2, hardened v6.1.3): merges local ∪ global
+# toolkit.json, sorts pinned-first, caps at 12, graceful-empty. Verifies the
+# SessionStart roster the operator relies on every session.
+echo "== test_toolkit_surface.sh (v6.1.3 — toolkit SessionStart roster) =="
+total=$((total+1))
+if tks_out=$(bash "$TESTS_DIR/test_toolkit_surface.sh" 2>&1); then
+  printf '  PASS  %s\n' "toolkit-surface-merges-sorts-caps"
+else
+  printf '  FAIL  %-50s\n' "toolkit-surface"
+  printf '%s\n' "$tks_out" | sed 's/^/        /'
+  fails=$((fails+1))
+fi
+
+# Exec-bit guard (v6.1.3): every path-invoked hook/CLI script must carry the
+# git-tracked executable bit. Regression guard for the v6.1.2 toolkit
+# "Permission denied" shipped-as-100644 class.
+echo "== test_exec_bits.sh (v6.1.3 — path-invoked scripts are executable) =="
+total=$((total+1))
+if xb_out=$(bash "$TESTS_DIR/test_exec_bits.sh" 2>&1); then
+  printf '  PASS  %s\n' "exec-bits-all-100755"
+else
+  printf '  FAIL  %-50s\n' "exec-bits"
+  printf '%s\n' "$xb_out" | sed 's/^/        /'
+  fails=$((fails+1))
+fi
+
 echo "—— $((total-fails))/$total passed ——"
 exit "$fails"

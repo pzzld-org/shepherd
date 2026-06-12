@@ -226,6 +226,19 @@ A lane is a **Claude session** (a teammate-conductor) that fans out its wave-ste
 
 These are **total** counts — file-disjoint vertical slices — **never** "lanes per wave." The count is driven by how many slices the work *genuinely* decomposes into and by the **measured `avg_lane_count`** from prior sprints (`shctx adapt priors --metrics`, #94) — **not** a "more is better" floor. **Fewer fat lanes beat many thin sessions:** each extra lane is another full session + context window + coordination cost, while depth *within* a lane (subagents/steps) is cheap and cache-friendly. When a lane's context fills, **re-spawn its teammate for the next wave** (fresh context, same slice) rather than minting a new lane. Add a lane only for a genuinely isolable vertical slice; minting a session per step crosses the primitive axes — a **`PRIMITIVE-INVERSION`** (`doctrines/primitive-axis-binding.md`) that `@critic` rejects. Per-**step** scope stays ≤ 5 files (steps are subagents inside a lane); a lane has no file cap beyond disjointness.
 
+### Match the vehicle to the work shape (no over-allocation — #61)
+
+Before projecting a lane, match the **work shape** to the cheapest sufficient **vehicle**. A teammate-conductor is a full Claude session + context window + coordination cost; spending one on work a subagent finishes in seconds is the over-allocation failure mode #61 names. The heuristic:
+
+| Work shape | Vehicle |
+|---|---|
+| Multi-file code across waves (a genuine vertical slice) | **lane → teammate-conductor** (spawn projection) |
+| A single file, or a tightly-bounded code change | **one `@coder` subagent** — NOT a teammate |
+| Markdown / docs / ops / non-code | **`@worker`** (subagent) |
+| Read-only research / orientation | **`@discovery`** (subagent) |
+
+**Do not allocate a conductor or teammate for single-file or markdown work.** That work is a step, fanned out as a subagent inside an existing lane (or root-direct under solo) — never its own session. If the seed prescribes a conductor for single-file or markdown-only work, surface a `[TIER-MISMATCH]` note (per §"What 'ground truth' means" above) rather than honoring it.
+
 ### Why many narrow lanes win (cache + cost economics)
 
 Per `doctrines/cache-telemetry.md` + `doctrines/brief-cache-discipline.md`: each teammate-conductor has a SMALL stable prefix (its lane brief + the conductor profile body) → high cache hit rates, cluster-wide prefix amortization across peer teammates, less drift, sub-linear wall-time in teammate count. "Fewer agents = cheaper" is WRONG when cache is utilized; many narrow lanes is the cost-optimal pattern.
@@ -264,7 +277,7 @@ Run `superpowers:brainstorming` against the seed + mesh. The full prompt list li
 
 Write `{paths.plans}/{sprint_slug}.plan.md`. Apply `superpowers:writing-plans` as the structural framework.
 
-The required frontmatter, body sections, and Stage Graph node templates are in the reference under "Plan document — required frontmatter" and "Plan document — required body sections (in order)". Every coder step must carry all seven bracketed sections fully populated — conductor copy-pastes verbatim.
+The required frontmatter, body sections, and Stage Graph node templates are in the reference under "Plan document — required frontmatter" and "Plan document — required body sections (in order)". Every coder step must carry all seven bracketed sections fully populated — conductor copy-pastes verbatim. The conductor materializes the brief in **stable-framing-first** order (`[ROLE]`/`[SKILLS]`/`[DOCTRINES]`/`[PROTOCOL-REMINDERS]` before the variable `[FILE-SCOPE]` → … → `[ACCEPTANCE]` tail) per `doctrines/brief-cache-discipline.md` — author the step's variable sections in that downstream order so the conductor copy-pastes without reshuffling.
 
 Before delivering, walk the **non-negotiable plan-quality bar checklist** (full list in the reference). A NO on any line = half-plan; iterate before delivering.
 

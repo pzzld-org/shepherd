@@ -301,7 +301,18 @@ The `--agent` flag selects the iterator. The templates map to `--agent` as follo
 |-----------|----------|-----------|-----------------|
 | `worker` (state-reconcile) | WORKER-CONVERGENCE | CONVERGENCE-LOOP | 5 |
 | `worker` (monitoring) | WORKER-WATCH | WATCH-LOOP | 20 |
+| `worker` (outcome soak) | SOAK-LOOP | WATCH-LOOP | 6 |
 | `discovery` | DISCOVERY-EXHAUST | Pattern 6 generic | 4 |
+
+> **SOAK-LOOP (post-close outcome re-verification).** A `--agent worker --interval`
+> variant that re-runs a *closed* sprint's seeded acceptance predicates (`seed §6`) against
+> live state on a post-close cadence, surfacing `OUTCOME-REGRESSION` if a promised-true
+> predicate now returns false. It is detection-only — never auto-remediation. Invoke:
+> ```
+> /shepherd:loop "soak outcomes for <sprint>" --agent worker --interval 1d --max 6
+> ```
+> See `references/loop-templates.md §SOAK-LOOP` (template) and
+> `doctrines/outcome-enforcement.md §Seam 4` (the close→soak seam it serves).
 
 The `--agent` flag currently accepts `worker` and `discovery`. The `@coder`,
 `@auditor`, and `@engineer` loop variants (CODER-CONVERGENCE, AUDITOR-REFINE,

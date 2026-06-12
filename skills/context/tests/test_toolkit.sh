@@ -6,6 +6,9 @@ SHCTX="$SHCTX_SKILL_ROOT/scripts/shctx"
 # toolkit does NOT require 'shctx init' (no DB dependency — JSON-only).
 # Use a fresh SHEPHERD_WORKDIR that is clean and local to this test.
 export SHEPHERD_WORKDIR="$SHCTX_TEST_TMP"
+# Isolate the global tier under the temp root so --global never touches the
+# operator's real ~/.config/shepherd/toolkit.json.
+export XDG_CONFIG_HOME="$SHCTX_TEST_TMP/xdg"
 
 # ---- init -------------------------------------------------------------------
 "$SHCTX" toolkit init --scope=local
@@ -116,6 +119,29 @@ assert_eq "rm.count" "$n" "1"
 
 # rm unknown errors.
 "$SHCTX" toolkit rm no_such && { echo "FAIL: rm unknown should error" >&2; exit 1; } || true
+
+# ---- flag aliases: --desc / --local / --global (v6.1.3) ---------------------
+# --desc is an alias for --description; --local for --scope=local. At this point
+# only context7 remains in the local toolkit (count 1).
+"$SHCTX" toolkit add --name=aliased --type=cli --desc="via --desc alias" --capabilities=x --local
+desc=$(jq -r '.tools[] | select(.name=="aliased") | .description' "$SHCTX_TEST_TMP/toolkit.json")
+assert_eq "alias.desc" "$desc" "via --desc alias"
+scope=$(jq -r '.tools[] | select(.name=="aliased") | .scope' "$SHCTX_TEST_TMP/toolkit.json")
+assert_eq "alias.local-scope" "$scope" "local"
+"$SHCTX" toolkit rm aliased --local   # restore local count to 1
+
+# --global routes to the global tier (isolated XDG under the temp root).
+"$SHCTX" toolkit add --name=globaltool --type=cli --desc="user-wide" --capabilities=x --global
+assert_file "$SHCTX_TEST_TMP/xdg/shepherd/toolkit.json"
+gname=$(jq -r '.tools[0].name' "$SHCTX_TEST_TMP/xdg/shepherd/toolkit.json")
+assert_eq "alias.global-add" "$gname" "globaltool"
+# md --scope=all merges both tiers and surfaces the global tool.
+out=$("$SHCTX" toolkit md --scope=all)
+assert_contains "alias.global-merge" "$out" "globaltool"
+# rm --global removes from the global tier.
+"$SHCTX" toolkit rm globaltool --global
+gn=$(jq '.tools | length' "$SHCTX_TEST_TMP/xdg/shepherd/toolkit.json")
+assert_eq "alias.global-rm" "$gn" "0"
 
 # ---- graceful-empty: no toolkit.json at all ---------------------------------
 rm -f "$SHCTX_TEST_TMP/toolkit.json"
