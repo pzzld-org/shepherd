@@ -54,9 +54,16 @@ Deleted the thin retired-redirect stubs (`/shepherd:autorun` + `/shepherd:parall
 
 Verified present + wired and closed: **#107** (toolkit registry, v6.1.2), **#121** (namespace resolution parity, v6.0.8), **#134** (Focus Loop, v6.0.9), **#87** (compile telemetry, v6.0.9), **#103** (engineer model pin + `ENGINEER-MODEL-FAIL`, v6.0.3+), **#99** (teammate git guard, v6.0.9), **#119** (planter discovery wave, v6.0.7+), and **#135** (hotfix vehicle guard — fixed and now enforcing, this release).
 
-### Known issue (pre-existing, untouched)
+### Test suite — repaired the `shctx` harness (23/40 → 40/40)
 
-The `skills/context/tests` suite has pre-existing failures from a test-harness DB-setup gap on sqlite 3.51 (the migration *files* apply cleanly; some tests build their DB without the full migration chain). Identical on `main` — unrelated to this release; tracked separately.
+The `skills/context/tests` suite had 17 pre-existing failures (present on `main`) — not a sqlite issue (the migrations apply cleanly), but **v6.1.2 renames that never reached the test harness**:
+
+- `root.db` → `shepherd.db`: `shctx init` now creates `shepherd.db`, but the harness (`_setup.sh`) and 22 tests still hardcoded `root.db` in their direct `sqlite3` queries → "no such table" against a fresh empty file. Renamed throughout (leaving `test_workdir.sh`'s intentional legacy-detection assertions).
+- `plans/`+`reports/` → `docs/plans/`+`docs/reports/`: `test_init` / `test_lint` referenced the pre-v6.1.2 top-level dirs the scaffold no longer creates.
+- `cmd_doctor.sh` hard-coded the label `root.db` regardless of the actual file — now reports the real `shctx_db_path` basename (a real cosmetic bug).
+- `test_compile_telemetry` asserted spaced JSON (`"…": 1`) against compact output (`"…":1`).
+
+Both suites now pass clean: **hooks 37/37, context 40/40**.
 
 ---
 

@@ -115,9 +115,9 @@ assert_contains "json-cause"            "$out_json" '"runtime_unavailable"'
 assert_contains "json-faithfulness"     "$out_json" '"faithfulness_pass_rate"'
 
 # Degradation event count for WAVE-1-IMPL must be 1
-assert_contains "json-deg-count-1"      "$out_json" '"degradation_events": 1'
+assert_contains "json-deg-count-1"      "$out_json" '"degradation_events":1'
 # Recovered count must be 1 (direct-dispatch fallback recovered)
-assert_contains "json-rec-count-1"      "$out_json" '"recovered_events": 1'
+assert_contains "json-rec-count-1"      "$out_json" '"recovered_events":1'
 
 # ---- assert: graceful-empty on a sprint with no compile_runs rows -----------
 # Switch to a different branch that has no seeded data.
