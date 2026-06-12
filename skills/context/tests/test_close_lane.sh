@@ -11,7 +11,7 @@ out=$("$SHCTX" close-lane lane-3 --sprint=v0.3.0-dev.4 --issues=#999,#1000 --sta
 echo "$out" | grep -q "carry-forward patch" || { echo "FAIL: missing markdown patch" >&2; echo "$out"; exit 1; }
 
 # Verify a row was inserted.
-n=$(sqlite3 .shepherd/root.db "SELECT COUNT(*) FROM lane_closures WHERE lane_id='lane-3' AND sprint_branch='v0.3.0-dev.4';")
+n=$(sqlite3 .shepherd/shepherd.db "SELECT COUNT(*) FROM lane_closures WHERE lane_id='lane-3' AND sprint_branch='v0.3.0-dev.4';")
 [[ "$n" == "1" ]] || { echo "FAIL: expected 1 lane_closure row, got $n" >&2; exit 1; }
 
 # Verify status enum is honored. Disable set -e so we can capture the rc.
@@ -23,9 +23,9 @@ set -e
 
 # Idempotency: calling close-lane twice updates same row.
 "$SHCTX" close-lane lane-3 --sprint=v0.3.0-dev.4 --status=partial >/dev/null
-n=$(sqlite3 .shepherd/root.db "SELECT COUNT(*) FROM lane_closures WHERE lane_id='lane-3' AND sprint_branch='v0.3.0-dev.4';")
+n=$(sqlite3 .shepherd/shepherd.db "SELECT COUNT(*) FROM lane_closures WHERE lane_id='lane-3' AND sprint_branch='v0.3.0-dev.4';")
 [[ "$n" == "1" ]] || { echo "FAIL: expected 1 row after re-close (UPSERT), got $n" >&2; exit 1; }
-status=$(sqlite3 .shepherd/root.db "SELECT status FROM lane_closures WHERE lane_id='lane-3';")
+status=$(sqlite3 .shepherd/shepherd.db "SELECT status FROM lane_closures WHERE lane_id='lane-3';")
 [[ "$status" == "partial" ]] || { echo "FAIL: expected status=partial after update, got $status" >&2; exit 1; }
 
 echo "PASS: test_close_lane.sh"

@@ -170,20 +170,20 @@ cmd_classify() {
     exit 0
   fi
 
-  # Classify each row
-  declare -A buckets
-  buckets[blocking-this-sprint]=""
-  buckets[labeled-non-issue]=""
-  buckets[tracking-future]=""
-  buckets[drift-risk]=""
-  buckets[unclassified]=""
-
-  declare -A bucket_counts
-  bucket_counts[blocking-this-sprint]=0
-  bucket_counts[labeled-non-issue]=0
-  bucket_counts[tracking-future]=0
-  bucket_counts[drift-risk]=0
-  bucket_counts[unclassified]=0
+  # Classify each row.
+  # Bucket storage is bash-3.2-safe (macOS ships bash 3.2 — `declare -A` is a
+  # fatal "invalid option" there, which would break `shctx issues` outright).
+  # Each bucket maps to two plain vars: _bk_<key> (newline-joined rows) and
+  # _bc_<key> (count). `printf -v` assigns by computed name WITHOUT eval, so a
+  # title with shell metacharacters can never break or inject.
+  _bk_key()   { printf '%s' "$1" | tr '-' '_'; }
+  _bk_get()   { local v="_bk_$(_bk_key "$1")"; printf '%s' "${!v:-}"; }
+  _bk_count() { local v="_bc_$(_bk_key "$1")"; printf '%s' "${!v:-0}"; }
+  _bk_append() {
+    local kv="_bk_$(_bk_key "$1")" cv="_bc_$(_bk_key "$1")"
+    printf -v "$kv" '%s%s' "${!kv:-}" "$2"
+    printf -v "$cv" '%d' "$(( ${!cv:-0} + 1 ))"
+  }
 
   # JSON output accumulator
   local json_rows='[]'
@@ -194,8 +194,7 @@ cmd_classify() {
     bucket=$(_classify_row "$number" "$title" "$state" "$labels" "$milestone" \
               "$updated_at" "$current_milestone" "$drift_thresh")
 
-    buckets[$bucket]+="${number}|${title}|${labels}|${milestone}"$'\n'
-    bucket_counts[$bucket]=$(( bucket_counts[$bucket] + 1 ))
+    _bk_append "$bucket" "${number}|${title}|${labels}|${milestone}"$'\n'
 
     if [[ "$fmt" == "json" ]]; then
       local entry
@@ -221,10 +220,12 @@ cmd_classify() {
   print_bucket() {
     local name="$1" heading="$2"
     [[ "$unclassified_only" -eq 1 && "$name" != "unclassified" ]] && return
-    [[ -z "${buckets[$name]}" ]] && return
+    local rows_str count
+    rows_str="$(_bk_get "$name")"; count="$(_bk_count "$name")"
+    [[ -z "$rows_str" ]] && return
     if [[ "$fmt" == "md" ]]; then
       echo ""
-      echo "### ${heading} (${bucket_counts[$name]})"
+      echo "### ${heading} (${count})"
       echo ""
       while IFS='|' read -r num ttl lbl ms; do
         [[ -z "$num" ]] && continue
@@ -232,16 +233,16 @@ cmd_classify() {
         local lbl_str; lbl_str=$(printf '%s' "$lbl" | tr -d '[]"' | tr ',' ' ')
         printf '- #%-5s  %s%s\n' "$num" "$ttl" "$ms_str"
         [[ -n "$lbl_str" ]] && printf '         labels: %s\n' "$lbl_str"
-      done <<< "${buckets[$name]}"
+      done <<< "$rows_str"
     else
-      printf '\n%-26s (%d)\n' "$heading" "${bucket_counts[$name]}"
+      printf '\n%-26s (%d)\n' "$heading" "${count}"
       printf '%-7s  %-55s  %s\n' "Issue" "Title" "Labels"
       printf '%-7s  %-55s  %s\n' "-------" "-------------------------------------------------------" "------"
       while IFS='|' read -r num ttl lbl _ms; do
         [[ -z "$num" ]] && continue
         local lbl_str; lbl_str=$(printf '%s' "$lbl" | tr -d '[]"' | tr ',' ' ' | xargs)
         printf '#%-6s  %-55s  %s\n' "$num" "${ttl:0:55}" "${lbl_str:0:40}"
-      done <<< "${buckets[$name]}"
+      done <<< "$rows_str"
     fi
   }
 
@@ -251,7 +252,7 @@ cmd_classify() {
     echo "| Bucket | Count |"
     echo "|---|---|"
     for bkt in blocking-this-sprint labeled-non-issue tracking-future drift-risk unclassified; do
-      echo "| ${bkt} | ${bucket_counts[$bkt]} |"
+      echo "| ${bkt} | $(_bk_count "$bkt") |"
     done
   else
     printf 'Issue triage — sprint: %s  current_milestone: %s\n' "$sprint" "$current_milestone"
@@ -259,7 +260,7 @@ cmd_classify() {
     printf '\n%-26s  %5s\n' "Bucket" "Count"
     printf '%-26s  %5s\n' "--------------------------" "-----"
     for bkt in blocking-this-sprint labeled-non-issue tracking-future drift-risk unclassified; do
-      printf '%-26s  %5d\n' "$bkt" "${bucket_counts[$bkt]}"
+      printf '%-26s  %5d\n' "$bkt" "$(_bk_count "$bkt")"
     done
   fi
 

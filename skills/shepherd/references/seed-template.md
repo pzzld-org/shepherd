@@ -14,6 +14,8 @@ A seed is **dense, drift-resistant, multi-phase, and parallel-aware**. Tables ov
 
 For a patch under default config (`patch_slug_pattern = "v{X}{Y}{Z}"`, `sprint_slug_pattern = "v{X}{Y}{Z}-dev{N}"`), this resolves to e.g., `.artifacts/plans/v029-dev5.seed.md`. Filenames collapse the version triplet (`X.Y.Z` → `XYZ`) and the `-dev.N` suffix (`-dev.N` → `-devN`) per `doctrines/seed-naming.md`. Branches keep dots; filenames don't.
 
+The `-devN` suffix on a **per-sprint seed filename is ALLOWED** — it is the intermediate execution artifact `/shepherd:start` (and each lane under `/shepherd:spawn --parallel`) reads. This is NOT in tension with `doctrines/version-scale-roadmap.md`: that doctrine's "patch-scoped only" rule governs **final shipped artifacts** (CHANGELOG entries, tags, release PR titles) and the patch-arc seed/plan, not the intermediate per-sprint seeds a multi-sprint patch fans out into.
+
 Patch-arc seeds drop the sprint suffix: `{paths.plans}/{patch_slug}.seed.md` → e.g., `.artifacts/plans/v029.seed.md`.
 
 ---
@@ -211,6 +213,20 @@ When a seed lane says "file at Phase 0", the engineer's Phase 0 mesh creates the
 - Memory: <path>
 - Doctrines invoked: <list>
 ```
+
+### 6-bis. Outcome verification — every acceptance is a RUNNABLE predicate
+
+Each deliverable's `**Acceptance:**` line (and each entry under the GH issue body's `## Acceptance`) MUST be a **runnable predicate** with a known expected result, never prose. "Auth feels faster" is not enforceable; one of these is:
+
+- **grep + count** — `grep -rc 'impl X for Y' crates/ | awk -F: '{s+=$2} END{exit !(s==5)}'`
+- **structural assertion** — a file/symbol/export exists, a config key is present
+- **LOC floor** — a substantive-work threshold per T-shirt size
+- **log | metric | DB query** — `sentry error_rate project:app env:prod < 1/min`; a row-count or schema query
+- **health probe** — `curl -fsS $URL/health | jq -e '.p99_ms < 100'`
+
+These predicates are load-bearing **past** the coder: the **close auditor re-runs every one before grading** — a predicate promised true that now returns false is an `OUTCOME-REGRESSION` and caps the completeness grade — and an optional post-close **SOAK-LOOP** re-runs the same set on wall-clock time (`doctrines/outcome-enforcement.md`; `references/loop-templates.md §SOAK-LOOP`). A deliverable with a prose-only acceptance is a seed defect — `@critic` rejects it at PLAN-GATE (`PLAN-MISSING-OUTCOME-VERIFICATION`).
+
+For outcomes that can regress **after** delivery — latency, error rate, deploy health, row counts — note a suggested **soak cadence** on the deliverable (e.g. `soak: T+1d, T+7d`) so the close report can recommend a SOAK-LOOP. Pure code-shape outcomes (a fixed `impl` count, a removed symbol) do not regress on wall-clock time and need no soak.
 
 ### 7. Wave composition (NON-BINDING recommendation — engineer composes `waves × steps`)
 

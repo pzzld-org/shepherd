@@ -128,7 +128,7 @@ Each concern has a hypothesis-first opening (per `doctrines/auditor-hypothesis-d
 - **`data-flow`** — "which money-path was MOST changed?" Trace end-to-end; fail-closed semantics; diagnostic-key population.
 - **`dependency-topology`** — "what new types/aliases were introduced?" Wrapper-grep on those; build-manifest adds vs removes; feature gate discipline.
 - **`datastore-state`** — "what schema changes did this sprint introduce?" Advisor checks AFTER changes; migrations applied; row-count anomalies; RLS.
-- **`completeness`** — "what did the seed PROMISE that the plan delivered (or not)?" Real-work test; Phase 0 mesh + ledger sweep; carry-forward refresh; SUBTRACT verification; sprint-pattern journal write; **brief-order verification (per `doctrines/brief-cache-discipline.md`)**; **cache-telemetry table (per `doctrines/cache-telemetry.md`)**.
+- **`completeness`** — "what did the seed PROMISE that the plan delivered (or not)?" Real-work test; Phase 0 mesh + ledger sweep; carry-forward refresh; SUBTRACT verification; sprint-pattern journal write; **brief-order verification (per `doctrines/brief-cache-discipline.md`)**; **cache-telemetry table (per `doctrines/cache-telemetry.md`)**; **outcome re-verification — re-run this sprint's seed §6 acceptance predicates; a promised-true predicate now false is an `OUTCOME-REGRESSION` (HIGH, caps the grade) per `doctrines/outcome-enforcement.md §Seam 3`**.
 - **`regression`** (intro) — "what acceptance from PRIOR sprint is most likely to have drifted at HEAD?" Re-run runnable acceptances; file findings on mismatches. No grade. **v5.1.7+:** also walks `[gates].extra` per Canonical gates section below.
 - **`carry-forward-disposition`** (intro) — "which carry-forward entries are most likely to be stale/mislabeled?" Verify GH state, label, sprint target. No grade.
 
@@ -163,6 +163,17 @@ Read the conductor's dispatch run-log entries for this sprint (typically under `
 ### Completeness — v5.1.3 extension: cache telemetry table
 
 Run `shctx query cache-usage --sprint={sprint_branch} --md` and embed the table verbatim in the report's Cache-telemetry subsection (see the report template below for placement). If the `v_cache_usage` view is absent (telemetry data not yet collected), write `telemetry view absent — establishing baseline` and skip. Threshold guidance: aggregate hit-rate < 40% across the sprint is a MEDIUM finding flag for investigation; do NOT grade-cap on this alone in the first three sprints (exploratory baseline period per `doctrines/cache-telemetry.md`).
+
+### Completeness — v6.1.3 extension: outcome re-verification (Seam 3)
+
+Per `doctrines/outcome-enforcement.md §Seam 3`, the completeness concern is the enforcement point for the seed's promised OUTCOME — not just that code landed, but that the thing the seed promised is still TRUE. **Before** synthesizing the completeness grade, re-run every seeded acceptance predicate from the current sprint's `seed §6` against current HEAD / live state and compare each result to its promised truth value:
+
+1. Read the current sprint's seed `§6` deliverables (and `§6-bis Outcome verification`) and the plan's `[ACCEPTANCE]` blocks — these carry the runnable predicates the engineer made executable.
+2. Re-run each runnable predicate (grep + count assertion, structural assertion, LOC floor, log/metric/DB query, health probe) at current HEAD / live service. This is the SAME read-only re-run you already do on the PRIOR sprint at INTRO (`doctrines/intro-combo-wave.md §4`) — pointed at THIS sprint's seed instead of the prior one. No new machinery.
+3. A predicate **promised true that now returns false** is an **`OUTCOME-REGRESSION`** — file a **HIGH** finding (full Hypothesis + Falsification + Confidence triple; paste the predicate command and its actual output verbatim) and register the row via `shctx audit insert --concern=completeness --severity=high`. Per `references/grading-rubric.md`, an unresolved `OUTCOME-REGRESSION` **caps the completeness grade** — no A/A- while a seeded outcome is false.
+4. All predicates holding → note the pass in `## Verifications` and let the grade proceed normally.
+
+A sprint that promised a machine-checkable outcome but whose seed declared no runnable predicate is itself a defect — file it (the gate that should have caught it is `PLAN-MISSING-OUTCOME-VERIFICATION` at PLAN-GATE, `doctrines/outcome-enforcement.md §Seam 2`). Outcome re-verification is **detection only** — you file the regression; the conductor/operator decides the remediation. A genuinely outcome-less sprint (rare — pure docs/scaffolding) that declared so explicitly no-ops this step rather than silently passing.
 
 ## Per-finding contract
 

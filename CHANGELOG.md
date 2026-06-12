@@ -4,6 +4,69 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v6.1.3 — 2026-06-12
+
+The toolkit-hardening, bash-3.2-portability, and **outcome-enforcement** release. Fixes the v6.1.2 toolkit "Permission denied" that fired at session start, repairs three macOS bash-3.2 breakages (including a silently-broken hotfix guard and unbounded precompact-snapshot pileup), removes the retired `autorun`/`parallel` machinery for good, and adds a behavioral layer that makes the *seeded outcome* — not just green gates — the thing that closes a sprint.
+
+### Toolkit — the v6.1.2 feature, hardened
+
+- **The reported bug.** `hooks/scripts/toolkit_surface.sh` and `skills/context/scripts/cmd_toolkit.sh` shipped in v6.1.2 with git mode `100644` (non-executable). The SessionStart hook is invoked by path, so it failed with `Permission denied` on every new session. Both are now `100755`. A new regression guard — `hooks/tests/test_exec_bits.sh` — asserts every path-invoked hook/CLI script carries the executable bit (the smoke harness runs scripts via `bash <file>`, which is mode-agnostic, so this class slipped past every other test).
+- **CLI ↔ docs reconciliation.** The documented `add` syntax was unusable (`add <name> --desc=… --global` while the CLI required `--name=`, `--description=`, `--scope=global`). The CLI now accepts the ergonomic aliases `--global` / `--local` (for `--scope=…`) and `--desc` (for `--description`); `commands/toolkit.md` and `doctrines/toolkit.md` are corrected to match.
+- **Doctrine accuracy.** Dropped `api` from the canonical type enum (it is non-canonical → WARN); marked `scope` + `capabilities` *required* (the `validate` command enforces them); reworded the over-promising "pinned never drop" and "add is idempotent" claims to match the code (add refuses duplicates; pinned-first within the cap).
+- **Bounded injection + defensiveness.** `shctx toolkit md` (the brief-injection surface) now caps at 12 entries, pinned-first, matching the SessionStart hook; interactive `list` stays uncapped. Empty-`capabilities` rendering is guarded. New `hooks/tests/test_toolkit_surface.sh` covers merge / local-wins / pinned-first / 12-cap / graceful-empty; `test_toolkit.sh` gains alias coverage.
+
+### bash 3.2 portability (macOS default `/bin/bash`)
+
+Three hooks/CLI scripts used bash-4-only constructs that silently broke on the operator's platform:
+
+- **`hotfix_vehicle_guard.sh` (#135).** Used `${SUBAGENT_TYPE,,}` (bash-4 lowercase) → "bad substitution" on 3.2, so an `H=1` hotfix spawned as a `shepherd:conductor` teammate slipped past the guard. Replaced with portable `tr`. The guard's primary case now actually enforces — `test_hotfix_vehicle_guard.sh` goes 9/10 → 10/10.
+- **`precompact_snapshot.sh`.** The retention trim used `mapfile` (bash 4+); on 3.2 it died under `set -u`, so snapshots were *written but never trimmed* — the "so many precompact files" pileup. Replaced with a portable read loop; retention (default 5) now holds.
+- **`cmd_issues.sh`.** `declare -A` (associative arrays) is a fatal "invalid option" on 3.2, breaking `shctx issues` outright. Reworked to safe `printf -v` / `${!var}` indirection (no `eval`).
+
+These two fixes turn the hooks smoke suite from 33/35 → **37/37** (the two newly-green tests plus the two new toolkit tests).
+
+### Precompact snapshots — relocated + meaningful
+
+- **Relocated** from `<workdir>/snapshots/` to **`<workdir>/memory/snapshots/`**, co-located with other ephemeral rehydration state. Writer (`precompact_snapshot.sh`) and reader (`focus_rehydrate.sh`) move together; a fail-open one-time migration sweeps any snapshots from the legacy location, and the reader falls back to it so an in-flight snapshot taken before the upgrade still rehydrates.
+- **Kept (they are meaningful):** snapshots carry the focus digest, graph cursor, trace tail, mailbox, and lock state — the load-bearing compaction-resilience payload. The "noise" perception was the broken retention (above), now fixed.
+
+### Outcome enforcement — make the seeded outcome close the sprint
+
+Shepherd ships code and green gates reliably but drifts off the *outcome* a seed promised. New `doctrines/outcome-enforcement.md` binds outcome verification to four existing seams, **behavioral wiring only — no new schema or state table**:
+
+- **Seam 1 — SEED:** each `seed §6` deliverable's acceptance is a *runnable* predicate (grep+count / structural assertion / LOC floor / log·metric·DB query / health probe), not prose (`references/seed-template.md §6-bis`).
+- **Seam 2 — PLAN-GATE:** the `@critic` confirms every deliverable carries a runnable predicate; a plan that drops one or leaves prose-only fails with `PLAN-MISSING-OUTCOME-VERIFICATION` (`agents/critic.md`).
+- **Seam 3 — CLOSE (the enforcement point):** the close auditor *re-runs* every seeded predicate against live HEAD/state **before** grading; a promised-true predicate that now returns false is an `OUTCOME-REGRESSION` (HIGH) that caps the completeness grade (`agents/auditor.md`, `agents/conductor.md §3`, `references/grading-rubric.md`). Reuses the same read-only re-run INTRO already runs on the *prior* sprint.
+- **Seam 4 — SOAK (optional, post-close):** a new **SOAK-LOOP** template (`references/loop-templates.md`, a WATCH-LOOP specialization) re-verifies the predicates on a wall-clock interval (T+1d, T+7d) via native `/loop` + `Monitor`, surfacing `OUTCOME-REGRESSION` on post-delivery drift. Detection-only; never auto-remediates. Invoke: `/shepherd:loop "soak outcomes for <sprint>" --agent worker --interval 1d --max 6`.
+
+### Retired-command cleanup
+
+Deleted the thin retired-redirect stubs (`/shepherd:autorun` + `/shepherd:parallel`, retired since v5.1.4): `commands/{autorun,parallel}.md` and `skills/shepherd/{autorun,parallel,planter}.md`. References in `CLAUDE.md` and `SKILL.md` are scrubbed; the live `--auto` / `--parallel <N>` flags, the `[autorun].min_grade` config key, and the `shepherd-parallel-<slug>` teammate-naming prefix are unaffected.
+
+### Doctrine + brief fixes (batched issues)
+
+- **#61** — `agents/engineer.md` gains a work-shape→vehicle tier-matching table so a conductor/teammate is not allocated for single-file or markdown work.
+- **#100** — `agents/conductor.md` boot adds a hard W0-GATE precondition: no body batch fires until INTRO ground-truth certification has passed (block-and-recheck, never proceed-and-hope).
+- **#120** — the planter (`agents/planter.md`, `commands/plant.md`) now has a fresh-project bootstrap: when `.claude/shepherd.toml` is absent it surfaces `examples/minimal/shepherd.toml` and stops for operator confirmation.
+- **#123** — reconciled the `-dev.N` seed-filename conflict: intermediate per-sprint seeds may carry `-devN`; the version-scale-roadmap restriction applies only to final shipped artifacts (`doctrines/version-scale-roadmap.md`, `references/seed-template.md`).
+
+### Closed as verified-shipped
+
+Verified present + wired and closed: **#107** (toolkit registry, v6.1.2), **#121** (namespace resolution parity, v6.0.8), **#134** (Focus Loop, v6.0.9), **#87** (compile telemetry, v6.0.9), **#103** (engineer model pin + `ENGINEER-MODEL-FAIL`, v6.0.3+), **#99** (teammate git guard, v6.0.9), **#119** (planter discovery wave, v6.0.7+), and **#135** (hotfix vehicle guard — fixed and now enforcing, this release).
+
+### Test suite — repaired the `shctx` harness (23/40 → 40/40)
+
+The `skills/context/tests` suite had 17 pre-existing failures (present on `main`) — not a sqlite issue (the migrations apply cleanly), but **v6.1.2 renames that never reached the test harness**:
+
+- `root.db` → `shepherd.db`: `shctx init` now creates `shepherd.db`, but the harness (`_setup.sh`) and 22 tests still hardcoded `root.db` in their direct `sqlite3` queries → "no such table" against a fresh empty file. Renamed throughout (leaving `test_workdir.sh`'s intentional legacy-detection assertions).
+- `plans/`+`reports/` → `docs/plans/`+`docs/reports/`: `test_init` / `test_lint` referenced the pre-v6.1.2 top-level dirs the scaffold no longer creates.
+- `cmd_doctor.sh` hard-coded the label `root.db` regardless of the actual file — now reports the real `shctx_db_path` basename (a real cosmetic bug).
+- `test_compile_telemetry` asserted spaced JSON (`"…": 1`) against compact output (`"…":1`).
+
+Both suites now pass clean: **hooks 37/37, context 40/40**.
+
+---
+
 ## v6.1.2 — 2026-06-11
 
 The self-improvement-substrate release: a persistent **tool toolkit** so a session never forgets a capability, a standardized + back-compatible workdir layout, **per-flock-role loop templates**, discovery waves on Dynamic Workflows, and a flock-profile polish pass.

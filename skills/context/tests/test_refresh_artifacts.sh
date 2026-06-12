@@ -19,14 +19,14 @@ echo "# addendum" > .shepherd/docs/specs/2026-01-05-foo-addendum.md
 "$SHCTX" refresh --scope=artifacts
 
 for k in seed plan close spec design addendum; do
-  n=$(sqlite3 "$SHCTX_TEST_TMP/.shepherd/root.db" "SELECT COUNT(*) FROM artifacts WHERE kind='$k';")
+  n=$(sqlite3 "$SHCTX_TEST_TMP/.shepherd/shepherd.db" "SELECT COUNT(*) FROM artifacts WHERE kind='$k';")
   [[ "$n" -ge 1 ]] || { echo "FAIL: kind=$k not indexed (got $n)" >&2; exit 1; }
 done
 
 # Hyphen-variant spec count should be 2 (one with .spec.md, one with -spec.md).
-n_spec=$(sqlite3 "$SHCTX_TEST_TMP/.shepherd/root.db" "SELECT COUNT(*) FROM artifacts WHERE kind='spec';")
+n_spec=$(sqlite3 "$SHCTX_TEST_TMP/.shepherd/shepherd.db" "SELECT COUNT(*) FROM artifacts WHERE kind='spec';")
 [[ "$n_spec" -ge 2 ]] || { echo "FAIL: hyphen-variant spec not indexed (n=$n_spec)" >&2; exit 1; }
-n_plan=$(sqlite3 "$SHCTX_TEST_TMP/.shepherd/root.db" "SELECT COUNT(*) FROM artifacts WHERE kind='plan';")
+n_plan=$(sqlite3 "$SHCTX_TEST_TMP/.shepherd/shepherd.db" "SELECT COUNT(*) FROM artifacts WHERE kind='plan';")
 [[ "$n_plan" -ge 2 ]] || { echo "FAIL: hyphen-variant plan not indexed (n=$n_plan)" >&2; exit 1; }
 
 # ---- Auto-refresh on init: a fresh repo seeded BEFORE init should be indexed by init alone ----
@@ -45,6 +45,6 @@ trap 'rm -rf "$SHCTX_TEST_TMP" "$SHCTX_TEST_TMP3"' EXIT
   if ! grep -qF "auto-indexing" <<< "$out"; then
     echo "FAIL: init did not auto-index pre-existing artifacts" >&2; exit 1
   fi
-  n=$(sqlite3 .shepherd/root.db "SELECT COUNT(*) FROM artifacts WHERE kind='design';")
+  n=$(sqlite3 .shepherd/shepherd.db "SELECT COUNT(*) FROM artifacts WHERE kind='design';")
   [[ "$n" -ge 1 ]] || { echo "FAIL: pre-existing design not indexed by init (n=$n)" >&2; exit 1; }
 )

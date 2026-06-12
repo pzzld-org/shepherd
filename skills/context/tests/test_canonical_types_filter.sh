@@ -6,7 +6,7 @@ SHCTX="$SHCTX_SKILL_ROOT/scripts/shctx"
 "$SHCTX" init >/dev/null
 "$SHCTX" migrate >/dev/null
 
-db=".shepherd/root.db"
+db=".shepherd/shepherd.db"
 project_id=$(jq -r '.id' .shepherd/project.json)
 now=$(date +%s)
 

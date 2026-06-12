@@ -2,7 +2,7 @@
 # loop_lifecycle.sh — shctx loop init→record×2→close→list round-trip (v6.0.9)
 #
 # Uses a THROWAWAY db: SHEPHERD_WORKDIR is set to a temp dir so the repo's
-# .artifacts/root.db is NEVER touched. Applies only the migrations we need
+# .artifacts/shepherd.db is NEVER touched. Applies only the migrations we need
 # directly (same pattern as shctx_test_db in _setup.sh) so the test is not
 # derailed by optional build-time features (e.g. FTS5) unavailable in the
 # CI environment.
@@ -21,7 +21,7 @@ MIGDIR="$SHCTX_SKILL_ROOT/schema/migrations"
 # the migrations our loop tables depend on, directly rather than via
 # `shctx migrate` (which aborts on FTS5 if the sqlite3 build lacks it).
 "$SHCTX" init >/dev/null 2>&1
-DB="$SHCTX_TEST_TMP/.shepherd/root.db"
+DB="$SHCTX_TEST_TMP/.shepherd/shepherd.db"
 
 _apply() {
   local n="$1"

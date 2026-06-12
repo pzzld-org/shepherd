@@ -13,7 +13,7 @@ assert_contains "doctor pre-init flags missing namespace dir" "$out" "namespace 
 "$SHCTX" init >/dev/null
 out=$("$SHCTX" doctor 2>&1 || true)
 assert_contains "doctor post-init reports project_id"  "$out" "id="
-assert_contains "doctor post-init reports root.db"     "$out" "root.db"
+assert_contains "doctor post-init reports shepherd.db"     "$out" "shepherd.db"
 assert_contains "doctor post-init reports schema_version" "$out" "schema_version"
 
 # JSON output is valid.

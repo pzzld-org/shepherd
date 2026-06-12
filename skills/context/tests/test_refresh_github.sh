@@ -25,7 +25,7 @@ SH
 chmod +x "$mock_dir/gh"
 PATH="$mock_dir:$PATH" "$SHCTX" refresh --scope=github
 
-n=$(sqlite3 "$SHCTX_TEST_TMP/.shepherd/root.db" "SELECT COUNT(*) FROM index_issues;")
+n=$(sqlite3 "$SHCTX_TEST_TMP/.shepherd/shepherd.db" "SELECT COUNT(*) FROM index_issues;")
 assert_eq "issue_count" "$n" "1"
-title=$(sqlite3 "$SHCTX_TEST_TMP/.shepherd/root.db" "SELECT title FROM index_issues;")
+title=$(sqlite3 "$SHCTX_TEST_TMP/.shepherd/shepherd.db" "SELECT title FROM index_issues;")
 assert_eq "issue_title" "$title" "first"

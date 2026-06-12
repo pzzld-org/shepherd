@@ -55,8 +55,12 @@ TEAM_NAME="$(json_field "$PAYLOAD" '.tool_input.team_name' 2>/dev/null || true)"
 # --- is this spawning a teammate-conductor? ------------------------------
 # Signal 1: team_name is set (AgentTeams spawn path).
 # Signal 2: subagent_type is shepherd:conductor.
+# NOTE: lowercase via `tr`, NOT bash-4 `${VAR,,}` — macOS ships bash 3.2 where
+# `${VAR,,}` is a "bad substitution" that silently fails the `[[ ]]`, letting an
+# H=1 conductor spawn slip past the guard. tr is portable to 3.2.
+SUBAGENT_TYPE_LC="$(printf '%s' "$SUBAGENT_TYPE" | tr '[:upper:]' '[:lower:]')"
 IS_TEAMMATE_SPAWN=0
-if [[ -n "$TEAM_NAME" ]] || [[ "${SUBAGENT_TYPE,,}" == "shepherd:conductor" ]]; then
+if [[ -n "$TEAM_NAME" ]] || [[ "$SUBAGENT_TYPE_LC" == "shepherd:conductor" ]]; then
   IS_TEAMMATE_SPAWN=1
 fi
 

@@ -34,7 +34,7 @@ If a downstream tool (CC, CI rules, contributor expectations) fights you over th
 
 ## File-naming rule — seeds and plans live at PATCH scope
 
-**Seeds, plans, and all roadmap artefacts are named for the patch (`vX.Y.Z`), NOT the dev sprint (`vX.Y.Z-dev.N`).**
+**The patch-arc seed, the patch plan, and all roadmap artefacts are named for the patch (`vX.Y.Z`), NOT the dev sprint (`vX.Y.Z-dev.N`).** (Intermediate per-sprint *seeds* are the exception — see below.)
 
 | Artefact | Filename pattern | Example |
 |---|---|---|
@@ -43,7 +43,9 @@ If a downstream tool (CC, CI rules, contributor expectations) fights you over th
 | Minor roadmap | `vXY-roadmap.md` | `v52-roadmap.md` |
 | Major vision | `vX-vision.md` | `v6-vision.md` |
 
-The slug rule (per `doctrines/seed-naming.md` and `[[slug-form-filenames]]` memory) collapses dots: `v514` not `v5.1.4`. **Dev branch identifiers (`-dev.N`) NEVER appear in seed or plan filenames.**
+The slug rule (per `doctrines/seed-naming.md` and `[[slug-form-filenames]]` memory) collapses dots: `v514` not `v5.1.4`. **The `-dev.N` identifier NEVER appears in the FINAL shipped artefacts this rule governs — the patch-arc seed/plan, CHANGELOG entries, tags, and release PR titles are all patch-scoped (`vXYZ`).**
+
+This restriction does **NOT** forbid intermediate per-sprint **seed** filenames. A multi-sprint patch executed via `/shepherd:start` (or fanned out by `/shepherd:spawn --parallel`) legitimately writes per-sprint seeds named `vXYZ-devN.seed.md` — those carry `-devN` by design, per `doctrines/seed-naming.md` and `references/seed-template.md §File path`. The patch-scope rule is about what the *patch arc* and the *shipped release* are named, not about the intermediate seeds a multi-sprint patch fans out into.
 
 If a patch has multiple dev sprints, they are NOT each given their own plan file. The patch plan governs the arc; the engineer may amend or version the plan across sprints, but the filename stays at patch scope. Sprint-specific context (which lanes go in which wave of which sprint) lives inside the plan's body, organized by phase or wave.
 
@@ -116,7 +118,7 @@ The v5.1.4 patch seed at `.artifacts/docs/plans/v514-teammate-parallel.seed.md` 
 
 ## Anti-patterns
 
-- Putting `dev.N` in a seed or plan filename (`v514-dev1-teammate-parallel.seed.md`) — wrong; seeds/plans are patch-scoped
+- Putting `dev.N` in the **patch-arc** seed/plan filename (`v514-dev1-teammate-parallel.seed.md` as *the patch plan*) or in a CHANGELOG entry, tag, or release PR title — wrong; the patch arc and shipped release are patch-scoped (`vXYZ`). (This does NOT forbid intermediate per-sprint seeds named `vXYZ-devN.seed.md` — those are allowed; see `references/seed-template.md §File path` and `doctrines/seed-naming.md`.)
 - A patch seed with > 10 sprints worth of scope — split the patch
 - A separate plan file per dev sprint within one patch — wrong; the plan organizes them inside as phases/waves
 - A dev sprint that promises operator-visible change in the seed but does not deliver it — that is seed/implementation drift (a `@critic` RECONSIDER and an `@auditor completeness` C+ cap), NOT a sprint reclassification. Do not "reshape as a `@worker` dispatch" after the fact to avoid grade exposure.

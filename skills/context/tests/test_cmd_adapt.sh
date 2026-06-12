@@ -10,7 +10,7 @@ shctx_test_repo
 SHCTX="$SHCTX_SKILL_ROOT/scripts/shctx"
 "$SHCTX" init
 "$SHCTX" migrate >/dev/null            # applies 0010 (sprint_metrics) + 0011 (mem 'prior' kind)
-DB="$SHCTX_TEST_TMP/.shepherd/root.db"
+DB="$SHCTX_TEST_TMP/.shepherd/shepherd.db"
 
 # --- graceful empty: no metrics yet ⇒ priors --metrics emits nothing (caller
 #     falls back to static defaults). Empty store == today's behavior. ---

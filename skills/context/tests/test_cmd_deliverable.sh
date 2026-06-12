@@ -4,7 +4,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
 TMPDIR_T="$(mktemp -d -t shepherd-test-deliverable.XXXXXX)"
 trap "rm -rf $TMPDIR_T" EXIT
-export SHCTX_DB="$TMPDIR_T/root.db"
+export SHCTX_DB="$TMPDIR_T/shepherd.db"
 for f in "$ROOT/skills/context/schema/0001_init.sql" \
          "$ROOT/skills/context/schema/migrations/"*.sql \
          "$ROOT/skills/context/schema/migrations/0007_canonical_state.sql"; do

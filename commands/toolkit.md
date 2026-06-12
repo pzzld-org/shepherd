@@ -38,10 +38,12 @@ Pass arguments through to `shctx toolkit`. Common invocations:
   the hook and inject pipeline surface to Claude)
 
 **Add / remove:**
-- `shctx toolkit add <name> --type=<mcp|cli|skill|plugin|api> --desc="…"` —
-  register a tool in the local registry
-- `shctx toolkit add <name> --type=cli --desc="…" --global` — register
-  user-wide (global tier)
+- `shctx toolkit add --name=<name> --type=<mcp|cli|skill|plugin> --desc="…" [--capabilities=a,b]` —
+  register a tool in the local registry. (`--name`/`--type`/`--description` are
+  required; `--desc` is an alias for `--description`. Type is one of the four
+  canonical values; others are permitted but flagged by `validate`.)
+- `shctx toolkit add --name=<name> --type=cli --desc="…" --global` — register
+  user-wide (global tier). `--global` is an alias for `--scope=global`.
 - `shctx toolkit rm <name>` — remove from local registry
 - `shctx toolkit rm <name> --global` — remove from global registry
 

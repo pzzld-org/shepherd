@@ -59,7 +59,11 @@ FLAG_FILE="$NS/tmp/rehydrate-pending.${SESSION_SAFE}"
 [[ -f "$FLAG_FILE" ]] || exit 0
 
 # --- find the newest matching snapshot for this session ------------------
-SNAP_DIR="$NS/snapshots"
+# v6.1.3: snapshots live under memory/snapshots/ (written by precompact_snapshot.sh).
+# Fall back to the legacy ./snapshots location so a snapshot taken just before an
+# upgrade still rehydrates.
+SNAP_DIR="$NS/memory/snapshots"
+[[ -d "$SNAP_DIR" ]] || SNAP_DIR="$NS/snapshots"
 SNAP_FILE=""
 if [[ -d "$SNAP_DIR" ]]; then
   # Snapshots are named precompact-<session_safe>-<epoch>.json; sort by epoch (name).
