@@ -65,7 +65,10 @@ DB="$NS/root.db"
 STATE_JSON="$NS/graph/state.json"
 TRACE_JSONL="$NS/graph/trace.jsonl"
 LOCK_FILE="$NS/shepherd.lock"
-SNAP_DIR="$NS/snapshots"
+# v6.1.3: snapshots live under memory/snapshots/ (co-located with other
+# ephemeral rehydration state). focus_rehydrate.sh reads the SAME path.
+SNAP_DIR="$NS/memory/snapshots"
+LEGACY_SNAP_DIR="$NS/snapshots"
 TMP_DIR="$NS/tmp"
 
 # Sanitize session id for use in filenames (keep alphanum, dots, dashes, underscores).
@@ -75,6 +78,14 @@ SNAP_FILE="$SNAP_DIR/precompact-${SESSION_SAFE}-${EPOCH}.json"
 FLAG_FILE="$TMP_DIR/rehydrate-pending.${SESSION_SAFE}"
 
 mkdir -p "$SNAP_DIR" "$TMP_DIR" 2>/dev/null || true
+
+# One-time migration: relocate any snapshots left in the legacy ./snapshots
+# directory into memory/snapshots/, then drop the now-empty legacy dir.
+# Fail-open: a migration error must never block snapshotting.
+if [[ -d "$LEGACY_SNAP_DIR" && "$LEGACY_SNAP_DIR" != "$SNAP_DIR" ]]; then
+  mv "$LEGACY_SNAP_DIR"/precompact-*.json "$SNAP_DIR"/ 2>/dev/null || true
+  rmdir "$LEGACY_SNAP_DIR" 2>/dev/null || true
+fi
 
 # --- helper: read file safely -------------------------------------------
 safe_read() { cat "$1" 2>/dev/null || true; }
@@ -209,7 +220,14 @@ touch "$FLAG_FILE" 2>/dev/null || true
 # WRITTEN snapshots survive, regardless of session-id sort order. The just-written
 # snapshot is guaranteed to be the newest and will not be trimmed.
 if [[ -d "$SNAP_DIR" ]]; then
-  mapfile -t SNAPS < <(ls -t "$SNAP_DIR"/precompact-*.json 2>/dev/null || true)
+  # bash 3.2 (default macOS /bin/bash) lacks `mapfile`/`readarray`; use a
+  # portable read loop. Without this the retention trim silently dies under
+  # `set -u` and snapshots accumulate without bound (the "so many precompact
+  # files" symptom). SNAPS is pre-initialized so `${#SNAPS[@]}` is never unbound.
+  SNAPS=()
+  while IFS= read -r _snap; do
+    [[ -n "$_snap" ]] && SNAPS+=("$_snap")
+  done < <(ls -t "$SNAP_DIR"/precompact-*.json 2>/dev/null || true)
   SNAP_COUNT="${#SNAPS[@]}"
   if [[ "$SNAP_COUNT" -gt "$RETENTION" ]]; then
     # SNAPS is newest-first; trim from the tail (oldest entries).

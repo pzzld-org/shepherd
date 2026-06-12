@@ -119,11 +119,12 @@ _cmd_list() {
   case "$fmt" in
     json) jq '.' <<< "$tools" ;;
     md)
-      # Pinned first, then alphabetical.
+      # Pinned first, then alphabetical. No cap — `list` is the full inventory
+      # surface (interactive); only the injected surfaces (hook + `md`) bound at 12.
       jq -r '
         sort_by([if .pinned then 0 else 1 end, .name])[]
         | "- **" + .name + "** (" + .type + ", " + .scope + ") — " + .description
-          + (if .capabilities then "\n  capabilities: " + (.capabilities | join(", ")) else "" end)
+          + (if (.capabilities // [] | length) > 0 then "\n  capabilities: " + (.capabilities | join(", ")) else "" end)
           + (if .when then "\n  when: " + .when else "" end)
           + (if .pinned then " _(pinned)_" else "" end)
       ' <<< "$tools" ;;
@@ -187,8 +188,11 @@ _cmd_add() {
       --name=*)         name="${arg#--name=}" ;;
       --type=*)         type="${arg#--type=}" ;;
       --description=*)  desc="${arg#--description=}" ;;
+      --desc=*)         desc="${arg#--desc=}" ;;        # alias for --description
       --capabilities=*) caps="${arg#--capabilities=}" ;;
       --scope=*)        scope="${arg#--scope=}" ;;
+      --global)         scope="global" ;;               # alias for --scope=global
+      --local)          scope="local" ;;                # alias for --scope=local
       --invocation=*)   inv="${arg#--invocation=}" ;;
       --when=*)         when="${arg#--when=}" ;;
       --tags=*)         tags="${arg#--tags=}" ;;
@@ -271,6 +275,8 @@ _cmd_rm() {
   for arg in "$@"; do
     case "$arg" in
       --scope=*) scope="${arg#--scope=}" ;;
+      --global)  scope="global" ;;   # alias for --scope=global
+      --local)   scope="local" ;;    # alias for --scope=local
       *) echo "ERROR: unknown arg: $arg" >&2; exit 1 ;;
     esac
   done
@@ -349,12 +355,15 @@ _cmd_md() {
   [[ "$count" -gt 0 ]] || return 0  # graceful-empty
 
   # Section header + one line per tool, pinned first, grouped visually by type.
+  # Bounded at 12 to mirror the SessionStart hook (toolkit_surface.sh) — both are
+  # injected context surfaces, so they must agree. `list` stays uncapped.
   echo "### Available tools (toolkit)"
   echo
   jq -r '
-    sort_by([if .pinned then 0 else 1 end, .type, .name])[]
+    sort_by([if .pinned then 0 else 1 end, .type, .name])
+    | .[0:12][]
     | "**" + .name + "** (" + .type + ", " + .scope + ") — " + .description
-      + (if .capabilities then " | caps: " + (.capabilities | join(", ")) else "" end)
+      + (if (.capabilities // [] | length) > 0 then " | caps: " + (.capabilities | join(", ")) else "" end)
       + (if .when then "\n  → when: " + .when else "" end)
   ' <<< "$tools"
 }
@@ -502,10 +511,13 @@ shctx toolkit <subcommand> [args]
                           Show a single tool entry.
   add    --name=N --type=T --description="..." [--capabilities=a,b,c]
          [--scope=local|global] [--invocation=...] [--when=...] [--tags=a,b] [--pin]
-                          Register a new tool. Refuses duplicate name per scope.
-                          Default scope: local. Creates toolkit.json if absent.
+                          Register a new tool. Refuses duplicate name per scope
+                          (rm first to replace). Default scope: local. Creates
+                          toolkit.json if absent. Aliases: --desc=… for
+                          --description=…; --global / --local for --scope=….
   rm     <name> [--scope=local|global]
-                          Remove a tool. Searches local+global unless --scope given.
+                          Remove a tool. Searches local+global unless scope given.
+                          Aliases: --global / --local for --scope=….
   pin    <name>           Pin a tool (appears first in list/md).
   unpin  <name>           Unpin a tool.
   md     [--scope=all|local|global] [--type=T]

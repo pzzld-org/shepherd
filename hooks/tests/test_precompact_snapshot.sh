@@ -18,7 +18,7 @@ SCRIPT="$HOOKS_DIR/precompact_snapshot.sh"
 fails=0
 total=0
 pass()  { printf '  PASS  %s\n' "$1"; }
-fail()  { printf '  FAIL  %s — %s\n' "$1" "$2"; fails=$((fails+1)); }
+fail()  { printf '  FAIL  %s — %s\n' "$1" "${2:-}"; fails=$((fails+1)); }
 skip()  { printf '  SKIP  %s — %s\n' "$1" "$2"; }
 
 # Safe file count: avoid pipefail interaction with `ls | wc -l`.
@@ -65,7 +65,7 @@ git config user.email t@t
 git config user.name t
 git -c commit.gpgsign=false commit -q --allow-empty -m init
 git checkout -q -b v0.9.0-dev.0 2>/dev/null || true
-mkdir -p .claude .artifacts/graph .artifacts/snapshots .artifacts/tmp
+mkdir -p .claude .artifacts/graph .artifacts/memory/snapshots .artifacts/tmp
 touch .claude/shepherd.toml   # default config
 
 # Minimal state.json with ready and in_flight arrays.
@@ -83,9 +83,9 @@ PAYLOAD_BASE='{"session_id":"sess-test-01","trigger":"manual","cwd":"/repo","hoo
 # ---------------------------------------------------------------------------
 total=$((total+1))
 printf '[compaction]\nprecompact_snapshot = "off"\n' > .claude/shepherd.toml
-BEFORE=$(count_files '.artifacts/snapshots/precompact-*.json')
+BEFORE=$(count_files '.artifacts/memory/snapshots/precompact-*.json')
 run_hook "$PAYLOAD_BASE"
-AFTER=$(count_files '.artifacts/snapshots/precompact-*.json')
+AFTER=$(count_files '.artifacts/memory/snapshots/precompact-*.json')
 FLAG_EXISTS=0; [[ -f ".artifacts/tmp/rehydrate-pending.sess-test-01" ]] && FLAG_EXISTS=1
 if [[ "$AFTER" -eq "$BEFORE" ]] && [[ "$FLAG_EXISTS" -eq 0 ]]; then
   pass "config-off: no snapshot written, no flag"
@@ -101,7 +101,7 @@ total=$((total+1))
 run_hook "$PAYLOAD_BASE"
 # Collect matching snapshots safely (avoid pipefail globbing).
 SNAPS=()
-for f in .artifacts/snapshots/precompact-sess-test-01-*.json; do [[ -f "$f" ]] && SNAPS+=("$f"); done
+for f in .artifacts/memory/snapshots/precompact-sess-test-01-*.json; do [[ -f "$f" ]] && SNAPS+=("$f"); done
 FLAG_PATH=".artifacts/tmp/rehydrate-pending.sess-test-01"
 if [[ "${#SNAPS[@]}" -ge 1 ]] && [[ -f "$FLAG_PATH" ]]; then
   pass "default-on: snapshot written and pending flag set"
@@ -141,7 +141,7 @@ fi
 total=$((total+1))
 printf '[compaction]\nsnapshot_retention = 5\n' > .claude/shepherd.toml
 # Remove prior snapshots to get a clean slate for the count.
-rm -f .artifacts/snapshots/precompact-*.json 2>/dev/null || true
+rm -f .artifacts/memory/snapshots/precompact-*.json 2>/dev/null || true
 # Write 7 snapshots with different session IDs (each has a distinct safe name).
 for i in 1 2 3 4 5 6 7; do
   # Use `date +%s%N` or a counter to guarantee distinct epoch digits.
@@ -150,7 +150,7 @@ for i in 1 2 3 4 5 6 7; do
   RET_PAYLOAD="{\"session_id\":\"sess-ret-${i}\",\"trigger\":\"auto\"}"
   run_hook "$RET_PAYLOAD"
 done
-FINAL=$(count_files '.artifacts/snapshots/precompact-*.json')
+FINAL=$(count_files '.artifacts/memory/snapshots/precompact-*.json')
 if [[ "$FINAL" -le 5 ]]; then
   pass "retention-trim: ${FINAL} snapshot(s) remain (≤ 5)"
 else
@@ -163,7 +163,7 @@ printf '' > .claude/shepherd.toml
 # ---------------------------------------------------------------------------
 # Clean up all snapshots from prior tests so the retention trimmer cannot
 # remove the newly-written snapshot during this test.
-rm -f .artifacts/snapshots/precompact-*.json 2>/dev/null || true
+rm -f .artifacts/memory/snapshots/precompact-*.json 2>/dev/null || true
 total=$((total+1))
 mv .artifacts/graph/state.json .artifacts/graph/state.json.bak 2>/dev/null || true
 mv .artifacts/graph/trace.jsonl .artifacts/graph/trace.jsonl.bak 2>/dev/null || true
@@ -171,7 +171,7 @@ SESS6="sess-missing-files"
 SESS6_SAFE="${SESS6//[^A-Za-z0-9_.-]/_}"
 run_hook "{\"session_id\":\"${SESS6}\",\"trigger\":\"auto\"}"
 SNAP6=()
-for f in ".artifacts/snapshots/precompact-${SESS6_SAFE}-"*.json; do [[ -f "$f" ]] && SNAP6+=("$f"); done
+for f in ".artifacts/memory/snapshots/precompact-${SESS6_SAFE}-"*.json; do [[ -f "$f" ]] && SNAP6+=("$f"); done
 mv .artifacts/graph/state.json.bak .artifacts/graph/state.json 2>/dev/null || true
 mv .artifacts/graph/trace.jsonl.bak .artifacts/graph/trace.jsonl 2>/dev/null || true
 if [[ "${#SNAP6[@]}" -ge 1 ]]; then

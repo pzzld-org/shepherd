@@ -60,13 +60,13 @@ git config user.email t@t
 git config user.name t
 git -c commit.gpgsign=false commit -q --allow-empty -m init
 git checkout -q -b v0.9.0-dev.0 2>/dev/null || true
-mkdir -p .claude .artifacts/snapshots .artifacts/tmp
+mkdir -p .claude .artifacts/memory/snapshots .artifacts/tmp
 touch .claude/shepherd.toml
 
 SESSION="sess-rhy-01"
 SESSION_SAFE="${SESSION//[^A-Za-z0-9_.-]/_}"
 FLAG_FILE=".artifacts/tmp/rehydrate-pending.${SESSION_SAFE}"
-SNAP_FILE=".artifacts/snapshots/precompact-${SESSION_SAFE}-$(date +%s).json"
+SNAP_FILE=".artifacts/memory/snapshots/precompact-${SESSION_SAFE}-$(date +%s).json"
 
 PAYLOAD_SS="{\"session_id\":\"${SESSION}\",\"hook_event_name\":\"SessionStart\",\"source\":\"compact\"}"
 PAYLOAD_UPS="{\"session_id\":\"${SESSION}\",\"hook_event_name\":\"UserPromptSubmit\",\"prompt\":\"continue\"}"
@@ -186,7 +186,7 @@ fi
 total=$((total+1))
 touch "$FLAG_FILE"
 rm -f "$SNAP_FILE" 2>/dev/null || true
-rm -f .artifacts/snapshots/precompact-"${SESSION_SAFE}"-*.json 2>/dev/null || true
+rm -f .artifacts/memory/snapshots/precompact-"${SESSION_SAFE}"-*.json 2>/dev/null || true
 out=$(run_hook "$PAYLOAD_UPS")
 FLAG_AFTER=0; [[ -f "$FLAG_FILE" ]] && FLAG_AFTER=1
 if ! is_context "$out" && [[ "$FLAG_AFTER" -eq 0 ]]; then

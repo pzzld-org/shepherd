@@ -19,8 +19,7 @@ There is no build system. Plugin assets are markdown briefs, YAML frontmatter, a
 
 agents/{engineer,critic,coder,auditor,worker,discovery}.md   # full system prompts per flock lane
 agents/{shepherd,conductor,planter}.md                      # meta-orchestrator profiles (shepherd: root v5.1.6+; conductor + planter: v5.1.4+)
-commands/{plant,start,spawn,loop,toolkit,ctx,cleanup}.md     # slash-command entry points
-commands/{autorun,parallel}.md                              # retired commands (thin delta notes; v5.1.4+)
+commands/{plant,start,spawn,loop,toolkit,ctx,cleanup,focus}.md   # slash-command entry points
 docs/                          # operator docs (configuration, integration, customization)
 examples/{axiom,minimal}/      # binding examples (shepherd.toml + CLAUDE-snippet)
 
@@ -33,8 +32,6 @@ skills/
   shepherd/                    # conductor quick-reference + doctrines + references
     SKILL.md                   # entry point for every /shepherd:* invocation
     {flock,pipeline}.md                          # active skill support files
-    planter.md                                   # retired redirect → agents/planter.md (v5.1.4+)
-    {autorun,parallel}.md                        # thin delta notes; behaviors retired to /shepherd:spawn (v5.1.4+)
     doctrines/*.md             # framework-intrinsic rules
     references/*.md            # branching-model, seed-template, grading-rubric, etc.
   context/                     # shctx runtime (SQLite registry, queries, scripts)
@@ -87,7 +84,7 @@ cp -r ./.claude-plugin ~/.claude/plugins/marketplaces/fl03/
 | `/shepherd:toolkit [list\|add\|rm\|pin\|md ...]` | Sonnet | Manage the **toolkit** (`toolkit.json`, local ⊕ user-global) — registered MCP/skill/plugin/CLI tools surfaced every session so a session never forgets a capability. Wraps `shctx toolkit`. |
 | `/shepherd:ctx` | Sonnet | Inspect / refresh the per-project SQLite context registry |
 
-> **Retired (v5.1.4):** `/shepherd:autorun` is superseded by `/shepherd:spawn --auto` (which itself aliases `--scope patch` in v5.1.6+). `/shepherd:parallel` is superseded by `/shepherd:spawn --parallel <N>`. Command files retained as thin delta references only.
+> **Retired (v5.1.4; stub files removed v6.1.3):** `/shepherd:autorun` is superseded by `/shepherd:spawn --auto` (which itself aliases `--scope patch` in v5.1.6+). `/shepherd:parallel` is superseded by `/shepherd:spawn --parallel <N>`. The retired-redirect stub files (`commands/{autorun,parallel}.md`, `skills/shepherd/{autorun,parallel,planter}.md`) were deleted in v6.1.3; the replacements are canonical in `commands/spawn.md`. The `[autorun].min_grade` config key remains live (it governs `--auto` grade gating).
 
 > **v5.1.6 dispatch tier separation:** under `/shepherd:spawn`, `@engineer` and `@critic` become **root-tier-exclusive** (only the root shepherd in main chat may dispatch them). Teammate-conductors surface `PLAN-AUTHORSHIP-REQUEST` / `PLAN-GATE-REQUEST` escalations instead. Under `/shepherd:start` solo mode this restriction does NOT apply — conductor IS root in solo. See `skills/shepherd/doctrines/dispatch-tier-separation.md`.
 

@@ -42,20 +42,25 @@ session header — keeping the injection frugal per
 
 ## Entry schema
 
-Required fields:
+Required fields (enforced by `shctx toolkit validate` and the JSON schema):
 
 | Field | Type | Meaning |
 |---|---|---|
 | `name` | string | Unique identifier; collision key for merge |
-| `type` | string | `mcp` / `skill` / `plugin` / `cli` / `api` |
+| `scope` | string | `"local"` or `"global"` (`add` defaults to `local`) |
+| `type` | string | Canonical: `mcp` / `skill` / `plugin` / `cli`. Other values (e.g. `api`, `service`) are permitted but `validate`-flagged with a WARN |
+| `capabilities` | array | Short capability tags (e.g. `["library-docs"]`). Must be present; an empty array is permitted but `validate`-warned |
 | `description` | string | One-line human description (surfaced verbatim) |
+
+> When authoring `toolkit.json` by hand, include all five required fields. The
+> `add` subcommand fills `scope` (default `local`) and `capabilities` (default
+> `[]`) for you, so `--name`, `--type`, and `--description` are the only
+> mandatory flags.
 
 Optional fields:
 
 | Field | Type | Meaning |
 |---|---|---|
-| `scope` | string | `"local"` (default) or `"global"` |
-| `capabilities` | array | Short capability tags (e.g. `["library-docs"]`) |
 | `invocation` | string | How to call it (e.g. `mcp__Context7__query-docs`) |
 | `when` | string | Heuristic guidance — when to reach for this tool |
 | `tags` | array | Free-form labels |
@@ -97,11 +102,14 @@ The `shctx toolkit` subcommand manages the registry:
 
 | Verb | Effect |
 |---|---|
-| `shctx toolkit add <name> --type=<t> --desc="…" [--global] [--pin]` | Register a tool in local (or global with `--global`) registry |
-| `shctx toolkit list [--scope=all\|local\|global]` | Show registered tools |
+| `shctx toolkit add --name=<n> --type=<t> --desc="…" [--global] [--pin]` | Register a tool in local (or global with `--global`) registry. `--name`/`--type`/`--description` required; refuses a duplicate name in-scope |
+| `shctx toolkit list [--scope=all\|local\|global]` | Show registered tools (full inventory — uncapped) |
 | `shctx toolkit pin <name>` / `unpin` | Toggle pinned flag |
 | `shctx toolkit rm <name> [--global]` | Remove a tool |
-| `shctx toolkit md [--scope=all\|local\|global]` | Emit compact markdown roster (used by inject) |
+| `shctx toolkit md [--scope=all\|local\|global]` | Emit compact markdown roster (used by inject — pinned-first, capped at 12) |
+
+> Flag aliases: `--desc` ≡ `--description`; `--global` ≡ `--scope=global`;
+> `--local` ≡ `--scope=local`.
 
 ### 3. `[TOOLKIT]` brief injection — engineer, coder, planter
 
@@ -115,17 +123,21 @@ the cacheable prefix is preserved per `doctrines/brief-cache-discipline.md`.
 
 ## Bounded & graceful — the invariants
 
-- **Bounded:** 12-entry cap at surface time prevents context bloat; pinned
-  entries always surface first regardless of cap.
-- **Pinned entries never drop** from the surface cap — they are allocated before
-  the cap is applied.
+- **Bounded:** the injected surfaces (the SessionStart hook and `md`, which
+  feeds brief injection) cap at 12 entries to prevent context bloat. Interactive
+  `list` is uncapped — it is the full inventory on demand.
+- **Pinned-first:** pinned entries sort ahead of unpinned at every surface, so
+  within the 12-entry cap they are the last to be dropped. (If a registry ever
+  holds more than 12 *pinned* entries, the cap still applies after the
+  pinned-first sort — pin sparingly.)
 - **Graceful-empty:** an empty merged toolkit produces no output at any surface
   point. Empty toolkit == today's behavior everywhere. No operator action
   required on cold projects.
 - **Fail-open:** the hook exits 0 on any error (missing `jq`, malformed JSON,
   unreadable file). Tool-memory failure must never block a session.
-- **Idempotent:** `shctx toolkit add` on an existing name updates in-place; it
-  does not duplicate.
+- **No silent overwrite:** `shctx toolkit add` on an existing name in the same
+  scope fails with an error directing you to `rm` first. This prevents a typo
+  from clobbering a registered tool; it never silently duplicates or replaces.
 
 ---
 

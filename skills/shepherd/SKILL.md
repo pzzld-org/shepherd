@@ -387,7 +387,7 @@ The walk trace (optional, per `[stage_graph].walk_trace_enabled`) is the O(1) re
 
 For `:start` and `:spawn`, sprint is inferred from current branch when no `sprint_slug` is given. For `:plant`, scope arg controls how many seeds to emit. For `:spawn`, `--scope` controls workload scale; `--parallel` controls sprint-level fanout; the per-lane fanout within each sprint is implicit (the engineer's post-plan lane projection of the gated plan — no flag controls it).
 
-> **Retired commands (v5.1.4):** `/shepherd:autorun` is replaced by `/shepherd:spawn --auto` (alias for `--scope patch` in v5.1.6+). `/shepherd:parallel` is replaced by `/shepherd:spawn --parallel <N>`. The command files at `commands/autorun.md` and `commands/parallel.md` are retained as thin delta notes for reference only.
+> **Retired commands (v5.1.4; stub files removed v6.1.3):** `/shepherd:autorun` is replaced by `/shepherd:spawn --auto` (alias for `--scope patch` in v5.1.6+). `/shepherd:parallel` is replaced by `/shepherd:spawn --parallel <N>`. The retired-redirect stub files (`commands/{autorun,parallel}.md`, `skills/shepherd/{autorun,parallel,planter}.md`) were deleted in v6.1.3 — `commands/spawn.md` is the canonical home for both replacements.
 
 ---
 
@@ -414,8 +414,6 @@ For `:start` and `:spawn`, sprint is inferred from current branch when no `sprin
 | `doctrines/scope-scale-workload.md` | `/shepherd:spawn --scope` | **NEW v5.1.6 — flag semantics**, 4-tier mapping, --parallel composition, minor/version gating |
 | `pipeline.md` | First sprint-walk decision | **Stage Graph contract** — node taxonomy, edge labels, walk algorithm, canonical sprint DAG |
 | `flock.md` | First flock dispatch | Per-agent triggers + briefs + parallel-safety + label discipline + anti-patterns + meta tier |
-| `autorun.md` | Reference only (v5.1.4+) | Thin delta — loop semantics notes; full behavior superseded by `/shepherd:spawn --auto` + `agents/conductor.md §Autorun walk` |
-| `parallel.md` | Reference only (v5.1.4+) | Thin delta — multi-worktree notes; full behavior superseded by `/shepherd:spawn --parallel` + `agents/conductor.md §Parallel walk` |
 | `references/branching-model.md` | First branch-touching action | Authoritative branch lifecycle + rollover + hygiene |
 | `references/seed-template.md` | Planter authoring or seed audit | Canonical seed shape (now includes graph-hint §7-bis) |
 | `references/agent-briefs.md` | Brief drafting | Copy-paste brief templates + grade cutoffs |
