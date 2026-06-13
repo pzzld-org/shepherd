@@ -37,6 +37,11 @@ PAYLOAD="$(cat 2>/dev/null || true)"
 # --- fast-path: only inside a shepherd project -------------------------------
 is_shepherd_project || exit 0
 
+# --- cheap pre-filter (perf): skip ALL JSON parsing unless the raw payload even
+# mentions a dev.N branch token. This keeps the common Bash call (no dev.N) from
+# ever spawning jq — the guard costs ~nothing on the 99% of commands it ignores.
+printf '%s' "$PAYLOAD" | grep -qE '\-dev\.[0-9]+' 2>/dev/null || exit 0
+
 # --- fast-path: only the Bash tool -------------------------------------------
 TOOL="$(json_field "$PAYLOAD" '.tool_name' 2>/dev/null || true)"
 [[ "$TOOL" == "Bash" ]] || exit 0
