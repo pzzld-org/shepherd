@@ -22,6 +22,10 @@ Subcommands (atomic):
                           (git remote → cwd) + [gates] (cargo|go|pytest|npm), realigns
                           [paths] to the active namespace. show/path: inspect the binding.
   status                  Row counts, refresh staleness, lock state, lint summary
+  dash                    One-glance sprint dashboard (v6.1.5): composes focus +
+                          graph completion + live teammates + mailbox/escalation
+                          fan-in + active loops + cache staleness. Loop it:
+                          `/shepherd:loop <interval> shctx dash`. Read-only.
   doctor [--md|--json]    Diagnostic / pre-flight (v5.0.4): binaries, schema, lock, refresh staleness
   refresh [--scope=…|--all]
                           Rebuild caches (symbols|github|artifacts|all). --all is canonical (v5.0.4).
@@ -120,7 +124,7 @@ script_for() {
 cmd="${1:-help}"; shift || true
 case "$cmd" in
   help|-h|--help) usage ;;
-  init|config|status|doctor|refresh|query|search|inject|profile|style|mem|toolkit|lock|lint|migrate|export|release|handoff|worktree|close-lane|issues|plan|graph|insights|adapt|sync|ready|sprint|audit|watch|discovery|teammate|mailbox|escalate|deliverable|report|loop|panes)
+  init|config|status|dash|doctor|refresh|query|search|inject|profile|style|mem|toolkit|lock|lint|migrate|export|release|handoff|worktree|close-lane|issues|plan|graph|insights|adapt|sync|ready|sprint|audit|watch|discovery|teammate|mailbox|escalate|deliverable|report|loop|panes)
     impl="$HERE/$(script_for "$cmd")"
     if [[ ! -f "$impl" ]]; then
       echo "ERROR: $cmd not yet implemented (missing $impl)" >&2; exit 2

@@ -713,6 +713,28 @@ event system (which auto-resumes it) or at an enumerated operator-pause, never a
 a passive wait after the `[SPAWN]` line. Per `doctrines/coordinate-active-drive.md
 §II/§IV`; backstopped by `hooks/scripts/coordinate_drive_guard.sh`.
 
+### Operator observability — the sprint dashboard (v6.1.5 #13)
+
+Root drives via the FOCUS-LOOP and platform events; the **operator** watches via a
+one-glance dashboard. `shctx dash` composes the primitives the root already
+maintains — focus north-star, graph completion %, live teammates (idle/verdict),
+mailbox + escalation fan-in, active loops, and GitHub-cache staleness — into a
+single read-only snapshot. It builds nothing new; it just collates existing views.
+
+Run it once, or loop it at a cadence so a long spawn stays observable without
+polling each primitive by hand:
+
+```
+shctx dash                       # one snapshot
+/shepherd:loop 3m shctx dash     # refresh every 3 min while the sprint runs
+```
+
+`/shepherd:loop <interval> shctx dash` is the recommended monitoring recipe for a
+running spawn (interval to taste — 2–5 min for active waves). The dashboard is
+purely observational: it never mutates state, so it is safe to loop alongside the
+root's coordinate cycle. For deeper teammate-pane inspection, see `shctx panes
+status` (`skills/context/scripts/cmd_panes.sh`).
+
 ---
 
 ## § Teammate tool feed
