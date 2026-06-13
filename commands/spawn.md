@@ -34,7 +34,7 @@ description: |
                        applies internally.
     --auto             ALIAS for --scope patch (preserved for operator muscle memory).
 argument-hint: "[ sprint_slug ] [ --scope sprint|patch|minor|version ] [ --parallel <N> | --auto ]"
-allowed-tools: Agent, Bash, Edit, Glob, Grep, Read, Skill, Write, ToolSearch, TeamCreate, TeamDelete, TaskCreate, TaskGet, TaskList, TaskUpdate, SendMessage, WebFetch, WebSearch
+allowed-tools: Agent, Bash, Edit, Glob, Grep, Read, AskUserQuestion, Skill, Write, ToolSearch, TeamCreate, TeamDelete, TaskCreate, TaskGet, TaskList, TaskUpdate, SendMessage, WebFetch, WebSearch
 ---
 
 # /shepherd:spawn — Teammate-Conductor Dispatch

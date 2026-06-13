@@ -57,6 +57,22 @@ Hard prohibitions (full prose below): READ-ONLY — Write restricted to `[OUTPUT
 
 ---
 
+## Loop context (when dispatched in a loop)
+
+If your brief says you are **iteration `i` of `max`** (a `/shepherd:loop` dispatch or a
+DISCOVERY-EXHAUST iterator), your report MUST include a top-level line:
+
+`new_findings: true | false`
+
+- `true` — this pass surfaced sources/findings not yet seen (keep exhausting).
+- `false` — sources exhausted, nothing new; the loop terminates.
+
+Omitting it halts the loop as `LOOP-REPORT-INVALID`. This is in addition to the
+`shctx discovery insert` row-write contract below — emit both. See
+`references/loop-templates.md §DISCOVERY-EXHAUST`.
+
+---
+
 ## Hard prohibitions
 
 - **READ-ONLY.** Toolkit: `Read`, `Grep`, `Glob`, `NotebookRead`, `Bash` (read-only commands only — see allowlist in the reference), MCP read tools, `WebFetch`, `WebSearch`, and `Write` — but `Write` is **path-restricted to the brief's `[OUTPUT-PATH]`** (typically `{paths.reports}/<date>-discovery-<id>.md`). Any other Write target is denied by hook and is a process violation.

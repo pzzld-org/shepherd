@@ -2,7 +2,7 @@
 name: start
 description: Run one complete sprint end-to-end (engineer → critic → coder waves → auditor swarm → close), then PAUSE for operator sign-off before opening the next sprint. For continuous or multi-sprint modes, see /shepherd:spawn (--scope and --parallel flags). v5.1.6+ adds --teammate flag for sessions spawned by /shepherd:spawn.
 argument-hint: "[ --teammate ]   default: solo full-pipeline; --teammate: lane-execute the assigned brief"
-allowed-tools: Bash, Edit, Glob, Grep, Read, Skill, Write, ToolSearch, TaskCreate, TaskGet, TaskList, TaskUpdate, SendMessage, WebFetch, WebSearch
+allowed-tools: Bash, Edit, Glob, Grep, Read, AskUserQuestion, Skill, Write, ToolSearch, TaskCreate, TaskGet, TaskList, TaskUpdate, SendMessage, WebFetch, WebSearch
 ---
 
 # /shepherd:start — Single Sprint Execution (solo)

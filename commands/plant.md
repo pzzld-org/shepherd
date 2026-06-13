@@ -2,7 +2,7 @@
 name: plant
 description: Seed authorship mode — Opus recommended (Fable 5 superior, pricier; Sonnet/Haiku allowed with a degraded-seed warning). Reads everything available (prior plans, close reports, GH milestones, deploy/error/datastore state, project memory) and emits drift-resistant, dense, multi-phase sprint seeds the @engineer can translate into plans with minimal expansion.
 argument-hint: "[ scope ]   scopes: nothing (next-sprint+future), dev.N, dev.N..dev.M, arc, next-version  — NOTE: for a brand-new patch arc N always starts at 0, not 1"
-allowed-tools: Bash, Edit, Glob, Grep, Read, Skill, Write, ToolSearch, TaskCreate, TaskGet, TaskList, TaskUpdate, WebFetch, WebSearch
+allowed-tools: Bash, Edit, Glob, Grep, Read, AskUserQuestion, Skill, Write, ToolSearch, TaskCreate, TaskGet, TaskList, TaskUpdate, WebFetch, WebSearch
 ---
 
 # /shepherd:plant — Sprint Seed Authorship

@@ -1,7 +1,7 @@
 ---
 name: shepherd
 slug: shepherd
-version: 6.1.3
+version: 6.1.4
 description: "Sprint-by-sprint version-cycle conductor. Six-agent flock (engineer, critic, coder, auditor, worker, discovery) on an INTRO/BODY/CLOSE pipeline with planter/conductor/shepherd meta tiers."
 metadata:
   triggers:
@@ -64,6 +64,30 @@ two are working. A sprint whose lane-weighted aggregate hit-rate falls
 below 40% surfaces as a MEDIUM finding at close — investigate brief
 ordering per `doctrines/brief-cache-discipline.md` first, brief length
 per `doctrines/agent-excellence.md` §Rule 6 second.
+
+---
+
+## 0-ter. Loops are first-class — reach for one when "done" = "no new findings"
+
+Most work is a fixed sequence of steps. Some work is **convergent**: you repeat
+until a predicate goes quiet — gate green, sources exhausted, state reconciled,
+anomaly seen. That shape is a **loop** (workflow Pattern 6). Shepherd ships a
+per-role catalog for it; do NOT hand-roll an ad-hoc `while` in prose, and do NOT
+ToolSearch for a "loop tool" — looping is a doctrine + the `/shepherd:loop` command.
+
+- **Recognize it (Q4):** is completion defined by *no new findings*, not a step count? → loop.
+- **Pick the template by role** in `references/loop-templates.md`:
+  `@coder`→CODER-CONVERGENCE · `@discovery`→DISCOVERY-EXHAUST ·
+  `@worker`→WORKER-CONVERGENCE / WORKER-WATCH / SOAK-LOOP ·
+  `@auditor`→AUDITOR-REFINE · `@engineer`→ENGINEER-PLAN-REFINE · orchestrator→FOCUS-LOOP.
+- **Author your own** (no template fits): declare `max_iterations` (mandatory),
+  role-shape the iterator, and require each iteration to emit `new_findings: true|false`.
+- **Run a generic one now:** `/shepherd:loop [task] --agent worker|discovery --max N [--interval D]`.
+
+Binding (`doctrines/loop-templates.md`): every loop is **bounded** (declare `--max`
+before iteration 1) and **measurable** (iterator emits `new_findings`). Unbounded or
+unstructured loops halt as `PLAN-MISSING-LOOP-CAP` / `LOOP-REPORT-INVALID`. Full
+catalog + Stage Graph shapes: `references/loop-templates.md`.
 
 ---
 
@@ -417,6 +441,8 @@ For `:start` and `:spawn`, sprint is inferred from current branch when no `sprin
 | `references/branching-model.md` | First branch-touching action | Authoritative branch lifecycle + rollover + hygiene |
 | `references/seed-template.md` | Planter authoring or seed audit | Canonical seed shape (now includes graph-hint §7-bis) |
 | `references/agent-briefs.md` | Brief drafting | Copy-paste brief templates + grade cutoffs |
+| `references/glossary.md` | Term ambiguity (esp. "workflow") | Disambiguates the native `Workflow` tool (always present, never ToolSearch) vs the six workflow patterns vs GitHub Actions; ToolSearch-vs-top-level rule; loop-term map |
+| `doctrines/operator-signaling.md` | Planning + seedless kickoff | Session→operator signaling: planter asks freely; execution sessions are action-biased (`AskUserQuestion` is a narrow escape valve, never for confirmation/approval). Seed is recommended, not required |
 | `doctrines/stage-graph.md` | First sprint-walk decision | Plan-IS-dispatch-contract principle (graph-as-discipline) |
 | `doctrines/conductor-cwd.md` | First worktree inspection | Conductor anchor discipline — cwd / HEAD / worktree all stay on sprint root; bans `cd`, `git switch <agent-branch>`, and `git worktree add` from inside a worktree (v5.0.3 + v5.0.6) |
 | `doctrines/gates-restoration.md` | Sprint opens with red gates | Run GATES-DISCOVERY before Lane 0; brief on full inventory, not narrow subset (v5.0.3) |

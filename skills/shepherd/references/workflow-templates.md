@@ -435,7 +435,7 @@ orchestrator resumes without re-reading the full conversation.
 |------|-------|-----|
 | Iterator / loop body | Orchestrator (root or conductor) | Wake: read focus record + rehydration digest. Act: dispatch / coordinate / advance Stage Graph cursor |
 | Focus record keeper | Conductor inline (writes to `loops` + `focus` tables) | Write focus record at SEED-VERIFY; refresh at each WAVE-GATE; finalize at CLOSE-FINALIZE |
-| Interval wake clock | Native `/loop` (when `interval` is set) | Emits a wake event on cadence; delegates scheduling; auto-expires after 3 days |
+| Interval wake clock | Native `/loop` (when `interval` is set) | Emits a wake event on cadence; delegates scheduling; auto-expires after 7 days |
 
 `@discovery` and `@worker` may be dispatched **within** the Act phase (as inner sub-tasks),
 but they are not the loop iterator — the orchestrator drives the loop.
@@ -472,7 +472,7 @@ FOCUS-LOOP-DONE (conductor):
 #### Compose notes
 
 - `max_iterations` default is `[focus].loop_max_default` in `shepherd.toml` (default: 8). Values > 10 require critic sign-off at PLAN-GATE.
-- When `interval` is non-null, the wake cadence is delegated to native `/loop` (`/loop <interval> /shepherd:loop --resume <id>`). The native `/loop` auto-expires after 3 days, which acts as a hard outer bound in addition to `max_iterations`.
+- When `interval` is non-null, the wake cadence is delegated to native `/loop` (`/loop <interval> /shepherd:loop --resume <id>`). The native `/loop` auto-expires after 7 days, which acts as a hard outer bound in addition to `max_iterations`.
 - Compaction safety is non-optional: `[compaction].precompact_snapshot` must be `"on"` (default) for FOCUS-LOOP to survive a mid-sprint compaction deterministically.
 - The focus record is updated at three mandatory boundaries: SEED-VERIFY (objective + invariants), each WAVE-GATE (active\_node + ready\_set + obligations), and CLOSE-FINALIZE (terminal state).
 - FOCUS-LOOP is Loop-OUTER: it is never nested inside a Fanout-And-Synthesize iteration body. Inner fanout waves run **within** the FOCUS-ACT phase.
@@ -564,7 +564,7 @@ stream, or service health endpoint at a fixed interval and surface anomalies. Th
 is `@worker` (bounded, read-only or alerting only). **This is the ONLY named composite that
 uses wall-clock interval scheduling** — the scheduling is delegated entirely to the native
 `/loop` command, not implemented as a back-edge in the Stage Graph. The native `/loop`
-3-day auto-expiry is the outer hard bound; `max_iterations` is the explicit inner cap.
+7-day auto-expiry is the outer hard bound; `max_iterations` is the explicit inner cap.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -578,7 +578,7 @@ uses wall-clock interval scheduling** — the scheduling is delegated entirely t
 │                             anomaly / cap     ↓                  │
 │                                           LOOP-DONE              │
 └──────────────────────────────────────────────────────────────────┘
-  Native /loop auto-expires after 3 days regardless of max_iterations.
+  Native /loop auto-expires after 7 days regardless of max_iterations.
 ```
 
 #### Flock agent binding
@@ -586,7 +586,7 @@ uses wall-clock interval scheduling** — the scheduling is delegated entirely t
 | Role | Agent | Job |
 |------|-------|-----|
 | Probe iterator | `@worker` (bounded, read-only or alert-only) | On each tick: query endpoint / Sentry / logs; emit `new_findings: true\|false` where `true` = anomaly detected |
-| Interval scheduler | Native `/loop` | Emits a wake event on cadence; auto-expires after 3 days |
+| Interval scheduler | Native `/loop` | Emits a wake event on cadence; auto-expires after 7 days |
 | Terminator | Conductor inline | On anomaly: surface alert to operator. On cap or expiry: emit `## Watch summary` with observation log |
 
 `@discovery` is NOT a valid probe iterator for ongoing monitoring — it is for orientation within
@@ -597,7 +597,7 @@ a sprint, not for live service observation. Use `@worker` for all WATCH-LOOP pro
 ```yaml
 WATCH-LOOP-INIT (conductor):
   kind: watch
-  max_iterations: <N>         # mandatory; also bounded by native /loop 3-day auto-expiry
+  max_iterations: <N>         # mandatory; also bounded by native /loop 7-day auto-expiry
   interval: <duration>        # e.g. '15m', '1h' — delegated to native /loop; REQUIRED for WATCH-LOOP
   target: <endpoint-or-query> # e.g. "sentry:project/env" or "deploy:prod/health"
   action: shctx loop init --kind=watch --task="monitor <target>" --max=<N> --interval=<duration> --agent=worker
@@ -622,7 +622,7 @@ WATCH-LOOP-DONE (conductor):
 #### Compose notes
 
 - `interval` is **mandatory** for WATCH-LOOP. A WATCH-LOOP without an `interval` is structurally indistinguishable from CONVERGENCE-LOOP — select the correct composite.
-- The native `/loop` auto-expiry (3 days) is non-overridable. For monitoring horizons beyond 3 days, re-initialize a new WATCH-LOOP after expiry.
+- The native `/loop` 7-day ceiling is non-overridable. A **fixed-interval** loop (`/loop <interval> …`, what WATCH-LOOP uses) runs *until stopped or 7 days*; a **self-paced** loop (no interval) lets Claude pick a 1 min–1 hr delay per iteration and end early once the task completes. Both appear in the scheduled-task list and are cleared with `Esc`. For monitoring horizons beyond 7 days, re-initialize a new WATCH-LOOP after expiry. (Source: `code.claude.com/docs/en/scheduled-tasks`.)
 - WATCH-LOOP is always a **leaf composite** in the Stage Graph: it does not contain inner loops or fanout sub-tasks within its probe body. If probe work is non-trivial, delegate to a bounded `@worker` sub-task and return findings to the loop.
 - When an anomaly is detected, the WATCH-LOOP terminates and surfaces to the operator. The operator decides the remediation action — WATCH-LOOP itself does not dispatch remediation.
 - WATCH-LOOP is Loop-OUTER with respect to any inner `@worker` sub-tasks, but in practice the probe body should be simple enough to require no inner fanout.
@@ -631,7 +631,7 @@ WATCH-LOOP-DONE (conductor):
 
 - **Wall-clock cadence without native `/loop` delegation.** Implementing a wait-and-poll inner loop in the Stage Graph is forbidden — wall-clock scheduling belongs to native `/loop` exclusively.
 - **Using `@discovery` as probe iterator.** Discovery is sprint-orientation read-only; it is not a monitoring agent. Use `@worker`.
-- **Unbounded WATCH-LOOP.** Even with the 3-day native `/loop` expiry, `max_iterations` is mandatory. The two bounds are independent: the native expiry is a platform ceiling; `max_iterations` is the plan-declared ceiling. Both must be declared.
+- **Unbounded WATCH-LOOP.** Even with the 7-day native `/loop` expiry, `max_iterations` is mandatory. The two bounds are independent: the native expiry is a platform ceiling; `max_iterations` is the plan-declared ceiling. Both must be declared.
 - **Dispatching remediation from within WATCH-LOOP.** The loop's job is to detect and surface; remediation is the operator's decision. Embedding a CONVERGENCE-LOOP inside a WATCH-LOOP anomaly handler violates the leaf-composite constraint and exceeds the depth-3 composition limit.
 
 ---
@@ -642,7 +642,7 @@ WATCH-LOOP-DONE (conductor):
 | `DISCOVERY-COMBO-WAVE` | BODY (during sprint execution) | X `@auditor` + Y `@discovery` + Z `@worker` (optional) — single parallel batch | `doctrines/discovery-combo-wave.md` |
 | `FOCUS-LOOP` | INTRODUCTION → CLOSE (full sprint) | Orchestrator iterator; wake → act → probe; focus record convergence anchor; `max_iterations` mandatory | this file (`references/workflow-templates.md`) |
 | `CONVERGENCE-LOOP` | BODY / CLOSE | `@coder` or `@worker` iterator; fix → gate-check cycle; `max_iterations` mandatory | this file (`references/workflow-templates.md`) |
-| `WATCH-LOOP` | BODY / POST-CLOSE monitoring | `@worker` probe iterator; wall-clock interval via native `/loop`; `max_iterations` + 3-day expiry mandatory | this file (`references/workflow-templates.md`) |
+| `WATCH-LOOP` | BODY / POST-CLOSE monitoring | `@worker` probe iterator; wall-clock interval via native `/loop`; `max_iterations` + 7-day expiry mandatory | this file (`references/workflow-templates.md`) |
 
 ---
 

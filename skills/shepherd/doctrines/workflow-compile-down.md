@@ -20,8 +20,12 @@ description: |
 > (research preview, 2026-05-28; requires Claude Code ≥ v2.1.154). A dynamic
 > workflow is a JavaScript script Claude writes for a task, which a runtime
 > executes in the background while the session stays responsive; intermediate
-> results live in script variables, not the conversation context. Official
-> docs: `https://code.claude.com/docs/en/workflows`.
+> results live in script variables, not the conversation context. It is the
+> **always-present top-level `Workflow` tool — NEVER a `ToolSearch` target**; if
+> it is not in your visible tool list you are below the version floor, so fall back
+> to in-context `Agent(...)` fan-out (do not ToolSearch, do not assume it is broken).
+> Official docs: `https://code.claude.com/docs/en/workflows`. Three senses of
+> "workflow" disambiguated in `references/glossary.md`.
 
 ## I. Status & scope
 
