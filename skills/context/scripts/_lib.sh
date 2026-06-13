@@ -60,6 +60,27 @@ shctx_lock_path()       { echo "$(shctx_artifacts_root)/shepherd.lock"; }
 shctx_project_id_path() { echo "$(shctx_artifacts_root)/project.json"; }
 shctx_skill_root()      { echo "${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"; }
 
+# Echo the value of a top-level `key = value` from shepherd config, resolved by
+# precedence: .claude/shepherd.local.toml (per-key local override) →
+# .claude/shepherd.toml (project) → $XDG_CONFIG_HOME/shepherd.toml (user global).
+# Section-agnostic, last-match-wins within a file; strips surrounding double-quotes
+# and trailing " # inline comments". Echoes "" if unset; never returns non-zero
+# (safe under this lib's `set -eu -o pipefail`). MUST mirror the hooks-side cfg_get
+# (hooks/scripts/_lib.sh) — same files, same order — or config diverges between
+# the shctx runtime and the hooks. Contract: docs/configuration.md §config-resolution.
+cfg_get() {
+  local key="$1" repo f v
+  repo="$(shctx_repo_root 2>/dev/null || pwd)"
+  for f in "$repo/.claude/shepherd.local.toml" "$repo/.claude/shepherd.toml" "${XDG_CONFIG_HOME:-$HOME/.config}/shepherd.toml"; do
+    [[ -f "$f" ]] || continue
+    v="$(grep -E "^[[:space:]]*${key}[[:space:]]*=" "$f" 2>/dev/null | tail -1 \
+          | sed -E 's/^[^=]*=[[:space:]]*//; s/[[:space:]]+#.*$//; s/^"//; s/"$//' 2>/dev/null || true)"
+    if [[ -n "$v" ]]; then printf '%s' "$v"; return 0; fi
+  done
+  printf '%s' ""
+  return 0
+}
+
 # UUIDv7 generator (timestamp-prefixed, sortable). Portable across BSD (macOS)
 # and GNU (Linux) date; falls back to python3 then to seconds-precision if
 # millisecond `+%s%3N` is unavailable.

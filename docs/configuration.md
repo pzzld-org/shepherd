@@ -4,13 +4,20 @@ Shepherd is project-agnostic. The framework speaks principles (Phase 0 mesh, SUB
 
 > **Examples in this doc lean Rust** because that's the most-tested binding so far. Equivalent values for Python, TypeScript, Go, and others appear in the [Language matrix](#language-matrix) section at the end. The framework itself has no Rust dependency.
 
-To bind shepherd to your repo, drop a `shepherd.toml` at one of these locations (first found wins):
+To bind shepherd to your repo, drop a `shepherd.toml` at one of these locations:
 
 ```
-.claude/shepherd.toml         ← project-pinned, checked into the repo
-.claude/shepherd.local.toml   ← project-pinned, gitignored (operator overrides)
+.claude/shepherd.local.toml   ← project-pinned, gitignored (operator per-key overrides)
+.claude/shepherd.toml         ← project-pinned, checked into the repo (the base)
 $XDG_CONFIG_HOME/shepherd.toml ← user-global default
 ```
+
+**Resolution is per-key (v6.1.5+).** For any given key, `.claude/shepherd.local.toml`
+overrides `.claude/shepherd.toml`, which overrides `$XDG_CONFIG_HOME/shepherd.toml`. A
+`.local.toml` that sets only one key inherits the rest from the project file — it is a
+partial override, not a whole-file replacement. Every hook guard and `shctx` command
+resolves config through a single helper (`cfg_get`, defined in both `_lib.sh` files), so
+the precedence is identical across the runtime and the hooks.
 
 If no config is found, shepherd uses the framework defaults documented below — but the conductor will surface a warning at every `/shepherd:*` invocation until one is created.
 
@@ -312,7 +319,29 @@ release_notes_path = "{paths.docs}/v{X}.{Y}.{Z}-release-notes.md"
 
 # When driver = "github-workflow", the workflow filename to verify exists.
 workflow_file = ".github/workflows/release.yml"
+
+# (v6.1.4) Backstop for the dev.{last} release-trigger miss: refuse to create or
+# publish a sprint branch whose number N >= sprints_per_patch (there is no
+# dev.{sprints_per_patch} — closing dev.{last} is a RELEASE, not a new sprint).
+# block (default) | warn | off.
+devlast_guard = "block"
 ```
+
+### `[tmux]` — teammate pane observability + cleanup (v6.1.4)
+
+```toml
+[tmux]
+# When teammateMode = "tmux" | "auto", Claude Code opens one pane per teammate.
+# pane_cleanup reaps panes of CLOSED (crashed/retired) teammates at SessionEnd —
+# the dead-pane gap (#66.6). on (default) | off.
+pane_cleanup = "on"
+```
+
+Observe live teammate panes: `shctx panes status` (per-lane liveness dashboard),
+`shctx panes capture` (snapshot each pane → `<ns>/logs/panes/<lane>.log`), and
+`shctx panes tail <lane>`. For a live view, run it under native `/loop`:
+`/loop 30s shctx panes status`. The pane id is captured automatically from each
+teammate's heartbeat (`$TMUX_PANE`) — no `--pane` wiring needed.
 
 ### `[memory]` — memory + doctrine paths
 

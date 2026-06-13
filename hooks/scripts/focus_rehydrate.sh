@@ -36,11 +36,9 @@ is_shepherd_project || exit 0
 
 # --- config: on (default) | off ------------------------------------------
 REHYDRATE_ENABLED="on"
-if [[ -f .claude/shepherd.toml ]]; then
-  cfg="$(grep -E '^[[:space:]]*rehydrate[[:space:]]*=' .claude/shepherd.toml 2>/dev/null \
-          | tail -1 | grep -oE '(on|off)' | tail -1 || true)"
-  [[ -n "$cfg" ]] && REHYDRATE_ENABLED="$cfg"
-fi
+# Resolved via cfg_get → honors .claude/shepherd.local.toml + XDG global (v6.1.5).
+cfg="$(cfg_get rehydrate | grep -oE '(on|off)' | tail -1 || true)"
+[[ -n "$cfg" ]] && REHYDRATE_ENABLED="$cfg"
 [[ "$REHYDRATE_ENABLED" == "off" ]] && exit 0
 
 # --- fields from stdin ---------------------------------------------------

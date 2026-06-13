@@ -43,15 +43,11 @@ is_shepherd_project || exit 0
 # --- config: on (default) | off ------------------------------------------
 SNAP_ENABLED="on"
 RETENTION=5
-if [[ -f .claude/shepherd.toml ]]; then
-  cfg_snap="$(grep -E '^[[:space:]]*precompact_snapshot[[:space:]]*=' .claude/shepherd.toml 2>/dev/null \
-               | tail -1 | grep -oE '(on|off)' | tail -1 || true)"
-  [[ -n "$cfg_snap" ]] && SNAP_ENABLED="$cfg_snap"
-
-  cfg_ret="$(grep -E '^[[:space:]]*snapshot_retention[[:space:]]*=' .claude/shepherd.toml 2>/dev/null \
-              | tail -1 | grep -oE '[0-9]+' | tail -1 || true)"
-  [[ -n "$cfg_ret" ]] && RETENTION="$cfg_ret"
-fi
+# Resolved via cfg_get → honors .claude/shepherd.local.toml + XDG global (v6.1.5).
+cfg_snap="$(cfg_get precompact_snapshot | grep -oE '(on|off)' | tail -1 || true)"
+[[ -n "$cfg_snap" ]] && SNAP_ENABLED="$cfg_snap"
+cfg_ret="$(cfg_get snapshot_retention | grep -oE '[0-9]+' | tail -1 || true)"
+[[ -n "$cfg_ret" ]] && RETENTION="$cfg_ret"
 [[ "$SNAP_ENABLED" == "off" ]] && exit 0
 
 # --- fields from stdin ---------------------------------------------------

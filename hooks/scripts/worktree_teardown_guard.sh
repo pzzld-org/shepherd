@@ -54,12 +54,10 @@ DB="$NS/root.db"
 [[ -f "$DB" ]] || exit 0
 
 # --- config: block (default) | warn | off ------------------------------------
+# Resolved via cfg_get → honors .claude/shepherd.local.toml + XDG global (v6.1.5).
 MODE="block"
-if [[ -f .claude/shepherd.toml ]]; then
-  cfg="$(grep -E '^[[:space:]]*worktree_teardown_guard[[:space:]]*=' .claude/shepherd.toml 2>/dev/null \
-           | tail -1 | grep -oE '(block|warn|off)' | tail -1 || true)"
-  [[ -n "$cfg" ]] && MODE="$cfg"
-fi
+cfg="$(cfg_get worktree_teardown_guard | grep -oE '(block|warn|off)' | tail -1 || true)"
+[[ -n "$cfg" ]] && MODE="$cfg"
 [[ "$MODE" == "off" ]] && exit 0
 
 # --- live teammate count -----------------------------------------------------

@@ -31,14 +31,9 @@ PAYLOAD="$(cat 2>/dev/null || true)"
 # --- config: block (default) | warn | off ----------------------------------
 # Cheap grep, mirroring _lib.sh quiet_warnings(); no TOML parser needed.
 MODE="block"
-if [[ -f .claude/shepherd.toml ]]; then
-  # Find the (last) coordinate_drive_guard assignment line, then pull the bare
-  # value token. The key name contains none of block/warn/off, so a plain token
-  # match on the line is robust to quoting/spacing.
-  cfg="$(grep -E '^[[:space:]]*coordinate_drive_guard[[:space:]]*=' .claude/shepherd.toml 2>/dev/null \
-           | tail -1 | grep -oE '(block|warn|off)' | tail -1 || true)"
-  [[ -n "$cfg" ]] && MODE="$cfg"
-fi
+# Resolved via cfg_get → honors .claude/shepherd.local.toml + XDG global (v6.1.5).
+cfg="$(cfg_get coordinate_drive_guard | grep -oE '(block|warn|off)' | tail -1 || true)"
+[[ -n "$cfg" ]] && MODE="$cfg"
 [[ "$MODE" == "off" ]] && exit 0
 
 command -v sqlite3 >/dev/null 2>&1 || exit 0

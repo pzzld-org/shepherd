@@ -20,10 +20,9 @@ command -v tmux >/dev/null 2>&1 || exit 0
 
 # config: on (default) | off
 MODE="on"
-if [[ -f .claude/shepherd.toml ]]; then
-  cfg="$(grep -E '^[[:space:]]*pane_cleanup[[:space:]]*=' .claude/shepherd.toml 2>/dev/null | tail -1 | grep -oE '(on|off)' | tail -1 || true)"
-  [[ -n "$cfg" ]] && MODE="$cfg"
-fi
+# Resolved via cfg_get → honors .claude/shepherd.local.toml + XDG global (v6.1.5).
+cfg="$(cfg_get pane_cleanup | grep -oE '(on|off)' | tail -1 || true)"
+[[ -n "$cfg" ]] && MODE="$cfg"
 [[ "$MODE" == "off" ]] && exit 0
 
 # Delegate to the single cleanup implementation. shctx lives two dirs up from

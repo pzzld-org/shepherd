@@ -4,6 +4,35 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v6.1.4 — 2026-06-12
+
+A reliability + native-alignment release. Fixes the **`dev.{last}` → `dev.{last+1}` release-trigger miss** that cut a stray dev branch instead of releasing, corrects a wrong **native `/loop` expiry constant** that had propagated as a load-bearing invariant, makes Claude Code's **`Workflow` tool** unmistakable (it was being mistaken for a `ToolSearch` target and given up on), restores **tmux pane observability** plus the dead-pane cleanup that had been documented but never built, and gives planning + main-chat sprint sessions a **native operator-signaling** path — without letting execution sessions become approval-seekers.
+
+### Release trigger — never cut `dev.{sprints_per_patch}` again
+- **The bug.** At the close of `dev.{last}` (e.g. `v0.3.5-dev.9`, `sprints_per_patch = 10`) the conductor cut `dev.10` instead of firing the release cascade. Root cause: `agents/conductor.md` Step 5 and `agents/shepherd.md` RF-4 stated the mod-N condition in *prose* but showed an *unconditional* `git checkout -b {next}` beneath it — and an exhausted-context conductor runs the visible command and drops the prose.
+- **Mechanized the decision.** Both briefs now run `shctx release --dry-run` (the authoritative oracle) *before* the rebase, and gate the next-branch cut on an explicit `[ "$N" -lt "$((K-1))" ]` conditional with the release path stated first.
+- **Deterministic backstop.** New `hooks/scripts/release_trigger_guard.sh` (`PreToolUse(Bash)`) blocks creating/publishing a `…-dev.N` branch where `N ≥ sprints_per_patch`, while allowing mid-patch cuts, `dev.0` rollovers, and remediation deletes. Config: `[release].devlast_guard = block (default) | warn | off`. A raw pre-filter skips JSON parsing on every Bash call that doesn't mention `dev.N` (≈zero added cost). 13-case behavioral test matrix.
+- **Wired `sprints_per_patch` into `cmd_release.sh`** (was hardcoded `=10`, silently wrong for projects on 5/7).
+
+### Native `/loop` expiry — "3 days" was wrong; it's 7
+- Corrected ~19 references across `references/loop-templates.md` and `references/workflow-templates.md` asserting a "3-day" outer bound. Per `code.claude.com/docs/en/scheduled-tasks`, fixed-interval and self-paced loops expire after **7 days**. The canonical note now distinguishes interval mode (runs until stopped or 7 days), self-paced mode (1 min–1 hr dynamic delay, ends early when done), and `Esc`-to-stop.
+
+### Loops — discoverable from a cold session
+- `SKILL.md §0-ter` surfaces loops in the always-on layer: the Q4 trigger, the role→template map, an "author your own" recipe, and the bounded + measurable invariants.
+- `[LOOP-CONTEXT]` added to `agents/worker.md` and `agents/discovery.md` so a looped agent reads its `new_findings` contract in its own brief; the conductor gains a mid-sprint loop-recognition note.
+
+### The `Workflow` tool vs "workflow patterns" vs GitHub Actions
+- New `references/glossary.md` disambiguates the three senses of "workflow" and states the rule that broke a sprint: the native **`Workflow` tool is always present and is NEVER a `ToolSearch` target** — if it isn't visible you're below the version floor, so fall back to in-context `Agent(...)`. First-mention corrections added at `workflow-compile-down.md`, `hotfix-dispatch.md`, and `conductor.md`.
+
+### tmux observability + dead-pane cleanup (#66.6)
+- New `shctx panes` (`status` / `capture` / `tail` / `prune`) — the first consumer of the long-orphaned `teammates.tmux_pane_id` column. `capture` snapshots each live teammate pane to `<ns>/logs/panes/`; `status` is a per-lane liveness dashboard (run under `/loop` for a live view).
+- New `hooks/scripts/tmux_pane_cleanup.sh` on `SessionEnd` reaps panes of closed teammates (the documented-but-unbuilt #66.6 gap). Config: `[tmux].pane_cleanup = on (default) | off`.
+- `shctx teammate heartbeat` now self-heals `tmux_pane_id` from `$TMUX_PANE` (zero brief changes), so the column populates without operator wiring.
+
+### Native operator signaling — the planner asks, execution runs
+- `AskUserQuestion` enabled for the planter, root shepherd, and SOLO conductor (teammate-conductors still escalate to root via `SendMessage`).
+- New `doctrines/operator-signaling.md`: the **planter asks freely** (planning is interactive), while **execution sessions are action-biased** — `AskUserQuestion` is a narrow escape valve (no-seed kickoff, irreversible outward actions, hard blocking forks) with an explicit ban on confirmation/approval-seeking and on inventing new stop points. Codifies that the **seed is recommended, not required**.
+
 ## v6.1.3 — 2026-06-12
 
 The toolkit-hardening, bash-3.2-portability, and **outcome-enforcement** release. Fixes the v6.1.2 toolkit "Permission denied" that fired at session start, repairs three macOS bash-3.2 breakages (including a silently-broken hotfix guard and unbounded precompact-snapshot pileup), removes the retired `autorun`/`parallel` machinery for good, and adds a behavioral layer that makes the *seeded outcome* — not just green gates — the thing that closes a sprint.

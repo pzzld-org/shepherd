@@ -173,8 +173,7 @@ fi
 # ---------------------------------------------------------------------------
 if [[ "$teammate_mode" -eq 1 ]] \
    && [[ "$st_lc" =~ ^shepherd:(coder|auditor)$ ]] \
-   && [[ -f .claude/shepherd.toml ]] \
-   && grep -qE '^[[:space:]]*flag_handrolled_fanout[[:space:]]*=[[:space:]]*true' .claude/shepherd.toml 2>/dev/null; then
+   && [[ "$(cfg_get flag_handrolled_fanout)" == "true" ]]; then
   warn="[shepherd] PRIMITIVE-INVERSION (flag) — hand-rolled fan-out?"$'\n'
   warn+="A teammate's gate-free step fan-out (${st_lc}) should compile to a Dynamic"$'\n'
   warn+="Workflow: shctx graph compile --segment=<entry> --verify → run <seg>.workflow.js"$'\n'

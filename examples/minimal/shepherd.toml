@@ -57,6 +57,10 @@ chronic_threshold_patches = 2
 
 [release]
 driver = "operator"
+# devlast_guard = "block"     # block (default) | warn | off — refuse to cut dev.{sprints_per_patch}
+
+[tmux]
+# pane_cleanup = "on"         # on (default) | off — reap closed-teammate panes at SessionEnd
 
 [hooks]
 on_every_dispatch = ["code-style"]
