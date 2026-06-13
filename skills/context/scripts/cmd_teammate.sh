@@ -59,7 +59,13 @@ case "$sub" in
     ts="$(now_ms)"
     tid=$(sqlite3 "$DB" "SELECT id FROM teammates WHERE teammate_name='$name' ORDER BY spawned_at DESC LIMIT 1;")
     [[ -n "$tid" ]] || { echo "ERR: no teammate named $name" >&2; exit 1; }
-    sqlite3 "$DB" "UPDATE teammates SET last_seen_at=$ts, status=CASE WHEN status='booting' THEN 'active' ELSE status END WHERE id='$tid'; INSERT INTO heartbeats (teammate_id, ts, phase, tool_name, note) VALUES ('$tid', $ts, NULLIF('$phase',''), NULLIF('$tool',''), NULLIF('$note',''));"
+    # Self-heal the tmux pane id: a teammate's heartbeat runs INSIDE its own pane,
+    # so $TMUX_PANE identifies it. COALESCE keeps any value root already set via
+    # --pane; this populates it when (as is usual) root spawned without one. First
+    # consumer: `shctx panes` observability + the SessionEnd dead-pane cleanup.
+    set_pane=""
+    [[ -n "${TMUX_PANE:-}" ]] && set_pane=", tmux_pane_id = COALESCE(tmux_pane_id, '${TMUX_PANE}')"
+    sqlite3 "$DB" "UPDATE teammates SET last_seen_at=$ts, status=CASE WHEN status='booting' THEN 'active' ELSE status END${set_pane} WHERE id='$tid'; INSERT INTO heartbeats (teammate_id, ts, phase, tool_name, note) VALUES ('$tid', $ts, NULLIF('$phase',''), NULLIF('$tool',''), NULLIF('$note',''));"
     ;;
   status)
     name="$1"

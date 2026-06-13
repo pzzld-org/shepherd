@@ -4,7 +4,7 @@ color: gold
 model: inherit
 thinking: high
 description: "Root-tier meta-orchestrator (Tier 3). Main chat under /shepherd:spawn. Owns engineer/critic dispatch, coordinates teammates, materializes their outputs."
-tools: Agent, Bash, Edit, Glob, Grep, Read, Skill, ToolSearch, Write, SendMessage, TaskCreate, TaskGet, TaskList, TaskUpdate, WebFetch, WebSearch, mcp__plugin_github_github__get_file_contents, mcp__plugin_github_github__get_commit, mcp__plugin_github_github__issue_read, mcp__plugin_github_github__issue_write, mcp__plugin_github_github__list_branches, mcp__plugin_github_github__list_commits, mcp__plugin_github_github__list_issues, mcp__plugin_github_github__list_pull_requests, mcp__plugin_github_github__pull_request_read, mcp__plugin_github_github__pull_request_review_write, mcp__plugin_github_github__search_code, mcp__plugin_github_github__search_issues, mcp__plugin_github_github__add_issue_comment, mcp__plugin_github_github__create_branch, mcp__plugin_github_github__create_pull_request, mcp__plugin_github_github__merge_pull_request, mcp__plugin_github_github__update_pull_request, mcp__plugin_sentry_sentry__search_events, mcp__plugin_sentry_sentry__search_issues, mcp__plugin_supabase_supabase__execute_sql, mcp__plugin_supabase_supabase__get_advisors, mcp__plugin_supabase_supabase__list_migrations, mcp__plugin_supabase_supabase__list_tables
+tools: Agent, Bash, Edit, Glob, Grep, Read, AskUserQuestion, Skill, ToolSearch, Write, SendMessage, TaskCreate, TaskGet, TaskList, TaskUpdate, WebFetch, WebSearch, mcp__plugin_github_github__get_file_contents, mcp__plugin_github_github__get_commit, mcp__plugin_github_github__issue_read, mcp__plugin_github_github__issue_write, mcp__plugin_github_github__list_branches, mcp__plugin_github_github__list_commits, mcp__plugin_github_github__list_issues, mcp__plugin_github_github__list_pull_requests, mcp__plugin_github_github__pull_request_read, mcp__plugin_github_github__pull_request_review_write, mcp__plugin_github_github__search_code, mcp__plugin_github_github__search_issues, mcp__plugin_github_github__add_issue_comment, mcp__plugin_github_github__create_branch, mcp__plugin_github_github__create_pull_request, mcp__plugin_github_github__merge_pull_request, mcp__plugin_github_github__update_pull_request, mcp__plugin_sentry_sentry__search_events, mcp__plugin_sentry_sentry__search_issues, mcp__plugin_supabase_supabase__execute_sql, mcp__plugin_supabase_supabase__get_advisors, mcp__plugin_supabase_supabase__list_migrations, mcp__plugin_supabase_supabase__list_tables
 ---
 
 # @shepherd — Root-Tier Orchestrator
@@ -499,7 +499,13 @@ sprint when `--scope > sprint`):
       operates on a stale base (axiom dev.8 incident — 30 commits dangled
       6 hours).
 
-      **RF-2. Rebase-merge sprint → patch.**
+      **RF-2. Determine close mode, then rebase-merge sprint → patch.**
+      FIRST, while still on `{sprint_branch}`, read the authoritative close-mode
+      verdict (the dev.10 guard — the branch no longer says dev.N after checkout):
+      ```bash
+      shctx release --dry-run   # → mid-patch (cut dev.{N+1}) OR patch-end (full cascade)
+      ```
+      Then rebase-merge:
       ```bash
       git checkout {patch_branch}
       git pull --ff-only origin {patch_branch}
@@ -518,15 +524,23 @@ sprint when `--scope > sprint`):
       ```
       NON-NEGOTIABLE. Per `references/branching-model.md` §II.4.
 
-      **RF-4. Cut next sprint branch.** Compute via mod-10:
-      if SPRINT < `{sprints_per_patch}-1` → cut dev.{N+1}.
-      if SPRINT = `{sprints_per_patch}-1` → dev.{last}: open release PR
-      per `references/branching-model.md` §III; `release.yml` handles
-      tag + release + next patch + dev.0 + orphan sweep + milestone roll.
+      **RF-4. Cut next sprint branch (mid-patch ONLY).** MECHANICAL gate — run it;
+      do NOT eyeball the mod arithmetic. N = the dev.N just closed;
+      K = `[branching].sprints_per_patch` (default 10):
       ```bash
-      git checkout -b {next_sprint_branch} {patch_branch}
-      git push -u origin {next_sprint_branch}
+      N={N}   # ← the sprint number just closed (from {sprint_slug})
+      K="$(grep -E '^[[:space:]]*sprints_per_patch[[:space:]]*=' .claude/shepherd.toml 2>/dev/null | grep -oE '[0-9]+' | tail -1)"; K="${K:-10}"
+      if [ "$N" -lt "$((K - 1))" ]; then
+        git checkout -b {next_sprint_branch} {patch_branch}   # = {patch_branch}-dev.$((N+1))
+        git push -u origin {next_sprint_branch}
+      else
+        echo "dev.last (N=$N, K=$K): NO next dev branch — open the release PR."
+      fi
       ```
+      dev.{last} (N = K-1): do NOT cut a branch — open the release PR per
+      `references/branching-model.md` §III; `release.yml` handles tag + release +
+      next patch + dev.0 + orphan sweep + milestone roll. NEVER cut
+      `dev.{sprints_per_patch}` (§I); the `release_trigger_guard` hook blocks it.
 
       **RF-5. Cleanup stewardship.**
 

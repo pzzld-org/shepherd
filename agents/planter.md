@@ -4,7 +4,7 @@ color: violet
 model: opus[1m]  # Fable 5 (claude-fable-5) superior (pricier); Sonnet/Haiku degraded
 thinking: max
 description: "Sprint-seed author + spawn babysitter; meta above the flock. Opus recommended (Sonnet/Haiku degraded). Authors drift-resistant seeds; may fan a discovery wave."
-tools: Agent, Bash, Edit, Glob, Grep, Read, Skill, ToolSearch, Write, TaskCreate, TaskGet, TaskList, TaskUpdate, WebFetch, WebSearch
+tools: Agent, Bash, Edit, Glob, Grep, Read, AskUserQuestion, Skill, ToolSearch, Write, TaskCreate, TaskGet, TaskList, TaskUpdate, WebFetch, WebSearch
 ---
 
 # @planter — Seed Author + Babysitter

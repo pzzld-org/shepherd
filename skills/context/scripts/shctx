@@ -83,6 +83,11 @@ Subcommands (atomic):
                           recommend: dispatch recommendation (lanes, t-shirt band,
                           watch-concerns) from measured averages.
                           SQLite-canonical (doctrines/adaptation-loop.md).
+  panes <status|capture|tail|prune> [args]            (v6.x in-session observability)
+                          status: per-lane dashboard (liveness + last heartbeat + pane).
+                          capture [--lines=N]: snapshot live teammate panes → logs/panes/.
+                          tail <lane> [--lines=N]: tail a captured pane log.
+                          prune [--closed-only]: kill orphan panes (dead-pane cleanup, #66.6).
 
 Pipelines (multi-step automation, v5.0.4):
   sync [--scope=…|--all] [--verbose]
@@ -110,7 +115,7 @@ script_for() {
 cmd="${1:-help}"; shift || true
 case "$cmd" in
   help|-h|--help) usage ;;
-  init|status|doctor|refresh|query|search|inject|profile|style|mem|toolkit|lock|lint|migrate|export|release|handoff|worktree|close-lane|issues|plan|graph|insights|adapt|sync|ready|sprint|audit|watch|discovery|teammate|mailbox|escalate|deliverable|report|loop)
+  init|status|doctor|refresh|query|search|inject|profile|style|mem|toolkit|lock|lint|migrate|export|release|handoff|worktree|close-lane|issues|plan|graph|insights|adapt|sync|ready|sprint|audit|watch|discovery|teammate|mailbox|escalate|deliverable|report|loop|panes)
     impl="$HERE/$(script_for "$cmd")"
     if [[ ! -f "$impl" ]]; then
       echo "ERROR: $cmd not yet implemented (missing $impl)" >&2; exit 2

@@ -361,7 +361,7 @@ on anomaly detection (alert operator) or iteration cap (monitoring window closed
 
 Specializes **WATCH-LOOP** from `references/workflow-templates.md §WATCH-LOOP`. The
 scheduling is delegated to the native `/loop` command. All WATCH-LOOP invariants apply:
-`--interval` is mandatory; the native `/loop` 3-day auto-expiry is the outer hard bound;
+`--interval` is mandatory; the native `/loop` 7-day auto-expiry is the outer hard bound;
 probe bodies must be simple (no inner fanout). `@discovery` is NOT a valid probe iterator
 for this template — use `@worker` exclusively per the WATCH-LOOP agent binding.
 
@@ -370,7 +370,7 @@ for this template — use `@worker` exclusively per the WATCH-LOOP agent binding
 | Role | Agent | Job |
 |------|-------|-----|
 | Probe iterator | `@worker` (bounded, read-only or alert-only) | On each tick: query target; emit `new_findings: true\|false` where `true` = anomaly |
-| Interval scheduler | Native `/loop` | Emits wake event on cadence; auto-expires after 3 days |
+| Interval scheduler | Native `/loop` | Emits wake event on cadence; auto-expires after 7 days |
 | Terminator | Conductor inline | On anomaly: surface alert. On cap/expiry: emit `## Watch summary` |
 
 ### Loop body — Probe → Act → Branch
@@ -406,7 +406,7 @@ anomaly_criteria: "deploy status != 'running' in fly.io app my-app"
 ```yaml
 WORKER-WATCH-INIT (conductor):
   kind: watch
-  max_iterations: 20          # default for monitoring window; also bounded by native /loop 3-day expiry
+  max_iterations: 20          # default for monitoring window; also bounded by native /loop 7-day expiry
   interval: <duration>        # MANDATORY — e.g. '5m', '15m', '1h'; delegated to native /loop
   target: <endpoint-or-query>
   anomaly_criteria: <criteria>    # declared in seed
@@ -433,7 +433,7 @@ WATCH-LOOP-DONE (conductor):
 
 ### Default `--max`
 
-**20**. Monitoring windows are longer-horizon by nature. The 3-day native `/loop` auto-expiry
+**20**. Monitoring windows are longer-horizon by nature. The 7-day native `/loop` auto-expiry
 is the outer hard bound regardless of `--max`. For short monitoring windows (e.g., watch a
 30-minute deploy), set `--max` to match the expected window at the configured interval.
 
@@ -454,7 +454,7 @@ definition from `references/workflow-templates.md` applies.
 - **`@discovery` as probe iterator.** Discovery is sprint-orientation read-only; it is not a
   monitoring agent. Use `@worker` for all WORKER-WATCH probe iterations — explicitly stated
   in the WATCH-LOOP definition.
-- **Monitoring horizon beyond 3 days in a single loop.** The native `/loop` auto-expiry is
+- **Monitoring horizon beyond 7 days in a single loop.** The native `/loop` auto-expiry is
   non-overridable. For longer horizons, re-initialize a new WORKER-WATCH loop after expiry.
 
 ---
@@ -476,7 +476,7 @@ detection half of outcome-enforcement that runs **after** the close gate, on wal
 Specializes **WATCH-LOOP** from `references/workflow-templates.md §WATCH-LOOP`. SOAK-LOOP is
 WORKER-WATCH re-pointed from "anomaly criteria" to "the seeded acceptance predicates" — the
 target is the sprint's own promises rather than a generic health signal. All WATCH-LOOP
-invariants apply: `--interval` is mandatory; the native `/loop` 3-day auto-expiry is the outer
+invariants apply: `--interval` is mandatory; the native `/loop` 7-day auto-expiry is the outer
 hard bound; the probe body is simple (run the predicates, classify, yield) with no inner
 fanout; `@worker` is the only valid probe iterator.
 
@@ -485,7 +485,7 @@ fanout; `@worker` is the only valid probe iterator.
 | Role | Agent | Job |
 |------|-------|-----|
 | Probe iterator | `@worker` (bounded, read-only) | On each tick: re-run each seeded acceptance predicate against live state; emit `new_findings: true\|false` where `true` = a predicate regressed |
-| Interval scheduler | Native `/loop` | Emits wake event on cadence (`--interval`); auto-expires after 3 days |
+| Interval scheduler | Native `/loop` | Emits wake event on cadence (`--interval`); auto-expires after 7 days |
 | Terminator | Conductor / root inline | On regression: surface `OUTCOME-REGRESSION` to operator. On all-hold-at-cap: emit `## Soak summary` |
 
 ### Loop body — Probe → Act → Branch
@@ -524,7 +524,7 @@ soak_predicates:
 ```yaml
 SOAK-LOOP-INIT (conductor / root):
   kind: watch
-  max_iterations: 6           # default for a T+1d / T+7d soak window; bounded by native /loop 3-day expiry
+  max_iterations: 6           # default for a T+1d / T+7d soak window; bounded by native /loop 7-day expiry
   interval: <duration>        # MANDATORY — e.g. '1d', '6h'; delegated to native /loop
   soak_predicates: <list>     # carried from the closed sprint's seed §6 — NOT invented here
   action: shctx loop init --kind=watch --task="soak outcomes <sprint>" --max=6 --interval=<dur> --agent=worker
@@ -550,7 +550,7 @@ SOAK-LOOP-DONE (conductor / root):
 ### Default `--max`
 
 **6**. A soak window is typically a handful of post-close checkpoints (e.g. T+1d, T+3d, T+7d),
-not continuous monitoring. The 3-day native `/loop` auto-expiry is the outer hard bound; for a
+not continuous monitoring. The 7-day native `/loop` auto-expiry is the outer hard bound; for a
 T+7d soak, re-initialize the loop after the first expiry. Set `--max` to the number of planned
 checkpoints at the chosen interval.
 
@@ -887,7 +887,7 @@ requires the solo conductor's CLOSE-FINALIZE node.
 
 **8** (from `shepherd.toml [focus].loop_max_default`). Values > 10 require critic sign-off
 at PLAN-GATE per the FOCUS-LOOP definition. The FOCUS-LOOP also has a secondary hard ceiling
-via the native `/loop` 3-day auto-expiry when `interval` is set.
+via the native `/loop` 7-day auto-expiry when `interval` is set.
 
 ### Anti-patterns
 

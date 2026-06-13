@@ -4,8 +4,9 @@
 > *teammate* for a single-coder dispatch — paying full Agent-Teams setup,
 > liveness, and mailbox cost for one bounded edit. This doctrine fixes the
 > default: a hot-fix's dispatch vehicle is chosen by **how many independent
-> hot-fixes there are**, and a dynamic workflow is always reached for before a
-> dedicated teammate.
+> hot-fixes there are**, and a dynamic workflow (Claude Code's native `Workflow`
+> tool — always present, never a `ToolSearch` target; `references/glossary.md`) is
+> always reached for before a dedicated teammate.
 
 ## The principle
 

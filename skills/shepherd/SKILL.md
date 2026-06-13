@@ -67,6 +67,30 @@ per `doctrines/agent-excellence.md` §Rule 6 second.
 
 ---
 
+## 0-ter. Loops are first-class — reach for one when "done" = "no new findings"
+
+Most work is a fixed sequence of steps. Some work is **convergent**: you repeat
+until a predicate goes quiet — gate green, sources exhausted, state reconciled,
+anomaly seen. That shape is a **loop** (workflow Pattern 6). Shepherd ships a
+per-role catalog for it; do NOT hand-roll an ad-hoc `while` in prose, and do NOT
+ToolSearch for a "loop tool" — looping is a doctrine + the `/shepherd:loop` command.
+
+- **Recognize it (Q4):** is completion defined by *no new findings*, not a step count? → loop.
+- **Pick the template by role** in `references/loop-templates.md`:
+  `@coder`→CODER-CONVERGENCE · `@discovery`→DISCOVERY-EXHAUST ·
+  `@worker`→WORKER-CONVERGENCE / WORKER-WATCH / SOAK-LOOP ·
+  `@auditor`→AUDITOR-REFINE · `@engineer`→ENGINEER-PLAN-REFINE · orchestrator→FOCUS-LOOP.
+- **Author your own** (no template fits): declare `max_iterations` (mandatory),
+  role-shape the iterator, and require each iteration to emit `new_findings: true|false`.
+- **Run a generic one now:** `/shepherd:loop [task] --agent worker|discovery --max N [--interval D]`.
+
+Binding (`doctrines/loop-templates.md`): every loop is **bounded** (declare `--max`
+before iteration 1) and **measurable** (iterator emits `new_findings`). Unbounded or
+unstructured loops halt as `PLAN-MISSING-LOOP-CAP` / `LOOP-REPORT-INVALID`. Full
+catalog + Stage Graph shapes: `references/loop-templates.md`.
+
+---
+
 ## I. The flock (closed at six) + three-tier meta (v5.1.6+)
 
 | Agent | Model | Mode | Job |

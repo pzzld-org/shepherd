@@ -71,8 +71,21 @@ for a in "$@"; do
   esac
 done
 
-# ---- defaults (TOML wiring deferred) ----
-SPRINTS_PER_PATCH=10
+# ---- config (read from .claude/shepherd.toml; defaults when file/key absent) ----
+# sprints_per_patch is the mod-N cascade base: it sets LAST_SPRINT below (the
+# release-vs-next-sprint trigger) and is the floor every consumer reasons about.
+# Hardcoding it — the prior "TOML wiring deferred" state — silently gave projects
+# on sprints_per_patch != 10 (the shipped examples use 5 and 7) the WRONG release
+# trigger: dev.4 of a 5-sprint patch would be treated as mid-patch and cut dev.5.
+# Lightweight grep — bash-3.2-safe, no TOML parser; last match wins; section-agnostic
+# (the key is unique under [branching]).
+SPRINTS_PER_PATCH="$(grep -E '^[[:space:]]*sprints_per_patch[[:space:]]*=' .claude/shepherd.toml 2>/dev/null | grep -oE '[0-9]+' | tail -1)"
+[[ "$SPRINTS_PER_PATCH" =~ ^[0-9]+$ ]] || SPRINTS_PER_PATCH=10
+# NOTE: next_version() below still hardcodes the `< 9` rollover for the
+# patch→minor→major gears. That is correct for the default mod-10 convention but
+# not for projects overriding [branching].mod_base per level (branching-model.md
+# §IV note). Wiring those three bases is a separate follow-up; the sprint-level
+# trigger (the dev.{last} bug) is fixed here.
 MAIN_BRANCH="main"
 
 # Default version-file list (path:format).

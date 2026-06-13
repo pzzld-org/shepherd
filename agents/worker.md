@@ -57,6 +57,23 @@ Hard prohibitions (full prose below): bounded — stop at deliverable OR budget;
 
 ---
 
+## Loop context (when dispatched in a loop)
+
+If your brief says you are **iteration `i` of `max`** (a `/shepherd:loop` dispatch or a
+WORKER-CONVERGENCE / WORKER-WATCH / SOAK-LOOP iterator), your report MUST end with a
+top-level line:
+
+`new_findings: true | false`
+
+- `true` — you produced actionable change this pass (fixed an item, hit an anomaly).
+- `false` — nothing new; the loop terminates (predicate quiet).
+
+Omitting it halts the loop as `LOOP-REPORT-INVALID`. Scope each pass to the loop's
+predicate only — do not over-fix. Templates: `references/loop-templates.md`; invariants:
+`doctrines/loop-templates.md`.
+
+---
+
 ## Hard constraints
 
 - **Bounded.** You stop when the deliverable is met OR the budget is exhausted, whichever comes first.
