@@ -26,7 +26,7 @@ The remainder of this document describes the **solo path** (no `--teammate`). Fo
 
 1. **Load shepherd skill context** — invoke `shepherd` via the Skill tool. This loads `${CLAUDE_PLUGIN_ROOT}/skills/shepherd/SKILL.md` and the conductor quick reference.
 
-2. **Read shepherd.toml** — `.claude/shepherd.toml` (or `.local.toml` override). If missing, surface a warning and proceed with framework defaults per `${CLAUDE_PLUGIN_ROOT}/docs/configuration.md`. If the file fails validation, STOP and surface the error.
+2. **Read shepherd.toml** — `.claude/shepherd.toml` (or `.local.toml` override). If missing, **scaffold then proceed** (v6.1.5 #15): run `shctx config init` to write `.claude/shepherd.toml` from the bundled minimal template (derives `[project].name` + `[gates]` from the repo's build manifest, realigns `[paths]` to the active namespace), emit a one-line `[CONFIG] scaffolded .claude/shepherd.toml (name=…, gates=…)` notice, and PROCEED — do NOT stop for confirmation (execution sessions are action-biased, `doctrines/operator-signaling.md`). If the file exists but fails validation, STOP and surface the error.
 
 3. **Detect current branch** — `git branch --show-current`. Match against `[branching].sprint_branch_pattern`. If on a sprint branch → that is the active sprint. If on the patch branch → cut the next sprint branch first, per `${CLAUDE_PLUGIN_ROOT}/skills/shepherd/references/branching-model.md` §II.
 
@@ -40,7 +40,15 @@ The remainder of this document describes the **solo path** (no `--teammate`). Fo
    - Sprint identity (version + sprint slot)
    - Prior close grade + outstanding blockers
    - Carry-forwards that must land this sprint
-   - What the seed says the north-star is
+   - What the seed says the north-star is (if a seed exists)
+
+> **Seed is recommended, not required.** If no `{paths.plans}/{sprint_slug}.seed.md`
+> exists, do NOT refuse — follow the seedless kickoff in
+> `${CLAUDE_PLUGIN_ROOT}/skills/shepherd/doctrines/operator-signaling.md §"Seed is
+> recommended, not required"`: if the objective is derivable from the handoff / issue
+> ledger / branch, RUN; otherwise ask ONE batched kickoff `AskUserQuestion`
+> (objective + scope + done-criteria), then run. Note the elevated drift risk in the
+> close report. Do NOT add new mid-run stop points to compensate.
 
 Then proceed to Step 1.
 

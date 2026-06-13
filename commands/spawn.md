@@ -228,15 +228,18 @@ running. Per D-API §11: a lead can only manage one team at a time. Refuse and d
 the operator to either complete the prior sprint's hand-back, or inspect
 `~/.claude/teams/` and clear stale config after confirmation.
 
-### Check 4 — shepherd.toml (warn-only)
+### Check 4 — shepherd.toml (scaffold-then-proceed)
 
 ```bash
 ls .claude/shepherd.toml 2>/dev/null || ls .local.toml 2>/dev/null
 ```
 
-If missing, emit `[WARN]` and proceed with framework defaults from
-`${CLAUDE_PLUGIN_ROOT}/docs/configuration.md`. Recommend copying
-`examples/minimal/shepherd.toml`. Non-blocking.
+If missing, **scaffold then proceed** (v6.1.5 #15): run `shctx config init` to write
+`.claude/shepherd.toml` from the bundled minimal template (idempotent; derives
+`[project].name` + `[gates]` from the repo's build manifest, realigns `[paths]` to the
+active namespace), emit a one-line `[CONFIG] scaffolded .claude/shepherd.toml` notice,
+and PROCEED. Non-blocking — root is action-biased (`doctrines/operator-signaling.md`);
+do NOT stop for confirmation. The operator can refine `[branching]`/`[gates]` later.
 
 ### Check 5 — Flag-specific preflight
 
@@ -293,8 +296,12 @@ Total sprints: {N}
 Missing seeds: {M}
 ```
 
-If any required seed is missing, REFUSE the spawn and direct the operator to run
-`/shepherd:plant {sprint_slug}` for each gap. Per `doctrines/scope-scale-workload.md §III`.
+For multi-sprint walks (this enumeration runs for `--scope patch|minor|version`), a
+missing seed REFUSES the spawn — direct the operator to run `/shepherd:plant
+{sprint_slug}` for each gap. Per `doctrines/scope-scale-workload.md §III`. (Seeds are
+load-bearing here: the walk plan and `--parallel` collision check read them. A single
+`--scope sprint` spawn is the seed-optional case — see Hard-stop #2 and
+`doctrines/operator-signaling.md §"Seed is recommended, not required"`.)
 
 ### Check 7 — Scope confirmation for minor/version (v5.1.6+)
 
@@ -976,8 +983,16 @@ horizon exists ONLY if commits land at every boundary. Full contract:
 Preflight-driven (Checks 1–3) plus run-state guards:
 
 1. Preflight Check 1 / 2 / 3 fail.
-2. **No active seed** — `{paths.plans}/{sprint_slug}.seed.md` missing. Send
-   operator to `/shepherd:plant` first.
+2. **No active seed (conditional — seed is recommended, not required).** A missing
+   `{paths.plans}/{sprint_slug}.seed.md` is a HARD stop ONLY for `--parallel` and
+   multi-sprint `--scope` (patch/minor/version) walks, where seeds are load-bearing
+   for collision detection (Check 5) and walk enumeration (Check 6) — there route the
+   operator to `/shepherd:plant` for each gap. For a single `--scope sprint` spawn,
+   seedless is ALLOWED: follow the seedless kickoff in
+   `${CLAUDE_PLUGIN_ROOT}/skills/shepherd/doctrines/operator-signaling.md §"Seed is
+   recommended, not required"` (derive the objective, or ask ONE batched kickoff
+   question, then run with elevated drift risk noted in the plan header + close report).
+   The seed remains the happy path — recommend `/shepherd:plant` but do not refuse.
 3. **Corrupted shepherd.lock** — `.artifacts/shepherd.lock` non-empty, timestamp
    < 30 min with matching active process. Surface; do not spawn.
 4. **Active rebase in progress** — `REBASE_HEAD` or `MERGE_HEAD` present;

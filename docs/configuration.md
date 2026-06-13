@@ -19,7 +19,18 @@ partial override, not a whole-file replacement. Every hook guard and `shctx` com
 resolves config through a single helper (`cfg_get`, defined in both `_lib.sh` files), so
 the precedence is identical across the runtime and the hooks.
 
-If no config is found, shepherd uses the framework defaults documented below — but the conductor will surface a warning at every `/shepherd:*` invocation until one is created.
+If no config is found, the entry commands **scaffold one and proceed** (v6.1.5 #15) rather than refusing or running blind. Run it yourself any time with:
+
+```bash
+shctx config init        # writes .claude/shepherd.toml from the bundled minimal template
+```
+
+`config init` is idempotent (it never clobbers an existing binding) and derives the load-bearing values automatically: `[project].name` from the git remote (falling back to the repo-root basename), `[gates]` from the repo's build manifest (`Cargo.toml`→cargo, `go.mod`→go, `pyproject.toml`/`setup.py`→pytest+ruff, `package.json`→npm), and `[paths]` realigned to whichever shctx namespace (`.shepherd/` or `.artifacts/`) the project already uses. The entry points wire it as follows:
+
+- **`/shepherd:start`, `/shepherd:spawn` (root):** scaffold → one-line `[CONFIG]` notice → PROCEED. Execution sessions are action-biased (`doctrines/operator-signaling.md`); they do not stop for confirmation.
+- **`/shepherd:plant`:** scaffold → **one batched `AskUserQuestion`** to confirm/refine the `[branching]` scheme and `[gates]` (the scaffold gets the toolchain right but can only guess version/branch topology) → continue. The planter plans *with* the operator, so it surfaces the choice but never blocks on a hand-edited file.
+
+You should still review `[branching]` and any non-standard `[gates]` before the first sprint — a seed authored against guessed branching is drift on arrival.
 
 ## Schema
 
