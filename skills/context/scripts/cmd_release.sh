@@ -79,7 +79,7 @@ done
 # trigger: dev.4 of a 5-sprint patch would be treated as mid-patch and cut dev.5.
 # Lightweight grep — bash-3.2-safe, no TOML parser; last match wins; section-agnostic
 # (the key is unique under [branching]).
-SPRINTS_PER_PATCH="$(grep -E '^[[:space:]]*sprints_per_patch[[:space:]]*=' .claude/shepherd.toml 2>/dev/null | grep -oE '[0-9]+' | tail -1)"
+SPRINTS_PER_PATCH="$(grep -E '^[[:space:]]*sprints_per_patch[[:space:]]*=' .claude/shepherd.toml 2>/dev/null | grep -oE '[0-9]+' | tail -1 || true)"
 [[ "$SPRINTS_PER_PATCH" =~ ^[0-9]+$ ]] || SPRINTS_PER_PATCH=10
 # NOTE: next_version() below still hardcodes the `< 9` rollover for the
 # patch→minor→major gears. That is correct for the default mod-10 convention but

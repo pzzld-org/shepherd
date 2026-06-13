@@ -441,6 +441,8 @@ For `:start` and `:spawn`, sprint is inferred from current branch when no `sprin
 | `references/branching-model.md` | First branch-touching action | Authoritative branch lifecycle + rollover + hygiene |
 | `references/seed-template.md` | Planter authoring or seed audit | Canonical seed shape (now includes graph-hint §7-bis) |
 | `references/agent-briefs.md` | Brief drafting | Copy-paste brief templates + grade cutoffs |
+| `references/glossary.md` | Term ambiguity (esp. "workflow") | Disambiguates the native `Workflow` tool (always present, never ToolSearch) vs the six workflow patterns vs GitHub Actions; ToolSearch-vs-top-level rule; loop-term map |
+| `doctrines/operator-signaling.md` | Planning + seedless kickoff | Session→operator signaling: planter asks freely; execution sessions are action-biased (`AskUserQuestion` is a narrow escape valve, never for confirmation/approval). Seed is recommended, not required |
 | `doctrines/stage-graph.md` | First sprint-walk decision | Plan-IS-dispatch-contract principle (graph-as-discipline) |
 | `doctrines/conductor-cwd.md` | First worktree inspection | Conductor anchor discipline — cwd / HEAD / worktree all stay on sprint root; bans `cd`, `git switch <agent-branch>`, and `git worktree add` from inside a worktree (v5.0.3 + v5.0.6) |
 | `doctrines/gates-restoration.md` | Sprint opens with red gates | Run GATES-DISCOVERY before Lane 0; brief on full inventory, not narrow subset (v5.0.3) |
