@@ -421,6 +421,22 @@ coordinate_drive_guard = "block"
 # (doctrines/spawn-escalation.md). Optional; defaults shown.
 wave_ack_timeout_sec  = 60     # conductor waits this long for a wave-ack before continuing
 cross_dep_timeout_sec = 300    # CROSS-DEP-WAIT escalates to operator after this
+
+# --- Toggles (v6.1.5 #10) — read via `shctx config get <key>`; defaults below
+#     preserve the pre-v6.1.5 behavior exactly. -----------------------------
+
+# Upper bound on `--parallel <N>` fan-out (Preflight Check 5). Default 4 — the
+# pre-v6.1.5 hard cap, above which the lead's TeammateIdle handler saturates.
+# Lower it on rate-limited plans (e.g. 2). N is still floored at 2 (N=1 is just
+# a base spawn). Resolved at Check 5 via `shctx config get max_parallel 4`.
+max_parallel      = 4          # int, 2..N — upper bound on --parallel fan-out
+
+# Recommended cadence for the observability dashboard loop (#13):
+#   /shepherd:loop <dashboard_cadence> shctx dash
+# Default 3m (suits active waves; widen to 5m+ for slow sprints). Purely a
+# recommendation surfaced in the [SPAWN] confirmation — the dashboard is
+# read-only, so the cadence never affects sprint state.
+dashboard_cadence = "3m"       # duration — default interval for the dash loop
 ```
 
 > **Prompt-cache TTL (caching optimization, v6.0.5).** A multi-wave sprint easily
@@ -432,6 +448,43 @@ cross_dep_timeout_sec = 300    # CROSS-DEP-WAIT escalates to operator after this
 > *subscriptions* already request 1h automatically, so this matters most for API-key
 > use). This is the single highest-leverage token win for long runs. Refs:
 > `https://code.claude.com/docs/en/prompt-caching`, `doctrines/cache-telemetry.md`.
+
+### `[autorun]` — unattended sequential walks (`/shepherd:spawn --scope patch` / `--auto`)
+
+Governs the sequential autopilot that walks `dev.0..dev.LAST` unattended. All keys
+are read via `shctx config get <key>`; the defaults reproduce the pre-v6.1.5
+behavior exactly, so an existing project sees no change until it opts in.
+
+```toml
+[autorun]
+# Grade floor for an unattended walk. A sprint that closes BELOW this grade
+# triggers `on_grade_floor`. Grades are the close-report letter grades
+# (A+ … F) from references/grading-rubric.md. Default B.
+min_grade      = "B"           # letter grade — floor for continuing the walk
+
+# What the walk does when a sprint grades below `min_grade` (v6.1.5 #10):
+#   abort (default) — emit the AUTO ABORT REPORT and stop the walk. This is the
+#                     pre-v6.1.5 GRADE-FLOOR behavior (commands/spawn.md autorun
+#                     loop; agents/planter.md §autorun).
+#   pause           — pause and surface one operator decision (re-spawn the
+#                     failed sprint / continue anyway / stop), then honor it.
+#   continue        — log a GRADE-FLOOR warning to the walk status and proceed
+#                     to the next sprint (fully unattended; use with care).
+on_grade_floor = "abort"       # abort (default) | pause | continue
+
+# Pause posture BETWEEN sprints in a sequential walk (v6.1.5 #10):
+#   brief (default) — emit the inter-sprint status + a short (~5s) window, then
+#                     proceed. This is the pre-v6.1.5 behavior.
+#   signoff         — hard pause; require an explicit operator sign-off before
+#                     opening the next sprint (turns the walk semi-attended).
+#   none            — fully continuous; no inter-sprint pause window at all.
+inter_sprint_pause = "brief"   # brief (default) | signoff | none
+```
+
+`min_grade` has always been consulted by the `--auto` / `--scope patch` loop and the
+planter's autorun step; v6.1.5 documents the section it lives in and adds the two
+behavior toggles around it. The grade-floor abort remains the default, so nothing
+changes unless you set `on_grade_floor` / `inter_sprint_pause`.
 
 ### `[compaction]` — compaction resilience (v6.0.9)
 

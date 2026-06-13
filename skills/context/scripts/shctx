@@ -16,11 +16,13 @@ Subcommands (atomic):
                           Scaffold per-project namespace, create root.db, register host project.
                           Default namespace is .shepherd/ (v5.0.0+); pass --artifacts to opt into
                           the legacy .artifacts/ namespace. Auto-detects existing dir if present.
-  config <init|show|path>
+  config <init|show|path|get>
                           init: scaffold .claude/shepherd.toml from the bundled minimal
                           template when absent (idempotent) — derives [project].name
                           (git remote → cwd) + [gates] (cargo|go|pytest|npm), realigns
                           [paths] to the active namespace. show/path: inspect the binding.
+                          get <key> [def]: resolve one key via cfg_get precedence
+                          (local→project→XDG) — the uniform read path for the toggles.
   status                  Row counts, refresh staleness, lock state, lint summary
   dash                    One-glance sprint dashboard (v6.1.5): composes focus +
                           graph completion + live teammates + mailbox/escalation

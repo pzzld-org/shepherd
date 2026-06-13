@@ -31,6 +31,22 @@ grep -q "CUSTOM-EDIT" "$dst" || { echo "FAIL: config init clobbered an existing 
 p="$("$SHCTX" config path)"
 assert_eq "config.path" "$p" "$SHCTX_TEST_TMP/.claude/shepherd.toml"
 
+# ---- get subcommand: toggle resolution + default fallback + precedence -------
+cat >> "$dst" <<'TOML'
+[autorun]
+on_grade_floor = "pause"
+[spawn]
+max_parallel = 3
+TOML
+assert_eq "get.set"     "$("$SHCTX" config get on_grade_floor abort)" "pause"
+assert_eq "get.int"     "$("$SHCTX" config get max_parallel 4)"       "3"
+assert_eq "get.default" "$("$SHCTX" config get dashboard_cadence 3m)" "3m"
+assert_eq "get.unset-nodef" "$("$SHCTX" config get nonexistent_key)" ""
+# .local.toml overrides .toml per-key.
+printf '[spawn]\nmax_parallel = 2\n' > "$SHCTX_TEST_TMP/.claude/shepherd.local.toml"
+assert_eq "get.local-override" "$("$SHCTX" config get max_parallel 4)" "2"
+rm -f "$SHCTX_TEST_TMP/.claude/shepherd.local.toml"
+
 # ---- go toolchain detection (fresh repo) ------------------------------------
 TMP2="$(mktemp -d)"; ( cd "$TMP2" && git init -q . \
   && git remote add origin git@github.com:acme/go-thing.git && touch go.mod \

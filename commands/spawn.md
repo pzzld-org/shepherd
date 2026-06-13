@@ -258,8 +258,10 @@ do NOT stop for confirmation. The operator can refine `[branching]`/`[gates]` la
    Re-scope the colliding seeds before retrying /shepherd:spawn --parallel.
    ```
    Operator must amend the seeds; planter does not auto-resolve.
-2. **N within bounds (HARD-STOP).** N must be 2–4. N=1 is just base spawn; N>4
-   saturates the lead's `TeammateIdle` handler.
+2. **N within bounds (HARD-STOP).** N must be 2..`[spawn].max_parallel` — resolve
+   the cap via `shctx config get max_parallel 4` (default **4**, the historical
+   hard cap; v6.1.5 #10 makes it configurable for rate-limited plans). N=1 is just
+   base spawn; N above the cap saturates the lead's `TeammateIdle` handler.
 3. **N seeds available.** Exactly N `{paths.plans}/{sprint_slug}.seed.md` files
    must exist. Missing → hard stop; operator runs `/shepherd:plant` for the gap.
 4. **No dev-order cycle.** If `sprint_dependencies` contains a cycle, the merge
@@ -694,8 +696,11 @@ hook-input JSON).
         Babysitter mode: active. Monitoring TeammateIdle + TaskCompleted hooks.
         Heartbeat threshold: 5 min. Alert on staleness.
         Sprint: {sprint_slug}
+        Operator dashboard: /shepherd:loop {dashboard_cadence} shctx dash
         Coordinate cycle: ENTERING NOW — root does not pause for the operator.
 ```
+
+`{dashboard_cadence}` resolves from `shctx config get dashboard_cadence 3m`.
 
 **Root now enters the FOCUS-LOOP by default.** Immediately after emitting the
 `[SPAWN]` block, root activates the `focus_loop_id` opened at SEED-VERIFY
@@ -730,9 +735,11 @@ shctx dash                       # one snapshot
 ```
 
 `/shepherd:loop <interval> shctx dash` is the recommended monitoring recipe for a
-running spawn (interval to taste — 2–5 min for active waves). The dashboard is
-purely observational: it never mutates state, so it is safe to loop alongside the
-root's coordinate cycle. For deeper teammate-pane inspection, see `shctx panes
+running spawn. The interval defaults to `[spawn].dashboard_cadence` (v6.1.5 #10;
+resolve via `shctx config get dashboard_cadence 3m` — default **3m**, widen to 5m+
+for slow sprints). The dashboard is purely observational: it never mutates state,
+so it is safe to loop alongside the root's coordinate cycle. For deeper
+teammate-pane inspection, see `shctx panes
 status` (`skills/context/scripts/cmd_panes.sh`).
 
 ---
@@ -908,7 +915,12 @@ Base spawn behavior applies per loop iteration. Full loop-boundary contract
 
   [TERMINATION CHECK]
     If dev.LAST → EXIT LOOP → emit PLANTER REPORT (auto-mode variant).
-    If grade < [autorun].min_grade → EXIT LOOP → AUTO ABORT REPORT.
+    If grade < [autorun].min_grade → apply [autorun].on_grade_floor (v6.1.5 #10;
+        resolve via `shctx config get on_grade_floor abort`):
+          abort (default) → EXIT LOOP → AUTO ABORT REPORT (historical behavior).
+          pause           → surface ONE operator decision (re-spawn / continue /
+                            stop) and honor it — do NOT auto-continue.
+          continue        → log GRADE-FLOOR to walk status; proceed to dev.N+1.
     If error_budget_remaining == 0 → EXIT LOOP → AUTO ABORT REPORT.
     If operator interrupted → EXIT LOOP → AUTO ABORT REPORT.
     Otherwise → continue to dev.N+1.
@@ -936,7 +948,12 @@ Inter-sprint work checklist`. Summary:
    60–120 lines.
 8. Update carry-forward ledger.
 9. Update error budget counter.
-10. Emit inter-sprint status + 5-second pause window.
+10. Emit inter-sprint status, then apply `[autorun].inter_sprint_pause` (v6.1.5
+    #10; resolve via `shctx config get inter_sprint_pause brief`):
+    - `brief` (default) — short (~5s) window, then proceed (historical behavior).
+    - `signoff` — hard pause; wait for an explicit operator sign-off (`resume
+      auto`) before opening dev.N+1. Turns the walk semi-attended.
+    - `none` — proceed immediately; no inter-sprint window.
 
 Any step failure → `[AUTO PAUSE]` with the failing step identified. Do not
 re-attempt without operator confirmation.
@@ -946,7 +963,7 @@ re-attempt without operator confirmation.
 | Condition | Code | Planter action |
 |---|---|---|
 | `dev.LAST` closed cleanly | LAST-DEV | Full cleanup stewardship; final PLANTER REPORT |
-| Grade < `[autorun].min_grade` | GRADE-FLOOR | AUTO ABORT; operator decides re-spawn |
+| Grade < `[autorun].min_grade` | GRADE-FLOOR | Per `[autorun].on_grade_floor`: `abort` (default) AUTO ABORT; `pause` one operator decision; `continue` log + next sprint |
 | `error_budget_remaining == 0` | BUDGET-ZERO | AUTO ABORT |
 | Operator interrupt | OPERATOR-INTERRUPT | AUTO ABORT after current inter-sprint work completes |
 | Escalation needs operator | ESCALATION-PAUSE | LOOP PAUSES (not terminates); resumes on confirmation |

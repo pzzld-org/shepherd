@@ -486,15 +486,22 @@ You enforce four termination conditions (checked after each inter-sprint work pa
    (§3). Emit PLANTER REPORT (auto-mode variant — includes loop summary: sprints run,
    grades, errors consumed, final patch branch SHA).
 
-2. **GRADE-FLOOR**: `task_result.grade < [autorun].min_grade`. Emit AUTO ABORT REPORT
-   with the grade floor breach highlighted. Do not spawn the next teammate.
+2. **GRADE-FLOOR**: `task_result.grade < [autorun].min_grade`. Apply
+   `[autorun].on_grade_floor` (v6.1.5 #10; resolve via `shctx config get
+   on_grade_floor abort`): **`abort`** (default) → emit AUTO ABORT REPORT with the
+   breach highlighted and do not spawn the next teammate (historical behavior);
+   **`pause`** → surface ONE operator decision (re-spawn the failed sprint /
+   continue anyway / stop) and honor it; **`continue`** → log the breach to the
+   walk status and proceed to dev.N+1 (fully unattended — use with care).
 
-3. **BUDGET-ZERO**: `error_budget_remaining == 0`. Same as GRADE-FLOOR in behavior.
+3. **BUDGET-ZERO**: `error_budget_remaining == 0`. AUTO ABORT REPORT; always
+   terminal (not subject to `on_grade_floor` — a spent error budget is a hard stop).
 
-4. **OPERATOR-INTERRUPT**: any message during the 5-second countdown other than
+4. **OPERATOR-INTERRUPT**: any message during the inter-sprint window other than
    `'continue'` / `'ok'`. Finish current inter-sprint work (do NOT orphan in-flight work),
    then pause. The loop is resumable: operator types `'resume auto'` to continue from
-   dev.N+1.
+   dev.N+1. The window length / posture follows `[autorun].inter_sprint_pause`
+   (`brief` ~5s default | `signoff` hard-wait | `none`).
 
 For ESCALATION-PAUSE (an escalation reaching operator-question or hard-stop mid-sprint):
 this is not a termination — it is a loop suspension. You address the escalation, send

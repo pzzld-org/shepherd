@@ -105,6 +105,15 @@ do_init() {
 sub="${1:-help}"; shift || true
 case "$sub" in
   init) do_init "${1:-}" ;;
+  get)
+    # Resolve a single key through cfg_get (local → project → XDG), optionally
+    # falling back to a supplied default when unset. The one uniform read path
+    # the v6.1.5 toggles (#10) and any agent/script use to get an effective value.
+    key="${1:-}"; def="${2:-}"
+    [[ -n "$key" ]] || { echo "ERROR: usage: shctx config get <key> [default]" >&2; exit 1; }
+    v="$(cfg_get "$key")"
+    [[ -n "$v" ]] && printf '%s\n' "$v" || printf '%s\n' "$def"
+    ;;
   show)
     repo="$(shctx_repo_root)"; found=0
     for f in "$repo/.claude/shepherd.local.toml" "$repo/.claude/shepherd.toml"; do
@@ -127,6 +136,10 @@ Usage:
                                 realigns [paths] to the active shctx namespace.
   shctx config show             Print the resolved project/local config.
   shctx config path             Echo the canonical write location.
+  shctx config get <key> [def]  Resolve one key via cfg_get (local→project→XDG),
+                                echoing [def] when unset. The uniform read path for
+                                the v6.1.5 toggles (on_grade_floor, inter_sprint_pause,
+                                max_parallel, dashboard_cadence, …).
 EOF
     ;;
   *) echo "ERROR: usage: shctx config <init|show|path>" >&2; exit 1 ;;
