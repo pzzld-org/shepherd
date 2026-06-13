@@ -25,7 +25,7 @@ Categories the auditor measures:
 
 Generated code (lockfiles, OpenAPI clients) doesn't count.
 
-> Field origin: shepherd v5.0.3 conductor feedback (axiom v0.3.0-dev.5),
+> Field origin: shepherd v5.0.3 conductor feedback (downstream Rust service),
 > §5. Wave-2 completeness auditor flagged net +4051 LOC sprint-wide as a
 > SUBTRACT violation. Most of that LOC was Wave-1 documentation (FF
 > matrix audit, ctx silo refresh, plan + amend-2 + Phase 0 + worker

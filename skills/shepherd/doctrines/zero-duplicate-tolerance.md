@@ -111,7 +111,7 @@ for path in [FILE-SCOPE].MAY_MODIFY:
             [SKILLS] += skill_list
             break
 
-for domain in detect_domains([FILE-SCOPE]):                    # finance, polymarket, supabase, ...
+for domain in detect_domains([FILE-SCOPE]):                    # finance, payments, supabase, ...
     [SKILLS] += [skills.by_domain][domain]
 
 [SKILLS] := dedupe([SKILLS])
@@ -136,7 +136,7 @@ Per `[skills.detection]` in `shepherd.toml`:
 [skills.detection]
 # Path patterns → skill slugs
 "crates/finance/**"    = ["finance"]
-"crates/polymarket/**" = ["polymarket", "trader"]
+"crates/payments/**"   = ["payments", "billing"]
 "db/migrations/**"     = ["supabase:supabase"]
 "crates/wasm-host/**"  = ["webassembly"]
 ```

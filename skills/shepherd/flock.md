@@ -150,7 +150,7 @@ for path in [FILE-SCOPE].MAY_MODIFY:
             [SKILLS] += skill_list
             break
 
-for domain in detect_domains([FILE-SCOPE]):                    # finance, polymarket, supabase, ...
+for domain in detect_domains([FILE-SCOPE]):                    # finance, payments, supabase, ...
     [SKILLS] += [skills.by_domain][domain]
 
 [SKILLS] := dedupe([SKILLS])

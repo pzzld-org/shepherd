@@ -81,7 +81,7 @@ if [ "$PATCH_HEAD" != "$SPRINT_BASE" ]; then
 fi
 ```
 
-If stale: conductor ff-merges the gap (`git checkout {patch_branch} && git merge --ff-only <prior_sprint_branch> && git push origin {patch_branch} && git checkout {sprint_branch} && git rebase {patch_branch}`) BEFORE dispatching the combo wave. This prevents the axiom dev.8 incident (30 commits dangling 6 hours because dev.7 close didn't rebase).
+If stale: conductor ff-merges the gap (`git checkout {patch_branch} && git merge --ff-only <prior_sprint_branch> && git push origin {patch_branch} && git checkout {sprint_branch} && git rebase {patch_branch}`) BEFORE dispatching the combo wave. This prevents a downstream sprint incident (30 commits dangling 6 hours because dev.7 close didn't rebase).
 
 **Severity: P0.** A stale patch branch means every sprint operates on
 code that doesn't include the prior sprint's work. The cost compounds

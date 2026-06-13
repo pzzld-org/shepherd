@@ -578,7 +578,7 @@ A graph that fails any of these checks gets a `STAGE-GRAPH-VIOLATION` finding an
 
 ## XIII-bis. Structured gate output + parallel HF dispatch (v5.0.6)
 
-> Field origin: axiom v0.3.1-dev.8a, 2026-05-12. Three serialized HF waves
+> Field origin: downstream Rust service, 2026-05-12. Three serialized HF waves
 > (HF-1 → HF-2 → HF-3) each unmasked a new error layer because the preceding
 > gate run short-circuited at the first compile error. All ~25 errors could have
 > surfaced upfront with a single `--keep-going` run; all three HF coders could
@@ -688,7 +688,7 @@ The cutover plan:
 
 ## XV-bis. Worktree `target/` policy (v5.0.4)
 
-Question raised in v5.0.3 axiom dev.5 §6: are git worktrees fully `target/`-
+Question raised in v5.0.3 downstream Rust service §6: are git worktrees fully `target/`-
 isolated, or do they share the parent's build cache?
 
 **Answer:** worktrees DO share the parent's build cache by default (each
@@ -710,7 +710,7 @@ Projects that want per-worktree `target/` isolation can set
 
 ## XV-ter. Operator-directed amendments — SendMessage vs spawn
 
-> Field origin: shepherd v5.0.3 conductor feedback (axiom v0.3.0-dev.5),
+> Field origin: shepherd v5.0.3 conductor feedback (downstream Rust service),
 > §7. Conductor used `Agent({ subagent_type: shepherd:engineer, prompt:
 > "SendMessage to: <id>..." })` thinking it was sending a follow-up to the
 > existing engineer; it actually spawned a SECOND engineer. The first
@@ -769,7 +769,7 @@ satellite dispatch, no resume-condition dance, and no `<ns>/pauses/` registry.
 
 ## XV-sext. WAVE-GATE cargo invocation rule (v5.0.9)
 
-> Field origin: shepherd v5.0.8 conductor feedback (axiom v0.3.2-dev.0) §5.
+> Field origin: shepherd v5.0.8 conductor feedback (downstream Rust service) §5.
 
 The WAVE-GATE gate sequence **MUST run cargo invocations sequentially** — never
 as parallel background processes:
@@ -789,7 +789,7 @@ the conductor's WAVE-GATE inline runs and any `@worker` running build verificati
 
 ## XV-sept. Phase 0 MCP availability + /reload-plugins (v5.0.9)
 
-> Field origin: shepherd v5.0.8 conductor feedback (axiom v0.3.2-dev.0) §7, §8.
+> Field origin: shepherd v5.0.8 conductor feedback (downstream Rust service) §7, §8.
 
 When `[mcp].supabase = true` (or any other `[mcp].*` flag) but the tool prefix
 is not callable at session start:

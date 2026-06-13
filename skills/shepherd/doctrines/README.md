@@ -21,7 +21,7 @@ Per-language details — the actual grep patterns, idioms, build commands, code-
        ├─→  python skill            (uv, ruff, black, type-hints)
        ├─→  typescript skill        (tsc, eslint, vitest, package.json)
        ├─→  code-style skill        (per-language ledger of personal style preferences)
-       └─→  domain skills           (finance, polymarket, supabase, claude-api, ...)
+       └─→  domain skills           (finance, payments, supabase, claude-api, ...)
 ```
 
 When the conductor builds a coder brief, it walks `[skills.detection]` against the lane's file scope to pick which language + domain skills to inject into `[SKILLS]`. The doctrines speak in principles; the language skills supply the syntax.
@@ -71,9 +71,9 @@ If a new framework-intrinsic rule emerges, write it here as a `.md` file. The ru
 
 Per-project doctrines that DRIFT beyond the framework's intrinsic rules live in `[memory].project_doctrines` (configured per-project, default `.claude/doctrines/`). Examples of project doctrines:
 
-- "Geo-block law — node process group pinned to yyz forever" (Axiom-specific, not a framework rule)
-- "BMS sigma-floor calibration — 7d window minimum" (Axiom-specific)
-- "ONNX models compile to WASI-NN, not native ort" (Axiom-specific)
+- "Geo-block law — node process group pinned to yyz forever" (downstream-project-specific, not a framework rule)
+- "BMS sigma-floor calibration — 7d window minimum" (downstream-project-specific)
+- "ONNX models compile to WASI-NN, not native ort" (downstream-project-specific)
 
 These get loaded by the conductor at session-open per `[hooks].on_every_dispatch`. They are NOT shepherd doctrines and don't belong in this directory.
 

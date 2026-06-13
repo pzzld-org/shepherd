@@ -26,8 +26,8 @@ Configuration: `.claude/shepherd.toml`. Project doctrines: `.claude/doctrines/`.
 - `chain-repair` — Phase 0 seed drift triggers VERIFY → AMEND → CONTINUE, not blanket escalate
 - `issue-ledger-awareness` — Phase 0 enumerates ALL open issues, not just current milestone
 
-**Project doctrines** (Axiom-specific, loaded from `.claude/doctrines/`):
-- `geo-block-law.md` — node process group pinned to yyz forever (Polymarket geo-fence)
+**Project doctrines** (project-specific, loaded from `.claude/doctrines/`):
+- `geo-block-law.md` — node process group pinned to a single region for a regulatory requirement
 - `three-role-topology.md` — node + worker + gateway, no fold
 - `extend-existing-structs.md` — find the closest-existing struct + extend in same crate, don't define parallel
 - (others as the project accumulates them)

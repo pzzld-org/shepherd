@@ -3,7 +3,7 @@
 # This is the smallest viable shepherd.toml. It assumes a Rust project
 # with the framework's mod-10 sprint convention and three canonical gates.
 #
-# For a fully-fleshed-out config, see ../axiom/shepherd.toml.
+# For a fully-fleshed-out config, see ../rust-service/shepherd.toml.
 # For the schema, see ../../docs/configuration.md.
 
 [project]

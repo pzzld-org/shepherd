@@ -17,7 +17,7 @@ description: |
 
 # Primitive ↔ axis binding — one primitive per axis, never inverted
 
-> **Why this doctrine exists.** In a live axiom session (2026-05-29, #89) the root
+> **Why this doctrine exists.** In a live downstream session (2026-05-29, #89) the root
 > shepherd spawned the first wave of conductors **via a Dynamic Workflow** instead
 > of **Agent Teams**, and the resulting teammate-conductors then **did NOT** compile
 > their gate-free step fan-out to a Dynamic Workflow. Each native primitive was used

@@ -52,8 +52,8 @@ expected=$(git -C "$SPRINT_ROOT" rev-parse "$SPRINT_BRANCH")
 [[ "$HEAD" == "$expected" ]] || halt "WORKTREE-DRIFT — auditor must be at sprint root, not a worktree"
 ```
 
-Field origin: shepherd v5.0.3 conductor feedback (axiom v0.3.0-dev.5 §2).
-A Wave-1 dependency-topology auditor reported "axiom-node serve+native
+Field origin: shepherd v5.0.3 conductor feedback (downstream Rust service §2).
+A Wave-1 dependency-topology auditor reported "service-node serve+native
 FAILS at HEAD with 14 E0308 errors" and recommended an immediate hot-fix
 lane. Conductor verified directly at sprint root: GREEN. The auditor was
 running gates from a coder worktree where pending Lane 4b changes hadn't

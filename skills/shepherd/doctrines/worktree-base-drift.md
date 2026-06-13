@@ -17,7 +17,7 @@ description: |
 > verifiable; the brief's `[BASE-COMMIT-EXPECTED]` line then forms a
 > tripwire the coder honors.
 >
-> Field origin: shepherd v5.0.3 conductor feedback (axiom v0.3.0-dev.5),
+> Field origin: shepherd v5.0.3 conductor feedback (downstream Rust service),
 > §1. Two of three Wave-1 lanes dispatched via `Agent({ isolation:
 > "worktree" })` halted with `BASE-DRIFT — worktree HEAD <main SHA> does
 > not match expected <sprint SHA>`. v5.0.4 codifies the prevention.
@@ -47,7 +47,7 @@ mode for coder dispatch in a sprint context. Instead, the conductor:
 ## Why pre-create instead of `isolation: "worktree"`
 
 The Agent tool's `isolation: "worktree"` documentation does not specify a
-`base_branch` parameter. Empirical observation in v5.0.3 (axiom dev.5) was
+`base_branch` parameter. Empirical observation in v5.0.3 (a downstream Rust service) was
 that a fraction of dispatches branched from `main` (carrying the previous
 release's HEAD) instead of the active sprint branch. The same dispatch with
 identical parameters succeeded for other lanes — suggesting either a race
@@ -91,7 +91,7 @@ In every other case, prefer `shctx worktree create-batch` + explicit
 
 ## Canonical no-isolation workaround (v5.0.6)
 
-> Field origin: axiom v0.3.1-dev.8a, 2026-05-12 — `isolation: "worktree"` defaults
+> Field origin: downstream Rust service, 2026-05-12 — `isolation: "worktree"` defaults
 > to `main` on every dispatch when the sprint is on a non-`main` branch. The
 > BASE-DRIFT halt fires correctly, but re-dispatching WITH isolation just repeats
 > the same failure. The canonical workaround is to dispatch WITHOUT isolation.

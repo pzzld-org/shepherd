@@ -8,7 +8,7 @@
       "scope": "local",
       "type": "mcp",
       "capabilities": ["database", "sql", "migrations", "edge-functions", "logs"],
-      "description": "Supabase MCP — execute SQL, apply migrations, tail logs, and manage edge functions for the Axiom backend.",
+      "description": "Supabase MCP — execute SQL, apply migrations, tail logs, and manage edge functions for the service backend.",
       "invocation": "mcp__Supabase__execute_sql",
       "when": "user asks about the database schema, wants to run a query, apply a migration, or inspect Supabase logs",
       "tags": ["db", "backend"],
@@ -32,7 +32,7 @@
       "scope": "local",
       "type": "cli",
       "capabilities": ["deploy", "scale", "secrets", "logs", "ssh"],
-      "description": "Fly.io CLI — deploy Axiom node/worker images, manage secrets, tail live logs, and open remote shells.",
+      "description": "Fly.io CLI — deploy the service node/worker images, manage secrets, tail live logs, and open remote shells.",
       "invocation": "fly",
       "when": "user wants to deploy, scale, inspect live logs, or SSH into a Fly machine",
       "tags": ["infra", "deploy"],
@@ -40,7 +40,7 @@
       "added": "2026-06-11"
     },
     {
-      "name": "axiom-dev",
+      "name": "service-dev",
       "scope": "local",
       "type": "cli",
       "capabilities": ["local-run", "seed-db", "test-circuit"],

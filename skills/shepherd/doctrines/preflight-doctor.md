@@ -59,7 +59,7 @@ shepherd preflight — v5.1.1
 
 [GIT]
   ✓ HEAD on sprint branch (v0.4.0-dev.3)
-  ✓ cwd is sprint root (/Users/jo3/src/fl03/axiom)
+  ✓ cwd is sprint root (/Users/jo3/src/fl03/rust-service)
   ✓ No sub-worktree drift
   ⚠ 1 orphan worktree (.claude/worktrees/agent-abc — last commit 4 days ago)
 

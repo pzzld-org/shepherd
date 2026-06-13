@@ -6,7 +6,7 @@ Every sprint close runs a GH-issue delta against the carry-forward ledger BEFORE
 
 Without a structural refresh, carry-forward items roll forward indefinitely. Each sprint close says "carry these to next sprint" and the next sprint's seed faithfully copies them in. After 4–5 patches, half the seed is stale carries — and nobody flags that those carries have been deferred N times.
 
-The canary that surfaced this in Axiom: GH #582 was deferred across 3 separate patches without anyone noticing. The fix was the chronic label + the close-time refresh.
+The canary that surfaced this in a downstream project: GH #582 was deferred across 3 separate patches without anyone noticing. The fix was the chronic label + the close-time refresh.
 
 ## What the refresh does
 

@@ -88,12 +88,12 @@ below is the working catalog the critic walks through internally.
   - (d) it is requested by a workspace member, by `--features` /
     `--all-features` on the close-gate command, or by a `cfg(feature = "…")`
     guard that the gate exercises.
-  Worked example (the v0.3.4-dev.3 false positive this checklist exists to
-  prevent): `bin/node` declares `axiom = { features = ["full"] }`; `axiom`
-  declares `full = ["axiom-rt?/full"]`; `axiom-rt` declares
+  Worked example (a downstream false positive this checklist exists to
+  prevent): `bin/node` declares `app-core = { features = ["full"] }`; `app-core`
+  declares `full = ["app-runtime?/full"]`; `app-runtime` declares
   `full = ["native-runtime"]`. So `native-runtime` is already reachable in
   `bin/node` by transitive feature unification — adding a direct
-  `axiom-rt = { features = ["native-runtime"] }` edge duplicates a
+  `app-runtime = { features = ["native-runtime"] }` edge duplicates a
   dependency and may violate the umbrella-crate convention. Do NOT flag it.
   Only a feature with **no path from any root** (default, CLI, workspace, or
   another reachable feature) may be raised — and even then as a

@@ -5,7 +5,7 @@
 > the synthesis formula explicit so close reports cite a traceable
 > calculation instead of a vibe-blend.
 >
-> Field origin: shepherd v5.0.3 conductor feedback (axiom v0.3.0-dev.5),
+> Field origin: shepherd v5.0.3 conductor feedback (downstream Rust service),
 > §9 — Wave-2 audits returned B+ / A- / B- / B+ across four concerns;
 > the sprint-level grade was a manual blend hard to articulate precisely.
 
@@ -66,7 +66,7 @@ The conductor computes the sprint-level grade in three steps:
      promised-true predicate that regressed is a HIGH finding.
 4. **Otherwise**, round the numeric average to the nearest letter grade.
 
-## Worked example (axiom dev.5)
+## Worked example (a downstream Rust service)
 
 | Concern | Grade | Numeric | Weight | Contribution |
 |---|---|---|---|---|
@@ -77,8 +77,8 @@ The conductor computes the sprint-level grade in three steps:
 | (data-flow not run this sprint) | — | — | — | — |
 | **Weighted total** | | | **0.90 (re-normalized)** | **3.16** |
 
-¹ ledger-integrity here substitutes for `data-flow` per axiom dev.5
-non-default concern split.
+¹ ledger-integrity here substitutes for `data-flow` per a downstream Rust
+service's non-default concern split.
 
 Re-normalized total numeric ≈ 3.51 → **B+/A-** range. Conductor picks
 **B+** (rounded down) because completeness (highest weight) returned

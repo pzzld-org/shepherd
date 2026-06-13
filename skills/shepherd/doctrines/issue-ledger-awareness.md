@@ -6,7 +6,7 @@ This doctrine forces the engineer (Phase 0) and the auditor-completeness (close)
 
 ## What "tunnel vision" looks like
 
-Real-world example from the Axiom project, sprint v0.2.9-dev.2 open:
+Real-world example from a downstream project, sprint v0.2.9-dev.2 open:
 
 - Current milestone (v0.2.9): 88 issues
 - Other milestones (v0.2.8 still open): 75 issues

@@ -6,7 +6,7 @@ description: |
   amendments by type, defines the conductor response for each, and requires
   every amendment to be traceable in the close report.
 introduced: v5.0.6
-field-origin: axiom v0.3.1-dev.8a, 2026-05-12
+field-origin: a downstream Rust service, 2026-05-12
 ---
 
 # Mid-Flight Operator Amendment Protocol
@@ -25,8 +25,8 @@ When the operator provides new information mid-sprint, classify it before acting
 
 | Type | Description | Example |
 |---|---|---|
-| **Clarification** | Resolves ambiguity in an existing lane — no new work, no new scope | "Package naming should be `axiom-dashboard`, not `axiom-ui`" |
-| **Feature addition** | New work item not in the original seed or plan; fits within the sprint | "Develop criterion benchmarks under `crates/axiom/benches`" |
+| **Clarification** | Resolves ambiguity in an existing lane — no new work, no new scope | "Package naming should be `service-dashboard`, not `service-ui`" |
+| **Feature addition** | New work item not in the original seed or plan; fits within the sprint | "Develop criterion benchmarks under `crates/app-core/benches`" |
 | **Production regression** | A live system is broken; the sprint must at minimum acknowledge it and dispatch a diagnostic or triage | "Memory leak is back; bots dark; gateway dark" |
 | **Architectural decision** | Changes a foundational design choice; may affect multiple sprints or the current sprint's direction | "Redeemer should become a Worker pattern" |
 

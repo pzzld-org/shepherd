@@ -16,7 +16,7 @@ description: |
 > conductor must stash before the cherry-pick can run. The result is
 > silent loss of work plus extra cycles.
 >
-> Field origin: shepherd v5.0.3 conductor feedback (axiom v0.3.0-dev.5),
+> Field origin: shepherd v5.0.3 conductor feedback (downstream Rust service),
 > §3. Lane 9 wrote source files to its worktree but `.shepherd/ctx/feature-
 > flag-matrix.md` to the main workspace; Lane 6 wrote `canonical-types.md`
 > to BOTH locations. Conductor stashed and resolved manually before each

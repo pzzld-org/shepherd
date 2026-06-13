@@ -111,10 +111,10 @@ the intro-mode regression auditor automatically runs it per
 
 ## Field origin
 
-> Axiom v0.3.3-dev.4 (2026-05-20): three distinct feature-weaving defects
+> A downstream Rust service (2026-05-20): three distinct feature-weaving defects
 > in a single XL sprint, each hidden by `cargo check --workspace
 > --features full` passing while `cargo check -p <single_pkg> --features
-> <composite>` failed. Operator feedback (2026-05-20): "axiom shepherd's
+> <composite>` failed. Operator feedback (2026-05-20): "shepherd's
 > feedback is supposed to be general but this is unnecessary unless you
 > can find a way to generally apply the concept they want."
 
