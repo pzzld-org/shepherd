@@ -553,6 +553,38 @@ loop_default     = "on"   # on (default) | off — root (under /shepherd:spawn) 
 
 The focus record itself (objective, active Stage-Graph node, ready-set, outstanding obligations, invariants) lives in `root.db` (`focus` table) and survives compaction natively. The rehydration consumer reads the latest snapshot + focus digest and emits them as `additionalContext` so the model's drive cursor is restored without manual re-orientation.
 
+### `[close]` — close-phase behavior
+
+Controls authorized supervised self-heal during a post-close soak (v6.2.0 #148,
+`doctrines/autonomous-sentinel.md`).
+
+```toml
+[close]
+# Authorized supervised self-heal during a post-close soak (v6.2.0 #148).
+# Default OFF = detection-only: a SOAK-LOOP surfaces an OUTCOME-REGRESSION and the
+# operator decides. Setting "on" ALONE does nothing — the seed must ALSO declare
+# `close: autonomous-sentinel` AND carry a complete `sentinel_rails` block
+# (gates-before-deploy, max_severity, max_concurrent, hf_cap, no_destructive_db_ops,
+# auto_rollback, live_flip, operator_override_each_tick, audit_trail). Three
+# independent opt-in gates; the safe default is detection-only.
+# See doctrines/autonomous-sentinel.md and references/loop-templates.md §AUTONOMOUS-SENTINEL.
+autonomous_sentinel = "off"   # off (default — detection-only) | on
+```
+
+### `[discovery]` — capability auto-discovery (SessionStart)
+
+Controls the capability auto-discovery probe (v6.2.0 #146,
+`doctrines/capability-discovery.md`).
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `auto_capabilities` | `on` \| `off` | `on` | When `on`, the `capability_discovery.sh` SessionStart hook enumerates installed plugins/skills and writes an EPHEMERAL capability roster to `<workdir>/cache/discovered-capabilities.json` (gitignored, distinct from the curated `toolkit.json`). Surfaced — labeled auto-discovered — in the SessionStart roster and engineer/coder/planter `[TOOLKIT]` blocks. Set `off` to disable the probe entirely. Zero hot-path cost (one-time-per-session, fail-open); never hard-depends on a third-party plugin. |
+
+```toml
+[discovery]
+auto_capabilities = "on"   # auto-detect available plugins/skills; "off" disables
+```
+
 ## Path interpolation
 
 Any `{X}/{Y}/{Z}/{N}` placeholder in `branching`, `release`, or `ledger` is interpolated at runtime. Any `{paths.*}` reference is resolved against `[paths]`. So:
