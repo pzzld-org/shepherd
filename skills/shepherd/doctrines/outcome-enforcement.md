@@ -79,13 +79,29 @@ A green close certifies the outcome *at the moment of delivery*. Outcomes can st
 after — a deploy degrades, a row count drifts, an error rate climbs the next day. The
 **SOAK-LOOP** template (`references/loop-templates.md §SOAK-LOOP`) re-runs the seeded
 predicates on a post-close interval (T+1d, T+7d) via the native `/loop` + `Monitor`, and
-surfaces `OUTCOME-REGRESSION` if a promise breaks. It is **detection only** — a regression
-opens a new operator decision, never an auto-remediation. The close report *recommends* a soak
-when the seed declared post-delivery-sensitive outcomes; the operator starts it:
+surfaces `OUTCOME-REGRESSION` if a promise breaks. By default it is **detection only** — a
+regression opens a new operator decision, never an auto-remediation. The close report
+*recommends* a soak when the seed declared post-delivery-sensitive outcomes; the operator
+starts it:
 
 ```
 /shepherd:loop "soak outcomes for <sprint>" --agent worker --interval 1d --max 6
 ```
+
+**Authorized supervised exception (v6.2.0).** Detection-only is the default and the
+anti-pattern for the *unauthorized* case (remediation inside a watch loop — the depth-3
+composition limit, `doctrines/workflow-patterns.md §Composition depth limit`). There is one
+carve-out: an operator who has *explicitly* empowered the conductor to FIX live regressions —
+not merely report them — can run the **AUTONOMOUS-SENTINEL** template
+(`references/loop-templates.md §AUTONOMOUS-SENTINEL`), the supervised-remediation **superset of
+SOAK-LOOP**: `PROBE → CLASSIFY → ACT (dispatch a ≤S `@coder` hotfix via the hotfix-dispatch
+ladder → gates-before-deploy → re-probe) → TERMINATE (K clean ticks / N-HF cap / hard-stop)`. It
+can NEVER fire by default — it is gated behind `[close].autonomous_sentinel = "on"` (default
+`"off"`) **plus** a `close: autonomous-sentinel` seed declaration **plus** a complete
+`sentinel_rails` block (gates-before-deploy, ≤S severity, ≤N HF cap, no destructive DB ops,
+auto-rollback, paper-only/never-flip-to-live, operator-override-each-tick, full audit trail).
+Without all three gates the soak stays detection-only and embedding remediation in the probe
+remains the anti-pattern. See `doctrines/autonomous-sentinel.md` (origin v6.2.0).
 
 ## Where the outcome lives across compaction
 
@@ -100,8 +116,12 @@ list is carried as part of the existing focus JSON, the same way obligations are
 
 - **Not a new gate engine.** It is four annotations on seams that already run (seed author,
   plan-gate, close audit, optional loop). No new hook, no new table, no new command.
-- **Not a remediation loop.** Every seam *detects and surfaces*. Fixing a regressed outcome is
-  the operator's decision and opens its own dispatch (hotfix or sprint).
+- **Not a remediation loop — by default.** Every seam *detects and surfaces*; fixing a
+  regressed outcome is the operator's decision and opens its own dispatch (hotfix or sprint).
+  The one authorized exception is the **AUTONOMOUS-SENTINEL** superset of Seam 4's SOAK-LOOP
+  (`doctrines/autonomous-sentinel.md`), which an operator may EXPLICITLY empower to remediate —
+  gated behind `[close].autonomous_sentinel = "on"` + a `close: autonomous-sentinel` seed
+  declaration + a complete `sentinel_rails` block, and never by default.
 - **Not a replacement for code-quality auditing.** Outcome verification is *additive* to the
   close swarm's existing concerns — a sprint must be both well-built and outcome-true.
 - **Not applicable only to services.** Predicates are equally greps/counts/LOC floors for pure
@@ -113,6 +133,7 @@ list is carried as part of the existing focus JSON, the same way obligations are
 - `agents/critic.md` — `PLAN-MISSING-OUTCOME-VERIFICATION` PLAN-GATE check (Seam 2)
 - `agents/auditor.md`, `agents/conductor.md §3` — close-time predicate re-run (Seam 3)
 - `references/grading-rubric.md` — `OUTCOME-REGRESSION` caps completeness
-- `references/loop-templates.md §SOAK-LOOP` — the post-close re-verification template (Seam 4)
+- `references/loop-templates.md §SOAK-LOOP` — the detection-only post-close re-verification template (Seam 4)
+- `references/loop-templates.md §AUTONOMOUS-SENTINEL`, `doctrines/autonomous-sentinel.md` — the authorized supervised-remediation superset of Seam 4's SOAK-LOOP (v6.2.0); never fires by default
 - `doctrines/intro-combo-wave.md §4` — the prior-sprint predicate re-run this generalizes
 - `doctrines/coordinate-active-drive.md` — the focus record that carries the predicates

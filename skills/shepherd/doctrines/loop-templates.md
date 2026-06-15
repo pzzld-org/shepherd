@@ -57,7 +57,8 @@ Quick-selection summary (full table in the catalog):
 | `@discovery` | DISCOVERY-EXHAUST | Pattern 6 generic | 4 | `new_findings: false` |
 | `@worker` (state) | WORKER-CONVERGENCE | CONVERGENCE-LOOP | 5 | State predicate met |
 | `@worker` (monitor) | WORKER-WATCH | WATCH-LOOP | 20 | Anomaly OR cap |
-| `@worker` (outcome soak) | SOAK-LOOP | WATCH-LOOP | 6 | Seeded predicate regressed OR cap |
+| `@worker` (outcome soak, detection-only) | SOAK-LOOP | WATCH-LOOP | 6 | Seeded predicate regressed OR cap |
+| `@worker` PROBE + `@coder` ACT (authorized self-heal) | AUTONOMOUS-SENTINEL | WATCH-LOOP (superset of SOAK-LOOP) | 6 | K clean ticks OR N-HF cap OR hard-stop |
 | `@auditor` | AUDITOR-REFINE | Pattern 6 generic | 3 | Confidence plateau |
 | `@engineer` | ENGINEER-PLAN-REFINE | Pattern 6 generic | 3 | Critic gate green |
 | orchestrator | FOCUS-LOOP | FOCUS-LOOP (named) | 8 | CLOSE-FINALIZE reached |
@@ -104,11 +105,19 @@ finding: the loop ran but did not converge. The engineer should have halted and 
 ## Cross-references
 
 - `references/loop-templates.md` — the per-role template catalog; copy-paste Stage Graph
-  shapes, termination predicates, and anti-patterns. Includes `§SOAK-LOOP` — the post-close
-  outcome re-verification template (v6.1.3) that re-runs a closed sprint's seeded acceptance
-  predicates on a wall-clock interval and surfaces `OUTCOME-REGRESSION`.
+  shapes, termination predicates, and anti-patterns. Includes `§SOAK-LOOP` — the detection-only
+  post-close outcome re-verification template (v6.1.3) that re-runs a closed sprint's seeded
+  acceptance predicates on a wall-clock interval and surfaces `OUTCOME-REGRESSION`; and
+  `§AUTONOMOUS-SENTINEL` — the authorized supervised-remediation superset of SOAK-LOOP (v6.2.0)
+  that adds an ACT stage (dispatch ≤S `@coder` hotfix → gates → re-probe), gated behind an
+  explicit seed declaration + rails block, never firing by default.
 - `doctrines/outcome-enforcement.md` — seeded-outcome enforcement across four seams
   (seed → plan-gate → close → soak); SOAK-LOOP is its detection-only post-close seam (v6.1.3)
+- `doctrines/autonomous-sentinel.md` — binding doctrine for the AUTONOMOUS-SENTINEL template
+  (v6.2.0): when it may fire (NEVER by default — `[close].autonomous_sentinel` + seed declaration
+  + rails block), the hard rails, the audit-trail requirement, superset of SOAK-LOOP, ACT
+  dispatches through `doctrines/hotfix-dispatch.md`
+- `doctrines/hotfix-dispatch.md` — the cardinality ladder the AUTONOMOUS-SENTINEL ACT stage uses
 - `doctrines/workflow-patterns.md §Pattern 6` and `§Circuit-breaker invariants — Pattern 6`
   — binding selection doctrine and enforced invariants
 - `references/workflow-templates.md §Named composite wave templates` — full FOCUS-LOOP,
