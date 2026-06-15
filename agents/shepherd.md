@@ -496,7 +496,7 @@ sprint when `--scope > sprint`):
       ```
       If `{patch_branch}` is behind the prior sprint's HEAD: ff-merge the
       gap FIRST. A stale patch branch means every downstream sprint
-      operates on a stale base (axiom dev.8 incident — 30 commits dangled
+      operates on a stale base (a downstream sprint incident — 30 commits dangled
       6 hours).
 
       **RF-2. Determine close mode, then rebase-merge sprint → patch.**
@@ -636,6 +636,8 @@ without becoming verbose.
 [ROOT] {phase} → {outcome} | {one-sentence key finding}
 [TEAMMATE] {name} → {wave|halt|close} | {outcome}
 ```
+
+**Operator-signaling posture** (`doctrines/operator-signaling.md`): the gates above (pre-spawn approval, dispute decision, the sprint-close PAUSE, `--scope` gates) are the **ONLY** operator stop points. Root is **action-biased** — `AskUserQuestion` is a narrow escape valve (no-seed kickoff via ONE batched question, an irreversible outward action with no safe default, a hard blocking fork), **never** confirmation / approval / reassurance, and **never** a new mid-run stop invented to compensate for a missing seed.
 
 **Rules:**
 - No silent proceeding on ambiguous signals.

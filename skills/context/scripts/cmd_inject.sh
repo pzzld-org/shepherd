@@ -82,6 +82,10 @@ case "$role" in
     # Appended last so cacheable prefix (issues/drift/types/priors) is preserved.
     tk=$(bash "$HERE/cmd_toolkit.sh" md --scope=all 2>/dev/null || true)
     [[ -n "$tk" ]] && body=$(printf '%s\n\n## Toolkit (available tools — consult before assuming unavailable)\n%s\n' "$body" "$tk")
+    # Auto-discovered capabilities (#146) — EPHEMERAL, distinct from curated
+    # toolkit; appended at the very tail. Omitted when no probe / empty roster.
+    disc=$(bash "$HERE/cmd_toolkit.sh" discovered 2>/dev/null || true)
+    [[ -n "$disc" ]] && body=$(printf '%s\n\n%s\n' "$body" "$disc")
     emit_block "$body"
     ;;
 
@@ -103,6 +107,9 @@ case "$role" in
     body="$(printf '%s\n%s\n' "$header" "$types")"
     tk=$(bash "$HERE/cmd_toolkit.sh" md --scope=all 2>/dev/null || true)
     [[ -n "$tk" ]] && body=$(printf '%s\n\n## Toolkit (available tools — consult before assuming unavailable)\n%s\n' "$body" "$tk")
+    # Auto-discovered capabilities (#146) — EPHEMERAL, distinct from curated.
+    disc=$(bash "$HERE/cmd_toolkit.sh" discovered 2>/dev/null || true)
+    [[ -n "$disc" ]] && body=$(printf '%s\n\n%s\n' "$body" "$disc")
     emit_block "$body"
     ;;
 
@@ -125,6 +132,10 @@ case "$role" in
     # [TOOLKIT] — available tools surface; omitted when registry is empty.
     tk=$(bash "$HERE/cmd_toolkit.sh" md --scope=all 2>/dev/null || true)
     [[ -n "$tk" ]] && body=$(printf '%s\n\n## Toolkit (available tools — consult before assuming unavailable)\n%s\n' "$body" "$tk")
+    # Auto-discovered capabilities (#146) — EPHEMERAL, distinct from curated.
+    # The planter routes /remember, superpowers, etc. at the right seams.
+    disc=$(bash "$HERE/cmd_toolkit.sh" discovered 2>/dev/null || true)
+    [[ -n "$disc" ]] && body=$(printf '%s\n\n%s\n' "$body" "$disc")
     emit_block "$body"
     ;;
 

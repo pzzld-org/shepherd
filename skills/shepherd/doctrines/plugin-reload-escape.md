@@ -6,7 +6,7 @@ description: |
   conductor flags unavailability explicitly rather than silently falling back
   to shell — degraded surfaces produce lower-fidelity mesh evidence.
 introduced: v5.0.9
-field_origin: shepherd v5.0.8 conductor feedback (axiom v0.3.2-dev.0) §7, §8
+field_origin: shepherd v5.0.8 conductor feedback (downstream Rust service) §7, §8
 ---
 
 # Doctrine — /reload-plugins Escape Hatch

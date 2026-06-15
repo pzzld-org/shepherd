@@ -251,6 +251,21 @@ else
   fails=$((fails+1))
 fi
 
+# Capability auto-discovery hook (v6.1.5, #146): the SessionStart probe writes
+# an EPHEMERAL capability roster (cache/discovered-capabilities.json), distinct
+# from the curated toolkit.json, default-on + config-gated, idempotent per
+# session, fail-open. Verifies disabled→no-op, enabled→roster (not toolkit.json),
+# plugin/skill discovery, idempotency, and the workflow-tool agent_fillin contract.
+echo "== test_capability_discovery.sh (v6.1.5 — #146 ephemeral capability probe) =="
+total=$((total+1))
+if cap_out=$(bash "$TESTS_DIR/test_capability_discovery.sh" 2>&1); then
+  printf '  PASS  %s\n' "capability-discovery-writes-ephemeral-roster"
+else
+  printf '  FAIL  %-50s\n' "capability-discovery"
+  printf '%s\n' "$cap_out" | sed 's/^/        /'
+  fails=$((fails+1))
+fi
+
 # Exec-bit guard (v6.1.3): every path-invoked hook/CLI script must carry the
 # git-tracked executable bit. Regression guard for the v6.1.2 toolkit
 # "Permission denied" shipped-as-100644 class.

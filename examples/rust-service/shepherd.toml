@@ -1,14 +1,16 @@
-# Axiom-specific shepherd configuration.
+# Example shepherd configuration — a multi-crate Rust service.
 #
-# This file binds shepherd v4.0.0 to the Axiom project.
+# A fully-fleshed-out binding (compare with ../minimal/shepherd.toml). It models
+# a common real-world topology: a workspace with an HTTP `service-node` binary and
+# a background `service-worker` binary, each gated under its own feature profile.
 # Drop-in install: cp this file to <repo-root>/.claude/shepherd.toml
 #
 # See ../../docs/configuration.md for the schema.
 
 [project]
-name        = "axiom"
+name        = "rust-service"
 language    = "rust"
-description = "BTC prediction + Polymarket trading. Closed-loop attribution → reweight → execution."
+description = "Multi-crate Rust service — HTTP node + background worker over a shared core."
 
 [branching]
 patch_branch_pattern  = "v{X}.{Y}.{Z}"
@@ -22,26 +24,26 @@ release_tag_pattern   = "v{X}.{Y}.{Z}"
 allow_direct_main_commit = false
 
 [gates]
-# Three canonical Axiom cargo gates, run in sequence between coder waves
-# and at sprint close. Empty string = skip the gate.
+# Three canonical cargo gates, run in sequence between coder waves and at sprint
+# close. Empty string = skip the gate.
 check  = "cargo check --workspace --features full"
 lint   = "cargo clippy --workspace --features full -- -D warnings"
 format = "cargo fmt --all"
 
-# Supplementary gates that exercise Fly-build profiles. These DO matter —
-# workspace-features-full does NOT activate node/worker [[bin]] required-features
-# (per feedback_third_cargo_gate_for_serve_required.md).
+# Supplementary gates that exercise per-binary build profiles. These DO matter —
+# `--workspace --features full` does NOT activate the node/worker [[bin]]
+# required-features, so a workspace-green build can still ship a broken binary.
 extra = [
-    { name = "node-serve",   cmd = "cargo check -p axiom-node --features serve,native" },
-    { name = "worker-serve", cmd = "cargo check -p axiom-worker --features serve" },
+    { name = "node-serve",   cmd = "cargo check -p service-node --features serve,native" },
+    { name = "worker-serve", cmd = "cargo check -p service-worker --features serve" },
 ]
 
 target_clean_threshold_gb = 20
 
 [paths]
-# Axiom was initialized before v5.0.0 and uses the legacy .artifacts/ namespace.
-# These paths must match the shctx namespace (`shctx doctor` reports a conflict
-# if they diverge). New projects should use .shepherd/ (the v5.0.0+ default).
+# This example uses the legacy .artifacts/ namespace (a project initialized before
+# v5.0.0). These paths must match the active shctx namespace (`shctx doctor` reports
+# a conflict if they diverge). New projects should use .shepherd/ (the v5.0.0+ default).
 plans   = ".artifacts/plans"
 reports = ".artifacts/reports"
 docs    = ".artifacts/docs"
@@ -53,18 +55,14 @@ mandatory = ["code-style"]
 [skills.by_domain]
 rust       = ["rust"]
 wasm       = ["webassembly"]
-finance    = ["finance"]
 supabase   = ["supabase:supabase"]
-polymarket = ["polymarket"]
 claude_api = ["claude-api"]
 
 [skills.detection]
 rust       = ["**/*.rs"]
 wasm       = ["cmp/**", "**/*.wit"]
 supabase   = ["**/supabase/**", "**/migrations/**.sql"]
-polymarket = ["**/polymarket/**", "**/clob/**", "**/pm/**"]
 claude_api = ["clients/rsclaude/**", "**/anthropic/**"]
-finance    = ["crates/circuits/**", "crates/math/**", "crates/engine/**", "cmp/**"]
 
 [mcp]
 github   = true
@@ -92,7 +90,7 @@ release_notes_path = "{paths.docs}/v{X}.{Y}.{Z}-release-notes.md"
 workflow_file      = ".github/workflows/release.yml"
 
 [memory]
-project_memory    = "~/.claude/projects/-Users-jo3-src-fl03-axiom/memory"
+project_memory    = "~/.claude/projects/<your-project>/memory"
 project_doctrines = ".claude/doctrines"
 
 [hooks]

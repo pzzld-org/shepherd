@@ -237,7 +237,7 @@ by_domain  = { rust = ["rust"], wasm = ["webassembly"] }
 
 See [`docs/configuration.md`](docs/configuration.md) for the full schema including `[gates.extra]`, `[spawn]`, `[release]`, and the language matrix.
 
-A working example for a real Rust/Polymarket project lives at [`examples/axiom/shepherd.toml`](examples/axiom/shepherd.toml).
+A working example for a multi-crate Rust service lives at [`examples/rust-service/shepherd.toml`](examples/rust-service/shepherd.toml).
 
 ---
 
@@ -314,7 +314,7 @@ See [`docs/integration.md`](docs/integration.md) for the full integration model 
 | `hooks/scripts/` | Hook implementations (sourced from `_lib.sh`) |
 | `hooks/tests/` | Smoke harness — `bash hooks/tests/run.sh` |
 | `docs/{configuration,integration,customization}.md` | Operator-facing documentation |
-| `examples/axiom/` | Working Rust/Polymarket bindings (config + CLAUDE.md snippet) |
+| `examples/rust-service/` | Working multi-crate Rust service bindings (config + CLAUDE.md snippet) |
 | `examples/minimal/` | Stripped-down starter config |
 
 ---
@@ -329,7 +329,7 @@ Shepherd follows semver:
 
 Version sources of truth that must move together: `plugin.json`, `marketplace.json`, `skills/shepherd/SKILL.md` frontmatter, `skills/context/SKILL.md` frontmatter, `README.md` header, `CHANGELOG.md`. `shctx release` automates the five non-CHANGELOG files.
 
-Current version: **6.1.4**. See [`CHANGELOG.md`](CHANGELOG.md) for the per-version history.
+Current version: **6.1.5**. See [`CHANGELOG.md`](CHANGELOG.md) for the per-version history.
 
 ---
 

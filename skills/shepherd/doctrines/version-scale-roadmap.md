@@ -1,7 +1,7 @@
 # Version-scale roadmap — what each version level commits to
 
 > **Origin:** v5.1.3 (2026-05-19). Operator: "I would like to see a version-based plan & seed scale factor."
-> **Hardened:** v6.0.0 (2026-05-28) — added scope-is-not-a-quality-bar opening note after recurring observation that planters and shepherds were using "it's just a patch" as cover to defer or downscope work (FL03/shepherd #66, axiom v0.3.4-dev.0/1/2).
+> **Hardened:** v6.0.0 (2026-05-28) — added scope-is-not-a-quality-bar opening note after recurring observation that planters and shepherds were using "it's just a patch" as cover to defer or downscope work (FL03/shepherd #66, a downstream Rust service).
 
 > **Scope is workload-scale, NEVER a quality bar (binding, v6.0.0).** `--scope sprint`, `patch`, `minor`, `version` (per `doctrines/scope-scale-workload.md`) declare how many sprints a spawn session will walk. They do NOT permit a planter to defer or downscope the contents of any individual seed, and they do NOT permit a conductor to come up short on lane delivery, gate honesty, or close-grade thresholds. The seed is the contract; the scope flag only governs how many sprints are walked. Phrases like "this is just a patch", "since we're only doing a small sprint", "we can defer this to a hot-fix" — these are framework-recognized malpractice patterns. A `/shepherd:spawn --scope patch` run with 9 lanes per sprint executes 9 lanes per sprint, full stop. If real-work cannot land, halt rather than ship short.
 

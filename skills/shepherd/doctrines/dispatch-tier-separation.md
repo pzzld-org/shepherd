@@ -240,7 +240,7 @@ the platform's own behavior. The mechanical floor is the `subagent_type` discipl
 (etc.) is an ephemeral **subagent** dispatched BY a conductor, never spawned AS a
 teammate.
 
-**Why:** axiom v0.3.4-dev.1 (FL03/shepherd #65, 2026-05-26) — root
+**Why:** a downstream Rust service (FL03/shepherd #65, 2026-05-26) — root
 dispatched 4 coder teammates instead of conductor teammates. Work landed
 without conductor-level gates, error recovery, or proper iteration.
 Architecturally: a teammate session inherits the lead's permission mode
@@ -348,8 +348,7 @@ work must surface `PLAN-AUTHORSHIP-REQUEST` first.
 
 Three failure modes have motivated this doctrine. The first two come from
 v5.1.5 (motivated the original tier separation); the third (motivated the
-v6.0.0 hard-refusal hardening) comes from v0.3.4-dev.0/1/2 on
-FL03/axiom.
+v6.0.0 hard-refusal hardening) comes from a downstream Rust service.
 
 1. **Teammate-conductor engineer dispatch.** A teammate ran `@engineer` mid-
    sprint to re-plan its own wave. This produced two parallel plans (the
@@ -368,7 +367,7 @@ Teammate context stays narrow (own wave only). Root absorbs the artifact-
 materialization cost and gets the cross-teammate view critic needs.
 
 3. **Permissive-fallback dispatch slippage (v5.1.9 → v6.0.0 regression).**
-   Three consecutive `/shepherd:spawn` runs (v0.3.4-dev.0/1/2 on FL03/axiom,
+   Three consecutive `/shepherd:spawn` runs (a downstream Rust service,
    2026-05-25..27) failed in concurrent failure modes: root treated spawn
    like start (did body work directly instead of fanning out conductors);
    when teammates were spawned, lane-**coders** were stood up as teammates

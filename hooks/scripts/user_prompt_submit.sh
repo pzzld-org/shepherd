@@ -52,7 +52,7 @@ fi
 
 # Resolve namespace and DB path.
 ns=$(resolve_namespace)
-db="$ns/root.db"
+db="$(hook_db_path "$ns")"
 
 # Only inject for /shepherd:start and /shepherd:spawn. /shepherd:ctx is
 # self-querying (operator about to inspect the registry manually).

@@ -61,15 +61,13 @@ printf '%s' "$CMD" | grep -qE '(checkout[[:space:]]+-b|switch[[:space:]]+-c|git[
 
 # --- config: block (default) | warn | off ------------------------------------
 MODE="block"
-if [[ -f .claude/shepherd.toml ]]; then
-  cfg="$(grep -E '^[[:space:]]*devlast_guard[[:space:]]*=' .claude/shepherd.toml 2>/dev/null \
-           | tail -1 | grep -oE '(block|warn|off)' | tail -1 || true)"
-  [[ -n "$cfg" ]] && MODE="$cfg"
-fi
+# cfg_get honors .claude/shepherd.local.toml + XDG global (v6.1.5).
+cfg="$(cfg_get devlast_guard | grep -oE '(block|warn|off)' | tail -1 || true)"
+[[ -n "$cfg" ]] && MODE="$cfg"
 [[ "$MODE" == "off" ]] && exit 0
 
 # --- sprints_per_patch (K), default 10 ---------------------------------------
-K="$(grep -E '^[[:space:]]*sprints_per_patch[[:space:]]*=' .claude/shepherd.toml 2>/dev/null | grep -oE '[0-9]+' | tail -1)"
+K="$(cfg_get sprints_per_patch | grep -oE '[0-9]+' | tail -1 || true)"
 [[ "$K" =~ ^[0-9]+$ ]] || K=10
 
 # --- highest dev.N referenced in the command ---------------------------------

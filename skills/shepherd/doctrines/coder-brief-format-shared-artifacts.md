@@ -14,7 +14,7 @@ description: |
 > overlap. The fix is up-front discipline in the brief — partition the
 > file before dispatch, not after merge.
 >
-> Field origin: shepherd v5.0.3 conductor feedback (axiom v0.3.0-dev.5),
+> Field origin: shepherd v5.0.3 conductor feedback (downstream Rust service),
 > §4. Lane 1 + Lane 3 both edited `.shepherd/ctx/feature-flag-matrix.md`
 > (different sections, but same file footer note). Each cherry-pick
 > needed manual conflict resolution to combine notes. v5.0.4 codifies the

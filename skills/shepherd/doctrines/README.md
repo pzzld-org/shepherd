@@ -21,7 +21,7 @@ Per-language details — the actual grep patterns, idioms, build commands, code-
        ├─→  python skill            (uv, ruff, black, type-hints)
        ├─→  typescript skill        (tsc, eslint, vitest, package.json)
        ├─→  code-style skill        (per-language ledger of personal style preferences)
-       └─→  domain skills           (finance, polymarket, supabase, claude-api, ...)
+       └─→  domain skills           (finance, payments, supabase, claude-api, ...)
 ```
 
 When the conductor builds a coder brief, it walks `[skills.detection]` against the lane's file scope to pick which language + domain skills to inject into `[SKILLS]`. The doctrines speak in principles; the language skills supply the syntax.
@@ -71,9 +71,9 @@ If a new framework-intrinsic rule emerges, write it here as a `.md` file. The ru
 
 Per-project doctrines that DRIFT beyond the framework's intrinsic rules live in `[memory].project_doctrines` (configured per-project, default `.claude/doctrines/`). Examples of project doctrines:
 
-- "Geo-block law — node process group pinned to yyz forever" (Axiom-specific, not a framework rule)
-- "BMS sigma-floor calibration — 7d window minimum" (Axiom-specific)
-- "ONNX models compile to WASI-NN, not native ort" (Axiom-specific)
+- "Geo-block law — node process group pinned to yyz forever" (downstream-project-specific, not a framework rule)
+- "BMS sigma-floor calibration — 7d window minimum" (downstream-project-specific)
+- "ONNX models compile to WASI-NN, not native ort" (downstream-project-specific)
 
 These get loaded by the conductor at session-open per `[hooks].on_every_dispatch`. They are NOT shepherd doctrines and don't belong in this directory.
 
@@ -133,6 +133,8 @@ These get loaded by the conductor at session-open per `[hooks].on_every_dispatch
 | `seed-naming.md` | (v5.1.1+) Branches keep dots; filenames collapse them — seed/plan files use slug form (`v512-dev3.seed.md`), never the dotted branch form (`v5.1.2-dev.3.seed.md`) |
 | `version-scale-roadmap.md` | (v5.1.3) Binding scale factor: version → 1000 sprints, minor → 100, patch → 10, dev sprint → 1; scope is workload-scale NEVER a quality bar; "it's just a patch" is documented malpractice |
 | `workspace-member-isolation-gate.md` | (v5.1.7) Acceptance gate for workspace-topology changes MUST include per-member isolated builds, not only the workspace-unified build; silently satisfied deps are a shipping hazard |
+| `autonomous-sentinel.md` | (v6.1.5, #148) Authorized supervised self-heal — the supervised-remediation SUPERSET of SOAK-LOOP; PROBE → CLASSIFY → ACT (≤S `@coder` hotfix via the hotfix-dispatch ladder → gates-before-deploy → re-probe) → TERMINATE; NEVER by default — gated behind `[close].autonomous_sentinel` + a `close: autonomous-sentinel` seed declaration + a complete `sentinel_rails` block; hard rails (gates-before-deploy, ≤S/≤3/≤N caps, no destructive DB ops, auto-rollback, paper-only, operator-override-each-tick, full audit trail) |
+| `capability-discovery.md` | (v6.1.5, #146) Auto-discover environment plugins/skills/tools → EPHEMERAL roster (distinct from the curated `toolkit.json`), merged into the `[TOOLKIT]` surfaces labeled auto-discovered; guarded integrations degrade cleanly ("if `/remember` available → handoff/CLOSE-FINALIZE + resume, else native"); records native `Workflow`-tool presence so spawn/loop degrade to `Agent(...)` when omitted; config `[discovery].auto_capabilities`; zero hot-path cost, fail-open |
 
 ## Doctrine promotion pipeline
 

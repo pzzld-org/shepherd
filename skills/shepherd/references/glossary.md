@@ -19,9 +19,12 @@
   returns nothing — *by design*, because the tool is not deferred. A nothing-result does
   **not** mean "unavailable"; it means you looked in the wrong place.
 - **✅ How to tell if it's available:** is `Workflow` in your visible tool list? If yes, call
-  it directly. If **no**, you are on a Claude Code build below the Dynamic Workflows floor —
-  fall back to in-context `Agent(...)` fan-out (the documented degraded path). Do not
-  ToolSearch; do not conclude "the feature is broken."
+  it directly. If **no**, this environment does not provision it — EITHER a Claude Code build
+  below the Dynamic Workflows floor, **OR** a Claude-Code-on-the-web / remote-execution session
+  that omits it even on a supporting build (presence is environment-dependent; see #146). In
+  BOTH cases fall back to in-context `Agent(...)` fan-out (the documented degraded path). Do not
+  ToolSearch; do not conclude "the feature is broken." The visible-tool-list test is the ONLY
+  authority — never assume presence from the version number alone.
 - **In shepherd:** shepherd COMPILES gate-free Stage-Graph fan-out segments into a Workflow
   script via `shctx graph compile` and runs it out-of-context. Doctrine:
   `doctrines/workflow-compile-down.md`; axis binding (which primitive for which job):
@@ -52,9 +55,13 @@
 ## Other collision-prone terms
 
 - **`ToolSearch` is for DEFERRED tools only** — specialist agents and MCP tools surfaced on
-  demand (`doctrines/specialist-dispatch.md`). **Top-level tools** (`Agent`, `Task`,
-  `Workflow`, `Bash`, `Edit`, …) are always present and are **never** ToolSearch targets.
-  Rule of thumb: if a capability is a core verb of the harness, it's top-level; if it's a
+  demand (`doctrines/specialist-dispatch.md`). **Top-level tools** (`Agent`, `Task`, `Bash`,
+  `Edit`, …) are always present and are **never** ToolSearch targets. The native `Workflow`
+  tool is *also* top-level (never a ToolSearch target), **but its presence is
+  environment-dependent** — web / remote-execution sessions may omit it even on a supporting
+  build (#146), so it is the one top-level tool you must NOT assume is present: check the
+  visible tool list and degrade to `Agent(...)` when absent (sense 1 above). Rule of thumb: if
+  a capability is a core verb of the harness, it's top-level; if it's a
   third-party/plugin/specialist capability, it's deferred and discoverable via `ToolSearch`.
 - **`/loop` vs Loop-Until-Done vs a loop template:** `/loop` is the native Claude Code
   interval command; **Loop-Until-Done** (Pattern 6) is shepherd's convergent-iteration

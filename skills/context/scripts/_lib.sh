@@ -58,7 +58,41 @@ shctx_db_path() {
 }
 shctx_lock_path()       { echo "$(shctx_artifacts_root)/shepherd.lock"; }
 shctx_project_id_path() { echo "$(shctx_artifacts_root)/project.json"; }
-shctx_skill_root()      { echo "${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"; }
+# Skill root = the directory that contains schema/ + references/ + scripts/
+# (i.e. .../skills/context). The dispatcher exports the correct value in
+# SHCTX_SKILL_ROOT (shctx:5); prefer it. When sourced outside the dispatcher with
+# CLAUDE_PLUGIN_ROOT set, the skill root is "$CLAUDE_PLUGIN_ROOT/skills/context"
+# — NOT bare $CLAUDE_PLUGIN_ROOT (the plugin/repo root), which has no references/
+# dir and silently broke `shctx init`/`config init` in real plugin installs (the
+# cp in scaffold.sh aborts under `set -e`, so the DB is never created). Final
+# fallback is this file's own location (dev symlink / direct-source path).
+shctx_skill_root() {
+  if   [[ -n "${SHCTX_SKILL_ROOT:-}" ]]; then echo "$SHCTX_SKILL_ROOT"
+  elif [[ -n "${CLAUDE_PLUGIN_ROOT:-}" ]]; then echo "$CLAUDE_PLUGIN_ROOT/skills/context"
+  else echo "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+  fi
+}
+
+# Echo the value of a top-level `key = value` from shepherd config, resolved by
+# precedence: .claude/shepherd.local.toml (per-key local override) →
+# .claude/shepherd.toml (project) → $XDG_CONFIG_HOME/shepherd.toml (user global).
+# Section-agnostic, last-match-wins within a file; strips surrounding double-quotes
+# and trailing " # inline comments". Echoes "" if unset; never returns non-zero
+# (safe under this lib's `set -eu -o pipefail`). MUST mirror the hooks-side cfg_get
+# (hooks/scripts/_lib.sh) — same files, same order — or config diverges between
+# the shctx runtime and the hooks. Contract: docs/configuration.md §config-resolution.
+cfg_get() {
+  local key="$1" repo f v
+  repo="$(shctx_repo_root 2>/dev/null || pwd)"
+  for f in "$repo/.claude/shepherd.local.toml" "$repo/.claude/shepherd.toml" "${XDG_CONFIG_HOME:-$HOME/.config}/shepherd.toml"; do
+    [[ -f "$f" ]] || continue
+    v="$(grep -E "^[[:space:]]*${key}[[:space:]]*=" "$f" 2>/dev/null | tail -1 \
+          | sed -E 's/^[^=]*=[[:space:]]*//; s/[[:space:]]+#.*$//; s/^"//; s/"$//' 2>/dev/null || true)"
+    if [[ -n "$v" ]]; then printf '%s' "$v"; return 0; fi
+  done
+  printf '%s' ""
+  return 0
+}
 
 # UUIDv7 generator (timestamp-prefixed, sortable). Portable across BSD (macOS)
 # and GNU (Linux) date; falls back to python3 then to seconds-precision if

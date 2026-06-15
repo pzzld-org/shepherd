@@ -2,6 +2,10 @@
 *.bk
 *.bk.*
 
+# Claude Code agent worktrees — transient, created by Agent isolation:worktree
+# (registered git worktrees; never tracked in the plugin repo)
+.claude/worktrees/
+
 *.db
 *.db.*
 

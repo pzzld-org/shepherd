@@ -3,7 +3,7 @@
 # This is the smallest viable shepherd.toml. It assumes a Rust project
 # with the framework's mod-10 sprint convention and three canonical gates.
 #
-# For a fully-fleshed-out config, see ../axiom/shepherd.toml.
+# For a fully-fleshed-out config, see ../rust-service/shepherd.toml.
 # For the schema, see ../../docs/configuration.md.
 
 [project]
@@ -57,6 +57,32 @@ chronic_threshold_patches = 2
 
 [release]
 driver = "operator"
+# devlast_guard = "block"     # block (default) | warn | off — refuse to cut dev.{sprints_per_patch}
+
+[autorun]
+# Unattended sequential walk (/shepherd:spawn --scope patch | --auto). Defaults
+# below reproduce pre-v6.1.5 behavior — uncomment only to change it.
+# min_grade          = "B"        # letter-grade floor for continuing the walk
+# on_grade_floor     = "abort"    # abort (default) | pause | continue
+# inter_sprint_pause = "brief"    # brief (default ~5s window) | signoff | none
+
+[spawn]
+# max_parallel       = 4          # int 2..N — upper bound on --parallel fan-out (default 4)
+# dashboard_cadence  = "3m"       # default interval for `/shepherd:loop <c> shctx dash`
+
+[close]
+# Authorized supervised self-heal during a post-close soak (v6.1.5 #148). Default
+# OFF (detection-only). Requires "on" + a `close: autonomous-sentinel` seed
+# declaration + a complete `sentinel_rails` block before any auto-remediation.
+# autonomous_sentinel = "off"
+
+[discovery]
+# Auto-detect Claude Code plugins/skills present in the environment and surface
+# them (ephemeral, distinct from the curated toolkit.json). "off" disables.
+auto_capabilities = "on"
+
+[tmux]
+# pane_cleanup = "on"         # on (default) | off — reap closed-teammate panes at SessionEnd
 
 [hooks]
 on_every_dispatch = ["code-style"]

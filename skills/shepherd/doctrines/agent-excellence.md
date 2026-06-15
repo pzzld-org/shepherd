@@ -117,6 +117,18 @@ Conserve in practice:
 If you can delete a line from your brief, report, or commit and the
 recipient still does the right thing, that line was waste.
 
+**The biggest token lever is delegation, not line-trimming.** An orchestrator
+(root shepherd, conductor) that does bulk reading, analysis, or implementation
+*in its own context* burns its window and drifts — one session trying to "take on
+the world" is the most expensive, lowest-quality path. Push that work OUT to
+bounded subagents and keep only decision + seam work in the orchestrator: fan
+read/analysis to `@discovery`/`@worker`, implementation to `@coder`, verification
+to `@auditor`/`@critic`; compile gate-free fan-out to a Dynamic Workflow
+(`doctrines/workflow-compile-down.md`) so intermediate results live in script
+variables, not the conversation. N bounded subagents in parallel is cheaper per
+token AND higher quality than one overloaded context. Prefer the subagent; the
+orchestrator synthesizes.
+
 ## Per-agent application
 
 | Agent | Excellence application | Token-conservation application (Rule 6) |

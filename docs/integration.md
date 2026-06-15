@@ -20,7 +20,7 @@ Shepherd is designed to **compose with**, not replace, your locally developed sk
        ┌──────────────────┐  ┌──────────────────┐    ┌──────────────────┐
        │  Language skills │  │  Domain skills   │    │  Personal skill  │
        │  rust            │  │  finance         │    │  code-style      │
-       │  python          │  │  polymarket      │    │  (per-language   │
+       │  python          │  │  payments        │    │  (per-language   │
        │  typescript      │  │  supabase        │    │   ledger of YOUR │
        │  go              │  │  claude-api      │    │   preferences)   │
        │  webassembly     │  │  workflow        │    │                  │
@@ -47,10 +47,10 @@ The coder, on dispatch, invokes each `[SKILLS]` entry via the Skill tool. Per-la
 | Which `clippy::*` lints to allow | `rust` skill |
 | Whether to use snake_case or camelCase | `code-style:rust.md` (your personal preference) |
 | What `tokio::select!` is and when to use it | `rust` skill |
-| What `Coinbase WS` schema looks like | (not a skill — project knowledge in CLAUDE.md or domain doc) |
+| What an upstream exchange WS schema looks like | (not a skill — project knowledge in CLAUDE.md or domain doc) |
 | Whether to use `requests` or `httpx` in Python | `code-style:python.md` |
 | ESLint config for new TS files | `code-style:typescript.md` |
-| Polymarket CLOB endpoint shapes | `polymarket` skill |
+| Payment-provider API endpoint shapes | `payments` skill |
 
 ## Hooking your skills into shepherd
 
@@ -70,7 +70,7 @@ typescript = ["typescript"]
 # Domain skills — shepherd attaches when [FILE-SCOPE] matches detection
 finance    = ["finance"]
 supabase   = ["supabase:supabase"]
-polymarket = ["polymarket"]
+payments   = ["payments"]
 claude_api = ["claude-api"]
 
 [skills.detection]
@@ -81,7 +81,7 @@ python     = ["**/*.py"]
 typescript = ["**/*.ts", "**/*.tsx"]
 finance    = ["**/circuits/**", "**/strategies/**"]
 supabase   = ["**/supabase/**", "**/migrations/**.sql"]
-polymarket = ["**/polymarket/**", "**/clob/**", "**/pm/**"]
+payments   = ["**/payments/**", "**/billing/**"]
 claude_api = ["**/anthropic/**", "**/claude/**"]
 ```
 
@@ -189,7 +189,7 @@ Shepherd composes; it doesn't gatekeep. New languages are a config + skill addit
 
 Sometimes a project carries a doctrine that's NOT a framework rule but needs to load into every dispatch. Examples:
 
-- "Geo-block law — node region pinned forever" (Axiom)
+- "Geo-block law — node region pinned forever" (a region-restricted service)
 - "Database writes go through the WriteOnlyClient wrapper" (some other project)
 - "All API endpoints require X-Request-Id header" (some other project)
 
@@ -197,7 +197,7 @@ These live in `[memory].project_doctrines` (default `.claude/doctrines/`):
 
 ```toml
 [memory]
-project_memory    = "~/.claude/projects/-Users-jo3-src-fl03-axiom/memory"
+project_memory    = "~/.claude/projects/<your-project>/memory"
 project_doctrines = ".claude/doctrines"
 
 [hooks]

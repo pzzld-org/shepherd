@@ -19,7 +19,8 @@ Pattern-6 circuit-breaker invariants apply to every template below without excep
 | `@discovery` | DISCOVERY-EXHAUST | Loop-Until-Done (generic Pattern 6) | 4 | `new_findings: false` |
 | `@worker` (state-reconcile) | WORKER-CONVERGENCE | CONVERGENCE-LOOP | 5 | State predicate met |
 | `@worker` (monitoring) | WORKER-WATCH | WATCH-LOOP | 20 | Anomaly detected OR cap reached |
-| `@worker` (outcome soak) | SOAK-LOOP | WATCH-LOOP | 6 | A seeded predicate regressed OR all hold at cap |
+| `@worker` (outcome soak, detection-only) | SOAK-LOOP | WATCH-LOOP | 6 | A seeded predicate regressed OR all hold at cap |
+| `@worker` PROBE + `@coder` ACT (**authorized supervised self-heal**) | AUTONOMOUS-SENTINEL | WATCH-LOOP (superset of SOAK-LOOP) | 6 | K clean ticks OR N-HF cap OR hard-stop |
 | `@auditor` | AUDITOR-REFINE | Loop-Until-Done (generic Pattern 6) | 3 | Confidence plateau (`new_findings: false`) |
 | `@engineer` | ENGINEER-PLAN-REFINE | Loop-Until-Done (generic Pattern 6) | 3 | Critic gate green |
 | shepherd / conductor | FOCUS-LOOP | FOCUS-LOOP (named composite) | 8 | CLOSE-FINALIZE reached |
@@ -565,15 +566,204 @@ the seeded acceptance predicates.
 - **Soaking outcomes that were never declared.** SOAK-LOOP re-runs `seed §6` predicates. If
   the seed declared no machine-checkable outcomes, there is nothing to soak — fix that at the
   seed/plan-gate (`doctrines/outcome-enforcement.md`), not by inventing checks in the loop.
-- **Remediating inside the probe.** Like WORKER-WATCH, the probe detects and surfaces; it does
-  not fix. A regression opens a *new* hotfix/sprint decision for the operator — embedding a
-  CODER-CONVERGENCE in the alert handler violates the depth-3 composition limit.
+- **Remediating inside the probe — UNLESS explicitly authorized.** By default, like
+  WORKER-WATCH, the probe detects and surfaces; it does not fix. A regression opens a *new*
+  hotfix/sprint decision for the operator — embedding a CODER-CONVERGENCE in the alert handler
+  violates the depth-3 composition limit. The **one** authorized exception is the
+  **AUTONOMOUS-SENTINEL** template below (the supervised superset of this one): when the seed
+  carries `close: autonomous-sentinel` **and** a complete `sentinel_rails` block, an ACT stage
+  is permitted between CLASSIFY and the next tick. Without that explicit gate, remediation inside
+  a soak probe remains the anti-pattern. See `§AUTONOMOUS-SENTINEL` and
+  `doctrines/autonomous-sentinel.md`.
 - **Soak as a substitute for the close gate.** Outcome-enforcement is verified *at close*
   first (`doctrines/outcome-enforcement.md §Seam 2`); the soak loop catches *post-close* drift.
   A sprint that skips the close-gate predicate run and "leaves it to soak" has shipped an
   unverified outcome.
 - **`@discovery` or a teammate-conductor as probe iterator.** Use `@worker` — a soak probe is
   a bounded read-only tick, not orientation research and not a lane.
+
+---
+
+## @worker PROBE + @coder ACT loop — AUTONOMOUS-SENTINEL (authorized supervised self-heal variant)
+
+### Intent
+
+The **supervised-remediation superset of SOAK-LOOP**. SOAK-LOOP (and WORKER-WATCH) are
+*detection-only* by design — the probe surfaces an `OUTCOME-REGRESSION` and the operator decides
+whether to fix it. That is the correct default. AUTONOMOUS-SENTINEL is for the **explicitly
+authorized** case: an operator who has read the rails, accepted the blast radius, and empowered
+the conductor to **FIX** a live regression during a soak/close window rather than wait a tick to
+be asked. Everything SOAK-LOOP does (re-run the seeded acceptance predicates on wall-clock time)
+**plus** an `ACT` stage that dispatches a bounded hotfix through the **existing hotfix-dispatch
+ladder**, re-probes, and converges or hard-stops.
+
+It can **NEVER** fire by default. It is gated three times over: the config key
+`[close].autonomous_sentinel` must be `"on"` (default `"off"`), the seed must declare
+`close: autonomous-sentinel`, AND the seed must carry a complete `sentinel_rails` block. Absence
+of any one means the default detection-only SOAK-LOOP runs. The full rails contract, the
+audit-trail requirement, and the relationship to hotfix-dispatch live in
+`doctrines/autonomous-sentinel.md` (origin v6.1.5).
+
+### Composite
+
+Specializes **WATCH-LOOP** from `references/workflow-templates.md §WATCH-LOOP`, as the **superset
+of SOAK-LOOP**: SOAK-LOOP's `PROBE → CLASSIFY → yield` with an `ACT` stage spliced between CLASSIFY
+and the next tick. Strip the ACT stage and the rails block and you are left with exactly SOAK-LOOP.
+All WATCH-LOOP invariants apply: `--interval` is mandatory; the native `/loop` 7-day auto-expiry is
+the outer hard bound; the PROBE/CLASSIFY body is `@worker` read-only. The ACT stage is **not** a
+worker step — it dispatches `@coder` through `doctrines/hotfix-dispatch.md`, exactly as a
+gate-failure hot-fix would (NOT a bespoke mechanism).
+
+### Flock agent binding
+
+| Role | Agent | Job |
+|------|-------|-----|
+| Probe iterator | `@worker` (bounded, read-only) | On each tick: re-run each seeded acceptance predicate; CLASSIFY each as HOLD / REGRESSED / NEW; emit `new_findings: true\|false` where `true` = a predicate REGRESSED |
+| Remediator (ACT) | `@coder` via `doctrines/hotfix-dispatch.md` | For each REGRESSED cluster (≤S, file-disjoint): one `@coder` HF (`H=1`) or one batched dynamic workflow (`(1,3]`, ≤3 concurrent); gates-before-deploy; auto-rollback on red |
+| Interval scheduler | Native `/loop` | Emits wake event on cadence (`--interval`); auto-expires after 7 days |
+| Terminator | Conductor / root inline | On K clean ticks: `## Sentinel summary`. On rail trip / HF cap / scope exceed: hard-stop to operator |
+
+`NEW` failures (a failure with no seeded baseline) are **detection-only** — surfaced, never
+auto-remediated. Only `REGRESSED` predicates enter ACT scope.
+
+### Loop body — Probe → Classify → Act → Branch
+
+```
+Probe:    Run each seeded acceptance predicate at live HEAD / live service (same checks as SOAK-LOOP).
+Classify: HOLD (promised-true, still true) / REGRESSED (promised-true, now false) / NEW (no seeded baseline).
+Act:      For each REGRESSED cluster (NEW is detection-only):
+            severity gate ≤S → else SENTINEL-SCOPE-EXCEEDED hard-stop
+            dispatch via hotfix-dispatch ladder (H=1 → 1 @coder; (1,3] → batched, ≤3 concurrent)
+            gates-before-deploy → failed gate = AUTO-ROLLBACK (revert, no deploy)
+            deploy/promote ONLY if gates green AND rails permit a live flip (paper-only default)
+            re-probe the regressed predicate to confirm the fix held
+Branch:   all HOLD this tick (no REGRESSED)          → new_findings: false; yield to next /loop tick
+          REGRESSED remediated + re-probe HOLD        → ACT done; yield to next tick
+          K consecutive clean ticks (all HOLD)        → SENTINEL-DONE (converged)
+          N total hot-fixes dispatched                → SENTINEL-HF-CAP hard-stop
+          regression exceeds ≤S OR any rail tripped    → SENTINEL-HARD-STOP / SENTINEL-SCOPE-EXCEEDED
+          i >= max OR /loop expiry (regression open)   → SENTINEL-LOOP-CAP (LOOP-CAP shape)
+```
+
+### Termination predicate
+
+`new_findings: false` means this tick is all-HOLD (no REGRESSED predicate). The loop converges on
+**K consecutive clean ticks** (`SENTINEL-DONE`), not on a single clean tick — a self-heal that just
+remediated must prove the fix holds across K ticks before declaring done. Cap-or-expiry while a
+regression is still open terminates as `SENTINEL-LOOP-CAP` (the `LOOP-CAP` shape). The seeded
+predicates are NOT authored by the sentinel — they are the seed's own `§6` acceptance checks,
+identical to SOAK-LOOP; a sentinel that invents new checks is scope creep.
+
+### Required rails — declared in the seed's `sentinel_rails` block
+
+Every rail is mandatory; a `close: autonomous-sentinel` seed missing any rail is rejected at
+PLAN-GATE with `SENTINEL-RAILS-MISSING`. Full table in `doctrines/autonomous-sentinel.md §The hard rails`:
+
+```yaml
+sentinel_rails:
+  gates_before_deploy: true        # full gate set runs on every fix BEFORE deploy — no deploy on red
+  auto_rollback: true              # failed gate reverts the fix automatically (SENTINEL-ROLLBACK, logged)
+  max_severity: S                  # every remediation cluster ≤S; larger = SENTINEL-SCOPE-EXCEEDED
+  max_concurrent: 3                # ≤3 concurrent @coder clusters per ACT (standing HOTFIX cap)
+  hf_cap: 3                        # ≤N total hot-fixes across the window; N+1 = SENTINEL-HF-CAP
+  no_destructive_db_ops: true      # never DROP/TRUNCATE/irreversible migration, regardless of authorization
+  live_flip: paper-only            # paper-only (default) | authorized — never flip to live unless authorized
+  operator_override_each_tick: true # operator HALT honored before the next ACT; native /loop is cancelable
+  audit_trail: full                # every PROBE/CLASSIFY/ACT/gate/deploy/re-probe recorded (shctx loop record + hook event log)
+```
+
+### Stage Graph shape
+
+```yaml
+AUTONOMOUS-SENTINEL-INIT (conductor / root):
+  kind: watch
+  gate: close.autonomous_sentinel == "on"   # config gate; default "off" → fall back to SOAK-LOOP
+  seed_declaration: close: autonomous-sentinel   # MANDATORY; absent → SOAK-LOOP
+  sentinel_rails: <block>     # MANDATORY; incomplete → SENTINEL-RAILS-MISSING at PLAN-GATE
+  max_iterations: 6           # default soak window; bounded by native /loop 7-day expiry
+  clean_ticks_to_converge: 2  # K — consecutive all-HOLD ticks required to declare SENTINEL-DONE
+  interval: <duration>        # MANDATORY — e.g. '1d', '6h'; delegated to native /loop
+  soak_predicates: <list>     # carried from the closed sprint's seed §6 — NOT invented here
+  action: shctx loop init --kind=watch --task="sentinel <sprint>" --max=6 --interval=<dur> --agent=worker
+  on-start: → SENTINEL-PROBE (via native /loop scheduling)
+
+SENTINEL-PROBE (worker):
+  brief: worker-soak-probe        # identical to SOAK-LOOP's probe — read-only, re-run seeded predicates only
+  soak_predicates: $soak_predicates
+  iteration: $i
+  constraint: read-only; re-run seeded predicates ONLY; CLASSIFY HOLD/REGRESSED/NEW; no remediation here
+  emits: new_findings: true|false   # true = a promised-true predicate REGRESSED this tick
+  action: shctx loop record --id=$loop_id --iteration=$i --new_findings=$new_findings
+  on-empty (new_findings: false):  → SENTINEL-TICK-CLEAN (increment clean-tick counter)
+  on-findings (new_findings: true): → SENTINEL-ACT
+
+SENTINEL-ACT (conductor / root → @coder via hotfix-dispatch ladder):
+  trigger: one or more REGRESSED predicates (NEW excluded — surfaced only)
+  vehicle: doctrines/hotfix-dispatch.md   # H=1 → one @coder; (1,3] → batched dynamic workflow, ≤3 concurrent
+  severity_gate: every cluster ≤S         # else → SENTINEL-SCOPE-EXCEEDED (hard-stop)
+  gates_before_deploy: full gate set on the fix BEFORE any deploy
+  on-gate-red:  → SENTINEL-ROLLBACK (revert fix; no deploy; log; count toward hf_cap)
+  on-gate-green: deploy ONLY if rails.live_flip == authorized; else stop at gate-green artifact
+  re-probe: re-run the regressed predicate(s); REGRESSED-still → failed ACT cycle
+  on-hf-cap ($hf_dispatched >= hf_cap):    → SENTINEL-HF-CAP (hard-stop)
+  on-done: reset clean-tick counter to 0; → yield to next /loop tick
+
+SENTINEL-TICK-CLEAN (conductor):
+  on-converge ($clean_ticks >= K):  → SENTINEL-DONE
+  on-continue ($clean_ticks < K, $i < max): → SENTINEL-PROBE (next /loop tick)
+  on-cap ($i >= max):               → SENTINEL-LOOP-CAP
+
+SENTINEL-DONE (conductor / root):
+  action: shctx loop close --id=$loop_id --status=converged
+  emit: "## Sentinel summary" — predicate roster, per-tick CLASSIFY history, every ACT cycle
+        (dispatch → gate → deploy/rollback → re-probe), final verdict
+```
+
+### Default `--max`
+
+**6**. Same window as SOAK-LOOP — a handful of post-close checkpoints, not continuous monitoring.
+The 7-day native `/loop` auto-expiry is the outer hard bound. The `K` clean-ticks-to-converge
+default is **2** (a self-heal proves a fix holds across at least two ticks before declaring done).
+The `hf_cap` default is small (e.g. 3) — the sentinel is bounded remediation, not a rescue sprint.
+
+### Halt codes
+
+| Code | Trigger | Resolution |
+|------|---------|-----------|
+| `SENTINEL-RAILS-MISSING` | `close: autonomous-sentinel` seed without a complete `sentinel_rails` block | `@critic` rejects at PLAN-GATE; planter/operator completes the rails block |
+| `SENTINEL-SCOPE-EXCEEDED` | A REGRESSED cluster exceeds the ≤S severity cap | Hard-stop; surface to operator; never widen — a bigger fix is a sprint decision |
+| `SENTINEL-HF-CAP` | Total hot-fixes dispatched reaches `hf_cap` | Hard-stop; operator decides extend / accept / escalate to a sprint |
+| `SENTINEL-ROLLBACK` | A fix failed gates-before-deploy | Auto-revert (rails working as designed); logged, counts toward `hf_cap`; loop continues |
+| `SENTINEL-HARD-STOP` | Any rail tripped (destructive DB op, unauthorized live flip, etc.) | Loop stops; operator decision; no auto-widen / auto-flip |
+| `SENTINEL-LOOP-CAP` | `--max` ticks reached with a regression still open | `LOOP-CAP` shape; surface inventory; operator extends / accepts / escalates |
+
+### Which composite
+
+Specializes **WATCH-LOOP** as the **superset of SOAK-LOOP**. When AUTONOMOUS-SENTINEL appears in a
+Stage Graph, the full WATCH-LOOP definition applies, with the anomaly target bound to the seeded
+acceptance predicates AND the authorized ACT stage spliced in. The ACT vehicle is
+`doctrines/hotfix-dispatch.md` — the sentinel narrows the ladder's upper bound (its `hf_cap` is
+smaller than a lane), so the `H ≥ 6` dedicated-lane band does NOT apply: a regression that would
+need a dedicated lane has exceeded the sentinel's scope and hard-stops.
+
+### Anti-patterns
+
+- **Firing without authorization.** Detection-only (SOAK-LOOP) is the default and stays the
+  default. Without `[close].autonomous_sentinel = "on"` + `close: autonomous-sentinel` in the seed
+  + a complete `sentinel_rails` block, the loop is SOAK-LOOP and the depth-3 remediation-inside-a-watch
+  anti-pattern still binds.
+- **Remediating a NEW failure.** Only `REGRESSED` predicates (promised-true, now-false against a
+  seeded baseline) are in ACT scope. A NEW failure is surfaced for an operator decision, never auto-fixed.
+- **Deploying on red / flipping to live without authorization.** Gates-before-deploy and
+  paper-only are mandatory rails. A live flip requires `live_flip: authorized`; otherwise the
+  sentinel stops at the gate-green artifact.
+- **Inventing a bespoke remediation mechanism.** ACT dispatches through `doctrines/hotfix-dispatch.md`
+  — one `@coder` (`H=1`) or one batched dynamic workflow (`(1,3]`). A hand-rolled fix path bypasses
+  the ladder's caps and the audit trail.
+- **Widening scope to fix a big regression.** A regression exceeding ≤S is `SENTINEL-SCOPE-EXCEEDED`
+  — surfaced, never widened.
+- **Converging on a single clean tick.** A self-heal must prove the fix holds across `K` consecutive
+  clean ticks (default 2) before `SENTINEL-DONE`. One clean tick right after an ACT is not convergence.
 
 ---
 
@@ -923,3 +1113,6 @@ Key highlights:
 - `doctrines/discovery-readonly.md` — `@discovery` read-only contract; report shape
 - `doctrines/auditor-hypothesis-driven.md` — per-finding evidence contract for AUDITOR-REFINE
 - `doctrines/dispatch-tier-separation.md` — root-tier-exclusive restriction on ENGINEER-PLAN-REFINE
+- `doctrines/autonomous-sentinel.md` — binding doctrine for the AUTONOMOUS-SENTINEL template (v6.1.5); when it may fire (NEVER by default), the hard rails, the audit-trail requirement, and its relationship to SOAK-LOOP (superset) + hotfix-dispatch (the ACT vehicle)
+- `doctrines/hotfix-dispatch.md` — the cardinality ladder the AUTONOMOUS-SENTINEL ACT stage dispatches through
+- `doctrines/outcome-enforcement.md §Seam 4` — the detection-only post-close soak AUTONOMOUS-SENTINEL supersets
