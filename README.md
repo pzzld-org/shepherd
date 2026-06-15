@@ -17,6 +17,8 @@ Welcome, the **shepherd** plugin is *an adaptive, sprint-by-sprint version-cycle
 │                       --parallel <N>      sprint-level fanout        │
 │                       --auto              alias: --scope patch       │
 │  /shepherd:loop      Bounded loop-until-done (per-role templates)    │
+│  /shepherd:ponytail  Senior review→refine→verify on a target        │
+│                       (also /ponytail) — auditor+coder as seniors    │
 │  /shepherd:toolkit   Tool registry — never forget a capability       │
 │  /shepherd:ctx       Inspect / refresh the per-project SQLite ctx    │
 │  /shepherd:cleanup   Post-sprint worktree + lock cleanup             │

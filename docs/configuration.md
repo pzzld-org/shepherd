@@ -585,6 +585,29 @@ Controls the capability auto-discovery probe (v6.1.5 #146,
 auto_capabilities = "on"   # auto-detect available plugins/skills; "off" disables
 ```
 
+### `[ponytail]` — senior-engineering standard + `/shepherd:ponytail`
+
+Controls the senior-engineering operating standard (v6.1.6,
+`doctrines/senior-engineering.md`) that elevates `@auditor` and `@coder`, and the
+on-demand `/shepherd:ponytail` review→refine→verify command (`commands/ponytail.md`).
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `senior_standard` | `on` \| `off` | `on` | When `on`, the conductor injects a stable `[SENIOR-STANDARD]` pointer block (a reference, NOT a re-paste — `doctrines/brief-cache-discipline.md`) into every `@auditor`/`@coder` brief, so the eight senior primitives are always-on. `off` restores pre-v6.1.6 briefs (the agents still honor the doctrine they cite, but it is not re-surfaced per brief). |
+| `default_mode` | `review` \| `refine` | `review` | Default mode for `/shepherd:ponytail` with no `--mode`/`--apply` flag. `review` = read-only senior report; `refine` = review → apply → re-verify. |
+| `max_verify_iterations` | integer ≥ 1 | `3` | Cap on the review↔refine↔re-verify loop (Pattern 3 / `references/loop-templates.md §AUDITOR-REFINE`). Reaching it with findings open halts as `PONYTAIL-LOOP-CAP`. |
+| `apply_requires_approval` | `true` \| `false` | `true` | When `true`, the refine (coder-apply) phase pauses for operator approval before any write. `--no-approval` overrides per-invocation. |
+| `conformance_sources` | array | `["doctrines","styles","ledger","adaptation","neighbors","defaults"]` | The `senior-engineering.md §V` precedence ladder, highest-first. Operator-reorderable to express project taste (e.g. demote `neighbors` if the codebase is mid-migration). |
+
+```toml
+[ponytail]
+senior_standard       = "on"        # inject [SENIOR-STANDARD] into auditor/coder briefs
+default_mode          = "review"    # review (read-only) | refine (review→apply→verify)
+max_verify_iterations = 3           # cap on the review↔refine↔re-verify loop
+apply_requires_approval = true      # pause for approval before the coder-apply phase
+conformance_sources   = ["doctrines", "styles", "ledger", "adaptation", "neighbors", "defaults"]
+```
+
 ## Path interpolation
 
 Any `{X}/{Y}/{Z}/{N}` placeholder in `branching`, `release`, or `ledger` is interpolated at runtime. Any `{paths.*}` reference is resolved against `[paths]`. So:

@@ -165,8 +165,15 @@ environment-dependent). The probe folds this in:
   **NEVER `ToolSearch` for `Workflow`** — a nothing-result means you looked in
   the wrong place, not that the feature is broken.
 
-Cross-ref: `references/glossary.md` §1 (the native Workflow tool) and
-§"Other collision-prone terms".
+The agent-facing operational front-end for this — the ONE first-action
+self-check (detect → record `present:true|false` → branch to compile or
+degrade), with the benefit framing that keeps a teammate from mis-degrading when
+the tool IS present — is **`doctrines/workflow-tool-self-check.md`**. This §V
+owns the *hook/roster mechanics* (env hint, the `agent_fillin.workflow_tool`
+contract); that doctrine owns the *agent's first action*. They are a pair.
+
+Cross-ref: `references/glossary.md` §1 (the native Workflow tool),
+§"Other collision-prone terms", and `doctrines/workflow-tool-self-check.md`.
 
 ---
 

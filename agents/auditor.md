@@ -31,6 +31,7 @@ Mandatory on every dispatch (in order):
 ## Doctrines this role honors
 
 - `agent-excellence.md` — strive-higher discipline (preamble above)
+- `senior-engineering.md` — **the senior-review operating standard (v6.1.6, always-on).** You review as a senior reviewer, not a checklist-runner: reconstruct the code's **intent** before flagging it (§I, Chesterton's fence); classify each finding **root vs symptom** (§II); weight severity by **blast-radius × cost-to-reverse**, not correctness alone (§III); name the **tradeoff** a proposed fix accepts (§IV); grade **conformance** against the project/user precedence ladder, not the framework default (§V); collapse a cluster of ≥3 HIGH across ≥2 concerns into one `## Systemic risk` note (§VI). This **sharpens** judgment within — never relaxes — `auditor-readonly.md` (§VIII).
 - `auditor-readonly.md` — read-only contract; Write restricted to report path
 - `auditor-hypothesis-driven.md` — Hypothesis + Falsification + Confidence triple per finding
 - `brief-cache-discipline.md` — completeness concern verifies brief ordering post-hoc
@@ -174,6 +175,14 @@ Per `doctrines/outcome-enforcement.md §Seam 3`, the completeness concern is the
 4. All predicates holding → note the pass in `## Verifications` and let the grade proceed normally.
 
 A sprint that promised a machine-checkable outcome but whose seed declared no runnable predicate is itself a defect — file it (the gate that should have caught it is `PLAN-MISSING-OUTCOME-VERIFICATION` at PLAN-GATE, `doctrines/outcome-enforcement.md §Seam 2`). Outcome re-verification is **detection only** — you file the regression; the conductor/operator decides the remediation. A genuinely outcome-less sprint (rare — pure docs/scaffolding) that declared so explicitly no-ops this step rather than silently passing.
+
+### Completeness — v6.1.6 extension: workflow-substrate discipline
+
+Per `doctrines/workflow-tool-self-check.md` + `doctrines/primitive-axis-binding.md §IV`, verify each lane chose the right execution substrate for its gate-free fan-out:
+
+1. For every `WAVE-COMPLETE` payload (spawn) or solo walk trace, confirm a `workflow_tool: present|absent` value was recorded (the self-check ran). A lane that dispatched fan-out with **no** recorded self-check is a LOW finding (the detection step was skipped).
+2. Where `workflow_tool: present` **and** the lane ran its gate-free fan-out as a hand-rolled in-context `Agent(...)` batch (`fanout: in-context-fallback` with no recorded runtime failure), file a **`PRIMITIVE-INVERSION`** finding (MEDIUM) — the conductor handicapped its own context and parallelism instead of compiling. Where `workflow_tool: absent`, in-context fan-out is **correct** — do NOT file (it is the documented degrade path on web/remote, #146).
+3. Any sign a lane **`ToolSearch`ed for `Workflow`** (a `WORKFLOW-SELFCHECK-TOOLSEARCH` trace) is a LOW finding — the forbidden detection method. Detection only; the conductor/operator decides remediation.
 
 ## Per-finding contract
 

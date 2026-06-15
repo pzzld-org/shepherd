@@ -463,14 +463,21 @@ FIRST ACTION
     - Skip Phase 0 mesh / INTRO-COMBO-WAVE / @engineer / @critic (root already did those).
     - Load agents/conductor.md and self-detect TEAMMATE mode.
     - Read the lane brief from this INHERITED CONTEXT block.
+    - WORKFLOW SELF-CHECK (once, at lane start): is the token `Workflow` in your visible
+      tool list? NEVER ToolSearch for it — that returns nothing by design and is the
+      WORKFLOW-SELFCHECK-TOOLSEARCH anti-pattern. Record `workflow_tool: present|absent`
+      in your first WAVE-COMPLETE. (doctrines/workflow-tool-self-check.md)
     - Walk lane micro-Stage-Graph: DEDUP-GATE → IMPL (@coder for lane scope) → LANE-CLOSE.
     - For EACH gate-free agent fan-out segment in your lane (e.g. WAVE-IMPL coders,
-      lane AUDIT): run `shctx graph compile --segment=<entry-node> --verify`, execute
-      the emitted `<seg>.workflow.js` out-of-context, then `shctx graph mark <nodes>`.
-      Fall back to an in-context `Agent(...)` batch ONLY if the runtime is unavailable.
-      Do NOT hand-roll in-context Agent step fan-out where a compiled workflow is required.
-      (doctrines/workflow-compile-down.md + dispatch-cascade.md §IV-bis)
-    - Surface WAVE-COMPLETE via SendMessage.
+      lane AUDIT): IF `workflow_tool: present`, run `shctx graph compile
+      --segment=<entry-node> --verify`, execute the emitted `<seg>.workflow.js`
+      out-of-context, then `shctx graph mark <nodes>` — this is YOUR benefit (clean
+      context + ≤16 background agents), not a tax. Fall back to an in-context `Agent(...)`
+      batch ONLY if the runtime fails. IF `workflow_tool: absent` (web/remote, #146), run
+      the segment as one in-context `Agent(...)` batch — the correct degrade path.
+      Do NOT hand-roll in-context Agent step fan-out where the tool is present.
+      (doctrines/workflow-compile-down.md + workflow-tool-self-check.md + dispatch-cascade.md §IV-bis)
+    - Surface WAVE-COMPLETE via SendMessage (include the `workflow_tool` field).
 
   Do NOT invoke /shepherd:start without --teammate — that triggers SOLO mode
   full-pipeline behavior, which is wrong for a teammate (it would re-engineer the plan,

@@ -4,6 +4,80 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v6.1.6 — 2026-06-15
+
+Two-lane release. **Lane A** makes teammate-conductors *actually leverage* the
+native Claude Code `Workflow` (Dynamic Workflows) tool instead of reflexively
+`ToolSearch`-ing for it and mis-degrading. **Lane B** introduces `/shepherd:ponytail`
+and the **senior-engineering operating standard** — the primitives that turn the
+`@auditor` and `@coder` into senior devs, cemented into their profiles and adaptable
+to the project and user.
+
+> The trigger for Lane A was a live failure: an `/effort ultracode` session, told to
+> "use the Workflow tool," ran `ToolSearch select:Workflow`, got nothing, and declared
+> the tool "confirmed absent" — the *exact* mistake teammate-conductors make. The fix
+> is not more prose (there was already plenty) but a **recorded first-action
+> self-check** that an agent cannot skip.
+
+### Lane A — teammates actually leverage Dynamic Workflows
+
+- **New doctrine `doctrines/workflow-tool-self-check.md`** — the operational
+  front-end for the native `Workflow` tool, consolidating the detect / never-
+  ToolSearch / benefit guidance that was scattered across `references/glossary.md §1`,
+  `capability-discovery.md §V`, `workflow-compile-down.md`, and
+  `primitive-axis-binding.md §IV` (and still got skipped). ONE first action:
+  *is the token `Workflow` in your visible tool list?* → record
+  `workflow_tool: present|absent` → branch. **Present** → compile gate-free fan-out
+  out-of-context (framed as the conductor's OWN benefit: clean context window + ≤16
+  background agents, not a tax). **Absent** (web/remote, #146) → degrade to in-context
+  `Agent(...)` — correct and expected. **NEVER `ToolSearch`** for it (the
+  `WORKFLOW-SELFCHECK-TOOLSEARCH` anti-pattern), not even under `/effort ultracode`.
+- **Wired as a first action** into `agents/conductor.md` (prohibition #22 rewritten +
+  mode-comparison rows + a step 0 in the teammate compile sequence), `agents/shepherd.md`
+  (root Step 0 + `[ROOT-START] workflow_tool=…`), `commands/spawn.md` (teammate boot
+  prompt), and `commands/start.md` (lane walk step 0 + `WAVE-COMPLETE.workflow_tool` /
+  `.fanout` fields). Corrected the stale "always present" phrasing to the
+  environment-dependent visible-tool-list test.
+- **Enforcement seam:** new `@auditor` completeness extension
+  (`agents/auditor.md §workflow-substrate discipline`) — files `PRIMITIVE-INVERSION`
+  when a lane hand-rolled in-context fan-out where the tool was present, and a LOW
+  finding when the self-check was skipped or the tool was ToolSearched. In-context
+  fan-out where the tool is **absent** is correct and never flagged.
+
+### Lane B — `/shepherd:ponytail` + the senior-engineering standard
+
+- **New doctrine `doctrines/senior-engineering.md`** (the "ponytail" doctrine) — the
+  senior-engineering operating standard for `@auditor` + `@coder`, eight primitives
+  that build on the existing flock doctrines (cite, never duplicate): (I) comprehend
+  intent before you touch (Chesterton's fence); (II) root-cause over symptom;
+  (III) blast-radius- & cost-to-reverse-weighted severity; (IV) justify the tradeoff,
+  not just the change; (V) conform to THIS project and THIS user via a precedence
+  ladder (project doctrines > `[CODE-STYLE]` ledger > `code-style` skill > adaptation
+  priors > the neighbors > defaults); (VI) cross-concern systemic-risk detection;
+  (VII) bounded restraint (the most senior move is often the smaller diff);
+  (VIII) preserved read-only/tier discipline. `SENIOR-STANDARD-MISUSE` anti-pattern.
+- **New command `/shepherd:ponytail` (`commands/ponytail.md`, also `/ponytail`)** — an
+  on-demand senior **review → refine → verify** pass on a target (diff, path, file, or
+  PR) **outside** the sprint pipeline: Pattern 3 (Adversarial Verification) + Pattern 4
+  (Generate-And-Filter), bounded as the AUDITOR-REFINE loop. Review-only by default;
+  `--apply` runs the coder-refine + re-verify loop; `--cement` persists the conventions
+  the pass observed into project memory / the style ledger. Fully adapted via styles,
+  project doctrines, config, and adaptation priors.
+- **Cemented into the profiles:** `agents/auditor.md` and `agents/coder.md` now cite
+  `senior-engineering.md` in §"Doctrines this role honors" with the per-role primitive
+  summary, and the FIRST-loaded reference skills (`auditor.reference.md`,
+  `coder.reference.md`) carry the senior lens. New config section `[ponytail]`
+  (`senior_standard`, `default_mode`, `max_verify_iterations`, `apply_requires_approval`,
+  `conformance_sources`) in `docs/configuration.md`.
+
+### Wiring
+
+- `skills/shepherd/SKILL.md` — `/shepherd:ponytail` + `/ponytail` triggers, command-table
+  row, and §XI file-map rows for both new doctrines + the command.
+- `skills/shepherd/doctrines/README.md` index — rows for `workflow-tool-self-check.md`
+  and `senior-engineering.md`.
+- `CLAUDE.md` command table + file-contracts; `README.md` command banner.
+
 ## v6.1.5 — 2026-06-15
 
 Kickoff-hardening + config-auto-scaffold + observability release (#147), extended
