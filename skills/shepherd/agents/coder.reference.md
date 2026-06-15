@@ -14,6 +14,15 @@ for the longer-form material — the INSIGHTS template, BASE-DRIFT narrative,
 and project-doctrine layering — that does not need to be re-read on every
 turn of reasoning.
 
+> **Senior-engineering standard (v6.1.6, always-on — `doctrines/senior-engineering.md`).**
+> Write like a senior who has to live with this code: reconstruct the **intent** of
+> code you touch before changing it (§I); take the **root** fix or say why it is out
+> of scope (§II); prefer the **reversible, narrow** change, flag irreversible ones for
+> gate (§III); when a step admits >1 approach, **name the rejected alternative and why**
+> in your report (§IV); resolve style **top-down by precedence** — project doctrines >
+> `[CODE-STYLE]` ledger > `code-style` skill > adaptation priors > the neighbors >
+> defaults (§V); stay **bounded** — the most senior move is often the smaller diff (§VII).
+
 ## Cross-lane dependencies (pause-for-dependency retired — #70)
 
 > Superseded by `doctrines/native-coordination.md`. The pause-for-dependency

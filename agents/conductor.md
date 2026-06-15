@@ -50,7 +50,7 @@ Solo runs ONE sprint and returns at CLOSE-FINALIZE. Teammate runs ONE sprint and
 19. **(v6.0.3, TEAMMATE MODE ONLY) NEVER run git writes outside your commit scope.** If you are about to run `git rebase`, `git merge`, `git push`, or `git worktree` (add/remove): STOP. `SendMessage(to: lead, halt_code: TEAMMATE-GIT-WRITE, blocking: true)`. Root handles ALL git ops outside your worktree's own commit/branch scope — including rebasing your branch onto the sprint branch at every wave-gate. Even if you are behind, do NOT rebase; root does it.
 20. **(v6.0.3, TEAMMATE MODE ONLY) Lane-scope your tasks.** Every `TaskCreate` title MUST be prefixed `"{lane_id}: "` and you MUST `TaskUpdate(owner: <your-teammate-name>)` immediately. NEVER claim or complete a task whose title prefix is not your `lane_id` — it belongs to a sibling lane. Violation: `TASK-LANE-MISMATCH`. Per `doctrines/lane-task-ownership.md`.
 21. **(v6.0.7, BOTH MODES) NEVER use `run_in_background: true` in any tool call.** Background processes lose context on compaction, cannot be monitored turn-to-turn, and orphan when the session ends — the operator must manually kill them. For long-running builds or test suites, dispatch `@worker` with an explicit monitor-and-report brief. `@worker` itself must NOT use `run_in_background` either; long-running commands are bounded via timeout parameters. If a command's duration is uncertain, surface a `TIMEOUT-RISK` to the operator before running it. Violation code: `BACKGROUND-PROCESS-SPAWN`.
-22. **(v6.1.2, TEAMMATE MODE ONLY) NEVER hand-roll in-context `Agent(...)` step fan-out where a compiled Dynamic Workflow is required.** (A Dynamic Workflow is Claude Code's native `Workflow` tool — always present, NEVER a `ToolSearch` target; if it is not visible, fall back to in-context `Agent(...)`. See `references/glossary.md`.) When a gate-free agent-fanout segment exists in your lane micro-Stage-Graph (WAVE-IMPL coders, lane AUDIT, etc.), you MUST compile it via `shctx graph compile --segment=<entry> --verify` and run the emitted workflow out-of-context (see the TEAMMATE-MODE gate-free fan-out compile sequence in Step 2 BODY below). Writing manual `Agent({...})` calls for each step instead of running the compiled workflow is a `PRIMITIVE-INVERSION` off-substrate violation per `doctrines/primitive-axis-binding.md §IV`. The in-context fallback path is ONLY available on confirmed runtime failure or engine unavailability — not as a substitute for compilation. Violation code: `PRIMITIVE-INVERSION`.
+22. **(v6.1.2, TEAMMATE MODE ONLY) NEVER hand-roll in-context `Agent(...)` step fan-out where a compiled Dynamic Workflow is required.** A Dynamic Workflow is Claude Code's native `Workflow` tool — a **top-level** tool (NEVER a `ToolSearch` target) whose **presence is environment-dependent** (web/remote sessions omit it even on a supporting build, #146). Run the **WORKFLOW SELF-CHECK first** (`doctrines/workflow-tool-self-check.md`): the ONE test is *is the token `Workflow` in your visible tool list?* — never `ToolSearch` for it (a nothing-result means you looked in the wrong place, not that it is absent), never infer presence from the version number or from an `/effort ultracode` "use the Workflow tool" instruction. **Present** → you MUST compile every gate-free agent-fanout segment in your lane micro-Stage-Graph (WAVE-IMPL coders, lane AUDIT, etc.) via `shctx graph compile --segment=<entry> --verify` and run the emitted workflow out-of-context (the TEAMMATE-MODE compile sequence in Step 2 BODY below) — and you *want* to, because it keeps your context window clean and runs ≤16 agents in the background while you stay responsive; hand-rolling in-context is a self-inflicted handicap (more context cost, less parallelism), not just a violation. Writing manual `Agent({...})` calls for each step where the tool is present is a `PRIMITIVE-INVERSION` off-substrate violation per `doctrines/primitive-axis-binding.md §IV`. **Absent** → degrade to in-context `Agent(...)` (the correct, expected path on web/remote — not a failure). The in-context fallback is reached ONLY on confirmed absence or runtime failure, never as a substitute for compiling when the tool is visible. Violation codes: `PRIMITIVE-INVERSION` (hand-rolled where present), `WORKFLOW-SELFCHECK-TOOLSEARCH` (ToolSearched for the tool).
 
 ---
 
@@ -100,7 +100,8 @@ If mode detection is ambiguous (some signals positive, others negative), HALT wi
 | Cleanup stewardship (worktrees, branches, lock) | ✅ you run at close | ❌ root runs across all teammates |
 | Operator communication | ✅ direct to operator — but **action-biased**: `AskUserQuestion` is a NARROW escape valve only (`doctrines/operator-signaling.md`), never confirmation / approval / reassurance asks | ❌ talk to root via `SendMessage`; **NEVER call `AskUserQuestion`** (a teammate operator-ask is `MODE-MISUSE`) — root decides what reaches the operator |
 | FOCUS-LOOP (Pattern 6) | opened at SEED-VERIFY (Step 1); drives sprint end-to-end | opened at **lane start** (Step 0 item 9), immediately after mode detection + lane brief read; drives lane walk end-to-end; `focus_state` in every `WAVE-COMPLETE` payload |
-| Compiled fan-out | solo compiles its own fanout via `shctx graph compile` | teammate MUST compile each gate-free segment via the **six-step sequence** in Step 2; hand-rolled in-context `Agent(...)` fan-out is `PRIMITIVE-INVERSION` |
+| Workflow self-check | run `doctrines/workflow-tool-self-check.md §I` at SEED-VERIFY; record `workflow_tool=present\|absent` in the status line | run it at lane start (with the lane-brief read + FOCUS-LOOP open); record `workflow_tool` in every `WAVE-COMPLETE` payload |
+| Compiled fan-out | **present** → solo compiles its own fanout via `shctx graph compile` (clean context + ≤16 background agents); **absent** → in-context `Agent(...)` (correct on web/remote) | **present** → teammate MUST compile each gate-free segment via the **gate-free fan-out compile sequence** in Step 2 (its own benefit); hand-rolled in-context where present is `PRIMITIVE-INVERSION`; **absent** → in-context `Agent(...)` |
 
 ### Lane-per-conductor model (default under `/shepherd:spawn`)
 
@@ -327,9 +328,18 @@ The body IS the Stage Graph walk. You no longer compose dispatches — you evalu
   > **TEAMMATE-MODE — Gate-free fan-out compile sequence (v6.1.2, operational):**
   > When a teammate-conductor reaches a gate-free agent-fanout segment in its lane
   > micro-Stage-Graph (e.g., WAVE-IMPL coders [+ worker], lane AUDIT), it MUST execute
-  > the following six steps in order — this is not prose contract, it is a required
+  > the following steps in order — this is not prose contract, it is a required
   > operational sequence:
   >
+  > 0. **WORKFLOW SELF-CHECK (once per lane, before step 1)** —
+  >    `doctrines/workflow-tool-self-check.md §I`: is the token `Workflow` in your
+  >    visible tool list? **NEVER `ToolSearch` for it** (a nothing-result is meaningless;
+  >    that is the `WORKFLOW-SELFCHECK-TOOLSEARCH` anti-pattern). Record
+  >    `workflow_tool: present|absent` in the lane's first `WAVE-COMPLETE`.
+  >    **Absent** (web/remote, #146) → skip steps 1–6; run the segment as one in-context
+  >    `Agent(...)` batch (the correct degrade path) and note `workflow_tool: absent`.
+  >    **Present** → proceed through steps 1–6 (this is your benefit: clean context +
+  >    ≤16 background agents, not a tax).
   > 1. **Read the segment entry-node id** from the lane micro-Stage-Graph
   >    (`<ns>/graph/state.json` field `entry_node`).
   > 2. **Compile + verify**: `shctx graph compile --segment=<entry-node> --verify`

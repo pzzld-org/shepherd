@@ -17,6 +17,8 @@ Welcome, the **shepherd** plugin is *an adaptive, sprint-by-sprint version-cycle
 │                       --parallel <N>      sprint-level fanout        │
 │                       --auto              alias: --scope patch       │
 │  /shepherd:loop      Bounded loop-until-done (per-role templates)    │
+│  /shepherd:ponytail  Senior review→refine→verify on a target        │
+│                       (also /ponytail) — auditor+coder as seniors    │
 │  /shepherd:toolkit   Tool registry — never forget a capability       │
 │  /shepherd:ctx       Inspect / refresh the per-project SQLite ctx    │
 │  /shepherd:cleanup   Post-sprint worktree + lock cleanup             │
@@ -329,7 +331,7 @@ Shepherd follows semver:
 
 Version sources of truth that must move together: `plugin.json`, `marketplace.json`, `skills/shepherd/SKILL.md` frontmatter, `skills/context/SKILL.md` frontmatter, `README.md` header, `CHANGELOG.md`. `shctx release` automates the five non-CHANGELOG files.
 
-Current version: **6.1.5**. See [`CHANGELOG.md`](CHANGELOG.md) for the per-version history.
+Current version: **6.1.6**. See [`CHANGELOG.md`](CHANGELOG.md) for the per-version history.
 
 ---
 

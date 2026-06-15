@@ -263,6 +263,7 @@ PLUS:
                 parallel={N|1}
                 seed_count={N}
                 missing_seeds={M}
+                workflow_tool={present|absent}
                 anomalies={list or "none"}
    ```
 3. **Load doctrines.** Cite `doctrines/root-shepherd-orchestration.md`
@@ -270,6 +271,16 @@ PLUS:
    matrix) + `doctrines/scope-scale-workload.md` (--scope semantics) +
    `doctrines/coordinate-active-drive.md` (the no-passive-wait coordinate
    contract — binding from the moment you spawn) as mandatory ambient reading.
+4. **WORKFLOW SELF-CHECK** (`doctrines/workflow-tool-self-check.md §I`). Before
+   compiling any cross-lane / root-tier gate-free segment YOU own (and so you can
+   advise teammates), determine whether the native `Workflow` tool is provisioned:
+   is the token `Workflow` in your visible tool list? **NEVER `ToolSearch` for it**
+   — a nothing-result is meaningless (the `WORKFLOW-SELFCHECK-TOOLSEARCH`
+   anti-pattern), and the `/effort ultracode` "use the Workflow tool" instruction
+   is satisfied by this check, not by a search. Record `workflow_tool=present|absent`
+   in the `[ROOT-START]` line. **Present** → compile (out-of-context, clean root
+   context). **Absent** (web/remote, #146) → in-context `Agent(...)` fan-out — the
+   correct degrade path; do not retry or report it broken.
 
 ---
 
