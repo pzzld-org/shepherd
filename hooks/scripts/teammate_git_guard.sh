@@ -96,7 +96,7 @@ fi
 # --- check sqlite3 availability and DB presence -------------------------
 command -v sqlite3 >/dev/null 2>&1 || exit 0
 NS="$(resolve_namespace 2>/dev/null || echo .shepherd)"
-DB="$NS/root.db"
+DB="$(hook_db_path "$NS")"
 [[ -f "$DB" ]] || exit 0
 
 # --- is this session a non-retired teammate? ----------------------------

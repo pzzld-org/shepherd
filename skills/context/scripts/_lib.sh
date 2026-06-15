@@ -58,7 +58,20 @@ shctx_db_path() {
 }
 shctx_lock_path()       { echo "$(shctx_artifacts_root)/shepherd.lock"; }
 shctx_project_id_path() { echo "$(shctx_artifacts_root)/project.json"; }
-shctx_skill_root()      { echo "${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"; }
+# Skill root = the directory that contains schema/ + references/ + scripts/
+# (i.e. .../skills/context). The dispatcher exports the correct value in
+# SHCTX_SKILL_ROOT (shctx:5); prefer it. When sourced outside the dispatcher with
+# CLAUDE_PLUGIN_ROOT set, the skill root is "$CLAUDE_PLUGIN_ROOT/skills/context"
+# — NOT bare $CLAUDE_PLUGIN_ROOT (the plugin/repo root), which has no references/
+# dir and silently broke `shctx init`/`config init` in real plugin installs (the
+# cp in scaffold.sh aborts under `set -e`, so the DB is never created). Final
+# fallback is this file's own location (dev symlink / direct-source path).
+shctx_skill_root() {
+  if   [[ -n "${SHCTX_SKILL_ROOT:-}" ]]; then echo "$SHCTX_SKILL_ROOT"
+  elif [[ -n "${CLAUDE_PLUGIN_ROOT:-}" ]]; then echo "$CLAUDE_PLUGIN_ROOT/skills/context"
+  else echo "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+  fi
+}
 
 # Echo the value of a top-level `key = value` from shepherd config, resolved by
 # precedence: .claude/shepherd.local.toml (per-key local override) →

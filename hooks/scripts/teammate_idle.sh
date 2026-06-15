@@ -35,7 +35,7 @@ SESSION="$(json_field "$PAYLOAD" '.session_id' 2>/dev/null || true)"
 
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
 NS="$(resolve_namespace)"
-DB="$NS/root.db"
+DB="$(hook_db_path "$NS")"
 [[ -f "$DB" ]] || exit 0
 
 # Flip status to idle. Prefer teammate_name (when the payload carries it); fall

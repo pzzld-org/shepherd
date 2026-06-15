@@ -16,7 +16,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 source "$HERE/_lib.sh"
 
-DB="$(resolve_namespace)/root.db"
+DB="$(hook_db_path)"
 [[ -f "$DB" ]] || exit 0
 
 # Cutoff: 10 minutes (in ms, matching cmd_teammate / cmd_deliverable convention).
