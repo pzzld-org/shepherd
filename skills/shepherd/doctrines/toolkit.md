@@ -184,6 +184,35 @@ merges in unchanged.
 
 ---
 
+## Curated vs auto-discovered (v6.2.0, #146)
+
+The toolkit registry is **operator-curated** — deliberate, version-controlled
+intent. As of v6.2.0 it has an **ephemeral sibling**: the SessionStart
+`capability_discovery.sh` probe enumerates capabilities present in the
+environment (installed plugins, skills) and writes them to a gitignored
+`<workdir>/cache/discovered-capabilities.json` roster. The two are surfaced
+together but kept **strictly distinct**:
+
+| | Curated (`toolkit.json`) | Auto-discovered (cache roster) |
+|---|---|---|
+| Authored by | operator (`shctx toolkit add`) | the SessionStart probe |
+| Tracked | yes (git) | no (gitignored cache) |
+| Label at surface | "🧰 Project toolkit" | "🔎 Auto-discovered (ephemeral)" |
+| Authority | operator intent | best-effort observation |
+
+Discovery **never** writes into `toolkit.json` — it must not silently overwrite
+intent. When a discovered capability proves persistently useful, the operator
+*promotes* it by registering it with `shctx toolkit add`. See
+`doctrines/capability-discovery.md` for the full probe contract, the
+guarded-integration pattern, and the degrade-cleanly guardrails.
+
+**Guarded-integration shorthand:** *if* `/remember` is auto-discovered, use it
+at handoff / CLOSE-FINALIZE and on resume; *else* fall back to shepherd-native
+handoff records. The same "if available, else native" shape applies to every
+opportunistic integration — shepherd never hard-depends on a third-party plugin.
+
+---
+
 ## What the toolkit is NOT
 
 - **Not a secrets store.** Never put credentials, API keys, tokens, or passwords
@@ -213,3 +242,6 @@ merges in unchanged.
 - `doctrines/sqlite-canonical-state.md` — `toolkit.json` is NOT in the DB; it
   is a flat JSON file managed by `shctx toolkit`, intentionally outside SQLite
   so it can be version-controlled and edited directly
+- `doctrines/capability-discovery.md` — the ephemeral auto-discovery sibling
+  (#146): the SessionStart probe, the curated-vs-ephemeral distinction, the
+  guarded-integration pattern, and the Workflow-tool-presence detection tie-in

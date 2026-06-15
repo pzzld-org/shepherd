@@ -68,20 +68,55 @@ MERGED="$(jq -cn \
 
 # --- count tools -------------------------------------------------------------
 TOOL_COUNT="$(printf '%s' "$MERGED" | jq 'length' 2>/dev/null || echo 0)"
-[[ "${TOOL_COUNT:-0}" -gt 0 ]] || exit 0
 
-# --- build compact roster string ---------------------------------------------
-ROSTER="$(printf '%s' "$MERGED" | jq -r \
-  '.[] | "• \(.name) (\(.type // "?")) — \(.description // "(no description)")"' \
-  2>/dev/null || true)"
+# --- build compact curated roster string -------------------------------------
+ROSTER=""
+if [[ "${TOOL_COUNT:-0}" -gt 0 ]]; then
+  ROSTER="$(printf '%s' "$MERGED" | jq -r \
+    '.[] | "• \(.name) (\(.type // "?")) — \(.description // "(no description)")"' \
+    2>/dev/null || true)"
+fi
 
-[[ -n "$ROSTER" ]] || exit 0
+# --- auto-discovered (ephemeral) roster (v6.2.0, #146) ------------------------
+# Merge the EPHEMERAL capability roster written by capability_discovery.sh into
+# the SessionStart surface, clearly LABELED and DISTINCT from the curated set,
+# and bounded at 12 like the curated roster. The curated toolkit.json is never
+# read or written here. Graceful: silent when no probe / empty roster.
+DISC_FILE="$NS/cache/discovered-capabilities.json"
+DISC_ROSTER=""
+DISC_COUNT=0
+if [[ -f "$DISC_FILE" ]]; then
+  DISC_CAPS="$(jq -c '.capabilities // []' "$DISC_FILE" 2>/dev/null || printf '[]')"
+  DISC_COUNT="$(printf '%s' "$DISC_CAPS" | jq 'length' 2>/dev/null || echo 0)"
+  if [[ "${DISC_COUNT:-0}" -gt 0 ]]; then
+    DISC_ROSTER="$(printf '%s' "$DISC_CAPS" | jq -r \
+      '.[0:12][] | "• \(.name) (\(.type // "?"), auto) — \(.description // "(no description)")"' \
+      2>/dev/null || true)"
+  fi
+fi
 
-MSG="$(printf '%s\n%s' \
-  "🧰 Project toolkit ($TOOL_COUNT tool(s)) — consult before assuming a capability is unavailable:" \
-  "$ROSTER")"
+# --- nothing to surface → silent exit (preserves prior graceful-empty) -------
+[[ -n "$ROSTER" || -n "$DISC_ROSTER" ]] || exit 0
+
+# --- compose combined message ------------------------------------------------
+MSG=""
+if [[ -n "$ROSTER" ]]; then
+  MSG="$(printf '%s\n%s' \
+    "🧰 Project toolkit ($TOOL_COUNT tool(s)) — consult before assuming a capability is unavailable:" \
+    "$ROSTER")"
+fi
+if [[ -n "$DISC_ROSTER" ]]; then
+  DISC_MSG="$(printf '%s\n%s' \
+    "🔎 Auto-discovered capabilities ($DISC_COUNT, ephemeral — NOT operator-curated; degrade cleanly if absent):" \
+    "$DISC_ROSTER")"
+  if [[ -n "$MSG" ]]; then
+    MSG="$(printf '%s\n\n%s' "$MSG" "$DISC_MSG")"
+  else
+    MSG="$DISC_MSG"
+  fi
+fi
 
 log_event "toolkit_surface" "context" "SessionStart" "shepherd" "$SESSION" \
-  "$(emit_json_obj tool_count "$TOOL_COUNT")" 2>/dev/null || true
+  "$(emit_json_obj tool_count "$TOOL_COUNT" discovered_count "$DISC_COUNT")" 2>/dev/null || true
 
 emit_context "$MSG" "" "" "shepherd" "$SESSION"

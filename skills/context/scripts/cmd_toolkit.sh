@@ -26,6 +26,11 @@ source "$HERE/_lib.sh"
 # ---------------------------------------------------------------------------
 _local_path()  { echo "$(resolve_workdir)/toolkit.json"; }
 _global_path() { echo "${XDG_CONFIG_HOME:-$HOME/.config}/shepherd/toolkit.json"; }
+# EPHEMERAL auto-discovered roster (v6.2.0, #146) — written by the SessionStart
+# capability_discovery.sh hook into gitignored cache/. NEVER the curated
+# toolkit.json: discovery must never overwrite operator intent.
+# See skills/shepherd/doctrines/capability-discovery.md.
+_discovered_path() { echo "$(resolve_workdir)/cache/discovered-capabilities.json"; }
 
 # Resolve path for a given scope (local|global). Exits on bad scope.
 _scope_path() {
@@ -369,6 +374,32 @@ _cmd_md() {
 }
 
 # ---------------------------------------------------------------------------
+# discovered  — compact markdown for the EPHEMERAL auto-discovered roster
+# ---------------------------------------------------------------------------
+# v6.2.0 (#146). Reads the gitignored cache file written by the SessionStart
+# capability_discovery.sh hook and emits a LABELED markdown block, clearly
+# DISTINCT from the curated toolkit. Graceful-empty: emits nothing when the
+# roster is absent or carries zero auto-discovered capabilities. Bounded at 12,
+# matching `md`. NEVER reads/writes toolkit.json — discovery is read-only here.
+_cmd_discovered() {
+  local path; path=$(_discovered_path)
+  [[ -f "$path" ]] || return 0   # no probe yet → graceful-empty
+
+  local caps
+  caps=$(jq -c '.capabilities // []' "$path" 2>/dev/null || echo '[]')
+  local count; count=$(jq 'length' <<< "$caps" 2>/dev/null || echo 0)
+  [[ "${count:-0}" -gt 0 ]] || return 0  # graceful-empty
+
+  echo "### Auto-discovered capabilities (ephemeral — NOT operator-curated)"
+  echo
+  jq -r '
+    .[0:12][]
+    | "**" + .name + "** (" + (.type // "?") + ", auto) — " + (.description // "(no description)")
+      + (if (.capabilities // [] | length) > 0 then " | caps: " + (.capabilities | join(", ")) else "" end)
+  ' <<< "$caps" 2>/dev/null || true
+}
+
+# ---------------------------------------------------------------------------
 # init  — scaffold an empty toolkit.json + copy schema to <workdir>/types/
 # ---------------------------------------------------------------------------
 _cmd_init() {
@@ -523,6 +554,10 @@ shctx toolkit <subcommand> [args]
   md     [--scope=all|local|global] [--type=T]
                           Compact markdown for brief/session injection.
                           Graceful-empty (same contract as shctx adapt priors).
+  discovered              Compact markdown for the EPHEMERAL auto-discovered
+                          roster (cache/discovered-capabilities.json, written by
+                          the SessionStart capability_discovery hook, #146).
+                          Read-only; NEVER touches toolkit.json. Graceful-empty.
   init   [--scope=local|global]
                           Scaffold empty toolkit.json + copy schema to types/.
   validate [--scope=all|local|global]
@@ -551,6 +586,7 @@ case "$sub" in
   rm|remove)    _cmd_rm       "$@" ;;
   pin|unpin)    _cmd_pin_unpin "$sub" "$@" ;;
   md)           _cmd_md       "$@" ;;
+  discovered)   _cmd_discovered "$@" ;;
   init)         _cmd_init     "$@" ;;
   validate)     _cmd_validate "$@" ;;
   *) echo "ERROR: unknown subcommand: toolkit $sub" >&2; _usage >&2; exit 1 ;;
