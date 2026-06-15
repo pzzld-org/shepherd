@@ -228,15 +228,18 @@ running. Per D-API §11: a lead can only manage one team at a time. Refuse and d
 the operator to either complete the prior sprint's hand-back, or inspect
 `~/.claude/teams/` and clear stale config after confirmation.
 
-### Check 4 — shepherd.toml (warn-only)
+### Check 4 — shepherd.toml (scaffold-then-proceed)
 
 ```bash
 ls .claude/shepherd.toml 2>/dev/null || ls .local.toml 2>/dev/null
 ```
 
-If missing, emit `[WARN]` and proceed with framework defaults from
-`${CLAUDE_PLUGIN_ROOT}/docs/configuration.md`. Recommend copying
-`examples/minimal/shepherd.toml`. Non-blocking.
+If missing, **scaffold then proceed** (v6.1.5 #15): run `shctx config init` to write
+`.claude/shepherd.toml` from the bundled minimal template (idempotent; derives
+`[project].name` + `[gates]` from the repo's build manifest, realigns `[paths]` to the
+active namespace), emit a one-line `[CONFIG] scaffolded .claude/shepherd.toml` notice,
+and PROCEED. Non-blocking — root is action-biased (`doctrines/operator-signaling.md`);
+do NOT stop for confirmation. The operator can refine `[branching]`/`[gates]` later.
 
 ### Check 5 — Flag-specific preflight
 
@@ -255,8 +258,10 @@ If missing, emit `[WARN]` and proceed with framework defaults from
    Re-scope the colliding seeds before retrying /shepherd:spawn --parallel.
    ```
    Operator must amend the seeds; planter does not auto-resolve.
-2. **N within bounds (HARD-STOP).** N must be 2–4. N=1 is just base spawn; N>4
-   saturates the lead's `TeammateIdle` handler.
+2. **N within bounds (HARD-STOP).** N must be 2..`[spawn].max_parallel` — resolve
+   the cap via `shctx config get max_parallel 4` (default **4**, the historical
+   hard cap; v6.1.5 #10 makes it configurable for rate-limited plans). N=1 is just
+   base spawn; N above the cap saturates the lead's `TeammateIdle` handler.
 3. **N seeds available.** Exactly N `{paths.plans}/{sprint_slug}.seed.md` files
    must exist. Missing → hard stop; operator runs `/shepherd:plant` for the gap.
 4. **No dev-order cycle.** If `sprint_dependencies` contains a cycle, the merge
@@ -293,8 +298,12 @@ Total sprints: {N}
 Missing seeds: {M}
 ```
 
-If any required seed is missing, REFUSE the spawn and direct the operator to run
-`/shepherd:plant {sprint_slug}` for each gap. Per `doctrines/scope-scale-workload.md §III`.
+For multi-sprint walks (this enumeration runs for `--scope patch|minor|version`), a
+missing seed REFUSES the spawn — direct the operator to run `/shepherd:plant
+{sprint_slug}` for each gap. Per `doctrines/scope-scale-workload.md §III`. (Seeds are
+load-bearing here: the walk plan and `--parallel` collision check read them. A single
+`--scope sprint` spawn is the seed-optional case — see Hard-stop #2 and
+`doctrines/operator-signaling.md §"Seed is recommended, not required"`.)
 
 ### Check 7 — Scope confirmation for minor/version (v5.1.6+)
 
@@ -687,8 +696,11 @@ hook-input JSON).
         Babysitter mode: active. Monitoring TeammateIdle + TaskCompleted hooks.
         Heartbeat threshold: 5 min. Alert on staleness.
         Sprint: {sprint_slug}
+        Operator dashboard: /shepherd:loop {dashboard_cadence} shctx dash
         Coordinate cycle: ENTERING NOW — root does not pause for the operator.
 ```
+
+`{dashboard_cadence}` resolves from `shctx config get dashboard_cadence 3m`.
 
 **Root now enters the FOCUS-LOOP by default.** Immediately after emitting the
 `[SPAWN]` block, root activates the `focus_loop_id` opened at SEED-VERIFY
@@ -705,6 +717,30 @@ probe → yield-to-events). The root ends its turn only to yield to the platform
 event system (which auto-resumes it) or at an enumerated operator-pause, never as
 a passive wait after the `[SPAWN]` line. Per `doctrines/coordinate-active-drive.md
 §II/§IV`; backstopped by `hooks/scripts/coordinate_drive_guard.sh`.
+
+### Operator observability — the sprint dashboard (v6.1.5 #13)
+
+Root drives via the FOCUS-LOOP and platform events; the **operator** watches via a
+one-glance dashboard. `shctx dash` composes the primitives the root already
+maintains — focus north-star, graph completion %, live teammates (idle/verdict),
+mailbox + escalation fan-in, active loops, and GitHub-cache staleness — into a
+single read-only snapshot. It builds nothing new; it just collates existing views.
+
+Run it once, or loop it at a cadence so a long spawn stays observable without
+polling each primitive by hand:
+
+```
+shctx dash                       # one snapshot
+/shepherd:loop 3m shctx dash     # refresh every 3 min while the sprint runs
+```
+
+`/shepherd:loop <interval> shctx dash` is the recommended monitoring recipe for a
+running spawn. The interval defaults to `[spawn].dashboard_cadence` (v6.1.5 #10;
+resolve via `shctx config get dashboard_cadence 3m` — default **3m**, widen to 5m+
+for slow sprints). The dashboard is purely observational: it never mutates state,
+so it is safe to loop alongside the root's coordinate cycle. For deeper
+teammate-pane inspection, see `shctx panes
+status` (`skills/context/scripts/cmd_panes.sh`).
 
 ---
 
@@ -879,7 +915,12 @@ Base spawn behavior applies per loop iteration. Full loop-boundary contract
 
   [TERMINATION CHECK]
     If dev.LAST → EXIT LOOP → emit PLANTER REPORT (auto-mode variant).
-    If grade < [autorun].min_grade → EXIT LOOP → AUTO ABORT REPORT.
+    If grade < [autorun].min_grade → apply [autorun].on_grade_floor (v6.1.5 #10;
+        resolve via `shctx config get on_grade_floor abort`):
+          abort (default) → EXIT LOOP → AUTO ABORT REPORT (historical behavior).
+          pause           → surface ONE operator decision (re-spawn / continue /
+                            stop) and honor it — do NOT auto-continue.
+          continue        → log GRADE-FLOOR to walk status; proceed to dev.N+1.
     If error_budget_remaining == 0 → EXIT LOOP → AUTO ABORT REPORT.
     If operator interrupted → EXIT LOOP → AUTO ABORT REPORT.
     Otherwise → continue to dev.N+1.
@@ -907,7 +948,12 @@ Inter-sprint work checklist`. Summary:
    60–120 lines.
 8. Update carry-forward ledger.
 9. Update error budget counter.
-10. Emit inter-sprint status + 5-second pause window.
+10. Emit inter-sprint status, then apply `[autorun].inter_sprint_pause` (v6.1.5
+    #10; resolve via `shctx config get inter_sprint_pause brief`):
+    - `brief` (default) — short (~5s) window, then proceed (historical behavior).
+    - `signoff` — hard pause; wait for an explicit operator sign-off (`resume
+      auto`) before opening dev.N+1. Turns the walk semi-attended.
+    - `none` — proceed immediately; no inter-sprint window.
 
 Any step failure → `[AUTO PAUSE]` with the failing step identified. Do not
 re-attempt without operator confirmation.
@@ -917,7 +963,7 @@ re-attempt without operator confirmation.
 | Condition | Code | Planter action |
 |---|---|---|
 | `dev.LAST` closed cleanly | LAST-DEV | Full cleanup stewardship; final PLANTER REPORT |
-| Grade < `[autorun].min_grade` | GRADE-FLOOR | AUTO ABORT; operator decides re-spawn |
+| Grade < `[autorun].min_grade` | GRADE-FLOOR | Per `[autorun].on_grade_floor`: `abort` (default) AUTO ABORT; `pause` one operator decision; `continue` log + next sprint |
 | `error_budget_remaining == 0` | BUDGET-ZERO | AUTO ABORT |
 | Operator interrupt | OPERATOR-INTERRUPT | AUTO ABORT after current inter-sprint work completes |
 | Escalation needs operator | ESCALATION-PAUSE | LOOP PAUSES (not terminates); resumes on confirmation |
@@ -976,8 +1022,16 @@ horizon exists ONLY if commits land at every boundary. Full contract:
 Preflight-driven (Checks 1–3) plus run-state guards:
 
 1. Preflight Check 1 / 2 / 3 fail.
-2. **No active seed** — `{paths.plans}/{sprint_slug}.seed.md` missing. Send
-   operator to `/shepherd:plant` first.
+2. **No active seed (conditional — seed is recommended, not required).** A missing
+   `{paths.plans}/{sprint_slug}.seed.md` is a HARD stop ONLY for `--parallel` and
+   multi-sprint `--scope` (patch/minor/version) walks, where seeds are load-bearing
+   for collision detection (Check 5) and walk enumeration (Check 6) — there route the
+   operator to `/shepherd:plant` for each gap. For a single `--scope sprint` spawn,
+   seedless is ALLOWED: follow the seedless kickoff in
+   `${CLAUDE_PLUGIN_ROOT}/skills/shepherd/doctrines/operator-signaling.md §"Seed is
+   recommended, not required"` (derive the objective, or ask ONE batched kickoff
+   question, then run with elevated drift risk noted in the plan header + close report).
+   The seed remains the happy path — recommend `/shepherd:plant` but do not refuse.
 3. **Corrupted shepherd.lock** — `.artifacts/shepherd.lock` non-empty, timestamp
    < 30 min with matching active process. Surface; do not spawn.
 4. **Active rebase in progress** — `REBASE_HEAD` or `MERGE_HEAD` present;

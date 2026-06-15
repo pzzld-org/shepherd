@@ -15,7 +15,7 @@ description: |
 > Front-loading discovery converts a serial cascade of hot-fix coders into
 > a single broad-sweep lane with the full error set in scope.
 >
-> Field origin: shepherd v5.0.1 conductor feedback (axiom v0.3.0-dev.4 XL),
+> Field origin: shepherd v5.0.1 conductor feedback (downstream Rust service),
 > §2.4 — seven serial iterations vs one broad-sweep dispatch. v5.0.3 codifies
 > the prevention.
 

@@ -81,7 +81,7 @@ Do not abort. Do not refuse to plant. The operator may have deliberately chosen 
 ### Step 1 — Load config + doctrines
 
 1. Read `shepherd.toml` (`.claude/shepherd.toml`). Resolve `{paths.*}`, `{branching.*}`, `[ledger]`, `[mcp]`, `[cli]` tokens throughout this session.
-   - **Bootstrap fallback (#120) — first plant, no config:** If `.claude/shepherd.toml` is absent, this is a fresh project with no binding. Do NOT sniff the language or derive config inline. Surface the contents of `${CLAUDE_PLUGIN_ROOT}/examples/minimal/shepherd.toml` verbatim, with instructions: *"No `.claude/shepherd.toml` found. Copy this template to `.claude/shepherd.toml`, then customize `[branching]` (your version/branch scheme), `[gates]` (your build/test commands), and `[paths]` (your artifact tree); add `[memory].project_doctrines` / `[memory].project_memory` dirs if you keep project doctrines."* Then **STOP and require operator confirmation** that the binding is written and customized before continuing to Step 2. The template provides safe defaults; the operator must make the branching + gate + path choices — a seed authored against guessed config is drift on arrival.
+   - **Bootstrap fallback (#120; v6.1.5 #15 — scaffold-then-ask):** If `.claude/shepherd.toml` is absent, this is a fresh project with no binding. Run `shctx config init` to scaffold `.claude/shepherd.toml` from the bundled minimal template — it derives `[project].name` (git remote → cwd) and `[gates]` (Cargo.toml→cargo, go.mod→go, pyproject→pytest, package.json→npm) from the repo's build manifest, and realigns `[paths]` to the active shctx namespace. The scaffold gets the toolchain right but can only GUESS the version/branch scheme — so, because the planter plans WITH the operator (`doctrines/operator-signaling.md` — planter asks freely), surface **ONE batched `AskUserQuestion`** to confirm/refine the load-bearing `[branching]` (version/branch pattern, `sprints_per_patch`, `main_branch`) and the derived `[gates]` commands. Apply the answers to the scaffolded file, then continue to Step 2. This REPLACES the former hard STOP: the planter still front-loads the branching choice (a seed authored against guessed branching is drift on arrival) but never blocks waiting for a hand-edited file. Add `[memory].project_doctrines` / `[memory].project_memory` entries if the project keeps doctrines.
 2. Read every `*.md` under `[memory].project_doctrines` and treat as authoritative.
 3. Read project memory entries under `[memory].project_memory`.
 4. Read `${CLAUDE_PLUGIN_ROOT}/skills/shepherd/references/seed-template.md` — canonical seed shape.
@@ -486,15 +486,22 @@ You enforce four termination conditions (checked after each inter-sprint work pa
    (§3). Emit PLANTER REPORT (auto-mode variant — includes loop summary: sprints run,
    grades, errors consumed, final patch branch SHA).
 
-2. **GRADE-FLOOR**: `task_result.grade < [autorun].min_grade`. Emit AUTO ABORT REPORT
-   with the grade floor breach highlighted. Do not spawn the next teammate.
+2. **GRADE-FLOOR**: `task_result.grade < [autorun].min_grade`. Apply
+   `[autorun].on_grade_floor` (v6.1.5 #10; resolve via `shctx config get
+   on_grade_floor abort`): **`abort`** (default) → emit AUTO ABORT REPORT with the
+   breach highlighted and do not spawn the next teammate (historical behavior);
+   **`pause`** → surface ONE operator decision (re-spawn the failed sprint /
+   continue anyway / stop) and honor it; **`continue`** → log the breach to the
+   walk status and proceed to dev.N+1 (fully unattended — use with care).
 
-3. **BUDGET-ZERO**: `error_budget_remaining == 0`. Same as GRADE-FLOOR in behavior.
+3. **BUDGET-ZERO**: `error_budget_remaining == 0`. AUTO ABORT REPORT; always
+   terminal (not subject to `on_grade_floor` — a spent error budget is a hard stop).
 
-4. **OPERATOR-INTERRUPT**: any message during the 5-second countdown other than
+4. **OPERATOR-INTERRUPT**: any message during the inter-sprint window other than
    `'continue'` / `'ok'`. Finish current inter-sprint work (do NOT orphan in-flight work),
    then pause. The loop is resumable: operator types `'resume auto'` to continue from
-   dev.N+1.
+   dev.N+1. The window length / posture follows `[autorun].inter_sprint_pause`
+   (`brief` ~5s default | `signoff` hard-wait | `none`).
 
 For ESCALATION-PAUSE (an escalation reaching operator-question or hard-stop mid-sprint):
 this is not a termination — it is a loop suspension. You address the escalation, send

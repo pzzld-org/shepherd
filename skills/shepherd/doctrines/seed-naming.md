@@ -134,7 +134,7 @@ sprints will add teeth.
 ## See also
 
 - `examples/minimal/shepherd.toml` — slug patterns added v5.1.1
-- `examples/axiom/shepherd.toml` — slug patterns added v5.1.1
+- `examples/rust-service/shepherd.toml` — slug patterns added v5.1.1
 - `docs/configuration.md` §[branching] — both pattern pairs documented
 - `skills/shepherd/planter.md` §II — drift-resistance contract (verifiable)
 - `skills/shepherd/references/seed-template.md` — seed shape uses

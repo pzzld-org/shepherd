@@ -23,4 +23,4 @@ Then in a Sonnet Claude Code session:
 /shepherd:start
 ```
 
-For more elaborate bindings (Sentry / Grafana / Supabase / Fly / per-project doctrines / GH-workflow release pipeline), see [`../axiom/`](../axiom/).
+For more elaborate bindings (Sentry / Grafana / Supabase / Fly / per-project doctrines / GH-workflow release pipeline), see [`../rust-service/`](../rust-service/).

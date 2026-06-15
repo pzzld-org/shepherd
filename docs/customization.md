@@ -12,7 +12,7 @@ This doc covers each.
 
 Framework doctrines (in `${CLAUDE_PLUGIN_ROOT}/skills/shepherd/doctrines/`) are language-agnostic and version-locked to shepherd's release. Your project will likely accumulate its own doctrines that DRIFT beyond the framework set. Examples from real projects:
 
-- **Geo-block law** (Axiom) — production region pinned forever to a specific Fly region for regulatory geo-fencing reasons. Code that violates this fails CI.
+- **Geo-block law** (a region-restricted service) — production region pinned forever to a specific Fly region for regulatory geo-fencing reasons. Code that violates this fails CI.
 - **Write-only DB client** (some project) — all schema writes go through `WriteOnlyClient` wrapper that enforces idempotency keys.
 - **Header contract** (API project) — every endpoint requires `X-Request-Id` header for trace correlation.
 - **Wallet-watcher invariants** (DeFi project) — any code touching user balances must come with a paired property test.
@@ -46,13 +46,13 @@ The conductor reads `project_doctrines/*.md` at every `/shepherd:*` invocation a
 The `node` Fly process group is pinned to `yyz` permanently. Region change is FORBIDDEN.
 
 ## Why
-Polymarket geo-fences US users. Any trade-touching code running from a US Fly region trips
-detection and bricks the relayer flow.
+A regulated upstream API geo-restricts certain regions. Any code touching that API from
+a restricted region trips detection and breaks the request flow.
 
 ## Enforcement
 - `fly.toml [[vm]] processes=["node"]` carries `region = "yyz"`
 - CI grep at `.github/workflows/discipline.yml` rejects PRs that change this
-- `bin/gateway/` is forbidden from depending on `rspm` / `polymarket-client-sdk`
+- `bin/gateway/` is forbidden from depending on the regulated SDK (`regulated-api-sdk`)
 
 ## See also
 - ...
@@ -213,5 +213,5 @@ When configuring a new project:
 
 - [`docs/configuration.md`](configuration.md) — the full schema
 - [`docs/integration.md`](integration.md) — composition with per-language skills
-- [`examples/axiom/shepherd.toml`](../examples/axiom/shepherd.toml) — concrete working example
-- [`examples/axiom/doctrines/`](../examples/axiom/doctrines/) — project-doctrine examples
+- [`examples/rust-service/shepherd.toml`](../examples/rust-service/shepherd.toml) — concrete working example
+- [`examples/rust-service/doctrines/`](../examples/rust-service/doctrines/) — project-doctrine examples

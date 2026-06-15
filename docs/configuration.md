@@ -19,7 +19,18 @@ partial override, not a whole-file replacement. Every hook guard and `shctx` com
 resolves config through a single helper (`cfg_get`, defined in both `_lib.sh` files), so
 the precedence is identical across the runtime and the hooks.
 
-If no config is found, shepherd uses the framework defaults documented below — but the conductor will surface a warning at every `/shepherd:*` invocation until one is created.
+If no config is found, the entry commands **scaffold one and proceed** (v6.1.5 #15) rather than refusing or running blind. Run it yourself any time with:
+
+```bash
+shctx config init        # writes .claude/shepherd.toml from the bundled minimal template
+```
+
+`config init` is idempotent (it never clobbers an existing binding) and derives the load-bearing values automatically: `[project].name` from the git remote (falling back to the repo-root basename), `[gates]` from the repo's build manifest (`Cargo.toml`→cargo, `go.mod`→go, `pyproject.toml`/`setup.py`→pytest+ruff, `package.json`→npm), and `[paths]` realigned to whichever shctx namespace (`.shepherd/` or `.artifacts/`) the project already uses. The entry points wire it as follows:
+
+- **`/shepherd:start`, `/shepherd:spawn` (root):** scaffold → one-line `[CONFIG]` notice → PROCEED. Execution sessions are action-biased (`doctrines/operator-signaling.md`); they do not stop for confirmation.
+- **`/shepherd:plant`:** scaffold → **one batched `AskUserQuestion`** to confirm/refine the `[branching]` scheme and `[gates]` (the scaffold gets the toolchain right but can only guess version/branch topology) → continue. The planter plans *with* the operator, so it surfaces the choice but never blocks on a hand-edited file.
+
+You should still review `[branching]` and any non-standard `[gates]` before the first sprint — a seed authored against guessed branching is drift on arrival.
 
 ## Schema
 
@@ -27,9 +38,9 @@ If no config is found, shepherd uses the framework defaults documented below —
 
 ```toml
 [project]
-name        = "axiom"           # repo / project name (required)
+name        = "rust-service"    # repo / project name (required)
 language    = "rust"            # primary language: rust | python | typescript | go | mixed
-description = "BTC prediction + Polymarket trading"
+description = "Multi-crate Rust service — HTTP node + background worker"
 ```
 
 `language` is hand-tagged because file-extension sniffing is unreliable for mixed repos. Sets the default `[skills.by_domain]` mapping — Rust projects get `rust` + `code-style` for any `.rs` file, Python gets `code-style` (and `python` if you author one), etc.
@@ -68,8 +79,8 @@ format = "cargo fmt --all"
 # Optional supplementary gates (run after the primary three pass).
 # Useful for project-specific build profiles (Fly Docker build, multi-target, etc.).
 extra = [
-    { name = "node-serve",   cmd = "cargo check -p axiom-node --features serve,native" },
-    { name = "worker-serve", cmd = "cargo check -p axiom-worker --features serve" },
+    { name = "node-serve",   cmd = "cargo check -p service-node --features serve,native" },
+    { name = "worker-serve", cmd = "cargo check -p service-worker --features serve" },
 ]
 
 # Auto-clean target/ when it grows past this many GB (0 = disabled).
@@ -235,9 +246,8 @@ mandatory = ["code-style"]
 [skills.by_domain]
 rust       = ["rust"]
 wasm       = ["webassembly"]
-finance    = ["finance"]
 supabase   = ["supabase:supabase"]
-polymarket = ["polymarket"]
+payments   = ["payments"]
 claude_api = ["claude-api"]
 
 # Detection rules — which file-scope patterns map to which domains.
@@ -246,7 +256,7 @@ claude_api = ["claude-api"]
 rust       = ["**/*.rs"]
 wasm       = ["cmp/**", "**/*.wit"]
 supabase   = ["**/supabase/**", "**/migrations/**.sql"]
-polymarket = ["**/polymarket/**", "**/clob/**", "**/pm/**"]
+payments   = ["**/payments/**", "**/billing/**"]
 ```
 
 The mandatory list is enforced — every coder brief MUST carry these in `[SKILLS]` or the conductor's Brief-Validity Checklist rejects it. Domain entries are additive (the engineer plus the conductor decide which apply per lane).
@@ -349,7 +359,7 @@ teammate's heartbeat (`$TMUX_PANE`) — no `--pane` wiring needed.
 [memory]
 # Where the user's auto-memory lives. Shepherd references this (read-only
 # unless in planter mode) for project-specific feedback and project entries.
-project_memory = "~/.claude/projects/-Users-jo3-src-fl03-axiom/memory"
+project_memory = "~/.claude/projects/<your-project>/memory"
 
 # Path to additional project doctrines (memory entries that DRIFT beyond
 # what the framework ships in skills/shepherd/doctrines/).
@@ -410,6 +420,22 @@ coordinate_drive_guard = "block"
 # (doctrines/spawn-escalation.md). Optional; defaults shown.
 wave_ack_timeout_sec  = 60     # conductor waits this long for a wave-ack before continuing
 cross_dep_timeout_sec = 300    # CROSS-DEP-WAIT escalates to operator after this
+
+# --- Toggles (v6.1.5 #10) — read via `shctx config get <key>`; defaults below
+#     preserve the pre-v6.1.5 behavior exactly. -----------------------------
+
+# Upper bound on `--parallel <N>` fan-out (Preflight Check 5). Default 4 — the
+# pre-v6.1.5 hard cap, above which the lead's TeammateIdle handler saturates.
+# Lower it on rate-limited plans (e.g. 2). N is still floored at 2 (N=1 is just
+# a base spawn). Resolved at Check 5 via `shctx config get max_parallel 4`.
+max_parallel      = 4          # int, 2..N — upper bound on --parallel fan-out
+
+# Recommended cadence for the observability dashboard loop (#13):
+#   /shepherd:loop <dashboard_cadence> shctx dash
+# Default 3m (suits active waves; widen to 5m+ for slow sprints). Purely a
+# recommendation surfaced in the [SPAWN] confirmation — the dashboard is
+# read-only, so the cadence never affects sprint state.
+dashboard_cadence = "3m"       # duration — default interval for the dash loop
 ```
 
 > **Prompt-cache TTL (caching optimization, v6.0.5).** A multi-wave sprint easily
@@ -421,6 +447,43 @@ cross_dep_timeout_sec = 300    # CROSS-DEP-WAIT escalates to operator after this
 > *subscriptions* already request 1h automatically, so this matters most for API-key
 > use). This is the single highest-leverage token win for long runs. Refs:
 > `https://code.claude.com/docs/en/prompt-caching`, `doctrines/cache-telemetry.md`.
+
+### `[autorun]` — unattended sequential walks (`/shepherd:spawn --scope patch` / `--auto`)
+
+Governs the sequential autopilot that walks `dev.0..dev.LAST` unattended. All keys
+are read via `shctx config get <key>`; the defaults reproduce the pre-v6.1.5
+behavior exactly, so an existing project sees no change until it opts in.
+
+```toml
+[autorun]
+# Grade floor for an unattended walk. A sprint that closes BELOW this grade
+# triggers `on_grade_floor`. Grades are the close-report letter grades
+# (A+ … F) from references/grading-rubric.md. Default B.
+min_grade      = "B"           # letter grade — floor for continuing the walk
+
+# What the walk does when a sprint grades below `min_grade` (v6.1.5 #10):
+#   abort (default) — emit the AUTO ABORT REPORT and stop the walk. This is the
+#                     pre-v6.1.5 GRADE-FLOOR behavior (commands/spawn.md autorun
+#                     loop; agents/planter.md §autorun).
+#   pause           — pause and surface one operator decision (re-spawn the
+#                     failed sprint / continue anyway / stop), then honor it.
+#   continue        — log a GRADE-FLOOR warning to the walk status and proceed
+#                     to the next sprint (fully unattended; use with care).
+on_grade_floor = "abort"       # abort (default) | pause | continue
+
+# Pause posture BETWEEN sprints in a sequential walk (v6.1.5 #10):
+#   brief (default) — emit the inter-sprint status + a short (~5s) window, then
+#                     proceed. This is the pre-v6.1.5 behavior.
+#   signoff         — hard pause; require an explicit operator sign-off before
+#                     opening the next sprint (turns the walk semi-attended).
+#   none            — fully continuous; no inter-sprint pause window at all.
+inter_sprint_pause = "brief"   # brief (default) | signoff | none
+```
+
+`min_grade` has always been consulted by the `--auto` / `--scope patch` loop and the
+planter's autorun step; v6.1.5 documents the section it lives in and adds the two
+behavior toggles around it. The grade-floor abort remains the default, so nothing
+changes unless you set `on_grade_floor` / `inter_sprint_pause`.
 
 ### `[compaction]` — compaction resilience (v6.0.9)
 
@@ -590,4 +653,4 @@ If the corresponding language skill doesn't exist in your Claude Code installati
 
 - [`docs/integration.md`](integration.md) — how shepherd integrates with `code-style`, `rust`, etc.
 - [`docs/customization.md`](customization.md) — bring-your-own branch model, custom doctrines
-- [`examples/axiom/shepherd.toml`](../examples/axiom/shepherd.toml) — concrete working Rust config
+- [`examples/rust-service/shepherd.toml`](../examples/rust-service/shepherd.toml) — concrete working Rust config

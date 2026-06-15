@@ -104,7 +104,7 @@ Add to `.gitignore` at the project root:
 ```
 
 The framework also handles this in `examples/minimal/.gitignore` and
-`examples/axiom/.gitignore`.
+`examples/rust-service/.gitignore`.
 
 ## Implementation
 

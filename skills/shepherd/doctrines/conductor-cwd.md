@@ -20,7 +20,7 @@ description: |
 > and `Edit` operations silently target the wrong context. Recovery is
 > never clean.
 >
-> Field origin: shepherd v5.0.1 conductor feedback (axiom v0.3.0-dev.4 XL),
+> Field origin: shepherd v5.0.1 conductor feedback (downstream Rust service),
 > §2.1 — `cd <worktree>` drifted cwd and conductor commits landed on lane
 > branches. v5.0.3 codified the cwd ban. v5.0.6 extends the doctrine to
 > HEAD-state and worktree-nesting, after a follow-on field report that the

@@ -7,7 +7,7 @@ description: |
   sentinels) are the in-code contract that keeps the tracking surface honest across
   AI-driven workflows where inline comments rot silently.
 introduced: v5.0.6
-field-origin: axiom v0.3.1-dev.8a, 2026-05-12
+field-origin: downstream Rust service, 2026-05-12
 ---
 
 # Work Bound to Tracking — Issue Anchoring + Language Primitives

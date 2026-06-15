@@ -279,7 +279,7 @@ The framework's lifecycle (cut → work → rebase → DELETE → cut next) appl
 
 ## VII-bis. Parallel lane cherry-pick conflict expectations (v5.0.9)
 
-> Field origin: shepherd v5.0.8 conductor feedback (axiom v0.3.2-dev.0) §3.
+> Field origin: shepherd v5.0.8 conductor feedback (downstream Rust service) §3.
 
 When N coders run in parallel with `isolation: "worktree"`, **file-overlap
 between parallel lane branches IS possible** even when `[FILE-SCOPE]` lists are

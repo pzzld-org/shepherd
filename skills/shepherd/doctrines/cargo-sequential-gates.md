@@ -5,7 +5,7 @@ description: |
   cargo deadlocks on the shared target/ lock and never speeds up wall-clock
   time. Applies to conductor WAVE-GATE runs and any @worker build verification.
 introduced: v5.0.9
-field_origin: shepherd v5.0.8 conductor feedback (axiom v0.3.2-dev.0) §5
+field_origin: shepherd v5.0.8 conductor feedback (downstream Rust service) §5
 ---
 
 # Doctrine — Cargo Sequential Gates

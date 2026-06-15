@@ -27,7 +27,7 @@ Mandatory minimums on every dispatch (the conductor populates `[SKILLS]` mechani
 - `shepherd:agent-coder-reference` — BASE-DRIFT + INSIGHTS templates (load FIRST)
 - `code-style` — operator preferences (always)
 - A language skill matching every primary-language file in `[FILE-SCOPE]` (`rust`, `python`, `typescript`, `go`, ...)
-- Any domain skills the brief lists (`finance`, `webassembly`, `polymarket`, `supabase:supabase`, ...)
+- Any domain skills the brief lists (`finance`, `webassembly`, `payments`, `supabase:supabase`, ...)
 
 **Toolkit awareness:** before concluding a tool or capability is unavailable, consult the project toolkit (`shctx toolkit list`, also surfaced in session context and injected as `[TOOLKIT]` in your brief) — it enumerates known MCP/skill/plugin/CLI tools (e.g., ssh targets, context7). See `doctrines/toolkit.md`.
 
@@ -61,7 +61,7 @@ Hard prohibitions (full prose below): never run build/compile/lint tools; never 
 - **NEVER run `cargo` or any build/compile/lint/format tool.** Worktrees share the workspace `target/` lock — parallel coders WILL deadlock. Main chat runs ONE validation pass after all worktrees are rebased. You produce correct code; main chat verifies it.
 - **Commit your work in the worktree.** The brief's `[WORKTREE]` line gives you the path and the commit message template. Stage only your `[FILE-SCOPE]` files (`git add <file1> <file2> ...`), then `git commit` with the exact template. Do NOT `git push`. The conductor rebases and verifies.
 - **NEVER edit files outside `[FILE-SCOPE]`.** Reading other files is fine. Writing is not.
-- **NEVER write outside the worktree.** Every Write/Edit target MUST be under `[WORKTREE].Path` (or an absolute path under it). This includes shared-context artifacts under `.shepherd/ctx/*.md` — the conductor cherry-picks your worktree commit; writes to the sprint root path are silently dropped from the cherry-pick and create dual-write working-tree dirt the conductor has to clean up. See `doctrines/worktree-confinement.md` (v5.0.3 axiom dev.5 §3).
+- **NEVER write outside the worktree.** Every Write/Edit target MUST be under `[WORKTREE].Path` (or an absolute path under it). This includes shared-context artifacts under `.shepherd/ctx/*.md` — the conductor cherry-picks your worktree commit; writes to the sprint root path are silently dropped from the cherry-pick and create dual-write working-tree dirt the conductor has to clean up. See `doctrines/worktree-confinement.md` (v5.0.3 downstream Rust service §3).
 - **NEVER add a build-manifest dependency** (Cargo.toml, package.json, pyproject.toml, go.mod) **without explicit conductor approval.** File a `BRIEF-AMENDMENT REQUEST: need <package>` and stop.
 - **NEVER write a TODO or FIXME comment.** Use `mcp__plugin_github_github__issue_write` (you have the tool) for trackable items, or the language's deprecation marker (e.g., Rust `#[deprecated]`, Python `warnings.warn(DeprecationWarning)`) for migrations. The auditor greps for `TODO|FIXME|XXX|HACK` and fails the sprint on hits.
 - **NEVER comment-out code as a "soft delete".** Either delete it or mark deprecated. The auditor greps for commented-out code patterns and fails on hits.
@@ -85,7 +85,7 @@ Then invoke each skill from the brief's `[SKILLS]` line. Mandatory minimums:
 - `code-style` (always)
 - A language skill matching the project's primary language (per `[SKILLS]`)
 
-Also load any domain skills the brief lists (`finance`, `webassembly`, `polymarket`, `supabase:supabase`, etc.).
+Also load any domain skills the brief lists (`finance`, `webassembly`, `payments`, `supabase:supabase`, etc.).
 
 If a listed skill isn't installed in your environment, halt:
 
