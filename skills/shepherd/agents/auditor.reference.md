@@ -13,6 +13,8 @@ This file holds the verbose reference material extracted from `agents/auditor.md
 
 Use this reference to answer: *what is my exact emphasis for the concern I was assigned?*, *what does a well-formed finding look like?*, *how do I weight finding classes by prior?*, *what does each grade letter mean in prose?*.
 
+> **Senior-review lens (v6.1.6, always-on — `doctrines/senior-engineering.md`).** Every finding below is graded through the senior standard: reconstruct the code's **intent** before flagging (§I); classify **root vs symptom** (§II); weight severity by **blast-radius × cost-to-reverse**, not correctness alone (§III); name the **tradeoff** a proposed fix accepts (§IV); grade **conformance** against the project/user precedence ladder (§V); collapse a ≥3-HIGH / ≥2-concern cluster into one `## Systemic risk` note (§VI). This sharpens judgment within `auditor-readonly.md`, never around it (§VIII).
+
 ## Per-finding contract — full template (hypothesis-driven shape)
 
 Every finding (regardless of severity) MUST carry the Hypothesis + Falsification + Confidence triple. Below is the canonical block; copy verbatim and fill each slot.

@@ -15,16 +15,22 @@
   variables, not the conversation context.
 - **Availability:** **ALWAYS PRESENT as a top-level tool** on a Claude Code build that
   supports it. It is **NOT** a deferred or MCP tool.
-- **❌ NEVER `ToolSearch` for it.** `ToolSearch("workflow")` / `ToolSearch("dynamic workflow")`
-  returns nothing — *by design*, because the tool is not deferred. A nothing-result does
-  **not** mean "unavailable"; it means you looked in the wrong place.
-- **✅ How to tell if it's available:** is `Workflow` in your visible tool list? If yes, call
-  it directly. If **no**, this environment does not provision it — EITHER a Claude Code build
-  below the Dynamic Workflows floor, **OR** a Claude-Code-on-the-web / remote-execution session
-  that omits it even on a supporting build (presence is environment-dependent; see #146). In
-  BOTH cases fall back to in-context `Agent(...)` fan-out (the documented degraded path). Do not
-  ToolSearch; do not conclude "the feature is broken." The visible-tool-list test is the ONLY
-  authority — never assume presence from the version number alone.
+- **❌ NEVER `ToolSearch` for it.** `ToolSearch("workflow")` / `ToolSearch select:Workflow`
+  returns nothing — *by design*, because the tool is **top-level**, not deferred (`ToolSearch`
+  resolves deferred tools only). A nothing-result does **not** mean "unavailable"; it means you
+  looked in the wrong place. This holds even under `/effort ultracode`: the instruction "use the
+  Workflow tool on every substantive task" is satisfied by *checking your tool list*, NOT by
+  searching for the tool — a v0.3.5 sprint AND this framework's own ultracode maintenance session
+  (2026-06-15) both ToolSearched, got nothing, and wrongly declared it "confirmed absent."
+  ToolSearching here is the `WORKFLOW-SELFCHECK-TOOLSEARCH` anti-pattern.
+- **✅ How to tell if it's available:** is the token `Workflow` in your visible tool list? If
+  yes, call it directly. If **no**, this environment does not provision it — EITHER a Claude Code
+  build below the Dynamic Workflows floor, **OR** a Claude-Code-on-the-web / remote-execution
+  session that omits it even on a supporting build (presence is environment-dependent; see #146).
+  In BOTH cases fall back to in-context `Agent(...)` fan-out (the documented degraded path). Do
+  not ToolSearch; do not conclude "the feature is broken." The visible-tool-list test is the ONLY
+  authority — never assume presence from the version number alone. The full first-action protocol
+  (detect → record → branch) is `doctrines/workflow-tool-self-check.md`.
 - **In shepherd:** shepherd COMPILES gate-free Stage-Graph fan-out segments into a Workflow
   script via `shctx graph compile` and runs it out-of-context. Doctrine:
   `doctrines/workflow-compile-down.md`; axis binding (which primitive for which job):
