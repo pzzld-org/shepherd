@@ -50,7 +50,7 @@ printf '%s' "$CMD" | grep -qE '(^|[[:space:];|&`$(])git[[:space:]]+worktree[[:sp
 # --- fast-path: sqlite3 and DB must be present --------------------------------
 command -v sqlite3 >/dev/null 2>&1 || exit 0
 NS="$(resolve_namespace 2>/dev/null || echo .)"
-DB="$NS/root.db"
+DB="$(hook_db_path "$NS")"
 [[ -f "$DB" ]] || exit 0
 
 # --- config: block (default) | warn | off ------------------------------------

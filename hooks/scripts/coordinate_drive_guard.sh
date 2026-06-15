@@ -38,7 +38,7 @@ cfg="$(cfg_get coordinate_drive_guard | grep -oE '(block|warn|off)' | tail -1 ||
 
 command -v sqlite3 >/dev/null 2>&1 || exit 0
 NS="$(resolve_namespace 2>/dev/null || echo .)"
-DB="$NS/root.db"
+DB="$(hook_db_path "$NS")"
 [[ -f "$DB" ]] || exit 0
 
 # --- fast-path: only ever engage inside a live spawn session ----------------

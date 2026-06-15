@@ -44,7 +44,7 @@ esac
 
 # DB gate: a missing DB or sqlite3 binary is a no-op (idempotent silent skip).
 ns=$(resolve_namespace)
-DB="$ns/root.db"
+DB="$(hook_db_path "$ns")"
 [[ -f "$DB" ]] || exit 0
 command -v sqlite3 >/dev/null 2>&1 || exit 0
 

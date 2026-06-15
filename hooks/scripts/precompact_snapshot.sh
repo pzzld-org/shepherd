@@ -57,7 +57,7 @@ TRIGGER="$(json_field "$PAYLOAD" '.trigger' 2>/dev/null || true)"
 
 # --- namespace + paths ---------------------------------------------------
 NS="$(resolve_namespace 2>/dev/null || echo .shepherd)"
-DB="$NS/root.db"
+DB="$(hook_db_path "$NS")"
 STATE_JSON="$NS/graph/state.json"
 TRACE_JSONL="$NS/graph/trace.jsonl"
 LOCK_FILE="$NS/shepherd.lock"

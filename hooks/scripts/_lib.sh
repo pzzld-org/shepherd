@@ -58,6 +58,22 @@ resolve_namespace() {
   printf '%s' "$repo_root/.shepherd"
 }
 
+# Registry DB path inside a namespace. Mirrors the skills-side shctx_db_path()
+# (skills/context/scripts/_lib.sh): prefer shepherd.db (the v6.1.2+ standard
+# `shctx init` creates), fall back to an EXISTING root.db (legacy projects,
+# untouched), else default to shepherd.db. Pass the already-resolved namespace
+# to preserve each caller's exact resolve_namespace fallback; omit to resolve
+# here. Hooks that hardcoded "$ns/root.db" silently no-op'd on every modern
+# project (the file is named shepherd.db), disabling the spawn-coordination
+# guards — this keeps hooks and the shctx runtime reading the same file.
+hook_db_path() {
+  local ns="${1:-$(resolve_namespace 2>/dev/null || echo .shepherd)}"
+  if   [[ -f "$ns/shepherd.db" ]]; then echo "$ns/shepherd.db"
+  elif [[ -f "$ns/root.db"     ]]; then echo "$ns/root.db"
+  else                                   echo "$ns/shepherd.db"
+  fi
+}
+
 # Echo the value of a top-level `key = value` from shepherd config, resolved by
 # precedence: .claude/shepherd.local.toml (per-key local override, gitignored —
 # mirrors Claude Code's settings.local.json) → .claude/shepherd.toml (project) →

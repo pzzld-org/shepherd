@@ -43,7 +43,7 @@ fi
 
 # --- Adaptation registry check (adaptation-loop.md, v6.0.4 SQLite-canonical) ---
 ns=$(resolve_namespace)
-db="$ns/root.db"
+db="$(hook_db_path "$ns")"
 if [[ -f "$db" ]] && command -v sqlite3 >/dev/null 2>&1; then
   n=$(sqlite3 "$db" "SELECT count(*) FROM sprint_metrics;" 2>/dev/null || echo 0)
   if [[ "${n:-0}" == "0" ]]; then
