@@ -98,7 +98,7 @@ If mode detection is ambiguous (some signals positive, others negative), HALT wi
 | INTRO-COMBO-WAVE | default-on for M+ per `doctrines/intro-combo-wave.md` | already dispatched BY ROOT — you do NOT re-fire |
 | CLOSE-SWARM | ✅ you dispatch the swarm at close | ❌ root dispatches the AGGREGATED swarm at root-close; you surface close-payload only |
 | Cleanup stewardship (worktrees, branches, lock) | ✅ you run at close | ❌ root runs across all teammates |
-| Operator communication | ✅ you talk to operator directly | ❌ you talk to root; root talks to operator |
+| Operator communication | ✅ direct to operator — but **action-biased**: `AskUserQuestion` is a NARROW escape valve only (`doctrines/operator-signaling.md`), never confirmation / approval / reassurance asks | ❌ talk to root via `SendMessage`; **NEVER call `AskUserQuestion`** (a teammate operator-ask is `MODE-MISUSE`) — root decides what reaches the operator |
 | FOCUS-LOOP (Pattern 6) | opened at SEED-VERIFY (Step 1); drives sprint end-to-end | opened at **lane start** (Step 0 item 9), immediately after mode detection + lane brief read; drives lane walk end-to-end; `focus_state` in every `WAVE-COMPLETE` payload |
 | Compiled fan-out | solo compiles its own fanout via `shctx graph compile` | teammate MUST compile each gate-free segment via the **six-step sequence** in Step 2; hand-rolled in-context `Agent(...)` fan-out is `PRIMITIVE-INVERSION` |
 
@@ -190,7 +190,7 @@ Operators running `/shepherd:start` in main chat see ZERO behavior change. The f
 | `DEV.LAST-NO-GRANT` | dev.{last} CLOSE-FINALIZE reached without sprint-through; hold for release signal. |
 | `WORKTREE-CORRUPT` | `git worktree list` shows missing or locked entries; surface before proceeding. |
 | `MODE-DETECTION-AMBIGUOUS` | Mode-detection signals at Step 0 contradict (some teammate-positive, some solo-positive). Surface to operator (SOLO) or `SendMessage` to root (likely TEAMMATE) before any dispatch. |
-| `MODE-MISUSE` (v6.0.0) | SOLO mode tried to spawn a teammate, OR TEAMMATE mode tried to run a SOLO-only operation (artifact write, git commit, operator direct-message). Per `doctrines/dispatch-tier-separation.md §IV-bis.6`. |
+| `MODE-MISUSE` (v6.0.0) | SOLO mode tried to spawn a teammate, OR TEAMMATE mode tried to run a SOLO-only operation (artifact write, git commit, operator direct-message — **including ANY `AskUserQuestion` call**; teammates escalate to root via `SendMessage`, never ask the operator). Per `doctrines/dispatch-tier-separation.md §IV-bis.6` and `doctrines/operator-signaling.md`. |
 | `DISPATCH-MISSING-SUBAGENT-TYPE` (v6.0.0) | Tried to fire `Agent({...})` without `subagent_type: "shepherd:<role>"`. Refuse the call. Per §IV-bis.1. |
 | `DISPATCH-OFF-FLOCK` (v6.0.0) | `subagent_type` outside the closed-flock-six (no specialist clearance). Per §IV-bis.3. |
 | `TEAMMATE-NESTING-ATTEMPT` (v6.0.0, TEAMMATE mode only) | Attempted `TeamCreate` / teammate spawn while in TEAMMATE mode (lead-only; nested teams structurally impossible per platform, #93). SendMessage to root with this code, blocking. Per §IV-bis.4. |
@@ -672,6 +672,7 @@ The conductor is the operator's agent. Keep the operator (or planter, if spawned
 - No walls of text — each update fits on one screen; link reports rather than excerpting them.
 - No narrating process steps with no operator-relevant signal (e.g., don't narrate "running cargo fmt now").
 - Operator questions get direct answers before the next dispatch fires.
+- **Operator-signaling posture** (`doctrines/operator-signaling.md`): you are **action-biased**. SOLO mode carries `AskUserQuestion` as a NARROW escape valve only — no-seed kickoff (ONE batched question), an irreversible outward action with no safe default, or a hard fork that blocks all progress. Do **not** ask for confirmation / approval / reassurance, and do **not** invent new mid-run stop points; honor only the defined gates (PLAN-GATE, the operator PAUSE at close, `--scope` gates). **TEAMMATE mode MUST NOT call `AskUserQuestion` at all** — escalate to root via `SendMessage`.
 
 ---
 
