@@ -88,7 +88,7 @@ starts it:
 /shepherd:loop "soak outcomes for <sprint>" --agent worker --interval 1d --max 6
 ```
 
-**Authorized supervised exception (v6.2.0).** Detection-only is the default and the
+**Authorized supervised exception (v6.1.5).** Detection-only is the default and the
 anti-pattern for the *unauthorized* case (remediation inside a watch loop — the depth-3
 composition limit, `doctrines/workflow-patterns.md §Composition depth limit`). There is one
 carve-out: an operator who has *explicitly* empowered the conductor to FIX live regressions —
@@ -101,7 +101,7 @@ can NEVER fire by default — it is gated behind `[close].autonomous_sentinel = 
 `sentinel_rails` block (gates-before-deploy, ≤S severity, ≤N HF cap, no destructive DB ops,
 auto-rollback, paper-only/never-flip-to-live, operator-override-each-tick, full audit trail).
 Without all three gates the soak stays detection-only and embedding remediation in the probe
-remains the anti-pattern. See `doctrines/autonomous-sentinel.md` (origin v6.2.0).
+remains the anti-pattern. See `doctrines/autonomous-sentinel.md` (origin v6.1.5).
 
 ## Where the outcome lives across compaction
 
@@ -134,6 +134,6 @@ list is carried as part of the existing focus JSON, the same way obligations are
 - `agents/auditor.md`, `agents/conductor.md §3` — close-time predicate re-run (Seam 3)
 - `references/grading-rubric.md` — `OUTCOME-REGRESSION` caps completeness
 - `references/loop-templates.md §SOAK-LOOP` — the detection-only post-close re-verification template (Seam 4)
-- `references/loop-templates.md §AUTONOMOUS-SENTINEL`, `doctrines/autonomous-sentinel.md` — the authorized supervised-remediation superset of Seam 4's SOAK-LOOP (v6.2.0); never fires by default
+- `references/loop-templates.md §AUTONOMOUS-SENTINEL`, `doctrines/autonomous-sentinel.md` — the authorized supervised-remediation superset of Seam 4's SOAK-LOOP (v6.1.5); never fires by default
 - `doctrines/intro-combo-wave.md §4` — the prior-sprint predicate re-run this generalizes
 - `doctrines/coordinate-active-drive.md` — the focus record that carries the predicates

@@ -26,7 +26,7 @@ source "$HERE/_lib.sh"
 # ---------------------------------------------------------------------------
 _local_path()  { echo "$(resolve_workdir)/toolkit.json"; }
 _global_path() { echo "${XDG_CONFIG_HOME:-$HOME/.config}/shepherd/toolkit.json"; }
-# EPHEMERAL auto-discovered roster (v6.2.0, #146) — written by the SessionStart
+# EPHEMERAL auto-discovered roster (v6.1.5, #146) — written by the SessionStart
 # capability_discovery.sh hook into gitignored cache/. NEVER the curated
 # toolkit.json: discovery must never overwrite operator intent.
 # See skills/shepherd/doctrines/capability-discovery.md.
@@ -376,7 +376,7 @@ _cmd_md() {
 # ---------------------------------------------------------------------------
 # discovered  — compact markdown for the EPHEMERAL auto-discovered roster
 # ---------------------------------------------------------------------------
-# v6.2.0 (#146). Reads the gitignored cache file written by the SessionStart
+# v6.1.5 (#146). Reads the gitignored cache file written by the SessionStart
 # capability_discovery.sh hook and emits a LABELED markdown block, clearly
 # DISTINCT from the curated toolkit. Graceful-empty: emits nothing when the
 # roster is absent or carries zero auto-discovered capabilities. Bounded at 12,

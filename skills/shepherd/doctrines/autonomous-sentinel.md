@@ -8,7 +8,7 @@ description: |
   not merely report them. It can NEVER fire by default: it is gated behind an
   explicit `close: autonomous-sentinel` seed declaration plus a REQUIRED rails
   block, and every ACT dispatches through the existing hotfix-dispatch ladder.
-introduced: v6.2.0
+introduced: v6.1.5
 ---
 
 # Autonomous sentinel — supervised self-heal as the authorized superset of SOAK-LOOP

@@ -184,10 +184,10 @@ merges in unchanged.
 
 ---
 
-## Curated vs auto-discovered (v6.2.0, #146)
+## Curated vs auto-discovered (v6.1.5, #146)
 
 The toolkit registry is **operator-curated** — deliberate, version-controlled
-intent. As of v6.2.0 it has an **ephemeral sibling**: the SessionStart
+intent. As of v6.1.5 it has an **ephemeral sibling**: the SessionStart
 `capability_discovery.sh` probe enumerates capabilities present in the
 environment (installed plugins, skills) and writes them to a gitignored
 `<workdir>/cache/discovered-capabilities.json` roster. The two are surfaced

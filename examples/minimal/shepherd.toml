@@ -71,7 +71,7 @@ driver = "operator"
 # dashboard_cadence  = "3m"       # default interval for `/shepherd:loop <c> shctx dash`
 
 [close]
-# Authorized supervised self-heal during a post-close soak (v6.2.0 #148). Default
+# Authorized supervised self-heal during a post-close soak (v6.1.5 #148). Default
 # OFF (detection-only). Requires "on" + a `close: autonomous-sentinel` seed
 # declaration + a complete `sentinel_rails` block before any auto-remediation.
 # autonomous_sentinel = "off"

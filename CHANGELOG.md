@@ -4,16 +4,12 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
-## v6.2.0 — 2026-06-15
+## v6.1.5 — 2026-06-15
 
-**Supersedes the unreleased v6.1.5 branch** (v6.1.5 was never tagged): this
-release rolls the staged v6.1.5 work — kickoff-hardening + config-auto-scaffold +
-observability (#147) — together with **two new capabilities** (#148 supervised
-self-heal, #146 capability auto-discovery) and a reliability follow-up. The new
-doctrines + SessionStart hook + config keys are why this is a MINOR bump rather
-than a patch. (Code comments tagged `v6.1.5 #N` reference the development cycle
-these features were authored in; they ship here in v6.2.0.) The follow-up repairs
-the **operator-signaling inversion** (the planter under-asked while the shepherds
+Kickoff-hardening + config-auto-scaffold + observability release (#147), extended
+with **two new capabilities** — #148 supervised self-heal and #146 capability
+auto-discovery — plus a reliability follow-up that repairs the
+**operator-signaling inversion** (the planter under-asked while the shepherds
 over-asked), the **"`Workflow` tool is always present" overclaim** that made
 web/remote sessions give up instead of degrading, and two **latent namespace/DB
 defects** the new kickoff wiring exposed.

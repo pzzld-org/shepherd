@@ -108,13 +108,13 @@ finding: the loop ran but did not converge. The engineer should have halted and 
   shapes, termination predicates, and anti-patterns. Includes `§SOAK-LOOP` — the detection-only
   post-close outcome re-verification template (v6.1.3) that re-runs a closed sprint's seeded
   acceptance predicates on a wall-clock interval and surfaces `OUTCOME-REGRESSION`; and
-  `§AUTONOMOUS-SENTINEL` — the authorized supervised-remediation superset of SOAK-LOOP (v6.2.0)
+  `§AUTONOMOUS-SENTINEL` — the authorized supervised-remediation superset of SOAK-LOOP (v6.1.5)
   that adds an ACT stage (dispatch ≤S `@coder` hotfix → gates → re-probe), gated behind an
   explicit seed declaration + rails block, never firing by default.
 - `doctrines/outcome-enforcement.md` — seeded-outcome enforcement across four seams
   (seed → plan-gate → close → soak); SOAK-LOOP is its detection-only post-close seam (v6.1.3)
 - `doctrines/autonomous-sentinel.md` — binding doctrine for the AUTONOMOUS-SENTINEL template
-  (v6.2.0): when it may fire (NEVER by default — `[close].autonomous_sentinel` + seed declaration
+  (v6.1.5): when it may fire (NEVER by default — `[close].autonomous_sentinel` + seed declaration
   + rails block), the hard rails, the audit-trail requirement, superset of SOAK-LOOP, ACT
   dispatches through `doctrines/hotfix-dispatch.md`
 - `doctrines/hotfix-dispatch.md` — the cardinality ladder the AUTONOMOUS-SENTINEL ACT stage uses

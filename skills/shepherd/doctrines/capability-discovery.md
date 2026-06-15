@@ -10,12 +10,12 @@ description: |
   absent; shepherd never hard-depends on a third-party plugin. The probe also
   records native Workflow-tool presence so spawn/loop degrade to in-context
   Agent(...) when it is omitted (web/remote sessions). Zero hot-path cost.
-introduced: v6.2.0
+introduced: v6.1.5
 ---
 
 # Capability Discovery — adapt to what's actually available
 
-> Origin: v6.2.0 (#146). Operator: "Shepherd should auto-detect the Claude Code
+> Origin: v6.1.5 (#146). Operator: "Shepherd should auto-detect the Claude Code
 > plugins/skills available in the current environment and adapt to them —
 > surfacing and integrating them without the operator wiring anything."
 

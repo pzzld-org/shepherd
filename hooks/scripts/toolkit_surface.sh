@@ -77,7 +77,7 @@ if [[ "${TOOL_COUNT:-0}" -gt 0 ]]; then
     2>/dev/null || true)"
 fi
 
-# --- auto-discovered (ephemeral) roster (v6.2.0, #146) ------------------------
+# --- auto-discovered (ephemeral) roster (v6.1.5, #146) ------------------------
 # Merge the EPHEMERAL capability roster written by capability_discovery.sh into
 # the SessionStart surface, clearly LABELED and DISTINCT from the curated set,
 # and bounded at 12 like the curated roster. The curated toolkit.json is never

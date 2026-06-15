@@ -251,12 +251,12 @@ else
   fails=$((fails+1))
 fi
 
-# Capability auto-discovery hook (v6.2.0, #146): the SessionStart probe writes
+# Capability auto-discovery hook (v6.1.5, #146): the SessionStart probe writes
 # an EPHEMERAL capability roster (cache/discovered-capabilities.json), distinct
 # from the curated toolkit.json, default-on + config-gated, idempotent per
 # session, fail-open. Verifies disabled→no-op, enabled→roster (not toolkit.json),
 # plugin/skill discovery, idempotency, and the workflow-tool agent_fillin contract.
-echo "== test_capability_discovery.sh (v6.2.0 — #146 ephemeral capability probe) =="
+echo "== test_capability_discovery.sh (v6.1.5 — #146 ephemeral capability probe) =="
 total=$((total+1))
 if cap_out=$(bash "$TESTS_DIR/test_capability_discovery.sh" 2>&1); then
   printf '  PASS  %s\n' "capability-discovery-writes-ephemeral-roster"

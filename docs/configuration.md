@@ -555,12 +555,12 @@ The focus record itself (objective, active Stage-Graph node, ready-set, outstand
 
 ### `[close]` — close-phase behavior
 
-Controls authorized supervised self-heal during a post-close soak (v6.2.0 #148,
+Controls authorized supervised self-heal during a post-close soak (v6.1.5 #148,
 `doctrines/autonomous-sentinel.md`).
 
 ```toml
 [close]
-# Authorized supervised self-heal during a post-close soak (v6.2.0 #148).
+# Authorized supervised self-heal during a post-close soak (v6.1.5 #148).
 # Default OFF = detection-only: a SOAK-LOOP surfaces an OUTCOME-REGRESSION and the
 # operator decides. Setting "on" ALONE does nothing — the seed must ALSO declare
 # `close: autonomous-sentinel` AND carry a complete `sentinel_rails` block
@@ -573,7 +573,7 @@ autonomous_sentinel = "off"   # off (default — detection-only) | on
 
 ### `[discovery]` — capability auto-discovery (SessionStart)
 
-Controls the capability auto-discovery probe (v6.2.0 #146,
+Controls the capability auto-discovery probe (v6.1.5 #146,
 `doctrines/capability-discovery.md`).
 
 | Key | Type | Default | Meaning |

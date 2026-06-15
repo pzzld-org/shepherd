@@ -602,7 +602,7 @@ It can **NEVER** fire by default. It is gated three times over: the config key
 `close: autonomous-sentinel`, AND the seed must carry a complete `sentinel_rails` block. Absence
 of any one means the default detection-only SOAK-LOOP runs. The full rails contract, the
 audit-trail requirement, and the relationship to hotfix-dispatch live in
-`doctrines/autonomous-sentinel.md` (origin v6.2.0).
+`doctrines/autonomous-sentinel.md` (origin v6.1.5).
 
 ### Composite
 
@@ -1113,6 +1113,6 @@ Key highlights:
 - `doctrines/discovery-readonly.md` — `@discovery` read-only contract; report shape
 - `doctrines/auditor-hypothesis-driven.md` — per-finding evidence contract for AUDITOR-REFINE
 - `doctrines/dispatch-tier-separation.md` — root-tier-exclusive restriction on ENGINEER-PLAN-REFINE
-- `doctrines/autonomous-sentinel.md` — binding doctrine for the AUTONOMOUS-SENTINEL template (v6.2.0); when it may fire (NEVER by default), the hard rails, the audit-trail requirement, and its relationship to SOAK-LOOP (superset) + hotfix-dispatch (the ACT vehicle)
+- `doctrines/autonomous-sentinel.md` — binding doctrine for the AUTONOMOUS-SENTINEL template (v6.1.5); when it may fire (NEVER by default), the hard rails, the audit-trail requirement, and its relationship to SOAK-LOOP (superset) + hotfix-dispatch (the ACT vehicle)
 - `doctrines/hotfix-dispatch.md` — the cardinality ladder the AUTONOMOUS-SENTINEL ACT stage dispatches through
 - `doctrines/outcome-enforcement.md §Seam 4` — the detection-only post-close soak AUTONOMOUS-SENTINEL supersets

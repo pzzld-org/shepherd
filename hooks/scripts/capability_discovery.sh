@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# shepherd hook — SessionStart: capability auto-discovery (v6.2.0, #146)
+# shepherd hook — SessionStart: capability auto-discovery (v6.1.5, #146)
 #
 # WHY: The curated toolkit.json is hand-maintained — the operator registers
 # tools once and shepherd resurfaces them. But the SESSION ENVIRONMENT often

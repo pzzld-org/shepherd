@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # hooks/tests/test_capability_discovery.sh — tests for capability_discovery.sh
-# (v6.2.0, #146).
+# (v6.1.5, #146).
 #
 # Covers the SessionStart capability-discovery probe:
 #   1. Not a shepherd project → silent no-op, no roster written.
