@@ -4,6 +4,102 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v6.1.5 — 2026-06-15
+
+Kickoff-hardening + config-auto-scaffold + observability release (#147), plus a
+reliability follow-up that repairs the **operator-signaling inversion** (the
+planter under-asked while the shepherds over-asked), the **"`Workflow` tool is
+always present" overclaim** that made web/remote sessions give up instead of
+degrading, and two **latent namespace/DB defects** the new kickoff wiring
+exposed.
+
+### Seed-optional kickoff (#8)
+- `/shepherd:start` (Step 0) and `/shepherd:spawn` (Hard-stop #2 / Check 6) no
+  longer hard-refuse on a missing seed for a single `--scope sprint` run: derive
+  the objective from the repo/issue ledger, or ask ONE batched kickoff question,
+  then run — per `doctrines/operator-signaling.md §"Seed is recommended, not
+  required"`. `--parallel` and multi-sprint `--scope patch|minor|version` walks
+  still HARD-refuse (seeds are load-bearing there for collision detection + walk
+  enumeration).
+
+### Config auto-scaffold (#15)
+- New **`shctx config init`** scaffolds `.claude/shepherd.toml` from the bundled
+  minimal template when absent (idempotent): derives `[project].name` (git
+  remote → cwd basename) and `[gates]` (Cargo.toml→cargo, go.mod→go,
+  pyproject/setup.py→pytest+ruff, package.json→npm), and realigns `[paths]` to
+  the active shctx namespace. Adds `shctx config get/show/path`.
+- Wired at kickoff: start/spawn root scaffold → `[CONFIG]` notice → PROCEED
+  (action-biased); plant scaffold → ONE batched `AskUserQuestion` to refine
+  `[branching]`+`[gates]` (replaces the #120 hard STOP).
+
+### Observability dashboard (#13)
+- New **`shctx dash`** — a one-glance, read-only sprint snapshot composed from
+  primitives the root already maintains (focus, graph state, live teammates,
+  unread mailbox, open escalations, active loops, GitHub cache freshness). No
+  new table/subsystem; bash-3.2-safe; degrades cleanly on missing DB/tmux.
+  Monitoring recipe: `/shepherd:loop <interval> shctx dash`.
+
+### Four config toggles (#10)
+- `shctx config get <key> [default]` is the uniform resolver (local→project→XDG)
+  the toggles read through. Defaults reproduce pre-v6.1.5 behavior exactly:
+  `[autorun].on_grade_floor` (abort), `[autorun].inter_sprint_pause` (brief),
+  `[spawn].max_parallel` (4), `[spawn].dashboard_cadence` (3m). The
+  previously-undocumented `[autorun]` section is now in `docs/configuration.md`.
+
+### Neutralized the bundled example (#9) + subagent-preference (#11)
+- `examples/axiom/` → `examples/rust-service/`; scrubbed all domain-specific
+  references (finance/polymarket/geo-block) from the example and ~23 doctrine
+  teaching snippets. `geo-block-law.md` rewritten as a generic
+  regulated-upstream-API teaching example. Historical `.artifacts/` docs are
+  intentionally left intact.
+- `doctrines/agent-excellence.md` Rule 6 (token-conservation / subagent
+  preference) is now wired into every agent profile.
+
+### Reliability follow-up — operator-signaling inversion
+`doctrines/operator-signaling.md` (v6.1.4) was correct, but its posture was
+never reproduced into the agent profiles that actually become system prompts at
+runtime. `AskUserQuestion` is granted correctly in every profile — the inversion
+was a **prose-propagation gap**, not a tools-grant bug:
+- `agents/planter.md`: added a standing **"the planter asks freely"** posture at
+  the top of plant mode (previously the ONLY trigger was the rare no-config
+  bootstrap branch, so the common case invented answers instead of asking).
+- `agents/conductor.md`: SOLO = `AskUserQuestion` is a narrow escape valve only;
+  TEAMMATE mode MUST NOT call it (the `MODE-MISUSE` halt code now names the
+  tool).
+- `agents/shepherd.md`: root action-bias note — the defined gates are the only
+  operator stop points; no invented mid-run confirmation asks.
+
+### Reliability follow-up — the `Workflow` tool is NOT "always present"
+- `references/glossary.md` listed the native `Workflow` tool alongside
+  `Agent`/`Bash`/`Edit` as always-present and blamed any absence solely on "a
+  build below the Dynamic Workflows floor." Claude-Code-on-the-web /
+  remote-execution sessions omit it **even on a supporting build**, so a
+  spawn/loop that reached for it gave up instead of degrading. Corrected to
+  **environment-dependent** presence, with the visible-tool-list test as the
+  only authority and degrade-to-`Agent(...)` as the documented path (ties into
+  #146).
+
+### Reliability follow-up — two latent defects the kickoff wiring exposed
+Both were invisible to the green suites (the harnesses set neither
+`CLAUDE_PLUGIN_ROOT` nor a `shepherd.db` registry); #15's config-scaffold pulled
+them onto the kickoff hot path:
+- **`shctx_skill_root()` returned bare `$CLAUDE_PLUGIN_ROOT`**, but `schema/` +
+  `references/` live at `$CLAUDE_PLUGIN_ROOT/skills/context/`. `scaffold.sh`'s
+  `cp references/naming-conventions.md` aborted under `set -e`, so `shctx
+  init`/`config init` never created the DB and every downstream `shctx` command
+  failed. Now prefers the dispatcher-exported `SHCTX_SKILL_ROOT`, else
+  `$CLAUDE_PLUGIN_ROOT/skills/context`. Verified end-to-end (init exits 0,
+  creates `shepherd.db`, copies `CONVENTIONS.md`).
+- **9 hooks hardcoded `$ns/root.db`** while v6.1.2+ `shctx init` creates
+  `shepherd.db`, so `[[ -f "$DB" ]]` was always false → silent no-op, disabling
+  the spawn-coordination guards (`coordinate_drive_guard`,
+  `worktree_teardown_guard`, `teammate_idle`, …) on every modern project. New
+  `hook_db_path()` in `hooks/scripts/_lib.sh` mirrors the skills-side
+  `shctx_db_path()` (prefer `shepherd.db`, fall back to an existing `root.db`,
+  default `shepherd.db`); all 9 assignments route through it.
+
+Tests: hooks 37/37, context 42/42.
+
 ## v6.1.4 — 2026-06-12
 
 A reliability + native-alignment release. Fixes the **`dev.{last}` → `dev.{last+1}` release-trigger miss** that cut a stray dev branch instead of releasing, corrects a wrong **native `/loop` expiry constant** that had propagated as a load-bearing invariant, makes Claude Code's **`Workflow` tool** unmistakable (it was being mistaken for a `ToolSearch` target and given up on), restores **tmux pane observability** plus the dead-pane cleanup that had been documented but never built, and gives planning + main-chat sprint sessions a **native operator-signaling** path — without letting execution sessions become approval-seekers.
