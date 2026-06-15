@@ -70,6 +70,17 @@ driver = "operator"
 # max_parallel       = 4          # int 2..N — upper bound on --parallel fan-out (default 4)
 # dashboard_cadence  = "3m"       # default interval for `/shepherd:loop <c> shctx dash`
 
+[close]
+# Authorized supervised self-heal during a post-close soak (v6.2.0 #148). Default
+# OFF (detection-only). Requires "on" + a `close: autonomous-sentinel` seed
+# declaration + a complete `sentinel_rails` block before any auto-remediation.
+# autonomous_sentinel = "off"
+
+[discovery]
+# Auto-detect Claude Code plugins/skills present in the environment and surface
+# them (ephemeral, distinct from the curated toolkit.json). "off" disables.
+auto_capabilities = "on"
+
 [tmux]
 # pane_cleanup = "on"         # on (default) | off — reap closed-teammate panes at SessionEnd
 

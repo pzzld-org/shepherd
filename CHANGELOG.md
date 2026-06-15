@@ -4,14 +4,63 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
-## v6.1.5 — 2026-06-15
+## v6.2.0 — 2026-06-15
 
-Kickoff-hardening + config-auto-scaffold + observability release (#147), plus a
-reliability follow-up that repairs the **operator-signaling inversion** (the
-planter under-asked while the shepherds over-asked), the **"`Workflow` tool is
-always present" overclaim** that made web/remote sessions give up instead of
-degrading, and two **latent namespace/DB defects** the new kickoff wiring
-exposed.
+**Supersedes the unreleased v6.1.5 branch** (v6.1.5 was never tagged): this
+release rolls the staged v6.1.5 work — kickoff-hardening + config-auto-scaffold +
+observability (#147) — together with **two new capabilities** (#148 supervised
+self-heal, #146 capability auto-discovery) and a reliability follow-up. The new
+doctrines + SessionStart hook + config keys are why this is a MINOR bump rather
+than a patch. (Code comments tagged `v6.1.5 #N` reference the development cycle
+these features were authored in; they ship here in v6.2.0.) The follow-up repairs
+the **operator-signaling inversion** (the planter under-asked while the shepherds
+over-asked), the **"`Workflow` tool is always present" overclaim** that made
+web/remote sessions give up instead of degrading, and two **latent namespace/DB
+defects** the new kickoff wiring exposed.
+
+### Authorized supervised self-heal — AUTONOMOUS-SENTINEL (#148)
+- New loop template (`references/loop-templates.md §AUTONOMOUS-SENTINEL`) +
+  binding doctrine (`doctrines/autonomous-sentinel.md`) for **authorized
+  supervised autonomy** — the supervised-remediation superset of SOAK-LOOP.
+  Stages: PROBE (seeded acceptance predicates, live) → CLASSIFY
+  (HOLD/REGRESSED/NEW) → ACT (dispatch a ≤S `@coder` hotfix through the existing
+  hotfix-dispatch ladder → gates-before-deploy → re-probe) → TERMINATE (K clean
+  ticks / N-HF cap / hard-stop). Hard rails: gates-before-deploy, ≤S / ≤3
+  concurrent / ≤N total HF caps, no destructive DB ops, auto-rollback on red,
+  paper-only (never flip to live without authorization), operator-override-each-
+  tick, full audit trail.
+- New config key `[close].autonomous_sentinel` (default `"off"` — detection-only).
+  It must be `"on"` AND the seed must declare `close: autonomous-sentinel` AND a
+  complete `sentinel_rails` block must be present before a single remediation
+  fires (three independent opt-in gates). New halt codes `SENTINEL-RAILS-MISSING`
+  / `-SCOPE-EXCEEDED` / `-HF-CAP` / `-ROLLBACK` / `-HARD-STOP` / `-LOOP-CAP`.
+- Reconciled the depth-3 "remediating inside a watch loop" anti-pattern in
+  `references/loop-templates.md §SOAK-LOOP` and `doctrines/outcome-enforcement.md
+  §Seam 4`: detection-only stays the DEFAULT and the anti-pattern for the
+  UNAUTHORIZED case; the explicitly-authorized AUTONOMOUS-SENTINEL case is carved
+  out.
+
+### Capability auto-discovery (#146)
+- Shepherd now auto-detects the Claude Code plugins/skills available in the
+  environment and adapts without operator wiring. A cheap, one-time-per-session
+  SessionStart probe (`hooks/scripts/capability_discovery.sh`) enumerates
+  installed plugins + skills and writes an **EPHEMERAL** capability roster
+  (`<ns>/cache/discovered-capabilities.json`, gitignored) kept strictly distinct
+  from the operator-curated `toolkit.json` — discovery never overwrites intent.
+  The roster is merged at read time into the `[TOOLKIT]` surfaces (SessionStart
+  roster + engineer/coder/planter brief injection via the new `shctx toolkit
+  discovered`), labeled auto-discovered and bounded at 12.
+- New doctrine `doctrines/capability-discovery.md` codifies the guarded-integration
+  pattern ("if `/remember` is available → use at handoff/CLOSE-FINALIZE + resume,
+  else shepherd-native"; same for `superpowers`, `pr-review-toolkit`), so behavior
+  degrades cleanly when a plugin is absent — shepherd never hard-depends on a
+  third-party plugin.
+- The probe also records whether the native **`Workflow` tool** is present;
+  web/remote sessions that omit it degrade to in-context `Agent(...)` fan-out
+  instead of giving up (cross-referenced in `references/glossary.md`).
+- New config key `[discovery].auto_capabilities` (`on` default | `off`), resolved
+  via `cfg_get` (local → project → XDG-global precedence). Zero hot-path cost,
+  fail-open.
 
 ### Seed-optional kickoff (#8)
 - `/shepherd:start` (Step 0) and `/shepherd:spawn` (Hard-stop #2 / Check 6) no
@@ -98,7 +147,7 @@ them onto the kickoff hot path:
   `shctx_db_path()` (prefer `shepherd.db`, fall back to an existing `root.db`,
   default `shepherd.db`); all 9 assignments route through it.
 
-Tests: hooks 37/37, context 42/42.
+Tests: hooks 38/38 (+1 for the #146 capability-discovery probe), context 42/42.
 
 ## v6.1.4 — 2026-06-12
 
