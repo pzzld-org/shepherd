@@ -637,6 +637,8 @@ without becoming verbose.
 [TEAMMATE] {name} → {wave|halt|close} | {outcome}
 ```
 
+**Operator-signaling posture** (`doctrines/operator-signaling.md`): the gates above (pre-spawn approval, dispute decision, the sprint-close PAUSE, `--scope` gates) are the **ONLY** operator stop points. Root is **action-biased** — `AskUserQuestion` is a narrow escape valve (no-seed kickoff via ONE batched question, an irreversible outward action with no safe default, a hard blocking fork), **never** confirmation / approval / reassurance, and **never** a new mid-run stop invented to compensate for a missing seed.
+
 **Rules:**
 - No silent proceeding on ambiguous signals.
 - No walls of text — each update fits on one screen.

@@ -66,6 +66,15 @@ These apply in **both** modes. No exception.
 
 ## Plant mode — seed authorship
 
+> **Operator-signaling posture — the planter asks freely** (`doctrines/operator-signaling.md §"Planter — ask freely"`).
+> Planting is the interactive seam. Throughout the mesh and seed-authorship steps below, RESOLVE
+> ambiguity WITH the operator via `AskUserQuestion` instead of inventing answers — unclear
+> objective / scope / acceptance, competing approaches, which work items belong in this arc,
+> version-tier intent. Ask **liberally, structured, and batched** — this is the right place for
+> questions (NOT only the Step 1 bootstrap-config branch). Front-loading them here is exactly
+> what lets the downstream execution sessions run uninterrupted. (This posture is the inverse of
+> the execution sessions, which are action-biased and ask only when truly blocked.)
+
 ### Step 0 — Model advisory (always first)
 
 Detect your model tier. The planter proceeds on ANY tier — **advisory, not a gate** (canonical table in `commands/plant.md §Step 0`): Fable 5 (`claude-fable-5`) superior · Opus (`claude-opus-4-8`/`[1m]`) recommended default · Sonnet (`claude-sonnet-4-6`)/Haiku (`claude-haiku-4-5-20251001`) allowed-with-warning. If the tier is below recommended, emit ONCE and continue:
