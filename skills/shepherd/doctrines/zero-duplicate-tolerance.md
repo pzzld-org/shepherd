@@ -61,6 +61,19 @@ The coder's `Startup Protocol` Step 3 still runs the dedup greps. This is now a 
 
 Coder self-halt is a tripwire, not a contract. Layer 2 carries the contract.
 
+### Layer 4 — Field-shape gate (the renamed-shadow leg, v6.1.8 #157)
+
+Layers 1–3 all key on the **identifier**. They are blind to a *second type for an
+existing concept under a different name* — the rename-to-evade-dedup shadow that
+compiles green. **`shctx dups`** closes that gap by clustering `pub struct`/`pub
+enum` definitions on **field shape** (weighted Jaccard over `(field_name,
+normalized_type)` pairs, with a field-NAME-match bonus). `dups check` runs in a
+PreToolUse(Write|Edit) hook (`dups_write_guard.sh`) so a coder is told *"this is
+0.85-similar to `pkg::ExistingType` — reuse it?"* at authoring time, and
+`dups scan --fail-on foundation-blocking` is a CLOSE / CI census. This is the
+third leg of the mechanical shape-gate set (with `dep-hygiene` and
+`check-impls-defs`). Full detail: `doctrines/shape-dedup.md`.
+
 ## The canonical-types index (`{paths.ctx}/canonical-types.md`)
 
 The workspace knowledge silo is the conductor's anti-duplication memory. Every patch's dev.0 fires a `WORKER-IO` node — `canonical-types-refresh` — that walks the workspace and emits/updates `{paths.ctx}/canonical-types.md`:
@@ -207,6 +220,7 @@ Any violation of any of these → `DUPLICATION-DRIFT` finding, grade-cap C+.
 ## See also
 
 - `pipeline.md` §II — `DEDUP-GATE` node type
+- `doctrines/shape-dedup.md` — field-shape dedup (`shctx dups`, the renamed-shadow leg)
 - `doctrines/stage-graph.md` — graph-encoded dispatch
 - `doctrines/wrapper-must-earn.md` — wrapper-grep gate (a special case of dedup)
 - `doctrines/subtract-dont-add.md` — duplicates accrete LOC; SUBTRACT enforces deletion

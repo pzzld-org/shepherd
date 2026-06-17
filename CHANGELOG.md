@@ -4,6 +4,71 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v6.1.8 — 2026-06-17
+
+**Field-shape deduplication — `shctx dups` (#157).** The third leg of the
+mechanical shape-gate set (with `dep-hygiene` and `check-impls-defs`). Name-matching
+dedup (`index_symbols` / `dedup-check.sql` / `dedup_write_guard.sh` / the conductor
+`DEDUP-GATE`) catches a duplicate ONLY when the second definition reuses the first
+one's name. It is blind to the dominant large-workspace rot: a **second type for an
+existing concept under a different name** — the rename-to-evade-dedup shadow that
+compiles green and slips every name-keyed gate (a 2026-06-17 audit of one workspace
+found 22 such clusters). `shctx dups` closes that gap by clustering on **field
+shape**, and gives subagents a way to *recognize a pre-built struct they can reuse
+without remembering its name* — the match is surfaced, by shape, at authoring time.
+
+### New — `shctx dups <scan|check|registry>`
+
+- **`scan`** — workspace census: parses every `pub struct`/`pub enum`, fingerprints
+  each by its `(field_name, normalized_type)` set, clusters by similarity, and
+  reports each cluster with members (`file:line` + consumer count), pairwise
+  similarity, and a **suggested canonical** (lowest dep tier). `--update` persists
+  the corpus to `index_struct_shapes`; `--fail-on {medium|high|foundation-blocking}`
+  is a non-zero CLOSE/CI gate. The headline `foundation-blocking` severity flags an
+  orphan canonical (zero consumers) sitting beside a live shadow.
+- **`check <file> | --stdin --as <path>`** — authoring-time gate: matches a
+  candidate's NEW defs against the corpus and reports any same-shape existing type
+  (*"…is 0.85-similar to `pkg::X` — reuse it?"*). Exits `5` above the block
+  threshold. Used by the PreToolUse hook and as a coder Phase-0 self-check.
+- **`registry show|allow|unallow|pin|unpin|update`** — curated `concept→canonical`
+  pins + a **DO-NOT-MERGE allow-list** for intentional distinct-role twins (a venue
+  `Fill` vs a backtest `SimFill`). Tracked at `<ns>/dups-registry.json`.
+
+### Similarity, parsing, storage
+
+- **Metric:** `sim = name_weight·jaccard(field_names) + (1−name_weight)·jaccard(typed_pairs)`.
+  The field-NAME blend catches a shadow that restated `Uuid→String` / `DateTime→String`
+  / `f64` field-for-field under a new name. Field-less (marker) shapes and shapes
+  below `dups_min_fields` are excluded.
+- **Parser** (`skills/context/scripts/dups-core.py`, stdlib python3) — a brace /
+  generic / attribute-aware scanner over Rust source realizes the proposal's
+  "Rust + syn" intent without a build step and is deterministic + unit-testable.
+  Tree-sitter multi-language is a later extension; the shape model + similarity +
+  clustering are language-agnostic. DB I/O routes through python's `sqlite3`
+  module (no dependency on the `sqlite3` binary).
+- **Schema:** `migrations/0015_struct_shapes.sql` adds `index_struct_shapes`
+  (the field-shape corpus, sibling of `index_symbols`/`index_concepts`).
+- **Refresh:** `shctx refresh --scope=shapes` (folded into `--all`, hence
+  `sprint open`) keeps the corpus current.
+
+### Enforcement + integration
+
+- **New PreToolUse(Write|Edit) hook** `hooks/scripts/dups_write_guard.sh` — the
+  shape-shaped sibling of `dedup_write_guard.sh`. `@coder` `.rs` writes only;
+  config `[dups].dups_hook = off | warn (default) | block`. Fails open at every
+  step (non-coder, non-rust, no python3, empty corpus → silent pass); it can only
+  block on a real shape match.
+- **New doctrine** `doctrines/shape-dedup.md`; `zero-duplicate-tolerance.md` gains
+  Layer 4 + a cross-link.
+- **Config** `[dups]` (`docs/configuration.md` + both example `shepherd.toml`s):
+  `dups_threshold`, `dups_block`, `dups_name_weight`, `dups_min_fields`,
+  `dups_hook`, `dups_registry` (keys are `dups_`-prefixed because `cfg_get` is
+  section-agnostic). `rust-service` wires a `shape-dedup` close gate into
+  `[gates].extra`.
+- **Tests:** `skills/context/tests/test_cmd_dups.sh` (scan/check/registry/gate/persist)
+  and `hooks/tests/test_dups_write_guard.sh` (block/warn/off + fast-paths), plus
+  smoke cases. Both full suites green.
+
 ## v6.1.6 — 2026-06-15
 
 Two-lane release. **Lane A** makes teammate-conductors *actually leverage* the

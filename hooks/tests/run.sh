@@ -70,6 +70,13 @@ run_case "lock-conflict"       lock_guard.sh '{"session_id":"s1","tool_name":"Ed
 run_case "lock-same-session"   lock_guard.sh '{"session_id":"other","tool_name":"Edit","tool_input":{"file_path":"a"}}'
 rm -f .artifacts/shepherd.lock
 
+echo "== dups_write_guard.sh (v6.1.8 #157) — fast-path smoke =="
+# No corpus / no coder dispatch record → role resolves to conductor → silent pass.
+run_case "no-payload"          dups_write_guard.sh ''
+run_case "non-coder-role"      dups_write_guard.sh '{"session_id":"s1","tool_name":"Write","tool_use_id":"x","tool_input":{"file_path":"a.rs","content":"pub struct A{a:u8,b:u8}"}}'
+run_case "non-rust-file"       dups_write_guard.sh '{"session_id":"s1","tool_name":"Write","tool_use_id":"x","tool_input":{"file_path":"a.md","content":"hi"}}'
+run_case "non-write-tool"      dups_write_guard.sh '{"session_id":"s1","tool_name":"Bash","tool_input":{"command":"ls"}}'
+
 echo "== agent_insight_capture.sh =="
 run_case "no-insights-block"   agent_insight_capture.sh '{"session_id":"s1","tool_name":"Agent","tool_response":"plain text"}'
 run_case "non-agent-tool"      agent_insight_capture.sh '{"session_id":"s1","tool_name":"Bash","tool_response":"x"}'
@@ -263,6 +270,20 @@ if cap_out=$(bash "$TESTS_DIR/test_capability_discovery.sh" 2>&1); then
 else
   printf '  FAIL  %-50s\n' "capability-discovery"
   printf '%s\n' "$cap_out" | sed 's/^/        /'
+  fails=$((fails+1))
+fi
+
+# Field-shape dedup hook (v6.1.8, #157): dups_write_guard.sh blocks a renamed
+# shadow (same field shape, different name) in block mode, warns in warn mode,
+# and fast-paths (non-coder / non-rust / no corpus) silently. Sets up a corpus
+# via shctx + a coder dispatch record, then drives the hook end-to-end.
+echo "== test_dups_write_guard.sh (v6.1.8 — #157 field-shape authoring gate) =="
+total=$((total+1))
+if dwg_out=$(bash "$TESTS_DIR/test_dups_write_guard.sh" 2>&1); then
+  printf '  PASS  %s\n' "dups-write-guard-blocks-renamed-shadow"
+else
+  printf '  FAIL  %-50s\n' "dups-write-guard"
+  printf '%s\n' "$dwg_out" | sed 's/^/        /'
   fails=$((fails+1))
 fi
 

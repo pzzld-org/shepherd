@@ -151,6 +151,8 @@ Shepherd ships a full hook suite wired via `hooks/hooks.json`:
 
 - **`dispatch_guard.sh`** — PreToolUse guard that hard-refuses missing/wrong `subagent_type`, off-flock impersonation, and wrong-tier `@engineer`/`@critic` dispatch from teammates
 - **`bash_guard.sh`** — blocks workflow→teammate dispatch inversion and backgrounded cargo gates
+- **`dedup_write_guard.sh`** — PreToolUse(Write\|Edit) gate that blocks a new public symbol reusing an existing **name**
+- **`dups_write_guard.sh`** — PreToolUse(Write\|Edit) gate that catches a new struct/enum matching an existing type by **field shape** under a different name (the renamed-shadow leg, `shctx dups`, #157)
 - **`coordinate_drive_guard.sh`** — Stop hook that blocks premature root halt while teammates are idle or lead mail is unread
 - **`close_finalize_check.sh`** — validates close-finalize preconditions (close report committed, sprint branch still on origin) before the stop event fires
 - **`_lib.sh`** — shared resolution: `SHEPHERD_WORKDIR` override → `SHCTX_ROOT_OVERRIDE` → pre-existing `.shepherd/` → pre-existing `.artifacts/` → default `.shepherd/`

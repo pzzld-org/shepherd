@@ -10,10 +10,11 @@ for arg in "$@"; do
     --all)     scope="all" ;;  # canonical "all targets" alias (v5.0.4)
     -h|--help)
       cat <<'EOF'
-shctx refresh [--scope=symbols|github|artifacts|telemetry|all] [--all]
+shctx refresh [--scope=symbols|shapes|github|artifacts|telemetry|all] [--all]
 
   --scope=NAME  refresh a single zone
                   symbols   — index public symbols from the workspace
+                  shapes    — index public struct/enum FIELD SHAPES for `dups` (v6.1.8 #157)
                   github    — issues / PRs / releases / milestones via gh
                   artifacts — markdown specs / plans / handoffs / journal
                   telemetry — cache-usage events from <ns>/logs/events-*.jsonl (v5.1.3+)
@@ -130,14 +131,25 @@ PY
   echo "shctx refresh telemetry: $inserted new row(s)"
 }
 
+# Refresh the struct/enum field-shape corpus (index_struct_shapes) used by
+# `shctx dups`. Delegates to `dups scan --update --quiet` so the PreToolUse
+# authoring gate and the close-time census read a current corpus. Fails open
+# (no python3 / no rust files → no-op).
+refresh_shapes() {
+  bash "$HERE/cmd_dups.sh" scan --update --quiet
+  echo "shctx refresh shapes: ok"
+}
+
 case "$scope" in
   symbols)   bash "$HERE/refresh-symbols.sh" ;;
+  shapes)    refresh_shapes ;;
   github)    bash "$HERE/refresh-github.sh" ;;
   artifacts) bash "$HERE/refresh-artifacts.sh" ;;
   telemetry) refresh_telemetry ;;
   all)
     # Each scope is isolated — one zone's failure must not block the others.
     bash "$HERE/refresh-symbols.sh"   || echo "shctx: symbols refresh failed (continuing)"   >&2
+    refresh_shapes                    || echo "shctx: shapes refresh failed (continuing)"     >&2
     bash "$HERE/refresh-github.sh"    || echo "shctx: github refresh failed (continuing)"    >&2
     bash "$HERE/refresh-artifacts.sh" || echo "shctx: artifacts refresh failed (continuing)" >&2
     refresh_telemetry                 || echo "shctx: telemetry refresh failed (continuing)" >&2

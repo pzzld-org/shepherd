@@ -45,6 +45,20 @@ Subcommands (atomic):
                           Graceful-empty reads; local overrides global on name collision.
   lock <show|acquire|release [--force]|reap> [args]
   lint                    Naming-convention check
+  dups <scan|check|registry> [args]                   (v6.2.0 #157)
+                          Field-shape similar-struct detection — the third leg
+                          of the mechanical shape-gate set (with dep-hygiene +
+                          check-impls-defs). Catches the rename-to-evade-dedup
+                          shadow that name-matching dedup cannot see.
+                          scan: census + cluster similar public struct/enum
+                            shapes; suggest a canonical; --update persists the
+                            corpus; --fail-on for close-gates/CI.
+                          check: match a candidate's new defs vs the corpus
+                            (PreToolUse hook + coder Phase-0); exit 5 on a
+                            block-threshold match.
+                          registry: curate concept→canonical pins + the
+                            DO-NOT-MERGE allow-list (intentional twins).
+                          See doctrines/shape-dedup.md.
   migrate                 Apply pending schema migrations
   export <kind|--all> [--out=path]
                           --all bundles every export kind to a directory (v5.0.4).
@@ -126,7 +140,7 @@ script_for() {
 cmd="${1:-help}"; shift || true
 case "$cmd" in
   help|-h|--help) usage ;;
-  init|config|status|dash|doctor|refresh|query|search|inject|profile|style|mem|toolkit|lock|lint|migrate|export|release|handoff|worktree|close-lane|issues|plan|graph|insights|adapt|sync|ready|sprint|audit|watch|discovery|teammate|mailbox|escalate|deliverable|report|loop|panes)
+  init|config|status|dash|doctor|refresh|query|search|inject|profile|style|mem|toolkit|lock|lint|migrate|export|release|handoff|worktree|close-lane|issues|plan|graph|insights|adapt|sync|ready|sprint|audit|watch|discovery|teammate|mailbox|escalate|deliverable|report|loop|panes|dups)
     impl="$HERE/$(script_for "$cmd")"
     if [[ ! -f "$impl" ]]; then
       echo "ERROR: $cmd not yet implemented (missing $impl)" >&2; exit 2

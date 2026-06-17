@@ -20,7 +20,8 @@ This skill is a quick reference. Operational detail lives in the sibling files (
 
 - `shctx init [--artifacts]` — scaffold per-project namespace (`.shepherd/` by default; `--artifacts` opts into the legacy `.artifacts/`), create `shepherd.db` (legacy `root.db` honored), register host project (UUIDv7). Auto-detects an existing namespace dir if present.
 - `shctx status` — row counts, refresh staleness, lock state, lint summary.
-- `shctx refresh [--scope=symbols|github|artifacts|all]` — idempotent rebuild of cache zones.
+- `shctx refresh [--scope=symbols|shapes|github|artifacts|all]` — idempotent rebuild of cache zones (`shapes` indexes struct/enum field shapes for `dups`, v6.1.8).
+- `shctx dups <scan|check|registry>` *(v6.1.8, #157)* — field-shape similar-struct detection: catches the renamed-shadow duplicate (same field shape, different name) that name-matching dedup is blind to. `scan` censuses + clusters; `check` is the PreToolUse/Phase-0 authoring gate; `registry` curates concept→canonical pins + the DO-NOT-MERGE allow-list. See `doctrines/shape-dedup.md`.
 - `shctx query <name> [--json|--md] [--key=val ...]` — run a named query from `queries/`.
 - `shctx search <text> [--scope=symbols|artifacts|all] [--limit=N] [--md|--json]` *(v5.0.3)* — FTS5 full-text search over symbols + artifact content.
 - `shctx inject <engineer|coder|auditor>` — emit a `[DB-CONTEXT]` block sized for that role.

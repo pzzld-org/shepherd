@@ -26,6 +26,16 @@ check  = "cargo check --workspace"
 lint   = "cargo clippy --workspace -- -D warnings"
 format = "cargo fmt --all"
 
+[dups]
+# Field-shape similar-struct detection (shctx dups, #157) — catches the
+# renamed-shadow duplicate that name-matching dedup misses. Defaults shown;
+# uncomment only to change. Keys are dups_*-prefixed (cfg_get is section-agnostic).
+# dups_hook        = "warn"   # PreToolUse(Write|Edit): off | warn (default) | block
+# dups_threshold   = 0.7      # cluster/check similarity floor
+# dups_block       = 0.85     # hook block threshold
+# dups_name_weight = 0.5      # field-NAME Jaccard weight vs typed-pair Jaccard
+# dups_min_fields  = 2        # ignore shapes below N fields
+
 [paths]
 # Match the shctx namespace your project uses. Default (v5.0.0+) is .shepherd/.
 # If your project was initialized with `shctx init --artifacts`, use .artifacts/ here.
