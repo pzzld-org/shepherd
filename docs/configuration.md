@@ -170,6 +170,9 @@ db_path         = ".shepherd/shepherd.db"    # SQLite registry (v6.1.2; legacy r
 lock_path       = ".shepherd/shepherd.lock"  # file-based single-writer lock
 project_id_path = ".shepherd/project.json"   # stable project_id (multi-project backbone)
 auto_refresh    = ["on-sprint-open"]         # triggers that fire `shctx refresh --scope=all`
+announce_shctx_path = "on"                   # v6.1.8: SessionStart surfaces the resolved absolute shctx
+                                             # path so a session never falsely reports "shctx absent"
+                                             # (shctx is plugin-local, NEVER on $PATH). on (default) | off.
 
 [context.refresh]
 symbols_languages = ["rust"]                                # languages the symbol extractor walks

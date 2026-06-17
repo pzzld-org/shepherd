@@ -12,6 +12,8 @@ metadata:
 
 You are reading the entry skill for `/shepherd:ctx`. The CLI lives at `${CLAUDE_PLUGIN_ROOT}/skills/context/scripts/shctx`. The DB lives at `.shepherd/shepherd.db` in the consumer project (or `.artifacts/shepherd.db` for the legacy namespace). Legacy `root.db` is auto-detected for projects that predate v6.1.2. Auto-detection prefers whichever directory + filename already exists.
 
+> **`shctx` is plugin-local and NEVER on `$PATH` (v6.1.8).** `command -v shctx` / `which shctx` / a bare `shctx …` returns **absent BY DESIGN** — that is *not* evidence of absence and must never be treated as such. Always invoke it by the absolute path `${CLAUDE_PLUGIN_ROOT}/skills/context/scripts/shctx`. If `$CLAUDE_PLUGIN_ROOT` is unset in your shell (it does not always propagate into the Bash tool — notably on some remote/web launches), the SessionStart `session_open` hook prints the resolved absolute path at session start (`[context].announce_shctx_path = on` by default); you can also resolve it from the installed plugin dir (e.g. `~/.claude/plugins/shepherd/skills/context/scripts/shctx`). Reporting "shctx absent" from a `command -v` probe is the #1 false-negative — don't.
+
 This skill is a quick reference. Operational detail lives in the sibling files (see "See also" below). When this file points at one, load it.
 
 ---

@@ -103,15 +103,40 @@ if [[ "$branch" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-dev\.[0-9]+$ ]] && [[ -d "$ns/plans"
   fi
 fi
 
-# --- Build output ---
-session=$(cat 2>/dev/null || true)  # already consumed; placeholder
-[[ ${#warnings[@]} -eq 0 ]] && pass_silent "session_open" "Session" "conductor" ""
+# --- shctx CLI locator (v6.1.8) — kill the "shctx absent" false negative ------
+# shctx is plugin-local and NEVER on $PATH; `command -v shctx` / `which shctx`
+# returns absent BY DESIGN. A session that probes it that way (or whose shell
+# never received $CLAUDE_PLUGIN_ROOT) wrongly concludes shctx is missing. Resolve
+# the absolute path from THIS hook's OWN location (hooks/scripts → ../.. = the
+# installed plugin root) — correct regardless of whether $CLAUDE_PLUGIN_ROOT
+# reached the agent's Bash env — and surface it so every session has a working
+# invocation. Config-gated: [context].announce_shctx_path = on (default) | off.
+shctx_line=""
+if [[ "$(cfg_get announce_shctx_path)" != "off" ]]; then
+  plugin_root="$(cd "$HERE/../.." 2>/dev/null && pwd || true)"
+  shctx_path="$plugin_root/skills/context/scripts/shctx"
+  if [[ -f "$shctx_path" ]]; then
+    [[ -n "${CLAUDE_PLUGIN_ROOT:-}" ]] && cpr="set" || cpr="UNSET"
+    shctx_line="shctx CLI → $shctx_path"$'\n'
+    shctx_line+="  (plugin-local; NOT on \$PATH — 'command -v shctx' / 'which shctx' returns absent BY DESIGN, NOT evidence of absence. Invoke by this absolute path. \$CLAUDE_PLUGIN_ROOT is $cpr in this shell.)"
+  fi
+fi
 
-msg="[shepherd] Session-open hygiene (v5.1.8):"$'\n'
-for w in "${warnings[@]}"; do
-  msg+="  • $w"$'\n'
-done
-msg+="Run 'shctx doctor' for a full pre-flight check."
+# --- Build output ---
+# Emit if there's a locator line OR any hygiene warning; else stay silent.
+if [[ -z "$shctx_line" && ${#warnings[@]} -eq 0 ]]; then
+  pass_silent "session_open" "Session" "conductor" ""
+fi
+
+msg="[shepherd] Session orientation:"$'\n'
+[[ -n "$shctx_line" ]] && msg+="$shctx_line"$'\n'
+if [[ ${#warnings[@]} -gt 0 ]]; then
+  msg+="Session-open hygiene (v5.1.8):"$'\n'
+  for w in "${warnings[@]}"; do
+    msg+="  • $w"$'\n'
+  done
+  msg+="Run 'shctx doctor' for a full pre-flight check."
+fi
 
 # v5.1.8: route through emit_context so [hooks].quiet_warnings opt-out applies.
 # emit_context already calls log_event under the hood.

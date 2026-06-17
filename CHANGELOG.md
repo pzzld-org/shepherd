@@ -67,7 +67,46 @@ without remembering its name* — the match is surfaced, by shape, at authoring 
   `[gates].extra`.
 - **Tests:** `skills/context/tests/test_cmd_dups.sh` (scan/check/registry/gate/persist)
   and `hooks/tests/test_dups_write_guard.sh` (block/warn/off + fast-paths), plus
-  smoke cases. Both full suites green.
+  smoke cases.
+
+### Fix — the `shctx absent` false negative
+
+A live v6.1.7 session reported `shctx absent`. Root cause: `shctx` is plugin-local
+and **never on `$PATH`** — it is invoked by the absolute path
+`${CLAUDE_PLUGIN_ROOT}/skills/context/scripts/shctx`. A `command -v shctx` /
+`which shctx` probe returns absent **by design**, and when `$CLAUDE_PLUGIN_ROOT`
+does not propagate into the agent's Bash env (some remote/web launches) even the
+full-path invocation fails. Neither is evidence of absence.
+
+- **`hooks/scripts/session_open.sh`** now surfaces, at SessionStart, the absolute
+  `shctx` path resolved from the **hook's own location** (`hooks/scripts → ../..`),
+  correct regardless of `$CLAUDE_PLUGIN_ROOT`, with the explicit note that
+  `command -v shctx` returns absent by design. Config-gated
+  `[context].announce_shctx_path = on (default) | off`.
+- **`skills/context/SKILL.md`** documents the rule authoritatively (never PATH;
+  `command -v` is the #1 false-negative; invoke by absolute path).
+- **Test:** `hooks/tests/test_shctx_locator.sh` (surfaces the path with
+  `$CLAUDE_PLUGIN_ROOT` unset; off-switch suppresses).
+
+### Fix — staged-handoff (v6.1.7) never actually worked
+
+Verifying the v6.1.7 staged-handoff feature (`/shepherd:spawn --staged` +
+`seed-ready` mailbox signal) surfaced a shipped defect: the `mailbox.kind` CHECK
+constraint (from `0007`) was a closed enum
+(`heartbeat_payload|escalation|ack|status|generic`), so
+`shctx mailbox send --kind=seed-ready` was **rejected by the schema** — the signal
+could never be sent. Every future doctrine adding a routing tag would have hit the
+same wall, silently.
+
+- **`migrations/0016_mailbox_kind_relax.sql`** rebuilds `mailbox` with a permissive
+  `CHECK(kind <> '')` (root-cause fix, not a one-value patch), preserving columns,
+  data, the FK, both partial indexes, and the unread view.
+- **`doctrines/staged-handoff.md`** `jq` consume snippet corrected to iterate the
+  JSON array (`.[] | select(...)`; `recv` emits an array).
+- **Test:** `skills/context/tests/test_staged_handoff.sh` drives the full
+  `send → recv --unread-only --mark-read → ack` seed-ready round-trip.
+
+Both full suites green (hooks 44/44, shctx 44/44).
 
 ## v6.1.6 — 2026-06-15
 

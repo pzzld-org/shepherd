@@ -287,6 +287,20 @@ else
   fails=$((fails+1))
 fi
 
+# shctx CLI locator (v6.1.8): session_open must surface the absolute shctx path
+# resolved from the hook's own location even when $CLAUDE_PLUGIN_ROOT is unset,
+# with the "NOT on PATH / absent BY DESIGN" note — the antidote to a session
+# falsely reporting "shctx absent". Off-switch must suppress it.
+echo "== test_shctx_locator.sh (v6.1.8 — shctx-absent false-negative antidote) =="
+total=$((total+1))
+if loc_out=$(bash "$TESTS_DIR/test_shctx_locator.sh" 2>&1); then
+  printf '  PASS  %s\n' "shctx-locator-surfaces-abs-path"
+else
+  printf '  FAIL  %-50s\n' "shctx-locator"
+  printf '%s\n' "$loc_out" | sed 's/^/        /'
+  fails=$((fails+1))
+fi
+
 # Exec-bit guard (v6.1.3): every path-invoked hook/CLI script must carry the
 # git-tracked executable bit. Regression guard for the v6.1.2 toolkit
 # "Permission denied" shipped-as-100644 class.

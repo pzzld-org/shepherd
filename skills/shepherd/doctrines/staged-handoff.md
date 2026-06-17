@@ -41,11 +41,17 @@ recipient = shepherd-spawn-<sprint_slug>
   printf '%s' '{"event":"seed-ready","sprint_slug":"<slug>","seed_path":"<path>"}' \
     | shctx mailbox send --to="shepherd-spawn-<slug>" --kind=seed-ready
   ```
-- **Staged spawn consumes** (Session A), at its seed-wait gate:
+  > **v6.1.8 fix:** the `mailbox.kind` CHECK was a closed enum through v6.1.7, so
+  > `--kind=seed-ready` was rejected by the schema and this signal could never be
+  > sent (the feature never worked end-to-end). `migrations/0016_mailbox_kind_relax.sql`
+  > relaxes `kind` to non-empty, so any routing tag is accepted.
+- **Staged spawn consumes** (Session A), at its seed-wait gate (`shctx mailbox recv`
+  emits a JSON **array**, so iterate with `.[]`; each row carries its numeric `id`
+  for the ack):
   ```bash
   shctx mailbox recv --as="shepherd-spawn-<slug>" --unread-only --mark-read \
-    | jq -r 'select(.kind=="seed-ready")'
-  shctx mailbox ack <id>   # after it reads the committed seed
+    | jq -r '.[] | select(.kind=="seed-ready")'
+  shctx mailbox ack <id>   # <id> = the row's .id; ack after it reads the committed seed
   ```
 
 The message is **durable**: it survives even if Session A is not live at the moment
