@@ -2,6 +2,8 @@
 
 `@worker` is the flock's bounded-task executor. The conductor uses it to keep its own context lean and focused on plan walking + dispatch decisions. This doctrine codifies WHEN to dispatch and WHAT briefs work well.
 
+**Default posture: worker-first for bounded ops** (`doctrines/dispatch-generosity.md`). When a task fits the heuristic below, dispatch `@worker` rather than inlining it into your own turn. Inlining a worker-shaped task is the most common form of flock under-utilization — and because gate-free fan-out compiles out-of-context (the Workflow tool is enabled across entrypoints; `doctrines/workflow-compile-down.md`), dispatching a worker costs your context window LESS than inlining, not more. When in doubt, dispatch.
+
 ## Heuristic — when to dispatch worker (not inline)
 
 Dispatch worker when ANY of the following hold:
@@ -12,7 +14,7 @@ Dispatch worker when ANY of the following hold:
 - Task can run in parallel with main-chat work without contention.
 - Inlining would consume > ~1000 tokens for an operation that produces a small final answer.
 
-Inline when: the result is a one-line answer the conductor needs immediately for the next dispatch decision.
+Inline ONLY when: the result is a one-line answer the conductor needs immediately for the next dispatch decision, AND producing it is trivial (a single read/grep). Everything heavier is a `@worker` dispatch (`doctrines/dispatch-generosity.md §III`).
 
 ## Brief shape for non-code work
 

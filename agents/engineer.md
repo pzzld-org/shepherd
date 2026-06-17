@@ -181,6 +181,24 @@ waves:
 
 Wave-2 cannot start until wave-1's gate passes (sequential between waves). The steps **within** a wave fan out concurrently — that fan-out is the **execution axis**, compiled to a Dynamic Workflow at run time (`doctrines/workflow-compile-down.md`). **A wave is NEVER "a set of lanes."**
 
+### Loop-readiness — author the loop, don't leave it to runtime (Pattern 6)
+
+Before finalizing the Stage Graph, scan every scope item for **convergent**
+completion — work whose "done" is *"no new findings / converged / state
+reconciled"* rather than a fixed step list. That is **Loop-Until-Done**
+(`doctrines/workflow-patterns.md §Q4`) and must be authored as a **bounded loop
+node** in the plan, not left for the conductor to improvise as repeated one-shot
+dispatches:
+
+- source-exhaustion discovery → `DISCOVERY-EXHAUST`; gate-green coder iteration →
+  `CODER-CONVERGENCE`; state reconciliation → `WORKER-CONVERGENCE`; wall-clock
+  monitoring → `WORKER-WATCH`; post-close acceptance re-run → `SOAK-LOOP`
+  (`references/loop-templates.md`).
+- Every loop node declares `--max` and a measurable `new_findings` predicate up
+  front (`doctrines/loop-templates.md`); an un-capped or predicate-less loop is a
+  `@critic` reject. A single best-effort pass where convergence was the real bar is
+  the under-reach `doctrines/dispatch-generosity.md §IV` exists to catch.
+
 ### Bite-sized step granularity (per `superpowers:writing-plans`)
 
 Each step MUST be:

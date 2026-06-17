@@ -8,8 +8,10 @@ description: |
   curated toolkit.json, that the [TOOLKIT] surfaces merge in (clearly labeled
   auto-discovered). Guarded integrations degrade cleanly when a plugin is
   absent; shepherd never hard-depends on a third-party plugin. The probe also
-  records native Workflow-tool presence so spawn/loop degrade to in-context
-  Agent(...) when it is omitted (web/remote sessions). Zero hot-path cost.
+  records an advisory note for the native Workflow tool — which is enabled across
+  entrypoints (web/remote/cloud-container included); the agent confirms presence
+  from its visible tool list and degrades to in-context Agent(...) only on an
+  explicit disable or a below-floor build. Zero hot-path cost.
 introduced: v6.1.5
 ---
 
@@ -147,23 +149,28 @@ must be a clean degrade, not an error.
 
 ---
 
-## V. Workflow-tool-presence detection (#146 — the structural fix)
+## V. Workflow-tool presence — enabled across entrypoints (#146 corrected)
 
-`references/glossary.md` once asserted the native `Workflow` tool is "always
-present" on a supporting build. It is not: **Claude-Code-on-the-web /
-remote-execution sessions omit it even on a supporting build** (presence is
-environment-dependent). The probe folds this in:
+The native `Workflow` tool (Dynamic Workflows) is **enabled across Claude Code
+entrypoints — CLI, Claude-Code-on-the-web, AND remote / cloud-container
+sessions.** An earlier revision of this doctrine (the original #146) claimed
+web/remote sessions "omit it even on a supporting build." **That was wrong** — a
+misdiagnosis born of `ToolSearch`-ing a native tool, getting nothing (by design),
+and reading the nothing as absence. The correction the probe now folds in:
 
-- The hook records an **env hint** (`agent_fillin.workflow_tool.env_hint`):
-  `likely-omitted` for web/remote entrypoints, `likely-present-verify`
-  otherwise. This is advisory only.
-- The **agent confirms** presence by the one authoritative test — *is `Workflow`
-  in the visible tool list?* — and records `present: true|false`. The hook
-  cannot do this (it is not the agent).
-- When **absent**, `/shepherd:spawn` and `/shepherd:loop` degrade to in-context
+- The native `Workflow` tool is a **top-level** tool, EXPECTED present in every
+  entrypoint. The genuine-absence cases are narrow: an explicit disable
+  (`disableWorkflows` / `CLAUDE_CODE_DISABLE_WORKFLOWS`) or a Claude Code build
+  below the Dynamic Workflows floor (v2.1.154). Web/remote is NOT such a case.
+- The hook records an advisory env hint of `present-expected` (it cannot see the
+  tool list). The **agent confirms** presence by the one authoritative test —
+  *is `Workflow` in the visible tool list?* — and records `present: true|false`.
+- **NEVER `ToolSearch` for `Workflow`** (or for `TaskCreate` / `TeamCreate` /
+  `SendMessage` — all native top-level tools). A nothing-result means you looked
+  in the wrong index, not that the feature is absent; `ToolSearch
+  select:TaskCreate` even *errors*, by design. Only on a confirmed genuine
+  absence do `/shepherd:spawn` and `/shepherd:loop` degrade to in-context
   `Agent(...)` fan-out (the documented degraded path, glossary sense 1).
-  **NEVER `ToolSearch` for `Workflow`** — a nothing-result means you looked in
-  the wrong place, not that the feature is broken.
 
 The agent-facing operational front-end for this — the ONE first-action
 self-check (detect → record `present:true|false` → branch to compile or
@@ -217,8 +224,8 @@ Cross-ref: `doctrines/adaptation-loop.md` (sprint-pattern memory),
   surfaced and gated (Q3); discovery feeds the available-agents enumeration
 - `doctrines/adaptation-loop.md` / `doctrines/self-improvement.md` — adaptation
   memory: which integrations helped
-- `references/glossary.md` — the native `Workflow` tool, its environment-
-  dependent presence (#146), and why you must NOT `ToolSearch` for it
+- `references/glossary.md` — the native `Workflow` tool, its always-enabled
+  presence (#146 corrected), and why you must NOT `ToolSearch` for it
 - `doctrines/brief-cache-discipline.md` — why the discovered block is appended
   at the variable tail of the `[TOOLKIT]` injection
 - `hooks/scripts/capability_discovery.sh` — the probe; `hooks/scripts/toolkit_surface.sh`

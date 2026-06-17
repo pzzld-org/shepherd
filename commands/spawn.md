@@ -33,8 +33,13 @@ description: |
                        in v5.1.6). Within each sprint, lane-per-conductor fanout still
                        applies internally.
     --auto             ALIAS for --scope patch (preserved for operator muscle memory).
-argument-hint: "[ sprint_slug ] [ --scope sprint|patch|minor|version ] [ --parallel <N> | --auto ]"
-allowed-tools: Agent, Bash, Edit, Glob, Grep, Read, AskUserQuestion, Skill, Write, ToolSearch, TeamCreate, TeamDelete, TaskCreate, TaskGet, TaskList, TaskUpdate, SendMessage, WebFetch, WebSearch
+    --staged           Two-session overlap: orient / discover NOW, then WAIT for a
+                       `seed-ready` signal from a concurrent /shepherd:plant session
+                       before authoring the plan. A missing seed is the EXPECTED start
+                       state, not a seedless-run trigger. Reuses the SQLite mailbox;
+                       opt-in. Full spec: doctrines/staged-handoff.md.
+argument-hint: "[ sprint_slug ] [ --scope sprint|patch|minor|version ] [ --parallel <N> | --auto ] [ --staged ]"
+allowed-tools: Agent, Bash, Edit, Glob, Grep, Read, Skill, Write, ToolSearch, TeamCreate, TeamDelete, TaskCreate, TaskGet, TaskList, TaskUpdate, SendMessage, WebFetch, WebSearch
 ---
 
 # /shepherd:spawn — Teammate-Conductor Dispatch

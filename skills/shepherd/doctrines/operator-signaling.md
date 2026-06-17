@@ -1,55 +1,70 @@
-# Operator signaling — the planner asks; execution sessions run (session → operator)
+# Operator signaling — the planter asks; execution sessions run (session → operator)
 
-> Two postures, deliberately different:
-> - The **planter** plans WITH the operator — asking is core to its job.
-> - **Execution sessions** (`/shepherd:start`, `/shepherd:spawn` root) are biased to
->   **ACTION**. They carry `AskUserQuestion` only as a NARROW escape valve, not a habit.
->   They must NOT start stopping for confirmation or approval.
+> Two postures, deliberately different — and now mechanically separated:
+> - The **planter** plans WITH the operator. It is the framework's **sole interactive
+>   asker** and the only profile that carries the `AskUserQuestion` tool.
+> - **Execution sessions** (`/shepherd:start` SOLO, `/shepherd:spawn` root) are biased to
+>   **ACTION**. As of v6.1.7 they **do not carry `AskUserQuestion` at all** — they cannot
+>   pop a structured question. Their only operator touchpoints are the enumerated
+>   turn-ending pauses (reports the operator replies to in chat), never a mid-run "let me check".
 >
 > This is the inverse of `mid-flight-operator-amendment.md` (operator → session).
 
-## Planter — ask freely (planning is interactive)
+## Planter — the sole interactive asker (planning is interactive)
 
 The planter (`/shepherd:plant`) is the planning session, just detached. During its
-read-everything phase it RESOLVES ambiguity WITH the operator via `AskUserQuestion`
-instead of inventing answers: unclear objective / scope / acceptance, competing approaches,
-which work items belong in this arc, version-tier intent. Liberal, structured, batched.
+read-everything phase it RESOLVES ambiguity WITH the operator instead of inventing
+answers: unclear objective / scope / acceptance, competing approaches, which work items
+belong in this arc, version-tier intent. Ask liberally, structured, batched.
 **This is the right place for questions** — answered here, execution doesn't have to stop.
 
-## Execution sessions — bias to action; ask only when truly blocked
+**Mechanical rule (binding):** the planter surfaces every operator question via the
+**`AskUserQuestion` tool** — NEVER as prose typed into the chat / terminal. A question
+written as terminal prose is the `INLINE-QUESTION-MISUSE` anti-pattern (`agents/planter.md
+§Anti-patterns`): it throws away the structured, batchable, resumable interaction the tool
+provides, and it is the exact habit this contract exists to kill. If you find yourself
+typing "Question 1: … / Question 2: …" into the chat, stop and call `AskUserQuestion`.
 
-`/shepherd:start` (SOLO) and `/shepherd:spawn` (root) carry `AskUserQuestion`, but their
-default posture is **proceed**. The bar to interrupt the operator is HIGH. Use it ONLY when:
+## Execution sessions — bias to action; no structured questions
 
-- **No seed AND no derivable objective** — ONE batched kickoff question to set direction
-  (objective + scope + done-criteria), then RUN. (See "Seed is recommended, not required".)
-- A **destructive / irreversible outward action** with no safe default — force-push to a
-  shared branch, release, data delete, publish.
-- A **hard fork that blocks all forward progress** and has no sensible default.
+`/shepherd:start` (SOLO) and `/shepherd:spawn` (root) **do not carry `AskUserQuestion`**
+(removed from their toolset, v6.1.7). Their default posture is **proceed**. They reach the
+operator ONLY through the framework's enumerated **turn-ending** pauses, each of which emits
+a concrete report or decision prompt the operator answers in chat:
 
-Do NOT use it for:
+- pre-spawn approval gate, `--scope` gates, the sprint-close PAUSE, dispute adjudication,
+  `HARD-STOP`, and an explicit operator interrupt (`doctrines/coordinate-active-drive.md §II`).
 
-- ❌ confirmation or approval — "should I proceed?", "does this look right?", "ok to continue?";
-- ❌ reassurance, status check-ins, or narrating a decision you are equipped to make;
-- ❌ anything with an obvious default — pick it, note it in the report, move on;
-- ❌ **adding NEW stop points.** The framework already has defined boundaries (PLAN-GATE,
-  the operator PAUSE at sprint close, `--scope` gates). Honor those; do not invent mid-run
-  "let me check" stops. A decision worth recording goes in the close report, not a mid-sprint
-  interrupt. An execution session that stops every time it wants reassurance has failed.
+These are structural boundaries, not interactive questioning. Everything between them is
+action. Specifically, an execution session does NOT:
 
-**Teammate-conductors NEVER ask the operator** — they escalate to root via `SendMessage`
-(`doctrines/dispatch-tier-separation.md`); root decides whether anything reaches the operator.
+- ❌ ask for confirmation / approval — "should I proceed?", "does this look right?";
+- ❌ ask for reassurance, status check-ins, or narrate a decision it is equipped to make;
+- ❌ stop on anything with an obvious default — pick it, note it in the report, move on;
+- ❌ invent NEW stop points. A decision worth recording goes in the close report, not a
+  mid-sprint interrupt. A runner that stops every time it wants reassurance has failed.
+
+If an execution session feels it needs to ask the operator a free-form question, that is a
+signal the work should have been **planted** first (`/shepherd:plant`) — route it there;
+do not grow a question habit in the runner.
+
+**Teammate-conductors NEVER contact the operator** — they escalate to root via `SendMessage`
+(`doctrines/dispatch-tier-separation.md`); root decides whether anything reaches the operator,
+and surfaces it as a turn-ending report (root has no `AskUserQuestion` either).
 
 ## Seed is recommended, not required
 
 A seed is the best drift anchor, but `/shepherd:spawn` and `/shepherd:start` run WITHOUT one —
 never hard-refuse for a missing seed:
 
-1. If there is no seed and the objective is not derivable from the repo / issue ledger, ask
-   ONE batched kickoff `AskUserQuestion` (objective + scope + done-criteria), then run.
-2. Seedless means less ground truth — keep the EXISTING pause/gate discipline; do NOT add new
-   interrupts to compensate. Lean on sensible defaults and surface drift risk in the report.
-3. Note the elevated drift risk in the plan header and the close report.
+1. If the objective is **derivable** from the handoff / issue ledger / branch / repo state,
+   RUN on best-effort defaults. Record the assumed objective + scope + done-criteria and the
+   elevated drift risk in the plan header and the close report.
+2. If the objective is **not derivable at all**, do NOT guess a sprint into existence and do
+   NOT pop a question (the tool is gone). Emit a one-block turn-ending report recommending the
+   operator either state the objective in chat or run `/shepherd:plant` first — then stop.
+3. Seedless trades drift-resistance for speed, with eyes open. Keep the EXISTING pause/gate
+   discipline; do NOT add new interrupts to compensate.
 
-The seed remains the happy path: a planted seed front-loads the questions (planter ↔ operator)
-so execution runs uninterrupted. Seedless trades drift-resistance for speed, with eyes open.
+The seed remains the happy path: a planted seed front-loads the questions (planter ↔ operator,
+via `AskUserQuestion`) so execution runs uninterrupted.

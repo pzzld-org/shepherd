@@ -13,8 +13,11 @@
   (`agent()`, `parallel()`, `pipeline()`, `phase()`) to fan out many subagents in the
   background and return one consolidated result. Intermediate results live in script
   variables, not the conversation context.
-- **Availability:** **ALWAYS PRESENT as a top-level tool** on a Claude Code build that
-  supports it. It is **NOT** a deferred or MCP tool.
+- **Availability:** **ENABLED across Claude Code entrypoints — CLI, Claude-Code-on-the-web,
+  AND remote / cloud-container sessions.** It is a **top-level** tool, **NOT** a deferred or
+  MCP tool. Treat it as present by default; the only genuine absence is an explicit disable
+  (`disableWorkflows` / `CLAUDE_CODE_DISABLE_WORKFLOWS`) or a Claude Code build below the
+  Dynamic Workflows floor (v2.1.154) — **never** "web/remote omits it" (the retired #146 claim).
 - **❌ NEVER `ToolSearch` for it.** `ToolSearch("workflow")` / `ToolSearch select:Workflow`
   returns nothing — *by design*, because the tool is **top-level**, not deferred (`ToolSearch`
   resolves deferred tools only). A nothing-result does **not** mean "unavailable"; it means you
@@ -23,14 +26,13 @@
   searching for the tool — a v0.3.5 sprint AND this framework's own ultracode maintenance session
   (2026-06-15) both ToolSearched, got nothing, and wrongly declared it "confirmed absent."
   ToolSearching here is the `WORKFLOW-SELFCHECK-TOOLSEARCH` anti-pattern.
-- **✅ How to tell if it's available:** is the token `Workflow` in your visible tool list? If
-  yes, call it directly. If **no**, this environment does not provision it — EITHER a Claude Code
-  build below the Dynamic Workflows floor, **OR** a Claude-Code-on-the-web / remote-execution
-  session that omits it even on a supporting build (presence is environment-dependent; see #146).
-  In BOTH cases fall back to in-context `Agent(...)` fan-out (the documented degraded path). Do
-  not ToolSearch; do not conclude "the feature is broken." The visible-tool-list test is the ONLY
-  authority — never assume presence from the version number alone. The full first-action protocol
-  (detect → record → branch) is `doctrines/workflow-tool-self-check.md`.
+- **✅ How to tell if it's available:** is the token `Workflow` in your visible tool list? It is
+  EXPECTED to be — call it directly. A **nothing-result from `ToolSearch` is not the test** and
+  is not evidence of absence (see the forbidden-test note above). On the rare genuine absence
+  (an explicit `disableWorkflows` / `CLAUDE_CODE_DISABLE_WORKFLOWS`, or a build below the v2.1.154
+  floor) — and ONLY then — fall back to in-context `Agent(...)` fan-out (the documented degraded
+  path). Web / remote / cloud-container is **not** such a case: Dynamic Workflows is enabled there.
+  The full first-action protocol (detect → record → branch) is `doctrines/workflow-tool-self-check.md`.
 - **In shepherd:** shepherd COMPILES gate-free Stage-Graph fan-out segments into a Workflow
   script via `shctx graph compile` and runs it out-of-context. Doctrine:
   `doctrines/workflow-compile-down.md`; axis binding (which primitive for which job):
@@ -61,14 +63,16 @@
 ## Other collision-prone terms
 
 - **`ToolSearch` is for DEFERRED tools only** — specialist agents and MCP tools surfaced on
-  demand (`doctrines/specialist-dispatch.md`). **Top-level tools** (`Agent`, `Task`, `Bash`,
-  `Edit`, …) are always present and are **never** ToolSearch targets. The native `Workflow`
-  tool is *also* top-level (never a ToolSearch target), **but its presence is
-  environment-dependent** — web / remote-execution sessions may omit it even on a supporting
-  build (#146), so it is the one top-level tool you must NOT assume is present: check the
-  visible tool list and degrade to `Agent(...)` when absent (sense 1 above). Rule of thumb: if
-  a capability is a core verb of the harness, it's top-level; if it's a
-  third-party/plugin/specialist capability, it's deferred and discoverable via `ToolSearch`.
+  demand (`doctrines/specialist-dispatch.md`). **Top-level tools are never `ToolSearch`
+  targets**, and the native orchestration primitives are all top-level: `Agent`, `Workflow`
+  (Dynamic Workflows), `TaskCreate` / `TaskGet` / `TaskList` / `TaskUpdate`, `TeamCreate` /
+  `TeamDelete`, `SendMessage`, plus `Bash` / `Edit` / `Read` / … . They are **enabled across
+  entrypoints (web / remote / cloud-container included)** and called **directly**. A
+  `ToolSearch` for any of them returns **nothing — by design** (you looked in the wrong index);
+  that nothing is **never** evidence of absence. `ToolSearch select:TaskCreate` even *errors* —
+  expected, because `TaskCreate` is native, not deferred. Rule of thumb: if a capability is a
+  core verb of the harness, it's top-level (call it directly, never search); if it's a
+  third-party / plugin / specialist capability, it's deferred and discoverable via `ToolSearch`.
 - **`/loop` vs Loop-Until-Done vs a loop template:** `/loop` is the native Claude Code
   interval command; **Loop-Until-Done** (Pattern 6) is shepherd's convergent-iteration
   pattern; the loop **templates** (`references/loop-templates.md`) are per-role

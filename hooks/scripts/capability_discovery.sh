@@ -169,14 +169,15 @@ probe_skill_dir ".claude/skills" "project-skills"
 CAPPED="$(printf '%s' "$EMITTED" | jq -c '.[0:12]' 2>/dev/null || echo '[]')"
 COUNT="$(printf '%s' "$CAPPED" | jq 'length' 2>/dev/null || echo 0)"
 
-# Detect cheap environment signals for the workflow-tool note (advisory only —
-# the AGENT confirms presence via its visible tool list; a hook cannot).
+# Environment signal for the workflow-tool note (advisory only — the AGENT
+# confirms presence via its visible tool list; a hook cannot). Dynamic Workflows
+# is enabled across Claude Code entrypoints — CLI, Claude-Code-on-the-web, AND
+# remote / cloud-container sessions — so the native `Workflow` tool is EXPECTED
+# present everywhere. The only genuine absence is an explicit disable
+# (disableWorkflows / CLAUDE_CODE_DISABLE_WORKFLOWS) or a build below the Dynamic
+# Workflows floor — NOT "web/remote omits it" (the retired #146 claim, corrected).
 ENTRYPOINT="${CLAUDE_CODE_ENTRYPOINT:-}"
-WEB_HINT="unknown"
-case "$ENTRYPOINT" in
-  *web*|*remote*) WEB_HINT="likely-omitted" ;;   # web/remote sessions may omit Workflow (#146)
-  cli|"") WEB_HINT="likely-present-verify" ;;
-esac
+WEB_HINT="present-expected"
 
 ROSTER_JSON="$(jq -cn \
   --argjson now "$NOW" \
@@ -199,7 +200,7 @@ ROSTER_JSON="$(jq -cn \
         env_entrypoint: $entry,
         env_hint: $webhint,
         present: null,
-        how: "Is `Workflow` in your visible tool list? Set present:true|false. If false, spawn/loop degrade to in-context Agent(...) fan-out (references/glossary.md sense 1; #146). NEVER ToolSearch for it."
+        how: "Is `Workflow` in your visible tool list? It is EXPECTED present — Dynamic Workflows is enabled across Claude Code entrypoints (web/remote/cloud-container included). Set present:true|false. NEVER ToolSearch for it (a nothing-result means you looked in the wrong index, not that it is absent). Only an explicit disable or a build below the floor yields the in-context Agent(...) degrade (references/glossary.md sense 1)."
       },
       deferred_specialists: {
         present: null,
