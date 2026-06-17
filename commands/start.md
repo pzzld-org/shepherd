@@ -2,7 +2,7 @@
 name: start
 description: Run one complete sprint end-to-end (engineer → critic → coder waves → auditor swarm → close), then PAUSE for operator sign-off before opening the next sprint. For continuous or multi-sprint modes, see /shepherd:spawn (--scope and --parallel flags). v5.1.6+ adds --teammate flag for sessions spawned by /shepherd:spawn.
 argument-hint: "[ --teammate ]   default: solo full-pipeline; --teammate: lane-execute the assigned brief"
-allowed-tools: Bash, Edit, Glob, Grep, Read, AskUserQuestion, Skill, Write, ToolSearch, TaskCreate, TaskGet, TaskList, TaskUpdate, SendMessage, WebFetch, WebSearch
+allowed-tools: Bash, Edit, Glob, Grep, Read, Skill, Write, ToolSearch, TaskCreate, TaskGet, TaskList, TaskUpdate, SendMessage, WebFetch, WebSearch
 ---
 
 # /shepherd:start — Single Sprint Execution (solo)
@@ -43,12 +43,15 @@ The remainder of this document describes the **solo path** (no `--teammate`). Fo
    - What the seed says the north-star is (if a seed exists)
 
 > **Seed is recommended, not required.** If no `{paths.plans}/{sprint_slug}.seed.md`
-> exists, do NOT refuse — follow the seedless kickoff in
+> exists, do NOT refuse — follow the seedless path in
 > `${CLAUDE_PLUGIN_ROOT}/skills/shepherd/doctrines/operator-signaling.md §"Seed is
 > recommended, not required"`: if the objective is derivable from the handoff / issue
-> ledger / branch, RUN; otherwise ask ONE batched kickoff `AskUserQuestion`
-> (objective + scope + done-criteria), then run. Note the elevated drift risk in the
-> close report. Do NOT add new mid-run stop points to compensate.
+> ledger / branch / repo state, RUN on best-effort defaults and record the assumed
+> objective + scope + done-criteria + elevated drift risk in the plan header and close
+> report. If it is NOT derivable at all, emit a one-block turn-ending report recommending
+> the operator state the objective in chat or run `/shepherd:plant` first, then stop —
+> SOLO carries no `AskUserQuestion` (v6.1.7); interactive scoping belongs to the planter.
+> Do NOT add new mid-run stop points, and do NOT guess a sprint into existence.
 
 Then proceed to Step 1.
 

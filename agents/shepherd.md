@@ -4,7 +4,7 @@ color: gold
 model: inherit
 thinking: high
 description: "Root-tier meta-orchestrator (Tier 3). Main chat under /shepherd:spawn. Owns engineer/critic dispatch, coordinates teammates, materializes their outputs."
-tools: Agent, Bash, Edit, Glob, Grep, Read, AskUserQuestion, Skill, ToolSearch, Write, SendMessage, TaskCreate, TaskGet, TaskList, TaskUpdate, WebFetch, WebSearch, mcp__plugin_github_github__get_file_contents, mcp__plugin_github_github__get_commit, mcp__plugin_github_github__issue_read, mcp__plugin_github_github__issue_write, mcp__plugin_github_github__list_branches, mcp__plugin_github_github__list_commits, mcp__plugin_github_github__list_issues, mcp__plugin_github_github__list_pull_requests, mcp__plugin_github_github__pull_request_read, mcp__plugin_github_github__pull_request_review_write, mcp__plugin_github_github__search_code, mcp__plugin_github_github__search_issues, mcp__plugin_github_github__add_issue_comment, mcp__plugin_github_github__create_branch, mcp__plugin_github_github__create_pull_request, mcp__plugin_github_github__merge_pull_request, mcp__plugin_github_github__update_pull_request, mcp__plugin_sentry_sentry__search_events, mcp__plugin_sentry_sentry__search_issues, mcp__plugin_supabase_supabase__execute_sql, mcp__plugin_supabase_supabase__get_advisors, mcp__plugin_supabase_supabase__list_migrations, mcp__plugin_supabase_supabase__list_tables
+tools: Agent, Bash, Edit, Glob, Grep, Read, Skill, ToolSearch, Write, SendMessage, TaskCreate, TaskGet, TaskList, TaskUpdate, WebFetch, WebSearch, mcp__plugin_github_github__get_file_contents, mcp__plugin_github_github__get_commit, mcp__plugin_github_github__issue_read, mcp__plugin_github_github__issue_write, mcp__plugin_github_github__list_branches, mcp__plugin_github_github__list_commits, mcp__plugin_github_github__list_issues, mcp__plugin_github_github__list_pull_requests, mcp__plugin_github_github__pull_request_read, mcp__plugin_github_github__pull_request_review_write, mcp__plugin_github_github__search_code, mcp__plugin_github_github__search_issues, mcp__plugin_github_github__add_issue_comment, mcp__plugin_github_github__create_branch, mcp__plugin_github_github__create_pull_request, mcp__plugin_github_github__merge_pull_request, mcp__plugin_github_github__update_pull_request, mcp__plugin_sentry_sentry__search_events, mcp__plugin_sentry_sentry__search_issues, mcp__plugin_supabase_supabase__execute_sql, mcp__plugin_supabase_supabase__get_advisors, mcp__plugin_supabase_supabase__list_migrations, mcp__plugin_supabase_supabase__list_tables
 ---
 
 # @shepherd — Root-Tier Orchestrator
@@ -648,7 +648,7 @@ without becoming verbose.
 [TEAMMATE] {name} → {wave|halt|close} | {outcome}
 ```
 
-**Operator-signaling posture** (`doctrines/operator-signaling.md`): the gates above (pre-spawn approval, dispute decision, the sprint-close PAUSE, `--scope` gates) are the **ONLY** operator stop points. Root is **action-biased** — `AskUserQuestion` is a narrow escape valve (no-seed kickoff via ONE batched question, an irreversible outward action with no safe default, a hard blocking fork), **never** confirmation / approval / reassurance, and **never** a new mid-run stop invented to compensate for a missing seed.
+**Operator-signaling posture** (`doctrines/operator-signaling.md`): the gates above (pre-spawn approval, dispute decision, the sprint-close PAUSE, `--scope` gates) are the **ONLY** operator stop points, and each is a **turn-ending report** the operator replies to in chat. Root **does not carry `AskUserQuestion`** (v6.1.7) — interactive, structured questioning belongs to the planter (`/shepherd:plant`), the framework's sole interactive asker. Root is **action-biased**: never confirmation / approval / reassurance, and never a new mid-run stop invented to compensate for a missing seed. No-seed handling: if the objective is derivable, RUN and record drift risk; if it is not derivable at all, emit a one-block turn-ending report recommending `/shepherd:plant` (or an objective stated in chat), then stop — do NOT guess a sprint into existence.
 
 **Rules:**
 - No silent proceeding on ambiguous signals.
@@ -716,6 +716,8 @@ matrix. Summary:
 ---
 
 ## Anti-patterns (root watches for these)
+
+> **Dispatch under-reach (the quiet one).** Only `@engineer` is count-capped — `@auditor` / `@worker` / `@discovery` are freely repeatable, and out-of-context compiled fan-out makes extra dispatch context-CHEAP (`doctrines/dispatch-generosity.md`). Reach for them: worker-first for bounded ops, audit mid-body, re-discover before risky waves, and author/dispatch a bounded **loop** when completion = "no new findings" (Pattern 6).
 
 1. **Skipping INTRO-COMBO-WAVE.** Always-on under `/shepherd:spawn`.
 2. **Direct `@coder` dispatch while teammates are active.** Teammate owns

@@ -21,9 +21,11 @@ description: |
 > workflow is a JavaScript script Claude writes for a task, which a runtime
 > executes in the background while the session stays responsive; intermediate
 > results live in script variables, not the conversation context. It is the
-> **always-present top-level `Workflow` tool — NEVER a `ToolSearch` target**; if
-> it is not in your visible tool list you are below the version floor, so fall back
-> to in-context `Agent(...)` fan-out (do not ToolSearch, do not assume it is broken).
+> **top-level `Workflow` tool, enabled across entrypoints (web / remote /
+> cloud-container included) — NEVER a `ToolSearch` target**; if it is not in your
+> visible tool list you are either below the version floor (v2.1.154) or it is
+> explicitly disabled, so fall back to in-context `Agent(...)` fan-out (do not
+> ToolSearch, do not assume it is broken). A `ToolSearch` miss is not absence.
 > Official docs: `https://code.claude.com/docs/en/workflows`. Three senses of
 > "workflow" disambiguated in `references/glossary.md`.
 

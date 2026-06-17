@@ -23,25 +23,29 @@ description: |
 > gave up. On 2026-06-15 *this framework's own maintenance session*, running
 > under `/effort ultracode` with an explicit "use the Workflow tool" instruction,
 > did the identical thing — `ToolSearch select:Workflow` → nothing → "confirmed
-> absent." The conclusion happened to be right (it was a web session), but the
-> **method was the exact failure mode**, and had the tool been present the
-> session would have wrongly skipped it. The lesson: detection cannot live in
-> prose an agent reads once and forgets. It must be a **named first action with a
-> recorded result**. That is this doctrine.
+> absent." **Both the method and the conclusion were wrong**: Dynamic Workflows is
+> enabled in web / remote / cloud-container sessions, so the tool was almost
+> certainly present and the session skipped a tool it had. The lesson: detection
+> cannot live in prose an agent reads once and forgets, and it must NEVER be a
+> `ToolSearch`. It must be a **named first action with a recorded result** read off
+> the visible tool list. That is this doctrine.
 
 ## I. The ONE test (authoritative)
 
 **Is the literal token `Workflow` in your visible tool list?**
 
-- **Yes** → the tool is provisioned. Use it (compile gate-free fan-out, §IV).
-- **No** → this environment does not provision it. Degrade to in-context
-  `Agent(...)` fan-out (§V). This is correct and expected, not a failure.
+- **Yes** (the expected case — Dynamic Workflows is enabled across entrypoints,
+  web / remote / cloud-container included) → use it (compile gate-free fan-out, §IV).
+- **No** → only the narrow genuine-absence case (an explicit `disableWorkflows` /
+  `CLAUDE_CODE_DISABLE_WORKFLOWS`, or a build below the v2.1.154 floor). Degrade to
+  in-context `Agent(...)` fan-out (§V). This is **not** the web/remote default.
 
 That is the whole test. The visible-tool-list check is the **only** authority —
-never infer presence from the Claude Code version number, never from the
-`/effort ultracode` instruction "use the Workflow tool" (that instruction is
-*satisfied by* checking your tool list, not by going to find a tool), and never
-from a prior session's memory of what was available.
+never infer absence from a `ToolSearch` miss (§II), never from the fact that the
+session is web/remote (it is enabled there), never from the Claude Code version
+number, and never from the `/effort ultracode` instruction "use the Workflow tool"
+(that instruction is *satisfied by* checking your tool list, not by searching for
+a tool), and never from a prior session's memory of what was available.
 
 ## II. The forbidden test — NEVER `ToolSearch` for `Workflow`
 
@@ -53,6 +57,12 @@ looked in the wrong place**; it is not evidence of absence and must never be
 reported as "confirmed absent." Reaching for `ToolSearch` here is itself the
 `WORKFLOW-SELFCHECK-TOOLSEARCH` anti-pattern — stop and apply §I instead.
 
+The same holds for every native orchestration primitive — `TaskCreate` /
+`TaskGet` / `TaskList` / `TaskUpdate`, `TeamCreate` / `TeamDelete`, `SendMessage`:
+all top-level, all called directly, none a `ToolSearch` target. `ToolSearch
+select:TaskCreate` *erroring* is expected and means "native, not deferred", not
+"missing".
+
 (Why the confusion persists: the model has no training prior for this tool —
 research-preview, 2026-05 — so these doctrines are its only teacher. See
 `references/glossary.md` and `doctrines/primitive-axis-binding.md`.)
@@ -61,8 +71,8 @@ research-preview, 2026-05 — so these doctrines are its only teacher. See
 
 The SessionStart probe (`hooks/scripts/capability_discovery.sh`,
 `doctrines/capability-discovery.md §V`) writes an **advisory env hint** only —
-`likely-omitted` for web/remote entrypoints, `likely-present-verify` otherwise —
-because a hook is not the agent and cannot see the tool list. You close the loop:
+`present-expected` (Dynamic Workflows is enabled across entrypoints) — because a
+hook is not the agent and cannot see the tool list. You close the loop:
 
 - On your **first** `/shepherd:*` turn, perform §I and record
   `workflow_tool: present: true|false` in your orientation. This satisfies the
@@ -109,15 +119,16 @@ list.
 
 ## V. When absent — degrade cleanly (correct, not a failure)
 
-When `Workflow` is **not** in your visible tool list — a Claude Code build below
-the Dynamic Workflows floor (v2.1.154), **or** a Claude-Code-on-the-web /
-remote-execution session that omits it even on a supporting build (presence is
-environment-dependent, #146) — you degrade to in-context `Agent(...)` fan-out.
-This is the documented degraded path (`doctrines/workflow-compile-down.md §XI`,
-glossary sense 1). It is fully correct: the same flock, the same briefs, the same
-graph — walked in-context instead of compiled. Do not ToolSearch, do not retry,
-do not report the feature "broken." Record `present: false` and proceed. Solo and
-teammate both degrade identically; no team is required either way.
+When `Workflow` is **not** in your visible tool list — the narrow genuine-absence
+case: a Claude Code build below the Dynamic Workflows floor (v2.1.154), **or** an
+explicit disable (`disableWorkflows` / `CLAUDE_CODE_DISABLE_WORKFLOWS`) — you
+degrade to in-context `Agent(...)` fan-out. (Web / remote / cloud-container is NOT
+this case — Dynamic Workflows is enabled there; #146 corrected.) This is the
+documented degraded path (`doctrines/workflow-compile-down.md §XI`, glossary sense
+1). It is fully correct: the same flock, the same briefs, the same graph — walked
+in-context instead of compiled. Do not ToolSearch, do not retry, do not report the
+feature "broken." Record `present: false` and proceed. Solo and teammate both
+degrade identically; no team is required either way.
 
 ## VI. First-action placement (mode-agnostic)
 
@@ -136,7 +147,7 @@ substrate already chosen.
 ## VII. Cross-doctrine references
 
 - `references/glossary.md §1` — the native `Workflow` tool: what it is, the
-  visible-tool-list test, never-ToolSearch, environment-dependent presence.
+  visible-tool-list test, never-ToolSearch, always-enabled presence (#146 corrected).
 - `doctrines/capability-discovery.md §V` — the SessionStart probe, the advisory
   env hint, and the `agent_fillin.workflow_tool` hand-off this doctrine closes.
 - `doctrines/workflow-compile-down.md` — the compile MODEL (§IV faithfulness, §V
