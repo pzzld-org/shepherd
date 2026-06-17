@@ -36,7 +36,7 @@ When the operator provides new information mid-sprint, classify it before acting
 
 ### Clarification
 
-1. Ask for confirmation via `AskUserQuestion` if the amendment could be read two ways.
+1. If the amendment could be read two ways, resolve the ambiguity before applying: a planting / babysit session (planter) may use `AskUserQuestion`; an execution session — which carries no `AskUserQuestion` (v6.1.7) — surfaces a one-line clarification as a **turn-ending** question and waits for the operator's reply.
 2. Apply as a **dispatcher-patch** — amend the affected lane's brief inline, without engineer re-dispatch.
 3. Log to the dispatcher-patch ledger at `{paths.ctx}/dispatcher-patches/{sprint_slug}-pc-{N}.md` (see §III).
 4. Do NOT stop the active coder dispatch; fold into the NEXT brief if that coder is already in-flight.

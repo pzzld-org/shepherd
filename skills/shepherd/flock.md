@@ -372,6 +372,7 @@ Full contract + use-case catalog + cross-sprint reuse rules: `doctrines/discover
 | @auditor overlaps with Wave 2 coders | Pattern B — same message batch (`doctrines/pattern-b-overlap.md`) |
 | @worker at Wave 1 START | IO-bound; never defer |
 | @engineer once per sprint | Opus; gated by @critic |
+| **Only `@engineer` is count-capped** — `@auditor` / `@worker` / `@discovery` / `@coder` / `@critic` are freely repeatable | Reach generously: the close swarm (3–5) and the intro waves are FLOORS, not ceilings — audit mid-body, re-discover before risky waves, worker-first for bounded ops, loop when completion = "no new findings" (`doctrines/dispatch-generosity.md`) |
 | Main chat owns git | Coders describe diffs; main chat commits |
 | No gates in coders | Main chat runs the single validation pass between waves |
 | Every coder brief: language skills + `code-style` | Mandatory always (per `[skills.mandatory]`) |

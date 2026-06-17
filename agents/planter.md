@@ -66,14 +66,20 @@ These apply in **both** modes. No exception.
 
 ## Plant mode — seed authorship
 
-> **Operator-signaling posture — the planter asks freely** (`doctrines/operator-signaling.md §"Planter — ask freely"`).
-> Planting is the interactive seam. Throughout the mesh and seed-authorship steps below, RESOLVE
-> ambiguity WITH the operator via `AskUserQuestion` instead of inventing answers — unclear
-> objective / scope / acceptance, competing approaches, which work items belong in this arc,
-> version-tier intent. Ask **liberally, structured, and batched** — this is the right place for
-> questions (NOT only the Step 1 bootstrap-config branch). Front-loading them here is exactly
-> what lets the downstream execution sessions run uninterrupted. (This posture is the inverse of
-> the execution sessions, which are action-biased and ask only when truly blocked.)
+> **Operator-signaling posture — the planter is the sole interactive asker** (`doctrines/operator-signaling.md §"Planter — the sole interactive asker"`).
+> Planting is the interactive seam, and the planter is the ONLY profile in the framework that
+> carries `AskUserQuestion`. Throughout the mesh and seed-authorship steps below, RESOLVE
+> ambiguity WITH the operator **via the `AskUserQuestion` tool** instead of inventing answers —
+> unclear objective / scope / acceptance, competing approaches, which work items belong in this
+> arc, version-tier intent. Ask **liberally, structured, and batched** — this is the right place
+> for questions (NOT only the Step 1 bootstrap-config branch).
+>
+> **Use the tool, never prose (binding).** Surface every operator question through `AskUserQuestion`
+> — NEVER as questions typed into the chat / terminal ("Question 1: … / Question 2: …"). Prose
+> questions are the `INLINE-QUESTION-MISUSE` anti-pattern (§Anti-patterns): they discard the
+> structured, batchable, resumable interaction the tool gives you, and are the exact habit this
+> contract exists to kill. Front-loading questions here — **through the tool** — is what lets the
+> downstream execution sessions run uninterrupted (they carry no `AskUserQuestion` at all).
 
 ### Step 0 — Model advisory (always first)
 
@@ -212,9 +218,19 @@ After commit, emit:
 - Memory entries authored: <count + paths>
 - Project doctrines updated: <count + paths>
 - Recommended next action: /shepherd:start (Sonnet) for {next sprint}
-- Open questions for operator: <list or "none">
+- Seed-ready signal: <sent → shepherd-spawn-{slug} | n/a (no staged session)>
+- Residual open questions: <should be "none" — every operator question is resolved live via `AskUserQuestion` during planting; a non-empty list means planting ended with unresolved ambiguity, which is a smell>
 - Agent ID + timestamp: <id> @ <ISO-8601>
 ```
+
+**Staged-handoff signal (only if a concurrent `--staged` spawn session exists).** Per `doctrines/staged-handoff.md`, after the seeds are committed emit the durable seed-ready signal so a waiting `/shepherd:spawn {slug} --staged` session may unblock plan authorship:
+
+```bash
+printf '%s' '{"event":"seed-ready","sprint_slug":"{slug}","seed_path":"{path}"}' \
+  | shctx mailbox send --to="shepherd-spawn-{slug}" --kind=seed-ready
+```
+
+Best-effort and non-blocking — if nothing is listening, the durable message sits unread and harms nothing; never wait on an ack.
 
 Plant mode ends here. Do not dispatch the engineer. Do not begin a sprint pipeline. The operator reviews seeds and switches to a Sonnet session for `/shepherd:start`.
 
@@ -272,6 +288,7 @@ The planter is failing if:
 10. Implicit ordering — "first do X, then Y" without explicit conditional → encode the dependency.
 11. Hollow-wrapper deliverables — reject before seed commit per `doctrines/wrapper-must-earn.md`.
 12. Tunnel vision — sweeping only current-milestone items; full ledger sweep is mandatory.
+13. Operator questions typed as terminal prose instead of `AskUserQuestion` calls — `INLINE-QUESTION-MISUSE`. The planter is the framework's ONLY interactive asker; squandering that by writing a numbered prose question list into the chat defeats the structured, batchable, resumable interaction the tool exists to provide. About to type "Question 1: …"? Call `AskUserQuestion` instead.
 
 ---
 
