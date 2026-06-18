@@ -64,7 +64,8 @@ tool list and it cannot call `ToolSearch`. The probe is honest about this:
 | Installed skills (`~/.claude/skills/*`, project `.claude/skills/*`) | ✅ directly |
 | Env signals (e.g. `CLAUDE_CODE_ENTRYPOINT` web/remote hint) | ✅ directly |
 | **The visible tool list** (is `Workflow` present?) | ❌ — agent fills in |
-| **Deferred tools** (specialist agents/MCP via `ToolSearch`) | ❌ — agent fills in |
+| **Specialist subagents** (from the visible available-agents list — NOT `ToolSearch`) | ❌ — agent reads the list |
+| **Deferred MCP / utility tool calls** (via `ToolSearch`) | ❌ — agent fills in |
 
 For the rows the hook cannot enumerate, the roster carries an `agent_fillin`
 contract — a documented hand-off asking the agent to record those on first
@@ -100,7 +101,7 @@ Roster shape (`<ns>/cache/discovered-capabilities.json`):
       "source": "auto", "origin": "plugins:superpowers" }
   ],
   "count": 1,
-  "agent_fillin": { "workflow_tool": { "present": null, … }, "deferred_specialists": { … } }
+  "agent_fillin": { "workflow_tool": { "present": null, … }, "available_specialists": { … } }
 }
 ```
 

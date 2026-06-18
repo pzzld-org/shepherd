@@ -176,13 +176,14 @@ Per `doctrines/outcome-enforcement.md §Seam 3`, the completeness concern is the
 
 A sprint that promised a machine-checkable outcome but whose seed declared no runnable predicate is itself a defect — file it (the gate that should have caught it is `PLAN-MISSING-OUTCOME-VERIFICATION` at PLAN-GATE, `doctrines/outcome-enforcement.md §Seam 2`). Outcome re-verification is **detection only** — you file the regression; the conductor/operator decides the remediation. A genuinely outcome-less sprint (rare — pure docs/scaffolding) that declared so explicitly no-ops this step rather than silently passing.
 
-### Completeness — v6.1.6 extension: workflow-substrate discipline
+### Completeness — dispatch-substrate discipline (native primitives never `ToolSearch`ed)
 
-Per `doctrines/workflow-tool-self-check.md` + `doctrines/primitive-axis-binding.md §IV`, verify each lane chose the right execution substrate for its gate-free fan-out:
+Per `doctrines/workflow-tool-self-check.md` + `doctrines/primitive-axis-binding.md §IV` + `doctrines/specialist-dispatch.md §Step 2`, verify each lane chose the right execution substrate for its gate-free fan-out **and** discovered agents/primitives the right way (visible list / direct call — never `ToolSearch`):
 
 1. For every `WAVE-COMPLETE` payload (spawn) or solo walk trace, confirm a `workflow_tool: present|absent` value was recorded (the self-check ran). A lane that dispatched fan-out with **no** recorded self-check is a LOW finding (the detection step was skipped).
-2. Where `workflow_tool: present` **and** the lane ran its gate-free fan-out as a hand-rolled in-context `Agent(...)` batch (`fanout: in-context-fallback` with no recorded runtime failure), file a **`PRIMITIVE-INVERSION`** finding (MEDIUM) — the conductor handicapped its own context and parallelism instead of compiling. Where `workflow_tool: absent`, in-context fan-out is **correct** — do NOT file (it is the documented degrade path on web/remote, #146).
+2. Where `workflow_tool: present` **and** the lane ran its gate-free fan-out as a hand-rolled in-context `Agent(...)` batch (`fanout: in-context-fallback` with no recorded runtime failure), file a **`PRIMITIVE-INVERSION`** finding (MEDIUM) — the conductor handicapped its own context and parallelism instead of compiling. Where `workflow_tool: absent`, in-context fan-out is **correct** — do NOT file (it is the documented degrade path for the narrow genuine-absence case: an explicit disable or a build below the v2.1.154 floor; web / remote / cloud-container is NOT such a case — Dynamic Workflows is enabled there, #146 corrected).
 3. Any sign a lane **`ToolSearch`ed for `Workflow`** (a `WORKFLOW-SELFCHECK-TOOLSEARCH` trace) is a LOW finding — the forbidden detection method. Detection only; the conductor/operator decides remediation.
+4. Any sign a lane **`ToolSearch`ed for an agent / subagent / teammate type** to "discover" or "confirm" it (e.g. `ToolSearch select:pr-review-toolkit:code-reviewer`, `ToolSearch select:shepherd:conductor`) is a **`SUBAGENT-DISCOVERY-TOOLSEARCH`** LOW finding — agent types are not deferred tools and come from the visible available-agents list (`doctrines/specialist-dispatch.md §Step 2`). The same trace concluding "specialist/teammate unavailable" from the empty `ToolSearch` result escalates to MEDIUM (a wrong-index miss read as absence — the failure mode that breaks teammate creation). Detection only.
 
 ## Per-finding contract
 
