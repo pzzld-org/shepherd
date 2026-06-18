@@ -771,7 +771,7 @@ Per D-API §9, **the teammate inherits the lead session's permission mode** — 
 | `Agent` | Dispatch flock lanes (engineer, critic, coder, auditor, worker, discovery). Without this the teammate cannot walk the Stage Graph. |
 | `Bash`, `Edit`, `Read`, `Write`, `Glob`, `Grep` | Plan / report / handoff authoring, gate execution at WAVE-GATE, brief assembly. |
 | `Skill` | Load `code-style:<lang>`, language-mastery, doctrine skills. |
-| `ToolSearch` | Discover specialist agents at runtime per `doctrines/specialist-dispatch.md`. |
+| `ToolSearch` | Discover deferred **tool calls** at runtime — MCP tools (`mcp__github__*`, `mcp__sentry__*`, …) + on-demand utilities. **NOT for agents/teammates** — those come from the visible available-agents list (`doctrines/specialist-dispatch.md §Step 2`). |
 | `SendMessage` | Escalation channel back to planter per `spawn-escalation.md §V`. |
 | `Task*` | Track in-flight wave state. |
 | `WebFetch`, `WebSearch` | Doctrine cross-reference, dependency docs. |

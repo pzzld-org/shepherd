@@ -118,10 +118,12 @@ are the long-form Q3 conditions):
    conductor knows what state the specialist can mutate. No
    "general-purpose" specialists with broad write surface.
 3. **Conductor has seen the specialist's description in this session
-   and verified the fit.** Specialists discovered via the available-agents
-   list, `ToolSearch`, or the operator-installed catalog. Never dispatch
-   a specialist whose contract you haven't read THIS SESSION (people
-   skim across sessions; mis-briefed specialists produce garbage).
+   and verified the fit.** Specialists are discovered from the **visible
+   available-agents list** (the system-reminder enumeration) — NEVER via
+   `ToolSearch` (an agent type is not a deferred tool; see SPECIALIST
+   DISCOVERY §Step 2). Never dispatch a specialist whose contract you haven't
+   read THIS SESSION (people skim across sessions; mis-briefed specialists
+   produce garbage).
 4. **Equivalent flock dispatch would be strictly worse.** The flock's
    `@worker` can do most things — specialists only win when their
    purpose-built prompts produce measurably better output.
@@ -156,35 +158,47 @@ Additionally forbidden as substitutes:
 When the decision tree clears Q3, the conductor still has to *find* the
 right specialist. The discovery procedure is mechanical, not improvisational:
 
-### Step 1 — Check the available-agents list
+### Step 1 — Check the available-agents list (the ONE authority)
 
 Every session prompt enumerates available agents under a system-reminder
 block (e.g., `pr-review-toolkit:code-reviewer`, `feature-dev:code-architect`,
 `code-simplifier:code-simplifier`, `plugin-dev:plugin-validator`, …). The
-conductor scans this list first. If the candidate specialist is not in the
-list, it is NOT currently registered — skip to Step 4 (Plugin reload).
+conductor scans this list first. **This list is the only authority for whether
+a specialist is callable.** If the candidate specialist is in it, it is
+callable — dispatch it. If it is not, it is NOT currently registered — skip to
+Step 4 (Plugin reload).
 
-### Step 2 — Load the specialist's tool schema via ToolSearch
+### Step 2 — Dispatch via `Agent({subagent_type})` — NEVER `ToolSearch` for the agent
 
-Specialists registered as Agent subagent types are dispatched through the
-generic `Agent({...})` shape. If a related tool (e.g., the plugin's own
-slash-command tool) is deferred, load its schema before fire:
+A specialist is a **subagent**, dispatched through the generic `Agent({...})`
+shape with `subagent_type: "<plugin>:<agent-slug>"`. **Subagent types are NOT
+tools — they are NEVER `ToolSearch` targets.** The authority for "is this
+specialist callable?" is the visible available-agents list you already read in
+Step 1. There is no schema to "load" before fire; if the name is in the list,
+just dispatch it.
+
+> **`ToolSearch select:pr-review-toolkit:code-reviewer` is the
+> `SUBAGENT-DISCOVERY-TOOLSEARCH` anti-pattern.** It returns nothing (or
+> errors) *by design*, because an agent type is not a deferred tool — exactly
+> the same class of mistake as `ToolSearch`-ing for the native `Workflow` /
+> `TeamCreate` / `TaskCreate` / `SendMessage` primitives (`references/glossary.md`,
+> `doctrines/workflow-tool-self-check.md §II`). A nothing-result is **NEVER**
+> evidence the specialist is absent — it means you queried the wrong index.
+> Reaching for `ToolSearch` to "confirm an agent" or "discover a teammate type"
+> is itself the violation. Read the available-agents list (Step 1) instead.
+
+`ToolSearch` IS the right call for a *different* thing entirely: a **deferred
+TOOL CALL** a lane needs — a deferred MCP tool (`mcp__github__*`,
+`mcp__sentry__*`, `mcp__supabase__*`) or an on-demand utility tool. Those ARE
+deferred and resolved by `ToolSearch`:
 
 ```
-ToolSearch(query="select:<plugin>:<agent>", max_results=1)
-ToolSearch(query="select:pr-review-toolkit:code-reviewer", max_results=1)
-ToolSearch(query="select:sentry:seer", max_results=1)
+ToolSearch(query="github issues", max_results=5)   # finds mcp__github__list_issues, …
+ToolSearch(query="sentry", max_results=5)          # finds mcp__sentry__search_events, …
 ```
 
-For keyword discovery when the exact name is unknown:
-
-```
-ToolSearch(query="pr review augmentation", max_results=5)
-ToolSearch(query="silent failure detection", max_results=5)
-```
-
-A schema return confirms the tool/agent is callable in this session. A
-"no match" return means it is NOT available — skip to Step 4.
+So the split is mechanical: discover the **tools** a lane calls via `ToolSearch`;
+discover the **agent** you dispatch from the visible available-agents list.
 
 ### Step 3 — Read the description block and cross-check authorization
 
@@ -216,8 +230,7 @@ When the specialist *should* be available but isn't currently registered
    ```
    [SHEPHERD] Specialist unavailability detected:
      • <plugin>:<agent> referenced in shepherd.toml [specialists].allowed
-       but not visible in the available-agents list and ToolSearch returns
-       no match.
+       but not visible in the available-agents list.
    Run /reload-plugins to refresh the agent catalog. If still unavailable
    after reload, shepherd degrades to @worker (lower fidelity).
    ```
@@ -437,8 +450,9 @@ Agent({
 When the conductor references a specialist plugin/agent that isn't currently
 registered in the session:
 
-1. **Detect** via Step 1 (available-agents list) + Step 2 (ToolSearch returns
-   no match).
+1. **Detect** via Step 1 — the specialist's name is absent from the visible
+   available-agents list. (NOT via `ToolSearch`: an agent type is not a deferred
+   tool, so a `ToolSearch` miss proves nothing — see SPECIALIST DISCOVERY §Step 2.)
 2. **Decide** which response applies:
 
    | Situation | Response |
@@ -520,6 +534,14 @@ Specialist dispatch outside the allowed list → process violation; grade-cap C+
 7. **Silent specialist degradation.** Specialist unavailable, conductor
    falls back to `@worker` without an operator-surface annotation. Per
    §Plugin reload + discovery — always annotate.
+8. **Conductor `ToolSearch`es to "discover" or "confirm" a specialist agent /
+   subagent / teammate type.** `SUBAGENT-DISCOVERY-TOOLSEARCH` (§Step 2). Agent
+   types are NOT deferred tools — they live in the visible available-agents list
+   and are dispatched via `Agent({subagent_type})` (teammates via `TeamCreate`).
+   A `ToolSearch` for one returns nothing *by design* and must never be read as
+   "specialist unavailable." Same class as `WORKFLOW-SELFCHECK-TOOLSEARCH`
+   (`doctrines/workflow-tool-self-check.md §II`). `ToolSearch` is for deferred
+   TOOL CALLS (MCP / utility), never for agents.
 
 ## See also
 
