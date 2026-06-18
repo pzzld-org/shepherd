@@ -69,9 +69,11 @@ table is `doctrines/primitive-axis-binding.md §I, §IV`.
 | **lane** (a vertical slice ACROSS waves; spawn-only, post-plan) | Tier 2 (teammate-conductor) | **Agent Teams** teammate |
 | **wave** (a sequential gated stage) | — (seam, not a tier) | conductor-inline gate |
 
-Consequences (enforced by §IV-bis): a **step** is a subagent (`team_name` UNSET); a
-**lane** is a teammate-conductor (`team_name` SET, `subagent_type: shepherd:conductor`);
-spawning a lane uses **Agent Teams, never a Dynamic Workflow**, and a lane's gate-free
+Consequences (enforced by §IV-bis): a **step** is a subagent (an ephemeral `Agent`/`Task`
+dispatch); a **lane** is a teammate-conductor (a long-lived teammate spawned via the native
+teammate-spawn referencing `subagent_type: shepherd:conductor`, addressed via `SendMessage`).
+The discriminator is the spawn INTENT, not a `team_name` field (`team_name` is accepted but
+ignored since v2.1.178). Spawning a lane uses **Agent Teams, never a Dynamic Workflow**, and a lane's gate-free
 step fan-out **compiles to a Dynamic Workflow, never hand-rolled dispatch**
 (`primitive-axis-binding.md §III`). The engineer authors `waves × steps` with **no lane
 concept**; lanes are the post-plan spawn projection, and **never nest inside a wave**.
@@ -192,18 +194,22 @@ sight, with their halt codes. Every cited file (`agents/shepherd.md`,
 `commands/spawn.md`) inlines a one-line cite to this section instead of
 re-stating the rules.
 
-The shape of an Agent call under shepherd discipline:
+The shape of a subagent dispatch under shepherd discipline:
 
 ```
 Agent({
   subagent_type: "shepherd:<role>",   // MANDATORY for every flock dispatch
   model: "<sonnet|opus>",              // per flock.md table
-  prompt: "<task brief>",              // brief only — NOT the agent body
-  team_name: <UNSET unless root-level teammate spawn under /shepherd:spawn>
+  prompt: "<task brief>"               // brief only — NOT the agent body
+  // NO team_name — Agent/Task spawn subagents; `team_name` is accepted but
+  // ignored (v2.1.178) and never makes a teammate.
 })
 ```
 
-Any deviation from this shape is one of the violations below.
+Teammate-conductors (lanes) are NOT dispatched this way — root spawns them via the native
+teammate-spawn (a natural-language instruction referencing the `shepherd:conductor` agent
+type; no `TeamCreate` tool — removed v2.1.178), then talks to them via `SendMessage`. Any
+deviation from these shapes is one of the violations below.
 
 ### IV-bis.1. `DISPATCH-MISSING-SUBAGENT-TYPE`
 
@@ -227,14 +233,14 @@ the load-bearing replacement for the prior implicit enforcement.
 ### IV-bis.2. `DISPATCH-TEAMMATE-TYPE-MISMATCH`
 
 **Trigger:** a dispatch attempts to stand up a flock role OTHER than
-`shepherd:conductor` as a **teammate** — a `team_name`-bearing dispatch (or, on the
-live platform, a `TeamCreate` referencing a non-conductor agent type) whose
-`subagent_type != "shepherd:conductor"`. *(#93: there is no `team_name` parameter on
-`Agent`/`Task` — those spawn subagents; teammates spawn via the `TeamCreate` family
-referencing `shepherd:conductor`. The real discriminator is the TOOL FAMILY, so the
-`team_name` check is **defence-in-depth** — `dispatch_guard.sh` Check 3 — layered over
-the platform's own behavior. The mechanical floor is the `subagent_type` discipline,
-§IV-bis.1.)*
+`shepherd:conductor` as a **teammate** — i.e. a native teammate-spawn referencing a
+non-conductor agent type. *(#93 / v2.1.178: teammates spawn via the native teammate-spawn
+referencing `shepherd:conductor`; there is no `TeamCreate` tool — removed v2.1.178 — and the
+`team_name` parameter on `Agent`/`Task` is accepted but ignored, so it is NOT a usable
+discriminator. The real distinction is the spawn INTENT: only `shepherd:conductor` is spawned
+as a teammate; every other flock role is an ephemeral subagent. The `team_name`-keyed
+`dispatch_guard.sh` Check 3 is now vestigial defence-in-depth. The mechanical floor is the
+`subagent_type` discipline, §IV-bis.1.)*
 
 **Refusal:** root MUST refuse. Teammate-spawning (a lane) is conductor-only. A coder
 (etc.) is an ephemeral **subagent** dispatched BY a conductor, never spawned AS a
@@ -301,7 +307,7 @@ discipline).
 | Violation | Halt code | Refused by |
 |---|---|---|
 | Flock dispatch missing `subagent_type` | `DISPATCH-MISSING-SUBAGENT-TYPE` | root + conductor |
-| `team_name` set with `subagent_type ≠ shepherd:conductor` | `DISPATCH-TEAMMATE-TYPE-MISMATCH` | root |
+| Non-conductor agent type spawned as a teammate (`subagent_type ≠ shepherd:conductor`) | `DISPATCH-TEAMMATE-TYPE-MISMATCH` | root |
 | `subagent_type` outside closed-flock-six (or shepherd:conductor) | `DISPATCH-OFF-FLOCK` | root + conductor |
 | Teammate tries to construct `team_name` | `TEAMMATE-NESTING-ATTEMPT` | teammate-conductor |
 | Teammate dispatches `@engineer`/`@critic` | `WRONG-TIER-DISPATCH` | engineer/critic on receipt |
@@ -371,8 +377,9 @@ materialization cost and gets the cross-teammate view critic needs.
    2026-05-25..27) failed in concurrent failure modes: root treated spawn
    like start (did body work directly instead of fanning out conductors);
    when teammates were spawned, lane-**coders** were stood up as teammates
-   (a non-conductor, `team_name`-bearing dispatch — see #93 for the verified
-   teammate-spawn path: `TeamCreate` referencing `shepherd:conductor`) with no
+   (a non-conductor agent type spawned as a teammate — see #93 / v2.1.178 for the
+   verified teammate-spawn path: the native teammate-spawn referencing
+   `shepherd:conductor`, no `TeamCreate` tool) with no
    conductor coordination; `general-purpose` agents were dispatched
    because `subagent_type` was sometimes omitted entirely. The framework
    describing the correct shape was not enough; the enforcement language

@@ -58,40 +58,50 @@ This doctrine is the binding map between the two.
    resume semantics. Shepherd's coordination must work without it; the
    platform feature is a substrate, not a core dependency.
 
-The `/shepherd:spawn` command already enforces the platform substrate
-prerequisites (per `commands/spawn.md §Preflight`): Check 1 verifies
-`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=true`; Check 2 verifies Claude Code
-v2.1.32 or later; Check 3 verifies no active team owns the lead. Those
-checks are the boundary at which shepherd's enforcement begins — they
-gate spawn entry, not core shepherd discipline.
+The `/shepherd:spawn` command's preflight (per `commands/spawn.md §Preflight`) no longer
+hard-gates on a setup step: as of v2.1.178 Agent Teams needs no setup tool and is available
+across entrypoints (web / remote / cloud-container included), so Check 1
+(`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`) and Check 2 (Claude Code version) are **advisory,
+not refusals** — the runtime is the authority on availability. The only hard preflight stop
+is Check 3 (no active team already owns the lead — the one-team-per-session limit). tmux is
+NOT required; it is an optional display mode. These checks are the boundary at which
+shepherd's enforcement begins — they gate spawn entry, not core shepherd discipline.
 
-> **Resolved (#93, v6.0.2 — verified against live docs 2026-05-29).** The investigation
-> closed by reconciling shepherd to the documented platform mechanism (NOT an empirical
-> guess — the official Agent Teams / tools-reference / sub-agents / workflows docs are
-> authoritative and contradicted shepherd's earlier `Agent({team_name})` assumption):
-> - **Teammates spawn via the `TeamCreate` tool family** (`TeamCreate` / `SendMessage` /
->   `TeamDelete` / `Task*`) + a **natural-language lead instruction** referencing the
->   **`shepherd:conductor` subagent definition** as each teammate's agent type. There is
->   **NO `team_name` parameter on `Agent`/`Task`** — those spawn *subagents* (the worker
->   primitive), a disjoint tool family. (Spawning a teammate IS Agent Teams; a gate-free
->   step fan-out IS a compiled Dynamic Workflow over subagents — `doctrines/primitive-axis-binding.md`;
->   Dynamic Workflows orchestrate subagents only, never teammates.)
+> **Resolved (#93, v6.0.2) — UPDATED for the v2.1.178 platform change (2026-06).** The
+> teammate-spawn mechanism is reconciled to the documented platform behavior (the official
+> Agent Teams / sub-agents docs are authoritative). **As of Claude Code v2.1.178 the
+> `TeamCreate` and `TeamDelete` tools NO LONGER EXIST** — spawning a teammate no longer
+> needs a setup step, and the team is cleaned up automatically on session exit. The current
+> mechanism:
+> - **Teammates spawn via the native teammate-spawn** — a **natural-language lead
+>   instruction** to spawn one teammate per lane, each referencing the **`shepherd:conductor`
+>   subagent definition** as its agent (subagent) type, model `sonnet`. No `TeamCreate` call;
+>   the team forms automatically when the first teammate is spawned. After spawn, the
+>   lead↔teammate channel is **`SendMessage`** (address a teammate by name). The shared task
+>   list + `SendMessage` mailbox are always available to teammates.
+> - **`team_name` is dead as a discriminator.** Pre-v2.1.178, `team_name` on `Agent`/`Task`
+>   was the (already-defence-in-depth) tell; the platform now **accepts but ignores it**, and
+>   the `team_name` field in `TaskCreated`/`TaskCompleted`/`TeammateIdle` hook payloads is the
+>   session-derived name and **deprecated**. The real distinction is the spawn INTENT: a
+>   **teammate** is a long-lived session (references `shepherd:conductor`, addressed via
+>   `SendMessage`); a **subagent** is an ephemeral `Agent`/`Task` dispatch that returns a
+>   result. `Agent`/`Task` spawn subagents only — they never create a teammate.
 > - **No per-teammate identity env var exists** (`anthropics/claude-code#35447`, closed
 >   *not-planned*): a teammate session sees only `CLAUDECODE` + `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`.
->   Teammate identity (`teammate_name`, `team_name`) is delivered **only in hook-input JSON**
->   (`TeammateIdle`, `SubagentStart`/`SubagentStop`, `Task*`), never as an env var a script reads.
+>   Teammate identity (`teammate_name`) is delivered **only in hook-input JSON**
+>   (`TeammateIdle`, `Task*`), never as an env var a script reads.
 > - **Nesting is structurally impossible** (platform: "lead is fixed", "no nested teams",
->   "one team at a time"), so shepherd's operator-explicit-only rule is consistent with —
+>   "one team per session"), so shepherd's operator-explicit-only rule is consistent with —
 >   and largely redundant to — the platform guarantee.
 >
-> Reconciliation landed in v6.0.2: `commands/spawn.md` + `agents/conductor.md` (spawn via
-> `TeamCreate` referencing `shepherd:conductor`; teammate-mode detected via the boot-prompt
-> INVOCATION-CONTEXT + `.worktrees/` cwd, NOT env vars); `hooks/scripts/dispatch_guard.sh`
-> (the mechanical floor is the `subagent_type` checks; teammate-tier checks are best-effort
-> defence-in-depth, detected from the hook-input `cwd`). Where the older `Agent({team_name})`
-> + env-identity phrasing survives in the §II–§III rows below, THIS block is the
-> authoritative correction; the rows describe the historical posture and the durable
-> shepherd↔platform ownership split, which is unchanged.
+> Reconciliation: `commands/spawn.md` + `agents/shepherd.md` (spawn the conductor teammates
+> via the native teammate-spawn referencing `shepherd:conductor`; teammate-mode detected via
+> the boot-prompt INVOCATION-CONTEXT + `.worktrees/` cwd, NOT env vars);
+> `hooks/scripts/dispatch_guard.sh` (the mechanical floor is the `subagent_type` checks; the
+> `team_name`-keyed checks are dead now that `team_name` is ignored — retained only as
+> harmless, unit-tested defence-in-depth). Where older `Agent({team_name})` / `TeamCreate`
+> phrasing survives in the §II–§III rows below, THIS block is the authoritative correction;
+> the rows describe the durable shepherd↔platform ownership split, which is unchanged.
 
 ---
 
@@ -121,7 +131,7 @@ rules.
 | Dispatch tier | `doctrines/dispatch-tier-separation.md §I-II` — three-tier hierarchy (root / meta / flock) | None | shepherd-only | Platform's lead/teammate split is two-tier; shepherd adds a flock tier underneath the conductor. Tier discipline is core shepherd value-add, NOT inherited from platform. |
 | Dispute resolution | `agents/shepherd.md §Hard prohibitions #5` + `doctrines/root-shepherd-orchestration.md §VII` (quarantine → aggregate → `@critic` → operator) | None | shepherd-only | Platform's parallel-investigation pattern (per `https://code.claude.com/docs/en/agent-teams §Investigate with competing hypotheses`) is operator-prompted; shepherd's dispute loop is mechanically triggered on conflicting teammate findings. |
 | Subagent definitions for teammates | `shepherd:conductor` subagent definition (`agents/conductor.md`), referenced in the `TeamCreate` instruction; lane context supplied via the boot-prompt INVOCATION-CONTEXT per `commands/spawn.md §Build the teammate prompt` | Subagent type referenceable when spawning per `https://code.claude.com/docs/en/agent-teams §Use subagent definitions for teammates` | DUAL | **Resolved (#93):** the verified spawn path IS subagent-definition reference — `TeamCreate` spawns each teammate from the `shepherd:conductor` definition (it inherits that file's `tools:`/`model`), and shepherd layers the per-lane context via the boot-prompt INVOCATION-CONTEXT. Caveat (platform docs): `skills`/`mcpServers` frontmatter is NOT applied to a subagent-as-teammate, so per-skill MCP config must be carried in the boot prompt, not assumed from frontmatter. |
-| Display mode | Tmux always (recommended by `commands/spawn.md §Platform compatibility`); in-process degraded by upstream issue #31977 | `teammateMode: in-process \| tmux \| auto` per `https://code.claude.com/docs/en/agent-teams §Choose a display mode` | platform | Shepherd's recommendation tracks platform's current limitations; if in-process gains Agent-tool parity post-#31977 it becomes equally viable. |
+| Display mode | tmux OPTIONAL (`commands/spawn.md §Platform compatibility`); in-process (default, any terminal) and remote/cloud spawn + dispatch fine — the #31977 in-process Agent-tool gap no longer blocks the flow | `teammateMode: in-process \| tmux \| auto` per `https://code.claude.com/docs/en/agent-teams §Choose a display mode` | platform | Display mode is observability-only; the teammate-spawn capability does not depend on it. |
 | Plan approval mode | Shepherd plan + `@critic` gate at the root tier per `agents/shepherd.md §Step 1 — INTRODUCTION` | Plan approval mode for teammates per `https://code.claude.com/docs/en/agent-teams §Require plan approval for teammates` | shepherd-only for sprint plans | Platform's plan-approval is per-teammate read-only mode; shepherd's plan-approval is sprint-level via `@critic`. Different scope; no overlap in practice. |
 | Cleanup | Per `agents/shepherd.md §Side-effect boundary` (root) + `agents/planter.md §Babysitter mode §3` (delegated planter); also `/shepherd:cleanup` command via `cmd_teammate.sh prune` (v5.1.7+) | "Clean up the team" lead instruction per `https://code.claude.com/docs/en/agent-teams §Clean up the team` | DUAL | Shepherd cleanup is repo-state-aware (worktrees, branches, lock); platform cleanup is team-resource-aware (`~/.claude/teams/`, `~/.claude/tasks/`). Both must run; neither subsumes the other. |
 | Permissions | Inherited from lead per `commands/spawn.md §Teammate tool feed` ("the teammate inherits the lead session's permission mode") | Inherited from lead per `https://code.claude.com/docs/en/agent-teams §Permissions` | platform | Identical posture by design; no shepherd override needed. |
@@ -140,16 +150,16 @@ the **failure mode** when the two diverge.
 
 ### Rule 1 — Lead identity
 
-The platform's lead is the Claude Code session that issued the
-`TeamCreate` instruction to spawn the teammates (#93 — NOT `Agent({...})`;
-`Agent`/`Task` spawn subagents). Shepherd's lead is the same session, but
+The platform's lead is the Claude Code session that spawned the
+teammates via the native teammate-spawn (#93; v2.1.178 — NO `TeamCreate` tool;
+`Agent`/`Task` spawn subagents, never teammates). Shepherd's lead is the same session, but
 its ambient identity is `agents/shepherd.md` (root-tier).
 
 **Owner:** Both. They are the same process; only the identity layer
 differs.
 
 **Bridge:** `/shepherd:spawn` adopts `agents/shepherd.md` as the
-system-prompt addendum before issuing `TeamCreate`. The platform sees a
+system-prompt addendum before spawning the teammate-conductors. The platform sees a
 generic lead; shepherd sees a root-tier orchestrator. Operators must
 not load `agents/shepherd.md` outside `/shepherd:spawn` (per
 `agents/shepherd.md` Hard prohibition #1 and

@@ -181,7 +181,7 @@ just dispatch it.
 > `SUBAGENT-DISCOVERY-TOOLSEARCH` anti-pattern.** It returns nothing (or
 > errors) *by design*, because an agent type is not a deferred tool — exactly
 > the same class of mistake as `ToolSearch`-ing for the native `Workflow` /
-> `TeamCreate` / `TaskCreate` / `SendMessage` primitives (`references/glossary.md`,
+> `TaskCreate` / `SendMessage` primitives (`references/glossary.md`,
 > `doctrines/workflow-tool-self-check.md §II`). A nothing-result is **NEVER**
 > evidence the specialist is absent — it means you queried the wrong index.
 > Reaching for `ToolSearch` to "confirm an agent" or "discover a teammate type"
@@ -537,7 +537,7 @@ Specialist dispatch outside the allowed list → process violation; grade-cap C+
 8. **Conductor `ToolSearch`es to "discover" or "confirm" a specialist agent /
    subagent / teammate type.** `SUBAGENT-DISCOVERY-TOOLSEARCH` (§Step 2). Agent
    types are NOT deferred tools — they live in the visible available-agents list
-   and are dispatched via `Agent({subagent_type})` (teammates via `TeamCreate`).
+   and are dispatched via `Agent({subagent_type})` (teammates via the native teammate-spawn).
    A `ToolSearch` for one returns nothing *by design* and must never be read as
    "specialist unavailable." Same class as `WORKFLOW-SELFCHECK-TOOLSEARCH`
    (`doctrines/workflow-tool-self-check.md §II`). `ToolSearch` is for deferred

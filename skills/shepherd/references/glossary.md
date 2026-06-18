@@ -67,7 +67,8 @@
   That is its ENTIRE job. **Two things are never `ToolSearch` targets:**
   - **Subagents / teammates / specialists.** An agent type is **not** a tool. You discover it
     from the **visible available-agents list** (the system-reminder enumeration) and dispatch it
-    via `Agent({subagent_type})` — teammates via `TeamCreate`. `ToolSearch
+    via `Agent({subagent_type})` — teammates via the native teammate-spawn (no `TeamCreate`
+    tool; removed v2.1.178). `ToolSearch
     select:pr-review-toolkit:code-reviewer` / `ToolSearch select:shepherd:conductor` returns
     nothing or errors **by design**; that is the `SUBAGENT-DISCOVERY-TOOLSEARCH` anti-pattern
     (`doctrines/specialist-dispatch.md §Step 2`), and a nothing-result is **never** evidence the
@@ -75,8 +76,9 @@
     `shepherd:conductor` "to confirm it", getting nothing, and concluding the teammate type was
     unavailable.
   - **The native orchestration primitives** — all top-level: `Agent`, `Workflow` (Dynamic
-    Workflows), `TaskCreate` / `TaskGet` / `TaskList` / `TaskUpdate`, `TeamCreate` /
-    `TeamDelete`, `SendMessage`, plus `Bash` / `Edit` / `Read` / … . **Enabled across
+    Workflows), `TaskCreate` / `TaskGet` / `TaskList` / `TaskUpdate`, `SendMessage`, plus
+    `Bash` / `Edit` / `Read` / … . (`TeamCreate` / `TeamDelete` were REMOVED in v2.1.178 —
+    teammates now spawn with no setup tool.) **Enabled across
     entrypoints (web / remote / cloud-container included)** and called **directly**. A
     `ToolSearch` for any of them returns **nothing — by design** (wrong index); that nothing is
     **never** evidence of absence. `ToolSearch select:TaskCreate` even *errors* — expected,
@@ -90,7 +92,8 @@
   interval command; **Loop-Until-Done** (Pattern 6) is shepherd's convergent-iteration
   pattern; the loop **templates** (`references/loop-templates.md`) are per-role
   specializations. Entry point: `SKILL.md §0-ter`.
-- **Agent Teams vs a workflow:** Agent Teams (teammates via `TeamCreate`/`SendMessage`) is
+- **Agent Teams vs a workflow:** Agent Teams (teammates via the native teammate-spawn +
+  `SendMessage`; no `TeamCreate` tool — removed v2.1.178) is
   the primitive for *long-lived, gated, communicating* lanes; a Dynamic Workflow is the
   primitive for *gate-free, fire-and-collect* fan-out. One primitive per axis — never invert
   (`doctrines/primitive-axis-binding.md`).

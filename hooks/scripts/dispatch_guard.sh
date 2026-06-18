@@ -8,16 +8,19 @@
 # primitive; coders were dispatched as teammates; general-purpose agents slipped
 # through). This guard turns each invariant into a hard refusal.
 #
-# PLATFORM MECHANISM (verified 2026-05-29, #93 — supersedes shepherd's earlier
-# `Agent({team_name})` assumption):
-#   - Teammates spawn via the TeamCreate tool family + a natural-language lead
-#     instruction referencing the `shepherd:conductor` subagent type. The Agent/
-#     Task tool spawns SUBAGENTS only; there is NO `team_name` parameter on it.
+# PLATFORM MECHANISM (#93; UPDATED for v2.1.178 — supersedes shepherd's earlier
+# `Agent({team_name})` AND `TeamCreate`-tool assumptions):
+#   - Teammates spawn via the NATIVE teammate-spawn — a natural-language lead
+#     instruction referencing the `shepherd:conductor` subagent type. There is NO
+#     setup step and NO `TeamCreate`/`TeamDelete` tool (both REMOVED in v2.1.178);
+#     the team forms automatically. The Agent/Task tool spawns SUBAGENTS only and
+#     never creates a teammate. The `team_name` parameter on Agent/Task is accepted
+#     but IGNORED (deprecated, v2.1.178) — it is NOT a teammate discriminator.
 #   - A teammate session exposes NO identity env var (anthropics/claude-code#35447,
-#     closed not-planned — only CLAUDECODE + CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS
-#     are set). Teammate identity lives in hook-input JSON, not env.
+#     closed not-planned). Teammate identity lives in hook-input JSON, not env.
 #   - Teammate nesting is structurally impossible (platform: "lead is fixed",
-#     "no nested teams"). Dynamic Workflows orchestrate subagents only.
+#     "no nested teams", "one team per session"). Dynamic Workflows orchestrate
+#     subagents only.
 #
 # WHAT THIS GUARD ENFORCES, and how strongly:
 #   - Checks 1 & 5 (subagent_type discipline / off-flock) are LOAD-BEARING and
@@ -30,9 +33,10 @@
 #     no-op — acceptable, because teammate→team nesting is ALSO guaranteed
 #     impossible by the platform, and the tier contract is additionally carried
 #     by the conductor profile + escalation contract (defence in depth, not the
-#     sole guarantee). The `team_name`-keyed branches (2,3) cannot match real
-#     Agent/Task input (no such field); they are retained as a documented
-#     contract assertion + unit-tested belt-and-suspenders, harmless if dead.
+#     sole guarantee). The `team_name`-keyed branches (2,3) are VESTIGIAL as of
+#     v2.1.178: `team_name` on Agent/Task is accepted but ignored, so it no longer
+#     signals a teammate even if a caller sets it. They are retained as a
+#     documented contract assertion + unit-tested belt-and-suspenders, harmless.
 #
 # Input  (stdin): PreToolUse JSON { tool_name, cwd, tool_input.{subagent_type,prompt,description,team_name?}, ... }
 # Output (stdout):
@@ -49,7 +53,8 @@
 #   6. teammate-session AND a flock fan-out role, no compile    → PRIMITIVE-INVERSION (handrolled) (flag) [#89 inversion 2]
 #
 # Binding (doctrines/primitive-axis-binding.md): a LANE = one teammate-conductor
-# spawned via Agent Teams (TeamCreate); a STEP = a subagent (Agent/Task). Spawning
+# spawned via the native teammate-spawn (Agent Teams; no TeamCreate tool); a STEP =
+# a subagent (Agent/Task). Spawning
 # a lane is NEVER a workflow; a step fan-out is NEVER hand-rolled. This guard is
 # the mechanical half; the platform's structural guarantees + the conductor
 # profile carry the rest.

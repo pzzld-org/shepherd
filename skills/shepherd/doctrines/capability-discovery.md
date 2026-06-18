@@ -166,8 +166,8 @@ and reading the nothing as absence. The correction the probe now folds in:
 - The hook records an advisory env hint of `present-expected` (it cannot see the
   tool list). The **agent confirms** presence by the one authoritative test —
   *is `Workflow` in the visible tool list?* — and records `present: true|false`.
-- **NEVER `ToolSearch` for `Workflow`** (or for `TaskCreate` / `TeamCreate` /
-  `SendMessage` — all native top-level tools). A nothing-result means you looked
+- **NEVER `ToolSearch` for `Workflow`** (or for `TaskCreate` / `SendMessage` — all
+  native top-level tools). A nothing-result means you looked
   in the wrong index, not that the feature is absent; `ToolSearch
   select:TaskCreate` even *errors*, by design. Only on a confirmed genuine
   absence do `/shepherd:spawn` and `/shepherd:loop` degrade to in-context
