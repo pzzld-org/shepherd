@@ -64,7 +64,8 @@ tool list and it cannot call `ToolSearch`. The probe is honest about this:
 | Installed skills (`~/.claude/skills/*`, project `.claude/skills/*`) | ✅ directly |
 | Env signals (e.g. `CLAUDE_CODE_ENTRYPOINT` web/remote hint) | ✅ directly |
 | **The visible tool list** (is `Workflow` present?) | ❌ — agent fills in |
-| **Deferred tools** (specialist agents/MCP via `ToolSearch`) | ❌ — agent fills in |
+| **Specialist subagents** (from the visible available-agents list — NOT `ToolSearch`) | ❌ — agent reads the list |
+| **Deferred MCP / utility tool calls** (via `ToolSearch`) | ❌ — agent fills in |
 
 For the rows the hook cannot enumerate, the roster carries an `agent_fillin`
 contract — a documented hand-off asking the agent to record those on first
@@ -100,7 +101,7 @@ Roster shape (`<ns>/cache/discovered-capabilities.json`):
       "source": "auto", "origin": "plugins:superpowers" }
   ],
   "count": 1,
-  "agent_fillin": { "workflow_tool": { "present": null, … }, "deferred_specialists": { … } }
+  "agent_fillin": { "workflow_tool": { "present": null, … }, "available_specialists": { … } }
 }
 ```
 
@@ -165,8 +166,8 @@ and reading the nothing as absence. The correction the probe now folds in:
 - The hook records an advisory env hint of `present-expected` (it cannot see the
   tool list). The **agent confirms** presence by the one authoritative test —
   *is `Workflow` in the visible tool list?* — and records `present: true|false`.
-- **NEVER `ToolSearch` for `Workflow`** (or for `TaskCreate` / `TeamCreate` /
-  `SendMessage` — all native top-level tools). A nothing-result means you looked
+- **NEVER `ToolSearch` for `Workflow`** (or for `TaskCreate` / `SendMessage` — all
+  native top-level tools). A nothing-result means you looked
   in the wrong index, not that the feature is absent; `ToolSearch
   select:TaskCreate` even *errors*, by design. Only on a confirmed genuine
   absence do `/shepherd:spawn` and `/shepherd:loop` degrade to in-context

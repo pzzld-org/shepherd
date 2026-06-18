@@ -20,11 +20,14 @@
 #   CAN  — installed plugin/skill directories on disk, env-derived signals
 #          (e.g. CLAUDE_CODE_ENTRYPOINT, web/remote markers), the marketplace
 #          plugin tree.
-#   CANNOT — the agent's VISIBLE tool list, or deferred tools requiring
-#          ToolSearch (a SessionStart hook is not the agent and cannot call
-#          ToolSearch / list its own tools). For those the roster carries a
-#          documented `agent_fillin` contract: the agent records Workflow-tool
-#          presence + ToolSearch-discovered specialists on first /shepherd:*.
+#   CANNOT — the agent's VISIBLE tool list (incl. the available-agents block),
+#          or deferred MCP/utility tool calls requiring ToolSearch (a
+#          SessionStart hook is not the agent and cannot list its own tools or
+#          call ToolSearch). For those the roster carries a documented
+#          `agent_fillin` contract: the agent records Workflow-tool presence +
+#          the specialist agents visible in its available-agents list on first
+#          /shepherd:* (specialists are AGENTS read from that list, NOT
+#          ToolSearch-discovered tools).
 #
 # FAST-PATHS (exit 0 silently, ZERO hot-path cost — non-negotiable):
 #   - not a shepherd project
@@ -163,7 +166,8 @@ probe_skill_dir ".claude/skills" "project-skills"
 # Compose the ephemeral roster. We ALWAYS write it (even when empty) so the
 # `agent_fillin` contract is present — that block tells the agent what the hook
 # could NOT see and asks it to record those on first /shepherd:* (Workflow-tool
-# presence, ToolSearch-discovered specialists). Bounded: cap auto entries at 12
+# presence, plus the specialist agents visible in the available-agents list —
+# AGENTS read from that list, not ToolSearch-discovered tools). Bounded: cap auto entries at 12
 # to match the toolkit injection budget; the agent_fillin block is metadata.
 # ---------------------------------------------------------------------------
 CAPPED="$(printf '%s' "$EMITTED" | jq -c '.[0:12]' 2>/dev/null || echo '[]')"
@@ -202,9 +206,9 @@ ROSTER_JSON="$(jq -cn \
         present: null,
         how: "Is `Workflow` in your visible tool list? It is EXPECTED present — Dynamic Workflows is enabled across Claude Code entrypoints (web/remote/cloud-container included). Set present:true|false. NEVER ToolSearch for it (a nothing-result means you looked in the wrong index, not that it is absent). Only an explicit disable or a build below the floor yields the in-context Agent(...) degrade (references/glossary.md sense 1)."
       },
-      deferred_specialists: {
+      available_specialists: {
         present: null,
-        how: "Specialists (pr-review-toolkit:*, superpowers:*, etc.) are DEFERRED tools — enumerate via ToolSearch per doctrines/specialist-dispatch.md, then record names here."
+        how: "Specialists (pr-review-toolkit:*, superpowers:*, etc.) are AGENTS, not tools. Enumerate them from your VISIBLE available-agents list (the system-reminder block) and record the names here. NEVER ToolSearch for an agent type — that returns nothing by design (SUBAGENT-DISCOVERY-TOOLSEARCH); ToolSearch is for deferred MCP/utility tool calls only. Per doctrines/specialist-dispatch.md §Step 2."
       }
     }
   }' 2>/dev/null || true)"

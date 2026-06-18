@@ -108,7 +108,7 @@ binding; this profile operationalizes it.
     ship short.
 14. **(v6.0.5) NEVER end your turn waiting for the operator at the dispatch
     boundary.** Spawning a team is the START of active coordination, not a
-    hand-off to the human. After `TeamCreate` you confirm teammate liveness,
+    hand-off to the human. After spawning the teammates you confirm teammate liveness,
     scaffold the wave-gates, and enter the coordinate cycle (wake → act →
     probe → yield-to-events). You yield to the **event system**
     (`TeammateIdle`/`SendMessage`/`TaskCompleted`), which auto-resumes you —
@@ -152,7 +152,7 @@ binding; this profile operationalizes it.
 | `SEED-DRIFT-DETECTED` | A teammate surfaced `SEED-DRIFT-SUBSTANTIVE`; invoke the planter to amend the seed (`doctrines/root-shepherd-orchestration.md §V`), then re-issue MESH. |
 | `SPECIALIST-UNCLEAR` / `SPECIALIST-UNAVAILABLE` | A specialist dispatch was ambiguous or failed after reload; clarify scope or decide substitute-vs-abort with the operator. Per `doctrines/specialist-dispatch.md`. |
 | `TEAMMATE-GIT-WRITE` (v6.0.3 / v6.0.9) | A teammate-conductor attempted a dev-branch integration command (`git merge`, `git rebase`, `git push`, or `git cherry-pick` onto the dev branch). Integration is root-exclusive. Acknowledge the halt; run the integration yourself via the `LANE-INTEGRATE` review step; then send a resume reply. The teammate refused correctly. Cross-ref `hooks/scripts/teammate_git_guard.sh` + `doctrines/teammate-integration-authority.md`. |
-| `WRONG-VEHICLE` (v6.0.9) | Teammate or `TeamCreate` spawn was attempted for a single-cluster (`H = 1`) hotfix. Dispatch ONE `@coder` subagent; never a teammate. Per `doctrines/hotfix-dispatch.md` single-HF rule. Cross-ref `hooks/scripts/hotfix_vehicle_guard.sh`. |
+| `WRONG-VEHICLE` (v6.0.9) | A teammate spawn was attempted for a single-cluster (`H = 1`) hotfix. Dispatch ONE `@coder` subagent; never a teammate. Per `doctrines/hotfix-dispatch.md` single-HF rule. Cross-ref `hooks/scripts/hotfix_vehicle_guard.sh`. |
 
 ---
 
@@ -190,9 +190,9 @@ no explicit toggle — but you must self-recognize which you are in.
 
 - About to spawn (or just spawned) one or more teammate-conductors.
 - Activity: build teammate boot prompt per `commands/spawn.md §Build the
-  teammate prompt`, run preflight (Checks 0–8), pre-create all lane worktrees (`git worktree add`) and emit `[WORKTREE-READY]` (#97), then issue the `TeamCreate`
-  instruction (referencing the `shepherd:conductor` subagent definition; #93 —
-  `Agent`/`Task` spawn subagents, NOT teammates), materialize the dispatched-team
+  teammate prompt`, run preflight (Checks 0–8), pre-create all lane worktrees (`git worktree add`) and emit `[WORKTREE-READY]` (#97), then issue the native teammate-spawn
+  instruction (referencing the `shepherd:conductor` subagent definition; #93 / v2.1.178 —
+  NO `TeamCreate` tool; `Agent`/`Task` spawn subagents, NOT teammates), materialize the dispatched-team
   status board to `.artifacts/logs/parallel-status-{date}.md`.
 - Forbidden: source writes, direct `@coder` dispatch, nested spawn.
 
@@ -384,14 +384,14 @@ The body is teammate orchestration. Per scope:
   projection) via Agent Teams, per `commands/spawn.md §Spawn dispatch`. The
   lane count IS the teammate count. (`--parallel` below is a separate,
   sprint-level fanout; lane-per-conductor is the within-sprint fanout.)
-- **MODEL PIN (mandatory — v6.0.9).** The `TeamCreate` instruction MUST
+- **MODEL PIN (mandatory — v6.0.9).** The teammate-spawn instruction MUST
   explicitly pin `model: sonnet` for every teammate. Do NOT rely on the
   `shepherd:conductor` subagent-definition's `model: sonnet` frontmatter
   inheritance — empirically, teammates have inherited the lead session's
   model instead (v6.0.9 cost regression, Opus 4.8 billed for every lane).
   The pin must be explicit in the instruction text. See
   `commands/spawn.md §Spawn dispatch → Model pin requirement`.
-- **Immediately after `TeamCreate`, do NOT stop.** Confirm liveness
+- **Immediately after spawning the teammates, do NOT stop.** Confirm liveness
   (`shctx teammate liveness` until every lane is `active`/heartbeating — a
   teammate still `booting` with no heartbeat is a probe candidate, not a
   working lane), then scaffold the `wave-N-gate` markers (#100), then enter the
@@ -426,9 +426,9 @@ The body is teammate orchestration. Per scope:
 #### `--scope sprint --parallel <N>`
 
 - Pre-spawn collision check (per `commands/spawn.md §--parallel flag`).
-- Spawn N teammates via the `TeamCreate` instruction (one team, N teammate-conductors
-  from the `shepherd:conductor` definition; #93 — NOT N `Agent` calls; `Agent`/`Task`
-  spawn subagents, not teammates).
+- Spawn N teammates via the native teammate-spawn instruction (one team, N teammate-conductors
+  from the `shepherd:conductor` definition; #93 / v2.1.178 — NO `TeamCreate` tool; NOT N
+  ephemeral `Agent` subagent calls; `Agent`/`Task` spawn subagents, not teammates).
 - Coordinate per the multi-teammate triage protocol in
   `agents/planter.md §Multi-teammate triage (--parallel mode)`.
 - Dev-order merge gate enforced on close.

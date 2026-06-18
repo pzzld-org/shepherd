@@ -1059,7 +1059,7 @@ FOCUS-LOOP-INIT (conductor):
 2. Run INTRODUCTION: engineer → critic → PLAN-GATE → operator approval.
 3. shctx loop init --kind=focus --task="sprint-drive-<sprint_slug>" --max=8 --agent=orchestrator
 4. Write initial focus record at SEED-VERIFY.
-5. TeamCreate: spawn teammate-conductors per the plan's lane structure.
+5. Spawn teammate-conductors (native teammate-spawn referencing shepherd:conductor) per the plan's lane structure.
 6. Confirm liveness per doctrines/coordinate-active-drive.md §III.
 7. Enter coordinate cycle: FOCUS-WAKE → FOCUS-ACT (drain mailbox, prune idle, advance cursor)
    → FOCUS-PROBE (liveness + drift sweep) → FOCUS-YIELD (to events, not operator).

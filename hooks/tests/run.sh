@@ -207,7 +207,7 @@ else
   fails=$((fails+1))
 fi
 
-# Hotfix vehicle guard (v6.0.9, #135): blocks teammate/TeamCreate spawns for a
+# Hotfix vehicle guard (v6.0.9, #135): blocks teammate-conductor spawns for a
 # single-cluster (H=1) hotfix; passes through multi-cluster dispatch unchanged.
 echo "== test_hotfix_vehicle_guard.sh (v6.0.9 — #135 hotfix cardinality gate) =="
 total=$((total+1))

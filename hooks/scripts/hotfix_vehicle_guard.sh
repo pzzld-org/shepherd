@@ -27,11 +27,11 @@
 # If the file is absent, unreadable, or cluster_count is not present / not an
 # integer, the guard PASSES — fail-open on uncertainty.
 #
-# TEAMMATE DETECTION: a spawned teammate / TeamCreate path is signalled by
-# team_name being set in tool_input (see dispatch_guard.sh for the platform
-# note: real Agent/Task input has no team_name field; the guard blocks if
-# the conductor supplies it via the AgentTeams spawn path). Secondary signal:
-# subagent_type == "shepherd:conductor" — which is the lane subagent type.
+# TEAMMATE DETECTION (v2.1.178): the PRIMARY signal is subagent_type ==
+# "shepherd:conductor" — the conductor is the only agent type spawned as a
+# teammate (a lane). The legacy team_name signal is VESTIGIAL: `team_name` on
+# Agent/Task is accepted but ignored by the platform (no TeamCreate tool exists;
+# see dispatch_guard.sh). It is kept only as a harmless OR-branch.
 
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -53,8 +53,9 @@ SUBAGENT_TYPE="$(json_field "$PAYLOAD" '.tool_input.subagent_type' 2>/dev/null |
 TEAM_NAME="$(json_field "$PAYLOAD" '.tool_input.team_name' 2>/dev/null || true)"
 
 # --- is this spawning a teammate-conductor? ------------------------------
-# Signal 1: team_name is set (AgentTeams spawn path).
-# Signal 2: subagent_type is shepherd:conductor.
+# Signal 1 (PRIMARY): subagent_type is shepherd:conductor (the lane agent type).
+# Signal 2 (VESTIGIAL): team_name is set — accepted but ignored since v2.1.178;
+#   kept as a harmless OR-branch.
 # NOTE: lowercase via `tr`, NOT bash-4 `${VAR,,}` — macOS ships bash 3.2 where
 # `${VAR,,}` is a "bad substitution" that silently fails the `[[ ]]`, letting an
 # H=1 conductor spawn slip past the guard. tr is portable to 3.2.

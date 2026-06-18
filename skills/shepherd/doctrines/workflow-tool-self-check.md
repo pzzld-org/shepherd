@@ -58,8 +58,9 @@ reported as "confirmed absent." Reaching for `ToolSearch` here is itself the
 `WORKFLOW-SELFCHECK-TOOLSEARCH` anti-pattern — stop and apply §I instead.
 
 The same holds for every native orchestration primitive — `TaskCreate` /
-`TaskGet` / `TaskList` / `TaskUpdate`, `TeamCreate` / `TeamDelete`, `SendMessage`:
-all top-level, all called directly, none a `ToolSearch` target. `ToolSearch
+`TaskGet` / `TaskList` / `TaskUpdate`, `SendMessage` (and the native teammate-spawn —
+`TeamCreate`/`TeamDelete` were removed in v2.1.178): all top-level / built-in, all reached
+directly, none a `ToolSearch` target. `ToolSearch
 select:TaskCreate` *erroring* is expected and means "native, not deferred", not
 "missing".
 

@@ -62,22 +62,38 @@
 
 ## Other collision-prone terms
 
-- **`ToolSearch` is for DEFERRED tools only** — specialist agents and MCP tools surfaced on
-  demand (`doctrines/specialist-dispatch.md`). **Top-level tools are never `ToolSearch`
-  targets**, and the native orchestration primitives are all top-level: `Agent`, `Workflow`
-  (Dynamic Workflows), `TaskCreate` / `TaskGet` / `TaskList` / `TaskUpdate`, `TeamCreate` /
-  `TeamDelete`, `SendMessage`, plus `Bash` / `Edit` / `Read` / … . They are **enabled across
-  entrypoints (web / remote / cloud-container included)** and called **directly**. A
-  `ToolSearch` for any of them returns **nothing — by design** (you looked in the wrong index);
-  that nothing is **never** evidence of absence. `ToolSearch select:TaskCreate` even *errors* —
-  expected, because `TaskCreate` is native, not deferred. Rule of thumb: if a capability is a
-  core verb of the harness, it's top-level (call it directly, never search); if it's a
-  third-party / plugin / specialist capability, it's deferred and discoverable via `ToolSearch`.
+- **`ToolSearch` is for DEFERRED TOOL CALLS only** — deferred MCP tools (`mcp__github__*`,
+  `mcp__sentry__*`, `mcp__supabase__*`, …) and on-demand utility tools surfaced by the harness.
+  That is its ENTIRE job. **Two things are never `ToolSearch` targets:**
+  - **Subagents / teammates / specialists.** An agent type is **not** a tool. You discover it
+    from the **visible available-agents list** (the system-reminder enumeration) and dispatch it
+    via `Agent({subagent_type})` — teammates via the native teammate-spawn (no `TeamCreate`
+    tool; removed v2.1.178). `ToolSearch
+    select:pr-review-toolkit:code-reviewer` / `ToolSearch select:shepherd:conductor` returns
+    nothing or errors **by design**; that is the `SUBAGENT-DISCOVERY-TOOLSEARCH` anti-pattern
+    (`doctrines/specialist-dispatch.md §Step 2`), and a nothing-result is **never** evidence the
+    agent is absent. This is the failure that broke teammate creation: ToolSearching
+    `shepherd:conductor` "to confirm it", getting nothing, and concluding the teammate type was
+    unavailable.
+  - **The native orchestration primitives** — all top-level: `Agent`, `Workflow` (Dynamic
+    Workflows), `TaskCreate` / `TaskGet` / `TaskList` / `TaskUpdate`, `SendMessage`, plus
+    `Bash` / `Edit` / `Read` / … . (`TeamCreate` / `TeamDelete` were REMOVED in v2.1.178 —
+    teammates now spawn with no setup tool.) **Enabled across
+    entrypoints (web / remote / cloud-container included)** and called **directly**. A
+    `ToolSearch` for any of them returns **nothing — by design** (wrong index); that nothing is
+    **never** evidence of absence. `ToolSearch select:TaskCreate` even *errors* — expected,
+    because `TaskCreate` is native, not deferred.
+
+  **Rule of thumb:** agents come from the visible available-agents list; native primitives are
+  called directly; `ToolSearch` is only ever for deferred MCP / utility **tool calls**. A
+  `ToolSearch` that returns nothing for an agent type or a core harness verb means you looked in
+  the wrong index — it is **not** absence.
 - **`/loop` vs Loop-Until-Done vs a loop template:** `/loop` is the native Claude Code
   interval command; **Loop-Until-Done** (Pattern 6) is shepherd's convergent-iteration
   pattern; the loop **templates** (`references/loop-templates.md`) are per-role
   specializations. Entry point: `SKILL.md §0-ter`.
-- **Agent Teams vs a workflow:** Agent Teams (teammates via `TeamCreate`/`SendMessage`) is
+- **Agent Teams vs a workflow:** Agent Teams (teammates via the native teammate-spawn +
+  `SendMessage`; no `TeamCreate` tool — removed v2.1.178) is
   the primitive for *long-lived, gated, communicating* lanes; a Dynamic Workflow is the
   primitive for *gate-free, fire-and-collect* fan-out. One primitive per axis — never invert
   (`doctrines/primitive-axis-binding.md`).

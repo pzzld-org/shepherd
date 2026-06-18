@@ -137,7 +137,7 @@ mode the root is in to interpret its prompts and escalations correctly.
   → yield-to-events** on every wake and yields only to the platform event
   system (which auto-resumes it), reserving operator pauses for the enumerated
   decision points (`coordinate-active-drive.md §II`). Passive-wait after
-  `TeamCreate` — the root sitting idle until a teammate finishes "typically at
+  spawning the teammates — the root sitting idle until a teammate finishes "typically at
   the END of its work" (#113) — is the failure this contract closes.
 - Allowed activity: respond to escalations, materialize teammate-returned
   payloads as artifact files, dispatch `@critic` on aggregated findings,

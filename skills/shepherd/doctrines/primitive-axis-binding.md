@@ -127,10 +127,12 @@ the field. A guard rejects each (mechanism layer, #86 / #89 guard — Wave 1).
 ### III.1 — Spawning teammate-conductors = Agent Teams, NEVER a Dynamic Workflow
 
 To stand up the parallel lanes, root spawns **one teammate-conductor per lane** via
-**Agent Teams** — the `TeamCreate` tool family + a natural-language lead instruction that
-references the `shepherd:conductor` subagent definition as each teammate's agent type (#93).
-(`Agent`/`Task` have **no `team_name` parameter** — they spawn *subagents*; teammates are a
-disjoint tool family. The discriminator is the TOOL FAMILY, not a field.)
+**Agent Teams** — the native teammate-spawn: a natural-language lead instruction that
+references the `shepherd:conductor` subagent definition as each teammate's agent type (#93 /
+v2.1.178 — there is NO `TeamCreate` tool; it was removed, and spawning a teammate needs no
+setup step). (`Agent`/`Task` spawn *subagents*, never teammates; their `team_name` parameter
+is accepted but ignored. The discriminator is the spawn INTENT — `shepherd:conductor` spawned
+as a long-lived teammate vs an ephemeral subagent dispatch — not a field.)
 
 **Forbidden:** instantiating teammate-conductors from inside a Dynamic Workflow, or
 emitting a workflow whose "steps" are teammate-conductors. A workflow orchestrates
@@ -190,12 +192,13 @@ ontology units:
 Consequences, enforced by `dispatch-tier-separation.md §IV-bis`:
 
 - A **step** is dispatched as a **subagent** via the `Agent`/`Task` tool family —
-  `subagent_type: "shepherd:<role>"`. A step dispatched **as a teammate** (via `TeamCreate`)
-  is `DISPATCH-TEAMMATE-TYPE-MISMATCH`.
-- A **lane** is owned by a **teammate-conductor**, spawned via the **`TeamCreate`** tool
-  family referencing `subagent_type: "shepherd:conductor"` (#93 — the discriminator is the
-  TOOL FAMILY: `Agent`/`Task` = subagent, `TeamCreate` = teammate; there is no `team_name`
-  parameter on `Agent`/`Task`). A lane stood up **as a subagent** (no team) is the
+  `subagent_type: "shepherd:<role>"`. A step stood up **as a teammate** (a non-conductor agent
+  type spawned as a teammate) is `DISPATCH-TEAMMATE-TYPE-MISMATCH`.
+- A **lane** is owned by a **teammate-conductor**, spawned via the **native teammate-spawn**
+  referencing `subagent_type: "shepherd:conductor"` (#93 / v2.1.178 — there is NO `TeamCreate`
+  tool; the discriminator is the spawn INTENT: `Agent`/`Task` = ephemeral subagent, the native
+  teammate-spawn = long-lived teammate. The `team_name` parameter on `Agent`/`Task` is accepted
+  but ignored). A lane stood up **as a subagent** (no team) is the
   solo/in-context degenerate case; standing one up **as a workflow step** is the §III.1
   inversion.
 - A **wave gate** is conductor-inline (git/shell/operator) — a **seam** node, never

@@ -48,14 +48,15 @@ Enforcement **types**:
 | # | Invariant | Mechanism | Type | Status | Test |
 |---|---|---|---|---|---|
 | 5 | Every flock dispatch sets `subagent_type: shepherd:<role>` (no omit / general-purpose / Explore / Chat) | `dispatch_guard.sh` Check 1 → `DISPATCH-MISSING-SUBAGENT-TYPE` | hard-block | **live** | `test_dispatch_guard.sh` |
-| 6 | Only `shepherd:conductor` may carry `team_name` (lane→teammate-conductor) | `dispatch_guard.sh` Check 3 (defence-in-depth; the real discriminator is the tool family — `Agent`/`Task`=subagent vs `TeamCreate`=teammate, #93) | hard-block (DiD) | **live (tested)** | `test_dispatch_guard.sh` |
+| 6 | Only `shepherd:conductor` is spawned as a teammate (lane→teammate-conductor) | `dispatch_guard.sh` Check 3 (vestigial defence-in-depth; `team_name` is accepted-but-ignored since v2.1.178, so the real discriminator is the spawn intent — `Agent`/`Task`=ephemeral subagent vs the native teammate-spawn=teammate, #93) | hard-block (DiD) | **live (tested)** | `test_dispatch_guard.sh` |
 | 7 | `subagent_type` stays inside the closed flock (no `shepherd:<unknown>`) | `dispatch_guard.sh` Check 5 → `DISPATCH-OFF-FLOCK` | hard-block | **live** | `test_dispatch_guard.sh` |
-| 8 | A teammate never spawns its own team | **platform-structural** (a teammate cannot call `TeamCreate`; "no nested teams", #93) + `dispatch_guard.sh` Check 2 as defence-in-depth (best-effort teammate detection via `.worktrees/` cwd + legacy env) | structural + hard-block (DiD) | **live (tested)** | `test_dispatch_guard.sh` |
+| 8 | A teammate never spawns its own team | **platform-structural** (a non-lead cannot spawn a team; "no nested teams", #93) + `dispatch_guard.sh` Check 2 as defence-in-depth (best-effort teammate detection via `.worktrees/` cwd + legacy env) | structural + hard-block (DiD) | **live (tested)** | `test_dispatch_guard.sh` |
 | 9 | A teammate never dispatches `@engineer`/`@critic` | `dispatch_guard.sh` Check 4 → `WRONG-TIER-DISPATCH` (teammate detected env-independently via `.worktrees/` cwd, #93); engineer/critic also self-halt on the brief field | hard-block | **live (tested)** | `test_dispatch_guard.sh` |
 
-> **Teammate-spawn mechanism (resolved, #93).** Teammates spawn via the `TeamCreate` tool
-> family + a natural-language lead instruction referencing the `shepherd:conductor` subagent
-> definition — NOT `Agent({team_name})` (no such field) — and a teammate session carries NO
+> **Teammate-spawn mechanism (#93; v2.1.178 update).** Teammates spawn via the **native
+> teammate-spawn** — a natural-language lead instruction referencing the `shepherd:conductor`
+> subagent definition (NO `TeamCreate`/`TeamDelete` tool — removed v2.1.178; no setup step).
+> NOT `Agent({team_name})` (that parameter is accepted but ignored) — and a teammate session carries NO
 > identity env var (`anthropics/claude-code#35447`, closed not-planned). Net for this matrix:
 > the **mechanical, always-fires floor** is the `subagent_type` discipline (#5/#7, Check 1/5).
 > The `team_name`-keyed and teammate-mode rows (#2/#6/#8) are **defence-in-depth** — unit-tested,

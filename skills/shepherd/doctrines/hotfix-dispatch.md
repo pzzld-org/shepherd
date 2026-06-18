@@ -84,7 +84,7 @@ When `H = 1`:
 - Dispatch **exactly one `@coder`** as a dynamic-workflow `agent()` step (the
   one-agent compiled segment of `doctrines/dispatch-cascade.md §IV-bis`; in
   solo mode, a single in-context `@coder` dispatch).
-- **Do NOT** call `TeamCreate`, do NOT spawn a teammate-conductor, do NOT open a
+- **Do NOT** spawn a teammate-conductor, do NOT open a
   HOT-FIX lane. A teammate for one fix is the `WRONG-VEHICLE` anti-pattern.
 - **Certainty gate before dispatch.** Confirm both:
   - You genuinely have only one fix — you are not about to surface a sibling
@@ -118,7 +118,7 @@ When `H ∈ {2,3,4,5}`:
 When `H ≥ 6` independent file-disjoint hot-fixes are ready:
 
 - The root shepherd **auto-creates a dedicated HOT-FIX lane** — one
-  teammate-conductor instance (spawn-mode; `TeamCreate` per `commands/spawn.md`),
+  teammate-conductor instance (spawn-mode; native teammate-spawn per `commands/spawn.md`),
   with its own Stage-Graph loop, dispatched to drive the whole batch to
   completion (impl → gate-rerun → converge).
 - The lane is **not** seeded/planned work — it is an injected remediation lane.
