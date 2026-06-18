@@ -25,7 +25,7 @@ The single most expensive failure mode observed in `/shepherd:spawn` is **the
 root pausing at the dispatch boundary**. The sequence:
 
 1. Root finishes INTRODUCTION (engineer + critic + plan + operator approval).
-2. Root issues `TeamCreate`, spawning one teammate-conductor per lane.
+2. Root issues the native teammate-spawn, spawning one teammate-conductor per lane.
 3. Root's turn **ends**. The model treats "I spawned the team" as a terminal
    action and yields — implicitly, to the operator.
 4. The teammates are either (a) waiting for a go-signal that never arrives, or
@@ -65,7 +65,7 @@ event loop, and the event loop is not the operator.
 The root ends its turn **for the operator** only at these points:
 
 1. **Pre-spawn approval gate** — the plan summary + `proceed` prompt, BEFORE any
-   `TeamCreate` (per `agents/shepherd.md §Step 1`). This is the one pause the
+   teammate spawn (per `agents/shepherd.md §Step 1`). This is the one pause the
    operator expects.
 2. **`HARD-STOP` escalation** — a teammate surfaced a terminal halt; the
    operator must choose kill/rollback/manual.
@@ -102,9 +102,9 @@ A teammate that waits for a go-signal while the root waits for a teammate event
 is a **mutual-wait deadlock** that presents identically to passive-wait. Close
 it from both sides:
 
-**Root side.** The `TeamCreate` instruction MUST state that each teammate
+**Root side.** The teammate-spawn instruction MUST state that each teammate
 **begins its lane immediately upon creation** and does not wait for a further
-message. (Wording: `commands/spawn.md §Spawn dispatch`.) After `TeamCreate`,
+message. (Wording: `commands/spawn.md §Spawn dispatch`.) After spawning the teammates,
 before doing anything else, the root **confirms liveness**: poll
 `shctx teammate liveness` (or `TaskList`) until every spawned teammate has a
 `booting`→`active` transition or a first heartbeat. A teammate still `booting`
@@ -312,7 +312,7 @@ To keep the guard and the contract from over-firing, these are explicitly fine:
   correct. The guard's `reason` authorizes it; the operator-question itself is
   the drained state.
 - **Solo `/shepherd:start`.** No team, no root tier — the guard fast-paths out.
-- **Pre-spawn.** Before `TeamCreate` there are no live teammates; the approval
+- **Pre-spawn.** Before the teammates are spawned there are no live teammates; the approval
   gate pause is legitimate and guard-invisible.
 
 ---

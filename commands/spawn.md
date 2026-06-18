@@ -3,11 +3,11 @@ name: spawn
 description: |
   The PRIMARY command for substantive sprint work. Spawn teammate-conductor(s) to
   execute a sprint while main chat adopts the root-shepherd profile
-  (agents/shepherd.md). Requires the Agent Teams feature
-  (CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=true, Claude Code ≥ v2.1.32, teammateMode
-  configured). Operator-explicit invocation only — refuses from teammate sessions
-  (nested spawn forbidden). For a single in-chat sprint with no teams, use
-  /shepherd:start (solo).
+  (agents/shepherd.md). Uses the native Agent Teams teammate-spawn (v2.1.178+: no
+  setup step, no TeamCreate tool, no env-var or tmux requirement — available across
+  CLI / web / remote / cloud entrypoints). Operator-explicit invocation only — refuses
+  from teammate sessions (nested spawn forbidden). For a single in-chat sprint with no
+  teams, use /shepherd:start (solo).
 
   v5.1.6 introduces:
     - Root-shepherd tier — main chat adopts agents/shepherd.md (not planter.md);
@@ -39,7 +39,7 @@ description: |
                        state, not a seedless-run trigger. Reuses the SQLite mailbox;
                        opt-in. Full spec: doctrines/staged-handoff.md.
 argument-hint: "[ sprint_slug ] [ --scope sprint|patch|minor|version ] [ --parallel <N> | --auto ] [ --staged ]"
-allowed-tools: Agent, Bash, Edit, Glob, Grep, Read, Skill, Write, ToolSearch, TeamCreate, TeamDelete, TaskCreate, TaskGet, TaskList, TaskUpdate, SendMessage, WebFetch, WebSearch
+allowed-tools: Agent, Bash, Edit, Glob, Grep, Read, Skill, Write, ToolSearch, TaskCreate, TaskGet, TaskList, TaskUpdate, SendMessage, WebFetch, WebSearch
 ---
 
 # /shepherd:spawn — Teammate-Conductor Dispatch
@@ -64,8 +64,8 @@ A single-sprint spawn on a green project, no flags, no escalations:
 
 ```
 [1]  operator types:  /shepherd:spawn
-[2]  preflight        Check 1 (feature flag)         → OK
-                      Check 2 (Claude ≥ v2.1.32)     → OK
+[2]  preflight        Check 1 (teams available)      → advisory (no hard gate)
+                      Check 2 (Claude version)       → advisory (no hard gate)
                       Check 3 (no active team)       → OK
                       Check 4 (shepherd.toml)        → OK
                       (Check 5 skipped — no --parallel / --auto)
@@ -83,8 +83,8 @@ A single-sprint spawn on a green project, no flags, no escalations:
                       builds per-lane teammate boot prompts (seed + certified context
                       + handoff + carry-forwards + shepherd.toml snapshot)
 [8]  root             pre-creates all lane worktrees (git worktree add) and emits
-                      [WORKTREE-READY] BEFORE TeamCreate (#97)
-[9]  root             issues the natural-language TeamCreate instruction (referencing
+                      [WORKTREE-READY] BEFORE spawning teammates (#97)
+[9]  root             issues the natural-language teammate-spawn instruction (referencing
                       the shepherd:conductor subagent definition, model: sonnet)
                       → teammate sessions created
 [10] root             ENTERS FOCUS-LOOP (wake → act → probe; see [10a] below)
@@ -118,33 +118,34 @@ for the full halt → resume contract.
 
 ## § Platform compatibility
 
-**Status (2026-05-19):** The conductor-as-teammate path is fully functional in
-**tmux** `teammateMode` today. **In-process** mode is partially limited by
-[Claude Code issue #31977](https://github.com/anthropics/claude-code/issues/31977)
-— teammate sessions in in-process mode do not expose the `Agent` tool, so a spawned
-teammate's `/shepherd:start` cannot dispatch the flock the same way main chat can.
+**Status (v2.1.178+):** The conductor-as-teammate path works **without any special
+setup**. Spawning a teammate no longer needs a setup step (no `TeamCreate` tool — removed
+v2.1.178), and Agent Teams is available **across Claude Code entrypoints — CLI, web,
+remote, and cloud-container sessions included**. A spawned teammate boots as a full Claude
+Code session with the `Agent` tool, so its `/shepherd:start --teammate` can dispatch the
+flock exactly as main chat does.
 
-| `teammateMode` setting | Conductor-as-teammate | Flock dispatch inside teammate |
-|---|---|---|
-| `tmux`        | Works today | Available |
-| `in-process`  | Degraded    | Blocked on #31977 |
+- **No env-var step required to spawn.** Where a build still gates Agent Teams behind
+  `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`, set it once; otherwise the feature is available by
+  default. Shepherd does NOT hard-refuse on the flag (see Preflight Check 1).
+- **No tmux required.** `tmux`/iTerm2 split panes are an **optional display mode** for live
+  per-teammate observability, NOT a prerequisite. In-process (the default, any terminal)
+  and remote/cloud sessions spawn and dispatch teammates fine. (The historical in-process
+  Agent-tool gap, `anthropics/claude-code#31977`, no longer blocks the flow.)
 
-**Forward-compat:** this command and the `conductor` + `planter` profiles are designed
-for the eventual state (full Agent-tool parity across modes). When #31977 fixes, no
-spawn-side redesign is required.
+| Display mode | Conductor-as-teammate | Flock dispatch inside teammate | Notes |
+|---|---|---|---|
+| native / in-process (default) | Works | Available | no setup; any terminal; web/remote/cloud |
+| `tmux` / iTerm2 split panes    | Works | Available | optional — adds live per-pane observability |
 
-**Recommendation while #31977 is open:** use `tmux` for live spawn workflows that
-exercise the full flock. In `in-process` mode, prefer `/shepherd:start` in main chat
-until the bug lands.
-
-Preflight detects the feature flag but does NOT gate on `teammateMode` — operator is
-expected to know which mode they configured.
+Preflight does NOT gate on `teammateMode` or tmux — the operator chooses the display mode;
+the spawn capability does not depend on it.
 
 ---
 
 ## § Preflight
 
-Run every check before issuing the `TeamCreate` instruction. Refuse with a clear error if any check fails.
+Run every check before issuing the teammate-spawn instruction. Refuse with a clear error if any check fails.
 
 ### Check 0 — Operator-only invocation (v5.1.6+)
 
@@ -153,7 +154,7 @@ session is forbidden.
 
 **PRIMARY guarantee is structural, not signal-based.** The Agent Teams platform forbids
 a teammate from creating a team at all — the lead is fixed, no nested teams, one team at
-a time. A non-lead session cannot call `TeamCreate`, so a nested spawn cannot occur even
+a time. A non-lead session cannot spawn a team, so a nested spawn cannot occur even
 if this check were absent. shepherd's operator-explicit-only rule is therefore consistent
 with — and largely redundant to — this platform guarantee. (Source:
 code.claude.com/docs/en/agent-teams.)
@@ -171,14 +172,14 @@ are retained only as a cheap belt-and-suspenders check, never as the load-bearin
 | 2 | Current session's system prompt addendum contains `INVOCATION-CONTEXT.dispatcher: teammate-conductor` | boot prompt | reliable shepherd-controlled signal |
 | 3 | `$CLAUDE_AGENT_TEAMMATE_NAME` / `$CLAUDE_PROJECT_SESSION_TYPE` / `$CLAUDE_AGENT_PARENT_SESSION_ID` non-empty | legacy env convention | reads EMPTY on live platform (#93); do NOT rely on it |
 
-If ANY positive (or, in practice, if the platform rejects the `TeamCreate` because you are
+If ANY positive (or, in practice, if the platform rejects the teammate spawn because you are
 not a lead):
 ```
 /shepherd:spawn — REFUSED: nested spawn forbidden.
 
 Teammate-conductors cannot spawn teammates. The Agent Teams platform forbids a
 non-lead from creating a team (lead is fixed; no nested teams; one team at a time),
-so TeamCreate is structurally unavailable to you, and shepherd discipline forbids
+so teammate spawning is structurally unavailable to you, and shepherd discipline forbids
 out-of-tier dispatch (per doctrines/dispatch-tier-separation.md).
 
 If you need plan amendment or scope expansion, surface the request to the root
@@ -190,37 +191,40 @@ clean main-chat session (not running under a shepherd .worktrees/ path) and re-i
 
 This check is the FIRST gate. It runs before any other preflight.
 
-### Check 1 — Agent Teams feature flag
+### Check 1 — Agent Teams availability (ADVISORY, not a hard gate)
+
+Agent Teams no longer requires a setup step and is available across Claude Code
+entrypoints (web / remote / cloud-container included). **Do NOT hard-refuse spawn on the
+`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` flag** — many builds enable teams by default, and
+the flag's absence is no longer evidence the feature is off.
 
 ```bash
-echo "${CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS}"
+echo "${CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS}"   # advisory only
 ```
 
-Must be `"true"` (the platform also accepts `"1"`; shepherd normalises to `"true"`
-per D-API §1). Empty or any other value → refuse:
+- Set (`true`/`1`) → confirmed; proceed.
+- Empty → emit the advisory below and **proceed anyway**. The real authority is whether the
+  teammate-spawn succeeds at runtime; if the platform actually rejects it (e.g. a build that
+  still gates teams behind the flag), surface that platform error and tell the operator to
+  set `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=true` in `~/.claude/settings.json` `env.*` and
+  re-invoke. Do not pre-emptively refuse.
 
 ```
-/shepherd:spawn — REFUSED: CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS is not set or not "true".
-
-To enable Agent Teams:
-  1. Add  CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=true  to ~/.claude/.env
-  2. Or add it under env.* in ~/.claude/settings.json
-  3. Restart Claude Code and re-invoke /shepherd:spawn
-
-Reference: docs/configuration.md — see § Platform compatibility above for setup steps.
-D-API source: .artifacts/docs/handoffs/2026-05-19-teammate-api-discovery.md §1
+[ADVISORY] CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS is not set. Agent Teams is typically
+available without it (v2.1.178+). Proceeding; if the runtime rejects the teammate spawn,
+set the flag in ~/.claude/settings.json (env.*) and re-invoke /shepherd:spawn.
 ```
 
-### Check 2 — Claude Code minimum version
+### Check 2 — Claude Code version (ADVISORY, not a hard gate)
 
 ```bash
-claude --version
+claude --version   # advisory only
 ```
 
-Below v2.1.32 (the version that introduced Agent Teams per D-API §3) → refuse with
-the detected version and `claude update` instruction. `TeammateIdle`, `TaskCreated`,
-`TaskCompleted` arrived in v2.1.33 and are required for the wave-boundary commit
-discipline. Operator is on v2.1.144 — this check is a portability guard.
+Agent Teams (and the no-setup teammate-spawn, v2.1.178) ship in current Claude Code; the
+old v2.1.32 floor is historical. Do NOT hard-refuse on version — note the detected version
+and proceed. If a genuinely ancient build lacks the teammate-spawn, the runtime surfaces
+that directly; act on the real signal, not a pre-emptive version gate.
 
 ### Check 3 — No active team (one-team-per-lead limit)
 
@@ -409,7 +413,7 @@ The shepherd profile delegates seed work to planter mode inline when needed (mid
 
 ## § Build the teammate prompt
 
-Construct the teammate's boot prompt before issuing the `TeamCreate` instruction. The
+Construct the teammate's boot prompt before issuing the teammate-spawn instruction. The
 prompt carries all inherited context the teammate needs without re-asking main chat, and
 is supplied as the teammate's instructions inside that instruction.
 
@@ -522,7 +526,7 @@ HARD PROHIBITIONS WHILE SPAWNED (v6.0.0 — each tied to a halt code)
     doctrines/specialist-dispatch.md).
       halt_code: DISPATCH-OFF-FLOCK
   - MUST NOT attempt to spawn teammates — you are not a lead.
-    `TeamCreate` is lead-only and nested teams are platform-forbidden
+    Teammate spawning is lead-only and nested teams are platform-forbidden
     and structurally impossible (the platform rejects a non-lead's
     team-create). Your dispatches are subagents only (`@coder`/
     `@auditor`/`@worker`/`@discovery` for your lane) via
@@ -607,13 +611,13 @@ TEAMMATE IDENTITY
 
 ### Pre-spawn worktree creation (v6.0.3 — #97)
 
-Root MUST create every lane worktree on disk BEFORE issuing `TeamCreate`. Path +
+Root MUST create every lane worktree on disk BEFORE spawning teammates. Path +
 branch are deterministic from `lane_id`:
 
     for each lane:  git worktree add .worktrees/{sprint_slug}-{lane_id} {sprint_branch}
     git worktree list      # verify every lane worktree exists
 
-Emit a `[WORKTREE-READY]` block (lane → worktree path). `TeamCreate` is GATED on it:
+Emit a `[WORKTREE-READY]` block (lane → worktree path). The teammate-spawn is GATED on it:
 it MUST NOT fire until all lane worktrees exist. A teammate never creates its own
 worktree — that is a `TEAMMATE-GIT-WRITE` violation. Eliminates the boot-time
 `ANOMALY: worktree missing` round-trip.
@@ -622,19 +626,26 @@ worktree — that is a `TEAMMATE-GIT-WRITE` violation. Eliminates the boot-time
 
 ## § Spawn dispatch
 
-The lead session spawns teammates via the **`TeamCreate` tool family** (`TeamCreate`,
-`SendMessage`, `TeamDelete`, plus `TaskCreate`/`TaskGet`/`TaskList`/`TaskUpdate`), driven
-by a **natural-language instruction** that describes the team and references the
-**`shepherd:conductor` subagent definition** as each teammate's agent type:
+The lead session spawns teammates via the **native teammate-spawn** — a
+**natural-language instruction** to spawn one teammate per lane, each referencing the
+**`shepherd:conductor` subagent definition** as its agent type. The team forms
+automatically when the first teammate is spawned; the lead↔teammate channel after spawn is
+**`SendMessage`** (plus the shared task list).
+
+> **PLATFORM CHANGE — `TeamCreate`/`TeamDelete` were REMOVED in Claude Code v2.1.178.**
+> Do NOT call a `TeamCreate` tool — it does not exist. Spawning a teammate no longer needs a
+> setup step (no team to "create" or name first), and the team is cleaned up automatically on
+> session exit (no `TeamDelete`). Just issue the spawn instruction below; the runtime forms
+> the team. (Source: code.claude.com/docs/en/agent-teams, v2.1.178 note.)
 
 ```
-TeamCreate(<natural-language instruction>), e.g.:
+Spawn instruction (natural language), e.g.:
 
-  "Create a team to run sprint {sprint_slug}. Spawn one teammate per lane named
-   shepherd-conductor-{sprint_slug}[-{lane_id}], each of agent type
-   shepherd:conductor. Give each teammate the boot/lane context below
-   (from § Build the teammate prompt) as its instructions. Each teammate
-   BEGINS ITS LANE IMMEDIATELY upon creation (its first action is
+  "Spawn one teammate per lane to run sprint {sprint_slug}, each using the
+   shepherd:conductor agent type, model: sonnet. Name them
+   shepherd-conductor-{sprint_slug}[-{lane_id}]. Give each teammate the boot/lane
+   context below (from § Build the teammate prompt) as its instructions. Each
+   teammate BEGINS ITS LANE IMMEDIATELY upon spawn (its first action is
    /shepherd:start --teammate) — it does NOT wait for a further go-signal."
 ```
 
@@ -649,12 +660,12 @@ TeamCreate(<natural-language instruction>), e.g.:
 Each spawned teammate is created **from the `shepherd:conductor` subagent definition**
 (`agents/conductor.md`), so it inherits that definition's `tools:` and `model`. The
 per-teammate boot/lane context (INVOCATION-CONTEXT, INHERITED CONTEXT, lane brief) is
-supplied per § Build the teammate prompt and carried in the `TeamCreate` instruction.
+supplied per § Build the teammate prompt and carried in the teammate-spawn instruction.
 
 ### Model pin requirement (mandatory — v6.0.9)
 
 **Every teammate MUST be spawned with an explicit `model: sonnet` pin in the
-`TeamCreate` instruction.** Do NOT rely on the `shepherd:conductor` subagent
+teammate-spawn instruction.** Do NOT rely on the `shepherd:conductor` subagent
 definition's `model: sonnet` frontmatter to propagate — empirically, teammates
 have inherited the lead session's model instead of the subagent definition's
 (v6.0.9 regression: an Opus 4.8 lead session caused every teammate to run at
@@ -670,34 +681,35 @@ Opus 4.8, multiplying costs by the lane count). The intended conductor model is
 ```
 
 **PRE-SPAWN COST ADVISORY.** Check the lead session's active model before
-issuing `TeamCreate`:
+spawning teammates:
 
 ```bash
 # If the lead session is pinned to an Opus-tier model:
 echo "[COST ADVISORY] Lead session is Opus. Without an explicit 'model: sonnet' pin
-in the TeamCreate instruction, every teammate may inherit Opus 4.8 (cost ↑↑↑ — one
+in the spawn instruction, every teammate may inherit Opus 4.8 (cost ↑↑↑ — one
 lane × {N} lanes × Opus token rates). Verify the pin is present before proceeding,
 or provide an explicit operator override confirming Opus is intentional."
 ```
 
 If the operator explicitly authorizes Opus teammates (e.g. an L/XL sprint where
 plan quality justifies the cost), record the override in the session-start status
-block and proceed. Otherwise, refuse `TeamCreate` until the `model: sonnet` pin
+block and proceed. Otherwise, refuse to spawn until the `model: sonnet` pin
 is present in the instruction.
 
-> **Tool-family discipline (live-docs-verified, #93, 2026-05-29):** `Agent`/`Task`
-> spawn **subagents** — the worker primitive — and are a **DISJOINT** tool family from
-> teammate spawning. **Do NOT use `Agent`/`Task` to spawn a teammate**, and there is
-> **no `team_name` parameter** on the `Agent`/`Task` tool. Teammates are created ONLY by
-> the lead via `TeamCreate`. After spawn, the lead uses `SendMessage` as the
-> lead↔teammate channel. (Source: code.claude.com/docs/en/agent-teams +
-> tools-reference.)
+> **Teammate vs subagent (live-docs-verified, #93; v2.1.178 update):** a **teammate** is a
+> long-lived peer session — spawned via the native teammate-spawn referencing the
+> `shepherd:conductor` agent type, addressed after spawn via `SendMessage`. A **subagent** is
+> an ephemeral `Agent`/`Task` dispatch that runs and returns a result to its caller. They are
+> different primitives: `Agent`/`Task` spawn **subagents only — never a teammate**. The
+> `team_name` parameter on `Agent`/`Task` is **accepted but ignored** (deprecated, v2.1.178);
+> it is NOT how a teammate is created and must not be relied on as a discriminator. There is
+> no `TeamCreate` tool. (Source: code.claude.com/docs/en/agent-teams.)
 
-Names are lead-chosen in the `TeamCreate` instruction. The runtime materializes the team
-config at `~/.claude/teams/{team-name}/config.json` — written and owned by the runtime; do
-NOT pre-author or edit it. Hook routing keys off the predictable
-`shepherd-conductor-{sprint_slug}` prefix (surfaced as `teammate_name` in team-lifecycle
-hook-input JSON).
+Teammate names you give in the spawn instruction are honored where the runtime allows; the
+team itself is stored under a session-derived name. The runtime materializes the team config
+at `~/.claude/teams/{team-name}/config.json` — written and owned by the runtime; do NOT
+pre-author or edit it. Hook routing keys off the predictable `shepherd-conductor-{sprint_slug}`
+teammate-name prefix (surfaced as `teammate_name` in team-lifecycle hook-input JSON).
 
 ### Post-spawn confirmation
 
@@ -762,7 +774,7 @@ The teammate-conductor needs a specific tool surface to walk the Stage Graph. Th
 
 ### What the teammate inherits
 
-Per D-API §9, **the teammate inherits the lead session's permission mode** — but tool *availability* is a separate axis. In tmux `teammateMode`, the teammate boots as a full Claude Code session with the default tool set plus any plugin-registered tools the lead has access to. The conductor profile's `tools:` frontmatter at `agents/conductor.md` is the canonical capability list; the lead must ensure each tool in that list is registered in its session before spawning.
+**The teammate inherits the lead session's permission mode** — but tool *availability* is a separate axis. In teammate mode (any display mode — tmux or in-process), the teammate boots as a full Claude Code session with the default tool set (including `Agent` and `SendMessage`) plus any plugin-registered tools the lead has access to. The conductor profile's `tools:` frontmatter at `agents/conductor.md` is the canonical capability list; the lead must ensure each tool in that list is registered in its session before spawning.
 
 ### Required tools for a teammate-conductor
 
@@ -781,7 +793,7 @@ Per D-API §9, **the teammate inherits the lead session's permission mode** — 
 
 ### Planter pre-spawn tool check
 
-Before issuing the `TeamCreate` instruction, the planter SHOULD verify:
+Before issuing the teammate-spawn instruction, the planter SHOULD verify:
 
 1. The `Agent` tool is registered in the lead session (so the spawned teammate inherits it for flock subagent dispatch — `Agent` spawns subagents, NOT teammates). If not (e.g. plugin not loaded), HALT with:
    ```
@@ -803,9 +815,14 @@ Before issuing the `TeamCreate` instruction, the planter SHOULD verify:
   matches YOUR lane id. Violations: TASK-LANE-MISMATCH. Canonical:
   doctrines/lane-task-ownership.md.
 
-### In-process mode caveat
+### Display mode (tmux optional, not required)
 
-Per § Platform compatibility above, **in-process `teammateMode` currently does not expose `Agent` tool to teammates** (issue #31977). The pre-spawn tool check #1 above is the early-stop for this case. Recommend tmux mode until #31977 ships.
+Per § Platform compatibility above, the native teammate-spawn works in **any** display
+mode — in-process (default, any terminal) and remote/cloud sessions included — and spawned
+teammates expose the `Agent` tool, so they can dispatch the flock. `tmux`/iTerm2 split panes
+are an **optional** display mode for live per-teammate observability, not a prerequisite.
+(The historical in-process Agent-tool gap, `anthropics/claude-code#31977`, no longer blocks
+the flow.)
 
 ---
 
@@ -912,7 +929,7 @@ Base spawn behavior applies per loop iteration. Full loop-boundary contract
 [FOR each dev.N in dev_order]:
 
   [SPAWN]
-    Build teammate prompt + spawn via TeamCreate (referencing shepherd:conductor).
+    Build teammate prompt + spawn the teammate (referencing shepherd:conductor).
     Emit: "[AUTO] Sprint {N}/{LAST}: shepherd-auto-{sprint_slug} spawned."
 
   [BABYSIT]
@@ -1015,7 +1032,7 @@ Summary (one screen):
 
 | Responsibility | Trigger | Action | Source |
 |---|---|---|---|
-| **Active-drive loop** | Every coordinate wake (incl. right after `TeamCreate`) | wake → act (drain mail/idle) → probe (liveness + per-lane `git diff --stat`) → yield-to-events; NEVER passive-wait for operator | `coordinate-active-drive.md` §IV |
+| **Active-drive loop** | Every coordinate wake (incl. right after spawning teammates) | wake → act (drain mail/idle) → probe (liveness + per-lane `git diff --stat`) → yield-to-events; NEVER passive-wait for operator | `coordinate-active-drive.md` §IV |
 | Hook monitoring | `TeammateIdle` / `TaskCreated` / `TaskCompleted` fires | Read mailbox; route by `halt_code` | doctrine §II, §VI |
 | Mailbox polling | `TeammateIdle` BLOCKING | Inspect `halt_code`; null+`blocking:false` = wave-complete; non-null = escalation | doctrine §III |
 | Wave-boundary commit | `TaskCompleted` on wave-scope task | `git commit -m "chore(dev.N/wave-K): wave-complete via spawn"` (DO NOT defer) | doctrine §VI |
@@ -1033,7 +1050,7 @@ horizon exists ONLY if commits land at every boundary. Full contract:
 
 Preflight-driven (Checks 1–3) plus run-state guards:
 
-1. Preflight Check 1 / 2 / 3 fail.
+1. Preflight Check 3 (active team already running) fails. (Checks 1 & 2 are advisory — they do NOT hard-stop; the runtime is the authority on team availability.)
 2. **No active seed (conditional — seed is recommended, not required).** A missing
    `{paths.plans}/{sprint_slug}.seed.md` is a HARD stop ONLY for `--parallel` and
    multi-sprint `--scope` (patch/minor/version) walks, where seeds are load-bearing
@@ -1061,26 +1078,26 @@ recovery semantics live at `skills/shepherd/doctrines/spawn-escalation.md §VII`
 
 ## § Open questions
 
-> **Live-docs reconciliation (#93, 2026-05-29):** the live-docs-verified mechanism
+> **Live-docs reconciliation (#93; v2.1.178 update):** the live-docs-verified mechanism
 > supersedes the older `.artifacts/docs/handoffs/2026-05-19-teammate-api-discovery.md`
 > "D-API" assumptions wherever they conflict. In particular, teammates are spawned via
-> the lead's `TeamCreate` instruction referencing the `shepherd:conductor` subagent
-> definition — NOT via an `Agent({ subagent_type, prompt })` call — and no
-> teammate-identity env var exists.
+> the lead's **native teammate-spawn instruction** referencing the `shepherd:conductor`
+> subagent definition (NO `TeamCreate` tool — removed v2.1.178) — NOT via an ephemeral
+> `Agent({ subagent_type, prompt })` subagent call — and no teammate-identity env var exists.
 
-- **OQ-1 (RESOLVED, #93 2026-05-29): teammate agent type.** The teammate's agent type
+- **OQ-1 (RESOLVED, #93): teammate agent type.** The teammate's agent type
   is the **`shepherd:conductor` subagent definition** (`agents/conductor.md`),
-  referenced by name in the lead's natural-language `TeamCreate` instruction (NOT a
-  model slug on an `Agent` call). The teammate inherits that definition's `model:` and
-  `tools:` frontmatter. No `subagent_type` model-slug decision is required.
-- **OQ-2 (RESOLVED, #93 2026-05-29): teammate name propagation.** Names are
-  **lead-chosen** in the `TeamCreate` natural-language instruction (e.g.,
+  referenced by name in the lead's natural-language teammate-spawn instruction (NOT a
+  model slug on an ephemeral `Agent` subagent call). The teammate inherits that definition's
+  `model:` and `tools:` frontmatter. No `subagent_type` model-slug decision is required.
+- **OQ-2 (RESOLVED, #93): teammate name propagation.** Names are
+  **lead-chosen** in the teammate-spawn natural-language instruction (e.g.,
   `shepherd-conductor-{sprint_slug}[-{lane_id}]`). The runtime records them in the team
   config and surfaces them as `teammate_name` in team-lifecycle hook-input JSON. There
   is no `name:` field on an `Agent` call and no prompt-body parsing involved.
 - **OQ-3 (LOW): `TeammateIdle` routing on ambiguous `teammate_type`.** Hook payload may
   show a model slug, `"conductor"`, or custom string for `teammate_type`. Route by the
-  predictable `teammate_name` (`shepherd-conductor-{slug}`, lead-chosen at `TeamCreate`),
+  predictable `teammate_name` (`shepherd-conductor-{slug}`, lead-chosen at spawn),
   not `teammate_type`.
 - **OQ-4 (MEDIUM, --parallel): Cross-worktree build-manifest contention.** The
   collision check guards `file_scope.exclusive`. Some build tools (cargo shared
