@@ -1,7 +1,7 @@
 ---
 name: shepherd-context
 slug: shepherd-context
-version: 6.1.7
+version: 6.1.8
 description: "Per-project SQLite registry backing /shepherd:ctx and the flock's Phase-0 fast-paths. Indexes code symbols, GitHub state, artifacts, memories, profiles, locks, event logs, and the tool toolkit."
 metadata:
   triggers:
@@ -12,6 +12,8 @@ metadata:
 
 You are reading the entry skill for `/shepherd:ctx`. The CLI lives at `${CLAUDE_PLUGIN_ROOT}/skills/context/scripts/shctx`. The DB lives at `.shepherd/shepherd.db` in the consumer project (or `.artifacts/shepherd.db` for the legacy namespace). Legacy `root.db` is auto-detected for projects that predate v6.1.2. Auto-detection prefers whichever directory + filename already exists.
 
+> **`shctx` is plugin-local and NEVER on `$PATH` (v6.1.8).** `command -v shctx` / `which shctx` / a bare `shctx …` returns **absent BY DESIGN** — that is *not* evidence of absence and must never be treated as such. Always invoke it by the absolute path `${CLAUDE_PLUGIN_ROOT}/skills/context/scripts/shctx`. If `$CLAUDE_PLUGIN_ROOT` is unset in your shell (it does not always propagate into the Bash tool — notably on some remote/web launches), the SessionStart `session_open` hook prints the resolved absolute path at session start (`[context].announce_shctx_path = on` by default); you can also resolve it from the installed plugin dir (e.g. `~/.claude/plugins/shepherd/skills/context/scripts/shctx`). Reporting "shctx absent" from a `command -v` probe is the #1 false-negative — don't.
+
 This skill is a quick reference. Operational detail lives in the sibling files (see "See also" below). When this file points at one, load it.
 
 ---
@@ -20,7 +22,8 @@ This skill is a quick reference. Operational detail lives in the sibling files (
 
 - `shctx init [--artifacts]` — scaffold per-project namespace (`.shepherd/` by default; `--artifacts` opts into the legacy `.artifacts/`), create `shepherd.db` (legacy `root.db` honored), register host project (UUIDv7). Auto-detects an existing namespace dir if present.
 - `shctx status` — row counts, refresh staleness, lock state, lint summary.
-- `shctx refresh [--scope=symbols|github|artifacts|all]` — idempotent rebuild of cache zones.
+- `shctx refresh [--scope=symbols|shapes|github|artifacts|all]` — idempotent rebuild of cache zones (`shapes` indexes struct/enum field shapes for `dups`, v6.1.8).
+- `shctx dups <scan|check|registry>` *(v6.1.8, #157)* — field-shape similar-struct detection: catches the renamed-shadow duplicate (same field shape, different name) that name-matching dedup is blind to. `scan` censuses + clusters; `check` is the PreToolUse/Phase-0 authoring gate; `registry` curates concept→canonical pins + the DO-NOT-MERGE allow-list. See `doctrines/shape-dedup.md`.
 - `shctx query <name> [--json|--md] [--key=val ...]` — run a named query from `queries/`.
 - `shctx search <text> [--scope=symbols|artifacts|all] [--limit=N] [--md|--json]` *(v5.0.3)* — FTS5 full-text search over symbols + artifact content.
 - `shctx inject <engineer|coder|auditor>` — emit a `[DB-CONTEXT]` block sized for that role.

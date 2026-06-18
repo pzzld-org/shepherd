@@ -101,6 +101,38 @@ subtract_paths = [
 ]
 ```
 
+### `[dups]` — field-shape dedup (v6.1.8, #157)
+
+Tunes `shctx dups` — the field-shape similar-struct detector that catches the
+**renamed-shadow** duplicate (a second type for an existing concept under a
+different name) that name-matching dedup is blind to. See
+`doctrines/shape-dedup.md`.
+
+```toml
+[dups]
+# NOTE: shepherd's config reader (cfg_get) is section-agnostic and matches on the
+# bare key name, so every dups key is prefixed `dups_` to avoid collisions with
+# keys of the same short name in other sections (e.g. [context].enabled). The
+# [dups] header is for human grouping.
+dups_threshold   = 0.7        # cluster/report + check similarity floor (0..1)
+dups_block       = 0.85       # hook block threshold — a match ≥ this denies the write
+dups_name_weight = 0.5        # weight of the field-NAME Jaccard vs the typed-pair Jaccard
+dups_min_fields  = 2          # ignore shapes with fewer than N fields (markers/1-field noise)
+dups_hook        = "warn"     # PreToolUse(Write|Edit) behavior: off | warn (default) | block
+# dups_registry  = ".shepherd/dups-registry.json"   # concept→canonical pins + DO-NOT-MERGE allow-list
+```
+
+- `dups_hook = "warn"` (default) surfaces *"0.85-similar to `pkg::X` — reuse it?"*
+  as `additionalContext` for `@coder` `.rs` writes but never blocks. `"block"`
+  denies a write whose new struct/enum is ≥ `dups_block`-similar to an existing
+  type. `"off"` disables the hook. Fails open (no python3 / empty corpus → pass).
+- The corpus (`index_struct_shapes`) is refreshed by `shctx refresh --scope=shapes`
+  (folded into `refresh --all`, hence `sprint open`).
+- To make a shadow fail the sprint, add to `[gates].extra`:
+  `{ name = "shape-dedup", cmd = "shctx dups scan --fail-on foundation-blocking" }`.
+- Intentional distinct-role twins (a venue `Fill` vs a backtest `SimFill`) are
+  exempted via the DO-NOT-MERGE allow-list: `shctx dups registry allow A B`.
+
 ### `[paths]` — artifact locations
 
 ```toml
@@ -138,6 +170,9 @@ db_path         = ".shepherd/shepherd.db"    # SQLite registry (v6.1.2; legacy r
 lock_path       = ".shepherd/shepherd.lock"  # file-based single-writer lock
 project_id_path = ".shepherd/project.json"   # stable project_id (multi-project backbone)
 auto_refresh    = ["on-sprint-open"]         # triggers that fire `shctx refresh --scope=all`
+announce_shctx_path = "on"                   # v6.1.8: SessionStart surfaces the resolved absolute shctx
+                                             # path so a session never falsely reports "shctx absent"
+                                             # (shctx is plugin-local, NEVER on $PATH). on (default) | off.
 
 [context.refresh]
 symbols_languages = ["rust"]                                # languages the symbol extractor walks
