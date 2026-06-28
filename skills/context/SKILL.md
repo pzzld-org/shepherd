@@ -1,7 +1,7 @@
 ---
 name: shepherd-context
 slug: shepherd-context
-version: 6.1.9
+version: 6.2.0
 description: "Per-project SQLite registry backing /shepherd:ctx and the flock's Phase-0 fast-paths. Indexes code symbols, GitHub state, artifacts, memories, profiles, locks, event logs, and the tool toolkit."
 metadata:
   triggers:
@@ -36,7 +36,9 @@ This skill is a quick reference. Operational detail lives in the sibling files (
 - `shctx export <kind> [--out=path]` — markdown/JSON snapshot of a query or table.
 - `shctx close-lane <lane-id> --sprint=<branch> [--issues=#a,#b] [--status=clean|partial|failed]` *(v5.0.3)* — record mid-sprint lane closure; auto-resolves carry-forward via `gh issue view --json state`; emits markdown patch for the ledger.
 - `shctx worktree <list|gc|merge>` *(v5.0.3)* — worktree hygiene: list with age, prune stale `.claude/worktrees/agent-*` (`gc --older-than=<hours>`), cherry-pick + cleanup (`merge <agent-id> --strategy=theirs|prompt`).
-- `shctx loop <init|status|record|close|list|focus>` *(v6.0.9)* — SQLite-backed Loop-Until-Done state. Backs `/shepherd:loop` and the Focus Loop runtime. Loop state is canonical (survives compaction). `init --task --max [--kind --agent --until --interval]` emits a `loop-id` of form `loop-YYYYMMDD-NNN`; `status --id`; `record --id --iteration --new_findings --summary`; `close --id --status`; `list [--active|--all]`. Sixth verb `focus <upsert|show> --sprint` reads/writes the focus record (objective, active_node, ready_set, obligations, invariants) from migration `0013_focus.sql`.
+- `shctx loop <init|native-cmd|status|record|close|list|focus>` *(v6.0.9; native-cmd + --self-paced v6.2.0)* — SQLite-backed Loop-Until-Done state. Backs `/shepherd:loop` and the Focus Loop runtime. Loop state is canonical (survives compaction). `init --task --max [--kind --agent --until --interval | --self-paced]` emits a `loop-id` of form `loop-YYYYMMDD-NNN`; `native-cmd --id [--command]` prints the exact native `/loop` invocation deterministically from the loop's stored pacing; `status --id`; `record --id --iteration --new_findings --summary`; `close --id --status`; `list [--active|--all]`. Sixth verb `focus <upsert|show> --sprint` reads/writes the focus record (objective, active_node, ready_set, obligations, invariants) from migration `0013_focus.sql`.
+- `shctx config <init|claude-md|show|path|get>` — scaffold/inspect the project binding. `init` writes `.claude/shepherd.toml` from the bundled template (idempotent); `claude-md` *(v6.2.0)* materializes the portable operating doctrine into the repo's `CLAUDE.md` as a fenced, never-clobber managed block (`--force` re-syncs only the block); `get <key> [def]` is the uniform `cfg_get` read path.
+- `shctx adapt <roll|reflect|priors|report|recommend>` — the adaptation loop. `roll --sprint --grade … [--wall-min --api]` writes one `sprint_metrics` row + harvests HIGH/CRITICAL findings into priors at CLOSE-FINALIZE (pass `--wall-min`/`--api` to power the cost trend + Check 8 sizing); `reflect --sprint --note` *(v6.2.0)* stores a one-line close reflection; `priors --metrics|--lessons` feeds dispatch sizing + brief injection; `report --trends` is the deterministic trend detector; `recommend` turns measured averages into a dispatch recommendation.
 
 All subcommands are project-scoped to the row in `projects` written by `init`.
 

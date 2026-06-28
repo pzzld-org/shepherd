@@ -74,3 +74,27 @@ TMP4="$(mktemp -d)"; ( cd "$TMP4" && git init -q . && echo '{}' > package.json \
   && grep -q 'npm run build --if-present' .claude/shepherd.toml ) \
   || { echo "FAIL: npm/typescript detection"; rm -rf "$TMP4"; exit 1; }
 rm -rf "$TMP4"
+
+# ---- claude-md: materialize the operating doctrine block (v6.2.0) ------------
+cmd="$SHCTX_TEST_TMP/CLAUDE.md"
+rm -f "$cmd"
+# fresh repo (no CLAUDE.md) → the managed block becomes the file
+"$SHCTX" config claude-md >/dev/null
+assert_file "$cmd"
+assert_contains "claudemd.begin"   "$(cat "$cmd")" "BEGIN shepherd:operating-doctrine"
+assert_contains "claudemd.end"     "$(cat "$cmd")" "END shepherd:operating-doctrine"
+assert_contains "claudemd.content" "$(cat "$cmd")" "two machine spaces"
+# idempotent: re-run without --force preserves and reports already-present
+out="$("$SHCTX" config claude-md)"
+assert_contains "claudemd.idempotent" "$out" "already carries"
+# append: an existing operator CLAUDE.md without the block keeps its content
+printf '# My Project\n\nOperator notes here.\n' > "$cmd"
+"$SHCTX" config claude-md >/dev/null
+assert_contains "claudemd.append-keeps-operator" "$(cat "$cmd")" "Operator notes here."
+assert_contains "claudemd.append-adds-block"     "$(cat "$cmd")" "BEGIN shepherd:operating-doctrine"
+# re-sync: --force replaces only the block; operator content survives; no dup block
+"$SHCTX" config claude-md --force >/dev/null
+assert_contains "claudemd.resync-keeps-operator" "$(cat "$cmd")" "Operator notes here."
+nblocks=$(grep -c "BEGIN shepherd:operating-doctrine" "$cmd")
+assert_eq "claudemd.single-block" "$nblocks" "1"
+rm -f "$cmd"

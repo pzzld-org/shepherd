@@ -173,6 +173,13 @@ auto_refresh    = ["on-sprint-open"]         # triggers that fire `shctx refresh
 announce_shctx_path = "on"                   # v6.1.8: SessionStart surfaces the resolved absolute shctx
                                              # path so a session never falsely reports "shctx absent"
                                              # (shctx is plugin-local, NEVER on $PATH). on (default) | off.
+announce_core_doctrine = "on"                # v6.2.0: SessionStart surfaces a ≤1-line pointer to
+                                             # doctrines/operating-philosophy.md (the how-to-work index).
+                                             # on (default) | off.
+announce_adaptation = "on"                   # v6.2.0: SessionStart surfaces the adaptation loop —
+                                             # sprint/prior counts + newest harvested lesson + any active
+                                             # TREND ALERT — when the registry is non-empty (the empty
+                                             # cold-start note still fires either way). on (default) | off.
 
 [context.refresh]
 symbols_languages = ["rust"]                                # languages the symbol extractor walks

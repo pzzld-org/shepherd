@@ -8,8 +8,15 @@
 # See: .artifacts/docs/specs/2026-06-09-v609-focus-loop-and-compaction-resilience.spec.md §4.2
 #
 #   init --task=<text> --max=<N> [--kind=focus|convergence|watch|generic]
-#        [--agent=worker|discovery|orchestrator] [--until=<field>] [--interval=<dur>]
+#        [--agent=worker|discovery|orchestrator] [--until=<field>]
+#        [--interval=<dur> | --self-paced]
 #       Register a new loop. Emits the loop-id (e.g. loop-20260609-001).
+#       --self-paced stores the 'self-paced' pacing sentinel (native /loop
+#       chooses the delay and ends early); mutually exclusive with --interval.
+#
+#   native-cmd --id=<loop-id> [--command=<slash-command>]
+#       Print the exact native /loop invocation for this loop, derived from its
+#       stored pacing — deterministic, so the model never rebuilds it per wake.
 #
 #   status --id=<loop-id>
 #       Show one loop + its iteration history. --json | --md output supported.
@@ -41,8 +48,18 @@ shctx loop <init|status|record|close|list|focus> [args]   (v6.0.9)
   init --task=<text> --max=<N>
        [--kind=focus|convergence|watch|generic]
        [--agent=worker|discovery|orchestrator]
-       [--until=<field>]  [--interval=<duration>]
-      Register a new loop. Prints the loop-id on stdout.
+       [--until=<field>]  [--interval=<duration> | --self-paced]
+      Register a new loop. Prints the loop-id on stdout. --self-paced stores
+      the 'self-paced' pacing sentinel (native /loop picks the delay, ends
+      early); mutually exclusive with a fixed --interval.
+
+  native-cmd --id=<loop-id> [--command=<slash-command>]
+      Print the exact native /loop invocation for this loop, read from its
+      stored pacing (deterministic — the model never reconstructs it):
+        fixed     ⇒ /loop <interval> <command>
+        self-paced⇒ /loop <command>
+        in-session⇒ a note (no native schedule)
+      --command defaults to '/shepherd:loop --resume <loop-id>'.
 
   status --id=<loop-id> [--json|--md]
       Show loop header + iteration history.
@@ -101,7 +118,7 @@ _bool() {
 # init — register a new loop, emit the loop-id
 # ---------------------------------------------------------------------------
 _cmd_init() {
-  local task="" max="" kind="generic" agent="" until_field="new_findings" interval=""
+  local task="" max="" kind="generic" agent="" until_field="new_findings" interval="" self_paced=0
   for arg in "$@"; do
     case "$arg" in
       --task=*)      task="${arg#--task=}" ;;
@@ -110,10 +127,21 @@ _cmd_init() {
       --agent=*)     agent="${arg#--agent=}" ;;
       --until=*)     until_field="${arg#--until=}" ;;
       --interval=*)  interval="${arg#--interval=}" ;;
+      --self-paced)  self_paced=1 ;;
       -h|--help)     usage; exit 0 ;;
       *) echo "ERROR: unknown arg: $arg" >&2; exit 1 ;;
     esac
   done
+
+  # Pacing mode: --self-paced delegates to native /loop with NO interval (the
+  # platform picks a dynamic 1min–1hr delay and ends early when done). Stored as
+  # the sentinel interval='self-paced' (the column is free text — no schema
+  # change). Mutually exclusive with a fixed --interval.
+  if (( self_paced )); then
+    [[ -z "$interval" || "$interval" == "self-paced" ]] \
+      || { echo "ERROR: --self-paced and --interval=<dur> are mutually exclusive" >&2; exit 1; }
+    interval="self-paced"
+  fi
 
   [[ -n "$max" ]] || { echo "ERROR: loop init requires --max=<N>" >&2; exit 1; }
   [[ "$max" =~ ^[0-9]+$ && "$max" -gt 0 ]] \
@@ -150,6 +178,50 @@ _cmd_init() {
              );"
 
   printf '%s\n' "$loop_id"
+}
+
+# ---------------------------------------------------------------------------
+# native-cmd — emit the exact native /loop invocation, read from stored pacing
+# ---------------------------------------------------------------------------
+# The native /loop invocation string is same-input-same-output (it is fully
+# determined by the loop's stored interval + the resume command), so it belongs
+# in a script, not reconstructed by the model every wake (agent-excellence.md
+# Rule 7). Branches on the interval sentinel:
+#   fixed interval (e.g. '5m')  ⇒  /loop <interval> <command>
+#   'self-paced'                ⇒  /loop <command>            (dynamic native cadence)
+#   ''/none/in-session          ⇒  a note: no native schedule; driven in-session
+# --command defaults to '/shepherd:loop --resume <loop-id>'; callers with a
+# different resume shape (e.g. /shepherd:focus) pass --command explicitly.
+_cmd_native_cmd() {
+  local loop_id="" command=""
+  for arg in "$@"; do
+    case "$arg" in
+      --id=*)      loop_id="${arg#--id=}" ;;
+      --command=*) command="${arg#--command=}" ;;
+      -h|--help)   usage; exit 0 ;;
+      *) echo "ERROR: unknown arg: $arg" >&2; exit 1 ;;
+    esac
+  done
+  [[ -n "$loop_id" ]] || { echo "ERROR: loop native-cmd requires --id=<loop-id>" >&2; exit 1; }
+
+  local lid_esc="${loop_id//\'/\'\'}"
+  local row
+  row=$(shctx_sql "SELECT COALESCE(interval,'')||'|'||COALESCE(kind,'generic')
+                   FROM loops WHERE id='$lid_esc' AND project_id='${pid//\'/\'\'}';")
+  [[ -n "$row" ]] || { echo "ERROR: loop not found: $loop_id" >&2; exit 1; }
+  local interval kind
+  IFS='|' read -r interval kind <<< "$row"
+
+  [[ -n "$command" ]] || command="/shepherd:loop --resume $loop_id"
+
+  case "$interval" in
+    ""|none|in-session)
+      printf '(in-session drive — no native /loop schedule; shepherd drives the iteration directly)\n' ;;
+    self-paced|auto)
+      printf '/loop %s\n' "$command" ;;
+    *)
+      printf '/loop %s %s\n' "$interval" "$command" ;;
+  esac
 }
 
 # ---------------------------------------------------------------------------
@@ -463,11 +535,12 @@ _cmd_focus() {
 # Dispatch
 # ---------------------------------------------------------------------------
 case "$sub" in
-  init)   _cmd_init   "$@" ;;
-  status) _cmd_status "$@" ;;
-  record) _cmd_record "$@" ;;
-  close)  _cmd_close  "$@" ;;
-  list)   _cmd_list   "$@" ;;
-  focus)  _cmd_focus  "$@" ;;
+  init)       _cmd_init       "$@" ;;
+  native-cmd) _cmd_native_cmd "$@" ;;
+  status)     _cmd_status     "$@" ;;
+  record)     _cmd_record     "$@" ;;
+  close)      _cmd_close      "$@" ;;
+  list)       _cmd_list       "$@" ;;
+  focus)      _cmd_focus      "$@" ;;
   *) echo "ERROR: unknown subcommand: loop $sub" >&2; usage >&2; exit 1 ;;
 esac

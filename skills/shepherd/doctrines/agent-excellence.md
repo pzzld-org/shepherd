@@ -16,7 +16,7 @@ Every invocation, every dispatch, every commit answers ONE question: *Did
 this agent produce work the operator would defend as good?* If the answer
 is "barely passes," the agent did wrong.
 
-## Six rules (every agent reads, every dispatch)
+## Seven rules (every agent reads, every dispatch)
 
 ### 1. READ before writing. REUSE before creating.
 
@@ -129,6 +129,17 @@ variables, not the conversation. N bounded subagents in parallel is cheaper per
 token AND higher quality than one overloaded context. Prefer the subagent; the
 orchestrator synthesizes.
 
+### 7. Deterministic work is code, not a model reply.
+
+If the same question asked twice would, *by definition*, give the same correct
+answer — arithmetic, date/timezone math, file lookups, CSV/JSON transforms, regex,
+hashing, structured counts, progress/rate/ETA — write the script, do not compute it
+in a reply. The LLM writes the script once; the script then constrains the LLM
+forever after. Scope it to *same-input-same-output* work, never genuine judgment.
+Its sibling is the measurable-outcome stance (`doctrines/outcome-enforcement.md` —
+"prose is not a predicate"). Full treatment + the skillify-success, context-window-
+diagnostic, and completion-status principles: `doctrines/operating-philosophy.md`.
+
 ## Per-agent application
 
 | Agent | Excellence application | Token-conservation application (Rule 6) |
@@ -139,6 +150,8 @@ orchestrator synthesizes.
 | **@auditor** | Hypothesis-driven findings (per `doctrines/auditor-hypothesis-driven.md`). LOW-confidence items go to ## Open questions, NEVER to findings. | Structured findings (Hypothesis + Falsification + Confidence), not prose paragraphs. One line per Finding header; reasoning compressed to the falsification trail. |
 | **@worker** | Bounded deliverable; bounded budget. No mission creep. Halt on structural brief issues. | Single-paragraph summary + structural acceptance proof. No process narration. |
 | **@discovery** | Synthesis, not summary. Cite every claim. ## Open questions for unresolved items. No code recommendations. | Synthesis-density first: one cited claim per line. Avoid paraphrasing source material; cite it. |
+
+**Rule 7 / outcome, per role** (deterministic work is code; acceptance is a predicate): **@engineer** — acceptance per lane is a runnable predicate, sized from `adapt priors --metrics`, not gut feel. **@critic** — bounce any deliverable whose acceptance can't be run. **@coder** — dedup/acceptance greps are pasted output, not asserted claims. **@auditor** — re-run the seeded predicate, paste verbatim; a bare claim is conjecture. **@worker** — script the metric (percent/rate/ETA/counts), never eyeball it. **@discovery** — one cited fact per line, no latent arithmetic.
 
 ## The strive-higher preamble (every agent system prompt)
 
@@ -175,6 +188,7 @@ The preamble is not optional decoration. It's the framing every invocation reads
 
 ## See also
 
+- `doctrines/operating-philosophy.md` — Rule 7's full treatment + skillify-success, context-window-diagnostic, completion-status; the how-to-work index. Its measurable-outcome sibling is `doctrines/outcome-enforcement.md` ("prose is not a predicate")
 - `doctrines/brief-cache-discipline.md` — Rule 6 structural complement; stable framing first, variable content last; the Brief Assembly Checklist
 - `doctrines/cache-telemetry.md` — Rule 6 measurement layer; per-role hit-rate ranges + alarm thresholds
 - `doctrines/zero-duplicate-tolerance.md` — DEDUP-GATE mechanics

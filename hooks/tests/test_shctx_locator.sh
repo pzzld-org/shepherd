@@ -29,10 +29,24 @@ if grep -qF "absent BY DESIGN" <<<"$out"; then echo "  PASS  carries-not-on-PATH
 if grep -qF "UNSET" <<<"$out"; then echo "  PASS  reports-CLAUDE_PLUGIN_ROOT-unset"; else
   echo "  FAIL  expected UNSET marker: $out"; fails=$((fails+1)); fi
 
-# 2. [context].announce_shctx_path = off → suppressed (silent on a clean repo).
+# 2. [context].announce_shctx_path = off → locator line suppressed. (Other v6.2.0
+#    surfaces — core-doctrine pointer, adaptation — have their own off-switches,
+#    so assert the LOCATOR path is gone, not total silence.)
 printf '[context]\nannounce_shctx_path = "off"\n' > .claude/shepherd.toml
 out=$(env -u CLAUDE_PLUGIN_ROOT bash "$HOOK" <<<"$payload" 2>/dev/null || true)
-if [[ -z "$out" ]]; then echo "  PASS  off-switch-suppresses-locator"; else
-  echo "  FAIL  expected silence with off-switch, got: $out"; fails=$((fails+1)); fi
+if ! grep -qF "$EXPECT_PATH" <<<"$out"; then echo "  PASS  off-switch-suppresses-locator"; else
+  echo "  FAIL  expected no locator path with off-switch, got: $out"; fails=$((fails+1)); fi
+
+# 3. v6.2.0 core-doctrine pointer: on by default, surfaces operating-philosophy.md.
+printf '[context]\nannounce_shctx_path = "off"\n' > .claude/shepherd.toml
+out=$(env -u CLAUDE_PLUGIN_ROOT bash "$HOOK" <<<"$payload" 2>/dev/null || true)
+if grep -qF "operating-philosophy.md" <<<"$out"; then echo "  PASS  core-doctrine-pointer-default-on"; else
+  echo "  FAIL  expected operating-philosophy.md pointer: $out"; fails=$((fails+1)); fi
+
+# 4. All v6.2.0 context surfaces off → true silence on a clean (DB-less) repo.
+printf '[context]\nannounce_shctx_path = "off"\nannounce_core_doctrine = "off"\nannounce_adaptation = "off"\n' > .claude/shepherd.toml
+out=$(env -u CLAUDE_PLUGIN_ROOT bash "$HOOK" <<<"$payload" 2>/dev/null || true)
+if [[ -z "$out" ]]; then echo "  PASS  all-off-switches-yield-silence"; else
+  echo "  FAIL  expected silence with all off, got: $out"; fails=$((fails+1)); fi
 
 exit "$fails"

@@ -536,11 +536,16 @@ no pause-detector hook, and no `<ns>/pauses/` registry.
        [--size={XS|S|M|L|XL}] [--lanes={total coder lanes}] [--waves={N}] \
        [--loc-add={adds}] [--loc-del={dels}] [--wall-min={session minutes}] [--api={gh calls}]
      ```
-     Writes one `sprint_metrics` row + harvests this sprint's HIGH/CRITICAL `audit_findings` into `mem_entries(kind='prior')`. Provide `--wall-min`/`--api` when known — they power Check 8 (#94). Idempotent; on failure (DB locked) note under anomalies and continue — never block CLOSE-FINALIZE. **Supersedes** the retired completeness-auditor markdown append.
-  2. **Trend surface** (read): scan `shctx adapt report` for 3+ same-concern HIGH/CRITICAL across sprints, a downward grade trend, or rising cost. If a trigger fires, surface a `[TREND]` alert (informational; does not block PAUSE). Takes < 1 min.
+     Writes one `sprint_metrics` row + harvests this sprint's HIGH/CRITICAL `audit_findings` into `mem_entries(kind='prior')`. Pass `--wall-min`/`--api` only when a **timer or script** gives them (do not eyeball-compute elapsed minutes in prose — that's the Rule 7 trap); they power the cost-rising trend (§VI(c)) + Check 8 sizing (#94) and stay dormant (NULL) otherwise, which is sound. Idempotent; on failure (DB locked) note under anomalies and continue — never block CLOSE-FINALIZE. **Supersedes** the retired completeness-auditor markdown append. The harvest echo (`N prior(s) harvested`) is the close report's "Learned" line — surface it.
+  2. **Reflect** (write — Reflexion): synthesize ONE first-person lesson over the whole sprint trajectory (grade + metrics delta + the costliest finding) — "what I'd do differently next sprint." The note is your latent judgment; the storage is deterministic:
+     ```bash
+     shctx adapt reflect --sprint={sprint_branch} --note="<one-line lesson>"
+     ```
+     It rides the existing inject path, so the next sprint's planning brief opens with it. Skip only if the sprint genuinely taught nothing new.
+  3. **Trend surface** (read — mechanized, do NOT eyeball): run `shctx adapt report --trends` and surface its output **verbatim** as the `[TREND]` block (informational; never blocks PAUSE; emits nothing on a healthy streak). `adaptation-loop.md §VI` forbids re-deriving the trend from a table read — on exhausted context the eyeball scan is the first thing skipped; the command is not.
 
 - [ ] **PAUSE** fires after step 9. Under `/shepherd:start` (SOLO): you are done — operator takes over. Under `/shepherd:spawn`: you return control to root. **RELEASE** fires on dev.{last} + sprint-through grant (step 6 above).
-- [ ] **Emit close summary** to planter/operator: "What shipped, what carried forward, next sprint branch name."
+- [ ] **Emit close summary** to planter/operator: "What shipped, what carried forward, the lesson learned (the reflection + harvest count from step 9), next sprint branch name."
 
 ---
 

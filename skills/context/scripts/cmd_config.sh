@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # shctx config — scaffold / inspect the project shepherd.toml binding.
 #
+# `config claude-md` (v6.2.0) materializes the portable operating doctrine into
+# the consumer repo's CLAUDE.md as a fenced managed block (append-only, never
+# clobbers operator content; --force re-syncs only the block). Companion to the
+# session-surfaced doctrines/operating-philosophy.md framework binding.
+#
 # `config init` (v6.1.5, #15) writes a first-ever .claude/shepherd.toml from the
 # bundled examples/minimal template, deriving the project `name` (git remote → cwd)
 # and the `[gates]` toolchain (Cargo.toml→cargo, go.mod→go, pyproject→pytest,
@@ -102,9 +107,69 @@ do_init() {
   echo "  Review [branching] + [gates] before your first sprint."
 }
 
+# Materialize the portable operating doctrine into the consumer repo's CLAUDE.md
+# as a FENCED MANAGED BLOCK (v6.2.0). Mirrors do_init's bundled-template→consumer
+# copy, but append-only and never-clobber: operator content OUTSIDE the markers is
+# always preserved; --force re-syncs ONLY the managed block to the current plugin
+# version. The block is the durable, all-sessions pin of the how-to-work doctrine
+# whose framework binding lives in doctrines/operating-philosophy.md.
+CLAUDEMD_BEGIN='<!-- BEGIN shepherd:operating-doctrine'
+CLAUDEMD_END='<!-- END shepherd:operating-doctrine -->'
+
+do_claude_md() {
+  local force=0
+  [[ "${1:-}" == "--force" ]] && force=1
+  local repo dst src
+  repo="$(shctx_repo_root)"
+  dst="$repo/CLAUDE.md"
+  src="$(plugin_root)/examples/minimal/CLAUDE.md"
+  [[ -f "$src" ]] || { echo "ERROR: bundled template missing: $src" >&2; return 1; }
+
+  # No CLAUDE.md yet → the managed block IS the file.
+  if [[ ! -f "$dst" ]]; then
+    cat "$src" > "$dst"
+    echo "shctx config: wrote $dst (shepherd operating doctrine)"
+    return 0
+  fi
+
+  # Managed block already present.
+  if grep -qF "$CLAUDEMD_BEGIN" "$dst"; then
+    if [[ "$force" -eq 0 ]]; then
+      echo "shctx config: $dst already carries the shepherd doctrine block (preserving; --force to re-sync)"
+      return 0
+    fi
+    # Guard: a BEGIN with no END marker means the awk would set inblock=1 and
+    # never reset, silently dropping every line after BEGIN. Refuse rather than
+    # swallow operator content placed after a hand-damaged block.
+    if ! grep -qF "$CLAUDEMD_END" "$dst"; then
+      echo "ERROR: $dst has a BEGIN marker but no '$CLAUDEMD_END' — refusing to re-sync (would drop trailing content). Repair the markers manually." >&2
+      return 1
+    fi
+    # Re-sync: replace ONLY the BEGIN..END block, preserve everything else.
+    local tmp; tmp="$(mktemp)"
+    awk -v beginm="$CLAUDEMD_BEGIN" -v endm="$CLAUDEMD_END" -v src="$src" '
+      index($0, beginm) > 0 {
+        while ((getline line < src) > 0) print line
+        close(src); inblock=1; next
+      }
+      inblock && index($0, endm) > 0 { inblock=0; next }
+      inblock { next }
+      { print }
+    ' "$dst" > "$tmp"
+    mv "$tmp" "$dst"
+    echo "shctx config: re-synced the shepherd doctrine block in $dst"
+    return 0
+  fi
+
+  # Existing CLAUDE.md, no managed block → APPEND (never clobber operator content).
+  { printf '\n'; cat "$src"; } >> "$dst"
+  echo "shctx config: appended the shepherd operating doctrine block to $dst (operator content preserved)"
+}
+
 sub="${1:-help}"; shift || true
 case "$sub" in
   init) do_init "${1:-}" ;;
+  claude-md) do_claude_md "${1:-}" ;;
   get)
     # Resolve a single key through cfg_get (local → project → XDG), optionally
     # falling back to a supplied default when unset. The one uniform read path
@@ -134,6 +199,11 @@ Usage:
                                 (git remote → cwd) + [gates] (Cargo.toml→cargo,
                                 go.mod→go, pyproject→pytest, package.json→npm), and
                                 realigns [paths] to the active shctx namespace.
+  shctx config claude-md [--force]
+                                Materialize the portable operating doctrine into the
+                                repo's CLAUDE.md as a fenced managed block. Append-only
+                                and never-clobber (operator content outside the markers
+                                is preserved); --force re-syncs only the managed block.
   shctx config show             Print the resolved project/local config.
   shctx config path             Echo the canonical write location.
   shctx config get <key> [def]  Resolve one key via cfg_get (local→project→XDG),
@@ -142,5 +212,5 @@ Usage:
                                 max_parallel, dashboard_cadence, …).
 EOF
     ;;
-  *) echo "ERROR: usage: shctx config <init|show|path>" >&2; exit 1 ;;
+  *) echo "ERROR: usage: shctx config <init|claude-md|show|path|get>" >&2; exit 1 ;;
 esac

@@ -586,9 +586,25 @@ sprint when `--scope > sprint`):
       ```
       Writes the `sprint_metrics` row + harvests this sprint's HIGH/CRITICAL
       `audit_findings` → `mem_entries(kind='prior')`. Idempotent; on failure note
-      under anomalies and continue. Supersedes the retired completeness-auditor
-      markdown append. For `--parallel` / `--scope > sprint`: roll once per sprint
-      as each closes. Per `doctrines/adaptation-loop.md` + `doctrines/self-improvement.md`.
+      under anomalies and continue. Pass `--wall-min`/`--api` only when a timer or
+      script supplies them (never eyeball-compute minutes in prose — Rule 7);
+      they power the cost trend + Check 8 sizing and stay dormant (NULL) otherwise.
+      Supersedes the retired completeness-auditor markdown append. For
+      `--parallel` / `--scope > sprint`: roll once per sprint as each closes. Per
+      `doctrines/adaptation-loop.md` + `doctrines/self-improvement.md`.
+
+- [ ] **Reflect** (Reflexion; once per sprint close, after roll). Synthesize ONE
+      first-person lesson over the sprint trajectory — "what I'd do differently
+      next sprint" — and store it (latent note in, deterministic storage out):
+      ```bash
+      shctx adapt reflect --sprint={sprint_branch} --note="<one-line lesson>"
+      ```
+      It rides the inject path into the next sprint's planning brief.
+
+- [ ] **Trend surface** (mechanized — do NOT eyeball). Run `shctx adapt report
+      --trends` and carry its output **verbatim** into the ROOT CLOSE REPORT's
+      Trend-alerts field (informational; emits nothing on a healthy streak).
+      `adaptation-loop.md §VI` forbids re-deriving the trend by hand.
 
 - [ ] Emit ROOT CLOSE REPORT to operator (shape below); PAUSE.
 
@@ -606,7 +622,8 @@ When a spawn session winds down (last sprint closed, or operator interrupt):
 - Real-work test: {n_pass} / {N} sprints PASS
 - SUBTRACT delta (aggregate): net +X / -Y LOC
 - Carry-forwards: {n_total} | {CRITICAL/HIGH count} | deferred to {milestone(s)}
-- Trend alerts: {none | [TREND] ...}
+- Learned: {prior:<id> harvested concern(s), N harvested | the reflection note} per sprint
+- Trend alerts: {none | verbatim `shctx adapt report --trends` output}
 - Stage Graph compliance: {n_off_graph_dispatches} across {N} sprints
 - Teammates spawned: {N_total} | stalled: {N_stalled} | hard-stopped: {N_hardstop}
 - Disputes resolved: {N} (via @critic + operator)

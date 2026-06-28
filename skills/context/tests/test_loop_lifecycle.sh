@@ -211,4 +211,32 @@ loop_id2=$("$SHCTX" loop init \
   || { echo "FAIL: day-sequence: two inits on same day produced identical ids" >&2; exit 1; }
 assert_contains "second-loop-prefix" "$loop_id2" "loop-"
 
+# ---------------------------------------------------------------------------
+# native-cmd — deterministic emission of the native /loop invocation (v6.2.0)
+# ---------------------------------------------------------------------------
+# fixed interval ⇒ /loop <interval> /shepherd:loop --resume <id>
+fixed_id=$("$SHCTX" loop init --task="ci watch" --max=20 --kind=watch --interval=5m)
+nc=$("$SHCTX" loop native-cmd --id="$fixed_id")
+assert_eq "native-fixed" "$nc" "/loop 5m /shepherd:loop --resume $fixed_id"
+
+# self-paced ⇒ /loop /shepherd:loop --resume <id>  (no interval token)
+sp_id=$("$SHCTX" loop init --task="exhaustive discovery" --max=8 --self-paced)
+sp_interval=$(sqlite3 "$DB" "SELECT interval FROM loops WHERE id='$sp_id';")
+assert_eq "self-paced-sentinel" "$sp_interval" "self-paced"
+nc=$("$SHCTX" loop native-cmd --id="$sp_id")
+assert_eq "native-self-paced" "$nc" "/loop /shepherd:loop --resume $sp_id"
+
+# --command override (e.g. /shepherd:focus resume shape)
+nc=$("$SHCTX" loop native-cmd --id="$fixed_id" --command="/shepherd:focus --sprint=dev.6.2.0 --refresh")
+assert_eq "native-cmd-override" "$nc" "/loop 5m /shepherd:focus --sprint=dev.6.2.0 --refresh"
+
+# in-session (no interval) ⇒ a note, no native schedule
+insession_id=$("$SHCTX" loop init --task="tight fix loop" --max=5)
+nc=$("$SHCTX" loop native-cmd --id="$insession_id")
+assert_contains "native-in-session" "$nc" "in-session drive"
+
+# --self-paced and --interval are mutually exclusive
+rc=0; "$SHCTX" loop init --task="bad" --max=4 --self-paced --interval=5m >/dev/null 2>&1 || rc=$?
+assert_eq "self-paced-interval-conflict" "$rc" "1"
+
 echo "loop_lifecycle: ok"

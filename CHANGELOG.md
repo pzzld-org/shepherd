@@ -4,6 +4,58 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v6.2.0 — 2026-06-27
+
+**Operating philosophy bound, self-improvement made apparent, native self-paced loops.**
+Part cleanup, part evolution: the how-to-work doctrine becomes a first-class framework
+binding, the adaptation loop is surfaced where the operator actually looks, and `/loop`
+gains the native self-paced pacing mode. All lean wiring over native tools — no new
+runtime, and the only new schema is none (the loop pacing sentinel rides an existing
+free-text column).
+
+### New — `doctrines/operating-philosophy.md` (CLAUDE.md binding)
+
+The how-to-work philosophy is bound as a thin **index** doctrine: it names the four
+flock-scoped principles that had no home — the **latent-vs-deterministic split**
+(`agent-excellence.md` Rule 7, read every dispatch), skillify-success, the
+context-window diagnostic, and the `DONE / DONE_WITH_CONCERNS / BLOCKED / NEEDS_CONTEXT`
+return vocabulary — and cites the covered majority rather than re-pasting it. Surfaced at
+SessionStart (`[context].announce_core_doctrine`) and the flock foundational block. A
+portable twin (`examples/minimal/CLAUDE.md`) materializes into consumer repos via the new
+`shctx config claude-md` — an append-only, never-clobber managed block (`--force`
+re-syncs only the block).
+
+### New — adaptation loop made visible
+
+- **`shctx adapt reflect --sprint --note [--pin]`** — a one-line, first-person close
+  reflection (Reflexion) stored as a `kind='prior'` lesson and injected into the next
+  sprint's planning brief. Idempotent per sprint; pin-preserving on re-run.
+- **SessionStart adaptation surface** — inverted from the old empty-only note: a
+  non-empty registry now surfaces prior counts + the newest lesson + any active TREND
+  ALERT (`[context].announce_adaptation`; the trend probe is gated to ≥3 closes).
+- **`shctx dash` ADAPT row** — sprint/prior counts + latest lesson at a glance.
+- **Close-step wiring** — the deterministic `shctx adapt report --trends` now runs at
+  CLOSE-FINALIZE (replacing the "eyeball the report" instruction it always forbade), and
+  a "Learned" line lands in the close report.
+
+### New — `/loop` native self-paced pacing
+
+- **`--self-paced`** delegates to the native Claude Code `/loop` with no fixed interval:
+  the platform picks a dynamic, cache-window-aware delay and ends the loop early on
+  convergence. Sound for terminate-on-`false` (convergent) templates only — WATCH +
+  FOCUS loops keep fixed `--interval` (self-paced would stop a watch on the first healthy
+  tick).
+- **`shctx loop native-cmd`** emits the exact native `/loop` invocation deterministically
+  from stored pacing, so the model never reconstructs it per wake (Rule 7 in practice).
+
+### Notes
+
+- Gate tests: 44/44 context + 45/45 hooks; every new shctx surface and behavioral path is
+  covered, and the changes passed a six-dimension adversarial review.
+- `wall_minutes` stays an explicit `--wall-min` input. A git-derived auto-fill was
+  prototyped then rejected — it measured branch age, not sprint duration, and would have
+  fired the cost-rising trend spuriously on long-lived branches.
+
 ## v6.1.8 — 2026-06-17
 
 **Field-shape deduplication — `shctx dups` (#157).** The third leg of the

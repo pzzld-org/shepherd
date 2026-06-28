@@ -100,6 +100,26 @@ else
   echo "LOOPS       none active"
 fi
 
+# ADAPT: self-improvement registry — measured averages + harvested priors +
+# latest lesson. Cheap reads only (the full trend scan lives in the SessionStart
+# banner + close report); makes the loop visible at the same glance as lanes.
+apid="$(shctx_project_id 2>/dev/null || true)"
+if [[ -n "$apid" ]]; then
+  arow="$(shctx_sql "SELECT n||'|'||CAST(ROUND(COALESCE(avg_lane_count,0)) AS INTEGER)||'|'||CAST(ROUND(COALESCE(avg_wall_minutes,0)) AS INTEGER) FROM v_sprint_metrics_avg WHERE project_id='$apid';" 2>/dev/null || true)"
+  pri="$(shctx_sql "SELECT count(*) FROM mem_entries WHERE project_id='$apid' AND kind='prior';" 2>/dev/null || echo 0)"
+  an="${arow%%|*}"
+  if [[ -n "$an" && "$an" != "0" ]]; then
+    IFS='|' read -r an al aw <<< "$arow"
+    printf 'ADAPT       %s sprint(s)  lanes~%s  wall~%sm  priors=%s\n' "$an" "$al" "$aw" "${pri:-0}"
+    lesson="$(shctx_sql "SELECT substr(replace(title,'prior: ',''),1,58) FROM mem_entries WHERE project_id='$apid' AND kind='prior' ORDER BY created_at DESC, id DESC LIMIT 1;" 2>/dev/null || true)"
+    [[ -n "$lesson" ]] && printf '              latest: %s\n' "$lesson"
+  elif [[ "${pri:-0}" -gt 0 ]]; then
+    printf 'ADAPT       priors=%s (no sprint metrics yet)\n' "$pri"
+  else
+    echo "ADAPT       no history yet (first cycle lands at close)"
+  fi
+fi
+
 # STALE: GitHub cache freshness (issues + PRs).
 gi="$(shctx_sql 'SELECT COALESCE(MAX(refreshed_at),0) FROM index_issues;' 2>/dev/null || echo 0)"
 gp="$(shctx_sql 'SELECT COALESCE(MAX(refreshed_at),0) FROM index_prs;'    2>/dev/null || echo 0)"

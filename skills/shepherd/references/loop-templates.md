@@ -25,6 +25,16 @@ Pattern-6 circuit-breaker invariants apply to every template below without excep
 | `@engineer` | ENGINEER-PLAN-REFINE | Loop-Until-Done (generic Pattern 6) | 3 | Critic gate green |
 | shepherd / conductor | FOCUS-LOOP | FOCUS-LOOP (named composite) | 8 | CLOSE-FINALIZE reached |
 
+### Pacing — orthogonal to the template (v6.2.0)
+
+Every wall-clock template delegates its wake clock to the native `/loop` skill. There are three pacings; the template picks *what* runs, the pacing picks *when*:
+
+- **self-paced** (`--self-paced`) — native `/loop` picks a dynamic 1min–1hr, cache-window-aware delay and **ends the loop early** the moment an iteration reports `new_findings: false`. This maps cleanly onto the **convergent** templates (terminate on `false`): **DISCOVERY-EXHAUST** is the canonical case — long exhaustive discovery where you want the cadence chosen for you and the loop to stop itself when sources run dry. CODER-CONVERGENCE / WORKER-CONVERGENCE / AUDITOR-REFINE / ENGINEER-PLAN-REFINE can use it too.
+- **fixed interval** (`--interval <dur>`) — native `/loop` at a set period. Required for the **watch** templates (WORKER-WATCH, SOAK-LOOP, AUTONOMOUS-SENTINEL), which terminate on `new_findings: true` (anomaly found) — the inverse of convergence, so the platform's end-early-on-`false` would be wrong for them. They poll a known cadence until an anomaly or cap/expiry.
+- **in-session** (neither flag) — shepherd drives `wake → act → probe → yield` directly; for tight loops watched live.
+
+The exact native invocation is emitted by `shctx loop native-cmd --id=<loop-id>` (deterministic — never reconstructed by the model). See `commands/loop.md §Pacing modes`.
+
 ---
 
 ## @coder loop — CODER-CONVERGENCE
@@ -151,6 +161,12 @@ Specializes **Pattern 6 — Loop-Until-Done** directly (generic, not a named com
 iteration body is a `@discovery` read-only sweep; the loop controller is the conductor
 inline. Does not use CONVERGENCE-LOOP (no gate to turn green) or WATCH-LOOP (no wall-clock
 cadence needed).
+
+**Canonical self-paced case (v6.2.0).** For a long-horizon exhaustive sweep, run this with
+`--self-paced`: native `/loop` picks each delay and ends the loop automatically when a sweep
+reports `new_findings: false`. Because DISCOVERY-EXHAUST terminates on `false`, the platform's
+end-early semantics line up exactly — no fixed interval to guess, no manual stop. For a short
+in-session exhaust, omit the flag and let shepherd drive. See `commands/loop.md §Pacing modes`.
 
 ### Flock agent binding
 
