@@ -311,8 +311,9 @@ For multi-sprint walks (this enumeration runs for `--scope patch|minor|version`)
 missing seed REFUSES the spawn — direct the operator to run `/shepherd:plant
 {sprint_slug}` for each gap. Per `doctrines/scope-scale-workload.md §III`. (Seeds are
 load-bearing here: the walk plan and `--parallel` collision check read them. A single
-`--scope sprint` spawn is the seed-optional case — see Hard-stop #2 and
-`doctrines/operator-signaling.md §"Seed is recommended, not required"`.)
+`--scope sprint` spawn is the inline-plant case — its `SEED-AUTHOR` node plants a missing
+seed in-session rather than refusing (see Hard-stop #2 and
+`doctrines/operator-signaling.md §"Seed is recommended, not required"`).)
 
 ### Check 7 — Scope confirmation for minor/version (v5.1.6+)
 
@@ -1055,12 +1056,15 @@ Preflight-driven (Checks 1–3) plus run-state guards:
    `{paths.plans}/{sprint_slug}.seed.md` is a HARD stop ONLY for `--parallel` and
    multi-sprint `--scope` (patch/minor/version) walks, where seeds are load-bearing
    for collision detection (Check 5) and walk enumeration (Check 6) — there route the
-   operator to `/shepherd:plant` for each gap. For a single `--scope sprint` spawn,
-   seedless is ALLOWED: follow the seedless kickoff in
+   operator to `/shepherd:plant` for each gap. A single `--scope sprint` spawn does
+   NOT refuse: its walk opens on the `SEED-AUTHOR` node (`pipeline.md` §II/§IV), which
+   on a missing seed emits ONE turn-ending confirm and plants the seed **inline** —
+   the planter inner frame (`agents/planter.md §Plant mode`, two-meta-loading) authors
+   it from the operator's reply + the planter mesh, and it must pass `shctx seed verify`
+   (the `SEED-GATE`) before the walk falls through to `INTRO-COMBO-WAVE`. Per
    `${CLAUDE_PLUGIN_ROOT}/skills/shepherd/doctrines/operator-signaling.md §"Seed is
-   recommended, not required"` (derive the objective, or ask ONE batched kickoff
-   question, then run with elevated drift risk noted in the plan header + close report).
-   The seed remains the happy path — recommend `/shepherd:plant` but do not refuse.
+   recommended, not required"`. A seedless single-sprint spawn is self-sufficient, not a
+   dead-end; planting up front with `/shepherd:plant` stays the happy path.
 3. **Corrupted shepherd.lock** — `.artifacts/shepherd.lock` non-empty, timestamp
    < 30 min with matching active process. Surface; do not spawn.
 4. **Active rebase in progress** — `REBASE_HEAD` or `MERGE_HEAD` present;

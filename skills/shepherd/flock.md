@@ -457,7 +457,7 @@ The divergence table comparing conductor and planter is canonical in `agents/con
 - `doctrines/zero-duplicate-tolerance.md` — DEDUP-GATE pre-dispatch contract + skill auto-attachment
 - `doctrines/spawn-escalation.md` — NEW v5.1.4 — escalation channel contract (file paths, payload schema, resume shape, heartbeat, wave-boundary commits)
 - `references/agent-briefs.md` — copy-paste brief templates + grade cutoffs
-- `references/seed-template.md` — canonical seed shape (engineer reads + parses; now includes graph-hint §7-bis)
+- `references/seed-template.md` — canonical seed shape (engineer reads + parses; engineer authors the Stage Graph from Phase-0)
 - `references/branching-model.md` — branch lifecycle + rollover algorithm + hygiene checks
 - `doctrines/*.md` — framework-intrinsic rules
 - `${CLAUDE_PLUGIN_ROOT}/agents/<role>.md` — agent system prompts (the source of truth for each agent's identity) — six domain lanes + conductor + planter meta-orchestrators

@@ -188,23 +188,32 @@ Per `references/seed-template.md`. Density discipline: **150–300 lines per spr
 
 ### Step 4 — Verification before commit (pre-flight)
 
-Run this checklist on every emitted seed. Fix before commit; never commit-with-caveats.
+The mechanical checks are a script, not a prose list (CLAUDE.md: deterministic
+work belongs in code). On every emitted seed, run:
 
-- [ ] Every deliverable in §6 has a `**GH:**` line (existing `#NNN` verified via GitHub issue-read tool or `gh issue view #NNN`, or `file at Phase 0` placeholder; process deliverables exempt)
-- [ ] Every cited `#NNN` exists
-- [ ] Every file path in `file_scope.exclusive` resolves
-- [ ] Every doc/research/memory path resolves
-- [ ] Phase 0 mesh table has 8+ rows
-- [ ] No `TODO:` / `FIXME:` / `tbd` markers
-- [ ] **No `Lane N` numbering or `Sequencing:` directives in seed body (v6.0.0 — engineer authority per #67)**
-- [ ] **No semver-content judgments in seed body (v6.0.0 — "too small for a patch" / "reshape as worker" framing is overreach per `version-scale-roadmap.md`)**
-- [ ] Sprint T-shirt size matches deliverable count (recommendation only — engineer composes lanes)
-- [ ] Seed footprint ≤ 400 lines (sprint) / ≤ 200 lines (patch-arc)
-- [ ] `intro_wave:` section present for M+ seeds per `doctrines/intro-combo-wave.md`
-- [ ] Carry-forward dispositions cover every CRITICAL/HIGH GH# from prior close
-- [ ] At least one deliverable is CRITICAL or HIGH priority
-- [ ] Hollow-wrapper deliverables rejected per `doctrines/wrapper-must-earn.md`
-- [ ] Patch milestone exists (or is created): verify via GitHub list-issues (milestones endpoint) or `gh api repos/:owner/:repo/milestones`; if absent, create a milestone named `vX.Y.Z` (the current patch version) before committing the seed — GH milestone is the tracking anchor for all sprint deliverables in this patch arc
+```
+shctx seed verify {paths.plans}/{sprint_slug}.seed.md
+```
+
+That gate (`skills/context/scripts/cmd_seed.sh`) is the **single source of truth**
+for the mechanical pre-flight — `file_scope` path resolution, the footprint cap,
+`TODO:`/`FIXME:` markers, `Lane N` numbering and `Sequencing:` directives (#67),
+semver-content judgments, the Phase-0 mesh-row floor, and the one-`**GH:**`-anchor-
+per-deliverable rule. Fix every HARD failure before commit; never commit-with-
+caveats (hard prohibition #3). The same gate runs as a `PreToolUse(Write)` hook
+(`hooks/scripts/seed_preflight_check.sh`), so a failing seed cannot even be
+written. A path that exists only at Phase 0 is exempted with a trailing `(NEW)`.
+
+The gate raises the FLOOR; it does not judge MEANING. The residual checks below
+are yours (and the `@critic`'s) — the script cannot make them:
+
+- [ ] Every cited `#NNN` actually **exists** on GitHub (issue-read tool / `gh issue view #NNN`) — the gate checks the anchor is present, not that it resolves
+- [ ] Every doc/research/memory path cited **in prose** resolves (the gate verifies `file_scope`, not prose citations)
+- [ ] **Patch milestone exists**, or create it (`gh api repos/:owner/:repo/milestones`, named `vX.Y.Z`) — the GH milestone anchors every sprint deliverable in this patch arc
+- [ ] Carry-forward dispositions cover every CRITICAL/HIGH GH# from the prior close
+- [ ] `intro_wave:` section present for M+ seeds (`doctrines/intro-combo-wave.md`)
+- [ ] No hollow-wrapper deliverables (`doctrines/wrapper-must-earn.md`)
+- [ ] Each `**Acceptance:**` is a genuinely runnable predicate, and the language is anchored + drift-resistant (§Drift-resistance contract)
 
 ### Step 5 — Hand-off report
 
@@ -232,7 +241,9 @@ printf '%s' '{"event":"seed-ready","sprint_slug":"{slug}","seed_path":"{path}"}'
 
 Best-effort and non-blocking — if nothing is listening, the durable message sits unread and harms nothing; never wait on an ack.
 
-Plant mode ends here. Do not dispatch the engineer. Do not begin a sprint pipeline. The operator reviews seeds and switches to a Sonnet session for `/shepherd:start`.
+Plant mode ends here **for a standalone `/shepherd:plant`**. Do not dispatch the engineer. Do not begin a sprint pipeline. The operator reviews seeds and switches to a Sonnet session for `/shepherd:start`.
+
+**Exception — inline `SEED-AUTHOR` (v6.2.1).** When plant mode runs as the *inner frame* of the `SEED-AUTHOR` node under `/shepherd:spawn` (a seedless single-`--scope sprint` spawn; `agents/shepherd.md §Two-meta-loading`, `pipeline.md` §II/§IV), it does NOT hand the session back. After the seed commits and passes `shctx seed verify`, control returns to the outer shepherd frame, which continues the walk into `INTRO-COMBO-WAVE`. The "review then switch sessions" handoff above is the standalone-plant flow only.
 
 ---
 
@@ -248,7 +259,7 @@ A seed is **drift-resistant** if, weeks from now, an @engineer can pick it up an
 | **Sized** | Every deliverable has a T-shirt size (recommendation). The sprint has a T-shirt size. Lane decomposition + minimums are the engineer's authority, post-plan (#67 / `doctrines/primitive-axis-binding.md`). |
 | **Ranked** | Every deliverable has a priority (CRITICAL/HIGH/MEDIUM/LOW). Carry-forward MUST-LANDs are CRITICAL. |
 | **Bounded** | Non-goals are explicit. Deferred items name the target slot. |
-| **Phased** | Seed includes a phase decomposition hint with conditional links and parallel-safe groupings. |
+| **Phased** | Seed groups deliverables by dependency and may RECOMMEND a non-binding wave shape (§7); the binding phase/stage decomposition is the engineer's authority (the §7-bis stage-hint was removed v6.2.1 as throwaway double-authoring, #67). |
 | **Spawn-aware** | Deliverables decompose into **file-disjoint vertical slices** the engineer can later project into **lanes** (Agent Teams, one teammate-conductor each) whose gate-free step fan-out compiles to **Dynamic Workflows** over subagents, with gates **between** waves. The seed maximizes that parallelism (many small file-disjoint deliverables; clear cross-deliverable deps in the GH issue body) but **never defines lanes itself** — lane projection is the engineer's post-plan authority. Per `doctrines/primitive-axis-binding.md`. |
 | **Reproducible** | Phase 0 mesh is encoded in the seed; the engineer re-meshes at plan-time as a delta check. The pre-plan discovery wave (INTRO-COMBO-WAVE) runs at root before the engineer and refreshes it (`doctrines/intro-combo-wave.md`). |
 

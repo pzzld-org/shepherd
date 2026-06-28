@@ -43,15 +43,16 @@ The remainder of this document describes the **solo path** (no `--teammate`). Fo
    - What the seed says the north-star is (if a seed exists)
 
 > **Seed is recommended, not required.** If no `{paths.plans}/{sprint_slug}.seed.md`
-> exists, do NOT refuse — follow the seedless path in
-> `${CLAUDE_PLUGIN_ROOT}/skills/shepherd/doctrines/operator-signaling.md §"Seed is
-> recommended, not required"`: if the objective is derivable from the handoff / issue
-> ledger / branch / repo state, RUN on best-effort defaults and record the assumed
-> objective + scope + done-criteria + elevated drift risk in the plan header and close
-> report. If it is NOT derivable at all, emit a one-block turn-ending report recommending
-> the operator state the objective in chat or run `/shepherd:plant` first, then stop —
-> SOLO carries no `AskUserQuestion` (v6.1.7); interactive scoping belongs to the planter.
-> Do NOT add new mid-run stop points, and do NOT guess a sprint into existence.
+> exists, do NOT refuse — the walk opens on the `SEED-AUTHOR` node (`pipeline.md`
+> §II/§IV). It emits ONE turn-ending confirm (*"No seed for `<slug>`. Plant inline
+> now, or run `/shepherd:plant`?"*); on the operator's reply it plants the seed
+> **inline** via the planter inner frame (`agents/planter.md §Plant mode`), gating it
+> with `shctx seed verify` before `INTRO-COMBO-WAVE`. SOLO carries no `AskUserQuestion`
+> (v6.1.7) — intent arrives as the operator's chat reply and is captured in the
+> committed seed; interactive structured scoping belongs to `/shepherd:plant`. That
+> confirm is the one structural pause: do NOT add other mid-run stop points, and do NOT
+> guess a sprint into existence. Per
+> `${CLAUDE_PLUGIN_ROOT}/skills/shepherd/doctrines/operator-signaling.md §"Seed is recommended, not required"`.
 
 Then proceed to Step 1.
 

@@ -24,15 +24,14 @@ The graph moves orchestration from working memory to declarative artifact. Three
 - **Cognitive-load reduction.** The conductor reads the graph once at sprint open, then mechanically walks it. No re-deriving sequencing per dispatch.
 - **Auditable provenance.** Every commit traces to a graph node; every node traces to a plan section; every plan section traces to a seed lane.
 
-## The three layers of progressive specification
+## The two layers of progressive specification
 
 | Layer | File | Author | Binding? |
 |---|---|---|---|
-| Hint | seed `## Stage decomposition hint` | Planter | Non-binding suggestion |
 | Contract | plan `## Stage Graph` | Engineer | **Binding** — this is what the conductor walks |
 | Trace | `{paths.reports}/<date>-{sprint}-walk.md` | Conductor (auto, optional) | Append-only post-hoc audit log |
 
-The seed sketches partial structure (phase decomposition, parallel-safe groupings, conditional edges). The engineer rebuilds against Phase 0 mesh evidence and emits the binding graph. The walk trace is optional but encouraged for L/XL sprints.
+The engineer builds the binding graph against Phase 0 mesh evidence — the seed names WHAT must land plus a non-binding wave-shape recommendation (§7); the binding structure is the engineer's authority (the seed's `## Stage decomposition hint` §7-bis was removed in v6.2.1 as throwaway double-authoring, #67). The walk trace is optional but encouraged for L/XL sprints.
 
 ## What the graph encodes
 

@@ -45,6 +45,15 @@ Subcommands (atomic):
                           Graceful-empty reads; local overrides global on name collision.
   lock <show|acquire|release [--force]|reap> [args]
   lint                    Naming-convention check
+  seed <verify> <path>    Deterministic seed pre-flight gate (v6.2.1).
+                          verify: HARD-fail (exit 1) on a hallucinated file_scope
+                          path, an oversized footprint, a TODO/FIXME marker, or
+                          prescriptive Lane-N numbering (#67); warns on a thin
+                          mesh / missing frontmatter. A path created this sprint
+                          is exempted with a trailing (NEW) marker. SINGLE SOURCE
+                          OF TRUTH for the seed checklist — planter.md and
+                          seed-template.md point here. Backs the PreToolUse
+                          seed_preflight_check.sh hook (config [seed].seed_gate).
   dups <scan|check|registry> [args]                   (v6.2.0 #157)
                           Field-shape similar-struct detection — the third leg
                           of the mechanical shape-gate set (with dep-hygiene +
@@ -140,7 +149,7 @@ script_for() {
 cmd="${1:-help}"; shift || true
 case "$cmd" in
   help|-h|--help) usage ;;
-  init|config|status|dash|doctor|refresh|query|search|inject|profile|style|mem|toolkit|lock|lint|migrate|export|release|handoff|worktree|close-lane|issues|plan|graph|insights|adapt|sync|ready|sprint|audit|watch|discovery|teammate|mailbox|escalate|deliverable|report|loop|panes|dups)
+  init|config|status|dash|doctor|refresh|query|search|inject|profile|style|mem|toolkit|lock|lint|migrate|export|release|handoff|worktree|close-lane|issues|plan|graph|insights|adapt|sync|ready|sprint|audit|watch|discovery|teammate|mailbox|escalate|deliverable|report|loop|panes|dups|seed)
     impl="$HERE/$(script_for "$cmd")"
     if [[ ! -f "$impl" ]]; then
       echo "ERROR: $cmd not yet implemented (missing $impl)" >&2; exit 2

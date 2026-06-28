@@ -4,9 +4,16 @@ Every MUST-LAND lane in a sprint seed cites a GH issue (existing `#NNN` or `file
 
 This is what keeps seeds dense (150–300 lines per sprint) instead of ballooning into 800-line manifestos.
 
+> **Heading format note (v6.0.0+).** The `### Lane N — …` headings in the
+> examples below predate the #67 rename and are illustrative of the
+> *issue-anchoring* pattern only. A real seed deliverable uses
+> `### <name>  [<priority>]` (per `seed-template.md` §6) — **no `Lane N`
+> numbering** (lane decomposition is the engineer's authority; `shctx seed
+> verify` now blocks `Lane N` in a seed body).
+
 ## The pattern
 
-Lane block in the seed (≤ 10 lines):
+Deliverable block in the seed (≤ 10 lines):
 
 ```markdown
 ### Lane 2 — Sharpe extraction to per_bot.rs
@@ -79,14 +86,14 @@ When the engineer's Phase 0 mesh runs, it files the issue (via GH MCP), captures
 
 ## Verification (planter pre-commit)
 
-The planter's pre-commit checklist verifies:
-
-- [ ] Every MUST-LAND lane has a `**GH:**` line
-- [ ] Every existing `#NNN` resolves via `mcp__plugin_github_github__issue_read`
-- [ ] Every `file at Phase 0` placeholder has a matching mesh row
-- [ ] Lane blocks stay under 10 lines
-
-A seed that fails any check is fixed before commit.
+The mechanical pre-flight is `shctx seed verify` — the **single source of truth**
+for the seed checklist (`skills/context/scripts/cmd_seed.sh`; see
+`seed-template.md §Verification` and `planter.md §Step 4`). It enforces the
+`**GH:**`-anchor-per-deliverable rule and the `file_scope` path resolution
+(exists OR `(NEW)`), among others. Issue-existence (`#NNN` resolves on GitHub)
+and `file at Phase 0` ↔ mesh-row matching stay the planter's residual judgment —
+the gate verifies the anchor is present, not that it resolves remotely. Do not
+keep a separate checklist copy here.
 
 ## See also
 

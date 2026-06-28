@@ -4,6 +4,75 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v6.2.1 — 2026-06-28
+
+**Self-sufficient spawn, deterministic seed teeth, leaner engineer.** A refinement
+pass on the proven planter/engineer/spawn spine — not a redesign. The framework's
+highest-precision artifact finally gets a mechanical floor, a seedless `/spawn` plants
+itself instead of dead-ending, the engineer sheds its transcription tax, and a class of
+duplicated normative text is purged. All lean wiring; no new runtime, no schema change.
+Every behavior the framework strives for (the flock, lanes-as-teammates, precision seeds,
+drift-resistance, parallel execution) is preserved — made enforceable instead of aspirational.
+
+### New — `shctx seed verify` + the seed pre-flight gate (the teeth)
+
+The seed pre-flight had been prose self-policing since v5.x (`seed-naming.md` openly
+deferred "future sprints will add teeth"). It is now a script:
+
+- **`shctx seed verify <path>`** (`skills/context/scripts/cmd_seed.sh`) — deterministic,
+  no network. HARD-fails (exit 1) on a hallucinated `file_scope` path, an over-cap footprint
+  (≤ 400 sprint / ≤ 200 patch-arc), a `TODO:`/`FIXME:` marker, prescriptive `Lane N` numbering
+  (#67), or a priority-bearing deliverable with no `**GH:**` anchor; warns on a thin mesh,
+  missing frontmatter, or a `Sequencing:`/semver judgment. Tolerates the idiomatic seed forms —
+  directory/recursive globs, em-dash/parenthetical path annotations, embellished `(NEW - reason)`
+  markers, and flow-style `[a, b]` scope. A path created this sprint is exempted with a trailing `(NEW)`.
+- **`hooks/scripts/seed_preflight_check.sh`** — a `PreToolUse(Write)` guard that runs the gate on
+  every `*.seed.md` write and blocks a failing seed before it can reach a spawn. Config
+  `[seed].seed_gate = block (default) | warn | off`; fails OPEN on any tooling hiccup.
+- **Single source of truth.** The checklist and its numbers (mesh-row floor, footprint cap) now
+  live ONLY in the script; the three disagreeing prose copies (`seed-template.md`, `planter.md`,
+  `seed-anchored-by-issues.md`) were deleted and replaced with a pointer.
+
+### New — self-sufficient `/spawn`: the `SEED-AUTHOR` node
+
+A seedless single-`--scope sprint` `/spawn` (or `/start`) no longer dead-ends. The walk opens on a
+`SEED-AUTHOR` node: a present seed is a pass-through; a missing one emits ONE turn-ending confirm
+and plants the seed **inline** via the planter inner frame (two-meta-loading), gates it with
+`shctx seed verify`, and falls through to `INTRO-COMBO-WAVE`. The three forked seedless behaviors
+(refuse / best-effort-degrade / staged-wait) collapse into one. No `AskUserQuestion` is re-admitted
+to execution sessions — **v6.1.7 holds**; intent arrives as the operator's chat reply and is captured
+in the committed seed. Multi-sprint / `--parallel` still route a missing seed to `/shepherd:plant`.
+
+### Changed — leaner engineer (transcription seams cut)
+
+- **Conditional re-mesh.** The engineer scales Phase-0 effort to the seed's age: a co-timed seed
+  (planted this session) leans on the discovery wave with only a targeted gap-check; the full
+  drift-delta re-mesh is reserved for a stale patch-arc-ahead seed. Both modes stay first-class.
+- **Acceptance authored once.** Acceptance predicates live solely in the GH issue body; the seed
+  line and the engineer's step `[ACCEPTANCE]` reference it rather than re-typing — killing the
+  silent seed↔step divergence.
+- **§7-bis deleted.** The seed's non-binding "Stage decomposition hint" was authored, then thrown
+  away and re-derived; removed. The engineer composes the binding `## Stage Graph` from Phase-0,
+  preserving the #67 firewall. Six cross-references updated.
+
+### Fixed — duplicated-normative-text drift (behavior-neutral)
+
+- `conductor.md` no longer claims SOLO "carries `AskUserQuestion`" — a tool removed from its
+  toolset in v6.1.7 (the stale claim would have failed at the exact no-seed moment it described).
+- The dead `$CLAUDE_AGENT_TEAMMATE_NAME` / `$CLAUDE_PROJECT_SESSION_TYPE` env signals (empty on the
+  live platform since #93) are demoted from PRIMARY to documented-dead in
+  `dispatch-tier-separation.md`, matching the profile.
+- New lint (`lint_agent_capabilities.sh`, run by the hook suite) flags any profile that claims a
+  tool its frontmatter does not grant — the regression guard for the class above.
+
+### Tests
+
+- `skills/context/tests/test_cmd_seed.sh` (16 cases) + `hooks/tests/test_seed_preflight_check.sh`
+  (9 cases), including the path-resolver tolerance + flow-style false-negative cases surfaced by
+  a 3-lens pre-merge review. Suites: context 45/45, hooks 49/49.
+
+---
+
 ## v6.2.0 — 2026-06-27
 
 **Operating philosophy bound, self-improvement made apparent, native self-paced loops.**

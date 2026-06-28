@@ -281,6 +281,8 @@ The full mesh-row enumeration (rows 1–14+) in the reference under "Phase 0 mes
 
 **Fallback — when the discovery wave did NOT fire** (XS sprints, or `shepherd.toml [stage_graph.intro_wave].enabled = false`): there is no `[DISCOVERY-CONTEXT]`, so you run the applicable mesh rows yourself, as the v5.x topology did (`intro-combo-wave.md §"When the wave fires vs. when it doesn't"`).
 
+**Scale Phase-0 effort to the seed's age — co-timing (v6.2.1).** The targeted gap-check exists to catch *drift since the seed was planted*. When the seed is **co-timed** — its commit is at/near HEAD, e.g. authored this same session via the `SEED-AUTHOR` inline-plant (`pipeline.md` §II) — the planter mesh and the discovery wave are minutes-fresh over the same tree, so there is no elapsed drift to catch: lean on `[DISCOVERY-CONTEXT]` and verify only genuine coverage gaps, not the whole mesh. The heavier drift-delta re-mesh earns its keep only for a **stale** seed (a patch-arc seed authored days/weeks ahead), where the tree has moved since planting. Both modes stay first-class; do not run the full delta-check on a co-timed seed as ceremony (`doctrines/version-scale-roadmap.md` keeps patch-arc-ahead seeds a first-class mode).
+
 **Mesh row 1 (open-issue ledger sweep) is CRITICAL** either way — combats tunnel vision per `doctrines/issue-ledger-awareness.md`. Drift-risk items must be surfaced, never silently absorbed.
 
 **Mesh row 11 (prior audit reports) is the self-learning hook** — per `doctrines/adaptation-loop.md`, deferred-carry findings flow from prior audits into this plan's carry-forward checklist. Never let them silently evaporate.
