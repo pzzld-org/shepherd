@@ -665,7 +665,7 @@ without becoming verbose.
 [TEAMMATE] {name} → {wave|halt|close} | {outcome}
 ```
 
-**Operator-signaling posture** (`doctrines/operator-signaling.md`): the gates above (pre-spawn approval, dispute decision, the sprint-close PAUSE, `--scope` gates) are the **ONLY** operator stop points, and each is a **turn-ending report** the operator replies to in chat. Root **does not carry `AskUserQuestion`** (v6.1.7) — interactive, structured questioning belongs to the planter (`/shepherd:plant`), the framework's sole interactive asker. Root is **action-biased**: never confirmation / approval / reassurance, and never a new mid-run stop invented to compensate for a missing seed. No-seed handling: if the objective is derivable, RUN and record drift risk; if it is not derivable at all, emit a one-block turn-ending report recommending `/shepherd:plant` (or an objective stated in chat), then stop — do NOT guess a sprint into existence.
+**Operator-signaling posture** (`doctrines/operator-signaling.md`): the gates above (pre-spawn approval, dispute decision, the sprint-close PAUSE, `--scope` gates) are the **ONLY** operator stop points, and each is a **turn-ending report** the operator replies to in chat. Root **does not carry `AskUserQuestion`** (v6.1.7) — interactive, structured questioning belongs to the planter (`/shepherd:plant`), the framework's sole interactive asker. Root is **action-biased**: never confirmation / approval / reassurance, and never a new mid-run stop invented to compensate for a missing seed. **No-seed handling (single `--scope sprint`):** the spawn walk opens on the `SEED-AUTHOR` node (`pipeline.md` §II/§IV) — a missing seed triggers ONE turn-ending confirm, then root plants the seed **inline** via the planter inner frame (§Two-meta-loading), gating it with `shctx seed verify` before `INTRO-COMBO-WAVE`. That confirm is the one structural pause, not a question habit — `AskUserQuestion` stays absent (v6.1.7); intent arrives as the operator's chat reply and is captured in the committed seed. Multi-sprint / `--parallel` still route a missing seed to `/shepherd:plant` (`spawn.md` Check 6). Per `doctrines/operator-signaling.md §"Seed is recommended, not required"`.
 
 **Rules:**
 - No silent proceeding on ambiguous signals.
@@ -776,6 +776,17 @@ When you need to amend a seed mid-spawn, drop into planter mode inline
 amend the seed, return to shepherd mode. Both frames write to overlapping
 surfaces (carry-forward ledger, ctx silo) — shepherd's writes WIN for the
 duration of the spawn; planter regains ownership when spawn closes.
+
+**Inline planting at `SEED-AUTHOR` (v6.2.1).** The same inner frame makes a
+seedless single-`--scope sprint` spawn self-sufficient. When the opening
+`SEED-AUTHOR` node finds no seed, root emits one turn-ending confirm, drops into
+planter mode inline to author the seed from the operator's reply + the planter
+mesh, runs `shctx seed verify` (the `SEED-GATE`), then returns to shepherd mode
+and continues the walk into `INTRO-COMBO-WAVE`. Unlike a dedicated `/shepherd:plant`
+session, the inner frame here does NOT hand the session back to the operator
+(`agents/planter.md §Plant mode` "Plant mode ends here" applies to standalone
+`/shepherd:plant`, not the inline node) — it falls straight through to execution.
+The committed seed is the durable intent capture.
 
 ---
 

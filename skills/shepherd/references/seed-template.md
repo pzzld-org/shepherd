@@ -224,6 +224,13 @@ Each deliverable's `**Acceptance:**` line (and each entry under the GH issue bod
 - **log | metric | DB query** — `sentry error_rate project:app env:prod < 1/min`; a row-count or schema query
 - **health probe** — `curl -fsS $URL/health | jq -e '.p99_ms < 100'`
 
+**Author once, reference thrice (v6.2.1).** The predicate is authored ONCE in the
+GH issue body's `## Acceptance` (the contract, per `doctrines/seed-anchored-by-issues.md`).
+The seed deliverable's `**Acceptance:**` line and the engineer's per-step `[ACCEPTANCE]`
+both **reference** that block (`see #NNN body §Acceptance`) rather than re-typing it —
+re-typing is how a seed predicate and a step check silently diverge. The issue body is
+the single source; the seed and the plan are thin role-specific projections of it.
+
 These predicates are load-bearing **past** the coder: the **close auditor re-runs every one before grading** — a predicate promised true that now returns false is an `OUTCOME-REGRESSION` and caps the completeness grade — and an optional post-close **SOAK-LOOP** re-runs the same set on wall-clock time (`doctrines/outcome-enforcement.md`; `references/loop-templates.md §SOAK-LOOP`). A deliverable with a prose-only acceptance is a seed defect — `@critic` rejects it at PLAN-GATE (`PLAN-MISSING-OUTCOME-VERIFICATION`).
 
 For outcomes that can regress **after** delivery — latency, error rate, deploy health, row counts — note a suggested **soak cadence** on the deliverable (e.g. `soak: T+1d, T+7d`) so the close report can recommend a SOAK-LOOP. Pure code-shape outcomes (a fixed `impl` count, a removed symbol) do not regress on wall-clock time and need no soak.
@@ -255,28 +262,13 @@ measured `avg_lane_count` — not a "more is better" floor. Per-**step** scope �
 files (steps are subagents inside a lane); split a lane only along genuinely disjoint
 slices. These are engineer-side, not planter prescription.
 
-### 7-bis. Stage decomposition hint (NON-BINDING — engineer finalizes)
-
-Per `doctrines/stage-graph.md` and `pipeline.md`, the engineer's plan emits a binding `## Stage Graph` (full DAG). The seed sketches a **non-binding hint** so the engineer doesn't invent structure from scratch.
-
-```markdown
-## Stage decomposition hint
-
-phase-0          MESH                                     [unconditional, runs first]
-phase-A          WAVE-1-IMPL  (parallel: A1, A2, A3)      [unconditional after PLAN-GATE on-green]
-                 WORKER-IO    (parallel_with: WAVE-1-IMPL) [batched at Wave 1 START]
-phase-A-gate     WAVE-1-GATE                              [conductor inline; on-pass → phase-B]
-phase-B          WAVE-2-IMPL  (parallel: B1, B2)          [Pattern B: parallel_with WAVE-1-AUDIT]
-                 WAVE-1-AUDIT (auditors on Wave 1 output) [Pattern B: parallel_with WAVE-2-IMPL]
-phase-B-gate     WAVE-2-GATE                              [conductor inline]
-phase-tests      WAVE-3-IMPL  (parallel: T1)              [conditional on phase-B-gate on-pass]
-phase-close      CLOSE-SWARM (3–5 auditors by concern)    [unconditional after final wave-gate]
-                 → CLOSE-FINALIZE                          [on-no-finding OR on-grade-cap]
-hot-fix          HOTFIX (≤3 concurrent, ≤S each)          [conditional on any AUDIT on-finding]
-hard-stops       any node may exit on on-hard-stop        [terminal]
-```
-
-The engineer specializes this into the binding YAML graph at `## Stage Graph` of the plan, with explicit `in_predicates`, `out_edges`, `parallel_with`, and `agents` blocks per node (per `pipeline.md` §XII).
+> **§7-bis removed (v6.2.1).** The seed no longer sketches a non-binding "Stage
+> decomposition hint". It was authored, then thrown away and re-derived: the
+> engineer composes the binding `## Stage Graph` from its Phase-0 ground truth
+> regardless (`agents/engineer.md`, `pipeline.md`), so a parallel planter sketch
+> was pure double-authoring. The planter names WHAT must land (§6) and may
+> RECOMMEND a wave shape (§7, non-binding); structure is the engineer's
+> authority (#67). Deleting the hint keeps that boundary clean and the seed dense.
 
 ### 8. Carry-forward dispositions — table
 
@@ -369,20 +361,31 @@ What this patch EXPLICITLY DOES NOT do. Items reserved for future patches with n
 
 ## Verification (planter pre-commit)
 
-Before `git add` and `git commit`, the planter runs (per `planter.md` §X):
+The pre-flight is mechanical — same seed, same verdict — so it is a script, not
+a prose checklist (CLAUDE.md: deterministic work belongs in code). Before
+`git add`, run:
 
-- [ ] Every deliverable in §6 has a `**GH:**` line
-- [ ] Every existing `#NNN` resolves
-- [ ] Every file path resolves
-- [ ] Phase 0 mesh table has 8+ rows
-- [ ] Deliverable blocks stay under 8 lines (per v6.0.0 §6 contract)
-- [ ] Sprint T-shirt size matches deliverable count (recommendation only)
-- [ ] At least one deliverable is CRITICAL or HIGH priority
-- [ ] No `TODO:` / `FIXME:` markers
-- [ ] No `Lane N` numbering or `Sequencing:` directives in seed body (per v6.0.0; engineer's authority)
-- [ ] Seed footprint ≤ 400 lines (sprint) / ≤ 200 lines (patch-arc)
+```
+shctx seed verify {paths.plans}/{sprint_slug}.seed.md
+```
 
-A seed that fails any check is fixed before commit.
+`shctx seed verify` (`skills/context/scripts/cmd_seed.sh`) is the **single source
+of truth** for the checklist and its numbers (the mesh-row minimum and the
+footprint cap live there, nowhere else — that is how the old three-numbers-for-
+one-cap drift is killed). It **HARD-fails (exit 1)** on a hallucinated
+`file_scope` path, an over-cap footprint (≤ 400 sprint / ≤ 200 patch-arc), a
+`TODO:`/`FIXME:` marker, prescriptive `Lane N` numbering, or a priority-bearing
+deliverable with no `**GH:**` anchor; it **warns** on a thin Phase-0 mesh
+(< 8 rows), a missing `milestone:`/`kind:`, or a `Sequencing:` / semver-content
+judgment. A path that will exist only at Phase 0 is exempted with a trailing
+`(NEW)` marker (e.g. `- src/new_module.rs (NEW)`).
+
+The same gate runs automatically as a `PreToolUse(Write)` hook
+(`hooks/scripts/seed_preflight_check.sh`, config `[seed].seed_gate = block | warn
+| off`), so a seed that fails it cannot reach a spawn. The residual the script
+cannot judge — is each acceptance line genuinely runnable, is the language
+actually anchored and drift-resistant — stays the planter's and the `@critic`'s
+call.
 
 ---
 

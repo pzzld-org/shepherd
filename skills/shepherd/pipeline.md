@@ -44,6 +44,7 @@ Every node in the graph is one of these types. The type determines the dispatch 
 
 | Type | Dispatch shape | Owner | Produces |
 |---|---|---|---|
+| `SEED-AUTHOR` | Conductor inline (no agent). Present seed → pass-through. Missing seed (single `--scope sprint` only) → ONE turn-ending confirm, then the planter inner frame (`agents/planter.md §Plant mode`, two-meta-loading) authors the seed from the operator's reply + the planter mesh and gates it with `shctx seed verify`. Multi-sprint / `--parallel` route to `/shepherd:plant` (`spawn.md` Check 6). v6.2.1. | Conductor / root | committed, `SEED-GATE`-passed seed (or pass-through) |
 | `SEED-VERIFY` | Conductor inline (no agent) | Conductor | seed-loaded boolean + drift-suspicion flag |
 | `MESH` | Single `@engineer` (Opus) | @engineer | Phase 0 mesh report + plan + the Stage Graph itself for §2/§3 |
 | `CHAIN-REPAIR` | Conductor inline (verify) → Edit (amend seed) → re-fire `MESH` | Conductor | amended seed (or escalation) |
@@ -160,6 +161,13 @@ This is the default DAG every `/shepherd:start` walks unless the engineer's plan
 
 ```
                               ┌──────────────────┐
+                              │  SEED-AUTHOR     │  (conductor inline; on a
+                              │  seed? pass :    │   missing seed, inline-plant —
+                              │  plant + gate    │   single --scope sprint, v6.2.1)
+                              └────────┬─────────┘
+                                       │ on-green (seed committed + SEED-GATE pass)
+                                       ▼
+                              ┌──────────────────┐
                               │  SEED-VERIFY     │  (conductor inline)
                               └────────┬─────────┘
                                        │ on-green
@@ -264,7 +272,7 @@ This is the default DAG every `/shepherd:start` walks unless the engineer's plan
                             └──────────┘    └──────────────────┘
 ```
 
-The default sprint has 9–11 nodes for a typical M sprint, more for L/XL (more `WAVE-N` clusters), fewer for XS/S (single wave + close).
+The default sprint has 10–12 nodes for a typical M sprint (including the `SEED-AUTHOR` open node — a pass-through when a seed exists), more for L/XL (more `WAVE-N` clusters), fewer for XS/S (single wave + close).
 
 ---
 
@@ -429,11 +437,12 @@ The maximum concurrent sprint count is 4 (N must be 2–4 per `commands/spawn.md
 
 ## XI. Where the graph lives
 
-Three layers of progressive specification, each more concrete than the prior:
+Two layers of progressive specification, each more concrete than the prior (the
+seed's non-binding `## Stage decomposition hint` §7-bis was removed in v6.2.1 — the
+engineer authors the graph from Phase-0, so a parallel planter sketch was throwaway):
 
 | Layer | File | Author | Detail level |
 |---|---|---|---|
-| Hint | `{paths.plans}/{sprint_slug}.seed.md` §"Stage decomposition hint" | Planter | Phase decomposition, parallel-safe groupings, conditional links — non-binding suggestion |
 | Contract | `{paths.plans}/{sprint_slug}.plan.md` §"Stage Graph" | Engineer | Full DAG: every node, every edge, every predicate, every brief-ref. This is what the conductor walks. |
 | Trace | `{paths.reports}/<date>-{sprint_slug}-walk.md` | Conductor (auto, optional) | Append-only log of node fires, edge evaluations, batch composition — for post-hoc audit |
 

@@ -120,3 +120,13 @@ Explicitly out of scope. Named here so the seed and plan cannot drift into them.
 ## Convertible to a seed
 
 On approval, this spec becomes the input to `/shepherd:plant`, which grounds it (issue-anchoring for each deliverable, the Phase-0 mesh, file_scope verification) into the v6.2.1 seed at `{paths.plans}/v621.seed.md`. We dogfood the pipeline to refine the pipeline. The items are largely separable (A: spawn graph + node; B: `shctx`/hooks; C: engineer; D: doctrines + profiles), but note `seed-template.md` is edited by both B (delete the duplicate checklist) and C (§6-bis reference, delete §7-bis), so those edits are not file-disjoint and must be sequenced. Lane projection is the engineer's call, post-plan, not this spec's.
+
+---
+
+## Implementation note (post-review, as shipped — supersedes the two points below)
+
+Two design points changed between this spec and what shipped in v6.2.1. Recorded here so the spec is not mistaken for the authoritative behavior:
+
+1. **AskUserQuestion is NOT node-scoped (Item A.2 superseded).** The spec proposed a node-scoped `AskUserQuestion` interlock live during `SEED-AUTHOR`. The shipped design **dropped it**: the platform grants toolsets per profile/command (not per node), and re-admitting the tool to root/conductor would soften the v6.1.7 action-bias the operator values. Instead the inline `SEED-AUTHOR` plant captures intent via the existing **turn-ending confirm + operator chat reply** (no `AskUserQuestion`). v6.1.7 holds. The structured asker remains `/shepherd:plant`'s, reachable inline only via two-meta-loading. Authoritative prose: `doctrines/operator-signaling.md §"Seed is recommended, not required"`.
+
+2. **Not dogfooded.** Per operator instruction, v6.2.1 was implemented directly (with dynamic-workflow assistance for research + a pre-merge review), NOT by planting this spec into a seed and running the spawn pipeline on itself — the plugin is the artifact under change, so running its own mid-change machinery on itself is circular. The "Convertible to a seed" path above remains the design intent for a *future* sprint, not how v6.2.1 was built.

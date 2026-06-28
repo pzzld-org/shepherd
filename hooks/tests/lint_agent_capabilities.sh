@@ -144,9 +144,30 @@ if [[ -f "$pf" ]]; then
   fi
 fi
 
+# ---------------------------------------------------------------------------
+# v6.2.1 tool-claim consistency. A profile must not CLAIM in prose to carry a
+# tool its own `tools:` frontmatter does not grant — the `conductor.md` "SOLO
+# carries AskUserQuestion" stale-claim class (a tool removed in v6.1.7 still
+# asserted as available). Scoped to AskUserQuestion (the removal that drifted).
+# Robust: positive carry / escape-valve claims MINUS negation lines (the many
+# correct "does not carry AskUserQuestion" statements all over these profiles).
+# ---------------------------------------------------------------------------
+for role in $ALL_ROLES; do
+  f="$AGENTS_DIR/$role.md"
+  [[ -f "$f" ]] || continue
+  case "$(tools_line "$f")" in *AskUserQuestion*) continue ;; esac   # legitimately granted (planter)
+  claim="$(grep -nE 'carr(y|ies)[^.]{0,40}AskUserQuestion|AskUserQuestion[^.]{0,40}(escape valve|narrow escape)' "$f" 2>/dev/null \
+            | grep -viE 'not |never |no AskUserQuestion|removed|absent|without|MUST NOT|cannot|do(es)? not' || true)"
+  if [[ -n "$claim" ]]; then
+    note "FAIL $role: prose claims AskUserQuestion but frontmatter does not grant it (v6.1.7 — execution sessions carry no AskUserQuestion):"
+    printf '%s\n' "$claim" | sed 's/^/        /'
+    fails=$((fails+1))
+  fi
+done
+
 if [[ "$fails" -gt 0 ]]; then
-  printf 'lint_agent_capabilities: %d violation(s) — read-only agents un-scoped-mutation-free (GH #74); no agent carries a destructive verb (GH #84)\n' "$fails"
+  printf 'lint_agent_capabilities: %d violation(s) — read-only mutation-free (GH #74); no destructive verb (GH #84); no ungranted-tool claim (v6.2.1)\n' "$fails"
   exit 1
 fi
-printf 'lint_agent_capabilities: OK — read-only trio mutation-free (GH #74); all nine carry no destructive MCP verb (GH #84)\n'
+printf 'lint_agent_capabilities: OK — read-only trio mutation-free (GH #74); all nine carry no destructive MCP verb (GH #84); no profile claims an ungranted tool (v6.2.1)\n'
 exit 0

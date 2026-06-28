@@ -77,6 +77,11 @@ run_case "non-coder-role"      dups_write_guard.sh '{"session_id":"s1","tool_nam
 run_case "non-rust-file"       dups_write_guard.sh '{"session_id":"s1","tool_name":"Write","tool_use_id":"x","tool_input":{"file_path":"a.md","content":"hi"}}'
 run_case "non-write-tool"      dups_write_guard.sh '{"session_id":"s1","tool_name":"Bash","tool_input":{"command":"ls"}}'
 
+echo "== seed_preflight_check.sh (v6.2.1) — fast-path smoke =="
+run_case "no-payload"          seed_preflight_check.sh ''
+run_case "non-write-tool"      seed_preflight_check.sh '{"session_id":"s1","tool_name":"Edit","tool_input":{"file_path":"x.seed.md","new_string":"x"}}'
+run_case "non-seed-write"      seed_preflight_check.sh '{"session_id":"s1","tool_name":"Write","tool_input":{"file_path":"notes.md","content":"hi"}}'
+
 echo "== agent_insight_capture.sh =="
 run_case "no-insights-block"   agent_insight_capture.sh '{"session_id":"s1","tool_name":"Agent","tool_response":"plain text"}'
 run_case "non-agent-tool"      agent_insight_capture.sh '{"session_id":"s1","tool_name":"Bash","tool_response":"x"}'
@@ -311,6 +316,19 @@ if adapt_out=$(bash "$TESTS_DIR/test_session_adaptation.sh" 2>&1); then
 else
   printf '  FAIL  %-50s\n' "session-adaptation"
   printf '%s\n' "$adapt_out" | sed 's/^/        /'
+  fails=$((fails+1))
+fi
+
+# Seed pre-flight Write gate (v6.2.1): seed_preflight_check.sh denies a *.seed.md
+# Write whose file_scope path is hallucinated (block mode), passes a clean seed
+# silently, honors [seed].seed_gate=warn/off, and fast-paths non-seed/Edit/non-shepherd.
+echo "== test_seed_preflight_check.sh (v6.2.1 — deterministic seed pre-flight) =="
+total=$((total+1))
+if spc_out=$(bash "$TESTS_DIR/test_seed_preflight_check.sh" 2>&1); then
+  printf '  PASS  %s\n' "seed-preflight-blocks-hallucinated-seed"
+else
+  printf '  FAIL  %-50s\n' "seed-preflight-check"
+  printf '%s\n' "$spc_out" | sed 's/^/        /'
   fails=$((fails+1))
 fi
 

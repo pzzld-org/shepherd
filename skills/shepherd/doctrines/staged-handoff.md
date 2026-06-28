@@ -78,10 +78,11 @@ starting state rather than a seedless-run trigger:
      complete; awaiting `seed-ready` from the plant session for `<slug>`." Then yield.
      The operator nudges Session A once Session B has finished.
 3. **No infinite spin, no guessing.** The staged session never busy-waits and never
-   invents a seed. If the operator abandons planting, the normal seedless ladder applies
+   invents a seed. If the operator abandons planting, the seedless behavior applies
    (`doctrines/operator-signaling.md §"Seed is recommended, not required"`): orientation
-   is already done; either the objective is derivable → run on best-effort defaults +
-   record drift, or it is not → recommend `/shepherd:plant`.
+   is already done, so the walk's `SEED-AUTHOR` node emits its one turn-ending confirm and
+   either plants the seed inline (planter inner frame → `shctx seed verify`) or routes to
+   `/shepherd:plant` on the operator's preference. No best-effort-defaults drift run.
 
 The pre-seed orientation reconciles cleanly with the always-on `INTRO-COMBO-WAVE`
 (`doctrines/intro-combo-wave.md`): the staged wave runs UPSTREAM of the seed and is

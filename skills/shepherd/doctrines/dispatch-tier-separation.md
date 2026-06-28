@@ -106,14 +106,16 @@ chat solo) and `/shepherd:spawn` teammates. The conductor must self-detect
 which mode it's in to know whether `@engineer`/`@critic` dispatch is
 permitted.
 
-**Detection signals** (any one of these triggers teammate mode):
+**Detection signals** (any one positive → teammate mode). The reliable signals are
+the shepherd-controlled ones (#1–2); the env vars are documented-dead and must NOT
+be load-bearing — this ordering matches `agents/conductor.md §mode-detection` and
+`commands/spawn.md` Check 0:
 
-1. `$CLAUDE_AGENT_TEAMMATE_NAME` environment variable is set.
-2. `$CLAUDE_PROJECT_SESSION_TYPE == "teammate"` (or equivalent platform flag).
-3. The boot prompt contains `INVOCATION-CONTEXT.dispatcher: teammate-conductor`.
-4. The boot prompt contains `ROOT-SESSION-NAME: shepherd-root @ ...`.
+1. The current session `cwd` is under a shepherd `.worktrees/` path (filesystem — reliable).
+2. The boot prompt contains `INVOCATION-CONTEXT.dispatcher: teammate-conductor`, or `ROOT-SESSION-NAME: shepherd-root @ ...` (boot prompt — reliable).
+3. `$CLAUDE_AGENT_TEAMMATE_NAME` / `$CLAUDE_PROJECT_SESSION_TYPE` set — **legacy env convention; reads EMPTY on the live platform (GH #93, 2026-05-29); do NOT rely on it.** Retained only as a cheap belt-and-suspenders check.
 
-Any one positive signal → teammate mode; all four negative → solo mode.
+Any one positive signal → teammate mode; all negative → solo mode.
 
 Conductor MUST verify mode at session-start (Step 0 of mandatory protocol)
 and surface it explicitly in the orientation:

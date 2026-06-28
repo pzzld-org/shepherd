@@ -52,19 +52,32 @@ do not grow a question habit in the runner.
 (`doctrines/dispatch-tier-separation.md`); root decides whether anything reaches the operator,
 and surfaces it as a turn-ending report (root has no `AskUserQuestion` either).
 
-## Seed is recommended, not required
+## Seed is recommended, not required — a seedless single-sprint run plants inline
 
-A seed is the best drift anchor, but `/shepherd:spawn` and `/shepherd:start` run WITHOUT one —
-never hard-refuse for a missing seed:
+A seed is the best drift anchor, but a missing one no longer dead-ends a run. The
+FIRST node of a single `--scope sprint` walk is `SEED-AUTHOR` (`pipeline.md` §IV):
 
-1. If the objective is **derivable** from the handoff / issue ledger / branch / repo state,
-   RUN on best-effort defaults. Record the assumed objective + scope + done-criteria and the
-   elevated drift risk in the plan header and the close report.
-2. If the objective is **not derivable at all**, do NOT guess a sprint into existence and do
-   NOT pop a question (the tool is gone). Emit a one-block turn-ending report recommending the
-   operator either state the objective in chat or run `/shepherd:plant` first — then stop.
-3. Seedless trades drift-resistance for speed, with eyes open. Keep the EXISTING pause/gate
-   discipline; do NOT add new interrupts to compensate.
+1. **Seed present** → no-op pass-through; the walk proceeds exactly as today.
+2. **Seed absent** → emit ONE turn-ending confirm: *"No seed for `<slug>`. Plant
+   inline now, or state the objective / run `/shepherd:plant` for the full
+   treatment?"* This is an enumerated structural pause, not a mid-run "let me
+   check" — it REPLACES the old "go run `/shepherd:plant` and come back" report
+   with a one-tap continuation (same single stop, no session hop, action-bias
+   intact). On the operator's reply, the session loads the planter inner frame
+   (`agents/planter.md §Plant mode`, two-meta-loading), authors the seed from that
+   reply + the planter mesh, and the seed must pass `shctx seed verify` (the
+   `SEED-GATE`) before the walk falls through to `INTRO-COMBO-WAVE`. The committed
+   seed is the durable intent capture — no objective lives only in chat.
+3. **Multi-sprint** (`--scope patch | minor | version`, `--parallel`) is unchanged:
+   a missing seed still routes to `/shepherd:plant` (`spawn.md` Check 6) — those are
+   deliberate multi-seed planning sessions, not a quick spawn.
 
-The seed remains the happy path: a planted seed front-loads the questions (planter ↔ operator,
-via `AskUserQuestion`) so execution runs uninterrupted.
+This does NOT re-admit `AskUserQuestion` to execution sessions — **v6.1.7 holds**.
+The inline sub-phase gathers intent the way execution sessions always reach the
+operator: a turn-ending report answered in chat. The structured, batched
+`AskUserQuestion` front-loading remains the dedicated `/shepherd:plant` session's
+advantage; an operator who wants it plants first (or loads the planter frame
+in-session via two-meta-loading). Between `SEED-GATE` and close the run invents no
+new stops — the inline confirm is the one structural pause, and it fires only when
+there is genuinely no seed. The seed remains the happy path: a planted seed
+front-loads the questions so even `SEED-AUTHOR` is a pass-through.

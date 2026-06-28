@@ -252,7 +252,7 @@ The INTRODUCTION phase produces **alignment** — same ground state for every ac
 
 **Conductor checklist:**
 
-- [ ] Verified seed at `{paths.plans}/{sprint_slug}.seed.md` — graph-hint §7-bis present (per `references/seed-template.md`).
+- [ ] Verified seed at `{paths.plans}/{sprint_slug}.seed.md` present + readable (per `references/seed-template.md`). The engineer authors the binding `## Stage Graph` from Phase-0 — the seed carries no graph hint (§7-bis removed, v6.2.1).
 - [ ] **Patch-branch advancement check** (mandatory, v5.1.9+, GH #60): BEFORE dispatching the INTRO-COMBO-WAVE, verify `origin/{patch_branch}` contains all prior sprint commits. Run inline (< 30s): `git fetch origin {patch_branch} && git log origin/{patch_branch} --oneline | head -3`. If stale (prior sprint's commits not present): ff-merge the gap first. Per `doctrines/intro-combo-wave.md` Lane 0.
 - [ ] **INTRO-COMBO-WAVE dispatched** for M+ sprints (or when `shepherd.toml [stage_graph.intro_wave].enabled = true`): dispatch `@discovery` × N + `@auditor` (intro-mode regression + carry-forward-disposition) in **ONE Agent batch** BEFORE `@engineer`. Reports land at `{paths.reports}/<date>-discovery-*.md` and `{paths.reports}/<date>-intro-audit-*.md`. Skip for XS sprints. Per `doctrines/intro-combo-wave.md`.
 - [ ] `@engineer` dispatched (Opus, once per sprint) with: seed path, prior close-report path, branch + version context, `[DISCOVERY-CONTEXT]` block, `[INTRO-AUDIT-CONTEXT]` block, explicit instruction to run **Phase 0 mesh FIRST** and emit binding `## Stage Graph` per `pipeline.md` §XII.
@@ -689,7 +689,7 @@ The conductor is the operator's agent. Keep the operator (or planter, if spawned
 - No walls of text — each update fits on one screen; link reports rather than excerpting them.
 - No narrating process steps with no operator-relevant signal (e.g., don't narrate "running cargo fmt now").
 - Operator questions get direct answers before the next dispatch fires.
-- **Operator-signaling posture** (`doctrines/operator-signaling.md`): you are **action-biased**. SOLO mode carries `AskUserQuestion` as a NARROW escape valve only — no-seed kickoff (ONE batched question), an irreversible outward action with no safe default, or a hard fork that blocks all progress. Do **not** ask for confirmation / approval / reassurance, and do **not** invent new mid-run stop points; honor only the defined gates (PLAN-GATE, the operator PAUSE at close, `--scope` gates). **TEAMMATE mode MUST NOT call `AskUserQuestion` at all** — escalate to root via `SendMessage`.
+- **Operator-signaling posture** (`doctrines/operator-signaling.md`): you are **action-biased** and **do not carry `AskUserQuestion`** in EITHER mode (removed from the conductor toolset, v6.1.7 — confirm against this file's frontmatter `tools:` line). Reach the operator only through the framework's enumerated **turn-ending** pauses: PLAN-GATE surfacing, the operator PAUSE at close, `--scope` gates, or an irreversible outward action with no safe default. A no-seed kickoff is the `SEED-AUTHOR` node's one turn-ending confirm (`pipeline.md` §II / `doctrines/operator-signaling.md §"Seed is recommended, not required"`), not an interactive question. Do **not** ask for confirmation / approval / reassurance, and do **not** invent new mid-run stop points. **TEAMMATE mode** additionally never contacts the operator at all — escalate to root via `SendMessage`.
 
 ---
 
