@@ -136,8 +136,9 @@ design; this doctrine names them only to route them out.
   commit-push-restart reporting. These are properties of the *consumer* project, not the
   framework. They live in the project's `[memory].project_doctrines` (default
   `.claude/doctrines/`) — see `doctrines/README.md` "How to add new project doctrines."
-  The opt-in `shctx config claude-md` command materializes a starter CLAUDE.md carrying
-  them into a consumer repo.
+  The opt-in `shctx config claude-md` command materializes a starter CLAUDE.md with the
+  portable *how-to-work* principles (not these project-specific rules), which the consumer
+  then extends with its own services-first / backfill / safety doctrine.
 - **Tone and voice rules** — directness, banned vocabulary, formatting preferences. These
   are operator-personal and portable-unsafe to bake into a plugin every shepherd user
   installs. They belong in user-global instructions, never in framework doctrine.
@@ -161,11 +162,12 @@ same commit (`outcome-enforcement.md` carries the runnable-acceptance half).
   (config-gated, default on, silenceable via `quiet_warnings`).
 - **Consumer repos:** `shctx config claude-md` materializes a managed, never-clobber
   CLAUDE.md block so the philosophy is durable in the project for every Claude Code
-  session there, not only shepherd-hooked ones.
+  session there, not only shepherd-hooked ones. Its portable twin is
+  `examples/minimal/CLAUDE.md` — keep the two aligned when this §I changes.
 
 ## See also
 
-- `agent-excellence.md` — the bar + the six rules + Rule 7 (latent/deterministic); read every dispatch
+- `agent-excellence.md` — the bar + the seven rules incl. Rule 7 (latent/deterministic); read every dispatch
 - `outcome-enforcement.md` — measurable-outcome, the strongest single home; this index defers to it
 - `self-improvement.md` + `adaptation-loop.md` — failure-harvest; principle 2 is the success complement
 - `brief-cache-discipline.md` — the context-window mechanics behind principle 3

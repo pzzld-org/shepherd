@@ -153,13 +153,26 @@ assert_contains "reflect-surfaces" "$out" "reflection"
 # --note is required
 rc=0; "$SHCTX" adapt reflect --sprint=test >/dev/null 2>&1 || rc=$?
 assert_eq "reflect-requires-note" "$rc" "1"
+# --sprint is required (symmetric guard coverage)
+rc=0; "$SHCTX" adapt reflect --note=x >/dev/null 2>&1 || rc=$?
+assert_eq "reflect-requires-sprint" "$rc" "1"
+# --pin sets pinned=1
+"$SHCTX" adapt reflect --sprint=pinsprint --note="keep me" --pin >/dev/null
+pinned=$(sqlite3 "$DB" "SELECT pinned FROM mem_entries WHERE title='prior: reflection (pinsprint)';")
+assert_eq "reflect-pin-sets" "$pinned" "1"
+# re-reflect WITHOUT --pin must PRESERVE the pin (no silent unpin / decay footgun)
+"$SHCTX" adapt reflect --sprint=pinsprint --note="updated, still pinned" >/dev/null
+pinned2=$(sqlite3 "$DB" "SELECT pinned FROM mem_entries WHERE title='prior: reflection (pinsprint)';")
+assert_eq "reflect-pin-preserved" "$pinned2" "1"
 
-# --- wall-min auto-derive (v6.2.0): roll WITHOUT --wall-min still writes a row;
-#     wall is git-derived best-effort (stays NULL when no base is resolvable, as
-#     in this throwaway repo) — the point is roll never errors on the new path. ---
+# --- wall-min is explicit-only: roll WITHOUT --wall-min writes a row with a NULL
+#     wall_minutes (the cost trend stays dormant rather than firing on a guessed,
+#     possibly-misleading value). The close step computes + passes it. ---
 out=$("$SHCTX" adapt roll --sprint=nowall --grade=B --lanes=2)
 assert_contains "roll-nowall-ok" "$out" "adapt roll"
 nw=$(sqlite3 "$DB" "SELECT count(*) FROM sprint_metrics WHERE sprint_branch='nowall';")
 assert_eq "roll-nowall-row" "$nw" "1"
+wallnull=$(sqlite3 "$DB" "SELECT wall_minutes IS NULL FROM sprint_metrics WHERE sprint_branch='nowall';")
+assert_eq "roll-nowall-null" "$wallnull" "1"
 
 echo "test_cmd_adapt: ok"

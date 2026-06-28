@@ -50,8 +50,8 @@ shctx adapt <roll|priors|report|recommend> [args]   (v6.0.4 #94/#95; v6.0.8)
       audit_findings into mem_entries(kind='prior'). Run at CLOSE-FINALIZE.
       Touches recurring priors' last-seen + prunes stale unpinned priors
       (SHCTX_ADAPT_DECAY_SPRINTS, default 6; pinned priors are never pruned).
-      --wall-min absent ⇒ derived best-effort from the first sprint commit
-      (git) so the cost-rising trend is not starved; explicit value wins.
+      Pass --wall-min (sprint elapsed minutes) + --api: they power the
+      cost-rising trend (§VI(c)) and Check 8 sizing — both stay dormant on NULL.
 
   reflect --sprint=<branch> --note="<lesson>" [--pin]
       Store the conductor's one-line close reflection ("what I'd do differently
@@ -108,27 +108,6 @@ _num() {
   printf '%s' "$v"
 }
 
-# Best-effort sprint wall-minutes from the FIRST sprint commit (deterministic,
-# git-derived — same-input-same-output, so it belongs in a script, not eyeballed
-# per agent-excellence.md Rule 7). Sprint start ≈ the first commit on the branch
-# since it diverged from the integration base. Under-counts pre-first-commit
-# work; an explicit --wall-min always wins. Non-git / no base / no commit ⇒
-# empty (stays NULL — today's behavior, graceful). Populating wall_minutes is
-# what lets the cost-rising trend (adaptation-loop.md §VI(c)) fire at all —
-# before this it landed NULL and the signal was structurally unreachable.
-_derive_wall_minutes() {
-  local base first
-  base=$(git merge-base HEAD origin/main 2>/dev/null \
-         || git merge-base HEAD origin/master 2>/dev/null \
-         || git rev-parse HEAD~20 2>/dev/null || true)
-  [[ -n "$base" ]] || { printf ''; return 0; }
-  first=$(git log --reverse --format=%ct "$base"..HEAD 2>/dev/null | head -1 || true)
-  [[ -n "$first" ]] || { printf ''; return 0; }
-  local mins=$(( (now - first) / 60 ))
-  (( mins < 0 )) && mins=0
-  printf '%s' "$mins"
-}
-
 # ---------------------------------------------------------------------------
 # roll — write metrics row + harvest priors
 # ---------------------------------------------------------------------------
@@ -150,11 +129,6 @@ _cmd_roll() {
     esac
   done
   [[ -n "$sprint" ]] || { echo "ERROR: adapt roll requires --sprint=<branch>" >&2; exit 1; }
-
-  # Wall-minutes feeds the cost-rising trend + dispatch sizing. When the close
-  # step does not pass it, derive a best-effort value from git so the signal is
-  # not starved (see _derive_wall_minutes). Explicit --wall-min wins.
-  [[ -n "$wall" ]] || wall=$(_derive_wall_minutes)
 
   local sprint_esc="${sprint//\'/\'\'}"
 
@@ -280,7 +254,10 @@ _cmd_reflect() {
   local dup; dup=$(shctx_sql "SELECT id FROM mem_entries
                               WHERE project_id='$pid' AND kind='prior' AND title='$title_esc' LIMIT 1;")
   if [[ -n "$dup" ]]; then
-    shctx_sql "UPDATE mem_entries SET body='$body_esc', pinned=$pin, updated_at=$now WHERE id='$dup';"
+    # Preserve an existing pin: the normal close re-runs reflect WITHOUT --pin, so
+    # a plain `pinned=$pin` would silently unpin a previously pinned reflection
+    # and make it decay-eligible. MAX keeps a pin sticky; unpin via `shctx mem unpin`.
+    shctx_sql "UPDATE mem_entries SET body='$body_esc', pinned=MAX(pinned,$pin), updated_at=$now WHERE id='$dup';"
     echo "adapt reflect: updated reflection for $sprint"
   else
     local mid; mid=$(shctx_uuid7)

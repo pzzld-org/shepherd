@@ -586,9 +586,10 @@ sprint when `--scope > sprint`):
       ```
       Writes the `sprint_metrics` row + harvests this sprint's HIGH/CRITICAL
       `audit_findings` → `mem_entries(kind='prior')`. Idempotent; on failure note
-      under anomalies and continue. `--wall-min` auto-derives from the first
-      sprint commit when omitted (cost trend never starved); pass it for
-      precision. Supersedes the retired completeness-auditor markdown append. For
+      under anomalies and continue. Pass `--wall-min`/`--api` only when a timer or
+      script supplies them (never eyeball-compute minutes in prose — Rule 7);
+      they power the cost trend + Check 8 sizing and stay dormant (NULL) otherwise.
+      Supersedes the retired completeness-auditor markdown append. For
       `--parallel` / `--scope > sprint`: roll once per sprint as each closes. Per
       `doctrines/adaptation-loop.md` + `doctrines/self-improvement.md`.
 

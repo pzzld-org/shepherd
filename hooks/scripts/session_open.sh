@@ -21,6 +21,10 @@ cat > /dev/null
 
 is_shepherd_project || exit 0
 
+# Installed plugin root (hooks/scripts → ../..). Resolved once; reused by the
+# adaptation trend probe, the shctx locator, and the core-doctrine pointer.
+plugin_root="$(cd "$HERE/../.." 2>/dev/null && pwd || true)"
+
 warnings=()
 
 # --- Anchor 1: HEAD must not be an agent/lane branch ---
@@ -41,13 +45,33 @@ if [[ "${wt_count:-0}" -gt 1 ]]; then
   warnings+=("$((wt_count - 1)) sub-worktree(s) active. Run 'git worktree list' to inspect; prune orphans with 'git worktree remove <path>'.")
 fi
 
-# --- Adaptation registry check (adaptation-loop.md, v6.0.4 SQLite-canonical) ---
+# --- Adaptation surface (adaptation-loop.md; v6.2.0 — made apparent) ----------
+# Make the self-improvement loop VISIBLE at session start. Inverted vs <=v6.1.x,
+# which spoke ONLY when the registry was empty: now a NON-empty registry surfaces
+# the newest harvested lesson + any active trend alert, so the operator SEES the
+# lessons the flock has paid for. Cheap direct reads + one deterministic trend
+# probe; config-gated [context].announce_adaptation = on (default) | off;
+# bash-3.2-safe; routed through emit_context (inherits quiet_warnings).
 ns=$(resolve_namespace)
 db="$(hook_db_path "$ns")"
-if [[ -f "$db" ]] && command -v sqlite3 >/dev/null 2>&1; then
+adapt_line=""
+if [[ "$(cfg_get announce_adaptation)" != "off" ]] && [[ -f "$db" ]] && command -v sqlite3 >/dev/null 2>&1; then
   n=$(sqlite3 "$db" "SELECT count(*) FROM sprint_metrics;" 2>/dev/null || echo 0)
-  if [[ "${n:-0}" == "0" ]]; then
-    warnings+=("adaptation registry empty — no pattern history yet. First cycle records at CLOSE-FINALIZE via 'shctx adapt roll'.  [adaptation-loop.md]")
+  pri=$(sqlite3 "$db" "SELECT count(*) FROM mem_entries WHERE kind='prior';" 2>/dev/null || echo 0)
+  if [[ "${n:-0}" == "0" && "${pri:-0}" == "0" ]]; then
+    adapt_line="adaptation: empty — first cycle records at CLOSE-FINALIZE via 'shctx adapt roll'.  [adaptation-loop.md]"
+  else
+    adapt_line="adaptation: ${n:-0} sprint(s), ${pri:-0} prior(s) carried forward."
+    latest=$(sqlite3 "$db" "SELECT replace(substr(title,1,72),'prior: ','') FROM mem_entries WHERE kind='prior' ORDER BY created_at DESC, id DESC LIMIT 1;" 2>/dev/null || true)
+    [[ -n "$latest" ]] && adapt_line+=$'\n'"  latest lesson: $latest"
+    # Trend (deterministic SQL; emits nothing on a healthy streak). The detector
+    # needs >=3 closes, so skip the subprocess fork below that — keeps the common
+    # early-history SessionStart cheap. shctx is plugin-local, never on $PATH.
+    sh_cli="$plugin_root/skills/context/scripts/shctx"
+    if [[ "${n:-0}" -ge 3 && -x "$sh_cli" ]]; then
+      trend=$("$sh_cli" adapt report --trends 2>/dev/null | grep -c 'TREND ALERT' || true)
+      [[ "${trend:-0}" -gt 0 ]] && adapt_line+=$'\n'"  ⚠ TREND ALERT active — run: shctx adapt report --trends"
+    fi
   fi
 fi
 
@@ -113,7 +137,6 @@ fi
 # invocation. Config-gated: [context].announce_shctx_path = on (default) | off.
 shctx_line=""
 if [[ "$(cfg_get announce_shctx_path)" != "off" ]]; then
-  plugin_root="$(cd "$HERE/../.." 2>/dev/null && pwd || true)"
   shctx_path="$plugin_root/skills/context/scripts/shctx"
   if [[ -f "$shctx_path" ]]; then
     [[ -n "${CLAUDE_PLUGIN_ROOT:-}" ]] && cpr="set" || cpr="UNSET"
@@ -122,14 +145,28 @@ if [[ "$(cfg_get announce_shctx_path)" != "off" ]]; then
   fi
 fi
 
+# --- Core operating doctrine pointer (v6.2.0) --------------------------------
+# Bind the how-to-work constitution to every shepherd session — pointer only
+# (the doctrine body is read on demand), so the surface stays ≤1 line.
+# Config-gated [context].announce_core_doctrine = on (default) | off.
+doctrine_line=""
+if [[ "$(cfg_get announce_core_doctrine)" != "off" ]]; then
+  doctrine_path="$plugin_root/skills/shepherd/doctrines/operating-philosophy.md"
+  [[ -f "$doctrine_path" ]] && \
+    doctrine_line="operating doctrine → $doctrine_path  (latent-vs-deterministic · tie-to-outcome · completeness · DONE/DONE_WITH_CONCERNS/BLOCKED/NEEDS_CONTEXT)"
+fi
+
 # --- Build output ---
-# Emit if there's a locator line OR any hygiene warning; else stay silent.
-if [[ -z "$shctx_line" && ${#warnings[@]} -eq 0 ]]; then
+# Emit if there's a locator/doctrine/adaptation line OR any hygiene warning;
+# else stay silent.
+if [[ -z "$shctx_line" && -z "$doctrine_line" && -z "$adapt_line" && ${#warnings[@]} -eq 0 ]]; then
   pass_silent "session_open" "Session" "conductor" ""
 fi
 
 msg="[shepherd] Session orientation:"$'\n'
 [[ -n "$shctx_line" ]] && msg+="$shctx_line"$'\n'
+[[ -n "$doctrine_line" ]] && msg+="$doctrine_line"$'\n'
+[[ -n "$adapt_line" ]] && msg+="$adapt_line"$'\n'
 if [[ ${#warnings[@]} -gt 0 ]]; then
   msg+="Session-open hygiene (v5.1.8):"$'\n'
   for w in "${warnings[@]}"; do

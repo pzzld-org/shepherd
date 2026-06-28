@@ -10,7 +10,12 @@ export GIT_CONFIG_COUNT=1
 export GIT_CONFIG_KEY_0=commit.gpgsign
 export GIT_CONFIG_VALUE_0=false
 
-SHCTX_TEST_TMP="$(mktemp -d -t shctx-test.XXXXXX)"
+# Canonicalize the temp dir to its physical path. On macOS `mktemp -d` returns a
+# path under /var/folders/… which is a symlink to /private/var/folders/…; git
+# (`rev-parse --show-toplevel`, used by shctx_repo_root) resolves the symlink, so
+# any assertion comparing SHCTX_TEST_TMP against a git-derived path would spuriously
+# differ. `pwd -P` resolves it once so both sides agree on every platform.
+SHCTX_TEST_TMP="$(cd "$(mktemp -d -t shctx-test.XXXXXX)" && pwd -P)"
 trap 'rm -rf "$SHCTX_TEST_TMP"' EXIT
 
 # Stand up a fake repo root with .shepherd skeleton.

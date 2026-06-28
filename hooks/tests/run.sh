@@ -301,6 +301,19 @@ else
   fails=$((fails+1))
 fi
 
+# Adaptation surface (v6.2.0): a NON-empty registry must surface the newest
+# harvested lesson at session start (inverted from the old empty-only note);
+# the [context].announce_adaptation off-switch must suppress it.
+echo "== test_session_adaptation.sh (v6.2.0 — session_open adaptation surface) =="
+total=$((total+1))
+if adapt_out=$(bash "$TESTS_DIR/test_session_adaptation.sh" 2>&1); then
+  printf '  PASS  %s\n' "session-adaptation-surface"
+else
+  printf '  FAIL  %-50s\n' "session-adaptation"
+  printf '%s\n' "$adapt_out" | sed 's/^/        /'
+  fails=$((fails+1))
+fi
+
 # Exec-bit guard (v6.1.3): every path-invoked hook/CLI script must carry the
 # git-tracked executable bit. Regression guard for the v6.1.2 toolkit
 # "Permission denied" shipped-as-100644 class.

@@ -246,7 +246,7 @@ The command re-enters at Step 3 (resume), runs exactly one iteration (Step 4), t
 
 **Termination:** On LOOP-DONE / LOOP-DONE-CAPPED the command surfaces the stop guidance (self-paced self-terminates; fixed is cancelled with `/loop stop`).
 
-> **Note:** Self-paced fits long-horizon work where the cadence should be chosen for you and the loop should stop itself (exhaustive discovery, a soak that may converge early). Fixed `--interval` fits known-period polling (CI every `5m`, a daily outcome soak). Tight fix-until-green loops you watch live want neither flag (in-session drive).
+> **Note:** Self-paced fits long-horizon **convergent** work that terminates on `new_findings: false` and should stop itself (exhaustive discovery, a long fix-until-green run). It is unsound for **watch** loops — a soak/monitor terminates on `new_findings: true`, so self-paced would end it on the first healthy tick; route those to fixed `--interval` (CI every `5m`, a daily outcome soak). Tight loops you watch live want neither flag (in-session drive).
 
 ---
 

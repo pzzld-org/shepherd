@@ -30,7 +30,7 @@ Pattern-6 circuit-breaker invariants apply to every template below without excep
 Every wall-clock template delegates its wake clock to the native `/loop` skill. There are three pacings; the template picks *what* runs, the pacing picks *when*:
 
 - **self-paced** (`--self-paced`) — native `/loop` picks a dynamic 1min–1hr, cache-window-aware delay and **ends the loop early** the moment an iteration reports `new_findings: false`. This maps cleanly onto the **convergent** templates (terminate on `false`): **DISCOVERY-EXHAUST** is the canonical case — long exhaustive discovery where you want the cadence chosen for you and the loop to stop itself when sources run dry. CODER-CONVERGENCE / WORKER-CONVERGENCE / AUDITOR-REFINE / ENGINEER-PLAN-REFINE can use it too.
-- **fixed interval** (`--interval <dur>`) — native `/loop` at a set period. Required for the **watch** templates (WORKER-WATCH, SOAK-LOOP), which terminate on `new_findings: true` (anomaly found) — the inverse of convergence, so the platform's end-early-on-`false` would be wrong for them. They poll a known cadence until an anomaly or cap/expiry.
+- **fixed interval** (`--interval <dur>`) — native `/loop` at a set period. Required for the **watch** templates (WORKER-WATCH, SOAK-LOOP, AUTONOMOUS-SENTINEL), which terminate on `new_findings: true` (anomaly found) — the inverse of convergence, so the platform's end-early-on-`false` would be wrong for them. They poll a known cadence until an anomaly or cap/expiry.
 - **in-session** (neither flag) — shepherd drives `wake → act → probe → yield` directly; for tight loops watched live.
 
 The exact native invocation is emitted by `shctx loop native-cmd --id=<loop-id>` (deterministic — never reconstructed by the model). See `commands/loop.md §Pacing modes`.

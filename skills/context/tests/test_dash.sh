@@ -50,6 +50,11 @@ assert_contains "dash.adapt-sprints" "$out" "1 sprint"
 assert_contains "dash.adapt-priors"  "$out" "priors=1"
 assert_contains "dash.adapt-latest"  "$out" "duplication"
 
+# ---- ADAPT middle branch: priors exist but NO sprint_metrics row ------------
+sqlite3 "$db" "DELETE FROM sprint_metrics;"
+out="$("$SHCTX" dash)"
+assert_contains "dash.adapt-priors-no-metrics" "$out" "no sprint metrics yet"
+
 # ---- DB-less degrade --------------------------------------------------------
 TMP2="$(mktemp -d)"; ( cd "$TMP2" && git init -q . \
   && out2="$("$SHCTX" dash)" \

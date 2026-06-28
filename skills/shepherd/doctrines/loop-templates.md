@@ -97,7 +97,7 @@ These are not guidance; they are enforceable halt conditions:
 | Cap-exceeded surfaces to operator; no auto-extend | Conductor on `i >= max` | `LOOP-CAP` |
 | Each iteration makes measurable progress toward predicate | Engineer at plan time; auditor at close | `LOOP-STALL` (auditor finding, no halt code) |
 | Wrong agent type for loop body | Dispatch guard | `DISPATCH-WRONG-ROLE` |
-| Fixed `--interval` only on WATCH templates; `--self-paced` only on convergent templates (terminate-on-`false`) | Critic at PLAN-GATE | `PLAN-INVALID-INTERVAL` |
+| `--self-paced` only on convergent (terminate-on-`false`) templates; WATCH + FOCUS templates use fixed `--interval` or in-session | Critic at PLAN-GATE for Stage-Graph loops (operator's pacing call on direct `/shepherd:loop`) | `PLAN-INVALID-INTERVAL` |
 
 The "each iteration must make measurable progress" invariant does not have a mechanical halt
 code — it is an audit finding. An auditor reviewing a close report for a CODER-CONVERGENCE
