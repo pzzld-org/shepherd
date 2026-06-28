@@ -1,6 +1,6 @@
 {
   "name": "shepherd",
-  "version": "6.2.0",
+  "version": "6.2.1",
   "description": "Sprint-by-sprint version-cycle conductor. Six-agent flock (engineer, critic, coder, auditor, worker, discovery) on a three-section pipeline (INTRODUCTION → BODY → CLOSE), with hardened hooks, hypothesis-driven audits, and a per-project SQLite context registry. Project-agnostic — branch topology, gates, paths, and ledger discipline configured via .claude/shepherd.toml.",
   "author": {
     "name": "FL03",

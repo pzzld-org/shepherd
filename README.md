@@ -333,7 +333,7 @@ Shepherd follows semver:
 
 Version sources of truth that must move together: `plugin.json`, `marketplace.json`, `skills/shepherd/SKILL.md` frontmatter, `skills/context/SKILL.md` frontmatter, `README.md` header, `CHANGELOG.md`. `shctx release` automates the five non-CHANGELOG files.
 
-Current version: **6.2.0**. See [`CHANGELOG.md`](CHANGELOG.md) for the per-version history.
+Current version: **6.2.1**. See [`CHANGELOG.md`](CHANGELOG.md) for the per-version history.
 
 ---
 
