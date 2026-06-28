@@ -131,4 +131,35 @@ sqlite3 "$DB" "DELETE FROM mem_entries WHERE kind='prior';"
 rc=0; "$SHCTX" adapt recommend --md >/dev/null || rc=$?
 assert_eq "recommend-exit0-no-concerns" "$rc" "0"
 
+# --- reflect (v6.2.0): one-line close reflection stored as a kind='prior'
+#     lesson tagged ["reflection"], idempotent per sprint, surfaced via priors. ---
+sqlite3 "$DB" "DELETE FROM mem_entries WHERE kind='prior';"   # isolate from earlier harvests
+out=$("$SHCTX" adapt reflect --sprint=test --note="lanes were oversized for a docs sprint")
+assert_contains "reflect-stored" "$out" "stored reflection"
+r=$(sqlite3 "$DB" "SELECT count(*) FROM mem_entries WHERE kind='prior' AND title LIKE 'prior: reflection%';")
+assert_eq "reflect-row" "$r" "1"
+tag=$(sqlite3 "$DB" "SELECT json_extract(tags,'\$[0]') FROM mem_entries WHERE title LIKE 'prior: reflection%';")
+assert_eq "reflect-tag" "$tag" "reflection"
+# idempotent per sprint: re-reflecting updates in place (no duplicate row)
+out=$("$SHCTX" adapt reflect --sprint=test --note="updated lesson")
+assert_contains "reflect-updated" "$out" "updated reflection"
+r2=$(sqlite3 "$DB" "SELECT count(*) FROM mem_entries WHERE title LIKE 'prior: reflection%';")
+assert_eq "reflect-idempotent" "$r2" "1"
+body=$(sqlite3 "$DB" "SELECT body FROM mem_entries WHERE title LIKE 'prior: reflection%';")
+assert_contains "reflect-body-updated" "$body" "updated lesson"
+# surfaces in the brief-inject lesson feed (the next-sprint [DB-CONTEXT] path)
+out=$("$SHCTX" adapt priors --lessons --md)
+assert_contains "reflect-surfaces" "$out" "reflection"
+# --note is required
+rc=0; "$SHCTX" adapt reflect --sprint=test >/dev/null 2>&1 || rc=$?
+assert_eq "reflect-requires-note" "$rc" "1"
+
+# --- wall-min auto-derive (v6.2.0): roll WITHOUT --wall-min still writes a row;
+#     wall is git-derived best-effort (stays NULL when no base is resolvable, as
+#     in this throwaway repo) — the point is roll never errors on the new path. ---
+out=$("$SHCTX" adapt roll --sprint=nowall --grade=B --lanes=2)
+assert_contains "roll-nowall-ok" "$out" "adapt roll"
+nw=$(sqlite3 "$DB" "SELECT count(*) FROM sprint_metrics WHERE sprint_branch='nowall';")
+assert_eq "roll-nowall-row" "$nw" "1"
+
 echo "test_cmd_adapt: ok"

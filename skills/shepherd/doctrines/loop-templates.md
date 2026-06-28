@@ -66,6 +66,26 @@ Quick-selection summary (full table in the catalog):
 When a template's name appears in a Stage Graph node, its full definition from
 `references/loop-templates.md` applies — do not re-derive or improvise.
 
+## Pacing modes (v6.2.0) — orthogonal to the template
+
+The template picks *what* iterates; the pacing picks *when* the wake fires. Three modes, all
+delegating the wake clock to the native `/loop` skill (never `Bash sleep`):
+
+1. **self-paced** (`--self-paced`) — native `/loop` chooses a dynamic, cache-window-aware delay
+   (1min–1hr) and **ends the loop early** the moment an iteration reports `new_findings: false`.
+   This is sound ONLY for **convergent** templates (those that terminate on `false`:
+   DISCOVERY-EXHAUST, CODER/WORKER-CONVERGENCE, AUDITOR-REFINE, ENGINEER-PLAN-REFINE) — the
+   platform's end-early signal coincides with the template's own termination.
+2. **fixed interval** (`--interval <dur>`) — native `/loop` at a set period. Required for the
+   **watch** templates (WORKER-WATCH, SOAK-LOOP, AUTONOMOUS-SENTINEL), which terminate on
+   `new_findings: true`. Self-paced is **unsound** for them: end-early-on-`false` would stop the
+   watch exactly when the target is healthy.
+3. **in-session** (neither flag) — shepherd drives `wake → act → probe → yield` directly.
+
+The native invocation string is same-input-same-output, so it is emitted deterministically by
+`shctx loop native-cmd --id=<loop-id>`, never reconstructed by the model per wake
+(`doctrines/operating-philosophy.md` §I.1; `agent-excellence.md` Rule 7).
+
 ## Circuit-breaker invariants (explicit enumeration)
 
 These are not guidance; they are enforceable halt conditions:
@@ -77,7 +97,7 @@ These are not guidance; they are enforceable halt conditions:
 | Cap-exceeded surfaces to operator; no auto-extend | Conductor on `i >= max` | `LOOP-CAP` |
 | Each iteration makes measurable progress toward predicate | Engineer at plan time; auditor at close | `LOOP-STALL` (auditor finding, no halt code) |
 | Wrong agent type for loop body | Dispatch guard | `DISPATCH-WRONG-ROLE` |
-| `--interval` present only for WATCH-LOOP (WORKER-WATCH) | Critic at PLAN-GATE | `PLAN-INVALID-INTERVAL` |
+| Fixed `--interval` only on WATCH templates; `--self-paced` only on convergent templates (terminate-on-`false`) | Critic at PLAN-GATE | `PLAN-INVALID-INTERVAL` |
 
 The "each iteration must make measurable progress" invariant does not have a mechanical halt
 code — it is an audit finding. An auditor reviewing a close report for a CODER-CONVERGENCE

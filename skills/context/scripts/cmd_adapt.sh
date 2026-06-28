@@ -13,6 +13,11 @@
 #       unpinned priors not re-seen within SHCTX_ADAPT_DECAY_SPRINTS sprint
 #       closes (default 6) are pruned so the store self-cleans (bounded arc).
 #
+#   reflect --sprint=<branch> --note="<lesson>" [--pin]
+#       Store a one-line close reflection (Reflexion pattern) as a kind='prior'
+#       lesson tagged ["reflection"]. Latent note in, deterministic storage out.
+#       Idempotent per sprint; surfaces in close report + next [DB-CONTEXT].
+#
 #   priors [--metrics|--lessons|--all] [--json|--md]
 #       Read priors at sprint open. --metrics feeds dispatch sizing
 #       (spawn Check 8, engineer lane guidance); --lessons feeds the
@@ -45,6 +50,15 @@ shctx adapt <roll|priors|report|recommend> [args]   (v6.0.4 #94/#95; v6.0.8)
       audit_findings into mem_entries(kind='prior'). Run at CLOSE-FINALIZE.
       Touches recurring priors' last-seen + prunes stale unpinned priors
       (SHCTX_ADAPT_DECAY_SPRINTS, default 6; pinned priors are never pruned).
+      --wall-min absent ⇒ derived best-effort from the first sprint commit
+      (git) so the cost-rising trend is not starved; explicit value wins.
+
+  reflect --sprint=<branch> --note="<lesson>" [--pin]
+      Store the conductor's one-line close reflection ("what I'd do differently
+      next sprint") as a kind='prior' lesson tagged ["reflection"]. The note is
+      latent synthesis; storage/dedup/decay are deterministic. Idempotent per
+      sprint. Surfaces in the close report, the dash, session_open, and the next
+      sprint's [DB-CONTEXT] brief. Run once per close, after roll.
 
   priors [--metrics|--lessons|--all] [--json|--md]
       --metrics  measured averages: avg_sprint_minutes, avg_api_per_sprint,
@@ -94,6 +108,27 @@ _num() {
   printf '%s' "$v"
 }
 
+# Best-effort sprint wall-minutes from the FIRST sprint commit (deterministic,
+# git-derived — same-input-same-output, so it belongs in a script, not eyeballed
+# per agent-excellence.md Rule 7). Sprint start ≈ the first commit on the branch
+# since it diverged from the integration base. Under-counts pre-first-commit
+# work; an explicit --wall-min always wins. Non-git / no base / no commit ⇒
+# empty (stays NULL — today's behavior, graceful). Populating wall_minutes is
+# what lets the cost-rising trend (adaptation-loop.md §VI(c)) fire at all —
+# before this it landed NULL and the signal was structurally unreachable.
+_derive_wall_minutes() {
+  local base first
+  base=$(git merge-base HEAD origin/main 2>/dev/null \
+         || git merge-base HEAD origin/master 2>/dev/null \
+         || git rev-parse HEAD~20 2>/dev/null || true)
+  [[ -n "$base" ]] || { printf ''; return 0; }
+  first=$(git log --reverse --format=%ct "$base"..HEAD 2>/dev/null | head -1 || true)
+  [[ -n "$first" ]] || { printf ''; return 0; }
+  local mins=$(( (now - first) / 60 ))
+  (( mins < 0 )) && mins=0
+  printf '%s' "$mins"
+}
+
 # ---------------------------------------------------------------------------
 # roll — write metrics row + harvest priors
 # ---------------------------------------------------------------------------
@@ -115,6 +150,11 @@ _cmd_roll() {
     esac
   done
   [[ -n "$sprint" ]] || { echo "ERROR: adapt roll requires --sprint=<branch>" >&2; exit 1; }
+
+  # Wall-minutes feeds the cost-rising trend + dispatch sizing. When the close
+  # step does not pass it, derive a best-effort value from git so the signal is
+  # not starved (see _derive_wall_minutes). Explicit --wall-min wins.
+  [[ -n "$wall" ]] || wall=$(_derive_wall_minutes)
 
   local sprint_esc="${sprint//\'/\'\'}"
 
@@ -202,6 +242,52 @@ _decay_priors() {
                AND (SELECT count(*) FROM sprint_metrics s
                     WHERE s.project_id='$pid' AND s.created_at > mem_entries.updated_at) > $window;"
   printf '%s' "${n:-0}"
+}
+
+# ---------------------------------------------------------------------------
+# reflect — store the conductor's one-line close reflection (Reflexion pattern)
+# ---------------------------------------------------------------------------
+# The whole sprint is the trajectory; the NOTE is the conductor's latent
+# synthesis ("what I'd do differently next sprint") over grade + metrics + top
+# finding — judgment the model owns. Storage, dedup, and decay are deterministic
+# here (the split this very loop teaches). Stored as mem_entries(kind='prior')
+# tagged ["reflection"] so it rides the existing inject + surface paths:
+# `adapt priors --lessons` injects it into the next [DB-CONTEXT] brief, the dash
+# shows it as the latest lesson, and session_open surfaces it. Idempotent per
+# sprint (title-keyed): re-running a close updates the reflection in place rather
+# than duplicating. Decays like any unpinned prior unless --pin.
+_cmd_reflect() {
+  local sprint="" note="" pin=0
+  for arg in "$@"; do
+    case "$arg" in
+      --sprint=*) sprint="${arg#--sprint=}" ;;
+      --note=*)   note="${arg#--note=}" ;;
+      --pin)      pin=1 ;;
+      -h|--help)  usage; exit 0 ;;
+      *) echo "ERROR: unknown arg: $arg" >&2; exit 1 ;;
+    esac
+  done
+  [[ -n "$sprint" ]] || { echo "ERROR: adapt reflect requires --sprint=<branch>" >&2; exit 1; }
+  [[ -n "$note" ]]   || { echo "ERROR: adapt reflect requires --note=<lesson>" >&2; exit 1; }
+
+  local title="prior: reflection ($sprint)"
+  local title_esc="${title//\'/\'\'}"
+  local note1; note1=$(printf '%s' "$note" | tr '\n\r' '  ')
+  local body="[reflection] sprint $sprint: $note1"
+  local body_esc="${body//\'/\'\'}"
+  local tags tags_esc; tags=$(jq -cn '["reflection"]'); tags_esc="${tags//\'/\'\'}"
+
+  local dup; dup=$(shctx_sql "SELECT id FROM mem_entries
+                              WHERE project_id='$pid' AND kind='prior' AND title='$title_esc' LIMIT 1;")
+  if [[ -n "$dup" ]]; then
+    shctx_sql "UPDATE mem_entries SET body='$body_esc', pinned=$pin, updated_at=$now WHERE id='$dup';"
+    echo "adapt reflect: updated reflection for $sprint"
+  else
+    local mid; mid=$(shctx_uuid7)
+    shctx_sql "INSERT INTO mem_entries (id,project_id,kind,title,body,tags,pinned,created_at,updated_at)
+               VALUES ('$mid','$pid','prior','$title_esc','$body_esc','$tags_esc',$pin,$now,$now);"
+    echo "adapt reflect: stored reflection for $sprint (id $mid)"
+  fi
 }
 
 # ---------------------------------------------------------------------------
@@ -616,6 +702,7 @@ _cmd_recommend() {
 
 case "$sub" in
   roll)      _cmd_roll      "$@" ;;
+  reflect)   _cmd_reflect   "$@" ;;
   priors)    _cmd_priors    "$@" ;;
   report)    _cmd_report    "$@" ;;
   recommend) _cmd_recommend "$@" ;;

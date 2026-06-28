@@ -67,6 +67,15 @@ below 40% surfaces as a MEDIUM finding at close — investigate brief
 ordering per `doctrines/brief-cache-discipline.md` first, brief length
 per `doctrines/agent-excellence.md` §Rule 6 second.
 
+**How-to-work, also foundational.** `doctrines/operating-philosophy.md` is
+the orchestrator-facing constitution — an index that names the four
+homeless principles (latent-vs-deterministic split, skillify-success, the
+context-window diagnostic, the DONE/DONE_WITH_CONCERNS/BLOCKED/NEEDS_CONTEXT
+return vocabulary) and binds the rest by pointer. Load it on every sprint
+open alongside the cache triad; it defers to the cited doctrine on detail
+and never restates it. Principle 1 is also `agent-excellence.md` Rule 7,
+read every dispatch.
+
 ---
 
 ## 0-ter. Loops are first-class — reach for one when "done" = "no new findings"
@@ -253,7 +262,7 @@ Deletion counts toward SUBTRACT but NOT toward this quota.
   6. Cut next sprint (mod-10: N+1 if N < 9; release pipeline if N = last) per §II.1.
   7. Worktree + branch cleanup.
   In TEAMMATE mode: steps 3–7 deferred to root via structured `SendMessage` payload.
-- [ ] **Adaptation signal** (v5.0.6+): scan `shctx adapt report` for trend alerts per `doctrines/adaptation-loop.md §VI`. Surface `[TREND]` alert if any trigger fires.
+- [ ] **Adaptation signal** (v5.0.6+; v6.2.0 mechanized): `shctx adapt roll` (record + harvest) → `shctx adapt reflect --note="…"` (one first-person lesson) → `shctx adapt report --trends` (run it, surface output verbatim — do NOT eyeball the table; `doctrines/adaptation-loop.md §VI`). The harvest count + reflection are the close report's "Learned" line.
 - [ ] **PAUSE** fires after CLOSE-FINALIZE. RELEASE fires on dev.{last} + sprint-through grant.
 
 ### Sprint impactfulness contract (v5.1.1 — sprint-as-patch binding)
@@ -426,7 +435,8 @@ For `:start` and `:spawn`, sprint is inferred from current branch when no `sprin
 |------|-------------|------|
 | `doctrines/brief-cache-discipline.md` | Every dispatch | **Stable framing first, variable content last** — the 7-step Brief Assembly Checklist + byte-identical-prefix coder header (v5.1.3, refined v5.1.5) |
 | `doctrines/cache-telemetry.md` | Every sprint close | **Measurement layer** — per-role hit-rate ranges (v5.1.5 calibration: @coder ≥60%, @engineer ≥30%, others between) + alarm thresholds + `## Cache telemetry` close-report subsection |
-| `doctrines/agent-excellence.md` | Every dispatch | **Six rules + strive-higher preamble** — Rule 6 "Conserve tokens" pairs with brief-cache-discipline + cache-telemetry as the token + cache discipline triad |
+| `doctrines/agent-excellence.md` | Every dispatch | **Seven rules + strive-higher preamble** — Rule 6 "Conserve tokens" pairs with brief-cache-discipline + cache-telemetry as the token + cache discipline triad; Rule 7 "Deterministic work is code, not a model reply" |
+| `doctrines/operating-philosophy.md` | Every sprint open (orchestrator framing) | **(v6.2.0) The how-to-work index** — names the four homeless principles (latent-vs-deterministic, skillify-success, context-window diagnostic, DONE/DONE_WITH_CONCERNS/BLOCKED/NEEDS_CONTEXT vocabulary), binds the rest by pointer, declares the target-project + tone scope boundary; defers to the cited doctrine |
 
 **Three-tier meta + commands (v5.1.6+):**
 

@@ -16,7 +16,7 @@ Every invocation, every dispatch, every commit answers ONE question: *Did
 this agent produce work the operator would defend as good?* If the answer
 is "barely passes," the agent did wrong.
 
-## Six rules (every agent reads, every dispatch)
+## Seven rules (every agent reads, every dispatch)
 
 ### 1. READ before writing. REUSE before creating.
 
@@ -129,6 +129,23 @@ variables, not the conversation. N bounded subagents in parallel is cheaper per
 token AND higher quality than one overloaded context. Prefer the subagent; the
 orchestrator synthesizes.
 
+### 7. Deterministic work is code, not a model reply.
+
+If the same question asked twice would, *by definition*, produce the same
+correct answer, it is deterministic work — write the script, do not compute
+it in a reply. Arithmetic, date/timezone math, file lookups, CSV/JSON
+transforms, regex matches, hash computation, structured counts, and
+progress/rate/ETA all belong in a script you *read*, never in latent prose.
+The LLM writes the script once; the script then constrains the LLM forever
+after — the old failure path becomes structurally unreachable.
+
+Scope this to *same-input-same-output* work only — it is not license to
+over-script genuine judgment. The measurable-outcome stance is the sibling
+principle: every change carries a runnable acceptance predicate, never prose
+(`doctrines/outcome-enforcement.md` — "prose is not a predicate"). The full
+treatment, plus the skillify-success, context-window-diagnostic, and
+completion-status principles, lives in `doctrines/operating-philosophy.md`.
+
 ## Per-agent application
 
 | Agent | Excellence application | Token-conservation application (Rule 6) |
@@ -139,6 +156,15 @@ orchestrator synthesizes.
 | **@auditor** | Hypothesis-driven findings (per `doctrines/auditor-hypothesis-driven.md`). LOW-confidence items go to ## Open questions, NEVER to findings. | Structured findings (Hypothesis + Falsification + Confidence), not prose paragraphs. One line per Finding header; reasoning compressed to the falsification trail. |
 | **@worker** | Bounded deliverable; bounded budget. No mission creep. Halt on structural brief issues. | Single-paragraph summary + structural acceptance proof. No process narration. |
 | **@discovery** | Synthesis, not summary. Cite every claim. ## Open questions for unresolved items. No code recommendations. | Synthesis-density first: one cited claim per line. Avoid paraphrasing source material; cite it. |
+
+**Rule 7 / outcome, per role** (deterministic work is code; acceptance is a predicate):
+
+- **@engineer** — acceptance per lane is a runnable predicate, never prose; size waves from `adapt priors --metrics`, not gut feel.
+- **@critic** — "prose is not a predicate": bounce any deliverable whose acceptance cannot be run.
+- **@coder** — the dedup grep and the acceptance grep are scripts whose output you paste, not claims you assert.
+- **@auditor** — re-run the seed's acceptance predicate and paste the output verbatim; a bare claim is conjecture, not a finding.
+- **@worker** — script the metric. Progress percent, rate, ETA, and row counts come from a monitor you read, never an estimate in prose.
+- **@discovery** — one cited fact per line; no arithmetic, date math, or counts done in the reply that a command would settle.
 
 ## The strive-higher preamble (every agent system prompt)
 
@@ -175,6 +201,8 @@ The preamble is not optional decoration. It's the framing every invocation reads
 
 ## See also
 
+- `doctrines/operating-philosophy.md` — Rule 7's full treatment + the skillify-success, context-window-diagnostic, and completion-status principles; the how-to-work index
+- `doctrines/outcome-enforcement.md` — the measurable-outcome sibling to Rule 7; acceptance is a runnable predicate, not prose
 - `doctrines/brief-cache-discipline.md` — Rule 6 structural complement; stable framing first, variable content last; the Brief Assembly Checklist
 - `doctrines/cache-telemetry.md` — Rule 6 measurement layer; per-role hit-rate ranges + alarm thresholds
 - `doctrines/zero-duplicate-tolerance.md` — DEDUP-GATE mechanics

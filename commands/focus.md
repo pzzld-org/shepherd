@@ -91,12 +91,18 @@ Store `LOOP_ID`. Every subsequent phase-boundary call records an iteration again
 
 ## Step 3 — Interval mode (optional)
 
-When `--interval <duration>` is specified, delegate the recurring wake schedule to the native Claude Code `/loop` skill:
+When `--interval <duration>` is specified, delegate the recurring wake schedule to the native Claude Code `/loop` skill. Do **not** hand-build the invocation — emit it deterministically from the loop's stored pacing (latent/deterministic split, `doctrines/operating-philosophy.md` §I.1):
 
 1. Surface the loop plan (same format as `/shepherd:loop`).
-2. Invoke: `/loop <duration> /shepherd:focus --sprint=<branch> --refresh`
+2. Read and surface the exact native invocation for the operator to run:
+   ```bash
+   shctx loop native-cmd --id=<loop-id> --command="/shepherd:focus --sprint=<branch> --refresh"
+   # fixed 10m ⇒ /loop 10m /shepherd:focus --sprint=<branch> --refresh
+   ```
 
 Each interval wake-up re-enters at Step 0 with `--refresh`, reads the current focus record, records one iteration, and exits.
+
+> **No `--self-paced` for the focus loop.** Unlike a convergent loop, FOCUS-LOOP terminates at **CLOSE-FINALIZE**, not on a quiet `new_findings: false` phase — so the native self-paced "end early on `false`" would stop the orchestrator drive mid-sprint. The focus loop uses a fixed `--interval` (or in-session drive) only; self-paced is reserved for terminate-on-`false` loops (`commands/loop.md §Pacing modes`).
 
 ---
 

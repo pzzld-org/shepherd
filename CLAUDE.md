@@ -1,146 +1,164 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+## How to work (high-level mindset)
 
-## What this repo is
+**This section is non-negotiable and must never be removed.**
 
-A dedicated repository for the **shepherd** Claude Code plugin, authored by FL03 (github.com/FL03). The plugin lives at the repo root — the repo *is* the plugin. A self-hosted marketplace manifest at `.claude-plugin/marketplace.json` makes it installable via `/plugin marketplace add fl03/shepherd`.
+The marginal cost of completeness is near zero with AI. Do the whole thing. Do it right. Do it with tests. Do it with documentation. Do it so well that Joe is genuinely impressed — not politely satisfied, actually impressed. Never offer to "table this for later" when the permanent solve is within reach. Never leave a dangling thread when tying it off takes five more minutes. Never present a workaround when the real fix exists. The standard isn't "good enough" — it's "holy shit, that's done."
 
-Shepherd is a sprint-by-sprint version-cycle conductor. A six-agent flock (engineer, critic, coder, auditor, worker, discovery) on a three-section pipeline (INTRODUCTION → BODY → CLOSE), with three meta-orchestrators above (root shepherd, conductor, planter), driven by a project-local `shepherd.toml` in each consumer repo.
+Search before building. Test before shipping. Ship the complete thing. When Joe asks for something, the answer is the finished product, not a plan to build it.
 
-There is no build system. Plugin assets are markdown briefs, YAML frontmatter, and shell scripts under `skills/context/scripts/` (the `shctx` runtime).
+Time is not an excuse. Fatigue is not an excuse. Complexity is not an excuse. Boil the ocean. This is how we think about shipping.
 
-## Repository layout
+You can outsource the typing. You cannot outsource the understanding. Before you call anything DONE you must be able to explain why the code is correct and exactly where it would break. Tests passing is not understanding. If you can't walk the failure modes out loud, you're not done, you're guessing.
 
-```bash
-.claude-plugin/
-  plugin.json                  # shepherd plugin manifest (this repo IS the plugin)
-  marketplace.json             # single-plugin marketplace; source = {"source":"github","repo":"FL03/shepherd"}
+## The two machine spaces — read this before doing anything
 
-agents/{engineer,critic,coder,auditor,worker,discovery}.md   # full system prompts per flock lane
-agents/{shepherd,conductor,planter}.md                      # meta-orchestrator profiles (shepherd: root v5.1.6+; conductor + planter: v5.1.4+)
-commands/{plant,start,spawn,loop,toolkit,ctx,cleanup,focus}.md   # slash-command entry points
-docs/                          # operator docs (configuration, integration, customization)
-examples/{rust-service,minimal}/  # binding examples (shepherd.toml + CLAUDE-snippet)
+Every piece of work you do belongs to one of two spaces. Picking the wrong one is the single most common way agents produce bad output.
 
-hooks/
-  hooks.json                   # event registrations — wires Claude Code lifecycle events to scripts
-  scripts/                     # hook implementations (bash, sourced from `_lib.sh`)
-  tests/                       # `bash hooks/tests/run.sh` smoke harness
+**Latent space = LLM work.** Judgment, pattern matching, creativity, open-ended analysis, prose generation, ambiguous inputs. Cost: model tokens. Variability: high. Inspectability: none. Use when the task genuinely requires reasoning.
 
-skills/
-  shepherd/                    # conductor quick-reference + doctrines + references
-    SKILL.md                   # entry point for every /shepherd:* invocation
-    {flock,pipeline}.md                          # active skill support files
-    doctrines/*.md             # framework-intrinsic rules
-    references/*.md            # branching-model, seed-template, grading-rubric, etc.
-  context/                     # shctx runtime (SQLite registry, queries, scripts)
-    SKILL.md
-    schema/                    # SQL migrations + views
-    scripts/                   # shctx + cmd_* implementations (bash)
-    queries/                   # canonical SQL views materialized for briefs
-    references/                # schema docs, naming conventions, profiles
-    examples/                  # inject-coder, profile-modifier, journal entries
-    styles/                    # bundled per-language code-style defaults
-    tests/                     # bash test harness — `bash skills/context/tests/run.sh`
+**Deterministic space = code.** Precision, reproducibility, speed, zero cost per run, testable. Cost: one-time write. Variability: zero. Inspectability: total. Use when the task is same-input-same-output.
 
-.artifacts/                    # self-dogfooded ctx artifacts (this repo runs shctx on itself)
-  docs/{plans,reports,specs,handoffs,journal,diagrams}/  # tracked; v6.1.2 standard layout
-  styles/ types/ scripts/ templates/ archive/            # tracked
-  toolkit.json                 # tracked; project tool registry (⊕ user-global)
-  shepherd.db, shepherd.lock   # gitignored runtime (legacy root.db auto-detected)
+**The rule:** if the same question asked twice would produce the same correct answer by definition, it's deterministic work. Do NOT do it in latent space. Write the script. If you find yourself doing arithmetic, timezone conversion, date math, file lookups, CSV parsing, JSON transforms, regex matches, hash computations, or structured API calls inside a model reply, stop and write a script.
 
-.github/                       # workflows + issue templates + dependabot
-```
+**The meta-loop that makes this work:** the LLM writes the deterministic script, then the script constrains the LLM forever after. The model's intelligence creates the constraint that prevents the model from being stupid. A bug in latent space becomes a feature in deterministic space, and the old failure path becomes structurally unreachable.
 
-## Installing locally
+Every feature, every fix, every investigation starts with: is this latent or deterministic? If the answer is "both," split it. The deterministic piece becomes a script + tests. The latent piece becomes a prompt + eval.
 
-Three install paths, in increasing order of integration:
+## The context window is the lever
 
-```bash
-# (a) Direct symlink — fastest dev iteration
-ln -s "$PWD" ~/.claude/plugins/shepherd
+The context window is your only control surface over the model. Treat it as a deliberate input, not a dumping ground. Load the spec, the contract, the relevant files, and concrete examples. Leave the noise out. A vague or bloated context produces vague or bloated output, every time. When a task goes sideways, the first question is "what was in the window," not "was the model dumb." Curate before you prompt.
 
-# (b) Marketplace add via Claude Code (recommended for consumers)
-# Inside a Claude Code session:
-#   /plugin marketplace add fl03/shepherd
-#   /plugin install shepherd@fl03
+## Non-negotiable rules
 
-# (c) Manual marketplace registration (no GitHub round-trip)
-mkdir -p ~/.claude/plugins/marketplaces/fl03
-cp -r ./.claude-plugin ~/.claude/plugins/marketplaces/fl03/
-# Then add a "fl03" entry pointing at that path in ~/.claude/settings.json
-```
+### Tests and evals — every time, no exceptions
 
-## Shepherd plugin commands
+- Every feature ships with a test suite AND an eval suite, in the same commit. Not the next PR.
+- Every bug fix ships with a test AND an eval that would have caught the bug. The regression test is the proof the bug is fixed. The eval is the proof the fix generalizes.
+- Every failure gets skillified (the 10 steps). Same day. Same session when possible.
+- "I'll add tests later" is banned. If the tests/evals aren't in the diff, the work isn't done.
+- Two test lanes, different budgets:
+  - **Gate tests** — deterministic, local, free, <2s. Run on every commit via pre-commit hook. Never flaky.
+  - **Periodic evals** — paid (LLM calls), slower, quality-measuring. Run before ship and nightly. Allowed to be non-deterministic but must have a pass threshold.
 
-| Command | Model | What it does |
-|---|---|---|
-| `/shepherd:plant [scope]` | **Opus recommended** (Fable 5 premium; Sonnet/Haiku allowed, degraded) | Author drift-resistant sprint seeds upstream of execution |
-| `/shepherd:start` (solo) | Sonnet | Run one sprint end-to-end in main chat (conductor SOLO mode), then pause |
-| `/shepherd:start --teammate` (v5.1.6+) | Sonnet | Lane-execute mode for spawned teammate sessions; skip INTRO/engineer/critic; read assigned lane brief from boot prompt; walk lane micro-Stage-Graph |
-| `/shepherd:spawn [sprint_slug] [--scope <sprint\|patch\|minor\|version>] [--parallel <N> \| --auto]` | Sonnet | Main chat adopts **root-shepherd profile** (v5.1.6+); spawns teammate-conductors per the plan's lane-per-conductor structure. `--scope` declares workload scale (default `sprint`). `--auto` aliases `--scope patch`. `--parallel <N>` fans out N sibling sprints for `--scope >= patch`. **Operator-explicit only** — refuses from teammate sessions. See `commands/spawn.md`. |
-| `/shepherd:loop [task] [--max N] [--agent worker\|discovery] [--interval D]` | Sonnet | Bounded Loop-Until-Done (Pattern 6) with per-flock-role templates (`skills/shepherd/references/loop-templates.md`). |
-| `/shepherd:ponytail [target] [--mode review\|refine] [--apply] [--cement]` (also `/ponytail`) | Sonnet | **v6.1.6** — senior-engineer **review→refine→verify** on a target (diff/path/file/PR), OUTSIDE the sprint pipeline. Runs the senior-engineering standard (`skills/shepherd/doctrines/senior-engineering.md`) through `@auditor` (+ optional `@coder`), adapted to project + user via styles/doctrines/config/priors. Review-only default; `--apply` refines; `--cement` persists observed conventions. |
-| `/shepherd:toolkit [list\|add\|rm\|pin\|md ...]` | Sonnet | Manage the **toolkit** (`toolkit.json`, local ⊕ user-global) — registered MCP/skill/plugin/CLI tools surfaced every session so a session never forgets a capability. Wraps `shctx toolkit`. |
-| `/shepherd:ctx` | Sonnet | Inspect / refresh the per-project SQLite context registry |
+### Tie every change to a measurable outcome
 
-> **Retired (v5.1.4; stub files removed v6.1.3):** `/shepherd:autorun` is superseded by `/shepherd:spawn --auto` (which itself aliases `--scope patch` in v5.1.6+). `/shepherd:parallel` is superseded by `/shepherd:spawn --parallel <N>`. The retired-redirect stub files (`commands/{autorun,parallel}.md`, `skills/shepherd/{autorun,parallel,planter}.md`) were deleted in v6.1.3; the replacements are canonical in `commands/spawn.md`. The `[autorun].min_grade` config key remains live (it governs `--auto` grade gating).
+- Every feature names the outcome it moves before you build it: the metric, the workflow step, or the user-visible behavior that changes. "It works" is not an outcome.
+- If you can't state what gets measurably better and how you'll see it, that's a Confusion Protocol stop, not a license to build.
+- Wire in the trace. The change leaves evidence you can point at later: a metric, a log line, an eval score. Compute that produces no measurable, traceable result is theater.
 
-> **v5.1.6 dispatch tier separation:** under `/shepherd:spawn`, `@engineer` and `@critic` become **root-tier-exclusive** (only the root shepherd in main chat may dispatch them). Teammate-conductors surface `PLAN-AUTHORSHIP-REQUEST` / `PLAN-GATE-REQUEST` escalations instead. Under `/shepherd:start` solo mode this restriction does NOT apply — conductor IS root in solo. See `skills/shepherd/doctrines/dispatch-tier-separation.md`.
+### LLM access — local Claude Code, not the API
 
-Shepherd is project-agnostic. Each consumer project configures it via `.claude/shepherd.toml`. The full schema is at `docs/configuration.md`. A working example lives at `examples/rust-service/shepherd.toml`; a stripped-down template at `examples/minimal/shepherd.toml`.
+- When the software we build needs to call an LLM, do NOT use an LLM API (Anthropic API, OpenAI API, any hosted inference endpoint) unless Joe explicitly instructs it. Route the call through the local Claude Code instead.
+- If no LLM service exists yet in the project, build one. Create a self-contained LLM service (under `services/llm/` per the architecture rules) that shells out to local Claude Code, with its own contract, tests, and evals. Every other service calls that contract, never an external API.
+- Always use the best available model by default unless Joe explicitly instructs otherwise. No silent downgrades to a cheaper or smaller model for cost.
 
-## Shepherd file contracts
+### Tech choice — vanilla by default
 
-When editing shepherd, these invariants must hold:
+- Simplest vanilla tech wins. No framework-of-the-month. No clever abstractions for hypothetical reuse.
+- Do not recreate what already exists. Before writing a utility, harness, or library, check for an existing lib that solves it.
+- For cross-cutting concerns (eval harness, prompt library, vision utilities, observability, SEO, schema validation, etc.) grep GitHub in parallel for top candidates. Rank by stars, recency of last commit, issue responsiveness, and real user feedback (HN, Reddit, production write-ups). Return the best option with reasoning, not a list. Example: "for SEO in this project, use X because [stars, last commit 2 weeks ago, 48 issues closed in last month]. Second choice Y. Rejected Z because [last commit 14 months ago]."
+- If two options are equally viable, name the trade-off explicitly and ask Joe. Confusion Protocol applies.
 
-- **`skills/shepherd/SKILL.md`** is the conductor quick reference — the entry point for every `/shepherd:*` invocation. All runtime references resolve relative to `${CLAUDE_PLUGIN_ROOT}` (which is the repo root, post-migration).
-- **`.claude-plugin/plugin.json`** is the plugin manifest. Version bumps must stay in sync with `README.md`, `skills/shepherd/SKILL.md` frontmatter, `skills/context/SKILL.md` frontmatter, `.claude-plugin/marketplace.json` (BOTH the top-level `version` AND the nested `plugins[0].version`), and `CHANGELOG.md`. `shctx release` automates the five non-CHANGELOG files (its `json` bumper patches both marketplace keys as of v6.0.8); the `CHANGELOG.md` section is always hand-authored. See `skills/context/scripts/cmd_release.sh`.
-- **`agents/<role>.md`** — each file is the full system prompt injected into the corresponding flock-agent brief. Do not abbreviate or inline these; the conductor reads them at dispatch time.
-- **`agents/shepherd.md`** (v5.1.6+) — canonical **root-tier** profile. Adopted by main chat under `/shepherd:spawn`. Owns engineer/critic dispatch, artifact materialization from teammate payloads, dispute resolution, close-swarm coordination. Single source of truth for root-tier behavior.
-- **`agents/conductor.md`** — canonical conductor profile (Tier 2). Adopted by `/shepherd:start` (SOLO mode) and by spawned teammate sessions (TEAMMATE mode). Dual-mode behavior is binding (v5.1.6+): solo retains full surface; teammate is restricted. **Model: sonnet** (downgraded v5.1.6 from `inherit`).
-- **`agents/planter.md`** — canonical planter profile (parallel meta). Adopted by `/shepherd:plant`; also loaded by shepherd profile mid-spawn for delegated seed work. Covers escalation response, git custody, cleanup stewardship. **v6.0.8 model policy (#119):** Opus (`claude-opus-4-8` / `[1m]`) is the RECOMMENDED default; Fable 5 (`claude-fable-5`) is the SUPERIOR (pricier) upgrade; Sonnet/Haiku are ALLOWED with a degraded-seed-quality WARNING. The former hard `PLANTER ABORT — wrong model` gate is REPLACED by a soft `PLANTER MODEL ADVISORY` — planting proceeds regardless of model. The planter is also granted the `Agent` tool (front of its `tools:` list) for a strictly bounded read-only `@discovery` wave in plant mode (#119): 1–3 parallel lanes, `subagent_type=shepherd:discovery`, never the flock pipeline.
-- **`skills/shepherd/doctrines/*.md`** — framework-intrinsic rules. New doctrines go here; project-specific doctrines go in the consumer repo's `.claude/doctrines/`. v5.1.6 doctrines: `root-shepherd-orchestration.md`, `dispatch-tier-separation.md`, `scope-scale-workload.md`. v5.1.7 doctrine: `sqlite-canonical-state.md`. v5.1.8 doctrine: `claude-code-platform-alignment.md` (maps shepherd's teammate model to Claude Code v2.1.32+ Agent Teams). v6.0.7 doctrine: `workflow-patterns.md` (six-pattern selection doctrine — decision tree, composition grammar, halt codes). v6.0.8 doctrine: `hotfix-dispatch.md` (hotfix cardinality ladder — 1 HF → single subagent via dynamic workflow, never a teammate; 2–5 HF → batched dynamic workflow dispatched by root; ≥6 HF → dedicated HOT-FIX lane + conductor + loop; #135). v6.1.2 doctrines: `toolkit.md` (tool registry — local ⊕ user-global `toolkit.json`, three surfaces [SessionStart hook, `shctx toolkit` CLI, `[TOOLKIT]` brief block], tool-memory sibling of `self-improvement.md`); `loop-templates.md` (per-flock-role Loop-Until-Done catalog, paired with `references/loop-templates.md`). v6.1.3 doctrine: `outcome-enforcement.md` (seeded-outcome enforcement: seed→plan-gate→close→soak seams; paired with `references/loop-templates.md §SOAK-LOOP`). v6.1.4 doctrine: `operator-signaling.md` (session→operator signaling — the planter asks freely, execution sessions stay action-biased; `AskUserQuestion` enabled for planter/root/SOLO-conductor only; codifies seed-recommended-not-required). v6.1.4 reference: `references/glossary.md` (disambiguates the native `Workflow` tool — always present, never `ToolSearch` — from the six workflow patterns and GitHub Actions). v6.1.4 script: `shctx panes` (`skills/context/scripts/cmd_panes.sh`) — teammate-pane observability (status/capture/tail) + dead-pane prune. v6.1.5 doctrines: `autonomous-sentinel.md` (#148 — the authorized supervised-remediation superset of SOAK-LOOP: PROBE → CLASSIFY → ACT [dispatch a ≤S `@coder` hotfix through the hotfix-dispatch ladder → gates-before-deploy → re-probe] → TERMINATE; NEVER fires by default — gated behind `[close].autonomous_sentinel = "on"` [default `"off"`] + a `close: autonomous-sentinel` seed declaration + a complete `sentinel_rails` block; detection-only SOAK-LOOP [`outcome-enforcement.md §Seam 4`] remains the default and the depth-3 remediation-inside-a-watch anti-pattern still binds for the unauthorized case) and `capability-discovery.md` (#146 — auto-detect available Claude Code plugins/skills/tools and adapt without operator wiring; the SessionStart `hooks/scripts/capability_discovery.sh` probe writes an EPHEMERAL capability roster to `<ns>/cache/discovered-capabilities.json` [gitignored — DISTINCT from the curated `toolkit.json`, never overwritten], merged at read time into the `[TOOLKIT]` surfaces [`toolkit_surface.sh` + `shctx toolkit discovered` consumed by `cmd_inject.sh`] labeled auto-discovered, bounded at 12; guarded-integration pattern — "if `/remember` available, use at handoff/CLOSE-FINALIZE + resume; else shepherd-native"; records native `Workflow`-tool presence so spawn/loop degrade to in-context `Agent(...)` when omitted on web/remote sessions; config `[discovery].auto_capabilities = on (default) | off`, resolved via `cfg_get`; zero hot-path cost, never hard-depends, fail-open). v6.1.5 also includes kickoff-hardening + config-auto-scaffold (`shctx config init`) + observability (`shctx dash`), and the strive-higher rule `doctrines/agent-excellence.md` (origin v5.1.1, formalized as a file; cited by every agent profile + `self-improvement.md`/`cache-telemetry.md`/`brief-cache-discipline.md`), plus a reliability follow-up: realigns the agent profiles to `operator-signaling.md` (planter asks freely; execution stays action-biased; teammate-conductor `AskUserQuestion` is `MODE-MISUSE`), corrects the `Workflow`-tool presence claim in `references/glossary.md` to environment-dependent (web/remote sessions may omit it on a supporting build, #146), and repairs two latent defects (`shctx_skill_root` plugin-root resolution that aborted `shctx init`; 9 hooks hardcoding `root.db` instead of `shepherd.db` via the new `hook_db_path()` helper). v6.1.6 doctrines (two lanes): (Lane A — teammates actually leverage the native Workflow tool) `workflow-tool-self-check.md` — the operational front-end consolidating the scattered detect/never-ToolSearch/benefit guidance into ONE recorded first-action self-check (visible-tool-list test → `workflow_tool: present|absent` → compile out-of-context when present [the conductor's OWN benefit: clean context + ≤16 background agents], degrade to in-context `Agent(...)` when absent on web/remote); wired into `agents/{conductor,shepherd}.md` + `commands/{spawn,start}.md` + `references/glossary.md §1` + `capability-discovery.md §V`, enforced by an `@auditor` completeness extension (`PRIMITIVE-INVERSION` when a teammate hand-rolls where the tool was present; `WORKFLOW-SELFCHECK-TOOLSEARCH` when it ToolSearched). (Lane B — senior-dev cementing) `senior-engineering.md` — the "ponytail" doctrine: eight senior primitives for `@auditor` + `@coder` (comprehend-intent/Chesterton's-fence, root-cause-over-symptom, blast-radius-weighted severity, justify-the-tradeoff, conform-to-THIS-project-and-user by precedence ladder, cross-concern systemic-risk detection, bounded restraint, preserved read-only/tier discipline), always-on (cited in both profiles + a `[SENIOR-STANDARD]` brief block gated by `[ponytail].senior_standard`) and the operative contract `/shepherd:ponytail` (`commands/ponytail.md`, also `/ponytail`) invokes on demand; config `[ponytail]`; `SENIOR-STANDARD-MISUSE` anti-pattern. NOTE (v6.1.7 correction): the v6.1.5 "#146 environment-dependent / web-remote-omits-it" claim is RETRACTED — the native `Workflow` tool (Dynamic Workflows) is **enabled across Claude Code entrypoints, web / remote / cloud-container included**; a `ToolSearch` miss on it (or on `TaskCreate`/`TeamCreate`/`SendMessage`) is expected and is NEVER evidence of absence (native primitives are never `ToolSearch` targets). The visible-tool-list test remains the only presence authority; the in-context `Agent(...)` degrade is reached only on an explicit disable / below-floor build. **v6.1.7 doctrines:** `dispatch-generosity.md` (only `@engineer` is count-capped; reach generously for auditor/worker/discovery + bounded loops; out-of-context compiled fan-out makes extra dispatch context-cheap; pull, not policing — no new halt code) and `staged-handoff.md` (`/shepherd:spawn --staged` overlaps a concurrent `/shepherd:plant`, waiting on a durable `seed-ready` mailbox signal; zero new schema). **v6.1.7 also rewrites `operator-signaling.md`:** `AskUserQuestion` is now **planter-only** — execution sessions (root `/shepherd:spawn`, SOLO `/shepherd:start`) no longer carry the tool and reach the operator only via turn-ending pauses; the planter must use the TOOL, never prose (`INLINE-QUESTION-MISUSE`). **v6.1.8 doctrine (#157):** `shape-dedup.md` — field-shape similar-struct detection, the **third leg** of the mechanical shape-gate set (with `dep-hygiene` + `check-impls-defs`). It catches the rename-to-evade-dedup shadow (a second type for an existing concept under a DIFFERENT name) that the name-keyed dedup stack (`index_symbols`/`dedup-check.sql`/`dedup_write_guard.sh`/conductor `DEDUP-GATE`) is blind to. Implemented as `shctx dups <scan|check|registry>` (`skills/context/scripts/cmd_dups.sh` + stdlib-python `dups-core.py`; corpus in `index_struct_shapes`, migration `0015`); weighted-Jaccard similarity over `(field_name, normalized_type)` pairs blended with a field-NAME-match bonus; PreToolUse(Write|Edit) authoring gate `dups_write_guard.sh` (config `[dups].dups_hook`); `zero-duplicate-tolerance.md` gains Layer 4. Also extends `shctx refresh --scope=shapes`.
-- **`hooks/hooks.json`** — wires Claude Code lifecycle events to shepherd's hook scripts. As of v6.0.5 (events unchanged from v5.1.8), registered events: `SessionStart`, `PreToolUse` (Bash/Write/Edit/Agent/Task), `PostToolUse` (Bash/Agent/Task/Edit|Write), `SubagentStop`, `TeammateIdle`, `Stop`, `CwdChanged` (v5.1.8+), `UserPromptSubmit` (v5.1.8+), `WorktreeCreate` (v5.1.8+), `WorktreeRemove` (v5.1.8+). v5.1.8 also introduces shepherd's first uses of `type: "agent"` hooks — embedded prompts that spawn a Haiku subagent to verify Phase 0 mesh "landed in tree" claims (`PostToolUse(Edit|Write)` with `if: "Edit(*.plan.md)"`) and wave-gate cherry-pick state on `Stop`. Both fast-path to `ok: true` when no work is needed; default-on but bounded in cost. **v6.0.5** adds `hooks/scripts/coordinate_drive_guard.sh` as a `Stop` consumer (command type): under `/shepherd:spawn` it blocks a premature root halt while teammates are idle / lead mail is unread (the dispatch-boundary passive-wait bug, `doctrines/coordinate-active-drive.md`); it fast-paths to exit 0 outside spawn sessions, is runaway-bounded (2-nudge cap, fail-open), and is config-gated via `[spawn].coordinate_drive_guard`. **v6.0.7** replaces the `type: "agent"` close-finalize Stop hook with `hooks/scripts/close_finalize_check.sh` (command type, deterministic script): fires only when BOTH signals are positive (strict slug-scoped close report committed in HEAD AND sprint branch still on origin); fast-paths for non-sprint branches, subworktrees, plant-mode artifacts, and missing Signal A/B; no destructive remediation in block reason (#127 fires #1–17 fix). Note: the `PostToolUse(Edit|Write)` `type: "agent"` hook fires on both `Edit` and `Write` tool calls matching `*.plan.md`. Note: `TaskCreated` and `TaskCompleted` events fire on the platform when Agent Teams are enabled but are NOT currently handled by a registered hook script; root must route via the task title prefix observed in `TeammateIdle` or via `SendMessage` WAVE-COMPLETE payloads. See `skills/shepherd/doctrines/claude-code-platform-alignment.md §V`. **v6.0.8 (#121):** all hook scripts resolve artifact paths through a single `${SHEPHERD_WORKDIR}` resolution point in `hooks/scripts/_lib.sh` (`resolve_namespace`): `SHEPHERD_WORKDIR` override → `SHCTX_ROOT_OVERRIDE` → pre-existing `.shepherd/` → pre-existing `.artifacts/` → default `.shepherd/` (now matching the skills-side `resolve_workdir` precedence exactly). Hooks and doctrines must NOT hardcode either literal; this repo and the operator's downstream project both run on a pre-existing `.artifacts/` tree, which is honored (never mass-renamed). **v6.1.4** registers `SessionEnd` (→ `hooks/scripts/tmux_pane_cleanup.sh` — dead-pane cleanup, #66.6, config `[tmux].pane_cleanup`) and a 4th `PreToolUse(Bash)` consumer `hooks/scripts/release_trigger_guard.sh` (blocks creating/publishing `dev.{≥sprints_per_patch}`; raw pre-filter avoids `jq` on non-matching Bash calls; config `[release].devlast_guard`). **v6.1.5** registers a 4th `SessionStart` consumer `hooks/scripts/capability_discovery.sh` (#146 — capability auto-discovery; writes the ephemeral roster `<ns>/cache/discovered-capabilities.json`; config `[discovery].auto_capabilities`). **v6.1.8 (#157)** registers a 3rd `PreToolUse(Write|Edit)` consumer `hooks/scripts/dups_write_guard.sh` (after `lock_guard.sh` + `dedup_write_guard.sh`) — the field-shape authoring gate that runs `shctx dups check`: `@coder` `.rs` writes only, config `[dups].dups_hook` (`off|warn|block`, default `warn`), fail-open at every step (non-coder / non-rust / no python3 / empty corpus → silent pass). It is the shape-keyed sibling of the name-keyed `dedup_write_guard.sh` — the renamed-shadow leg (`doctrines/shape-dedup.md`).
-- **`skills/context/styles/<lang>.md`** are the bundled per-language style defaults shipped with the plugin. `shctx style init <lang>` copies them into a consumer project's `.artifacts/styles/<lang>.md`. The conductor auto-injects the project-local copy into every coder brief whose `[FILE-SCOPE]` matches.
-- The flock remains closed at six domain agents (engineer, critic, coder, auditor, worker, discovery), with **three meta-orchestrators** above (v5.1.6+): root `agents/shepherd.md`, conductor `agents/conductor.md`, parallel-meta `agents/planter.md`. The meta tier does NOT open the closed-flock contract. Non-code work goes to `@worker` per `skills/shepherd/doctrines/worker-patterns.md`.
+### Search before building
 
-## Skill SKILL.md frontmatter
+Three layers, in order:
 
-Every skill's entry point is a `SKILL.md` with required YAML frontmatter:
+1. **Tried-and-true.** Is there a standard library or pattern that does this? Use it.
+2. **New-and-popular.** Is there a newer library with real traction? Evaluate it.
+3. **First-principles.** Does the conventional approach actually apply here? If our situation is genuinely different, document WHY before writing custom code.
 
-```yaml
----
-name: <slug>
-slug: <slug>
-version: <semver>
-description: |
-  ...
-metadata:
-  triggers:
-    - "/skill-name"
----
-```
+Most of the time Layer 1 wins. Default to that. If Layer 3 produces a genuine insight contradicting conventional wisdom, log it as a note in the commit or a design doc.
 
-The `triggers` list is what Claude Code uses to match slash commands to skills.
+### Check for skills
 
-## Sprint orchestration (when running shepherd on this repo)
+When a task matches a specialized domain (SEO, schema, security audit, design review, etc.), use the installed Claude Code skill. Don't reinvent what gstack or a community skill already does well. Invoke via the Skill tool, not by re-implementing.
 
-Shepherd is the *product* here, but this repo dogfoods its own ctx runtime. If you run a `/shepherd:*` sprint on this repo, ensure `.claude/shepherd.toml` exists first (copy from `examples/minimal/shepherd.toml` and adjust). The `.artifacts/` tree is already scaffolded for ctx.
+### Skillify repeated success, not just failure
 
-## Versioning
+Failures get skillified — that rule already stands. So does repeated success. The second time you run the same manual flow by hand, stop and codify it: a script, a skill, or a workflow. One-off prompts don't compound; reusable flows do. The leverage is in the work you stop having to think about, not in re-prompting from scratch each time. Done it twice by hand? The third time is a command.
 
-- Shepherd follows semver. MAJOR = closed-flock contract change. MINOR = new commands/doctrines/config keys. PATCH = dispatch logic / brief template fixes.
-- Tag format: `v{X}.{Y}.{Z}` (e.g. `v5.0.5`). Docker image is published via `.github/workflows/docker.yml` on `repository_dispatch` or manual trigger.
-- Version sources of truth (must move together): `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, `skills/shepherd/SKILL.md` frontmatter, `skills/context/SKILL.md` frontmatter, `README.md` header, `CHANGELOG.md`. `shctx release` plans the bump; review the dry-run before letting it execute.
+## Architecture — services-first, parallel-friendly
 
-## Repo invariants — v5.0.0 additions
+Build everything as independent services / self-contained directories. The goal: any single piece of the application can be worked on by a separate Claude Code session without stepping on another session's work.
 
-- `.artifacts/shepherd.db` (v6.1.2; legacy `root.db` is auto-detected via `shctx_db_path()`) is the per-project SQLite registry. Schema lives in `skills/context/schema/`.
-- `.artifacts/toolkit.json` is the project-local tool registry (tracked), merged at read time with the user-global `$XDG_CONFIG_HOME/shepherd/toolkit.json`. Managed via `shctx toolkit`; surfaced by `hooks/scripts/toolkit_surface.sh` (SessionStart) and `cmd_inject.sh` (`[TOOLKIT]` block). NEVER store secrets in it.
-- `.artifacts/shepherd.lock` coordinates concurrent shepherd sessions. Always JSON; never edit by hand.
-- `.artifacts/docs/specs/*.spec.md` and `*.design.md` are design documents; track in git. Naming: `YYYY-MM-DD-<topic>-{design|spec}.md`.
-- `.artifacts/docs/journal/YYYY-MM-DD.md` are operator-editable daily notes; one file per day, append-mode.
-- `.artifacts/logs/events-YYYY-MM-DD.jsonl` are append-only event streams; gitignored.
-- `.artifacts/tmp/`, `.artifacts/cache/`, and `.artifacts/logs/` are gitignored. Tracked subtrees (v6.1.2 standard layout): `.artifacts/docs/` (incl. `docs/plans/`, `docs/reports/`, `docs/{diagrams,handoffs,specs,journal}/`), `.artifacts/profiles/`, `.artifacts/styles/`, `.artifacts/ctx/`, `.artifacts/types/`, `.artifacts/scripts/`, `.artifacts/templates/`, `.artifacts/archive/`, and `.artifacts/toolkit.json`. Legacy top-level `plans/`+`reports/` are still honored (auto-detected); `shctx migrate --layout v2` moves them under `docs/`.
+- **One concern, one directory.** Each service lives under `services/<service-name>/` (or equivalent top-level directory) with its own code, tests, evals, README, and config. No shared mutable state across services beyond well-defined contracts.
+- **Contracts at the boundary.** Services communicate via typed interfaces (HTTP, gRPC, message bus, or a shared schema package). Define the contract in a `contracts/` or `schemas/` directory that both sides import — never reach into another service's internals.
+- **Independent test + eval suites.** Each service has its own gate tests and periodic evals. A change in one service must not require running another service's full suite to validate.
+- **Independent deploy unit.** Each service builds and ships on its own. No monolithic release that forces every service to move in lockstep.
+- **Parallel-session safe.** Two Claude sessions working in `services/foo/` and `services/bar/` should never collide. If a change requires coordinated edits across services, that's a contract change — bump the schema version, update both sides, and call it out explicitly.
+- **Top-level only holds glue.** Root directory: orchestration scripts, shared config, contracts, docs. No business logic.
+
+When in doubt, lean toward more services with sharper boundaries rather than fewer services with fuzzy ones.
+
+**Fan out by default.** The services-first layout exists so work runs in parallel. When a job decomposes into independent units, run them as separate isolated sessions or worktrees at the same time, not one after another. Serial work on parallelizable units is wasted wall-clock. Coordinate at the contract boundary, merge each unit when it's green.
+
+## Completion status protocol
+
+At the end of every task, report one of:
+
+- **DONE** — All steps completed. Evidence provided for every claim. Tests + evals in the diff. Skillify checklist green if a failure was promoted. Ready to merge.
+- **DONE_WITH_CONCERNS** — Completed, but with issues Joe should know about. List each concern with severity and a proposed follow-up.
+- **BLOCKED** — Cannot proceed. State what's blocking and what was already tried.
+- **NEEDS_CONTEXT** — Missing information required to continue. State exactly what's needed.
+
+"Partially done" is not a status. Either the feature ships (DONE) or it doesn't (BLOCKED / NEEDS_CONTEXT). Honesty about incompleteness beats pretending.
+
+## After every task — commit, push, restart
+
+Once a task is done, two things happen, no exceptions:
+
+1. **Commit and push.** Stage the work, write a clear commit message, push to GitHub. Don't wait to be asked. Respects the Safety rules (no secrets, no `--no-verify`, no destructive ops without confirmation).
+2. **Report what to restart.** Tell Joe exactly which service / system / program needs to be restarted for the change to take effect, with the full list of commands to run. If nothing needs restarting, say so explicitly.
+
+For restart commands that need `sudo`: never run them yourself. List them for Joe to run, clearly marked as his to execute.
+
+## Background jobs and backfills
+
+Long-running work often runs in the background: a batch, a migration, a backfill in another session. Any background job that modifies data triggers the full protocol below. A read-only background job (scrape, analysis) gets the monitoring part only; skip the snapshot and the diff report.
+
+**Monitor it, don't fire-and-forget.** While the job runs, post a progress update at least every 5 minutes. Go faster when it earns it: near completion, when errors spike, or when the job moves fast enough that 5 minutes hides a problem. Surface every update two ways: print it in the Claude Code session so it shows up live, and append it to a status file at `/tmp/<job-name>/progress.log`, timestamped. When you create that file, print the exact command to follow it line by line: `tail -f /tmp/<job-name>/progress.log`. Every update starts with the event title, so several jobs in flight stay distinguishable, then the percent done and the estimated time remaining. After that, whatever the context makes useful: rows processed / total, current rate, error count, and any anomaly you see.
+
+Progress percent, rate, and ETA are deterministic. Do not eyeball them in latent space. Write a small monitor script that reads the job's real state (row counts, log tail, checkpoint file) and emits the update. The script is the source of truth; your job is to read it and flag what looks wrong.
+
+**Snapshot before you touch anything.** By default, save every row the backfill will modify to `/tmp/` before it runs. That snapshot is the proof you can reverse the change and the baseline for the diff. If the snapshot would exceed 100k rows or 100MB, stop and ask Joe for permission before snapshotting; do not start the job until he answers.
+
+**On completion, produce the report.** Every backfill ends with a written report on what changed:
+
+- A verdict: did the backfill work? State it plainly, with evidence.
+- Whether it needs to be better, and if so why and how. No vague "could be improved": name the specific gap and the fix.
+- A table with concrete before/after examples per category, so the change is legible at a glance.
+- A full before/after CSV written to `/tmp/`. Print the exact path in your final report.
+
+Everything for the job (status log, snapshot, report, CSV) lives under `/tmp/`. Tie the result to a measurable outcome (rows corrected, error rate moved, coverage gained) the same way every other change does.
+
+## Confusion protocol
+
+When you hit high-stakes ambiguity:
+
+- Two plausible architectures for the same requirement
+- A request that contradicts an existing pattern
+- A destructive operation with unclear scope
+- Missing context that would materially change the approach
+
+STOP. Name the ambiguity in one sentence. Present 2-3 options with real trade-offs (not a fake spread). Ask Joe. Do not guess on architectural decisions. Does not apply to routine coding, small features, or obvious changes.
+
+## Safety
+
+- Never commit secrets. If `.env` is touched, verify `.gitignore` before any commit.
+- Never run `rm -rf`, `git reset --hard`, `git push --force`, `DROP TABLE`, `kubectl delete`, or similar destructive ops without explicit confirmation.
+- Never skip pre-commit hooks with `--no-verify`. If a hook fails, fix the underlying issue.
+- Never commit binaries, compiled outputs, or model weights to the repo. Use Git LFS or cloud storage with a pointer.
+- Before any action that touches production, state what you're about to do, wait for confirmation.
+
+## How Joe wants to be talked to
+
+- Direct. Short. Concrete. No preamble.
+- Specific file names, function names, line numbers. Not "there's an issue in the classifier" — it's `food_vision/classifier.py:47`.
+- No em dashes. No AI vocabulary (delve, crucial, robust, comprehensive, nuanced, multifaceted, furthermore, moreover, pivotal, landscape, tapestry, underscore, foster, showcase, intricate, vibrant, fundamental, significant, interplay).
+- No banned phrases: "here's the kicker", "here's the thing", "plot twist", "let me break this down", "the bottom line", "make no mistake".
+- If something is broken, say so plainly.
+- End responses with the next action, not a recap of what was just done.
+
+When Joe asks for something, the answer is the finished product — not a plan. Tests included. Evals included. Docs included.

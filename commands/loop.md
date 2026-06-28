@@ -11,7 +11,17 @@ Run **Pattern 6 (Loop-Until-Done)** from `${CLAUDE_PLUGIN_ROOT}/skills/shepherd/
 
 This command is the native shepherd entry point for convergent iteration: exhaustive research, iterative fix-until-gates-green, progressive audit refinement, and any task whose completion is defined by absence rather than a fixed count.
 
-> **Relation to Claude Code `/loop`.** `/shepherd:loop` wraps the Loop-Until-Done pattern in shepherd's preflight, SQLite state, and agent dispatch discipline. When invoked with `--interval`, it delegates the recurring schedule to the native Claude Code `/loop` skill (available as `/loop <duration> /shepherd:loop --resume <loop-id>`), which manages the timer and wakes this command. Without `--interval`, shepherd drives the iteration in-session using the `wake → act → probe → yield` coordinate cycle per `doctrines/coordinate-active-drive.md`.
+> **Relation to Claude Code `/loop`.** `/shepherd:loop` wraps the Loop-Until-Done pattern in shepherd's preflight, SQLite state, and agent dispatch discipline. The native `/loop` skill owns the wake clock; shepherd owns the per-iteration contract. The exact native invocation is never reconstructed by the model — `shctx loop native-cmd --id=<loop-id>` emits it deterministically from the loop's stored pacing (latent/deterministic split, `doctrines/operating-philosophy.md` §I.1).
+
+### Pacing modes — pick how the wake clock runs
+
+| Mode | Flag | Wake clock | Ends early? | Use for |
+|------|------|-----------|-------------|---------|
+| **In-session** | *(neither flag)* | shepherd drives `wake → act → probe → yield` in-session (`doctrines/coordinate-active-drive.md`) | yes (in-loop) | Tight loops you watch live — fix-until-green, short exhaustive search |
+| **Self-paced** | `--self-paced` | native `/loop`, **dynamic** 1min–1hr delay it chooses (cache-window-aware) | **yes — automatically** when `new_findings: false` | Long-horizon work where the cadence should be chosen for you and the loop should stop itself |
+| **Fixed interval** | `--interval <dur>` | native `/loop` at a **fixed** cadence you set | only via the stop instruction surfaced at convergence | Polling on a known period — CI every `5m`, a daily soak |
+
+Self-paced is the native mode shepherd previously documented but never wired: no fixed timer to pick, and the loop ends itself when it converges instead of leaning on the operator to cancel.
 
 ---
 
@@ -21,7 +31,8 @@ This command is the native shepherd entry point for convergent iteration: exhaus
 |------|---------|-------------|
 | `--max <N>` | `5` | Iteration ceiling. Mandatory; values > 5 require justification in the loop brief; values > 10 require a live operator acknowledgement before the loop starts. |
 | `--agent <role>` | `worker` | Flock agent to dispatch per iteration. Valid: `worker`, `discovery`. Write-capable iteration goes to `@worker`; read-only orientation goes to `@discovery`. |
-| `--interval <duration>` | *(none)* | When set, delegate iteration scheduling to the native Claude Code `/loop` skill at the given interval (e.g., `5m`, `1h`). Each wake re-enters this command with `--resume <loop-id>`. |
+| `--interval <duration>` | *(none)* | When set, delegate iteration scheduling to the native Claude Code `/loop` skill at the given **fixed** interval (e.g., `5m`, `1h`). Each wake re-enters this command with `--resume <loop-id>`. |
+| `--self-paced` | off | Delegate to native `/loop` with **no fixed interval** — the platform picks a dynamic 1min–1hr delay per wake (cache-window-aware) and ends early when the loop converges. For long-horizon work where the cadence should be chosen for you. Mutually exclusive with `--interval`. |
 | `--until <field>` | `new_findings` | The structured field the conductor reads from the agent's report to determine termination. Must be `true`/`false` valued. Override only when the agent's report uses a different field name. |
 | `--resume <loop-id>` | *(none)* | Resume an in-progress loop (used by interval wake-ups). Skips preflight; reads state from SQLite registry. |
 | `--scope <read-only\|write>` | auto-from-agent | Explicit scope declaration for DEDUP-GATE. Inferred from `--agent` by default (`discovery` → read-only; `worker` → write). |
@@ -41,15 +52,16 @@ Skip to Step 3 if `--resume <loop-id>` is present.
    - If `--max > 10`, surface: "Loop cap > 10 requires operator acknowledgement. Confirm you want `--max <N>` iterations." — wait for operator confirmation before proceeding.
    - `--agent` must be `worker` or `discovery`. Any other value → HALT: `LOOP-INVALID-AGENT`.
    - `--interval` duration must be parseable (e.g., `5m`, `30s`, `1h`). Invalid format → HALT: `LOOP-INVALID-INTERVAL`.
+   - `--self-paced` and `--interval` are mutually exclusive (pick one pacing mode). Both → HALT: `LOOP-INVALID-INTERVAL`. `--self-paced` needs no duration.
 
-4. **Register loop state** in SQLite:
+4. **Register loop state** in SQLite (pass the pacing mode — `--interval=<dur>`, `--self-paced`, or neither for in-session):
    ```bash
    shctx loop init \
      --task="<task-description>" \
      --max=<N> \
      --agent=<role> \
      --until=<field> \
-     --interval=<duration-or-none>
+     [--interval=<duration> | --self-paced]
    ```
    This emits a `loop-id` (e.g., `loop-20260604-001`). Store it — every subsequent step references it.
 
@@ -60,7 +72,7 @@ Skip to Step 3 if `--resume <loop-id>` is present.
    agent:       @<role>
    max:         <N> iterations
    until:       report.<field> == false
-   interval:    <duration | in-session>
+   pacing:      <fixed:<dur> | self-paced | in-session>
    loop-id:     <loop-id>
    ```
    Proceed immediately (no confirmation needed unless `--max > 10`).
@@ -170,7 +182,7 @@ Fire iteration `$i` (starting at 1):
 
 2. **Finalize in SQLite:** `shctx loop close --id=<loop-id> --status=converged`
 
-3. **Cancel interval schedule** (if `--interval` was active): surface "Loop converged after $i iterations. If you started with `/loop <duration> /shepherd:loop --resume <loop-id>`, you can stop it now."
+3. **Cancel the native schedule** (delegated modes): a `--self-paced` loop ends itself automatically when it reports `new_findings: false` — nothing to cancel. For a fixed `--interval`, surface "Loop converged after $i iterations. Stop the native schedule with `/loop stop` (or stop re-invoking)."
 
 4. Surface to operator and stop.
 
@@ -207,34 +219,34 @@ Fire iteration `$i` (starting at 1):
 
 ---
 
-## Interval mode — integrating with Claude Code `/loop`
+## Delegated mode — integrating with Claude Code `/loop` (fixed + self-paced)
 
-When `--interval <duration>` is specified, shepherd delegates the recurring schedule to the native Claude Code `/loop` skill:
+When `--interval <dur>` OR `--self-paced` is set, shepherd delegates the wake clock to the native Claude Code `/loop` skill. The invocation string is **emitted deterministically** by `shctx loop native-cmd` — shepherd does not reconstruct it (latent/deterministic split):
 
 **First invocation (operator runs):**
 ```
-/shepherd:loop <task> --max 20 --agent worker --interval 5m
+/shepherd:loop <task> --max 20 --agent worker --self-paced     # dynamic native cadence
+/shepherd:loop <task> --max 20 --agent worker --interval 5m    # fixed cadence
 ```
 
 1. Shepherd runs Steps 0–1 (preflight + register loop state, emitting `<loop-id>`).
-2. Shepherd surfaces:
+2. Shepherd reads the exact native invocation and surfaces it verbatim:
+   ```bash
+   shctx loop native-cmd --id=<loop-id>
+   # self-paced ⇒  /loop /shepherd:loop --resume <loop-id>
+   # fixed 5m   ⇒  /loop 5m /shepherd:loop --resume <loop-id>
    ```
-   Loop registered as <loop-id>. Starting interval schedule.
-   To drive this loop on a 5-minute interval, Claude Code will invoke:
-     /loop 5m /shepherd:loop --resume <loop-id>
-   Each wake-up will run one iteration, then yield until the next interval.
-   ```
-3. Shepherd invokes the native `/loop` skill: `/loop <duration> /shepherd:loop --resume <loop-id>`
+   Surface the printed line and instruct the operator to run it (print-and-confirm — shepherd does not silently schedule a native loop on the operator's behalf, per `doctrines/operator-signaling.md`).
 
-**Each interval wake-up (Claude Code `/loop` triggers):**
+**Each wake-up (Claude Code `/loop` triggers):**
 ```
 /shepherd:loop --resume <loop-id>
 ```
-The command re-enters at Step 3 (resume), runs exactly one iteration (Step 4), then exits — the native `/loop` skill handles the next wake-up timing.
+The command re-enters at Step 3 (resume), runs exactly one iteration (Step 4), then exits — the native `/loop` skill handles the next wake. In **self-paced** mode the platform also chooses each delay and ends the loop early once an iteration reports `new_findings: false`; in **fixed** mode it wakes on the set period until the stop instruction.
 
-**Termination:** On LOOP-DONE or LOOP-DONE-CAPPED, the command surfaces a message to stop the native `/loop` schedule. The operator cancels it with `/loop stop` or by not re-invoking.
+**Termination:** On LOOP-DONE / LOOP-DONE-CAPPED the command surfaces the stop guidance (self-paced self-terminates; fixed is cancelled with `/loop stop`).
 
-> **Note:** Interval mode is appropriate for long-horizon polling (monitoring CI, watching a deploy stabilize, progressive discovery over hours). For tight iterative loops (fix-until-green), omit `--interval` and let shepherd drive in-session.
+> **Note:** Self-paced fits long-horizon work where the cadence should be chosen for you and the loop should stop itself (exhaustive discovery, a soak that may converge early). Fixed `--interval` fits known-period polling (CI every `5m`, a daily outcome soak). Tight fix-until-green loops you watch live want neither flag (in-session drive).
 
 ---
 
