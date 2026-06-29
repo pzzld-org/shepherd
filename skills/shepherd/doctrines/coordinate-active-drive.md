@@ -51,6 +51,7 @@ It is the unifying fix behind a cluster of field issues:
 | #98 | Teammate goes idle with no escalation payload; root left blind, must manually probe | §VI proactive status probe on idle-without-`WAVE-COMPLETE` |
 | #112 | Conductors sit idle 10–30 min post-`WAVE-COMPLETE` while root "plans"; delayed prune | §IV-b act-on-idle-immediately (prune + refresh in the same wake) |
 | #58 | Idle teammates reused context-starved instead of pruned + refreshed | §IV-b pruning is an action, not a deferral |
+| v6.2.2 field report | Orchestrator drifts off-task during a long uninterrupted ACT stretch (a big materialization/merge run, or the solo conductor's inline work) with no wake to re-anchor to the objective | §IV-b.3 FOCUS-HEARTBEAT self-drift leg — cadenced re-anchor (`heartbeat_interval` deterministic / `heartbeat_actions` soft) + self-drift-check |
 
 ---
 
@@ -198,6 +199,20 @@ event system:
      `[DRIFT-WARN]` and `SendMessage` the lane to confirm scope before it
      compounds (#113). Cheap, read-only, catches scope-creep mid-wave instead of
      at wave end.
+   - **Root self-drift (v6.2.2 — the FOCUS-HEARTBEAT leg).** The two sweeps above
+     watch the *teammates*; this leg watches the *root itself*. Re-read the
+     sprint-level focus record (`shctx loop focus show`) and confirm the root's own
+     last stretch advanced `active_node` within `invariants`. Wandered into adjacent /
+     unseeded work → `[DRIFT-WARN] self`: stop, return to `active_node`, and **file**
+     the digression (finding / carry-forward / issue) rather than chase it inline
+     (bounded — `subtract-dont-add.md`). The per-wake re-anchor (the root yields and
+     wakes on events, so it re-anchors often) covers the common case; the cadence
+     below catches the rarer **long uninterrupted ACT stretch** — the root grinding
+     through a big run of materializations / merge-gates, or the solo conductor doing
+     inline implementation, with no wake for a long time. There it self-fires every
+     `[focus].heartbeat_interval` wall-clock (the deterministic leg, native `/loop`) or,
+     as a soft nudge, ~`[focus].heartbeat_actions` actions. Full ritual + the
+     `[FOCUS-HEARTBEAT]` block: `references/workflow-templates.md §FOCUS-LOOP`.
 4. **YIELD (to events, not the operator).** With actionable state drained and
    the probe clean, the root has nothing to *do* until the next teammate event.
    It yields — ends the turn so the platform can wake it on the next

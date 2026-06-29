@@ -120,7 +120,6 @@ pointer keeps this doctrine an index and honors `subtract-dont-add.md`.
 | Fan out by default; one primitive per axis | `dispatch-generosity.md` + `primitive-axis-binding.md` + `workflow-compile-down.md` |
 | Halt rather than ship sub-standard work | `agent-excellence.md` Rule 5 + `sprint-as-patch.md` |
 | Confusion protocol; ask the operator on high-stakes ambiguity | `operator-signaling.md` (the planter is the framework's sole interactive asker) |
-| Senior-engineering standard (root-cause, Chesterton's fence, restraint) | `senior-engineering.md` |
 | Harvest failures forward so the flock never relearns them | `self-improvement.md` + `adaptation-loop.md` |
 
 ---
