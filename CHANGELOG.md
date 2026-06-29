@@ -4,6 +4,37 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v6.2.3 — 2026-06-29
+
+**Per-lane focus records — completes the v6.2.2 FOCUS-HEARTBEAT.** The heartbeat shipped
+in v6.2.2, but `agents/conductor.md` had been issuing `shctx loop focus upsert --lane=<id>`
+since v6.0.9 against a focus table keyed by sprint alone — so the call errored
+("unknown arg: --lane") and a teammate-conductor's lane had no durable, compaction-surviving
+north-star of its own. This was flagged DONE_WITH_CONCERNS at v6.2.2 ship; here it is the real fix.
+
+### Fixed — per-lane focus is now storable and readable
+
+- **Migration `0017_focus_lane.sql`** — rebuilds the `focus` table with primary key
+  `(sprint, lane)`; `lane = ''` is the sprint-level record (every existing row migrates to it,
+  preserving all v6.0.9 behavior). Version-gated, applied once.
+- **`shctx loop focus upsert|show --lane=<id>`** — the handler now keys reads and writes on
+  `(sprint, lane)`, surfaces `lane` in the text / md / json output, and defaults to the
+  sprint-level record when `--lane` is omitted. Help text + usage updated.
+- **`precompact_snapshot.sh`** snapshots the sprint-level cursor explicitly (`AND lane=''`),
+  guarded by a column-existence check so a DB still at migration 0013 keeps working.
+- **`agents/conductor.md`** — the teammate-conductor heartbeat now re-anchors to its **lane**
+  focus record (`--lane={lane_id}`) instead of the sprint-level one; the WAVE-GATE focus
+  refresh notes the SOLO (sprint-level) vs TEAMMATE (`--lane`) split. `commands/focus.md`
+  documents the `--lane` flag.
+
+### Tests
+
+`test_loop_lifecycle.sh` applies 0017 and asserts the round-trip: a lane record is independent
+of the sprint-level record, both coexist for one sprint, bare `show` returns the sprint-level
+row. 45/45 context + 49/49 hook suites green.
+
+---
+
 ## v6.2.2 — 2026-06-29
 
 **Cleanup + a long-sprint drift guard + a public-launch README.** A subtraction pass:

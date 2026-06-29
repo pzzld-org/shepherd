@@ -42,6 +42,7 @@ _apply 0010
 _apply 0011
 _apply 0012
 _apply 0013
+_apply 0017   # per-lane focus: focus PK (sprint) -> (sprint, lane)
 
 # Verify that the migrations created the expected tables.
 assert_table "$DB" loops
@@ -196,8 +197,42 @@ assert_contains "focus-show-json-oblig"  "$show_json" "lane-1 pending"
 fr_node2=$(sqlite3 "$DB" "SELECT active_node FROM focus WHERE sprint='dev.6.0.9';")
 assert_eq "focus-refresh-node" "$fr_node2" "WAVE-GATE-1"
 
-fr_obj2=$(sqlite3 "$DB" "SELECT objective FROM focus WHERE sprint='dev.6.0.9';")
+fr_obj2=$(sqlite3 "$DB" "SELECT objective FROM focus WHERE sprint='dev.6.0.9' AND lane='';")
 assert_contains "focus-refresh-obj-preserved" "$fr_obj2" "Ship loop foundation"
+
+# ---------------------------------------------------------------------------
+# per-lane focus (migration 0017 — PK (sprint, lane))
+# ---------------------------------------------------------------------------
+# A lane record is keyed (sprint, lane) and is independent of the sprint-level
+# record (lane=''). This is what a teammate-conductor's heartbeat re-reads.
+lane_out=$("$SHCTX" loop focus upsert \
+  --sprint=dev.6.0.9 --lane=lane-auth \
+  --objective="Lane: auth migration" \
+  --active-node=IMPL-1 \
+  --invariants='["no schema change without approval"]')
+assert_contains "focus-lane-created" "$lane_out" "dev.6.0.9/lane-auth"
+
+fr_lane=$(sqlite3 "$DB" "SELECT lane FROM focus WHERE sprint='dev.6.0.9' AND lane='lane-auth';")
+assert_eq "focus-lane-col" "$fr_lane" "lane-auth"
+
+# show --lane returns the LANE objective, not the sprint-level one
+lane_show=$("$SHCTX" loop focus show --sprint=dev.6.0.9 --lane=lane-auth)
+assert_contains "focus-lane-show-obj"  "$lane_show" "Lane: auth migration"
+assert_contains "focus-lane-show-lane" "$lane_show" "lane=lane-auth"
+
+# the sprint-level record (lane='') is untouched by the lane upsert
+sl_obj=$(sqlite3 "$DB" "SELECT objective FROM focus WHERE sprint='dev.6.0.9' AND lane='';")
+assert_contains "focus-sprintlevel-intact" "$sl_obj" "Ship loop foundation"
+sl_node=$(sqlite3 "$DB" "SELECT active_node FROM focus WHERE sprint='dev.6.0.9' AND lane='';")
+assert_eq "focus-sprintlevel-node" "$sl_node" "WAVE-GATE-1"
+
+# two distinct rows now exist for the one sprint (sprint-level + one lane)
+row_count=$(sqlite3 "$DB" "SELECT COUNT(*) FROM focus WHERE sprint='dev.6.0.9';")
+assert_eq "focus-two-rows" "$row_count" "2"
+
+# bare show (no --lane) still returns the sprint-level record
+bare_show=$("$SHCTX" loop focus show --sprint=dev.6.0.9)
+assert_contains "focus-bare-sprintlevel" "$bare_show" "Ship loop foundation"
 
 # ---------------------------------------------------------------------------
 # second loop for day-sequence uniqueness (NNN increments)
