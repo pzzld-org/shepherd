@@ -632,6 +632,27 @@ Controls authorized supervised self-heal during a post-close soak (v6.1.5 #148,
 autonomous_sentinel = "off"   # off (default — detection-only) | on
 ```
 
+### `[eval]` — latent-output eval harness (v6.2.3)
+
+Controls `shctx eval`, which quality-scores a latent agent output (a conductor
+reflection, a discovery report, a seed) against a rubric, judged by the **local
+Claude Code** through the `services/llm` contract. See `services/eval/README.md`.
+
+> **Key naming.** `cfg_get` is section-agnostic and matches the bare key, so
+> every eval key is prefixed `eval_` to avoid collisions (same convention as
+> `[dups]`). The `[eval]` header is for human grouping only.
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `eval_judge_model` | model alias | *(empty → `opus`)* | Model the judge runs on. Empty defers to the `services/llm` default (`opus` — best by default, never a silent downgrade for cost). Set e.g. `haiku` to trade accuracy for cost. A `--model` flag on `shctx eval run` overrides this. |
+| `eval_on_close` | `on` \| `off` | `off` | When `on`, the conductor runs `shctx eval run --kind=reflection --sprint=<branch> --record` right after `adapt reflect` at CLOSE-FINALIZE, scoring the close reflection and recording the verdict. Default `off` because it spends an LLM call per close; turn it on to track reflection quality over time (surfaced by `shctx dash` + `shctx eval report`). |
+
+```toml
+[eval]
+# eval_judge_model = "opus"   # judge model; empty defers to services/llm default (opus)
+eval_on_close   = "off"       # off (default) | on — auto-score the close reflection
+```
+
 ### `[discovery]` — capability auto-discovery (SessionStart)
 
 Controls the capability auto-discovery probe (v6.1.5 #146,

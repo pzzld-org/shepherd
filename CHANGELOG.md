@@ -6,11 +6,44 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ## v6.2.3 — 2026-06-29
 
-**Per-lane focus records — completes the v6.2.2 FOCUS-HEARTBEAT.** The heartbeat shipped
-in v6.2.2, but `agents/conductor.md` had been issuing `shctx loop focus upsert --lane=<id>`
-since v6.0.9 against a focus table keyed by sprint alone — so the call errored
-("unknown arg: --lane") and a teammate-conductor's lane had no durable, compaction-surviving
-north-star of its own. This was flagged DONE_WITH_CONCERNS at v6.2.2 ship; here it is the real fix.
+**The eval harness, plus per-lane focus records.** Two threads. The headline is the **eval
+harness** — the standing follow-up carried since v6.2.0: the plugin's latent agent
+instructions finally have a behavioral eval, not just gate-tested storage. The second thread
+completes the v6.2.2 FOCUS-HEARTBEAT.
+
+### New — the eval harness (`services/llm` + `services/eval` + `shctx eval`)
+
+The plugin preaches a latent/deterministic split; it now lives it against its **own** latent
+outputs. `shctx eval` quality-scores a latent agent output (a conductor reflection, a
+discovery report, a seed) against a rubric, judged by the **local Claude Code** — never a
+hosted API (the project's standing LLM-access rule).
+
+- **`services/llm`** — a self-contained LLM service that routes every model call through the
+  local Claude Code in headless print mode (`claude -p`), with its own portable timeout
+  watchdog (macOS ships no `timeout` binary), an `opus`-by-default model (best by default,
+  never a silent downgrade for cost), and a mock seam (`SHEPHERD_LLM_MOCK`) that makes
+  downstream gate tests deterministic and free. The single owner of the model call — nothing
+  else invokes `claude` directly.
+- **`services/eval`** — a pure, stateless judge: it builds a judge prompt from a rubric
+  (`rubrics/<kind>.rubric.json`), parses the model's per-dimension scores, and computes a
+  **deterministic** weighted overall vs the rubric threshold. The scores are latent; the
+  prompt build, the math, the verdict, and the exit code are code. Ships rubrics for
+  `reflection`, `discovery`, and `seed`; a new subject is one JSON file, no code change.
+- **`shctx eval <run|report|list>`** — the registry-side glue. Resolves a subject (e.g. the
+  stored reflection note for a sprint), calls the eval service, and records the verdict to
+  **`eval_runs`** (migration `0018`), surfaced by a new `shctx dash` EVAL row + `shctx eval
+  report`.
+- **Optional close-time scoring** — `[eval].eval_on_close` (default `off`) has the conductor
+  score the close reflection at CLOSE-FINALIZE and record it. Off by default because it spends
+  an LLM call; on, it tracks reflection quality across sprints.
+
+Two lanes per the project's test/eval discipline: a **gate lane** (`services/llm/tests`,
+`services/eval/tests`, `test_cmd_eval.sh` — deterministic, free, <2s, judge mocked) covering
+the eval→llm boundary, the score math, the threshold verdict, DB recording, and every error
+path; and a **live lane** (`services/eval/evals/run_eval.sh`, real judge, gated by
+`SHEPHERD_EVAL_LIVE=1`) that proves the judge discriminates golden-good from golden-bad by a
+margin. Live smoke against a real local judge: reflection good 100 / bad 20, discovery good 69
+/ bad 20 — lane PASSED.
 
 ### Fixed — per-lane focus is now storable and readable
 
@@ -31,7 +64,8 @@ north-star of its own. This was flagged DONE_WITH_CONCERNS at v6.2.2 ship; here 
 
 `test_loop_lifecycle.sh` applies 0017 and asserts the round-trip: a lane record is independent
 of the sprint-level record, both coexist for one sprint, bare `show` returns the sprint-level
-row. 45/45 context + 49/49 hook suites green.
+row. Whole-repo gate lanes green: **46/46 context + 49/49 hooks + 2/2 services/llm + 3/3
+services/eval**; the live eval lane PASSED against a real local judge.
 
 ---
 

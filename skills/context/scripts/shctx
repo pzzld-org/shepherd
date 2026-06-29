@@ -105,6 +105,18 @@ Subcommands (atomic):
                           show <id>: render one insight.
                           export [--sprint=BRANCH]: markdown for engineer mesh row 13.
                           clear [--older-than-days=N]: prune actioned old insights.
+  eval <run|report|list> [args]                       (v6.2.3 eval harness)
+                          Quality-score a LATENT agent output (reflection,
+                          discovery report, seed, …) against a rubric, judged by
+                          the local Claude Code via the services/llm contract.
+                          run --kind=K [--sprint=B] [--input-file|--input|-]
+                            [--threshold --model --record --json|--md]: score one
+                            item; with --kind=reflection --sprint=B the stored
+                            reflection note is pulled from the registry. --record
+                            writes eval_runs (surfaced by `shctx dash`).
+                          report/list: recorded verdicts. Latent scores, but the
+                          weighted overall + threshold verdict are deterministic.
+                          See services/eval/README.md + docs/configuration.md.
   adapt <roll|priors|report|recommend> [args]         (v6.0.4 #94/#95; v6.0.8)
                           roll --sprint=B: write a sprint_metrics row at close +
                           harvest HIGH/CRITICAL audit_findings → mem_entries(prior);
@@ -149,7 +161,7 @@ script_for() {
 cmd="${1:-help}"; shift || true
 case "$cmd" in
   help|-h|--help) usage ;;
-  init|config|status|dash|doctor|refresh|query|search|inject|profile|style|mem|toolkit|lock|lint|migrate|export|release|handoff|worktree|close-lane|issues|plan|graph|insights|adapt|sync|ready|sprint|audit|watch|discovery|teammate|mailbox|escalate|deliverable|report|loop|panes|dups|seed)
+  init|config|status|dash|doctor|refresh|query|search|inject|profile|style|mem|toolkit|lock|lint|migrate|export|release|handoff|worktree|close-lane|issues|plan|graph|insights|adapt|sync|ready|sprint|audit|watch|discovery|teammate|mailbox|escalate|deliverable|report|loop|panes|dups|seed|eval)
     impl="$HERE/$(script_for "$cmd")"
     if [[ ! -f "$impl" ]]; then
       echo "ERROR: $cmd not yet implemented (missing $impl)" >&2; exit 2

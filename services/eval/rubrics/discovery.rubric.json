@@ -1,0 +1,13 @@
+{
+  "kind": "discovery",
+  "subject": "A DISCOVERY REPORT from the shepherd discovery agent — a read-only orientation/research brief returned to the conductor to preserve its context.",
+  "scale": 5,
+  "threshold": 65,
+  "dimensions": [
+    { "key": "coverage",        "weight": 2, "desc": "Ingested the authoritative sources the question demanded; no obvious blind spot left unexamined." },
+    { "key": "specificity",     "weight": 2, "desc": "Concrete findings with file paths / line refs / citations — not vibes or hand-waving." },
+    { "key": "decisiveness",    "weight": 2, "desc": "Actually informs the conductor's next move: states what it means for the plan, not just what exists." },
+    { "key": "honesty",         "weight": 1, "desc": "Flags what it could NOT determine and the residual risk, instead of papering over gaps." }
+  ],
+  "guidance": "Reward a brief that lets the conductor act without re-reading the sources. Penalize unsourced claims, dumping raw file contents with no synthesis, and false confidence about things it did not verify."
+}

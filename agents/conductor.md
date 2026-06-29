@@ -546,6 +546,11 @@ no pause-detector hook, and no `<ns>/pauses/` registry.
      shctx adapt reflect --sprint={sprint_branch} --note="<one-line lesson>"
      ```
      It rides the existing inject path, so the next sprint's planning brief opens with it. Skip only if the sprint genuinely taught nothing new.
+  2b. **Score the reflection** (optional; only when `[eval].eval_on_close = on` — it spends one LLM call). Right after the reflect write, grade the stored reflection against its rubric and record the verdict:
+     ```bash
+     shctx eval run --kind=reflection --sprint={sprint_branch} --record
+     ```
+     The local-Claude-Code judge (via the `services/llm` contract) scores it on specificity/actionability/grounding; the **deterministic** overall + PASS/FAIL land in `eval_runs`, surfaced by `shctx dash` + `shctx eval report`. Off by default; the score is informational and never blocks PAUSE. See `docs/configuration.md §[eval]` + `services/eval/README.md`.
   3. **Trend surface** (read — mechanized, do NOT eyeball): run `shctx adapt report --trends` and surface its output **verbatim** as the `[TREND]` block (informational; never blocks PAUSE; emits nothing on a healthy streak). `adaptation-loop.md §VI` forbids re-deriving the trend from a table read — on exhausted context the eyeball scan is the first thing skipped; the command is not.
 
 - [ ] **PAUSE** fires after step 9. Under `/shepherd:start` (SOLO): you are done — operator takes over. Under `/shepherd:spawn`: you return control to root. **RELEASE** fires on dev.{last} + sprint-through grant (step 6 above).

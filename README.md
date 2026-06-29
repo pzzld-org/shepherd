@@ -291,6 +291,19 @@ shctx style init --all       # scaffold per-language code-style files
 
 The workdir follows a standard layout under `.shepherd/` (`docs/`, `logs/`, `cache/`, `scripts/`, plus `toolkit.json` and `shepherd.db`). Repos on the older layout keep working untouched; `shctx migrate --layout v2` performs the opt-in move.
 
+### Self-evaluation (the eval harness)
+
+A plugin that scores its own latent instructions. `shctx eval` grades a latent agent output (a conductor reflection, a discovery report, a seed) against a rubric, judged by your **local Claude Code** — not a hosted API. The split shepherd preaches, applied to itself: the model's per-dimension scores are latent; the rubric, the weighted overall, and the threshold verdict are deterministic, so the same scores always yield the same verdict.
+
+```bash
+echo "front-load the dups gate before the coder wave next sprint" \
+  | shctx eval run --kind=reflection -        # score text; exit 0 pass / 1 fail
+shctx eval run --kind=reflection --sprint=$(git branch --show-current) --record
+shctx eval report --md                        # recorded verdicts, surfaced on the dash too
+```
+
+Adding a new subject is one JSON file in `services/eval/rubrics/`. The judge runs through `services/llm`, the single owner of every model call. Two test lanes: a free, deterministic gate lane (the judge is mocked) and a paid live lane (`SHEPHERD_EVAL_LIVE=1`) that proves a real judge separates good outputs from bad. See `services/eval/README.md`.
+
 ### The toolkit
 
 A session forgets capabilities exist. The toolkit (`toolkit.json`) is a mutable registry of the tools you actually use, so it does not. It merges a project-local file with a user-global one, surfaces a compact roster at session start, and injects a `[TOOLKIT]` block into the briefs that need it.
@@ -419,6 +432,7 @@ See [`docs/integration.md`](docs/integration.md) for the full integration model,
 | `skills/shepherd/doctrines/*.md` | Framework-intrinsic behavioral rules. |
 | `skills/shepherd/references/` | Branching model, seed and brief templates, loop and workflow templates, grading rubric. |
 | `skills/context/` | The `shctx` runtime: SQL migrations, views, and the bash implementation. |
+| `services/{llm,eval}/` | Self-contained services: the local-Claude-Code LLM call and the rubric-driven eval harness, each with its own contract, tests, and evals. |
 | `hooks/hooks.json` + `hooks/scripts/` | Lifecycle hooks and their implementations. |
 | `hooks/tests/` | Smoke harness: `bash hooks/tests/run.sh`. |
 | `docs/{configuration,integration,customization}.md` | Operator-facing documentation. |

@@ -611,6 +611,16 @@ sprint when `--scope > sprint`):
       ```
       It rides the inject path into the next sprint's planning brief.
 
+- [ ] **Score the reflection** (optional; only when `[eval].eval_on_close = on` —
+      it spends one LLM call). Grade the stored reflection and record the verdict:
+      ```bash
+      shctx eval run --kind=reflection --sprint={sprint_branch} --record
+      ```
+      The local-Claude-Code judge scores specificity/actionability/grounding; the
+      deterministic overall + PASS/FAIL land in `eval_runs` (surfaced by `shctx
+      dash` + `shctx eval report`). Off by default; informational, never blocks
+      PAUSE. See `docs/configuration.md §[eval]`.
+
 - [ ] **Trend surface** (mechanized — do NOT eyeball). Run `shctx adapt report
       --trends` and carry its output **verbatim** into the ROOT CLOSE REPORT's
       Trend-alerts field (informational; emits nothing on a healthy streak).

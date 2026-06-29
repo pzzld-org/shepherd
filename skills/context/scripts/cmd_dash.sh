@@ -120,6 +120,17 @@ if [[ -n "$apid" ]]; then
   fi
 fi
 
+# EVAL: latest recorded quality verdict for a latent output (v6.2.3 eval harness).
+# Omit-if-empty: only surfaces once something has been `shctx eval … --record`ed.
+if [[ -n "${apid:-}" ]] && [[ -n "$(shctx_sql "SELECT 1 FROM sqlite_master WHERE type='table' AND name='eval_runs' LIMIT 1;" 2>/dev/null || true)" ]]; then
+  erow="$(shctx_sql "SELECT kind||' '||COALESCE(subject_ref,'·')||' '||score||'/'||threshold||' '||CASE passed WHEN 1 THEN 'PASS' ELSE 'FAIL' END
+                     FROM v_eval_latest WHERE project_id='$apid' ORDER BY created_at DESC, id DESC LIMIT 1;" 2>/dev/null || true)"
+  if [[ -n "$erow" ]]; then
+    ecount="$(shctx_sql "SELECT count(*) FROM v_eval_latest WHERE project_id='$apid';" 2>/dev/null || echo 0)"
+    printf 'EVAL        latest: %s  (%s scored)\n' "$erow" "$ecount"
+  fi
+fi
+
 # STALE: GitHub cache freshness (issues + PRs).
 gi="$(shctx_sql 'SELECT COALESCE(MAX(refreshed_at),0) FROM index_issues;' 2>/dev/null || echo 0)"
 gp="$(shctx_sql 'SELECT COALESCE(MAX(refreshed_at),0) FROM index_prs;'    2>/dev/null || echo 0)"
