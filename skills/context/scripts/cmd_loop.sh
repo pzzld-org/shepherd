@@ -31,11 +31,12 @@
 #   list [--active|--all] [--json|--md]
 #       List loops for this project (default: active only).
 #
-#   focus <upsert|show> --sprint=<branch> [--objective=<text>]
+#   focus <upsert|show> --sprint=<branch> [--lane=<id>] [--objective=<text>]
 #         [--active-node=<id>] [--ready-set=<csv>]
 #         [--obligations=<json>] [--invariants=<json>]
-#       Read or write the focus record for a sprint (thin wrapper on the
-#       `focus` table added by migration 0013).
+#       Read or write the focus record for a sprint, or for a lane within it
+#       (--lane=<id>; omit for the sprint-level record). Thin wrapper on the
+#       `focus` table (migrations 0013 + 0017, PK (sprint, lane)).
 
 set -eu -o pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -74,11 +75,12 @@ shctx loop <init|status|record|close|list|focus> [args]   (v6.0.9)
   list [--active|--all] [--json|--md]
       List loops for this project (default: active).
 
-  focus <upsert|show> --sprint=<branch>
+  focus <upsert|show> --sprint=<branch> [--lane=<id>]
         [--objective=<text>] [--active-node=<id>] [--ready-set=<csv>]
         [--obligations=<json>] [--invariants=<json>]
         [--json|--md]
-      Upsert or show the focus record for a sprint.
+      Upsert or show the focus record for a sprint, or a lane within it
+      (--lane=<id>; omit for the sprint-level record).
 
 Doctrine: skills/shepherd/doctrines/workflow-patterns.md §Pattern 6
 EOF
@@ -437,10 +439,11 @@ _cmd_list() {
 # ---------------------------------------------------------------------------
 _cmd_focus() {
   local focussub="${1:-show}"; shift || true
-  local sprint="" objective="" active_node="" ready_set="" obligations="" invariants="" fmt="text"
+  local sprint="" lane="" objective="" active_node="" ready_set="" obligations="" invariants="" fmt="text"
   for arg in "$@"; do
     case "$arg" in
       --sprint=*)      sprint="${arg#--sprint=}" ;;
+      --lane=*)        lane="${arg#--lane=}" ;;
       --objective=*)   objective="${arg#--objective=}" ;;
       --active-node=*) active_node="${arg#--active-node=}" ;;
       --ready-set=*)   ready_set="${arg#--ready-set=}" ;;
@@ -468,23 +471,26 @@ _cmd_focus() {
       fi
 
       local sp_esc="${sprint//\'/\'\'}"
+      local lane_esc="${lane//\'/\'\'}"          # lane='' is the sprint-level record
+      local key="sprint='$sp_esc' AND lane='$lane_esc'"
+      local label="$sprint"; [[ -n "$lane" ]] && label="$sprint/$lane"
       local exists
-      exists=$(shctx_sql "SELECT 1 FROM focus WHERE sprint='$sp_esc' LIMIT 1;")
+      exists=$(shctx_sql "SELECT 1 FROM focus WHERE $key LIMIT 1;")
       if [[ -n "$exists" ]]; then
         # Patch only supplied columns, keep the rest.
-        [[ -n "$objective" ]]   && shctx_sql "UPDATE focus SET objective=$(_txt "$objective") WHERE sprint='$sp_esc';"
-        [[ -n "$active_node" ]] && shctx_sql "UPDATE focus SET active_node=$(_txt "$active_node") WHERE sprint='$sp_esc';"
-        [[ -n "$ready_set" ]]   && shctx_sql "UPDATE focus SET ready_set=$(_txt "$ready_set") WHERE sprint='$sp_esc';"
-        [[ -n "$obligations" ]] && shctx_sql "UPDATE focus SET obligations=$(_txt "$obligations") WHERE sprint='$sp_esc';"
-        [[ -n "$invariants" ]]  && shctx_sql "UPDATE focus SET invariants=$(_txt "$invariants") WHERE sprint='$sp_esc';"
-        shctx_sql "UPDATE focus SET updated_at=$now WHERE sprint='$sp_esc';"
-        echo "focus upsert: refreshed $sprint"
+        [[ -n "$objective" ]]   && shctx_sql "UPDATE focus SET objective=$(_txt "$objective") WHERE $key;"
+        [[ -n "$active_node" ]] && shctx_sql "UPDATE focus SET active_node=$(_txt "$active_node") WHERE $key;"
+        [[ -n "$ready_set" ]]   && shctx_sql "UPDATE focus SET ready_set=$(_txt "$ready_set") WHERE $key;"
+        [[ -n "$obligations" ]] && shctx_sql "UPDATE focus SET obligations=$(_txt "$obligations") WHERE $key;"
+        [[ -n "$invariants" ]]  && shctx_sql "UPDATE focus SET invariants=$(_txt "$invariants") WHERE $key;"
+        shctx_sql "UPDATE focus SET updated_at=$now WHERE $key;"
+        echo "focus upsert: refreshed $label"
       else
-        shctx_sql "INSERT INTO focus (sprint,objective,active_node,ready_set,obligations,invariants,updated_at)
-                   VALUES ('$sp_esc',$(_txt "$objective"),$(_txt "$active_node"),
+        shctx_sql "INSERT INTO focus (sprint,lane,objective,active_node,ready_set,obligations,invariants,updated_at)
+                   VALUES ('$sp_esc','$lane_esc',$(_txt "$objective"),$(_txt "$active_node"),
                            $(_txt "$ready_set"),$(_txt "$obligations"),
                            $(_txt "$invariants"),$now);"
-        echo "focus upsert: created $sprint"
+        echo "focus upsert: created $label"
       fi
       ;;
 
@@ -494,24 +500,27 @@ _cmd_focus() {
         target=$(current_sprint)
       fi
       local t_esc="${target//\'/\'\'}"
+      local lane_esc="${lane//\'/\'\'}"          # lane='' = sprint-level record
+      local key="sprint='$t_esc' AND lane='$lane_esc'"
+      local tlabel="$target"; [[ -n "$lane" ]] && tlabel="$target/$lane"
       local row
-      row=$(shctx_sql "SELECT sprint,objective,active_node,ready_set,obligations,invariants,updated_at
-                       FROM focus WHERE sprint='$t_esc';")
+      row=$(shctx_sql "SELECT sprint,lane,objective,active_node,ready_set,obligations,invariants,updated_at
+                       FROM focus WHERE $key;")
       if [[ -z "$row" ]]; then
-        echo "_(no focus record for sprint: ${target})_"
+        echo "_(no focus record for: ${tlabel})_"
         return 0
       fi
       if [[ "$fmt" == "json" ]]; then
-        shctx_sql "SELECT json_object('sprint',sprint,'objective',objective,
+        shctx_sql "SELECT json_object('sprint',sprint,'lane',lane,'objective',objective,
                      'active_node',active_node,'ready_set',ready_set,
                      'obligations',json(obligations),'invariants',json(invariants),
                      'updated_at',updated_at)
-                   FROM focus WHERE sprint='$t_esc';"
+                   FROM focus WHERE $key;"
         return 0
       fi
-      IFS='|' read -r fsprint fobj fnode fready foblig finvar fupdated <<< "$row"
+      IFS='|' read -r fsprint flane fobj fnode fready foblig finvar fupdated <<< "$row"
       if [[ "$fmt" == "md" ]]; then
-        printf '## Focus record — %s\n' "$fsprint"
+        printf '## Focus record — %s%s\n' "$fsprint" "${flane:+ / $flane}"
         printf -- '- **objective:** %s\n' "${fobj:-·}"
         printf -- '- **active_node:** %s\n' "${fnode:-·}"
         printf -- '- **ready_set:** %s\n' "${fready:-·}"
@@ -519,8 +528,8 @@ _cmd_focus() {
         printf -- '- **invariants:** %s\n' "${finvar:-·}"
         printf -- '- **updated_at:** %s\n' "$fupdated"
       else
-        printf 'sprint=%s active_node=%s ready_set=%s updated_at=%s\n' \
-          "$fsprint" "${fnode:-·}" "${fready:-·}" "$fupdated"
+        printf 'sprint=%s lane=%s active_node=%s ready_set=%s updated_at=%s\n' \
+          "$fsprint" "${flane:-·}" "${fnode:-·}" "${fready:-·}" "$fupdated"
         printf 'objective=%s\n' "${fobj:-·}"
         printf 'obligations=%s\n' "${foblig:-·}"
         printf 'invariants=%s\n' "${finvar:-·}"

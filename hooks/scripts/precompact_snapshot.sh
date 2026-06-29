@@ -133,17 +133,17 @@ SPRINT="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo 'unknown')"
 FOCUS_OBJ="{}"
 if [[ -f "$DB" ]] && command -v sqlite3 &>/dev/null; then
   if sqlite3 "$DB" "SELECT name FROM sqlite_master WHERE type='table' AND name='focus';" 2>/dev/null | grep -q 'focus'; then
-    if command -v jq &>/dev/null; then
-      FOCUS_OBJ="$(sqlite3 "$DB" \
-        "SELECT json_object('sprint',sprint,'objective',objective,'active_node',active_node,'ready_set',ready_set,'obligations',obligations,'invariants',invariants,'updated_at',updated_at) FROM focus WHERE sprint='${SPRINT//\'/\'\'}' LIMIT 1;" \
-        2>/dev/null || echo '{}')"
-      [[ -n "$FOCUS_OBJ" ]] || FOCUS_OBJ="{}"
-    else
-      FOCUS_OBJ="$(sqlite3 "$DB" \
-        "SELECT json_object('sprint',sprint,'objective',objective,'active_node',active_node,'ready_set',ready_set,'obligations',obligations,'invariants',invariants,'updated_at',updated_at) FROM focus WHERE sprint='${SPRINT//\'/\'\'}' LIMIT 1;" \
-        2>/dev/null || echo '{}')"
-      [[ -n "$FOCUS_OBJ" ]] || FOCUS_OBJ="{}"
+    # Capture the SPRINT-LEVEL cursor. Since migration 0017 the focus table is
+    # keyed (sprint, lane); lane='' is the sprint-level record. On a DB still at
+    # 0013 (no lane column) the clause is omitted so the query stays valid.
+    LANE_CLAUSE=""
+    if sqlite3 "$DB" "SELECT 1 FROM pragma_table_info('focus') WHERE name='lane';" 2>/dev/null | grep -q 1; then
+      LANE_CLAUSE="AND lane=''"
     fi
+    FOCUS_OBJ="$(sqlite3 "$DB" \
+      "SELECT json_object('sprint',sprint,'objective',objective,'active_node',active_node,'ready_set',ready_set,'obligations',obligations,'invariants',invariants,'updated_at',updated_at) FROM focus WHERE sprint='${SPRINT//\'/\'\'}' ${LANE_CLAUSE} LIMIT 1;" \
+      2>/dev/null || echo '{}')"
+    [[ -n "$FOCUS_OBJ" ]] || FOCUS_OBJ="{}"
   fi
 fi
 

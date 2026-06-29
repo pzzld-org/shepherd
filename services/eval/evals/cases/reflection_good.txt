@@ -1,0 +1,1 @@
+Next sprint, run `shctx dups scan --fail-on` BEFORE the coder wave instead of at close. This sprint the shape-dedup gate caught two renamed-to-evade struct twins only at CLOSE-FINALIZE, which forced a re-wave that cost roughly 40 minutes. Front-loading the gate turns a close-time rework into a cheap pre-wave block.

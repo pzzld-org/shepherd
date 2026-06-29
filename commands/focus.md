@@ -21,7 +21,8 @@ The focus record is a durable, compact north-star artifact stored in `root.db` (
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--sprint=<branch>` | current branch | Sprint branch name. Used as the focus record's primary key. |
+| `--sprint=<branch>` | current branch | Sprint branch name. Part of the focus record's primary key `(sprint, lane)`. |
+| `--lane=<id>` | *(none = sprint-level)* | Lane id for a per-lane focus record (v6.2.3). Omit for the sprint-level record; pass it for a teammate-conductor's lane north-star, which then persists and survives compaction independently. |
 | `--objective=<text>` | *(required on first call)* | Sprint north-star, one paragraph. Written at SEED-VERIFY; can be refreshed later. |
 | `--active-node=<id>` | *(none)* | Current Stage-Graph node id. Updated at each WAVE-GATE. |
 | `--ready-set=<csv>` | *(none)* | Comma-joined node ids representing the current cursor snapshot. |

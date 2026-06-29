@@ -1,0 +1,12 @@
+{
+  "kind": "seed",
+  "subject": "A sprint SEED — the drift-resistant intent artifact authored by the planter (objective, file_scope, acceptance, invariants) that grounds the whole sprint.",
+  "scale": 5,
+  "threshold": 65,
+  "dimensions": [
+    { "key": "drift_resistance", "weight": 2, "desc": "Objective + invariants are sharp enough that an agent hours in could not wander; scope is bounded." },
+    { "key": "groundedness",     "weight": 2, "desc": "file_scope paths look real (or marked NEW); acceptance is concrete and checkable, not aspirational." },
+    { "key": "leanness",         "weight": 2, "desc": "Says what's needed and stops — no prescriptive Lane-N micromanagement, no padding the agent will ignore." }
+  ],
+  "guidance": "Reward a seed that an engineer could turn into a plan with zero clarifying questions. Penalize hallucinated paths, vague acceptance ('make it better'), and over-specification that usurps the engineer's planning job."
+}

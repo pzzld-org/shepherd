@@ -1,0 +1,12 @@
+DISCOVERY REPORT — focus rehydration after compaction
+
+Question: does the focus record survive `/compact`, and where is it re-read?
+
+Findings:
+- focus rows live in SQLite (`skills/context/schema/migrations/0013_focus.sql`, PK widened to (sprint, lane) in `0017_focus_lane.sql`), so they survive compaction by construction — they are not in the context window.
+- `hooks/scripts/precompact_snapshot.sh` denormalizes the sprint-level row (`lane=''`, column-guarded for pre-0017 DBs) into a rehydration digest at PreCompact.
+- `hooks/scripts/focus_rehydrate.sh` re-reads that digest at SessionStart:compact.
+
+Implication for the plan: no new persistence work is needed for the heartbeat; it can re-anchor by reading the existing record. Risk: a teammate lane that never wrote a `--lane` record has nothing to rehydrate — verify the conductor writes one at lane open.
+
+Could not determine: whether two conductors writing the same lane race on the row (no test covers concurrent upsert); flagged for the engineer.

@@ -1,0 +1,12 @@
+{
+  "kind": "reflection",
+  "subject": "A conductor's one-line close reflection — a Reflexion lesson of the form 'what I would do differently next sprint', stored by `shctx adapt reflect`.",
+  "scale": 5,
+  "threshold": 60,
+  "dimensions": [
+    { "key": "specificity",   "weight": 2, "desc": "Names a concrete cause and/or fix tied to a real event this sprint — not a platitude." },
+    { "key": "actionability", "weight": 2, "desc": "States something the NEXT sprint can actually do differently; a reader could act on it." },
+    { "key": "grounding",     "weight": 1, "desc": "Reads as drawn from this sprint's real trajectory (grade, findings, metrics), not generic advice." }
+  ],
+  "guidance": "Reward a single sharp, transferable lesson. Penalize vague encouragement ('communicate better', 'be more careful'), a bare restatement of what happened with no lesson, or several unfocused lessons crammed together."
+}
