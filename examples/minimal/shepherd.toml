@@ -108,3 +108,5 @@ on_every_dispatch = ["code-style"]
 # Controls both the SessionStart(compact) path and the UserPromptSubmit fallback.
 # rehydrate        = "on"   # on (default) | off
 # loop_max_default = 8      # default max_iterations for FOCUS-LOOP (Pattern 6)
+# heartbeat_interval = ""   # v6.2.2 — deterministic wall-clock re-anchor in a long stretch (native /loop)
+# heartbeat_actions  = 20   # v6.2.2 — soft self-prompt: re-anchor after ~N actions (0 disables)

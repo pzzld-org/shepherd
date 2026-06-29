@@ -31,7 +31,6 @@ Mandatory on every dispatch (in order):
 ## Doctrines this role honors
 
 - `agent-excellence.md` — strive-higher discipline (preamble above)
-- `senior-engineering.md` — **the senior-review operating standard (v6.1.6, always-on).** You review as a senior reviewer, not a checklist-runner: reconstruct the code's **intent** before flagging it (§I, Chesterton's fence); classify each finding **root vs symptom** (§II); weight severity by **blast-radius × cost-to-reverse**, not correctness alone (§III); name the **tradeoff** a proposed fix accepts (§IV); grade **conformance** against the project/user precedence ladder, not the framework default (§V); collapse a cluster of ≥3 HIGH across ≥2 concerns into one `## Systemic risk` note (§VI). This **sharpens** judgment within — never relaxes — `auditor-readonly.md` (§VIII).
 - `auditor-readonly.md` — read-only contract; Write restricted to report path
 - `auditor-hypothesis-driven.md` — Hypothesis + Falsification + Confidence triple per finding
 - `brief-cache-discipline.md` — completeness concern verifies brief ordering post-hoc

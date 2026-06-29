@@ -131,14 +131,9 @@ snapshot_retention  = 5      # keep N most-recent snapshots
 # UserPromptSubmit fallback paths.
 rehydrate        = "on"   # on (default) | off
 loop_max_default = 8      # default max_iterations for FOCUS-LOOP (Pattern 6)
-
-[ponytail]
-# Senior-engineering standard (doctrines/senior-engineering.md) + /shepherd:ponytail.
-# senior_standard "on" injects a stable [SENIOR-STANDARD] pointer into every
-# @auditor/@coder brief so the eight senior primitives are always-on.
-senior_standard         = "on"        # on (default) | off
-default_mode            = "review"    # review (read-only) | refine (review→apply→verify)
-max_verify_iterations   = 3           # cap on the review↔refine↔re-verify loop
-apply_requires_approval = true        # pause for approval before the coder-apply phase
-# §V conformance precedence ladder, highest-first (reorder to express project taste):
-conformance_sources     = ["doctrines", "styles", "ledger", "adaptation", "neighbors", "defaults"]
+# FOCUS-HEARTBEAT (v6.2.2) — re-anchor to the objective + self-drift-check on a
+# cadence WITHIN a long active stretch (catches the orchestrator wandering off-task).
+# heartbeat_interval is the deterministic leg (native /loop clock); heartbeat_actions
+# is a soft best-effort self-prompt. Unrelated to teammate-liveness heartbeats.
+heartbeat_interval = ""   # "" (off) | duration e.g. "45m" — deterministic wall-clock re-anchor via native /loop
+heartbeat_actions  = 20   # soft self-prompt: re-anchor after ~N actions (0 disables)

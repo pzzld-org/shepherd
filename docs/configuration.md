@@ -591,9 +591,28 @@ loop_max_default = 8      # int — default max_iterations for FOCUS-LOOP
 # lapses, not the mechanism. Set "off" to suppress and rely on the backstop
 # alone — not recommended.
 loop_default     = "on"   # on (default) | off — root (under /shepherd:spawn) and long-running conductors adopt the FOCUS-LOOP by default to stay active/focused (Pattern 6; doctrines/coordinate-active-drive.md)
+
+# FOCUS-HEARTBEAT (v6.2.2) — the orchestrator's OWN drift guard over a long
+# active stretch. The FOCUS-LOOP re-anchors at every wake; a long FOCUS-ACT
+# stretch with no wake (a big materialization/merge run, or the solo conductor's
+# inline work) lets the north-star recede and the orchestrator drift. The
+# heartbeat self-fires a re-anchor (re-read the focus record + emit the
+# [FOCUS-HEARTBEAT] block + self-drift-check) on a cadence with two unequal legs:
+#   - heartbeat_interval: the DETERMINISTIC leg. Delegates the clock to the native
+#     /loop command (same mechanism as interval-mode FOCUS-LOOP), so a real wake
+#     fires on a real schedule. The only leg that GUARANTEES a re-anchor — set it
+#     for a long unattended stretch. Timing belongs in a mechanism, not an in-reply
+#     estimate (operating-philosophy.md §I.1).
+#   - heartbeat_actions: a SOFT, best-effort self-prompt. The orchestrator
+#     re-anchors after ~N significant actions; this is a latent self-estimate, NOT
+#     a counted guarantee (no counter column or hook backs it). A zero-cost nudge.
+# Note: this FOCUS-HEARTBEAT (re-anchoring to the objective) is unrelated to the
+# teammate-liveness "heartbeats" (the heartbeats table / `shctx teammate heartbeat`).
+heartbeat_actions  = 20   # int (0 disables) — soft self-prompt: re-anchor after ~N actions
+heartbeat_interval = ""   # "" (off) | duration e.g. "45m" — deterministic wall-clock re-anchor via native /loop
 ```
 
-The focus record itself (objective, active Stage-Graph node, ready-set, outstanding obligations, invariants) lives in `root.db` (`focus` table) and survives compaction natively. The rehydration consumer reads the latest snapshot + focus digest and emits them as `additionalContext` so the model's drive cursor is restored without manual re-orientation.
+The focus record itself (objective, active Stage-Graph node, ready-set, outstanding obligations, invariants) lives in `root.db` (`focus` table) and survives compaction natively. The rehydration consumer reads the latest snapshot + focus digest and emits them as `additionalContext` so the model's drive cursor is restored without manual re-orientation. The **FOCUS-HEARTBEAT** re-reads that same record on a cadence *within* a long active stretch, so the orchestrator re-anchors to the objective and self-checks for its own drift even when no compaction or teammate event forces a wake. Set `heartbeat_interval` for a guaranteed cadence on long unattended runs; `heartbeat_actions` is a soft in-session nudge (`skills/shepherd/references/workflow-templates.md §FOCUS-LOOP`; `doctrines/coordinate-active-drive.md §IV-b.3`).
 
 ### `[close]` — close-phase behavior
 
@@ -625,29 +644,6 @@ Controls the capability auto-discovery probe (v6.1.5 #146,
 ```toml
 [discovery]
 auto_capabilities = "on"   # auto-detect available plugins/skills; "off" disables
-```
-
-### `[ponytail]` — senior-engineering standard + `/shepherd:ponytail`
-
-Controls the senior-engineering operating standard (v6.1.6,
-`doctrines/senior-engineering.md`) that elevates `@auditor` and `@coder`, and the
-on-demand `/shepherd:ponytail` review→refine→verify command (`commands/ponytail.md`).
-
-| Key | Type | Default | Meaning |
-|---|---|---|---|
-| `senior_standard` | `on` \| `off` | `on` | When `on`, the conductor injects a stable `[SENIOR-STANDARD]` pointer block (a reference, NOT a re-paste — `doctrines/brief-cache-discipline.md`) into every `@auditor`/`@coder` brief, so the eight senior primitives are always-on. `off` restores pre-v6.1.6 briefs (the agents still honor the doctrine they cite, but it is not re-surfaced per brief). |
-| `default_mode` | `review` \| `refine` | `review` | Default mode for `/shepherd:ponytail` with no `--mode`/`--apply` flag. `review` = read-only senior report; `refine` = review → apply → re-verify. |
-| `max_verify_iterations` | integer ≥ 1 | `3` | Cap on the review↔refine↔re-verify loop (Pattern 3 / `references/loop-templates.md §AUDITOR-REFINE`). Reaching it with findings open halts as `PONYTAIL-LOOP-CAP`. |
-| `apply_requires_approval` | `true` \| `false` | `true` | When `true`, the refine (coder-apply) phase pauses for operator approval before any write. `--no-approval` overrides per-invocation. |
-| `conformance_sources` | array | `["doctrines","styles","ledger","adaptation","neighbors","defaults"]` | The `senior-engineering.md §V` precedence ladder, highest-first. Operator-reorderable to express project taste (e.g. demote `neighbors` if the codebase is mid-migration). |
-
-```toml
-[ponytail]
-senior_standard       = "on"        # inject [SENIOR-STANDARD] into auditor/coder briefs
-default_mode          = "review"    # review (read-only) | refine (review→apply→verify)
-max_verify_iterations = 3           # cap on the review↔refine↔re-verify loop
-apply_requires_approval = true      # pause for approval before the coder-apply phase
-conformance_sources   = ["doctrines", "styles", "ledger", "adaptation", "neighbors", "defaults"]
 ```
 
 ## Path interpolation

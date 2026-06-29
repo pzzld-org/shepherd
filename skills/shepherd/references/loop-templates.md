@@ -1051,6 +1051,10 @@ FOCUS-LOOP-INIT (conductor):
     - SEED-VERIFY: {objective, invariants}
     - each WAVE-GATE: {active_node, ready_set, obligations}
     - CLOSE-FINALIZE: {terminal_state}
+  heartbeat:                           # v6.2.2 — re-anchor cadence WITHIN a long ACT stretch
+    interval: <null | duration>        # [focus].heartbeat_interval — wall-clock via native /loop (the DETERMINISTIC leg)
+    actions:  20                       # [focus].heartbeat_actions — soft best-effort self-prompt (latent, not a counted guarantee)
+    fires: RE-ANCHOR (re-read focus record) + self-drift-check — see references/workflow-templates.md §FOCUS-LOOP
   compaction_safety: precompact_snapshot_on   # shepherd.toml [compaction].precompact_snapshot must be "on"
 ```
 
@@ -1063,8 +1067,8 @@ FOCUS-LOOP-INIT (conductor):
 2. shctx loop init --kind=focus --task="sprint-drive-<sprint_slug>" --max=8 --agent=orchestrator
    (emits loop_id)
 3. Write initial focus record: shctx focus write --id=$loop_id --stage=SEED-VERIFY
-4. Enter FOCUS-WAKE: read focus record + rehydration digest.
-5. Proceed through FOCUS-ACT (dispatch / coordinate). At each WAVE-GATE, refresh focus record.
+4. Enter FOCUS-WAKE: read focus record + rehydration digest, RE-ANCHOR (emit `[FOCUS-HEARTBEAT]`) + self-drift-check.
+5. Proceed through FOCUS-ACT (dispatch / coordinate). At each WAVE-GATE, refresh focus record. Every `[focus].heartbeat_actions` actions within a long ACT stretch, re-anchor (read record + self-drift-check) — the orchestrator's own drift guard.
 6. On CLOSE-FINALIZE: new_findings: false → FOCUS-LOOP-DONE.
 ```
 
@@ -1077,8 +1081,9 @@ FOCUS-LOOP-INIT (conductor):
 4. Write initial focus record at SEED-VERIFY.
 5. Spawn teammate-conductors (native teammate-spawn referencing shepherd:conductor) per the plan's lane structure.
 6. Confirm liveness per doctrines/coordinate-active-drive.md §III.
-7. Enter coordinate cycle: FOCUS-WAKE → FOCUS-ACT (drain mailbox, prune idle, advance cursor)
-   → FOCUS-PROBE (liveness + drift sweep) → FOCUS-YIELD (to events, not operator).
+7. Enter coordinate cycle: FOCUS-WAKE (+ RE-ANCHOR / self-drift-check) → FOCUS-ACT (drain mailbox, prune idle, advance cursor)
+   → FOCUS-PROBE (liveness + teammate-drift + **root self-drift** sweep) → FOCUS-YIELD (to events, not operator).
+   Within a long ACT stretch with no teammate event, the FOCUS-HEARTBEAT (`[focus].heartbeat_actions` / `heartbeat_interval`) self-fires the re-anchor.
 8. On CLOSE-FINALIZE across all lanes: new_findings: false → FOCUS-LOOP-DONE.
 ```
 
@@ -1109,6 +1114,12 @@ Key highlights:
   yielding with undrained mailbox or idle teammates is the passive-wait bug per
   `doctrines/coordinate-active-drive.md §II`. The `coordinate_drive_guard.sh` Stop hook
   mechanically enforces this.
+- **Root self-drift over a long ACT stretch (v6.2.2).** The PROBE drift sweep watches
+  *teammates*; the orchestrator's own attention drifts after hours of uninterrupted
+  dispatch/materialize work with no wake to re-anchor. The FOCUS-HEARTBEAT
+  (`[focus].heartbeat_actions` / `heartbeat_interval`) self-fires the re-anchor +
+  self-drift-check inside a long ACT stretch. Skipping it is the "root wandered after
+  hours" failure.
 
 ---
 

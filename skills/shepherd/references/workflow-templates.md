@@ -451,9 +451,14 @@ FOCUS-LOOP-INIT (conductor):
   action: shctx loop init --kind=focus --task="sprint-drive" --max=8 --agent=orchestrator
   on-start: → FOCUS-WAKE
 
-FOCUS-WAKE (conductor):
-  brief: read focus record + rehydration digest
-  action: shctx loop status --id=$loop_id
+FOCUS-WAKE (conductor):                  # also the FOCUS-HEARTBEAT re-anchor point
+  brief: read focus record fresh + rehydration digest, then RE-ANCHOR
+  action: shctx loop focus show --sprint=<branch>   # re-read the durable north-star
+  re-anchor: emit the [FOCUS-HEARTBEAT] block — {objective, active_node, invariants, next_action}
+  self-drift-check:                      # the orchestrator's OWN drift, not a teammate's
+    on-node (last stretch advanced active_node within invariants):  → FOCUS-ACT
+    drifted (wandered into adjacent / unseeded work):               → [DRIFT-WARN] self →
+        return to active_node; file the digression (finding / carry-forward), do NOT chase inline
   on-ready: → FOCUS-ACT
 
 FOCUS-ACT (conductor):
@@ -469,9 +474,52 @@ FOCUS-LOOP-DONE (conductor):
   emit: "## Focus loop summary" with iteration count, final Stage Graph node, obligations drained
 ```
 
+#### Focus heartbeat — the re-anchor cadence (v6.2.2)
+
+A long FOCUS-ACT stretch is where the orchestrator drifts: hours of dispatch /
+materialize / commit with no teammate event to force a wake, and the north-star
+recedes under tactical detail. Event-driven coordination re-anchors at every wake;
+a long *uninterrupted* ACT stretch has no wake. The **FOCUS-HEARTBEAT** closes the
+gap — the re-anchor ritual fires not only at every FOCUS-WAKE but on a cadence
+*within* a long ACT stretch:
+
+- **Fire when** the cadence trips. The **deterministic** leg is
+  `[focus].heartbeat_interval` wall-clock, delegated to native `/loop`: the platform
+  owns the clock, so a real wake fires on a real schedule. This is the only leg that
+  *guarantees* a re-anchor, and it is why timing is delegated to a mechanism rather
+  than estimated in-reply (`doctrines/operating-philosophy.md` §I.1). The
+  `[focus].heartbeat_actions` leg is a **soft, best-effort self-prompt** (default on):
+  the orchestrator re-anchors after roughly N significant dispatches / materializations
+  since the last anchor. It is a latent self-estimate, NOT a counted guarantee (there is
+  no counter column or hook backing it) — so for a hard cadence on a long unattended
+  stretch, set `heartbeat_interval`. A natural FOCUS-WAKE re-anchors anyway.
+- **What fires** — re-read the focus record (`shctx loop focus show`, NOT working
+  memory: drift is precisely when working memory has gone stale) and emit one
+  compact block, then run the self-drift-check:
+
+  ```
+  [FOCUS-HEARTBEAT] iter=<i> · since-anchor=<N actions | Tm>
+  objective:   <the sprint / lane north-star, one line>
+  active_node: <id> — <short label>
+  invariants:  <hold-true rules, comma-joined>
+  next_action: <the single next concrete step toward active_node>
+  drift:       on-node | [DRIFT-WARN] self → <correction>
+  ```
+
+- **The self-drift-check is the point.** Compare the last stretch against
+  {active_node, objective, invariants}. On-node → resume. Wandered into adjacent or
+  unseeded work → `[DRIFT-WARN] self`, stop the digression, return to active_node,
+  and **file** it (finding / carry-forward / issue) rather than chase it inline
+  (bounded — `subtract-dont-add.md`).
+- **Cache-safe.** The block is variable content the orchestrator *emits*; it is
+  never injected into a cached brief prefix (`doctrines/brief-cache-discipline.md`).
+  Re-anchoring costs a few tokens, not a cache eviction.
+
 #### Compose notes
 
 - `max_iterations` default is `[focus].loop_max_default` in `shepherd.toml` (default: 8). Values > 10 require critic sign-off at PLAN-GATE.
+- The **FOCUS-HEARTBEAT** re-anchor fires at every FOCUS-WAKE and, within a long ACT stretch, on the heartbeat cadence: `[focus].heartbeat_interval` wall-clock (the deterministic leg, via native `/loop`) and/or `[focus].heartbeat_actions` (default `20`, a soft best-effort self-prompt). It re-reads the durable focus record and runs the self-drift-check — no new hook or migration; the guaranteed cadence is the native `/loop` clock, the action-count is a zero-cost nudge.
+- **Disambiguation.** This FOCUS-HEARTBEAT (the orchestrator re-anchoring to its own objective) is unrelated to teammate-liveness *heartbeats* (the `heartbeats` table / `shctx teammate heartbeat` that track whether a spawned teammate is alive). The `FOCUS-` / `[focus].` prefix namespaces it; they are different subsystems that happen to share a common word.
 - When `interval` is non-null, the wake cadence is delegated to native `/loop` (`/loop <interval> /shepherd:loop --resume <id>`). The native `/loop` auto-expires after 7 days, which acts as a hard outer bound in addition to `max_iterations`.
 - Compaction safety is non-optional: `[compaction].precompact_snapshot` must be `"on"` (default) for FOCUS-LOOP to survive a mid-sprint compaction deterministically.
 - The focus record is updated at three mandatory boundaries: SEED-VERIFY (objective + invariants), each WAVE-GATE (active\_node + ready\_set + obligations), and CLOSE-FINALIZE (terminal state).
@@ -483,6 +531,8 @@ FOCUS-LOOP-DONE (conductor):
 - **Setting `interval` without native `/loop` delegation.** If `interval` is set, the wake clock MUST be delegated to `/loop` — do not poll with an inner wait. Wall-clock cadence is native `/loop`'s job.
 - **Omitting PreCompact snapshot.** Without the snapshot hook, a mid-sprint compaction loses the in-context cursor. The focus record survives but the conductor wakes disoriented.
 - **Nesting FOCUS-LOOP inside another loop.** This is a multi-level loop — restructure as a single FOCUS-LOOP whose FOCUS-ACT dispatches inner convergence work.
+- **Treating drift as a teammate-only concern.** The coordinate PROBE sweeps *teammate* scope-drift (#113); FOCUS-HEARTBEAT sweeps the *orchestrator's own* drift over a long ACT stretch. Skipping the self-drift-check is the "root wandered after hours" failure (the v6.2.2 motivating field report).
+- **Re-anchoring from memory instead of the record.** The heartbeat MUST re-read the focus record (`shctx loop focus show`); restating the objective from working memory defeats the purpose — drift is exactly when working memory has gone stale.
 
 ---
 

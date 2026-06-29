@@ -4,6 +4,66 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v6.2.2 — 2026-06-29
+
+**Cleanup + a long-sprint drift guard + a public-launch README.** A subtraction pass:
+the grafted "ponytail" review apparatus is excised in full, a new lean mechanism keeps the
+root on-task across multi-hour sprints, and the README is rebuilt to publish. No schema
+change, no new hook, no new runtime — all behavioral wiring on the existing focus spine.
+
+### Removed — the "ponytail" (full excision)
+
+The `/shepherd:ponytail` command and its `senior-engineering.md` doctrine were a copy-paste
+of an external reviewer concept grafted on as a standalone command — the opposite of the
+lean-behavioral-layer north-star. Both are gone:
+
+- **Deleted** `commands/ponytail.md` and `skills/shepherd/doctrines/senior-engineering.md`.
+- **Stripped** every reference: the `@auditor`/`@coder` profile citations + their `.reference.md`
+  mirrors, `operating-philosophy.md`, the doctrines index, `SKILL.md` (triggers, command table,
+  file-map), the `[ponytail]` config section in `docs/configuration.md`, and the example toml block.
+- **Kept** the floor: each of the eight ex-primitives built on a doctrine the flock already
+  carries (`agent-excellence.md`, `auditor-hypothesis-driven.md`, `grading-rubric.md`,
+  `wrapper-must-earn.md`, `subtract-dont-add.md`). The auditor/coder revert to those natively —
+  no quality cliff. The `AUDITOR-REFINE` loop template survives (it never depended on the command).
+
+### New — the FOCUS-HEARTBEAT (`[focus].heartbeat_actions` / `heartbeat_interval`)
+
+The field symptom: on a multi-hour sprint the root drifts off-task. The FOCUS-LOOP already
+re-anchors at every wake and survives compaction, but a long FOCUS-ACT stretch with no teammate
+event has no wake — so the north-star recedes and the root wanders. The heartbeat closes that gap:
+
+- A cadenced **re-anchor + self-drift-check** fires *within* a long active stretch, on two unequal
+  legs: `[focus].heartbeat_interval` is the **deterministic** leg (the native `/loop` owns the clock,
+  so a real wake fires on a real schedule — the one that guarantees a re-anchor); `[focus].heartbeat_actions`
+  (default 20, on) is a **soft, best-effort self-prompt**, a latent estimate, not a counted guarantee.
+  A natural wake re-anchors anyway.
+- It re-reads the focus record (never working memory), emits the compact `[FOCUS-HEARTBEAT]` block
+  (objective · active_node · invariants · next_action), then checks whether the last stretch advanced
+  the active node within invariants. Wandered → `[DRIFT-WARN] self`: return to the node, **file** the
+  digression rather than chase it inline (bounded — `subtract-dont-add.md`).
+- **Reuses** the existing focus record + native `/loop` clock + coordinate cycle. No migration, no hook —
+  which is precisely why the action-count is a soft nudge (nothing backs a counter) and the wall-clock
+  interval is the deterministic path. Cache-safe: the block is emitted, never injected into a brief prefix.
+- Wired into the FOCUS-LOOP composite (`references/workflow-templates.md`, `loop-templates.md`),
+  the root self-drift leg of the coordinate PROBE (`coordinate-active-drive.md §IV-b.3`), both
+  orchestrator profiles, `/shepherd:focus` (new `--heartbeat` flag), the config schema, and both example tomls.
+
+### Changed — README rebuilt for public release
+
+Full rewrite to a launch-ready guide: punchy hero + the failure-mode table, a 60-second mental
+model, three install paths, a five-minute quickstart, a per-command reference, eight usage
+playbooks (single sprint, patch autopilot, parallel lanes, seed authorship, the drift heartbeat,
+context inspection, bounded loops, cleanup), an under-the-hood section, troubleshooting/FAQ, and an
+accurate file map. Reflects the post-excision eight-command set (adds the previously-undocumented
+`/shepherd:focus`) and documents the heartbeat.
+
+### Verification
+
+49/49 hook smoke tests green. Zero dangling `ponytail` / `senior-engineering` / `SENIOR-STANDARD`
+references across the shipped surface. README lists exactly the eight commands that exist.
+
+---
+
 ## v6.2.1 — 2026-06-28
 
 **Self-sufficient spawn, deterministic seed teeth, leaner engineer.** A refinement

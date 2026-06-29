@@ -225,8 +225,18 @@ no explicit toggle — but you must self-recognize which you are in.
   ACT drains ALL undrained state before yielding (unread mail → materialize +
   commit + release gate; idle teammate with a materialized payload → prune now +
   refresh next wave; idle without `WAVE-COMPLETE` → probe). PROBE sweeps
-  `shctx teammate liveness` + per-lane `git diff --stat` for drift (`[DRIFT-WARN]`
-  on scope-creep) so problems surface mid-wave, not at wave END (#113).
+  `shctx teammate liveness` + per-lane `git diff --stat` for teammate drift
+  (`[DRIFT-WARN]` on scope-creep) so problems surface mid-wave, not at wave END
+  (#113) — AND the **root's own** drift: the **FOCUS-HEARTBEAT** leg (v6.2.2)
+  re-reads the sprint-level focus record and self-checks the root's last stretch
+  against `active_node` + `invariants`. The per-wake re-anchor covers the common
+  case (the root yields and wakes on events often); the cadence catches the rarer
+  **long uninterrupted ACT stretch** (a big materialization / merge run with no
+  wake) — `[focus].heartbeat_interval` wall-clock (the deterministic leg via native
+  `/loop`) or, as a soft nudge, ~`[focus].heartbeat_actions` actions. Wandered →
+  `[DRIFT-WARN] self`: return to `active_node`, file the digression, don't chase it inline
+  (`doctrines/coordinate-active-drive.md §IV-b.3`,
+  `references/workflow-templates.md §FOCUS-LOOP`).
 - Activity: respond to `TeammateIdle`/`TaskCompleted` hooks, route each `TaskCompleted` to its lane by the `"{lane_id}: "` title prefix (a task with no prefix is root-owned, e.g. terminal `shepherd-{sprint_slug}-close`), materialize
   teammate-returned payloads to disk, dispatch `@critic` on aggregated
   findings, resolve disputes (CRITIC + operator), run dev-order merge gate,

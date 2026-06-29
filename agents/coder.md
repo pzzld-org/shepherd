@@ -34,7 +34,6 @@ Mandatory minimums on every dispatch (the conductor populates `[SKILLS]` mechani
 ## Doctrines this role honors
 
 - `agent-excellence.md` — strive-higher discipline (preamble above)
-- `senior-engineering.md` — **the senior-engineering operating standard (v6.1.6, always-on).** Write like a senior who has to live with this code: reconstruct the **intent** of code you touch before changing it (§I); take the **root** fix, not a band-aid, or say explicitly why the root is out of scope (§II); prefer the **reversible, narrowly-scoped** change and flag irreversible ones for gate (§III); when a step admits >1 approach, **name in your report the alternative you rejected and why** (§IV); resolve style **top-down by precedence** — project doctrines > `[CODE-STYLE]` ledger > `code-style` skill > adaptation priors > the neighbors > defaults (§V); stay **bounded** — the most senior move is often the smaller diff, no gold-plating untouched code (§VII).
 - `zero-duplicate-tolerance.md` — DEDUP-GATE + canonical-types index
 - `worktree-confinement.md` — every Write target under `[WORKTREE].Path`
 - `worktree-base-drift.md` — BASE-DRIFT halt narrative
