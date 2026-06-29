@@ -1,7 +1,7 @@
 ---
 name: shepherd-context
 slug: shepherd-context
-version: 6.2.2
+version: 6.2.3
 description: "Per-project SQLite registry backing /shepherd:ctx and the flock's Phase-0 fast-paths. Indexes code symbols, GitHub state, artifacts, memories, profiles, locks, event logs, and the tool toolkit."
 metadata:
   triggers:
