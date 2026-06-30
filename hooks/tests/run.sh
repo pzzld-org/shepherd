@@ -345,5 +345,18 @@ else
   fails=$((fails+1))
 fi
 
+# Flock-output review wiring (v6.2.4, #167): the FLOCK-OUTPUT REVIEW gate + REDO
+# loop is behavioral wiring across a doctrine + four profiles + the invariant
+# matrix. This guard fails if any load-bearing leg is dropped or a citation dangles.
+echo "== test_flock_output_review.sh (v6.2.4 — #167 review gate + redo loop) =="
+total=$((total+1))
+if for_out=$(bash "$TESTS_DIR/test_flock_output_review.sh" 2>&1); then
+  printf '  PASS  %s\n' "flock-output-review-wired"
+else
+  printf '  FAIL  %-50s\n' "flock-output-review"
+  printf '%s\n' "$for_out" | sed 's/^/        /'
+  fails=$((fails+1))
+fi
+
 echo "—— $((total-fails))/$total passed ——"
 exit "$fails"

@@ -106,6 +106,20 @@ absence."
 | 14 | `cargo test --workspace --features full` runs before close | `Stop` close-finalize agent-hook (`hooks.json`) — extend with a since-last-commit gate check | flag → hard | **gap** — close-finalize check is a Wave-1 follow-up (#59) |
 | 15 | Conductor boot prompt's INHERITED CONTEXT carries no implementation steps | `commands/spawn.md` boot-prompt SCOPE RULE + conductor first-action check | doctrine | **gap** — SCOPE RULE is a Wave-1 follow-up (#90) |
 
+## V-bis. Flock-output review + redo (#167) — `doctrines/flock-output-review.md`
+
+| # | Invariant | Mechanism | Type | Status |
+|---|---|---|---|---|
+| 16 | A conductor holds a `review_verdict: PASS` from a wave-review `@auditor` before emitting `WAVE-COMPLETE` (no forwarding on a coder's self-gate-green claim) | TEAMMATE: root refuses a `WAVE-COMPLETE` lacking `review_verdict`+`reviewer` → `DISPATCH-CONTRACT-VIOLATION` (`agents/shepherd.md §Escalation triage`). SOLO: the close `completeness` auditor verifies every wave recorded a PASS, capping the grade otherwise | auditor + hard-block (teammate) / auditor (solo) | **live** |
+| 17 | A `REDO` verdict re-dispatches the **named** author on the **named** scope (never a blanket wave re-run), via the hot-fix vehicle ladder, capped at 3 iterations | conductor REDO loop reuses `doctrines/hotfix-dispatch.md` ladder + `REDO-CAP-EXCEEDED` HARD-STOP at iteration 3 | doctrine + halt-code | **live** |
+| 18 | Root delegates the diff-review verdict to an `@auditor` at `LANE-INTEGRATE` and forces `REDO-DIRECTIVE` through the owning teammate; root never edits teammate source | root prohibition #2 (no source writes) + `teammate_git_guard.sh` + `GATES-BROKEN` "via owning teammate" path | hard-block + doctrine | **live** |
+
+> Enforcement honesty (per this matrix's purpose): row 16's teammate leg is a hard
+> refusal (root rejects the wave); its solo leg is the close `completeness` auditor
+> (grade-capping, post-hoc), a promotion candidate for a wave-time `close_finalize_check.sh`
+> assertion. Rows 17–18 reuse existing teeth (the hot-fix ladder, the git guard, root's
+> source-write prohibition); the new surface is the proactive review *trigger*, not a new mechanism.
+
 ## VI. Promotion backlog (gaps → mechanisms)
 
 The **gap** rows above are this matrix's live to-do. Each names its target mechanism so

@@ -138,7 +138,8 @@ A typical lane walk:
 0. **WORKFLOW SELF-CHECK** (once, before the walk) — `doctrines/workflow-tool-self-check.md §I`: is the token `Workflow` in your visible tool list? NEVER `ToolSearch` for it (nothing-result is meaningless; `WORKFLOW-SELFCHECK-TOOLSEARCH` anti-pattern). Record `workflow_tool: present|absent`. **Present** → compile each gate-free segment (`shctx graph compile … --verify` → run → `shctx graph mark`), your benefit. **Absent** (web/remote, #146) → run segments as in-context `Agent(...)` batches (correct degrade path).
 1. **DEDUP-GATE** — run `[DO-NOT-DUPLICATE]` greps from the lane brief. Block if any unexpected hits.
 2. **IMPL** — dispatch `@coder` with the lane brief as the coder's brief. The coder writes to the worktree at `INVOCATION-CONTEXT.worktree_path`. Single coder per lane is the norm; complex lanes may warrant `@worker` or `@discovery` support.
-3. **LANE-CLOSE** — read coder output, verify `[ACCEPTANCE]` greps, prepare WAVE-COMPLETE payload.
+3. **FLOCK-OUTPUT REVIEW** (mandatory before WAVE-COMPLETE; `doctrines/flock-output-review.md`, #167) — dispatch ≥1 `@auditor` in `mode: wave-review` (Pattern B, concurrent with the next wave) to review the coder diffs against the four-item checklist (intent / no fragile global / no reinvention / no passes-local-breaks-CI). Hold its `review_verdict`. On `REDO`, force the named author to redo the named scope (REDO brief; hot-fix vehicle ladder; ≤3 iterations → `REDO-CAP-EXCEEDED`). Do NOT forward on a coder's self-gate-green claim.
+4. **LANE-CLOSE** — read coder output, verify `[ACCEPTANCE]` greps, prepare WAVE-COMPLETE payload (carry `review_verdict: PASS` + `reviewer`).
 
 Throughout: peer messaging permitted per `agents/conductor.md §Teammate-to-teammate communication` (status updates, joint pre-surface). No artifact writes (root materializes); no engineer/critic dispatch (root-tier-exclusive); no git commits (root commits on wave-complete).
 
@@ -152,6 +153,8 @@ SendMessage(to: lead, {
   context_files: ["<lane-output-summary>"],
   loc_delta: {add: N, del: M},
   acceptance_results: {<grep>: <count>, ...},
+  review_verdict: "PASS",                       // flock-output-review (#167); root refuses a wave without it
+  reviewer: "<wave-review auditor agent-id>",   // who reviewed the coder diffs
   workflow_tool: "present" | "absent",         // workflow-tool-self-check §III
   fanout: "compiled" | "in-context-fallback"   // how this lane ran its gate-free segments
 })

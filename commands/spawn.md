@@ -477,7 +477,12 @@ FIRST ACTION
       tool list? NEVER ToolSearch for it — that returns nothing by design and is the
       WORKFLOW-SELFCHECK-TOOLSEARCH anti-pattern. Record `workflow_tool: present|absent`
       in your first WAVE-COMPLETE. (doctrines/workflow-tool-self-check.md)
-    - Walk lane micro-Stage-Graph: DEDUP-GATE → IMPL (@coder for lane scope) → LANE-CLOSE.
+    - Walk lane micro-Stage-Graph: DEDUP-GATE → IMPL (@coder for lane scope) →
+      FLOCK-OUTPUT REVIEW → LANE-CLOSE. FLOCK-OUTPUT REVIEW (mandatory, #167): a
+      `@auditor` in `mode: wave-review` returns `review_verdict: PASS|REDO` against the
+      four-item checklist; emit WAVE-COMPLETE only on PASS, force the named author to
+      redo on REDO (≤3 iterations → `REDO-CAP-EXCEEDED`). Never forward a coder's
+      self-gate-green claim. (doctrines/flock-output-review.md)
     - For EACH gate-free agent fan-out segment in your lane (e.g. WAVE-IMPL coders,
       lane AUDIT): IF `workflow_tool: present`, run `shctx graph compile
       --segment=<entry-node> --verify`, execute the emitted `<seg>.workflow.js`
@@ -487,7 +492,9 @@ FIRST ACTION
       the segment as one in-context `Agent(...)` batch — the correct degrade path.
       Do NOT hand-roll in-context Agent step fan-out where the tool is present.
       (doctrines/workflow-compile-down.md + workflow-tool-self-check.md + dispatch-cascade.md §IV-bis)
-    - Surface WAVE-COMPLETE via SendMessage (include the `workflow_tool` field).
+    - Surface WAVE-COMPLETE via SendMessage (include `review_verdict: PASS` +
+      `reviewer`, and the `workflow_tool` field). A WAVE-COMPLETE missing the review
+      evidence is refused by root as `DISPATCH-CONTRACT-VIOLATION` (#167).
 
   Do NOT invoke /shepherd:start without --teammate — that triggers SOLO mode
   full-pipeline behavior, which is wrong for a teammate (it would re-engineer the plan,

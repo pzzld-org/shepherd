@@ -71,9 +71,9 @@ This saves ~150–650 lines of inline body per dispatch (GH #20). For a 9-coder 
 | datastore-state | schema migrations, RLS, row counts, query correctness, indexes |
 | completeness | exit criteria pass/fail, carry-forwards, GH triage, real-work test, SUBTRACT verification, issue-ledger discipline |
 
-**Trigger (mandatory):** end of every sprint (§3 close), before any merge to the patch branch, after any wave that touched money-path code, whenever the conductor suspects regression.
+**Trigger (mandatory):** end of every sprint (§3 close), before any merge to the patch branch, after any wave that touched money-path code, whenever the conductor suspects regression. **Plus (v6.2.4, #167): every wave gets ≥1 `@auditor` in `mode: wave-review`** that returns a `review_verdict: PASS|REDO` against the four-item checklist (intent / no fragile global / no reinvention / no passes-local-breaks-CI); the conductor emits `WAVE-COMPLETE` only on `PASS` and forces the named author to redo on `REDO` (`doctrines/flock-output-review.md`).
 
-**Timing — Pattern B overlap:** auditors reviewing Wave N output are dispatched **concurrently with Wave N+1 coders** in the same message batch. Do NOT wait for all coder waves to complete (per `doctrines/pattern-b-overlap.md`).
+**Timing — Pattern B overlap:** auditors reviewing Wave N output (close-mode and wave-review) are dispatched **concurrently with Wave N+1 coders** in the same message batch. Do NOT wait for all coder waves to complete (per `doctrines/pattern-b-overlap.md`).
 
 **Brief must include:** non-overlapping concern scope, plan + close-report paths, GH repo slug, report path `{paths.reports}/<date>-audit-<concern>.md`, datastore project ID if schema validation needed.
 

@@ -12,16 +12,16 @@ It is a behavioral layer, not a heavy framework. There is no build step and no s
 
 ```text
 ┌────────────────────────────────────────────────────────────────────────┐
-│  /shepherd:plant     Author drift-resistant sprint seeds (Opus)         │
-│  /shepherd:start     Run ONE sprint end-to-end, then pause for sign-off  │
-│  /shepherd:spawn     Root + teammate-conductor lanes (Agent Teams)       │
-│                        --scope <sprint|patch|minor|version>             │
-│                        --parallel <N> | --auto                          │
-│  /shepherd:focus     Keep the session on-task (focus loop + heartbeat)  │
-│  /shepherd:loop      Bounded loop-until-done (per-role templates)        │
-│  /shepherd:toolkit   Tool registry, so a session never forgets a tool   │
-│  /shepherd:ctx       Inspect / refresh the per-project SQLite context    │
-│  /shepherd:cleanup   Prune stale teammates, worktrees, locks            │
+│  /shepherd:plant    Author drift-resistant sprint seeds (Opus)         │
+│  /shepherd:start    Run ONE sprint end-to-end, then pause for sign-off │
+│  /shepherd:spawn    Root + teammate-conductor lanes (Agent Teams)      │
+│                     --scope <sprint|patch|minor|version>               │
+│                     --parallel <N> | --auto                            │
+│  /shepherd:focus    Keep the session on-task (focus loop + heartbeat)  │
+│  /shepherd:loop     Bounded loop-until-done (per-role templates)       │
+│  /shepherd:toolkit  Tool registry, so a session never forgets a tool   │
+│  /shepherd:ctx      Inspect / refresh the per-project SQLite context   │
+│  /shepherd:cleanup  Prune stale teammates, worktrees, locks            │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -56,6 +56,7 @@ A naive long-running Claude session fails in predictable ways. Shepherd answers 
 | **Duplication** | Types and helpers get re-invented because nobody grepped first. | A `[DO-NOT-DUPLICATE]` grep gate ships in every coder brief; a write-time hook blocks a new symbol that reuses an existing name or field shape. |
 | **Scope drift** | Sprints quietly grow features that were never seeded. | Every brief is anchored to the seed; the auditor's `completeness` concern fails any lane that drifted. |
 | **Audit theater** | "It passed review" because the reviewer was the context that wrote the code. | A read-only auditor swarm (3 to 5 agents, split by concern) reviews in parallel, dispatched from a separate tier. |
+| **Unreviewed handoff** | A conductor forwards a coder's diff on the coder's own "self-gate green" claim; it compiles but reinvents a helper or misses the issue's intent, so the root becomes the de-facto reviewer of every diff. | Before any wave is forwarded, the conductor holds a PASS verdict from a wave-review auditor run against a fixed checklist; a REDO verdict forces the named author to redo the named scope, capped and never blanket. |
 | **Wrapper bloat** | Hollow structs and indirection added for structure's sake. | A wrapper gate at sprint close plus a `subtract-don't-add` doctrine that asks for net-negative lines, deps, and abstractions. |
 | **Release malpractice** | Squash-merging unsigned, untested, un-tagged commits. | The conductor drives the full squash-to-main pipeline with ordered gates and signed commits. |
 | **Going off-task after hours** | On a multi-hour sprint the root slowly drifts from the objective. | A **focus loop** that survives compaction natively, plus a **focus heartbeat** that re-anchors the root to the objective on a cadence and self-checks for drift. |
@@ -263,7 +264,7 @@ Six agents, fixed contracts. `@engineer` runs on Opus (plan quality is worth it)
 ### The three-section pipeline
 
 - **Introduction.** A Phase 0 mesh audits ground truth (open issues and PRs, recent Sentry / Supabase / Fly state, carry-forwards from prior sprints). The engineer then authors the plan, and the critic gates it adversarially before a single line is written.
-- **Body.** Coder waves run with gates between them (`format`, `check`, `lint`, all configurable). The auditor swarm overlaps the last wave so review is not a serial tail.
+- **Body.** Coder waves run with gates between them (`format`, `check`, `lint`, all configurable). Each wave is also reviewed by a wave-review auditor before it is forwarded: a conductor cannot pass a wave up on a coder's self-gate-green claim, and a REDO verdict forces the named author to redo the named scope. The auditor swarm overlaps the last wave so review is not a serial tail.
 - **Close.** Merge, tag, squash-to-main, carry-forward refresh, and a written close report. Under `/shepherd:spawn`, the body fans out as lanes (vertical slices across waves), each owned by a teammate-conductor.
 
 ### The three meta tiers
@@ -346,7 +347,7 @@ Run the smoke suite any time with `bash hooks/tests/run.sh`.
 
 ### Doctrines
 
-Framework-intrinsic behavioral rules live in `skills/shepherd/doctrines/`. Each is paired with a mechanism (a hook, a guard, or a halt code) in the invariant-enforcement matrix, so a doctrine is a rule with teeth, not prose. Current doctrines include `subtract-dont-add`, `wrapper-must-earn`, `dispatch-tier-separation`, `coordinate-active-drive`, `loop-templates`, `toolkit`, `self-improvement`, `adaptation-loop`, `brief-cache-discipline`, and more.
+Framework-intrinsic behavioral rules live in `skills/shepherd/doctrines/`. Each is paired with a mechanism (a hook, a guard, or a halt code) in the invariant-enforcement matrix, so a doctrine is a rule with teeth, not prose. Current doctrines include `subtract-dont-add`, `wrapper-must-earn`, `dispatch-tier-separation`, `coordinate-active-drive`, `flock-output-review`, `loop-templates`, `toolkit`, `self-improvement`, `adaptation-loop`, `brief-cache-discipline`, and more.
 
 ---
 
@@ -448,7 +449,7 @@ Shepherd follows semver:
 - **Minor**: new commands, doctrines, or config keys (backward-compatible).
 - **Patch**: dispatch logic, doctrine, and brief-template fixes.
 
-Current version: **6.2.3**. See [`CHANGELOG.md`](CHANGELOG.md) for the per-version history.
+Current version: **6.2.4**. See [`CHANGELOG.md`](CHANGELOG.md) for the per-version history.
 
 ---
 
