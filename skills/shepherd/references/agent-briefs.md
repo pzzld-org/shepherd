@@ -159,6 +159,27 @@ MUST NOT TOUCH:
 > (cherry-pick conflict storm). See `doctrines/conductor-cwd.md` for the
 > companion conductor discipline.
 
+### `@coder` — REDO variant (v6.2.4, #167)
+
+When a wave-review `@auditor` returns a `REDO` verdict, re-dispatch the **named**
+author (or hot-fix cluster) on the **same** `[FILE-SCOPE]` with the coder brief above,
+plus one appended `[REDO]` block. (A close-mode finding takes the existing HOTFIX path,
+not REDO.) Do NOT widen scope or blanket-re-run
+the wave. Per `doctrines/flock-output-review.md`.
+
+```
+[REDO]
+[PRIOR-DISPATCH]
+- Author: {coder/cluster id} @ {prior dispatch ISO-8601}
+- Verdict finding (verbatim from the auditor's `Suggested redo`):
+  {paste the finding — what failed against intent / fragile-global / reinvention / passes-local-breaks-CI}
+
+[REDO-CONSTRAINT]
+- Fix ONLY the named items above. Identical `[FILE-SCOPE]`; no adjacent refactor.
+- If the fix needs a symbol/file outside scope, HALT with a finding — do not expand.
+- Iteration {k} of ≤3. The conductor raises `REDO-CAP-EXCEEDED` → HARD-STOP at 3.
+```
+
 ---
 
 ## `@critic` — adversarial gate
@@ -207,6 +228,30 @@ You are @auditor — concern: {code-quality | data-flow | dependency-topology | 
 Read your full system prompt at ${CLAUDE_PLUGIN_ROOT}/agents/auditor.md for behavioral contract.
 
 **Filing GH issues:** every HIGH/CRITICAL finding gets an issue created via `mcp__plugin_github_github__issue_write`. Include severity, location, recommendation, suggested hot-fix [FILE-SCOPE] + [ACCEPTANCE].
+```
+
+### `@auditor` — wave-review variant (v6.2.4, #167)
+
+Dispatched once per wave (Pattern B, concurrent with the next wave's coders) to gate `WAVE-COMPLETE`. Returns a PASS/REDO verdict, not a grade. Per `doctrines/flock-output-review.md`.
+
+```
+You are @auditor — mode: wave-review. READ-ONLY.
+
+**Sprint / lane / wave:** {sprint_branch} / {lane_id} / w{N}
+**Wave coder diffs:** {list from `git diff {wave_base}..HEAD --name-only`} per coder
+**Linked issue intent:** {the issue/seed promise THIS wave was dispatched to satisfy}
+**Report path:** `{paths.reports}/<date>-audit-wave-review-{lane_id}-w{N}.md`  (the `audit-` prefix keeps it inside the @auditor write-allow path enforced by `lock_guard.sh`)
+
+Apply the four-item checklist to EACH coder diff (full Hypothesis + Falsification + Confidence per hit):
+1. Intent — satisfies the linked issue's INTENT, not merely compiles/passes gates.
+2. No fragile global — no global/unstable build flag or workspace-wide feature for one local call site.
+3. No reinvention — no canonical helper/type re-created under a new name (doctrines/zero-duplicate-tolerance.md).
+4. No passes-local-breaks-CI — no env-overrides-config, feature-resolution divergence, or stale-incremental false green.
+
+Each hit carries a `Suggested redo` block: { author, scope, change }. Emit the `## WAVE-REVIEW VERDICT`
+block from agents/auditor.md §Modes (review_verdict: PASS | REDO). No grade.
+
+Read your full system prompt at ${CLAUDE_PLUGIN_ROOT}/agents/auditor.md for behavioral contract.
 ```
 
 ---

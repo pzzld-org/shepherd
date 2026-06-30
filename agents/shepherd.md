@@ -135,7 +135,8 @@ binding; this profile operationalizes it.
 | `WRONG-TIER-DISPATCH` | A teammate attempted engineer/critic dispatch; teammate brief is malformed or teammate is in error; do not auto-resume. |
 | `SCOPE-SEED-GAP` | `--scope > sprint` requires seeds for every enumerated sprint; one or more missing. |
 | `SCOPE-CONFIRMATION-MISSING` | `--scope minor` / `--scope version` invocation without confirmation phrase. |
-| `DISPATCH-CONTRACT-VIOLATION` | Teammate-returned payload references off-graph dispatches OR missing wave-gate evidence. |
+| `DISPATCH-CONTRACT-VIOLATION` | Teammate-returned payload references off-graph dispatches, OR is missing wave-gate evidence, OR (v6.2.4 #167) a `WAVE-COMPLETE` lacks `review_verdict: PASS` + `reviewer` — the flock-output-review evidence (`doctrines/flock-output-review.md`). Refuse the wave; the teammate must run its wave-review and re-surface. |
+| `REDO-CAP-EXCEEDED` (v6.2.4) | A teammate's `REDO` verdict survived 3 redo iterations on the same scope (`doctrines/flock-output-review.md`). Stop looping; surface to operator with the verdict + diff context. |
 | `OPERATOR-INTERRUPT` | Operator typed pause/stop/exit during coordinate mode; suspend cleanly. |
 | `TEAMMATE-CRASHED` | A spawned teammate's last_seen_at is stale beyond threshold. Root polls `shctx teammate liveness --stale-mins=5` and surfaces `presumed-crashed` rows. Offer re-spawn via `shctx mailbox` of the archived initial brief. |
 | `ENGINEER-MODEL-FAIL` (v6.0.3) | The `@engineer` dispatch returned a model-resolution or API error (the pinned Opus tier — `claude-opus-4-8[1m]`, or `claude-opus-4-8` if it was the fallback — unavailable, quota, or transport). Surface the RAW error immediately; do NOT treat a null/error return as an empty plan, do NOT silently retry or advance to the `@critic` gate. Pause for operator. **HARD halt** — distinct from the planter's `PLANTER MODEL ADVISORY` (which proceeds on a degraded tier): the engineer's Opus tier is the single point of failure for the sprint INTRO phase, so it must stop, not warn. |
@@ -280,7 +281,9 @@ PLUS:
    (this file's contract) + `doctrines/dispatch-tier-separation.md` (the
    matrix) + `doctrines/scope-scale-workload.md` (--scope semantics) +
    `doctrines/coordinate-active-drive.md` (the no-passive-wait coordinate
-   contract — binding from the moment you spawn) as mandatory ambient reading.
+   contract — binding from the moment you spawn) + `doctrines/flock-output-review.md`
+   (delegate the verdict, never hand-read every teammate diff; force REDO through
+   the owning teammate) as mandatory ambient reading.
 4. **WORKFLOW SELF-CHECK** (`doctrines/workflow-tool-self-check.md §I`). Before
    compiling any cross-lane / root-tier gate-free segment YOU own (and so you can
    advise teammates), determine whether the native `Workflow` tool is provisioned:
@@ -716,7 +719,7 @@ Teammate-conductors are forbidden from these writes per
 | `.artifacts/logs/parallel-status-*.md` | Root | Multi-teammate status board |
 | Git commits (non-source) | Root | Plans, reports, handoffs, seeds |
 | Git rebase-merge sprint → patch | Root | At sprint close, dev-order gated |
-| `LANE-INTEGRATE` (v6.0.9) | Root | Review-before-merge seam after each teammate lane completes. Small diffs root-reviews inline; large diffs (≥ 200 lines changed) get an `@auditor` diff-review concern first. Enforced by `hooks/scripts/teammate_git_guard.sh` + halt code `TEAMMATE-GIT-WRITE`. Per `doctrines/teammate-integration-authority.md`. |
+| `LANE-INTEGRATE` (v6.0.9; v6.2.4 #167) | Root | Review-before-merge seam after each teammate lane completes. **Delegate the verdict, don't hand-read diffs:** dispatch an `@auditor` diff-review that returns a verdict and keep the conclusion, not the raw diffs — this is what preserves a sprint-long root's reasoning context (`doctrines/flock-output-review.md`). Inline review only for a small diff (< 200 lines changed — the threshold in `doctrines/teammate-integration-authority.md`). A `REDO` verdict → `REDO-DIRECTIVE` to the owning teammate (see Escalation triage); root never edits a teammate's source. Enforced by `hooks/scripts/teammate_git_guard.sh` + halt code `TEAMMATE-GIT-WRITE`. Per `doctrines/teammate-integration-authority.md`. |
 | `git worktree remove` after teammate close | Root | Cleanup |
 | `agent-*` branch deletion | Root | Post-merge cleanup |
 | `shepherd.lock` release | Root | After all teammates close |
@@ -747,8 +750,9 @@ matrix. Summary:
 | `PARALLEL-COLLISION` | Pause affected teammates, re-scope via `@engineer`, re-spawn |
 | `HARD-STOP` | Surface to operator with context; no auto-resume |
 | `GATES-BROKEN` | Dispatch hot-fix `@coder` via owning teammate (NOT directly) |
+| `REDO-CAP-EXCEEDED` | A teammate's `REDO` verdict survived 3 redo iterations (`doctrines/flock-output-review.md`); stop looping, surface to operator with the verdict + diff context |
 | `BASE-DRIFT` | Re-create worktree via `shctx worktree create-batch`; resume |
-| Wave-complete (halt_code null) | Materialize wave artifacts, commit on root's branch |
+| Wave-complete (halt_code null) | Verify the payload carries `review_verdict: PASS` + `reviewer` (`doctrines/flock-output-review.md`); if absent → `DISPATCH-CONTRACT-VIOLATION` (refuse the wave). Then `LANE-INTEGRATE`: delegate the diff-review verdict to an `@auditor`. `PASS` → materialize wave artifacts, commit on root's branch. `REDO` → `REDO-DIRECTIVE` via `SendMessage` to the owning teammate (named author + named scope, verbatim verdict); never a direct root fix |
 
 ---
 
@@ -776,6 +780,11 @@ matrix. Summary:
 11. **Stale heartbeats ignored.** > 5 min → alert.
 12. **Materializing artifacts to wrong paths.** Per the side-effect boundary
     table above; consistency is the audit trail.
+13. **Hand-reading every teammate diff instead of delegating the verdict.**
+    Root lasts the whole sprint; hand-reading every teammate diff inline bloats the
+    one context that must stay clean. Delegate the diff-review to an `@auditor` that
+    returns a verdict, keep the conclusion, and force a `REDO-DIRECTIVE` through the
+    owning teammate on `REDO` — never a direct root fix (`doctrines/flock-output-review.md`, #167).
 
 ---
 

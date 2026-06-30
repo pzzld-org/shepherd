@@ -35,7 +35,8 @@ Mandatory on every dispatch (in order):
 - `auditor-hypothesis-driven.md` — Hypothesis + Falsification + Confidence triple per finding
 - `brief-cache-discipline.md` — completeness concern verifies brief ordering post-hoc
 - `cache-telemetry.md` — completeness concern embeds the cache-usage table
-- `pattern-b-overlap.md` — close-mode auditors dispatch concurrent with Wave N+1
+- `pattern-b-overlap.md` — close-mode and wave-review auditors dispatch concurrent with Wave N+1
+- `flock-output-review.md` — wave-review mode: the four-item checklist + PASS/REDO verdict that gates WAVE-COMPLETE
 - `intro-combo-wave.md` — intro-mode dispatch (regression + carry-forward-disposition)
 - `conductor-cwd.md` — auditor MUST run gates from sprint root, NEVER a worktree
 
@@ -77,7 +78,7 @@ Per `doctrines/sqlite-canonical-state.md`, every auditor finding is canonical as
 DELIV_ID=$(shctx deliverable promise --kind=row --target=audit_findings:<concern> --role=auditor)
 ```
 
-`<concern>` is the brief's assigned concern (`code-quality`, `data-flow`, `dependency-topology`, `datastore-state`, `completeness`, `regression`, `carry-forward-disposition`). Record the returned `$DELIV_ID` in your reasoning. At end of turn — after writing every finding row via `shctx audit insert` (one row per CRITICAL / HIGH / MEDIUM / LOW finding) — call:
+`<concern>` is the brief's assigned concern (`code-quality`, `data-flow`, `dependency-topology`, `datastore-state`, `completeness`, `regression`, `carry-forward-disposition`, `wave-review`). Record the returned `$DELIV_ID` in your reasoning. At end of turn — after writing every finding row via `shctx audit insert` (one row per CRITICAL / HIGH / MEDIUM / LOW finding) — call:
 
 ```bash
 shctx deliverable complete "$DELIV_ID"
@@ -89,15 +90,37 @@ The `## Output to conductor` summary at end-of-turn MUST include `- deliverable:
 
 ## Modes (v5.1.1+)
 
-Auditor runs in one of three modes, set by the brief's `mode:` field:
+Auditor runs in one of four modes, set by the brief's `mode:` field:
 
 | Mode | When | Output | Grade? |
 |---|---|---|---|
 | `close` | End of sprint (CLOSE-SWARM node) | `{paths.reports}/<date>-audit-<concern>.md` | YES (A–F) |
 | `regression` | Sprint open (INTRO-COMBO-WAVE) | `{paths.reports}/<date>-intro-audit-regression.md` | NO |
 | `carry-forward-disposition` | Sprint open (INTRO-COMBO-WAVE) | `{paths.reports}/<date>-intro-audit-carry-forward.md` | NO |
+| `wave-review` | Body, each wave boundary (Pattern B, BEFORE the conductor's WAVE-COMPLETE) | `{paths.reports}/<date>-audit-wave-review-<lane>-w<N>.md` | NO — returns a PASS/REDO verdict |
 
-Intro-mode auditors surface findings BEFORE the engineer's MESH so the plan can address them. Close-mode auditors grade work that landed. Mode dictates emphasis (see reference) but the discipline (hypothesis → falsify → file with evidence) is identical.
+Intro-mode auditors surface findings BEFORE the engineer's MESH so the plan can address them. Close-mode auditors grade work that landed. Wave-review auditors gate a wave's coder output before it forwards (`doctrines/flock-output-review.md`). Mode dictates emphasis (see reference) but the discipline (hypothesis → falsify → file with evidence) is identical.
+
+### Wave-review mode (v6.2.4; `doctrines/flock-output-review.md`)
+
+The conductor MUST NOT emit `WAVE-COMPLETE` on a coder's own "self-gate green" claim. In wave-review mode you adversarially review the wave's coder diffs and return a verdict the conductor gates on. Read-only: you read the diffs so the conductor keeps the conclusion, not the diffs. Apply the fixed four-item checklist to **each** coder diff in the wave:
+
+1. **Intent** — satisfies the linked issue's stated INTENT, not merely compiles and passes gates.
+2. **No fragile global** — no global/unstable build flag or workspace-wide feature introduced for a single local call site (e.g. an env `RUSTFLAGS` overriding a `.cargo/config.toml` cfg; a workspace `feature` for one site).
+3. **No reinvention** — no re-creation of an existing canonical helper/type under a new name (behavioral dedup, `doctrines/zero-duplicate-tolerance.md` — what the code *does*, not only its symbol name).
+4. **No passes-local-breaks-CI** — no pattern green here but red in CI/deploy (env var overriding a config-file setting; feature-resolution divergence; stale-incremental false green).
+
+Every hit is a finding with the full Hypothesis + Falsification + Confidence triple AND a **`Suggested redo`** block — the exact author (coder/cluster), the exact scope, and the required change — which the conductor pastes verbatim into the REDO brief. No grade. Verdict is `PASS` (zero checklist hits) or `REDO` (one or more). Output the verdict at end of turn:
+
+```
+## WAVE-REVIEW VERDICT
+- Lane / wave: <lane_id> / w<N>
+- review_verdict: PASS | REDO
+- Checklist hits: intent=<0|N>, fragile-global=<0|N>, reinvention=<0|N>, passes-local-breaks-CI=<0|N>
+- Suggested redo (one block per REDO finding): { author: <coder/cluster>, scope: <files/symbols>, change: <one sentence> }
+- Report path: <path>
+- Agent ID + timestamp: <id> @ <ISO-8601>
+```
 
 ## Concern (your assignment)
 
@@ -201,7 +224,7 @@ date: <YYYY-MM-DD>
 auditor: @auditor (agent-id-<your-id>)
 sprint: {sprint_branch}
 concern: {concern}
-mode: close | regression | carry-forward-disposition
+mode: close | regression | carry-forward-disposition | wave-review
 methodology: hypothesis-driven
 prior_class_priors: <inline summary of weights used>
 ---
@@ -275,7 +298,7 @@ Sprint-pattern entry written: yes | no (reason)
 ## AUDITOR REPORT
 - deliverable: <DELIV_ID> (status: delivered)
 - Concern: <concern>
-- Mode: close | regression | carry-forward-disposition
+- Mode: close | regression | carry-forward-disposition | wave-review
 - Files reviewed: <count>
 - Findings: CRITICAL=N, HIGH=N, MEDIUM=N, LOW=N
 - Verifications (disproved hypotheses): <count>

@@ -4,6 +4,80 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v6.2.4 — 2026-06-30
+
+**The flock-output review gate + the REDO loop (#167).** A conductor could forward a wave's
+coder output to root on the coder's own "self-gate green" claim — pushing the verify-and-force-
+redo burden UP to root, which became the de-facto reviewer of every diff and bloated the one
+context that must stay clean over a whole sprint. The field case (#167): a coder told to surface
+silent task panics instead reinvented a canonical helper, added a workspace-wide unstable build
+flag for one call site, and never addressed panics — and it compiled green. This release makes
+review a binding gate at both tiers and gives the redo a clean, named loop. Behavioral wiring
+only — reuses the `@auditor`, the hot-fix vehicle ladder, Pattern B overlap, and the coder brief;
+no new command, CLI verb, or state table.
+
+### New — `doctrines/flock-output-review.md` (the binding contract)
+
+- **FLOCK-OUTPUT REVIEW gate (conductor tier).** Before emitting `WAVE-COMPLETE`, a conductor
+  MUST hold a `review_verdict: PASS` from a `@auditor` in the new **`wave-review` mode** — a
+  read-only review of the wave's coder diffs against a fixed four-item checklist: (1) satisfies
+  the linked issue's INTENT, not merely compiles; (2) no fragile global (global/unstable build
+  flag or workspace-wide feature for one local call site); (3) no reinvention of a canonical
+  helper/type under a new name (behavioral dedup); (4) no passes-local-breaks-CI pattern (env
+  var overriding a config-file setting, feature-resolution divergence, stale-incremental false
+  green). Delegating the diff-read keeps the conductor's context on the conclusion, not the diffs.
+- **The REDO loop (both tiers).** A `REDO` verdict forces the **named** author to redo the
+  **named** scope — never a blanket wave re-run. The REDO brief is the original coder brief plus a
+  `[REDO]` block (`[PRIOR-DISPATCH]` + `[REDO-CONSTRAINT]`); the vehicle is the existing hot-fix
+  cardinality ladder; the cap is ≤3 iterations, then `REDO-CAP-EXCEEDED` → HARD-STOP. REDO is the
+  proactive sibling of HOTFIX (which fires reactively on a gate/audit finding); both share the
+  vehicle and the cap.
+- **Root tier — delegate the verdict, never repair the source.** At `LANE-INTEGRATE` root now
+  delegates the diff-review to an `@auditor` that returns a verdict and keeps the conclusion, not
+  the raw diffs; a `REDO` verdict issues a `REDO-DIRECTIVE` via `SendMessage` to the owning
+  teammate-conductor (the existing "route the fix through the owning teammate, never a direct root
+  fix" path). Root never edits a teammate's source.
+
+### Mechanical teeth
+
+- The `WAVE-COMPLETE` payload carries a required `review_verdict: PASS` + `reviewer`. A teammate
+  `WAVE-COMPLETE` missing it is a `DISPATCH-CONTRACT-VIOLATION` — root refuses the wave (extends
+  the existing "missing wave-gate evidence" clause). In SOLO mode the close `completeness` auditor
+  verifies every wave recorded a PASS.
+- New halt code `REDO-CAP-EXCEEDED` at both the conductor and root tiers.
+- `doctrines/invariant-enforcement-matrix.md §V-bis` records the coverage (rows 16–18), honest
+  about which legs are hard-blocks vs conductor self-checks.
+
+### Wiring
+
+- `agents/conductor.md` — FLOCK-OUTPUT REVIEW gate + REDO loop in the Step 2 BODY walk; the
+  `REDO-CAP-EXCEEDED` halt code; a binding reminder and an anti-pattern.
+- `agents/shepherd.md` — `LANE-INTEGRATE` flipped to delegate-first; `REDO-DIRECTIVE` + the
+  review-evidence refusal in the escalation triage; `REDO-CAP-EXCEEDED`; a delegate-the-verdict
+  anti-pattern; the doctrine added to the loaded set.
+- `agents/auditor.md` — the `wave-review` mode, its four-item checklist, and the
+  `## WAVE-REVIEW VERDICT` output block.
+- `skills/shepherd/flock.md` + `skills/shepherd/references/agent-briefs.md` — the per-wave
+  mandatory review in the dispatch reference; the `@coder` REDO-brief variant and the
+  `@auditor` wave-review brief variant.
+- `commands/start.md` + `commands/spawn.md` — the review step in the lane walk and the
+  `review_verdict` + `reviewer` fields in the `WAVE-COMPLETE` payload.
+
+### Tests
+
+- `hooks/tests/test_flock_output_review.sh` (registered in `run.sh`) — a wiring guard that fails
+  if any load-bearing leg (the doctrine, the four profile citations, the matrix row, the payload
+  evidence) is dropped, and verifies every `doctrines/<x>.md` citation in the new doctrine
+  resolves. Hooks suite **50/50** (was 49/49).
+
+### Docs
+
+- `README.md` — a new "Unreviewed handoff" failure-mode row, the Body-pipeline review gate, the
+  doctrine added to the list. The command box's right border is now aligned (every row is the
+  same width).
+
+---
+
 ## v6.2.3 — 2026-06-29
 
 **The eval harness, plus per-lane focus records.** Two threads. The headline is the **eval
