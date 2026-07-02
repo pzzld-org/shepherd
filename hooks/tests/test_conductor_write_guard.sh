@@ -173,6 +173,31 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# 10b-10c. Sprint branch + git checkout / git switch → DENY (v6.2.7 HEAD-drift
+# fix — a plain checkout/switch is a write-shaped command too, not just `-b`).
+# ---------------------------------------------------------------------------
+for hd_case in 'git checkout agent-lane-a' 'git switch agent-lane-a'; do
+  total=$((total+1))
+  out=$(run_hook "$(P_BASH sess-solo tu-10b "$hd_case")")
+  if is_deny "$out" && has_code "$out" "CONDUCTOR-GIT-WRITE-DENIED"; then
+    pass "sprint-branch + Bash '$hd_case': DENY (HEAD-drift)"
+  else
+    fail "sprint-branch + Bash '$hd_case': DENY" "out=${out:0:150}"
+  fi
+done
+
+# ---------------------------------------------------------------------------
+# 10d. Sprint branch + git branch --show-current → PASS (read-only, not -d/-D).
+# ---------------------------------------------------------------------------
+total=$((total+1))
+out=$(run_hook "$(P_BASH sess-solo tu-10d 'git branch --show-current')")
+if ! is_deny "$out"; then
+  pass "sprint-branch + git branch --show-current: PASS (read-only)"
+else
+  fail "sprint-branch + git branch --show-current: PASS" "unexpected deny: ${out:0:150}"
+fi
+
+# ---------------------------------------------------------------------------
 # 11-12. Sprint branch + git log / git status → PASS.
 # ---------------------------------------------------------------------------
 for ro_case in 'git log --oneline -20' 'git status'; do
