@@ -33,10 +33,10 @@ shepherd.md`, `agents/conductor.md`, `commands/spawn.md`, `commands/
 start.md`, `skills/shepherd/SKILL.md`, `flock.md`) points here.
 
 **INTRODUCTION (§1) — root-direct subagents.** Root dispatches the
-INTRO-COMBO-WAVE (`@discovery` × N + intro-mode `@auditor` × 2) in one `Agent`
-batch as direct subagents (no `team_name`), then `@engineer` (Opus) and
-`@critic` (Sonnet) to author and gate the plan. Root materializes the plan
-and runs the operator-approval gate. No teammate spawns during INTRO — the
+INTRO-COMBO-WAVE (`@discovery` × N + intro-mode `@auditor` × 2) as one
+`Agent` batch of direct subagents (no `team_name`), then `@engineer` (Opus)
+and `@critic` (Sonnet) to author and gate the plan, materializes it, and
+runs the operator-approval gate. No teammate spawns during INTRO — the
 resulting plan is the shared contract every teammate inherits.
 
 **BODY (§2) — teammate-conductors, one per lane.** Once approved, root
@@ -155,17 +155,16 @@ operator-question needs explicit operator input first).
 ## V. Two-meta-loading (shepherd + planter)
 
 When `/shepherd:spawn` fires and `/shepherd:plant` was already invoked in the
-same session, the shepherd profile **augments** the planter profile rather
-than replacing it: planter behaviors (seed authorship, mesh writing,
-hand-off authorship) stay available — root's route for mid-spawn seed
-amendments — while shepherd behaviors (engineer/critic dispatch, teammate
-coordination, artifact materialization) overlay on top. If both describe the
-same surface (e.g. carry-forward ledger ownership), shepherd wins for the
-spawn session; planter regains ownership when spawn closes.
-
-Practically: the operator can run `/shepherd:plant dev.0..dev.LAST` then
-`/shepherd:spawn --scope patch --auto` in the same session without
-re-loading — shepherd is the outer frame, planter the inner frame.
+same session, the shepherd profile **augments** rather than replaces the
+planter profile: planter behaviors (seed authorship, mesh writing, hand-off
+authorship) stay available for mid-spawn seed amendments, while shepherd
+behaviors (engineer/critic dispatch, teammate coordination, materialization)
+overlay on top. Where both describe the same surface (e.g. carry-forward
+ledger ownership), shepherd wins for the spawn session; planter regains
+ownership when spawn closes. Practically: the operator can run
+`/shepherd:plant dev.0..dev.LAST` then `/shepherd:spawn --scope patch --auto`
+in the same session without re-loading — shepherd is the outer frame,
+planter the inner.
 
 ---
 
@@ -176,14 +175,14 @@ Teammates surface escalations via `SendMessage`; channel mechanics are in
 
 | Halt code (from teammate) | Root response |
 |---|---|
-| `PLAN-AUTHORSHIP-REQUEST` | Dispatch `@engineer` with full context; return amended plan path |
+| `PLAN-AUTHORSHIP-REQUEST` | Dispatch `@engineer`; return amended plan path |
 | `PLAN-GATE-REQUEST` | Dispatch `@critic` on latest revision; return verdict |
-| `WRONG-TIER-DISPATCH` | Process violation — patch brief with correct escalation pattern; do NOT auto-resume; surface to operator |
+| `WRONG-TIER-DISPATCH` | Process violation — patch brief; do NOT auto-resume; surface to operator |
 | `CROSS-TEAMMATE-DISPUTE` | Collect both positions, dispatch `@critic`, surface verdict |
-| `SEED-DRIFT-DETECTED` | Delegate to planter (if loaded) or inline; amend seed; resume after approval |
+| `SEED-DRIFT-DETECTED` | Delegate to planter or inline; amend seed; resume after approval |
 | `PARALLEL-COLLISION` | Pause affected teammates; amend plan via `@engineer`; re-spawn |
 | `HARD-STOP` | Surface to operator with full context; do NOT auto-resume |
-| `GATES-BROKEN` | Dispatch hot-fix `@coder` lane(s) via the owning teammate (never direct) |
+| `GATES-BROKEN` | Dispatch hot-fix `@coder` via the owning teammate (never direct) |
 | Wave-complete (`halt_code` null) | Materialize artifacts; advance merge gate; commit |
 
 Heartbeat staleness (>5 min no message) is alerted to the operator; do NOT

@@ -28,6 +28,7 @@
 .artifacts/pauses/
 .artifacts/runs/
 .artifacts/memory/
+.artifacts/filetree.json
 
 # shepherd context registry + hook runtime state (.shepherd/ namespace — default)
 .shepherd/shepherd.db
@@ -48,6 +49,7 @@
 .shepherd/pauses/
 .shepherd/runs/
 .shepherd/memory/
+.shepherd/filetree.json
 
 # toolkit.json is TRACKED — explicitly un-ignore in case *.json patterns are added later
 !.artifacts/toolkit.json
