@@ -210,6 +210,17 @@ sprint**:
 
 Under `/shepherd:start` (solo), the existing T-shirt defaults apply unchanged.
 
+**Self-contained engineer — the wave is relocated, not skipped (v6.2.6).** When
+root spawns a **self-contained `@engineer` teammate** (`doctrines/engineer-self-contained-plan.md`),
+the INTRO-COMBO-WAVE is **run by the engineer, in its own session**, instead of by
+root — the engineer dispatches the `@discovery` + intro-`@auditor` batch as its
+read-only sub-flock. The wave still fires (the always-on certification is
+preserved and its reports still land); only the **dispatcher and the context
+window** move. Root running its own wave AND spawning a self-contained engineer
+would double the work — root skips its wave precisely because the engineer runs
+it. This is the "same workflow, compartmentalized" migration: it takes the
+majority of discovery + critic context out of root's window.
+
 ## When the wave fires vs. when it doesn't
 
 | Sprint scope | `/shepherd:start` (solo) | `/shepherd:spawn` |

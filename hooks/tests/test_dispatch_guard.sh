@@ -83,6 +83,45 @@ expect_block "teammate-by-cwd (.worktrees) dispatches engineer" \
 expect_pass  "root-by-cwd (normal) dispatches engineer" \
   dispatch_guard.sh '{"session_id":"s1","cwd":"/repo","tool_name":"Agent","tool_input":{"subagent_type":"shepherd:engineer"}}'
 
+echo "== dispatch_guard.sh — v6.2.6 engineer self-contained topology (#172) =="
+# 4b — a self-contained engineer dispatched as a SUBAGENT is the wrong topology
+# (must be a named teammate-spawn). The mode marker in the brief is the signal.
+expect_block "self-contained engineer as subagent (ENGINEER-TOPOLOGY-MISMATCH)" \
+  dispatch_guard.sh "$(P '{"subagent_type":"shepherd:engineer","prompt":"[INVOCATION-CONTEXT].mode: self-contained\ndispatcher: root-shepherd"}')"
+# Classic engineer dispatch (no mode marker) is unaffected — still a valid subagent.
+expect_pass  "classic engineer subagent (no mode marker) still passes" \
+  dispatch_guard.sh "$(P '{"subagent_type":"shepherd:engineer","prompt":"[INVOCATION-CONTEXT].mode: classic"}')"
+# 4 — a teammate dispatching @engineer is ALWAYS refused (no nested/phantom engineer),
+# even carrying the self-contained marker.
+expect_block "teammate dispatches @engineer (nested, marked)" \
+  dispatch_guard.sh "$(P '{"subagent_type":"shepherd:engineer","prompt":"[INVOCATION-CONTEXT].mode: self-contained"}')" CLAUDE_TEAMMATE_NAME=lane-a
+# 4' — the self-contained ENGINEER teammate MAY dispatch @critic on its own plan
+# (brief tagged dispatcher: engineer-self-contained) — its adversarial self-gate.
+expect_pass  "engineer teammate dispatches marked @critic (self-gate)" \
+  dispatch_guard.sh "$(P '{"subagent_type":"shepherd:critic","prompt":"[INVOCATION-CONTEXT].dispatcher: engineer-self-contained"}')" CLAUDE_TEAMMATE_NAME=lane-a
+# 4' — but a conductor lane (no marker) still cannot re-gate a fixed plan.
+expect_block "conductor lane dispatches @critic (no marker, re-gate)" \
+  dispatch_guard.sh "$(P '{"subagent_type":"shepherd:critic","prompt":"gate this plan"}')" CLAUDE_TEAMMATE_NAME=lane-a
+# The engineer teammate MAY also run its intro-audit wave (@auditor is not tier-blocked).
+expect_pass  "engineer teammate dispatches @auditor (intro wave)" \
+  dispatch_guard.sh "$(P '{"subagent_type":"shepherd:auditor","prompt":"[INVOCATION-CONTEXT].dispatcher: engineer-self-contained"}')" CLAUDE_TEAMMATE_NAME=lane-a
+# 4c — a marked engineer sub-flock dispatch may target ONLY {discovery,auditor,critic};
+# a marked dispatch to a WRITE role is refused (no code is touched in this phase).
+expect_block "engineer marked dispatch to @coder (ENGINEER-SUBFLOCK-VIOLATION)" \
+  dispatch_guard.sh "$(P '{"subagent_type":"shepherd:coder","prompt":"[INVOCATION-CONTEXT].dispatcher: engineer-self-contained"}')" CLAUDE_TEAMMATE_NAME=lane-a
+expect_block "engineer marked dispatch to @worker (ENGINEER-SUBFLOCK-VIOLATION)" \
+  dispatch_guard.sh "$(P '{"subagent_type":"shepherd:worker","prompt":"[INVOCATION-CONTEXT].dispatcher: engineer-self-contained"}')" CLAUDE_TEAMMATE_NAME=lane-a
+expect_pass  "engineer marked dispatch to @discovery (sub-flock ok)" \
+  dispatch_guard.sh "$(P '{"subagent_type":"shepherd:discovery","prompt":"[INVOCATION-CONTEXT].dispatcher: engineer-self-contained"}')" CLAUDE_TEAMMATE_NAME=lane-a
+
+echo "== dispatch_guard.sh — v6.2.6 marker robustness (false-positive / block-form) =="
+# False positive fixed: a CLASSIC brief that merely mentions the phrase in prose is NOT blocked.
+expect_pass  "classic brief mentioning 'mode: self-contained' in prose (no false block)" \
+  dispatch_guard.sh "$(P '{"subagent_type":"shepherd:engineer","prompt":"[INVOCATION-CONTEXT].mode: classic\nNote: do NOT run in mode: self-contained here."}')"
+# Block form of the marker (indented under an [INVOCATION-CONTEXT] header) still fires 4b.
+expect_block "block-form mode marker (indented) still ENGINEER-TOPOLOGY-MISMATCH" \
+  dispatch_guard.sh "$(P '{"subagent_type":"shepherd:engineer","prompt":"[INVOCATION-CONTEXT]\n  dispatcher: root-shepherd\n  mode: self-contained\n"}')"
+
 echo "== bash_guard.sh — #89 inversion 1 (workflow spawns teammates) BLOCKED =="
 mkdir -p .shepherd/graph/compiled
 # A faithful compiled workflow: only subagent spawns → PASS.

@@ -48,7 +48,10 @@
 #   1. subagent_type ∈ {∅, general-purpose, Explore, Chat}     → DISPATCH-MISSING-SUBAGENT-TYPE  (deny)  [mechanical]
 #   2. teammate-session AND team_name set                       → TEAMMATE-NESTING-ATTEMPT        (deny)  [defence-in-depth]
 #   3. team_name set AND subagent_type ≠ shepherd:conductor     → DISPATCH-TEAMMATE-TYPE-MISMATCH (deny)  [defence-in-depth; #66.1,#61]
-#   4. teammate-session AND subagent_type ∈ {engineer,critic}   → WRONG-TIER-DISPATCH             (deny)  [#66]
+#   4. teammate-session AND subagent_type = engineer            → WRONG-TIER-DISPATCH             (deny)  [#66; no nested/phantom engineer]
+#   4'.teammate-session AND critic, NO engineer-self-contained  → WRONG-TIER-DISPATCH             (deny)  [#66; conductor lane re-gate — engineer self-gate is allowed]
+#   4b.subagent_type = engineer AND brief mode: self-contained  → ENGINEER-TOPOLOGY-MISMATCH      (deny)  [#172; self-contained must be a teammate, not a subagent]
+#   4c.brief dispatcher: engineer-self-contained AND type ∉ {discovery,auditor,critic} → ENGINEER-SUBFLOCK-VIOLATION (deny) [#172; sub-flock is read-only, no code]
 #   5. subagent_type = shepherd:<x>, x ∉ closed-flock+conductor → DISPATCH-OFF-FLOCK              (deny)  [mechanical]
 #   6. teammate-session AND a flock fan-out role, no compile    → PRIMITIVE-INVERSION (handrolled) (flag) [#89 inversion 2]
 #
@@ -73,6 +76,27 @@ subagent_type=$(json_field "$input" '.tool_input.subagent_type')
 team_name=$(json_field "$input" '.tool_input.team_name')
 session=$(json_field "$input" '.session_id')
 cwd=$(json_field "$input" '.cwd')
+prompt=$(json_field "$input" '.tool_input.prompt')
+
+# Brief markers (v6.2.6, engineer-self-contained-plan.md). The engineer teammate's
+# own brief FROM root carries `mode: self-contained`; the sub-flock briefs it
+# authors (its @critic/@auditor/@discovery) carry `dispatcher: engineer-self-contained`.
+# These distinguish (a) a self-contained engineer wrongly dispatched as a subagent
+# from a legitimate teammate-spawn, and (b) the engineer's own @critic self-gate
+# from a conductor lane trying to re-gate a fixed plan.
+mode_self_contained=0
+eng_self_dispatch=0
+# Match the marker only as an actual FIELD assignment, not prose that happens to
+# contain the phrase (a classic brief documenting "do NOT run in mode: self-contained"
+# must not be misread as a self-contained dispatch). The field may appear in either
+# the dotted form `[INVOCATION-CONTEXT].mode: self-contained` or the block form
+# (`[INVOCATION-CONTEXT]` header then an indented `mode: self-contained` line), so
+# anchor to line-start + optional indent + optional dotted prefix, and tolerate a
+# quoted value / space-before-colon. grep reads the (real-newline) prompt line-by-line.
+MODE_RE='^[[:space:]]*(\[INVOCATION-CONTEXT\]\.)?"?mode"?[[:space:]]*:[[:space:]]*"?self-contained'
+DISP_RE='^[[:space:]]*(\[INVOCATION-CONTEXT\]\.)?"?dispatcher"?[[:space:]]*:[[:space:]]*"?engineer-self-contained'
+printf '%s' "$prompt" | grep -qiE "$MODE_RE" && mode_self_contained=1
+printf '%s' "$prompt" | grep -qiE "$DISP_RE" && eng_self_dispatch=1
 
 # Tier detection (best-effort — the platform exposes NO teammate identity env var,
 # #93 / anthropics/claude-code#35447). PRIMARY signal: a shepherd teammate runs in
@@ -141,15 +165,70 @@ fi
 
 # ---------------------------------------------------------------------------
 # Check 4 — teammate dispatching engineer/critic (WRONG-TIER-DISPATCH)
+#
+# @engineer: ALWAYS refused from a teammate — no nested/phantom engineer; a
+#   self-contained leader never spawns another leader (v6.2.6).
+# @critic: refused from a CONDUCTOR teammate (a lane must not re-gate a fixed
+#   plan) — but PERMITTED from the self-contained ENGINEER teammate gating its
+#   OWN plan, signalled by `dispatcher: engineer-self-contained` in the critic
+#   brief (engineer-self-contained-plan.md). The marker is the discriminator; a
+#   forged marker is defence-in-depth-only (see header), the conductor profile
+#   carries the no-re-gate rule regardless.
 # ---------------------------------------------------------------------------
-if [[ "$teammate_mode" -eq 1 && ( "$st_lc" == "shepherd:engineer" || "$st_lc" == "shepherd:critic" ) ]]; then
-  role="${st_lc#shepherd:}"
-  esc="PLAN-AUTHORSHIP-REQUEST"; [[ "$role" == "critic" ]] && esc="PLAN-GATE-REQUEST"
+if [[ "$teammate_mode" -eq 1 && "$st_lc" == "shepherd:engineer" ]]; then
   msg="[shepherd] WRONG-TIER-DISPATCH — refused."$'\n'
-  msg+="  A teammate tried to dispatch @${role} (root-tier-exclusive under /shepherd:spawn)."$'\n'
-  msg+="@engineer and @critic run ONCE at root; the plan is fixed for all teammates."$'\n'
-  msg+="Surface SendMessage(to: lead, halt_code: $esc) instead. See $DOC."
+  msg+="  A teammate tried to dispatch @engineer (root-tier-exclusive; no nested/phantom engineer)."$'\n'
+  msg+="@engineer runs ONCE at root; a leader never spawns another leader."$'\n'
+  msg+="Surface SendMessage(to: lead, halt_code: PLAN-AUTHORSHIP-REQUEST) instead. See $DOC."
   emit_deny "$msg" "dispatch_guard" "$tool" "conductor-teammate" "$session"
+fi
+if [[ "$teammate_mode" -eq 1 && "$st_lc" == "shepherd:critic" && "$eng_self_dispatch" -ne 1 ]]; then
+  msg="[shepherd] WRONG-TIER-DISPATCH — refused."$'\n'
+  msg+="  A teammate tried to dispatch @critic without the engineer-self-contained marker."$'\n'
+  msg+="@critic gates the plan ONCE; a conductor lane must not re-gate a fixed plan."$'\n'
+  msg+="(The self-contained ENGINEER teammate MAY dispatch @critic on its OWN plan —"$'\n'
+  msg+=" tag the brief [INVOCATION-CONTEXT].dispatcher: engineer-self-contained.)"$'\n'
+  msg+="Surface SendMessage(to: lead, halt_code: PLAN-GATE-REQUEST) instead. See $DOC."
+  emit_deny "$msg" "dispatch_guard" "$tool" "conductor-teammate" "$session"
+fi
+
+# ---------------------------------------------------------------------------
+# Check 4b — self-contained engineer dispatched as a SUBAGENT (ENGINEER-TOPOLOGY-MISMATCH)
+# A self-contained engineer MUST be spawned as a NAMED teammate (native
+# teammate-spawn, which does not go through this Agent/Task hook). An Agent/Task
+# dispatch of @engineer whose brief carries `mode: self-contained` is therefore
+# the wrong topology — the "unnamed subagent engineer" v6.2.5 failure. Fires
+# regardless of teammate_mode (root dispatching it as a subagent is the main
+# case; the teammate case is already denied by Check 4 above). Classic engineer
+# dispatch (no mode marker) is unaffected. (engineer-self-contained-plan.md)
+# ---------------------------------------------------------------------------
+if [[ "$st_lc" == "shepherd:engineer" && "$mode_self_contained" -eq 1 ]]; then
+  msg="[shepherd] ENGINEER-TOPOLOGY-MISMATCH — refused."$'\n'
+  msg+="  @engineer dispatched as an Agent/Task SUBAGENT with mode: self-contained."$'\n'
+  msg+="A self-contained engineer is a NAMED TEAMMATE (native teammate-spawn), never a"$'\n'
+  msg+="subagent. Spawn it as a teammate, OR drop mode: self-contained to run classic"$'\n'
+  msg+="(root runs discovery + @critic). See $DOC + doctrines/engineer-self-contained-plan.md."
+  emit_deny "$msg" "dispatch_guard" "$tool" "unknown" "$session"
+fi
+
+# ---------------------------------------------------------------------------
+# Check 4c — engineer's own sub-flock dispatch is READ-ONLY (ENGINEER-SUBFLOCK-VIOLATION)
+# The self-contained engineer tags EVERY sub-flock dispatch with `dispatcher:
+# engineer-self-contained` (agents/engineer.md). Its sub-flock is the three
+# read-only / adversarial roles ONLY — @discovery, @auditor, @critic — so a marked
+# dispatch to ANYTHING else (a write role @coder/@worker, or a nested @engineer) is
+# refused. This gives "no code is touched during this phase" the same mechanical
+# teeth as the topology/tier checks, not prose alone (#172). (A conductor lane does
+# NOT carry this marker, so its legitimate @coder/@worker fan-out is unaffected.)
+# ---------------------------------------------------------------------------
+if [[ "$eng_self_dispatch" -eq 1 ]] && ! [[ "$st_lc" =~ ^shepherd:(discovery|auditor|critic)$ ]]; then
+  msg="[shepherd] ENGINEER-SUBFLOCK-VIOLATION — refused."$'\n'
+  msg+="  subagent_type: '$subagent_type' dispatched with dispatcher: engineer-self-contained."$'\n'
+  msg+="The self-contained engineer's sub-flock is READ-ONLY and closed at three —"$'\n'
+  msg+="@discovery, @auditor, @critic. No @coder/@worker (this phase touches no code),"$'\n'
+  msg+="no nested @engineer. File a plan step for the conductor to spin a coder instead."$'\n'
+  msg+="See $DOC + doctrines/engineer-self-contained-plan.md."
+  emit_deny "$msg" "dispatch_guard" "$tool" "unknown" "$session"
 fi
 
 # ---------------------------------------------------------------------------

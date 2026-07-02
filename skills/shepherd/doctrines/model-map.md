@@ -66,8 +66,9 @@ spawn pin:
   lane's `conductor`; injects the pin. Generalizes the v6.0.9 conductor pin.
 - **`@conductor`** — resolves `coder`, `auditor`, `worker`, `discovery` for its
   in-lane fan-out; injects the pin.
-- **`@engineer`** (self-contained mode) — resolves `discovery` for its in-session
-  wave (`doctrines/engineer-self-contained-plan.md`).
+- **`@engineer`** (self-contained mode) — resolves `discovery`, `auditor`, and
+  `critic` for its in-session read-only sub-flock (the INTRO-COMBO-WAVE it runs +
+  its own critic gate; `doctrines/engineer-self-contained-plan.md`).
 
 The conductor cost advisory still fires: if `conductor` resolves to an opus tier,
 the pre-spawn advisory (`commands/spawn.md`) warns about the per-lane cost

@@ -25,14 +25,28 @@ WP="skills/shepherd/doctrines/workdir-prune.md"
 # 1. The three doctrines exist.
 need_file "$DOC"; need_file "$MM"; need_file "$WP"
 
-# 2. (A) engineer self-contained + critic-proof wiring.
+# 2. (A) engineer self-contained + critic-proof wiring (clarified v6.2.6, #172).
 need agents/engineer.md "engineer-self-contained-plan.md" "engineer cites doctrine"
 need agents/engineer.md "self-contained"                  "engineer self-contained mode"
 need agents/engineer.md "shctx plan record-critique"      "engineer records critic-proof"
-need agents/engineer.md "shepherd:discovery"              "engineer Agent scope bound"
 if ! grep -qE '^tools:.*(^|[, ])Agent([, ]|$)' agents/engineer.md; then
-  printf '  FAIL  engineer.md tools: lacks Agent (self-contained @discovery dispatch)\n'; fails=$((fails+1))
+  printf '  FAIL  engineer.md tools: lacks Agent (self-contained sub-flock dispatch)\n'; fails=$((fails+1))
 fi
+# The read-only sub-flock scope = {discovery, auditor, critic} — all three tokens.
+need agents/engineer.md "shepherd:discovery"              "engineer sub-flock: discovery"
+need agents/engineer.md "shepherd:auditor"               "engineer sub-flock: auditor (intro wave)"
+need agents/engineer.md "shepherd:critic"                "engineer sub-flock: critic (self-gate)"
+# Clarified contract: real @critic dispatch tagged with the self-gate marker;
+# hard mode determination; named-teammate topology; no nested/phantom engineer.
+need agents/engineer.md "engineer-self-contained"        "engineer @critic self-gate marker"
+need agents/engineer.md "named teammate"                 "engineer named-teammate topology"
+need agents/engineer.md "no code"                        "engineer sub-flock is read-only (no code)"
+if ! grep -qiE 'never .*@engineer|no nested/phantom engineer' agents/engineer.md; then
+  printf '  FAIL  engineer.md — missing the no-nested/phantom-engineer prohibition\n'; fails=$((fails+1))
+fi
+# The mechanical topology + marker guards live in dispatch_guard.sh.
+need hooks/scripts/dispatch_guard.sh "ENGINEER-TOPOLOGY-MISMATCH" "guard: self-contained-as-subagent block"
+need hooks/scripts/dispatch_guard.sh "engineer-self-contained"    "guard: @critic self-gate marker"
 need agents/shepherd.md  "engineer-self-contained-plan.md" "root cites doctrine"
 need agents/shepherd.md  "shctx plan verify"               "root thin acceptance gate"
 need agents/shepherd.md  "CRITIC-PROOF-MISSING"            "root critic-proof halt code"

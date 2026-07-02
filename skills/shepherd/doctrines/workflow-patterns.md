@@ -138,7 +138,7 @@ Each pattern has a canonical flock binding. These bindings are invariant — usi
 **Hard rules:**
 - `@auditor` is a VERIFIER, never a judge (Pattern 5), never a classifier (Pattern 1), never a synthesizer.
 - `@discovery` is read-only — valid as classifier (Pattern 1), generator (Pattern 4), attempt (Pattern 5), or iterator (Pattern 6) ONLY for research/orientation output. Never for write execution.
-- `@engineer` and `@critic` are root-tier-exclusive under `/shepherd:spawn` per `doctrines/dispatch-tier-separation.md`. Pattern 3 (PLAN-GATE) is the primary context; they are NOT dispatched by teammate-conductors.
+- `@engineer` and `@critic` are not dispatchable by teammate-**conductors** under `/shepherd:spawn` per `doctrines/dispatch-tier-separation.md`. Pattern 3 (PLAN-GATE) is the primary context. Exception: a self-contained `@engineer` teammate (spawned by root) runs its own `@critic` in its window (`doctrines/engineer-self-contained-plan.md`, #172) — root then runs neither the discovery wave nor `@critic` itself.
 
 ---
 

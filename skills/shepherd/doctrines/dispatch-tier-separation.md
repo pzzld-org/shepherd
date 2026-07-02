@@ -55,6 +55,17 @@ PARALLEL META BRANCH (not a tier — sibling to conductor at meta level):
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+**Self-contained engineer exception (v6.2.6, #172).** The Tier-1 "ephemeral
+subagent" default has one carve-out: `@engineer`. In **classic** mode it is an
+ephemeral subagent as drawn (root dispatches it; root also runs the discovery wave
+and dispatches `@critic`). In **self-contained** mode ROOT spawns it as a **named
+Tier-1 leader teammate** (native teammate-spawn, brief `mode: self-contained`); it
+then runs its OWN read-only sub-flock — `@discovery` + intro-`@auditor` + its own
+`@critic` — in its window, and root runs neither wave itself. This is the only
+non-conductor role that may be a teammate, and it dispatches ONLY the read-only
+trio (never `@coder`/`@worker`, never a nested `@engineer`). See §IV-bis.5 / .5-bis
+and `doctrines/engineer-self-contained-plan.md`.
+
 ---
 
 ## I-bis. Tier ↔ ontology unit ↔ primitive (v6.0.2, #88 / #89)
@@ -96,6 +107,22 @@ Legend:
 - ❌ → escalate — dispatch forbidden BUT the tier-2 teammate has a defined
   escalation path back to root (the `PLAN-AUTHORSHIP-REQUEST` /
   `PLAN-GATE-REQUEST` patterns)
+
+**Leader carve-outs (a flock role elevated to a leader runs its own read-only
+sub-flock).** The "TIER 1 flock (any) → all ❌" row is the *standard* contract; two
+roles are deliberately elevated to leaders and carry a bounded, read-only dispatch
+grant defined in their profiles (mechanized by `hooks/tests/lint_agent_capabilities.sh`):
+
+- **PARALLEL planter** MAY dispatch `@discovery` — the bounded plant-mode
+  orientation wave (`agents/planter.md §Step 2-bis`).
+- **Self-contained `@engineer`** (spawned by ROOT as a NAMED teammate, brief
+  `mode: self-contained`) MAY dispatch its read-only sub-flock — `@discovery` +
+  intro-mode `@auditor` (the INTRO-COMBO-WAVE it runs in-session) + its OWN
+  `@critic` (its adversarial self-gate, brief-tagged `dispatcher:
+  engineer-self-contained`) — and NOTHING else. NEVER `@coder`/`@worker` (no code
+  in this phase), NEVER a nested `@engineer`, NEVER a teammate
+  (`doctrines/engineer-self-contained-plan.md`). This is distinct from a teammate
+  **conductor**, which still may not dispatch `@engineer`/`@critic` (below).
 
 ---
 
@@ -239,8 +266,10 @@ the load-bearing replacement for the prior implicit enforcement.
 non-conductor agent type. *(#93 / v2.1.178: teammates spawn via the native teammate-spawn
 referencing `shepherd:conductor`; there is no `TeamCreate` tool — removed v2.1.178 — and the
 `team_name` parameter on `Agent`/`Task` is accepted but ignored, so it is NOT a usable
-discriminator. The real distinction is the spawn INTENT: only `shepherd:conductor` is spawned
-as a teammate; every other flock role is an ephemeral subagent. The `team_name`-keyed
+discriminator. The real distinction is the spawn INTENT: `shepherd:conductor` is spawned
+as a teammate (a lane), and `shepherd:engineer` in self-contained mode is spawned as a
+named leader teammate (§I "Self-contained engineer exception"); every other flock role is
+an ephemeral subagent. The `team_name`-keyed
 `dispatch_guard.sh` Check 3 is now vestigial defence-in-depth. The mechanical floor is the
 `subagent_type` discipline, §IV-bis.1.)*
 
@@ -282,14 +311,47 @@ nested teams (D-API §12); shepherd discipline forbids it doctrinally.
 
 ### IV-bis.5. `WRONG-TIER-DISPATCH`
 
-**Trigger:** a teammate-conductor attempts to dispatch `@engineer` or
+**Trigger:** a teammate-**conductor** attempts to dispatch `@engineer` or
 `@critic`. (Detected at the agent boundary: engineer/critic profiles read
 the `INVOCATION-CONTEXT.dispatcher` brief field on boot and halt with this
-code if the dispatcher is a teammate.)
+code if the dispatcher is a teammate-conductor.) Also enforced mechanically:
+`hooks/scripts/dispatch_guard.sh` Check 4 blocks a teammate → `@engineer`
+**unconditionally** (no nested/phantom engineer) and a teammate → `@critic`
+**unless** the brief carries `dispatcher: engineer-self-contained`.
 
-**Refusal:** teammate surfaces `PLAN-AUTHORSHIP-REQUEST` (engineer needed)
+**Carve-out — the self-contained engineer's own critic self-gate is NOT this
+violation.** A self-contained `@engineer` teammate dispatching its OWN `@critic`
+(brief-tagged `dispatcher: engineer-self-contained`) is the adversarial gate every
+leader runs on its output — permitted (`doctrines/engineer-self-contained-plan.md`).
+The rule here is scoped to a teammate **conductor** re-authoring/re-gating a fixed
+plan. A nested `@engineer` from any teammate is always forbidden.
+
+**Refusal:** teammate-conductor surfaces `PLAN-AUTHORSHIP-REQUEST` (engineer needed)
 or `PLAN-GATE-REQUEST` (critic needed) escalation to root. Root dispatches
 engineer/critic directly and returns the result via resume reply.
+
+### IV-bis.5-bis. `ENGINEER-TOPOLOGY-MISMATCH`
+
+**Trigger:** `@engineer` is dispatched as an Agent/Task **subagent** while its
+brief carries `mode: self-contained`. A self-contained engineer is a NAMED
+teammate (native teammate-spawn), never a subagent — this is the "unnamed subagent
+engineer" v6.2.5 failure. Mechanized: `dispatch_guard.sh` Check 4b.
+
+**Refusal:** spawn the engineer as a teammate, OR drop `mode: self-contained` to
+run classic (root runs discovery + `@critic`). Root never repairs by re-dispatch.
+
+### IV-bis.5-ter. `ENGINEER-SUBFLOCK-VIOLATION`
+
+**Trigger:** a dispatch tagged `dispatcher: engineer-self-contained` (the
+self-contained engineer's leader signature on every sub-flock dispatch) targets a
+`subagent_type` outside the read-only trio `{shepherd:discovery, shepherd:auditor,
+shepherd:critic}` — e.g. `@coder`/`@worker` (this phase touches no code) or a nested
+`@engineer`. Mechanized: `dispatch_guard.sh` Check 4c. A conductor lane carries no
+such marker, so its legitimate `@coder`/`@worker` fan-out is unaffected.
+
+**Refusal:** the engineer files a plan step for the conductor's coder/worker wave
+instead of dispatching a writer itself. Its sub-flock is closed at the three
+read-only roles.
 
 ### IV-bis.6. `MODE-MISUSE`
 
@@ -312,7 +374,9 @@ discipline).
 | Non-conductor agent type spawned as a teammate (`subagent_type ≠ shepherd:conductor`) | `DISPATCH-TEAMMATE-TYPE-MISMATCH` | root |
 | `subagent_type` outside closed-flock-six (or shepherd:conductor) | `DISPATCH-OFF-FLOCK` | root + conductor |
 | Teammate tries to construct `team_name` | `TEAMMATE-NESTING-ATTEMPT` | teammate-conductor |
-| Teammate dispatches `@engineer`/`@critic` | `WRONG-TIER-DISPATCH` | engineer/critic on receipt |
+| Teammate-conductor dispatches `@engineer`/`@critic` (not the engineer's own tagged critic self-gate) | `WRONG-TIER-DISPATCH` | `dispatch_guard.sh` Check 4 + engineer/critic on receipt |
+| Self-contained `@engineer` dispatched as a subagent (must be a named teammate) | `ENGINEER-TOPOLOGY-MISMATCH` | `dispatch_guard.sh` Check 4b |
+| Engineer sub-flock (marked) dispatch to a non-read-only role (`@coder`/`@worker`/nested `@engineer`) | `ENGINEER-SUBFLOCK-VIOLATION` | `dispatch_guard.sh` Check 4c |
 | SOLO mode spawning OR TEAMMATE mode running SOLO ops | `MODE-MISUSE` | conductor |
 | Mode-detection signals contradict | `MODE-DETECTION-AMBIGUOUS` | conductor |
 | Teammate runs git rebase/merge/push/worktree | `TEAMMATE-GIT-WRITE` | teammate-conductor |
@@ -338,8 +402,8 @@ Propagates the halt code already defined in `commands/spawn.md`.
 
 The closed-at-six flock contract from prior versions remains binding:
 
-- `@engineer` (Opus) — plan authorship. Now root-tier-exclusive under spawn.
-- `@critic` (Sonnet) — adversarial gate. Now root-tier-exclusive under spawn.
+- `@engineer` (Opus) — plan authorship. Not dispatchable by a teammate-conductor under spawn; dispatched by root as a subagent (classic) OR spawned by root as a self-contained leader teammate (§I exception, #172).
+- `@critic` (Sonnet) — adversarial gate. Dispatched by root (classic) OR by the self-contained `@engineer` teammate against its own plan (tagged `dispatcher: engineer-self-contained`); never by a teammate-conductor re-gating a fixed plan.
 - `@coder` (Sonnet) — implementation. Dispatched by ANY tier-2 conductor.
 - `@auditor` (Sonnet) — read-only review. Dispatched by tier-3 (close +
   intro swarm) or tier-2 teammate (wave-mid audit) or tier-2 solo.
@@ -370,9 +434,12 @@ v6.0.0 hard-refusal hardening) comes from a downstream Rust service.
    lane's teammate at a wave boundary, `primitive-axis-binding.md §II.1`) was
    being eroded.
 
-Tier separation fixes both. Engineer + critic happen ONCE per sprint at root.
-Teammate context stays narrow (own wave only). Root absorbs the artifact-
-materialization cost and gets the cross-teammate view critic needs.
+Tier separation fixes both. Engineer + critic happen ONCE per sprint — at root in
+classic mode, or in the self-contained engineer's own teammate window (§I exception,
+#172), never re-run by a teammate-conductor. Teammate context stays narrow (own wave
+only). Root absorbs the artifact-materialization cost and gets the cross-teammate
+view critic needs (in classic mode; a self-contained plan arrives pre-critiqued with
+a hash-tied proof).
 
 3. **Permissive-fallback dispatch slippage (v5.1.9 → v6.0.0 regression).**
    Three consecutive `/shepherd:spawn` runs (a downstream Rust service,

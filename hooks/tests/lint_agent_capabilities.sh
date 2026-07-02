@@ -124,25 +124,32 @@ for role in $ALL_ROLES; do
 done
 
 # ---------------------------------------------------------------------------
-# #119 / #169 Agent-dispatch scope pin. The planter (meta tier, commands/plant.md
-# + agents/planter.md §Step 2-bis) AND the engineer (self-contained teammate mode,
-# agents/engineer.md §Self-contained mode + doctrines/engineer-self-contained-plan.md)
-# are each granted the `Agent` tool ONLY for the bounded read-only @discovery wave.
-# The grant must always travel with its documented discovery-only bound, so a
-# future broadening to @coder/@auditor/@critic cannot land silently with the prose
-# contract stripped. The lint cannot bound a RUNTIME dispatch target, but it CAN
-# pin that the grant never appears without the documented `shepherd:discovery`
-# scope. (Mechanizes a prose-only invariant per the "closed-flock contract" rule.)
+# #119 / #169 / #172 Agent-dispatch scope pin. Two roles carry the `Agent` tool,
+# each bounded to a READ-ONLY sub-flock — the grant must always travel with its
+# documented scope so a future broadening to a WRITE role (@coder/@worker) cannot
+# land silently with the prose contract stripped:
+#   - planter  (agents/planter.md §Step 2-bis): the bounded @discovery orientation wave.
+#   - engineer (agents/engineer.md §Self-contained mode + engineer-self-contained-plan.md):
+#       its read-only sub-flock — @discovery + intro-@auditor (the INTRO-COMBO-WAVE it
+#       runs in-session) + @critic (its adversarial self-gate). No @coder/@worker.
+# The lint cannot bound a RUNTIME dispatch target, but it CAN pin that the grant
+# never appears without the documented scope tokens. (Mechanizes a prose-only
+# invariant per the "closed-flock contract" rule.)
 # ---------------------------------------------------------------------------
+scope_tokens_planter="shepherd:discovery"
+scope_tokens_engineer="shepherd:discovery shepherd:auditor shepherd:critic"
 for agent_with_agent in planter engineer; do
   pf="$AGENTS_DIR/$agent_with_agent.md"
   [[ -f "$pf" ]] || continue
   ptoks="$(tools_line "$pf" | tr ',' '\n' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep -v '^$')"
   if printf '%s\n' "$ptoks" | grep -qx 'Agent'; then
-    if ! grep -q 'shepherd:discovery' "$pf"; then
-      note "FAIL $agent_with_agent: grants 'Agent' but does not document the read-only shepherd:discovery scope bound (#119/#169)"
-      fails=$((fails+1))
-    fi
+    eval "want=\$scope_tokens_$agent_with_agent"
+    for tok in $want; do
+      if ! grep -q "$tok" "$pf"; then
+        note "FAIL $agent_with_agent: grants 'Agent' but does not document the read-only '$tok' scope bound (#119/#169/#172)"
+        fails=$((fails+1))
+      fi
+    done
   fi
 done
 
