@@ -164,18 +164,6 @@ Pipelines (multi-step automation, v5.0.4):
                           close <branch>     close-lanes + handoff + worktree gc + lock release
   audit [--verbose]       lint → doctor → status (read-only validation)
 
-  filetree [--stdout] [--out=<path>] [--md]
-                          Inventory of shepherd's own prompt/instruction surface
-                          (v6.2.7, #180 follow-up) — every agent/command/skill/
-                          doctrine/reference .md file with lines+words+bytes,
-                          tagged load_bearing (excludes plugin manifests,
-                          scripts, human-only docs, doctrine candidates, dated
-                          spec docs). Writes <namespace>/filetree.json by
-                          default. Run at sprint open/close per CLAUDE.md's
-                          "tie every change to a measurable outcome" rule — a
-                          rising total across sprints is the deterministic
-                          signal that prose is bloating again, not a vibe.
-
   help                    Print this message
 EOF
 }
@@ -191,7 +179,7 @@ script_for() {
 cmd="${1:-help}"; shift || true
 case "$cmd" in
   help|-h|--help) usage ;;
-  init|config|status|dash|doctor|refresh|query|search|inject|profile|style|mem|toolkit|lock|lint|migrate|export|release|handoff|worktree|close-lane|issues|plan|graph|insights|adapt|sync|ready|sprint|audit|watch|discovery|teammate|mailbox|escalate|deliverable|report|loop|panes|dups|seed|eval|filetree|models|prune)
+  init|config|status|dash|doctor|refresh|query|search|inject|profile|style|mem|toolkit|lock|lint|migrate|export|release|handoff|worktree|close-lane|issues|plan|graph|insights|adapt|sync|ready|sprint|audit|watch|discovery|teammate|mailbox|escalate|deliverable|report|loop|panes|dups|seed|eval|models|prune)
     impl="$HERE/$(script_for "$cmd")"
     if [[ ! -f "$impl" ]]; then
       echo "ERROR: $cmd not yet implemented (missing $impl)" >&2; exit 2
