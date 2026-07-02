@@ -97,6 +97,35 @@ cfg_get() {
   return 0
 }
 
+# Section-aware companion to cfg_get: echo `key = value` under a specific
+# `[section]` from shepherd config, resolved by the SAME precedence (local →
+# project → XDG). For TOML blocks whose bare keys would collide across sections
+# (e.g. [models] role keys). Last-match-wins within the section; strips
+# surrounding double-quotes and a trailing " # inline comment". Echoes "" if
+# unset; never returns non-zero. bash-3.2-safe (awk parses the section — no
+# associative arrays / mapfile). MUST mirror the skills-side cfg_section_get
+# (skills/context/scripts/_lib.sh) — same files, same order, same parse — or
+# config diverges between hooks and the shctx runtime. Contract source of truth:
+# docs/configuration.md §config-resolution.
+cfg_section_get() {
+  local section="$1" key="$2" repo f v
+  repo="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+  for f in "$repo/.claude/shepherd.local.toml" "$repo/.claude/shepherd.toml" "${XDG_CONFIG_HOME:-$HOME/.config}/shepherd.toml"; do
+    [[ -f "$f" ]] || continue
+    v="$(awk -v sect="$section" -v k="$key" '
+      /^[ \t]*\[/ { h=$0; sub(/^[ \t]*\[/,"",h); sub(/\].*$/,"",h); gsub(/[ \t]/,"",h); cur=h; next }
+      cur==sect && $0 ~ ("^[ \t]*" k "[ \t]*=") {
+        val=$0; sub(/^[^=]*=[ \t]*/,"",val); sub(/[ \t]+#.*$/,"",val);
+        sub(/^"/,"",val); sub(/"$/,"",val); result=val
+      }
+      END { if (result!="") printf "%s", result }
+    ' "$f" 2>/dev/null || true)"
+    if [[ -n "$v" ]]; then printf '%s' "$v"; return 0; fi
+  done
+  printf '%s' ""
+  return 0
+}
+
 # ---------------------------------------------------------------------------
 # JSON extraction (jq preferred, python3 fallback)
 # ---------------------------------------------------------------------------

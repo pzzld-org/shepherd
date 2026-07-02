@@ -358,5 +358,18 @@ else
   fails=$((fails+1))
 fi
 
+# v6.2.5 wiring (#169/#170/#171): engineer self-contained plan + critic-proof,
+# the [models] map, and workdir prune are behavioral wiring across doctrines +
+# profiles + CLI + the invariant matrix. This guard fails if any leg is dropped.
+echo "== test_engineer_self_contained.sh (v6.2.5 — #169/#170/#171 wiring) =="
+total=$((total+1))
+if esc_out=$(bash "$TESTS_DIR/test_engineer_self_contained.sh" 2>&1); then
+  printf '  PASS  %s\n' "v625-wiring"
+else
+  printf '  FAIL  %-50s\n' "v625-wiring"
+  printf '%s\n' "$esc_out" | sed 's/^/        /'
+  fails=$((fails+1))
+fi
+
 echo "—— $((total-fails))/$total passed ——"
 exit "$fails"

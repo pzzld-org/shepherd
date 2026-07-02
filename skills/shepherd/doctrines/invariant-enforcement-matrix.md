@@ -120,6 +120,15 @@ absence."
 > assertion. Rows 17–18 reuse existing teeth (the hot-fix ladder, the git guard, root's
 > source-write prohibition); the new surface is the proactive review *trigger*, not a new mechanism.
 
+## V-ter. Self-contained engineer + critic-proof; model map; workdir prune (v6.2.5) — `doctrines/engineer-self-contained-plan.md`, `doctrines/model-map.md`, `doctrines/workdir-prune.md`
+
+| # | Invariant | Mechanism | Type | Status |
+|---|---|---|---|---|
+| 19 | A self-contained engineer teammate's plan is accepted by root WITHOUT re-critique — but only against a hash-tied **critic-proof** proving the plan was critiqued AND edited ≥1 time | `shctx plan verify` re-hashes the live plan and requires `edited=true` + `post==current-bytes` + verdict + iterations≥1, else `CRITIC-PROOF-MISSING` / `PLAN-UNEDITED` / `CRITIC-PROOF-STALE` / `PLAN-UNCRITIQUED`; root's thin gate = `seed verify` + `plan verify` + lane sanity | CLI gate + doctrine | **live** |
+| 20 | An engineer teammate dispatches ONLY `@discovery` (never `@critic`/`@engineer`/`@coder`), never a nested teammate | `dispatch_guard.sh` Check 4 blocks teammate→engineer/critic; the engineer `Agent` grant is pinned to the `shepherd:discovery` scope by `lint_agent_capabilities.sh` (#119/#169) | hard-block + lint | **live** |
+| 21 | Every dispatching tier injects each role's model from the single `[models]` map; root is advisory (preflight warn, not a rebind) | `shctx models resolve <role>` (config → built-in default) injected as the Agent `model:` pin at each tier; `shctx models show` preflight | CLI + doctrine | **live** |
+| 22 | `shctx prune` reclaims only non-current ∧ terminal ∧ aged state; `--dry-run` default, `--confirm` moves to /tmp (reversible), every DB DELETE table-guarded; never touches releases / current focus / sprint_metrics / pinned memory / active locks | fence (branch≠current ∧ terminal ∧ aged) + move-not-delete snapshot + `sqlite_master` existence guard; DB-row deletes preview-only in v6.2.5 | CLI + doctrine | **live (on-disk) / preview (DB rows)** |
+
 ## VI. Promotion backlog (gaps → mechanisms)
 
 The **gap** rows above are this matrix's live to-do. Each names its target mechanism so

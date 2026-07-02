@@ -672,13 +672,16 @@ supplied per § Build the teammate prompt and carried in the teammate-spawn inst
 
 ### Model pin requirement (mandatory — v6.0.9)
 
-**Every teammate MUST be spawned with an explicit `model: sonnet` pin in the
-teammate-spawn instruction.** Do NOT rely on the `shepherd:conductor` subagent
-definition's `model: sonnet` frontmatter to propagate — empirically, teammates
-have inherited the lead session's model instead of the subagent definition's
-(v6.0.9 regression: an Opus 4.8 lead session caused every teammate to run at
-Opus 4.8, multiplying costs by the lane count). The intended conductor model is
-`sonnet` per `agents/conductor.md` frontmatter; enforce it explicitly.
+**Every teammate MUST be spawned with an explicit model pin in the
+teammate-spawn instruction, resolved from the single map** —
+`model=$(shctx models resolve conductor)` (`doctrines/model-map.md`; built-in
+default `sonnet`). Do NOT rely on the `shepherd:conductor` subagent definition's
+frontmatter to propagate — empirically, teammates have inherited the lead
+session's model instead of the subagent definition's (v6.0.9 regression: an
+Opus 4.8 lead session caused every teammate to run at Opus 4.8, multiplying costs
+by the lane count). The map is the single place to change a role's model; enforce
+the resolved pin explicitly. If the map resolves `conductor` to an opus tier, the
+per-lane cost multiplier is intentional — the advisory below still fires.
 
 **Include the pin in the natural-language instruction**, e.g.:
 
@@ -701,8 +704,34 @@ or provide an explicit operator override confirming Opus is intentional."
 
 If the operator explicitly authorizes Opus teammates (e.g. an L/XL sprint where
 plan quality justifies the cost), record the override in the session-start status
-block and proceed. Otherwise, refuse to spawn until the `model: sonnet` pin
+block and proceed. Otherwise, refuse to spawn until the resolved model pin
 is present in the instruction.
+
+### Model map + root preflight (v6.2.5)
+
+The model each spawned role runs is the single `[models]` block in
+`.claude/shepherd.toml`, resolved with `shctx models resolve <role>`
+(`doctrines/model-map.md`). Before spawning, run `shctx models show` — it renders
+the resolved 9-role table + source per row and is the pre-spawn preflight. **root
+is advisory:** a config key cannot rebind a running main-chat session, so if the
+live session model differs from `[models].root`, note it once (an under-powered
+root is the coordination bottleneck for ultra-parallel spawns — consider
+`/model opus`). The 8 spawned roles ARE hard-driven — the resolved slug is the
+`model:` pin above.
+
+### Self-contained engineer (v6.2.5)
+
+Root MAY spawn `@engineer` as a **self-contained teammate**
+(`doctrines/engineer-self-contained-plan.md`): the engineer runs its own
+in-session `@discovery` wave + an embedded critic pass + ≥1 revision and returns
+the plan plus a hash-tied **critic-proof**. Root then accepts via a THIN gate —
+`shctx seed verify` + `shctx plan verify --plan <plan>` + a lane-count sanity
+check — and does NOT re-dispatch `@critic`. This is distinct from the forbidden
+teammate-conductor → engineer dispatch (`WRONG-TIER-DISPATCH` stays): only ROOT
+spawns the engineer teammate, and that teammate dispatches ONLY `@discovery`
+(never `@critic`/`@coder`, per `hooks/scripts/dispatch_guard.sh` Check 4). The
+classic in-session subagent flow (INTRO discovery wave + root-dispatched
+`@critic`) remains the default, higher-independence path.
 
 > **Teammate vs subagent (live-docs-verified, #93; v2.1.178 update):** a **teammate** is a
 > long-lived peer session — spawned via the native teammate-spawn referencing the

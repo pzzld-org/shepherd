@@ -77,3 +77,31 @@ gh  = true
 
 [preflight]
 auto_invoke = "doctor"
+
+[models]
+# Per-role subagent model map (v6.2.5). The single source for which model each
+# flock/meta role dispatches with — every dispatching tier resolves it via
+# `shctx models resolve <role>` and injects the result as the Agent `model:` pin.
+# Unset roles fall to built-in defaults (root/planter/engineer = opus[1m];
+# conductor/critic/discovery/coder/auditor/worker = sonnet), so these values
+# just make the defaults explicit for the self-hosted dogfood. root is ADVISORY:
+# it names the model your live session SHOULD run; a config key cannot rebind a
+# running main-chat session (a spawn preflight warns on mismatch). Set any role
+# to any slug for total control. See docs/configuration.md §models.
+root      = "opus[1m]"
+planter   = "opus[1m]"
+engineer  = "opus[1m]"
+conductor = "sonnet"
+critic    = "sonnet"
+discovery = "sonnet"
+coder     = "sonnet"
+auditor   = "sonnet"
+worker    = "sonnet"
+
+[prune]
+# Workdir + registry GC retention windows (v6.2.5). `shctx prune` defaults to
+# --dry-run; --confirm executes after snapshotting to /tmp. See docs/configuration.md §prune.
+logs_days        = 60    # age floor for logs/events-*.jsonl + logs/hooks/*.jsonl
+dispatch_days    = 30    # age floor for stale dispatch/<sprint>/ dirs (non-current branch)
+snapshots_keep   = 20    # precompact memory snapshots to retain (newest-first)
+findings_sprints = 6     # keep discovery/audit findings for the last N sprints

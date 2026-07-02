@@ -259,11 +259,11 @@ Prunes stale or crashed teammate entries, removes leftover worktrees, and clears
 
 ### The closed flock
 
-Six agents, fixed contracts. `@engineer` runs on Opus (plan quality is worth it); the rest default to Sonnet. The contract changes only on a major version bump, so you can rely on the role boundaries staying put. Coders are the only role that writes production code, and they are always scoped to a disjoint set of files so parallel waves cannot collide.
+Six agents, fixed contracts. `@engineer` runs on Opus (plan quality is worth it); the rest default to Sonnet. Which model each role runs is a single per-project table — `[models]` in `shepherd.toml`, resolved by `shctx models resolve` and injected at every dispatch — so you set it once instead of hand-pinning per spawn. The contract changes only on a major version bump, so you can rely on the role boundaries staying put. Coders are the only role that writes production code, and they are always scoped to a disjoint set of files so parallel waves cannot collide.
 
 ### The three-section pipeline
 
-- **Introduction.** A Phase 0 mesh audits ground truth (open issues and PRs, recent Sentry / Supabase / Fly state, carry-forwards from prior sprints). The engineer then authors the plan, and the critic gates it adversarially before a single line is written.
+- **Introduction.** A Phase 0 mesh audits ground truth (open issues and PRs, recent Sentry / Supabase / Fly state, carry-forwards from prior sprints). The engineer then authors the plan, and the critic gates it adversarially before a single line is written. Under `/shepherd:spawn` the engineer can run **self-contained** — as its own teammate that runs its discovery wave and critic pass in-session and returns a hash-tied *critic-proof*; root then accepts the plan with a thin mechanical gate (`shctx plan verify`) instead of re-reviewing it.
 - **Body.** Coder waves run with gates between them (`format`, `check`, `lint`, all configurable). Each wave is also reviewed by a wave-review auditor before it is forwarded: a conductor cannot pass a wave up on a coder's self-gate-green claim, and a REDO verdict forces the named author to redo the named scope. The auditor swarm overlaps the last wave so review is not a serial tail.
 - **Close.** Merge, tag, squash-to-main, carry-forward refresh, and a written close report. Under `/shepherd:spawn`, the body fans out as lanes (vertical slices across waves), each owned by a teammate-conductor.
 
@@ -291,6 +291,24 @@ shctx style init --all       # scaffold per-language code-style files
 ```
 
 The workdir follows a standard layout under `.shepherd/` (`docs/`, `logs/`, `cache/`, `scripts/`, plus `toolkit.json` and `shepherd.db`). Repos on the older layout keep working untouched; `shctx migrate --layout v2` performs the opt-in move.
+
+### The model map
+
+Which model each of the nine roles dispatches with is one table — `[models]` in `.claude/shepherd.toml` — resolved by `shctx models resolve <role>` and injected as the model pin at every tier. Set it once; unset roles fall to the built-in defaults (planter/root/engineer on Opus, the rest on Sonnet). `root` is advisory — a config key cannot rebind your live session — so a spawn preflight warns when your session is under-powered instead of pretending to change it.
+
+```bash
+shctx models show            # resolved 9-role table + source per row
+shctx models resolve coder   # one role's model
+```
+
+### Workdir hygiene
+
+`shctx prune` reclaims accreted workdir and registry state — stale dispatch tags, aged logs, over-retention snapshots — without touching anything that affects an outcome. `--dry-run` is the default; `--confirm` *moves* targets to `/tmp` (reversible), fenced on non-current-branch, terminal, and aged.
+
+```bash
+shctx prune                  # dry-run: print the plan, remove nothing
+shctx prune --confirm        # move eligible transient state to /tmp
+```
 
 ### Self-evaluation (the eval harness)
 
@@ -384,9 +402,13 @@ format = "cargo fmt --all"
 [skills]
 mandatory = ["code-style"]
 by_domain = { rust = ["rust"], wasm = ["webassembly"] }
+
+[models]                 # which model each role dispatches with (optional — these ARE the defaults)
+engineer  = "opus[1m]"   # planter/root/engineer default to Opus; the rest to Sonnet
+conductor = "sonnet"     # set any role to any slug; `shctx models show` prints the resolved table
 ```
 
-See [`docs/configuration.md`](docs/configuration.md) for the full schema, including `[gates.extra]`, `[spawn]`, `[release]`, `[focus]` (rehydration plus the heartbeat cadence), and the skill matrix. A working multi-crate example lives at [`examples/rust-service/shepherd.toml`](examples/rust-service/shepherd.toml).
+See [`docs/configuration.md`](docs/configuration.md) for the full schema, including `[gates.extra]`, `[spawn]`, `[release]`, `[focus]` (rehydration plus the heartbeat cadence), `[models]` (the per-role model map), `[prune]` (workdir GC windows), and the skill matrix. A working multi-crate example lives at [`examples/rust-service/shepherd.toml`](examples/rust-service/shepherd.toml).
 
 ---
 
@@ -449,7 +471,7 @@ Shepherd follows semver:
 - **Minor**: new commands, doctrines, or config keys (backward-compatible).
 - **Patch**: dispatch logic, doctrine, and brief-template fixes.
 
-Current version: **6.2.4**. See [`CHANGELOG.md`](CHANGELOG.md) for the per-version history.
+Current version: **6.2.5**. See [`CHANGELOG.md`](CHANGELOG.md) for the per-version history.
 
 ---
 

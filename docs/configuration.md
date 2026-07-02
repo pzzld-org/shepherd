@@ -17,7 +17,10 @@ overrides `.claude/shepherd.toml`, which overrides `$XDG_CONFIG_HOME/shepherd.to
 `.local.toml` that sets only one key inherits the rest from the project file — it is a
 partial override, not a whole-file replacement. Every hook guard and `shctx` command
 resolves config through a single helper (`cfg_get`, defined in both `_lib.sh` files), so
-the precedence is identical across the runtime and the hooks.
+the precedence is identical across the runtime and the hooks. Section-scoped blocks
+(`[models]`, `[prune]`) use the companion `cfg_section_get` (also mirrored in both
+`_lib.sh` files): same file precedence, but keys resolve *within* their `[section]` so
+bare role/window keys never collide with a same-named key elsewhere.
 
 If no config is found, the entry commands **scaffold one and proceed** (v6.1.5 #15) rather than refusing or running blind. Run it yourself any time with:
 
@@ -666,6 +669,75 @@ Controls the capability auto-discovery probe (v6.1.5 #146,
 [discovery]
 auto_capabilities = "on"   # auto-detect available plugins/skills; "off" disables
 ```
+
+### `[models]` — per-role subagent model map (v6.2.5)
+
+The single place mapping each flock/meta role to the model it dispatches with. Every
+dispatching tier (root, conductor, engineer) resolves a role's model with
+`shctx models resolve <role>` and injects it as the Agent `model:` pin — the single
+map replaces per-spawn hand-pinning. See `doctrines/model-map.md`.
+
+> **Section-aware read (the exception).** Unlike the bare-key sections above, `[models]`
+> keys are read with `cfg_section_get`, so role keys (`coder`, `worker`, …) resolve
+> *within* `[models]` and never collide with a same-named key elsewhere.
+
+Resolution chain: **(1)** explicit `[models].<role>` key → **(2)** active profile/mode
+preset *(future)* → **(3)** root-tier-derived default *(future)* → **(4)** built-in
+default. Layers 2-3 are deferred; the chain leaves the slots so profiles land with zero
+rework to the map.
+
+| Role | Built-in default | Notes |
+|---|---|---|
+| `root` | `opus[1m]` | **advisory** — a config key cannot rebind a running main-chat session; `shctx models show` warns on mismatch |
+| `planter` | `opus[1m]` | |
+| `engineer` | `opus[1m]` | the one Opus dispatch; `ENGINEER-MODEL-FAIL` still guards the tier |
+| `conductor` | `sonnet` | if set to an opus tier, the per-lane cost advisory fires |
+| `critic` / `discovery` / `coder` / `auditor` / `worker` | `sonnet` | |
+
+```toml
+[models]
+root      = "opus[1m]"   # advisory (your live session)
+planter   = "opus[1m]"
+engineer  = "opus[1m]"
+conductor = "sonnet"
+critic    = "sonnet"
+discovery = "sonnet"
+coder     = "sonnet"
+auditor   = "sonnet"
+worker    = "sonnet"
+```
+
+Inspect with `shctx models show` (`--md` / `--json`); resolve one with
+`shctx models resolve <role>`. Unset roles fall to the built-in default, so a project
+with no `[models]` block behaves exactly as the defaults above.
+
+### `[prune]` — workdir + registry GC (v6.2.5)
+
+Retention windows for `shctx prune` (`doctrines/workdir-prune.md`). `--dry-run` is the
+default; `--confirm` executes on-disk sweeps by MOVING targets into
+`/tmp/shepherd-prune-<epoch>/` (reversible — `mv` back to restore). Eligibility is fenced
+on branch≠current ∧ terminal ∧ aged; `index_releases`, the current sprint's focus,
+`sprint_metrics`, pinned memory, and active locks/loops are never touched. DB-row sweeps
+are preview-only in v6.2.5 (eligible counts printed, nothing deleted). Keys are read
+section-aware (`cfg_section_get prune <key>`), like `[models]`.
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `logs_days` | int (days) | `60` | age floor for `logs/events-*.jsonl` + `logs/hooks/*.jsonl` |
+| `dispatch_days` | int (days) | `30` | age floor for stale `dispatch/<sprint>/` dirs (non-current branch) |
+| `snapshots_keep` | int | `20` | precompact `memory/snapshots/` retained (newest-first) |
+| `findings_sprints` | int | `6` | keep discovery/audit findings for the last N sprints |
+
+```toml
+[prune]
+logs_days        = 60
+dispatch_days    = 30
+snapshots_keep   = 20
+findings_sprints = 6
+```
+
+Flags override config: `--logs-days=`, `--dispatch-days=`, `--snapshots-keep=`; `--vacuum`
+(with `--confirm`) reclaims file space; `--json` emits a machine-readable plan.
 
 ## Path interpolation
 
