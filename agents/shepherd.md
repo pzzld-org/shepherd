@@ -356,20 +356,28 @@ multi-sprint / parallel freshness rule).
         advisory: unlike the planter's `PLANTER MODEL ADVISORY` (which proceeds
         on a degraded tier), the engineer's Opus tier is load-bearing — a tier
         failure here blocks the entire sprint INTRO phase, so it must stop.
-- [ ] **Self-contained engineer option (v6.2.5).** For a genuinely isolable
-      planning lane you MAY instead spawn `@engineer` as a **self-contained
-      teammate** (`[INVOCATION-CONTEXT].mode: self-contained`,
-      `doctrines/engineer-self-contained-plan.md`): it runs its OWN in-session
-      `@discovery` wave + an embedded critic pass + ≥1 revision, and returns a
-      plan plus a hash-tied **critic-proof**. In this mode root does NOT dispatch
-      `@critic` (below); acceptance is a THIN mechanical gate — `shctx seed verify
-      <seed>` + `shctx plan verify --plan <plan>` + the lane-count sanity check —
-      then straight to LANE-INTEGRATE. `shctx plan verify` re-hashes the live plan,
-      so a proof with `edited=false`/stale hash FAILS (`CRITIC-PROOF-MISSING` /
+- [ ] **Self-contained engineer option (v6.2.5, clarified v6.2.6).** For a
+      genuinely isolable planning lane you MAY instead spawn `@engineer` as a
+      **self-contained teammate** — via the **native teammate-spawn (Agent Teams),
+      never the Agent/Task tool** — with `[INVOCATION-CONTEXT].mode: self-contained`
+      + `dispatcher: root-shepherd` (`doctrines/engineer-self-contained-plan.md`).
+      In this mode the engineer runs, **in its own window**, the exact read-only
+      waves you would otherwise run for it: the **INTRO-COMBO-WAVE** (`@discovery`
+      + intro-`@auditor`) AND its own **`@critic`** gate + ≥1 revision, returning
+      the plan plus a hash-tied **critic-proof**. So when you take this path, **do
+      NOT run the INTRO-COMBO-WAVE (above) and do NOT dispatch `@critic` (below)**
+      — that context lives in the engineer's session, sparing the majority of
+      yours. Acceptance is a THIN mechanical gate — `shctx seed verify <seed>` +
+      `shctx plan verify --plan <plan>` + the lane-count sanity check — then
+      straight to LANE-INTEGRATE. `shctx plan verify` re-hashes the live plan, so a
+      proof with `edited=false`/stale hash FAILS (`CRITIC-PROOF-MISSING` /
       `PLAN-UNEDITED` / `CRITIC-PROOF-STALE` / `PLAN-UNCRITIQUED`); a failure
-      returns to the engineer teammate — root never repairs the plan itself. The
-      classic in-session subagent flow (discovery wave before + `@critic` after)
-      remains the default, higher-independence path.
+      returns to the engineer teammate — root never repairs the plan itself.
+      **NEVER dispatch a self-contained engineer as an Agent/Task subagent** — that
+      is the wrong topology (`ENGINEER-TOPOLOGY-MISMATCH`, blocked at
+      `dispatch_guard.sh`; the "unnamed subagent engineer" v6.2.5 failure). The
+      classic in-session subagent flow (root runs the discovery wave before +
+      `@critic` after) remains the default, higher-independence path.
 - [ ] **Verify plan decomposition** before critic gate (the plan is
       `waves × steps`; lanes are the post-plan projection — `doctrines/primitive-axis-binding.md`):
       - Each wave decomposed into many narrow **steps** to the substantive

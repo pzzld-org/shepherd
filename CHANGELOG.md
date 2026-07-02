@@ -4,6 +4,31 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v6.2.6 — 2026-07-02
+
+**Clarify the self-contained engineer: a flock leader with a read-only sub-flock, spawned as a named teammate.** v6.2.5 introduced the self-contained engineer but left the topology ambiguous — an engineer dispatched as a bare subagent read its own "self-contained" prose and self-activated a discovery fan-out it was never spawned to lead, replacing the discovery *dynamic workflow* with a static fan-out and (worse) initializing a phantom unnamed engineer. This release makes the role unambiguous. It is behavioral/wiring only — no new machinery.
+
+### Changed — the engineer is a flock leader that runs its own read-only waves (`doctrines/engineer-self-contained-plan.md`, #172)
+
+- **The sub-flock is the three read-only / adversarial roles ONLY** — `@discovery`, intro-mode `@auditor`, and its own `@critic`. These are the *exact* waves root used to run on the engineer's behalf (the INTRO-COMBO-WAVE + the post-plan critic). In self-contained mode the engineer runs them **in its own window**, so root runs **neither** its own INTRO-COMBO-WAVE **nor** `@critic` — the same workflow, **compartmentalized**, sparing the majority of the context root used to incur. No `@coder`/`@worker`; **no code is touched**; the only artifacts are the plan + its reports.
+- **Real `@critic`, not an embedded pass.** The engineer now dispatches an actual `@critic` agent against its own plan (brief tagged `[INVOCATION-CONTEXT].dispatcher: engineer-self-contained`) and revises ≥1 — the adversarial-agent gate every flock leader runs on its own output — then emits the hash-tied critic-proof unchanged. (Embedded rubric kept only as a platform fallback.)
+- **Discovery is the scaled dynamic wave, not a fixed fan-out.** The engineer's `@discovery` + intro-`@auditor` batch is bounded, scope-partitioned, and T-shirt-scaled — the planter's `§Step 2-bis` leader-runs-its-own-wave pattern — never a hard-coded "always 5."
+- **Hard mode determination.** Self-contained activates only when `mode: self-contained` **and** `dispatcher: root-shepherd` **and** genuinely running as a teammate. Any ambiguity → classic (consume root's waves, dispatch nothing). Ambiguity never self-activates.
+
+### Fixed — deterministic spawn topology + mechanical guards (`hooks/scripts/dispatch_guard.sh`)
+
+- **`ENGINEER-TOPOLOGY-MISMATCH` (new).** An Agent/Task dispatch of `@engineer` whose brief carries `mode: self-contained` is refused — a self-contained engineer must be a **named teammate-spawn**, never a subagent. This is the mechanical fix for the "unnamed subagent engineer" failure. Classic engineer dispatch (no mode marker) is unaffected.
+- **`WRONG-TIER-DISPATCH` (tightened).** A teammate dispatching `@engineer` is now refused **unconditionally** (no nested/phantom engineer). A teammate dispatching `@critic` is refused **unless** the brief carries `dispatcher: engineer-self-contained` — so the engineer teammate gates its own plan, but a conductor lane still cannot re-gate a fixed one.
+- **`ENGINEER-SUBFLOCK-VIOLATION` (new).** The engineer tags every sub-flock dispatch `dispatcher: engineer-self-contained`; a marked dispatch to anything outside the read-only trio (`@coder`/`@worker`/nested `@engineer`) is refused. This gives "no code is touched during this phase" the same mechanical teeth as the topology check, not prose alone.
+- The marker match is anchored to a real field assignment (line-start, optional `[INVOCATION-CONTEXT].` prefix or block indent), so a classic brief that merely mentions the phrase in prose is not misread, while both the dotted and block marker forms are caught.
+- The engineer's `Agent` grant scope pin (`lint_agent_capabilities.sh`, #172) now covers `{shepherd:discovery, shepherd:auditor, shepherd:critic}` — the read-only sub-flock — so a future broadening to a write role cannot land silently.
+
+### Tests
+
+- `test_dispatch_guard.sh` +6 cases (topology mismatch, nested engineer, marker-scoped critic self-gate vs conductor re-gate, intro-audit wave). `test_engineer_self_contained.sh` extended to pin the clarified contract. `lint_agent_capabilities.sh` updated for the trio scope. **51/51 hooks + 49/49 ctx.**
+
+---
+
 ## v6.2.5 — 2026-07-01
 
 **Config-driven model map, a self-contained engineer with an irrefutable critic-proof, and an outcome-safe workdir prune.** Three lean additions, all behavioral / config / CLI wiring — no heavy architecture. At ultra-parallel scale for long durations, hand-pinning a model on every spawn is a class of error; a plan handed to root only to be re-critiqued is wasted context; and a long-lived workdir accretes state nobody ever sweeps. This release removes all three.

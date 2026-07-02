@@ -213,9 +213,14 @@ live in each:
 
 1. **PLAN (engineer, once per sprint — no primitive).** The engineer authors the plan as
    **waves × steps**. No lanes. No parallelism construct. No Agent Teams, no workflow.
-   The plan is gated by `@critic`. (Phase-0 ground truth is supplied by the root-run
-   discovery wave / INTRO-COMBO-WAVE, which the engineer **consumes** — it does not
-   re-run the mesh; see `intro-combo-wave.md` and `agents/engineer.md §Step 2`.)
+   The plan is gated by `@critic`. Phase-0 ground truth comes from the INTRO-COMBO-WAVE,
+   and **who runs it depends on the engineer's dispatch topology** (`engineer-self-contained-plan.md`):
+   in **classic/solo** mode the wave is **root-run** and the engineer **consumes**
+   `[DISCOVERY-CONTEXT]`/`[INTRO-AUDIT-CONTEXT]` — it does not re-run the mesh; in
+   **self-contained (teammate)** mode the engineer **runs the wave itself** (its read-only
+   sub-flock: `@discovery` + intro-`@auditor`) and gates the plan with its own dispatched
+   `@critic`, keeping that context out of root's window. Either way the engineer never runs
+   the mesh redundantly. (See `intro-combo-wave.md` and `agents/engineer.md §Step 2`.)
 
 2. **PROJECT TO LANES (engineer authority, post-plan, spawn mode ONLY).** After the plan
    is gated, and only under `/shepherd:spawn`, the finished waves×steps plan is sliced

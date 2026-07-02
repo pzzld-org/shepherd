@@ -719,19 +719,36 @@ root is the coordination bottleneck for ultra-parallel spawns — consider
 `/model opus`). The 8 spawned roles ARE hard-driven — the resolved slug is the
 `model:` pin above.
 
-### Self-contained engineer (v6.2.5)
+### Self-contained engineer (v6.2.5, clarified v6.2.6)
 
-Root MAY spawn `@engineer` as a **self-contained teammate**
-(`doctrines/engineer-self-contained-plan.md`): the engineer runs its own
-in-session `@discovery` wave + an embedded critic pass + ≥1 revision and returns
-the plan plus a hash-tied **critic-proof**. Root then accepts via a THIN gate —
+Root MAY spawn `@engineer` as a **self-contained teammate** — via the **native
+teammate-spawn (Agent Teams), never the Agent/Task tool**
+(`doctrines/engineer-self-contained-plan.md`). The engineer is a flock leader
+whose sub-flock is the three **read-only / adversarial** roles ONLY —
+`@discovery`, intro-mode `@auditor`, `@critic`. It runs, **in its own window**,
+the exact waves root would otherwise run on its behalf: the INTRO-COMBO-WAVE
+(`@discovery` + intro-`@auditor`) AND its own `@critic` gate + ≥1 revision, and
+returns the plan plus a hash-tied **critic-proof**. No code is touched; the only
+artifacts are the plan + its reports. Root then accepts via a THIN gate —
 `shctx seed verify` + `shctx plan verify --plan <plan>` + a lane-count sanity
-check — and does NOT re-dispatch `@critic`. This is distinct from the forbidden
-teammate-conductor → engineer dispatch (`WRONG-TIER-DISPATCH` stays): only ROOT
-spawns the engineer teammate, and that teammate dispatches ONLY `@discovery`
-(never `@critic`/`@coder`, per `hooks/scripts/dispatch_guard.sh` Check 4). The
-classic in-session subagent flow (INTRO discovery wave + root-dispatched
-`@critic`) remains the default, higher-independence path.
+check — and runs **neither** its own INTRO-COMBO-WAVE **nor** `@critic`, because
+the engineer already ran both. This is the same workflow, **compartmentalized**:
+it moves the majority of the discovery + critic context out of root's window.
+
+Guardrails (`hooks/scripts/dispatch_guard.sh`):
+
+- Only ROOT spawns the engineer teammate; a teammate-conductor → engineer dispatch
+  stays `WRONG-TIER-DISPATCH`, and a teammate → `@engineer` is refused
+  unconditionally (no nested/phantom engineer).
+- The engineer teammate MAY dispatch its read-only sub-flock; its `@critic`
+  self-gate is admitted because the brief carries `dispatcher:
+  engineer-self-contained` (a conductor lane, lacking that marker, still cannot
+  re-gate the plan).
+- A self-contained engineer dispatched as an Agent/Task **subagent** is refused
+  (`ENGINEER-TOPOLOGY-MISMATCH`) — self-contained is a named teammate, full stop.
+
+The classic in-session subagent flow (root runs the INTRO discovery wave +
+dispatches `@critic`) remains the default, higher-independence path.
 
 > **Teammate vs subagent (live-docs-verified, #93; v2.1.178 update):** a **teammate** is a
 > long-lived peer session — spawned via the native teammate-spawn referencing the

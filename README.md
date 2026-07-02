@@ -263,7 +263,7 @@ Six agents, fixed contracts. `@engineer` runs on Opus (plan quality is worth it)
 
 ### The three-section pipeline
 
-- **Introduction.** A Phase 0 mesh audits ground truth (open issues and PRs, recent Sentry / Supabase / Fly state, carry-forwards from prior sprints). The engineer then authors the plan, and the critic gates it adversarially before a single line is written. Under `/shepherd:spawn` the engineer can run **self-contained** — as its own teammate that runs its discovery wave and critic pass in-session and returns a hash-tied *critic-proof*; root then accepts the plan with a thin mechanical gate (`shctx plan verify`) instead of re-reviewing it.
+- **Introduction.** A Phase 0 mesh audits ground truth (open issues and PRs, recent Sentry / Supabase / Fly state, carry-forwards from prior sprints). The engineer then authors the plan, and the critic gates it adversarially before a single line is written. Under `/shepherd:spawn` the engineer can run **self-contained** — as its own named teammate that runs its read-only sub-flock in-session (the discovery + intro-audit wave *and* its own dispatched critic gate) and returns a hash-tied *critic-proof*; root then runs neither wave itself and accepts the plan with a thin mechanical gate (`shctx plan verify`) instead of re-reviewing it, keeping that context out of root's window.
 - **Body.** Coder waves run with gates between them (`format`, `check`, `lint`, all configurable). Each wave is also reviewed by a wave-review auditor before it is forwarded: a conductor cannot pass a wave up on a coder's self-gate-green claim, and a REDO verdict forces the named author to redo the named scope. The auditor swarm overlaps the last wave so review is not a serial tail.
 - **Close.** Merge, tag, squash-to-main, carry-forward refresh, and a written close report. Under `/shepherd:spawn`, the body fans out as lanes (vertical slices across waves), each owned by a teammate-conductor.
 
@@ -471,7 +471,7 @@ Shepherd follows semver:
 - **Minor**: new commands, doctrines, or config keys (backward-compatible).
 - **Patch**: dispatch logic, doctrine, and brief-template fixes.
 
-Current version: **6.2.5**. See [`CHANGELOG.md`](CHANGELOG.md) for the per-version history.
+Current version: **6.2.6**. See [`CHANGELOG.md`](CHANGELOG.md) for the per-version history.
 
 ---
 
