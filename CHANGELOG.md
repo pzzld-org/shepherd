@@ -4,6 +4,42 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v6.2.7 — 2026-07-02
+
+**The conductor is read + dispatch only, mechanically — plus the field incident that proved why prose isn't enough.** During this cycle a live spawn session dispatched `@critic` as a native teammate twice, then `@coder` once, despite the profile prose forbidding both. Root cause: the platform's native teammate-spawn is a natural-language instruction, not a tool call — `dispatch_guard.sh`'s `PreToolUse(Agent|Task)` hook structurally cannot see it. This release closes that gap with two deterministic gates instead of more prose, and uses the same lever to retire the conductor's remaining direct write/git-write authority.
+
+### New — `hooks/scripts/conductor_write_guard.sh` (#180)
+
+- **`PreToolUse(Edit|Write|Bash)`.** The conductor no longer carries `Edit`/`Write` in its tool grant, in EITHER mode — no `.md`-only carve-out remains. This hook is the mechanical backstop: it denies any `Edit`/`Write` call and any Bash command with git-write semantics (`commit`/`push`/`merge`/`rebase`/`cherry-pick`/`worktree add|remove|prune`/`branch -d`/`checkout -b`/`tag`/`reset`), filesystem mutation (`rm`/`mv`/`sed -i`/shell redirection into a file), or a mutating `shctx` subcommand (`seed`, `close-lane`, `adapt roll|reflect`, `loop init|record|close|focus upsert`, `mem add|pin|unpin|rm`, `lock acquire|release`, `worktree create-batch|merge|gc`, `config init|claude-md`, `migrate`, `release`, `prune --confirm`, …) — whenever the call is the conductor's own turn (`current_role` resolves `conductor` — i.e. not a tagged `@coder`/`@auditor`/`@worker`/`@discovery`/`@engineer`/`@critic` dispatch) AND a sprint is actually open (sprint-branch shape, or a registered non-retired teammate row). Read-only Bash (`git log/status/diff/show/branch/worktree list`, `gh` reads, `shctx query/search/status/doctor/dash/inject/toolkit/models show/refresh/lint/seed verify/plan verify/graph compile --verify`) passes through unmatched.
+- **Every write becomes a `@worker` dispatch.** Plan/report/handoff/ledger/CLAUDE.md materialization, gate commits, worktree lifecycle, and rebase-merges are now composed by the conductor (exact content or exact command sequence — that's where the judgment lives) and handed to `@worker` as a deterministic brief. The conductor's ONE remaining direct external mutation is `mcp__plugin_github_github__issue_write` — opening/closing carry-forward and drift-risk GitHub issues, nothing else.
+- New halt codes `CONDUCTOR-WRITE-DENIED` / `CONDUCTOR-GIT-WRITE-DENIED` (both modes), generalizing the pre-6.2.7 `TEAMMATE-GIT-WRITE`/`TEAMMATE-ARTIFACT-WRITE` contract to SOLO mode too.
+- `agents/conductor.md`: tools grant trimmed (no `Edit`/`Write`/`execute_sql`; `issue_write` added), Hard prohibition #1 rewritten, SOLO- and TEAMMATE-mode side-effect boundary tables updated to name `@worker` as the vehicle for every write.
+
+### New — `shctx teammate register` refuses non-conductor teammates (#180)
+
+- **The real fix for the critic/coder-as-teammate incident.** `skills/context/scripts/cmd_teammate.sh`'s `register` subcommand now hard-refuses any `--type` other than `conductor`/`shepherd:conductor` (case-insensitive) — exit 1, no row inserted, loud `CONDUCTOR-ONLY-TEAMMATE` error naming the doctrine. This is the one deterministic choke point every teammate passes through regardless of how the native-teammate-spawn instruction is worded, which is why it catches what `dispatch_guard.sh` structurally cannot.
+
+### Hardened — `hooks/tests/lint_agent_capabilities.sh`
+
+- Conductor now has its own dedicated lint block (it isn't in `READONLY_ROLES` — it keeps `Agent`+`Bash` for dispatch and read-only inspection): asserts no `Edit`/`Write`/`NotebookEdit`/`MultiEdit` grant, and that `conductor_write_guard.sh` is registered in `hooks.json`.
+
+### Research — `docs/specs/workspace-symbol-graph-research.md`
+
+- A design/research doc surveying workspace-object-relationship tracking (VS Code's workspace-symbol provider, LSP servers, tree-sitter/ast-grep, SCIP, stack-graphs, Glean, Kythe, CodeQL, Neo4j/Kùzu/DuckDB) for a future "object management system" that extends `shctx`'s existing symbol index with a relationship graph. Recommendation: reject the heavyweight server-coupled systems (Glean/Kythe) as a near-term default; extend the existing SQLite `index_symbols` schema with an `index_edges` table (recursive-CTE graph queries) as Phase 1, tree-sitter-based multi-language extraction as Phase 2, and revisit SCIP/embedded-graph-DB adoption only if 1/2 prove insufficient by measurement. Concrete schema + example queries included. Not implemented this cycle — long-term direction only, per the operator's framing.
+
+### Deferred (scoped out of this cycle, on purpose)
+
+Two items from the original v6.2.7 brief — (1) deeper session/context-memory integration with the Claude Code harness and the `/remember` plugin, and (2) a broader brief-compaction pass so Opus stops dropping long doctrine loads under context pressure — are **not** in this release. Mid-cycle, a live incident showed the plugin is already large enough (reportedly 5-9% of a 1M-token context just to load) that the correct response to "Opus skips instructions" is to shrink and mechanize, not add more prose explaining the rules better. Landing (1) and (2) properly means a dedicated compaction-first pass across `agents/*.md` + `skills/shepherd/doctrines/*.md`, not incremental additions bolted onto this patch. Tracked as follow-up GH issues rather than rushed here.
+
+### Tests
+
+- `hooks/tests/test_conductor_write_guard.sh` (new, 16 cases) + 3 smoke `run_case` entries in `hooks/tests/run.sh`.
+- `skills/context/tests/test_cmd_teammate_conductor_only.sh` (new, 6 cases) — pins the `CONDUCTOR-ONLY-TEAMMATE` refusal for `critic`/`engineer`/`coder` and acceptance of `conductor`/`shepherd:conductor`/`Conductor`.
+- `hooks/tests/lint_agent_capabilities.sh` extended with the conductor-specific block.
+- Full suites verified against this branch: hooks 53/55 (2 pre-existing environment failures, confirmed present on the pre-patch baseline too — an sqlite view bootstrap issue unrelated to this change), context 31/50 (30/50 pre-existing baseline; +1 from the new teammate-gate test). No regressions introduced.
+
+---
+
 ## v6.2.6 — 2026-07-02
 
 **Clarify the self-contained engineer: a flock leader with a read-only sub-flock, spawned as a named teammate.** v6.2.5 introduced the self-contained engineer but left the topology ambiguous — an engineer dispatched as a bare subagent read its own "self-contained" prose and self-activated a discovery fan-out it was never spawned to lead, replacing the discovery *dynamic workflow* with a static fan-out and (worse) initializing a phantom unnamed engineer. This release makes the role unambiguous. It is behavioral/wiring only — no new machinery.

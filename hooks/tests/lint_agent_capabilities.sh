@@ -24,11 +24,18 @@
 #           asserts lock_guard.sh exists AND is registered under a
 #           PreToolUse(Write) matcher whenever a read-only role keeps Write.
 #
-# CARVE-OUT (single, annotated, audited):
+# CARVE-OUT (annotated, audited):
 #   auditor MAY retain mcp__plugin_github_github__issue_write for finding
-#   creation — the conductor has no issue_write (agents/conductor.md) and the
-#   auditor is the sole close-flow issue filer. discovery/critic may NOT.
-#   (Operator lane-A scope kept issue_write; only execute_sql was dropped.)
+#   creation — the auditor is the sole close-flow issue filer. discovery/critic
+#   may NOT. (Operator lane-A scope kept issue_write; only execute_sql was
+#   dropped.)
+#   conductor (v6.2.7, #180) MAY ALSO retain issue_write — it is the conductor's
+#   ONLY direct external mutation (open/close carry-forward + drift-risk
+#   issues); every other write is dispatched to @worker
+#   (hooks/scripts/conductor_write_guard.sh is the mechanical enforcement for
+#   Edit/Write/git-write Bash). conductor is NOT in READONLY_ROLES (it keeps
+#   Agent + Bash for dispatch + read-only inspection), so this carve-out is
+#   checked separately from the trio loop below.
 #
 # Exit 0 on pass; exit 1 with a per-violation diagnostic.
 
@@ -74,7 +81,7 @@ for role in $READONLY_ROLES; do
         note "FAIL $role: forbidden DB-mutating verb '$t' (the GH #74 hole)"; fails=$((fails+1)) ;;
       mcp__plugin_github_github__issue_write)
         if [[ "$role" != "auditor" ]]; then
-          note "FAIL $role: issue_write is the auditor-only finding-creation carve-out; not allowed for $role"
+          note "FAIL $role: issue_write is the auditor-only finding-creation carve-out (within READONLY_ROLES); not allowed for $role"
           fails=$((fails+1))
         fi
         ;;
@@ -96,6 +103,31 @@ for role in $READONLY_ROLES; do
     esac
   done <<< "$toks"
 done
+
+# ---------------------------------------------------------------------------
+# CONDUCTOR-ONLY-TEAMMATE / read+dispatch-only conductor lint (v6.2.7, #180).
+# The conductor is NOT in READONLY_ROLES (it keeps Agent + Bash for dispatch +
+# read-only inspection), but it must carry NO Edit/Write/NotebookEdit/MultiEdit
+# grant at all — the mechanical hook (conductor_write_guard.sh) is defense in
+# depth for a frontmatter contract that must itself be correct. issue_write is
+# its one permitted mutating MCP verb (auditor/conductor carve-out).
+# ---------------------------------------------------------------------------
+cf="$AGENTS_DIR/conductor.md"
+if [[ -f "$cf" ]]; then
+  ctoks="$(tools_line "$cf" | tr ',' '\n' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep -v '^$')"
+  while IFS= read -r t; do
+    [[ -z "$t" ]] && continue
+    case "$t" in
+      Edit|Write|NotebookEdit|MultiEdit)
+        note "FAIL conductor: forbidden write-capable tool '$t' — conductor is read+dispatch-only (v6.2.7, #180)"
+        fails=$((fails+1)) ;;
+    esac
+  done <<< "$ctoks"
+  if ! grep -q "conductor_write_guard.sh" "$HOOKS_JSON"; then
+    note "FAIL conductor: no Edit/Write grant is claimed but hooks/scripts/conductor_write_guard.sh is not registered in hooks.json (defense-in-depth missing)"
+    fails=$((fails+1))
+  fi
+fi
 
 # ---------------------------------------------------------------------------
 # #84 least-privilege sweep — ALL NINE agents, under acceptEdits / no-orchestrator.
