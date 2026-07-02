@@ -471,7 +471,7 @@ Shepherd follows semver:
 - **Minor**: new commands, doctrines, or config keys (backward-compatible).
 - **Patch**: dispatch logic, doctrine, and brief-template fixes.
 
-Current version: **6.2.6**. See [`CHANGELOG.md`](CHANGELOG.md) for the per-version history.
+Current version: **6.2.7**. See [`CHANGELOG.md`](CHANGELOG.md) for the per-version history.
 
 ---
 
