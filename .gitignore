@@ -51,6 +51,9 @@
 
 # toolkit.json is TRACKED — explicitly un-ignore in case *.json patterns are added later
 !.artifacts/toolkit.json
+
+# Dev-only tooling output (scripts/ — not part of the shipped plugin surface)
+/scripts/.filetree.json
 !.shepherd/toolkit.json
 
 *.log

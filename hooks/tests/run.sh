@@ -99,6 +99,11 @@ echo "== worktree_lifecycle.sh (v5.1.8) =="
 run_case "no-payload"          worktree_lifecycle.sh ''
 run_case "non-worktree-event"  worktree_lifecycle.sh '{"session_id":"s1","hook_event_name":"PreToolUse"}'
 
+echo "== conductor_write_guard.sh (v6.2.7 #180) — fast-path smoke =="
+run_case "no-payload"          conductor_write_guard.sh ''
+run_case "non-conductor-tool"  conductor_write_guard.sh '{"session_id":"s1","tool_name":"Read","tool_input":{"file_path":"a"}}'
+run_case "no-sprint-open-edit" conductor_write_guard.sh '{"session_id":"s1","tool_name":"Edit","tool_input":{"file_path":"a.md"}}'
+
 # Static lint, not a payload-driven hook: assert the read-only flock reviewers
 # carry no un-scoped mutating capability (GH #74). Runs against the real repo
 # (the lint self-locates its REPO_ROOT), independent of the ephemeral test cwd.
@@ -368,6 +373,22 @@ if esc_out=$(bash "$TESTS_DIR/test_engineer_self_contained.sh" 2>&1); then
 else
   printf '  FAIL  %-50s\n' "v625-wiring"
   printf '%s\n' "$esc_out" | sed 's/^/        /'
+  fails=$((fails+1))
+fi
+
+
+# Conductor write guard (v6.2.7, #180): the conductor is read+dispatch only in
+# BOTH modes — Edit/Write always denied when a sprint is open, a deny-list of
+# Bash write-verbs (git integration commands, filesystem mutation, mutating
+# shctx subcommands) closes the same hole for Bash-as-a-write-vehicle. Fast-paths
+# when no sprint is open or the call is tagged to an in-flight flock dispatch.
+echo "== test_conductor_write_guard.sh (v6.2.7 — #180 conductor read+dispatch-only) =="
+total=$((total+1))
+if cwg_out=$(bash "$TESTS_DIR/test_conductor_write_guard.sh" 2>&1); then
+  printf '  PASS  %s\n' "conductor-write-guard-blocks-writes"
+else
+  printf '  FAIL  %-50s\n' "conductor-write-guard"
+  printf '%s\n' "$cwg_out" | sed 's/^/        /'
   fails=$((fails+1))
 fi
 
