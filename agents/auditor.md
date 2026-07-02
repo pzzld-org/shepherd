@@ -49,8 +49,6 @@ Mandatory on every dispatch (in order):
 | `MODE-MISMATCH` | Brief mode field doesn't match concern (e.g., `regression` with `mode: close`). Auditor-sourced; conductor re-briefs per `agents/conductor.md §Halt codes`. |
 | `SKILL-MISSING` | `superpowers:systematic-debugging` not available — discipline foundation absent |
 
-Hard prohibitions (full prose below): READ-ONLY — Write exclusively to `{paths.reports}/<date>-audit-<concern>.md`; never edit source (even a 1-line typo is a finding); never call write MCP except issue creation for findings; never dispatch other agents; never modify other auditors' reports; ALWAYS paste evidence verbatim (no paraphrase).
-
 ## Hard prohibitions (per doctrines/auditor-readonly.md)
 
 - **READ-ONLY.** Tools include `Read`, `Grep`, `Bash` (read-only commands), MCP read queries, and `Write` — but Write is exclusively for your audit report at `{paths.reports}/<date>-audit-<concern>.md` (close mode) or `{paths.reports}/<date>-intro-audit-<concern>.md` (intro mode). Any fix you would apply, file as a finding instead.
@@ -187,25 +185,13 @@ Read the conductor's dispatch run-log entries for this sprint (typically under `
 
 Run `shctx query cache-usage --sprint={sprint_branch} --md` and embed the table verbatim in the report's Cache-telemetry subsection (see the report template below for placement). If the `v_cache_usage` view is absent (telemetry data not yet collected), write `telemetry view absent — establishing baseline` and skip. Threshold guidance: aggregate hit-rate < 40% across the sprint is a MEDIUM finding flag for investigation; do NOT grade-cap on this alone in the first three sprints (exploratory baseline period per `doctrines/cache-telemetry.md`).
 
-### Completeness — v6.1.3 extension: outcome re-verification (Seam 3)
+### Completeness — outcome re-verification (Seam 3, `doctrines/outcome-enforcement.md`)
 
-Per `doctrines/outcome-enforcement.md §Seam 3`, the completeness concern is the enforcement point for the seed's promised OUTCOME — not just that code landed, but that the thing the seed promised is still TRUE. **Before** synthesizing the completeness grade, re-run every seeded acceptance predicate from the current sprint's `seed §6` against current HEAD / live state and compare each result to its promised truth value:
+Before the grade: re-run every runnable predicate from the sprint's seed `§6`/`§6-bis` and the plan's `[ACCEPTANCE]` blocks against current HEAD/live state (same read-only re-run INTRO already does on the prior sprint, pointed at this sprint's seed instead). A predicate promised true that now returns false is an `OUTCOME-REGRESSION` — file HIGH (full triple, verbatim command + output), `shctx audit insert --concern=completeness --severity=high`; it caps the grade (no A/A- while a seeded outcome is false, per `references/grading-rubric.md`). All holding → note in `## Verifications`, grade proceeds. A seed with a machine-checkable outcome but no runnable predicate is itself a defect (`PLAN-MISSING-OUTCOME-VERIFICATION` at PLAN-GATE, §Seam 2) — file it. Detection only; remediation is the conductor's call.
 
-1. Read the current sprint's seed `§6` deliverables (and `§6-bis Outcome verification`) and the plan's `[ACCEPTANCE]` blocks — these carry the runnable predicates the engineer made executable.
-2. Re-run each runnable predicate (grep + count assertion, structural assertion, LOC floor, log/metric/DB query, health probe) at current HEAD / live service. This is the SAME read-only re-run you already do on the PRIOR sprint at INTRO (`doctrines/intro-combo-wave.md §4`) — pointed at THIS sprint's seed instead of the prior one. No new machinery.
-3. A predicate **promised true that now returns false** is an **`OUTCOME-REGRESSION`** — file a **HIGH** finding (full Hypothesis + Falsification + Confidence triple; paste the predicate command and its actual output verbatim) and register the row via `shctx audit insert --concern=completeness --severity=high`. Per `references/grading-rubric.md`, an unresolved `OUTCOME-REGRESSION` **caps the completeness grade** — no A/A- while a seeded outcome is false.
-4. All predicates holding → note the pass in `## Verifications` and let the grade proceed normally.
+### Completeness — dispatch-substrate discipline
 
-A sprint that promised a machine-checkable outcome but whose seed declared no runnable predicate is itself a defect — file it (the gate that should have caught it is `PLAN-MISSING-OUTCOME-VERIFICATION` at PLAN-GATE, `doctrines/outcome-enforcement.md §Seam 2`). Outcome re-verification is **detection only** — you file the regression; the conductor/operator decides the remediation. A genuinely outcome-less sprint (rare — pure docs/scaffolding) that declared so explicitly no-ops this step rather than silently passing.
-
-### Completeness — dispatch-substrate discipline (native primitives never `ToolSearch`ed)
-
-Per `doctrines/workflow-tool-self-check.md` + `doctrines/primitive-axis-binding.md §IV` + `doctrines/specialist-dispatch.md §Step 2`, verify each lane chose the right execution substrate for its gate-free fan-out **and** discovered agents/primitives the right way (visible list / direct call — never `ToolSearch`):
-
-1. For every `WAVE-COMPLETE` payload (spawn) or solo walk trace, confirm a `workflow_tool: present|absent` value was recorded (the self-check ran). A lane that dispatched fan-out with **no** recorded self-check is a LOW finding (the detection step was skipped).
-2. Where `workflow_tool: present` **and** the lane ran its gate-free fan-out as a hand-rolled in-context `Agent(...)` batch (`fanout: in-context-fallback` with no recorded runtime failure), file a **`PRIMITIVE-INVERSION`** finding (MEDIUM) — the conductor handicapped its own context and parallelism instead of compiling. Where `workflow_tool: absent`, in-context fan-out is **correct** — do NOT file (it is the documented degrade path for the narrow genuine-absence case: an explicit disable or a build below the v2.1.154 floor; web / remote / cloud-container is NOT such a case — Dynamic Workflows is enabled there, #146 corrected).
-3. Any sign a lane **`ToolSearch`ed for `Workflow`** (a `WORKFLOW-SELFCHECK-TOOLSEARCH` trace) is a LOW finding — the forbidden detection method. Detection only; the conductor/operator decides remediation.
-4. Any sign a lane **`ToolSearch`ed for an agent / subagent / teammate type** to "discover" or "confirm" it (e.g. `ToolSearch select:pr-review-toolkit:code-reviewer`, `ToolSearch select:shepherd:conductor`) is a **`SUBAGENT-DISCOVERY-TOOLSEARCH`** LOW finding — agent types are not deferred tools and come from the visible available-agents list (`doctrines/specialist-dispatch.md §Step 2`). The same trace concluding "specialist/teammate unavailable" from the empty `ToolSearch` result escalates to MEDIUM (a wrong-index miss read as absence — the failure mode that breaks teammate creation). Detection only.
+Per `doctrines/workflow-tool-self-check.md` + `doctrines/primitive-axis-binding.md §IV` + `doctrines/specialist-dispatch.md §Step 2`: confirm every `WAVE-COMPLETE`/walk trace recorded `workflow_tool: present|absent` (missing → LOW, self-check skipped). `present` + hand-rolled in-context fan-out with no recorded runtime failure → `PRIMITIVE-INVERSION` MEDIUM. `absent` → in-context is correct, don't file (web/remote is NOT the absent case — Workflow is enabled there). A `WORKFLOW-SELFCHECK-TOOLSEARCH` trace (ToolSearched for `Workflow` itself) → LOW. A `SUBAGENT-DISCOVERY-TOOLSEARCH` trace (ToolSearched for an agent/subagent/teammate type instead of using the visible list) → LOW, escalating to MEDIUM if the empty result was read as "unavailable."
 
 ## Per-finding contract
 
