@@ -274,6 +274,8 @@ git branch -d claude-agent-<lane>-<short-hash>
 
 **Dispatch mode:** Single agent, once per sprint in §1 INTRODUCTION.
 
+**Self-contained mode (v6.2.5):** under `/shepherd:spawn`, root MAY instead spawn `@engineer` as its OWN teammate — it runs an in-session `@discovery` wave + an embedded critic pass + ≥1 revision and returns the plan plus a hash-tied **critic-proof**; root accepts it via a thin `shctx plan verify` gate, NOT a re-critique. A teammate-**conductor** still may NOT dispatch `@engineer`/`@critic` (`WRONG-TIER-DISPATCH`) — only root spawns the engineer teammate, which then dispatches ONLY `@discovery`. See `doctrines/engineer-self-contained-plan.md`.
+
 **Trigger:** start of every sprint (main chat seeds, @engineer plans); when a seed is revised mid-cycle and the plan needs regeneration; when Phase 0 mesh is stale.
 
 **Mandatory skills to load on dispatch:**

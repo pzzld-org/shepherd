@@ -4,6 +4,35 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v6.2.5 — 2026-07-01
+
+**Config-driven model map, a self-contained engineer with an irrefutable critic-proof, and an outcome-safe workdir prune.** Three lean additions, all behavioral / config / CLI wiring — no heavy architecture. At ultra-parallel scale for long durations, hand-pinning a model on every spawn is a class of error; a plan handed to root only to be re-critiqued is wasted context; and a long-lived workdir accretes state nobody ever sweeps. This release removes all three.
+
+### New — the `[models]` map (`doctrines/model-map.md`, #170)
+
+- **One table maps every role to its model.** `.claude/shepherd.toml [models]` sets the model each flock/meta role dispatches with. Every dispatching tier (root, conductor, engineer) resolves it with **`shctx models resolve <role>`** and injects the result as the Agent `model:` pin — generalizing the v6.0.9 conductor pin into a single source. `shctx models show` (`--md`/`--json`) renders the resolved 9-role table + source per row and doubles as the spawn preflight.
+- **Built-in defaults = the stated defaults.** `root`/`planter`/`engineer` = `opus[1m]`; `conductor`/`critic`/`discovery`/`coder`/`auditor`/`worker` = `sonnet`. A project with no `[models]` block behaves exactly as these defaults; set any role to any slug for total control.
+- **root is advisory.** A config key cannot rebind a running main-chat session, so `[models].root` names the model the session *should* run — the preflight warns on mismatch (an under-powered root is the coordination-quality bottleneck for parallel spawns); the 8 spawned roles are the ones hard-driven.
+- **Section-aware config read.** `cfg_section_get` (mirrored in both `_lib.sh` copies) resolves bare role keys *within* `[models]`, so they never collide with same-named keys elsewhere. The resolution chain leaves insertion points (profile/mode presets, root-tier-derived defaults) for a future release with zero rework to the map.
+
+### New — self-contained engineer + the critic-proof (`doctrines/engineer-self-contained-plan.md`, #169)
+
+- **Plan construction is re-emphasized as the whole point of the engineer:** seed + context → one multi-phase plan; each phase = N granular tasks/stages conditionally linked via the Stage Graph for near-automatic execution; the finished, critic-gated plan is then sliced vertically into independent lanes, each mapped to a team led by a conductor running coder/worker waves with auditor self-review.
+- **Self-contained (teammate) mode.** Root MAY spawn `@engineer` as its own teammate. The engineer then runs an in-session `@discovery` wave (its `Agent` grant is scoped to `shepherd:discovery`, the same read-only bound the planter carries) plus an **embedded adversarial critic pass** — a teammate cannot dispatch `@critic` (`dispatch_guard.sh` Check 4 stays), so the critic *rubric* runs in-context — and **revises at least once**. Classic root-tier mode (discovery wave before + the distinct `@critic` after) remains the default, higher-independence path.
+- **The critic-proof — irrefutable, not trust.** The engineer emits a hash-tied `<plan>.critic-proof.json` via **`shctx plan record-critique`** (pre/post plan hashes, `edited`, verdict, iterations). Root accepts the plan with a **thin mechanical gate** — `shctx seed verify` + **`shctx plan verify`** + lane-count sanity — and does NOT re-critique. `shctx plan verify` re-hashes the live plan, so a proof with `edited=false`, a stale hash, or no critique fails with a named code (`CRITIC-PROOF-MISSING` / `PLAN-UNEDITED` / `CRITIC-PROOF-STALE` / `PLAN-UNCRITIQUED`). Latent critique, deterministic proof.
+
+### New — `shctx prune` workdir + registry GC (`doctrines/workdir-prune.md`, #171)
+
+- **Outcome-safe by construction.** `--dry-run` is the default (prints the plan + a `/tmp` CSV, removes nothing); `--confirm` executes on-disk sweeps by **MOVING** targets into `/tmp/shepherd-prune-<epoch>/` — the snapshot IS the removal, `mv` back to restore. Eligibility is fenced on **all three**: sprint/branch ≠ current git branch, a terminal state, and age ≥ floor.
+- **On-disk sweeps execute now:** stale `dispatch/<sprint>/` dirs, aged logs, over-retention precompact snapshots. **DB-row sweeps ship preview-only** (eligible counts printed, nothing deleted), enabled incrementally in a later patch — every DB `DELETE` is table-guarded (a workdir DB may lack later migrations). Never touches `index_releases`, current focus, `sprint_metrics`, pinned memory, or active locks/loops. Windows via `[prune]` (`logs_days`/`dispatch_days`/`snapshots_keep`/`findings_sprints`); `--vacuum` reclaims file space.
+- **gitignore fix:** `.artifacts/memory/` + `.shepherd/memory/` are now ignored (precompact snapshots were leaking into `git status`).
+
+### Tests
+
+- New deterministic gate tests: `skills/context/tests/test_models_resolve.sh`, `test_plan_verify.sh`, `test_prune.sh`; hooks wiring guard `hooks/tests/test_engineer_self_contained.sh` (pins the doctrine ↔ profile ↔ CLI ↔ matrix citations for all three features + a dangling-citation check). The engineer's `Agent` grant is pinned to the `shepherd:discovery` scope by `lint_agent_capabilities.sh` (#119/#169). Suites: 49/49 context, 51/51 hooks, 2/2 llm, 3/3 eval. The three features are deterministic pure functions, so gate tests are the correct lane (no LLM-judged eval applies).
+
+---
+
 ## v6.2.4 — 2026-06-30
 
 **The flock-output review gate + the REDO loop (#167).** A conductor could forward a wave's

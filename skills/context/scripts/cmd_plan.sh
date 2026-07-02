@@ -28,9 +28,19 @@ _graph_dir() {
 
 _state_path() { echo "$(_graph_dir)/state.json"; }
 
+# Critic-proof lives ALONGSIDE the plan (the tracked plans dir), so it is
+# git-visible next to the artifact it proves. Derived from the plan path:
+#   .../plans/<slug>.plan.md  →  .../plans/<slug>.critic-proof.json
+_proof_path() {
+  local plan="$1" dir base
+  dir="$(dirname "$plan")"; base="$(basename "$plan")"
+  base="${base%.md}"; base="${base%.plan}"
+  echo "$dir/${base}.critic-proof.json"
+}
+
 usage() {
   cat <<'EOF'
-shctx plan <extract|topology|validate> [args]
+shctx plan <extract|topology|validate|hash|record-critique|verify> [args]
 
   extract <plan.md> [--sprint=BRANCH] [--force]
       Parse the Stage Graph YAML from plan.md and store
@@ -42,8 +52,24 @@ shctx plan <extract|topology|validate> [args]
   validate
       Structural checks (acyclic, predicates resolve, parallel_with mutual).
 
+  hash <plan.md>
+      Echo "sha256:<hex>" of the plan bytes. The engineer captures this BEFORE
+      dispatching @critic so record-critique can prove the plan was edited.
+
+  record-critique --plan <path> --pre <hash> --verdict <v> [--iterations N] [--findings N]
+      Write the critic-proof alongside the plan. Computes the post-critic hash
+      from the current plan bytes; edited = (pre != post). Emitted by the
+      engineer teammate after the in-session @critic pass + revision.
+
+  verify [--plan <path>] [--quiet]
+      Root's thin acceptance gate (mirrors `shctx seed verify`): the plan was
+      critiqued AND edited at least once. Exit 1 with a named code on failure —
+      CRITIC-PROOF-MISSING / PLAN-UNEDITED / CRITIC-PROOF-STALE / PLAN-UNCRITIQUED.
+      post_critic_hash must match the ACTUAL current plan bytes, so a stale or
+      hand-forged proof cannot pass.
+
 The state file is the input to `shctx graph` (the rule-engine walker).
-See doctrines/dispatch-cascade.md.
+Critic-proof: doctrines/engineer-self-contained-plan.md. See doctrines/dispatch-cascade.md.
 EOF
 }
 
@@ -278,12 +304,140 @@ PY
 }
 
 # ---------------------------------------------------------------------------
+# hash — sha256 of the plan bytes (engineer captures pre-critic)
+# ---------------------------------------------------------------------------
+_cmd_hash() {
+  local plan="${1:-}"
+  [[ -n "$plan" && -f "$plan" ]] || { echo "ERROR: usage: shctx plan hash <plan.md>" >&2; exit 2; }
+  python3 - "$plan" <<'PY'
+import hashlib, sys
+with open(sys.argv[1], "rb") as f:
+    print("sha256:" + hashlib.sha256(f.read()).hexdigest())
+PY
+}
+
+# ---------------------------------------------------------------------------
+# record-critique — write the critic-proof alongside the plan
+# ---------------------------------------------------------------------------
+_cmd_record_critique() {
+  local plan="" pre="" verdict="" iterations="1" findings="0"
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --plan)        plan="${2:-}"; shift 2 ;;
+      --plan=*)      plan="${1#--plan=}"; shift ;;
+      --pre)         pre="${2:-}"; shift 2 ;;
+      --pre=*)       pre="${1#--pre=}"; shift ;;
+      --verdict)     verdict="${2:-}"; shift 2 ;;
+      --verdict=*)   verdict="${1#--verdict=}"; shift ;;
+      --iterations)  iterations="${2:-}"; shift 2 ;;
+      --iterations=*) iterations="${1#--iterations=}"; shift ;;
+      --findings)    findings="${2:-}"; shift 2 ;;
+      --findings=*)  findings="${1#--findings=}"; shift ;;
+      -h|--help)     usage; exit 0 ;;
+      *) echo "ERROR: unknown arg: $1" >&2; exit 2 ;;
+    esac
+  done
+  [[ -n "$plan" && -f "$plan" ]] || { echo "ERROR: --plan <path> required and must exist" >&2; exit 2; }
+  [[ -n "$pre" ]]     || { echo "ERROR: --pre <hash> required (capture with 'shctx plan hash' BEFORE the critic pass)" >&2; exit 2; }
+  [[ -n "$verdict" ]] || { echo "ERROR: --verdict <PASS|...> required" >&2; exit 2; }
+  local proof sprint
+  proof="$(_proof_path "$plan")"
+  sprint=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+  python3 - "$plan" "$proof" "$pre" "$verdict" "$iterations" "$findings" "$sprint" <<'PY'
+import hashlib, json, sys, datetime
+plan, proof, pre, verdict, iterations, findings, sprint = sys.argv[1:8]
+with open(plan, "rb") as f:
+    post = "sha256:" + hashlib.sha256(f.read()).hexdigest()
+if not pre.startswith("sha256:"):
+    pre = "sha256:" + pre
+edited = pre != post
+doc = {
+  "schema_version": 1,
+  "sprint": sprint,
+  "plan_path": plan,
+  "pre_critic_hash": pre,
+  "post_critic_hash": post,
+  "edited": edited,
+  "critic": {"verdict": verdict, "iterations": int(iterations), "findings": int(findings)},
+  "recorded_at": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+}
+with open(proof, "w") as f:
+    json.dump(doc, f, indent=2); f.write("\n")
+print(f"critic-proof written: {proof}")
+print(f"  edited={str(edited).lower()}  verdict={verdict}  iterations={iterations}  findings={findings}")
+if not edited:
+    print("  WARNING: pre == post — plan NOT edited after the critic pass; 'shctx plan verify' will FAIL (PLAN-UNEDITED)")
+PY
+}
+
+# ---------------------------------------------------------------------------
+# verify — root's thin acceptance gate (the critic-proof has teeth)
+# ---------------------------------------------------------------------------
+_cmd_verify() {
+  local plan="" quiet=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --plan)    plan="${2:-}"; shift 2 ;;
+      --plan=*)  plan="${1#--plan=}"; shift ;;
+      --quiet)   quiet=1; shift ;;
+      -h|--help) usage; exit 0 ;;
+      *) echo "ERROR: unknown arg: $1" >&2; exit 2 ;;
+    esac
+  done
+  local proof=""
+  if [[ -n "$plan" ]]; then
+    proof="$(_proof_path "$plan")"
+  else
+    local plans_dir; plans_dir="$(cfg_get plans)"; [[ -n "$plans_dir" ]] || plans_dir=".artifacts/docs/plans"
+    [[ "$plans_dir" = /* ]] || plans_dir="$(shctx_repo_root)/$plans_dir"
+    local matches count
+    matches=$(ls "$plans_dir"/*.critic-proof.json 2>/dev/null || true)
+    count=$(printf '%s\n' "$matches" | grep -c . || true)
+    if [[ "$count" == "1" ]]; then proof="$matches"; else
+      echo "CRITIC-PROOF-MISSING: pass --plan <path> (found $count proof file(s) under $plans_dir)" >&2
+      exit 1
+    fi
+  fi
+  python3 - "$proof" "$quiet" <<'PY'
+import hashlib, json, os, sys
+proof, quiet = sys.argv[1], sys.argv[2] == "1"
+def out(s):
+    if not quiet: print(s)
+if not os.path.isfile(proof):
+    print(f"CRITIC-PROOF-MISSING: {proof}"); sys.exit(1)
+try:
+    d = json.load(open(proof))
+except Exception as e:
+    print(f"CRITIC-PROOF-MISSING: unparseable proof {proof} ({e})"); sys.exit(1)
+plan = d.get("plan_path", "")
+pre  = d.get("pre_critic_hash", ""); post = d.get("post_critic_hash", "")
+crit = d.get("critic", {}) or {}
+verdict = str(crit.get("verdict", "")).upper()
+iterations = int(crit.get("iterations", 0) or 0)
+if not d.get("edited") or not pre or pre == post:
+    print(f"PLAN-UNEDITED: pre==post or edited=false ({proof}) — plan not revised after the critic pass"); sys.exit(1)
+if not plan or not os.path.isfile(plan):
+    print(f"CRITIC-PROOF-STALE: plan_path missing on disk: {plan}"); sys.exit(1)
+cur = "sha256:" + hashlib.sha256(open(plan, "rb").read()).hexdigest()
+if cur != post:
+    print(f"CRITIC-PROOF-STALE: post_critic_hash != current plan bytes\n  proof: {post}\n  plan:  {cur}"); sys.exit(1)
+if not verdict or verdict in ("FAIL", "RED", "REJECT", "REJECTED") or iterations < 1:
+    print(f"PLAN-UNCRITIQUED: verdict={verdict or 'MISSING'} iterations={iterations}"); sys.exit(1)
+out(f"OK: critic-proof valid — edited=true, verdict={verdict}, iterations={iterations}, hash-tied to {os.path.basename(plan)}")
+sys.exit(0)
+PY
+}
+
+# ---------------------------------------------------------------------------
 # dispatch
 # ---------------------------------------------------------------------------
 case "$sub" in
-  extract)     _cmd_extract "$@" ;;
-  topology)    _cmd_topology "$@" ;;
-  validate)    _cmd_validate "$@" ;;
+  extract)          _cmd_extract "$@" ;;
+  topology)         _cmd_topology "$@" ;;
+  validate)         _cmd_validate "$@" ;;
+  hash)             _cmd_hash "$@" ;;
+  record-critique)  _cmd_record_critique "$@" ;;
+  verify)           _cmd_verify "$@" ;;
   ""|-h|--help) usage; exit 0 ;;
   *) echo "ERROR: unknown subcommand: $sub" >&2; usage >&2; exit 1 ;;
 esac

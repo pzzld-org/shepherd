@@ -134,6 +134,24 @@ Subcommands (atomic):
                           capture [--lines=N]: snapshot live teammate panes → logs/panes/.
                           tail <lane> [--lines=N]: tail a captured pane log.
                           prune [--closed-only]: kill orphan panes (dead-pane cleanup, #66.6).
+  models <resolve|show> [args]                        (v6.2.5 model map)
+                          The single per-role subagent model map. Every
+                          dispatching tier injects it as the Agent `model:` pin.
+                          resolve <role>: echo the model slug a role dispatches
+                            with ([models].<role> key, else built-in default).
+                          show [--md|--json]: full resolved 9-role table + source.
+                          Roles: root planter engineer conductor critic
+                            discovery coder auditor worker. root is advisory.
+                          See doctrines/model-map.md + docs/configuration.md §models.
+  prune [--confirm] [--vacuum] [--json]               (v6.2.5 workdir GC)
+                          Outcome-safe workdir + registry GC. --dry-run is the
+                          DEFAULT (prints targets); --confirm executes after
+                          snapshotting affected rows/files to /tmp. Fences on
+                          current-branch + terminal status + age floor; NEVER
+                          touches index_releases, current focus, sprint_metrics,
+                          pinned memory, active locks/loops. Every DB DELETE is
+                          guarded against a missing table. See doctrines/workdir-prune.md
+                          + docs/configuration.md §prune.
 
 Pipelines (multi-step automation, v5.0.4):
   sync [--scope=…|--all] [--verbose]
@@ -161,7 +179,7 @@ script_for() {
 cmd="${1:-help}"; shift || true
 case "$cmd" in
   help|-h|--help) usage ;;
-  init|config|status|dash|doctor|refresh|query|search|inject|profile|style|mem|toolkit|lock|lint|migrate|export|release|handoff|worktree|close-lane|issues|plan|graph|insights|adapt|sync|ready|sprint|audit|watch|discovery|teammate|mailbox|escalate|deliverable|report|loop|panes|dups|seed|eval)
+  init|config|status|dash|doctor|refresh|query|search|inject|profile|style|mem|toolkit|lock|lint|migrate|export|release|handoff|worktree|close-lane|issues|plan|graph|insights|adapt|sync|ready|sprint|audit|watch|discovery|teammate|mailbox|escalate|deliverable|report|loop|panes|dups|seed|eval|models|prune)
     impl="$HERE/$(script_for "$cmd")"
     if [[ ! -f "$impl" ]]; then
       echo "ERROR: $cmd not yet implemented (missing $impl)" >&2; exit 2

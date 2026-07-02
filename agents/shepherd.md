@@ -308,6 +308,11 @@ multi-sprint / parallel freshness rule).
 
 **Checklist:**
 
+- [ ] **Model-map preflight (v6.2.5).** Run `shctx models show`. root is advisory
+      (`doctrines/model-map.md`): if your live session model differs from
+      `[models].root`, note it once — an under-powered root is the
+      coordination-quality bottleneck for ultra-parallel spawns (consider
+      `/model opus`). The 8 spawned roles are hard-driven from the map at dispatch.
 - [ ] **Patch-branch advancement check** (mandatory, v5.1.9+, GH #60):
       BEFORE dispatching the combo wave, verify `origin/{patch_branch}`
       contains all prior sprint commits. Inline check (< 30s):
@@ -334,14 +339,16 @@ multi-sprint / parallel freshness rule).
       branch + version context, `[INVOCATION-CONTEXT].dispatcher: root-shepherd`,
       `[DISCOVERY-CONTEXT]`, `[INTRO-AUDIT-CONTEXT]`, explicit instruction to
       emit binding `## Stage Graph` per `pipeline.md §XII`.
-      - **Pin the model id explicitly (#103).** Pass `model: "claude-opus-4-8[1m]"`
-        on the `Agent` call rather than relying on the `shepherd:engineer`
-        frontmatter alias resolving. The 1M-context Opus (`claude-opus-4-8[1m]`)
-        is the dispatch pin — plan authorship on L/XL sprints uses the full
-        context. `claude-opus-4-8` (the 200k variant) is the documented
-        FALLBACK only if `[1m]` is unavailable. This is the ONE Opus dispatch
-        in the flock; pinning the explicit id removes the silent-failure surface
-        when an alias becomes unavailable.
+      - **Resolve + pin the model explicitly (#103 / model-map).** Resolve the
+        engineer's model from the single map — `model=$(shctx models resolve engineer)`
+        (`doctrines/model-map.md`) — and pass it on the `Agent` call rather than
+        relying on the `shepherd:engineer` frontmatter alias inheriting. The
+        built-in default is the 1M-context Opus (`opus[1m]` → `claude-opus-4-8[1m]`):
+        plan authorship on L/XL sprints uses the full context. Set
+        `[models].engineer = "claude-opus-4-8[1m]"` to pin the explicit id, or
+        `"claude-opus-4-8"` (200k) as the documented fallback. This is the ONE
+        Opus dispatch in the flock; resolving from the single map removes the
+        hand-pinning drift, and `ENGINEER-MODEL-FAIL` still guards the tier.
       - If the dispatch call itself errors (model-resolution / unavailable / API
         failure): surface `ENGINEER-MODEL-FAIL` with the raw error and PAUSE —
         never treat a null/error return as an empty plan, never silently retry,
@@ -349,6 +356,20 @@ multi-sprint / parallel freshness rule).
         advisory: unlike the planter's `PLANTER MODEL ADVISORY` (which proceeds
         on a degraded tier), the engineer's Opus tier is load-bearing — a tier
         failure here blocks the entire sprint INTRO phase, so it must stop.
+- [ ] **Self-contained engineer option (v6.2.5).** For a genuinely isolable
+      planning lane you MAY instead spawn `@engineer` as a **self-contained
+      teammate** (`[INVOCATION-CONTEXT].mode: self-contained`,
+      `doctrines/engineer-self-contained-plan.md`): it runs its OWN in-session
+      `@discovery` wave + an embedded critic pass + ≥1 revision, and returns a
+      plan plus a hash-tied **critic-proof**. In this mode root does NOT dispatch
+      `@critic` (below); acceptance is a THIN mechanical gate — `shctx seed verify
+      <seed>` + `shctx plan verify --plan <plan>` + the lane-count sanity check —
+      then straight to LANE-INTEGRATE. `shctx plan verify` re-hashes the live plan,
+      so a proof with `edited=false`/stale hash FAILS (`CRITIC-PROOF-MISSING` /
+      `PLAN-UNEDITED` / `CRITIC-PROOF-STALE` / `PLAN-UNCRITIQUED`); a failure
+      returns to the engineer teammate — root never repairs the plan itself. The
+      classic in-session subagent flow (discovery wave before + `@critic` after)
+      remains the default, higher-independence path.
 - [ ] **Verify plan decomposition** before critic gate (the plan is
       `waves × steps`; lanes are the post-plan projection — `doctrines/primitive-axis-binding.md`):
       - Each wave decomposed into many narrow **steps** to the substantive
@@ -397,13 +418,15 @@ The body is teammate orchestration. Per scope:
   projection) via Agent Teams, per `commands/spawn.md §Spawn dispatch`. The
   lane count IS the teammate count. (`--parallel` below is a separate,
   sprint-level fanout; lane-per-conductor is the within-sprint fanout.)
-- **MODEL PIN (mandatory — v6.0.9).** The teammate-spawn instruction MUST
-  explicitly pin `model: sonnet` for every teammate. Do NOT rely on the
-  `shepherd:conductor` subagent-definition's `model: sonnet` frontmatter
-  inheritance — empirically, teammates have inherited the lead session's
-  model instead (v6.0.9 cost regression, Opus 4.8 billed for every lane).
-  The pin must be explicit in the instruction text. See
-  `commands/spawn.md §Spawn dispatch → Model pin requirement`.
+- **MODEL PIN (mandatory — v6.0.9 / model-map).** The teammate-spawn instruction
+  MUST explicitly pin the conductor's model, resolved from the single map:
+  `model=$(shctx models resolve conductor)` (`doctrines/model-map.md`; built-in
+  default `sonnet`). Do NOT rely on the `shepherd:conductor` frontmatter
+  inheriting — empirically, teammates have inherited the lead session's model
+  instead (v6.0.9 cost regression, Opus 4.8 billed for every lane). The pin must
+  be explicit in the instruction text. If the map resolves `conductor` to an opus
+  tier the per-lane cost multiplier is intentional — surface the cost advisory
+  before spawning. See `commands/spawn.md §Spawn dispatch → Model pin requirement`.
 - **Immediately after spawning the teammates, do NOT stop.** Confirm liveness
   (`shctx teammate liveness` until every lane is `active`/heartbeating — a
   teammate still `booting` with no heartbeat is a probe candidate, not a

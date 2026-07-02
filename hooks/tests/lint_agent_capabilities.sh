@@ -124,25 +124,27 @@ for role in $ALL_ROLES; do
 done
 
 # ---------------------------------------------------------------------------
-# #119 planter Agent-dispatch scope pin. The planter (meta tier) is granted the
-# `Agent` tool ONLY for the bounded read-only @discovery wave (commands/plant.md
-# + agents/planter.md §Step 2-bis). The grant must always travel with its
-# documented discovery-only bound, so a future broadening to @coder/@auditor
-# cannot land silently with the prose contract stripped. The lint cannot bound a
-# RUNTIME dispatch target, but it CAN pin that the grant never appears without
-# the documented `shepherd:discovery` scope. (Mechanizes a prose-only invariant
-# per the "meta tier does NOT open the closed-flock contract" rule.)
+# #119 / #169 Agent-dispatch scope pin. The planter (meta tier, commands/plant.md
+# + agents/planter.md §Step 2-bis) AND the engineer (self-contained teammate mode,
+# agents/engineer.md §Self-contained mode + doctrines/engineer-self-contained-plan.md)
+# are each granted the `Agent` tool ONLY for the bounded read-only @discovery wave.
+# The grant must always travel with its documented discovery-only bound, so a
+# future broadening to @coder/@auditor/@critic cannot land silently with the prose
+# contract stripped. The lint cannot bound a RUNTIME dispatch target, but it CAN
+# pin that the grant never appears without the documented `shepherd:discovery`
+# scope. (Mechanizes a prose-only invariant per the "closed-flock contract" rule.)
 # ---------------------------------------------------------------------------
-pf="$AGENTS_DIR/planter.md"
-if [[ -f "$pf" ]]; then
+for agent_with_agent in planter engineer; do
+  pf="$AGENTS_DIR/$agent_with_agent.md"
+  [[ -f "$pf" ]] || continue
   ptoks="$(tools_line "$pf" | tr ',' '\n' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep -v '^$')"
   if printf '%s\n' "$ptoks" | grep -qx 'Agent'; then
     if ! grep -q 'shepherd:discovery' "$pf"; then
-      note "FAIL planter: grants 'Agent' but does not document the read-only shepherd:discovery scope bound (#119 §Step 2-bis)"
+      note "FAIL $agent_with_agent: grants 'Agent' but does not document the read-only shepherd:discovery scope bound (#119/#169)"
       fails=$((fails+1))
     fi
   fi
-fi
+done
 
 # ---------------------------------------------------------------------------
 # v6.2.1 tool-claim consistency. A profile must not CLAIM in prose to carry a

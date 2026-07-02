@@ -94,6 +94,35 @@ cfg_get() {
   return 0
 }
 
+# Echo the value of `key = value` under a specific `[section]` from shepherd
+# config, resolved by the SAME precedence as cfg_get (local → project → XDG).
+# Section-aware companion to cfg_get for TOML blocks whose bare keys would
+# otherwise collide across sections (e.g. [models] role keys like `conductor`).
+# Last-match-wins within the section of a given file; strips surrounding
+# double-quotes and a trailing " # inline comment". Echoes "" if unset; never
+# returns non-zero (safe under `set -eu -o pipefail`). bash-3.2-safe — awk does
+# the section parsing (no associative arrays / mapfile). MUST mirror the
+# hooks-side cfg_section_get (hooks/scripts/_lib.sh). Contract source of truth:
+# docs/configuration.md §config-resolution.
+cfg_section_get() {
+  local section="$1" key="$2" repo f v
+  repo="$(shctx_repo_root 2>/dev/null || pwd)"
+  for f in "$repo/.claude/shepherd.local.toml" "$repo/.claude/shepherd.toml" "${XDG_CONFIG_HOME:-$HOME/.config}/shepherd.toml"; do
+    [[ -f "$f" ]] || continue
+    v="$(awk -v sect="$section" -v k="$key" '
+      /^[ \t]*\[/ { h=$0; sub(/^[ \t]*\[/,"",h); sub(/\].*$/,"",h); gsub(/[ \t]/,"",h); cur=h; next }
+      cur==sect && $0 ~ ("^[ \t]*" k "[ \t]*=") {
+        val=$0; sub(/^[^=]*=[ \t]*/,"",val); sub(/[ \t]+#.*$/,"",val);
+        sub(/^"/,"",val); sub(/"$/,"",val); result=val
+      }
+      END { if (result!="") printf "%s", result }
+    ' "$f" 2>/dev/null || true)"
+    if [[ -n "$v" ]]; then printf '%s' "$v"; return 0; fi
+  done
+  printf '%s' ""
+  return 0
+}
+
 # UUIDv7 generator (timestamp-prefixed, sortable). Portable across BSD (macOS)
 # and GNU (Linux) date; falls back to python3 then to seconds-precision if
 # millisecond `+%s%3N` is unavailable.
