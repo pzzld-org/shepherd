@@ -129,7 +129,7 @@ CMD="$(json_field "$PAYLOAD" '.tool_input.command' 2>/dev/null || true)"
 [[ -n "$CMD" ]] || exit 0
 
 # git verbs that mutate history/refs/remote/worktrees.
-GIT_WRITE_PATTERN='(^|[[:space:];|&])git[[:space:]]+(commit|push|merge|rebase|cherry-pick|reset|tag|branch[[:space:]]+-[dD]|checkout[[:space:]]+-[bB])([[:space:]]|$)'
+GIT_WRITE_PATTERN='(^|[[:space:];|&])git[[:space:]]+(commit|push|merge|rebase|cherry-pick|reset|tag|switch|checkout|branch[[:space:]]+-[dD])([[:space:]]|$)'
 GIT_WORKTREE_WRITE_PATTERN='(^|[[:space:];|&])git[[:space:]]+worktree[[:space:]]+(add|remove|prune)([[:space:]]|$)'
 # filesystem mutation / in-place edit.
 FS_WRITE_PATTERN='(^|[[:space:];|&])(rm|mv|sed[[:space:]]+-i|touch)([[:space:]]|$)'
