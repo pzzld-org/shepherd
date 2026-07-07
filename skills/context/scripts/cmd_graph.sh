@@ -26,7 +26,7 @@
 #   reset [--force]
 #       Wipe state and trace (re-extract the plan to rebuild).
 #
-# Schema: doctrines/dispatch-cascade.md.
+# Schema: skills/shepherd/references/flock.md §Dispatch.
 
 set -eu -o pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -75,7 +75,7 @@ shctx graph <status|next|mark|trace|reset> [args]
       compilable fan-out segment as a subgraph. Default writes
       {workdir}/graph/diagrams/{sprint}.mmd; --stdout prints to stdout.
 
-See doctrines/dispatch-cascade.md and doctrines/workflow-compile-down.md.
+See skills/shepherd/references/flock.md §Dispatch and skills/harness/references/workflow-templates.md.
 EOF
 }
 

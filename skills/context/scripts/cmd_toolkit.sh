@@ -29,7 +29,7 @@ _global_path() { echo "${XDG_CONFIG_HOME:-$HOME/.config}/shepherd/toolkit.json";
 # EPHEMERAL auto-discovered roster (v6.1.5, #146) — written by the SessionStart
 # capability_discovery.sh hook into gitignored cache/. NEVER the curated
 # toolkit.json: discovery must never overwrite operator intent.
-# See skills/shepherd/doctrines/capability-discovery.md.
+# See skills/context/references/toolkit.md.
 _discovered_path() { echo "$(resolve_workdir)/cache/discovered-capabilities.json"; }
 
 # Resolve path for a given scope (local|global). Exits on bad scope.

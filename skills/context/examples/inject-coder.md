@@ -60,4 +60,4 @@ When the coder receives a brief with this block:
 
 The conductor's DEDUP-GATE (`shctx query dedup-check --name=<symbol>`) runs the same check pre-dispatch; the in-brief `[DB-CONTEXT]` is the coder-side echo.
 
-See `${CLAUDE_PLUGIN_ROOT}/skills/shepherd/doctrines/zero-duplicate-tolerance.md` for the full Layer 1/2/3 model.
+See `${CLAUDE_PLUGIN_ROOT}/skills/context/SKILL.md` for the full Layer 1/2/3 model.

@@ -2,7 +2,7 @@
 # shctx insights <list|show|export|clear> [args]
 #
 # Registry CLI for cross-lane INSIGHTS captured by
-# hooks/scripts/agent_insight_capture.sh. Per doctrines/flock-cohesion.md.
+# hooks/scripts/agent_insight_capture.sh. Per skills/adaptation/SKILL.md §INSIGHTS.
 #
 #   list [--sprint=BRANCH] [--kind=relocation|extension|...] [--actioned|--unactioned] [--json|--md]
 #   show <id> [--json]
@@ -41,7 +41,7 @@ shctx insights <list|show|export|clear> [args]
   clear [--older-than-days=N]
       Remove actioned insights older than N days (default 60).
 
-Schema: doctrines/flock-cohesion.md §V.
+Schema: skills/adaptation/SKILL.md §INSIGHTS §V.
 EOF
 }
 

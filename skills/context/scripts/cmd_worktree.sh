@@ -29,7 +29,7 @@
 #       --strategy=prompt halts so the operator resolves manually (default).
 #       After successful pick, removes the worktree (unless --no-cleanup).
 #
-# IMPORTANT: per `doctrines/conductor-cwd.md`, the conductor MUST NOT `cd`
+# IMPORTANT: per `skills/shepherd/references/flock.md §@conductor`, the conductor MUST NOT `cd`
 # into a worktree. This script uses `git -C <path>` and stays at sprint root.
 
 set -eu -o pipefail
@@ -229,7 +229,7 @@ shctx worktree <subcommand>
   gc   [--older-than=<hours> | --all] [--dry-run]        prune stale agent worktrees (default 24h)
   merge <agent-id> [--strategy=...] [--no-cleanup]       cherry-pick + cleanup
 
-Per doctrines/conductor-cwd.md the conductor never `cd`'s into a worktree —
+Per skills/shepherd/references/flock.md §@conductor the conductor never `cd`'s into a worktree —
 this command uses `git -C <path>` and stays at sprint root.
 EOF
     ;;

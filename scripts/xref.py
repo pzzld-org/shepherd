@@ -70,8 +70,11 @@ def scan():
         except OSError:
             continue
         refs = {}
+        # consumer-project extension forms are not plugin refs
+        scrubbed = re.sub(r"[\w.]*\.claude/doctrines/[a-z0-9._-]+\.md", "", text)
+        scrubbed = re.sub(r"project_doctrines/[a-z0-9._-]+\.md", "", scrubbed)
         for kind, pat in PAT.items():
-            hits = sorted(set(pat.findall(text)))
+            hits = sorted(set(pat.findall(scrubbed)))
             if kind == "shctx":
                 hits = [h for h in hits if h not in SHCTX_NONCMD]
             if hits:

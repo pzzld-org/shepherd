@@ -4,7 +4,7 @@
 # The discovery_capture.sh hook writes per-discovery records to
 # <ns>/discoveries/<sprint>/<id>.json. This CLI reads + searches them so
 # the conductor can find existing answers before dispatching a new
-# discovery (cross-sprint reuse — doctrines/discovery-readonly.md).
+# discovery (cross-sprint reuse — skills/shepherd/references/flock.md §@discovery).
 #
 # Subcommands:
 #   list [--sprint=<branch>] [--json|--md]   List discoveries (default: current sprint)

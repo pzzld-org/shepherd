@@ -7,7 +7,7 @@
 # by CI for "is this project's context registry healthy?".
 #
 # v5.1.7+: also exposes `insert` subverb that writes a structured row into
-# audit_findings (see skills/shepherd/doctrines/sqlite-canonical-state.md).
+# audit_findings (see skills/context/SKILL.md).
 # Reading body from stdin keeps the legacy flag-parsing path untouched.
 
 set -eu -o pipefail

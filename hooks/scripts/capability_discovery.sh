@@ -204,7 +204,7 @@ ROSTER_JSON="$(jq -cn \
         env_entrypoint: $entry,
         env_hint: $webhint,
         present: null,
-        how: "Is `Workflow` in your visible tool list? It is EXPECTED present — Dynamic Workflows is enabled across Claude Code entrypoints (web/remote/cloud-container included). Set present:true|false. NEVER ToolSearch for it (a nothing-result means you looked in the wrong index, not that it is absent). Only an explicit disable or a build below the floor yields the in-context Agent(...) degrade (references/glossary.md sense 1)."
+        how: "Is `Workflow` in your visible tool list? It is EXPECTED present — Dynamic Workflows is enabled across Claude Code entrypoints (web/remote/cloud-container included). Set present:true|false. NEVER ToolSearch for it (a nothing-result means you looked in the wrong index, not that it is absent). Only an explicit disable or a build below the floor yields the in-context Agent(...) degrade (skills/harness/SKILL.md §Tool presence)."
       },
       available_specialists: {
         present: null,

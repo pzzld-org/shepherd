@@ -4,7 +4,7 @@
 # `config claude-md` (v6.2.0) materializes the portable operating doctrine into
 # the consumer repo's CLAUDE.md as a fenced managed block (append-only, never
 # clobbers operator content; --force re-syncs only the block). Companion to the
-# session-surfaced doctrines/operating-philosophy.md framework binding.
+# session-surfaced skills/shepherd/references/operating-philosophy.md framework binding.
 #
 # `config init` (v6.1.5, #15) writes a first-ever .claude/shepherd.toml from the
 # bundled examples/minimal template, deriving the project `name` (git remote → cwd)
@@ -112,7 +112,7 @@ do_init() {
 # copy, but append-only and never-clobber: operator content OUTSIDE the markers is
 # always preserved; --force re-syncs ONLY the managed block to the current plugin
 # version. The block is the durable, all-sessions pin of the how-to-work doctrine
-# whose framework binding lives in doctrines/operating-philosophy.md.
+# whose framework binding lives in skills/shepherd/references/operating-philosophy.md.
 CLAUDEMD_BEGIN='<!-- BEGIN shepherd:operating-doctrine'
 CLAUDEMD_END='<!-- END shepherd:operating-doctrine -->'
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shctx prune [--confirm] [--vacuum] [--json] [--logs-days=N] [--dispatch-days=N] [--snapshots-keep=N]
 #
-# Outcome-safe workdir + registry GC (v6.2.5, first-cut). See doctrines/workdir-prune.md.
+# Outcome-safe workdir + registry GC (v6.2.5, first-cut). See skills/context/SKILL.md §Workdir hygiene.
 #
 # --dry-run is the DEFAULT: nothing is removed; the plan is printed and written
 # to /tmp/shepherd-prune-<epoch>/plan.csv. --confirm executes the ON-DISK sweeps

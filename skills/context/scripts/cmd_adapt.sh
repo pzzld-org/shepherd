@@ -2,7 +2,7 @@
 # shctx adapt <roll|priors|report|recommend> [args]   (v6.0.4 #94/#95; v6.0.8)
 #
 # The SQLite-canonical adaptation loop. Replaces the advisory markdown
-# sprint-patterns.md registry (see doctrines/adaptation-loop.md).
+# sprint-patterns.md registry (see skills/adaptation/SKILL.md).
 #
 #   roll --sprint=<branch> [--grade= --size= --lanes= --waves=
 #                           --loc-add= --loc-del= --wall-min= --api=]
@@ -82,8 +82,8 @@ shctx adapt <roll|priors|report|recommend> [args]   (v6.0.4 #94/#95; v6.0.8)
       suggested lane count, t-shirt size band, watch-concerns. Empty store
       ⇒ "no history yet, use defaults".
 
-Doctrine: skills/shepherd/doctrines/adaptation-loop.md (SQLite-canonical),
-          skills/shepherd/doctrines/self-improvement.md (harvest→inject).
+Doctrine: skills/adaptation/SKILL.md (SQLite-canonical),
+          skills/adaptation/SKILL.md (harvest→inject).
 EOF
 }
 
@@ -187,7 +187,7 @@ _cmd_roll() {
 
 # Prune unpinned 'prior' rows whose last-seen (updated_at) has fallen outside
 # the decay window, so the store stays bounded over long version arcs even as
-# concerns rotate (doctrines/self-improvement.md "Bounded & graceful").
+# concerns rotate (skills/adaptation/SKILL.md "Bounded & graceful").
 #
 # Window = SHCTX_ADAPT_DECAY_SPRINTS sprint closes (default 6). The cutoff is
 # gap-based on the close cadence, not wall-clock: a prior is stale once MORE
