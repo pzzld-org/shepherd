@@ -36,7 +36,6 @@ Subcommands (atomic):
   search <text> [--scope=…|--all] [--limit=N] [--md|--json]
                           FTS5 full-text search over symbols + artifact content (v5.0.3).
   inject <role>           Emit a [DB-CONTEXT] block for an agent brief
-  profile <list|show|enable|disable|sync> [args]
   style <init|show|list|edit> [args]
   mem <add|search|list|show|pin|unpin|rm> [args]
   toolkit <list|show|add|rm|pin|unpin|md|init|validate> [args]
@@ -179,7 +178,7 @@ script_for() {
 cmd="${1:-help}"; shift || true
 case "$cmd" in
   help|-h|--help) usage ;;
-  init|config|status|dash|doctor|refresh|query|search|inject|profile|style|mem|toolkit|lock|lint|migrate|export|release|handoff|worktree|close-lane|issues|plan|graph|insights|adapt|sync|ready|sprint|audit|watch|discovery|teammate|mailbox|escalate|deliverable|report|loop|panes|dups|seed|eval|models|prune)
+  init|config|status|dash|doctor|refresh|query|search|inject|style|mem|toolkit|lock|lint|migrate|export|release|handoff|worktree|close-lane|issues|plan|graph|insights|adapt|sync|ready|sprint|audit|discovery|teammate|mailbox|deliverable|report|loop|panes|dups|seed|eval|models|prune)
     impl="$HERE/$(script_for "$cmd")"
     if [[ ! -f "$impl" ]]; then
       echo "ERROR: $cmd not yet implemented (missing $impl)" >&2; exit 2

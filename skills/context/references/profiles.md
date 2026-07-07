@@ -1,24 +1,31 @@
-# Profiles — pluggable behavior overlays
+# Profiles — behavior-overlay schema
 
-Profiles let consumer projects adjust shepherd flock behavior without forking the plugin. They live in two places — TOML files in `.artifacts/profiles/*.toml` (human-edited) and rows in the `profiles_defs` table (queried by the conductor at dispatch time). `shctx profile sync` reconciles the two.
-
----
+Profiles let a consumer project adjust flock behavior without forking the
+plugin. Per-role dispatch configuration (which model a role runs with) is
+declared in the `[models]` table and resolved via `shctx models resolve
+<role>` / `shctx models show`; see `references/model-map.md` for that
+contract — profiles no longer carry per-role model overrides. This file
+documents what remains: the `profiles_defs` schema (`references/schema.md §
+profiles_defs`) and the TOML authoring format for non-model overlays
+(modifier / extension / override). The `shctx profile` CLI (list/show/
+enable/disable/sync) was pruned in v6.2.8 — the per-role dispatch case it
+covered lives in `[models]` now, and the reconciliation semantics below
+document the `profiles_defs` schema for direct row authorship (migration or
+manual insert) rather than a maintained TOML-sync path.
 
 ## Kinds
 
 | Kind | Semantics | Example |
 |---|---|---|
-| `modifier` | Adjusts existing flock behavior. Tweaks a parameter; never adds a new pipeline node. | "Skip critic for XS sprints." |
-| `extension` | Adds new behavior. Hooks into a pipeline lifecycle event with a bounded action. | "After every coder wave, run `cargo audit`; fail on high." |
-| `override` | Replaces a default. Substitutes a built-in recommendation or rule with a project-specific one. | "Use these custom DEDUP-GATE recommendations instead of the bundled defaults." |
+| `modifier` | Adjusts existing behavior; tweaks a parameter, never adds a pipeline node. | "Skip critic for XS sprints." |
+| `extension` | Adds new behavior via a pipeline lifecycle hook. | "After every coder wave, run `cargo audit`; fail on high." |
+| `override` | Replaces a built-in default/recommendation with a project-specific one. | "Use these custom DEDUP-GATE recommendations." |
 
-Kind is a hard CHECK constraint on `profiles_defs.kind` — only the three values above are accepted.
-
----
+`kind` is a hard CHECK constraint on `profiles_defs.kind` — only these three
+values are accepted; an unrecognized value MUST fail validation, never
+silently pass through.
 
 ## TOML format
-
-Every profile file has three top-level pieces: `name`, `kind`, and a `[config]` table. The `[config]` schema is **kind-specific** — modifiers tune existing knobs, extensions declare a hook target and command, overrides replace a registered default by ID.
 
 ```toml
 name = "<unique-per-project-slug>"
@@ -28,98 +35,51 @@ kind = "modifier" | "extension" | "override"
 # kind-specific keys
 ```
 
-The TOML file's basename (sans `.toml`) is conventionally equal to `name`, but the `name` field in the file is authoritative.
+The file's basename (sans `.toml`) conventionally equals `name`, but the
+`name` field inside the file is authoritative.
 
-### Modifier `[config]` keys (informational)
+**Modifier `[config]`:** `skip_critic_for = ["XS"]` (t-shirts to skip
+`@critic` on; default never); `auditor_swarm_size = N` (overrides
+`[auditor].swarm_size`, default 3); `dedup_grep_first = true` (inverts the
+SQL-fast-path/grep order for DEDUP-GATE; default SQL-first); `reason = "..."`
+(required rationale).
 
-Modifiers tune the conductor's runtime knobs. Common keys:
+**Extension `[config]`:** `hook = "post-wave" | "post-sprint" |
+"pre-dispatch" | "post-merge"` (required); `command = "<shell command>"`
+(required, runs at repo root); `fail_on = "high" | "any" | "never"`;
+`timeout_seconds = 300`.
 
-- `skip_critic_for = ["XS"]` — t-shirts to skip @critic on (default: never skip).
-- `auditor_swarm_size = 5` — override `[auditor].swarm_size` for this project (default: 3).
-- `dedup_grep_first = true` — invert the SQL-fast-path/grep order for DEDUP-GATE (default: SQL first).
-- `reason = "..."` — required free-form rationale; surfaces in `shctx profile show`.
+**Override `[config]`:** `target = "<registry-id>"` (required, e.g.
+`dedup-gate.recommendation-block`); `replacement = "<markdown body>"`
+(required). Override IDs are stable per shepherd minor version; an unknown
+target MUST fail.
 
-### Extension `[config]` keys
-
-Extensions register a side-effect on a lifecycle hook:
-
-- `hook = "post-wave" | "post-sprint" | "pre-dispatch" | "post-merge"` — required.
-- `command = "<shell command>"` — required. Runs in the repo root.
-- `fail_on = "high" | "any" | "never"` — exit-code threshold.
-- `timeout_seconds = 300` — wall-clock cap.
-
-The conductor invokes extensions inline at the matching hook; failure on `fail_on` aborts the next dispatch and surfaces a finding.
-
-### Override `[config]` keys
-
-Overrides target a registered default by ID:
-
-- `target = "dedup-gate.recommendation-block"` — required. The override registry ID.
-- `replacement = "<markdown body>"` — required. The replacement content.
-
-Override IDs are stable and documented per shepherd minor version; unknown targets fail at `sync`.
-
----
-
-## Example: complete modifier file
-
-```toml
-# .artifacts/profiles/skip-critic-xs.toml
-name = "skip-critic-xs"
-kind = "modifier"
-[config]
-skip_critic_for = ["XS"]
-reason = "XS sprints are fully scoped by the seed; critic adds no value"
-```
-
-See `examples/profile-modifier.toml` and `examples/profile-extension.toml` for ready-to-copy starters.
-
----
-
-## Sync semantics
-
-`shctx profile sync` reconciles `.artifacts/profiles/*.toml` ↔ `profiles_defs`. Direction-of-truth rules:
+## Reconciliation — TOML is authoritative
 
 | Situation | Outcome |
 |---|---|
-| TOML present, DB row absent | Insert new `profiles_defs` row; populate `source_path`, `active=1`. |
-| TOML present, DB row present, contents match | No-op. |
-| TOML present, DB row present, **contents differ** | **TOML wins.** Update the DB row; bump `updated_at`. |
-| TOML absent, DB row present, `source_path` set | Disable (`active=0`); preserve row for audit. Re-enable on TOML restore. |
-| TOML absent, DB row present, `source_path` NULL | Leave (DB-only profile; created via `shctx profile create`). |
-| TOML invalid (parse error or kind not in CHECK set) | Sync aborts; surfaces error; nothing written. |
+| TOML present, DB row absent | Insert row; `source_path` set, `active=1`. |
+| TOML present, DB row present, match | No-op. |
+| TOML present, DB row present, differ | **TOML wins** — update the row, bump `updated_at`. |
+| TOML absent, DB row present, `source_path` set | Disable (`active=0`); re-enable on TOML restore. |
+| TOML absent, DB row present, `source_path` NULL | Leave alone (DB-only profile). |
+| TOML invalid (parse error or bad `kind`) | Abort; surface error; nothing written. |
 
-Why TOML wins: humans edit TOML; the DB is a runtime cache. Reverse precedence would silently overwrite operator intent.
+TOML wins because humans edit TOML and the DB is a runtime cache — reverse
+precedence would silently overwrite operator intent.
 
-`shctx profile enable <name>` / `shctx profile disable <name>` flip the `active` flag without touching TOML; useful for A/B-testing extensions without losing the file.
+## Firing order
 
----
+Read once at sprint open; live TOML edits do NOT take effect mid-sprint.
 
-## When profiles fire
-
-The conductor reads `profiles_defs WHERE active = 1` at sprint open and applies them in priority order:
-
-1. **Overrides** apply first — they replace bundled defaults before any subsequent logic runs.
-2. **Modifiers** apply at the dispatch decision point they target (e.g., before composing the @critic dispatch).
+1. **Overrides** apply first — replace bundled defaults before any other logic.
+2. **Modifiers** apply at the dispatch decision point they target (e.g.
+   before composing the `@critic` dispatch).
 3. **Extensions** fire on their declared hook during the walk.
-
-Profile state is read once per sprint open; live edits to `.artifacts/profiles/*.toml` do not take effect mid-sprint. Run `shctx profile sync` and start a new sprint.
-
----
-
-## Use cases
-
-- **Skip critic for XS sprints** (modifier) — XS scope is fully encoded by the seed; the critic step adds latency without value. See `examples/profile-modifier.toml`.
-- **Post-wave security scan** (extension) — Run `cargo audit` after every coder wave; fail the wave if `high` advisories surface. See `examples/profile-extension.toml`.
-- **Custom DEDUP-GATE recommendations** (override) — Replace the bundled "wire to existing instead" guidance with a project-specific block (e.g., "wire to `crate::canonical::*` and update the registry").
-- **Larger auditor swarms for L+ sprints** (modifier) — `auditor_swarm_size = 5` for projects whose audit surface justifies it.
-- **Custom hook on patch-close** (extension) — Run release-note linter after `post-merge`.
-
----
 
 ## See also
 
-- `references/schema.md` § profiles_defs — column-level reference.
-- `examples/profile-modifier.toml`, `examples/profile-extension.toml` — copy-paste starters.
-- `${CLAUDE_PLUGIN_ROOT}/skills/shepherd/flock.md` — agent dispatch points where modifiers attach.
-- `.artifacts/styles/<lang>.md` — per-language style overrides (separate from profiles; addendum §A2).
+- `references/schema.md § profiles_defs` — column-level reference.
+- `references/model-map.md` — per-role model dispatch (the `[models]` table).
+- `examples/profile-modifier.toml`, `examples/profile-extension.toml` —
+  ready-to-copy starters.
