@@ -1,7 +1,7 @@
 ---
 name: thinking
 description: |
-  A brutal, algorithmic approach to problem solving
+  Decomposes any large or ambiguous problem into solvable units. Use before dispatch, when planning an attack on a mountain-sized task, or to frame a problem before delegating it.
 ---
 
 Yes, here it is folks. A hand written skill dictating the art of thought.
