@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # hooks/tests/test_coordinate_drive_guard.sh — tests for coordinate_drive_guard.sh
 #
-# Covers the Stop-hook backstop for doctrines/coordinate-active-drive.md (v6.0.5):
+# Covers the Stop-hook backstop for skills/motivation/SKILL.md §Drive contract (v6.0.5):
 #   • No-payload / no-DB → exit 0, no block (fast-path; never touches non-spawn work).
 #   • Live spawn session + 0 idle + 0 unread → no block (yield is correct).
 #   • Idle teammate → BLOCK (decision:block on stdout).

@@ -5,7 +5,7 @@ SHCTX="$SHCTX_SKILL_ROOT/scripts/shctx"
 
 # `shctx help` exits 0 and lists every subcommand.
 out=$("$SHCTX" help)
-for sub in init status refresh query inject profile mem lock lint migrate export; do
+for sub in init status refresh query inject mem lock lint migrate export; do
   assert_contains "help.$sub" "$out" "$sub"
 done
 

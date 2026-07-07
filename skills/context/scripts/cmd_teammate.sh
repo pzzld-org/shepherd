@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shctx teammate — register/heartbeat/status/liveness/prune/retire
-# Per doctrines/sqlite-canonical-state.md: teammates table is canonical
+# Per skills/context/SKILL.md: teammates table is canonical
 # store for teammate identity + liveness.
 set -euo pipefail
 
@@ -44,7 +44,7 @@ case "$sub" in
     # CONDUCTOR-ONLY-TEAMMATE gate (v6.2.7, #180). Every teammate spawned via the
     # native teammate-spawn is a lane teammate-CONDUCTOR — no other flock role
     # (critic, engineer classic-mode, coder, auditor, worker, discovery) is ever
-    # legitimately a teammate (doctrines/primitive-axis-binding.md §II/§III.1;
+    # legitimately a teammate (skills/shepherd/references/pipeline.md §Lane law §II/§III.1;
     # dispatch-tier-separation.md). The Agent/Task PreToolUse guard
     # (hooks/scripts/dispatch_guard.sh) cannot see a native teammate-spawn at all —
     # it isn't a tool call the harness exposes a hook for (see dispatch_guard.sh's
@@ -62,8 +62,8 @@ case "$sub" in
         echo "  are SUBAGENTS ONLY — dispatch via Agent/Task, never via a native teammate-spawn" >&2
         echo "  instruction. If you meant to gate a plan or review a lane's output, dispatch" >&2
         echo "  @critic/@auditor as a subagent from within the conductor teammate (or from root)," >&2
-        echo "  never as its own teammate. See doctrines/primitive-axis-binding.md §II/§III.1 +" >&2
-        echo "  doctrines/dispatch-tier-separation.md." >&2
+        echo "  never as its own teammate. See skills/shepherd/references/pipeline.md §Lane law §II/§III.1 +" >&2
+        echo "  skills/shepherd/SKILL.md §Dispatch law." >&2
         exit 1
         ;;
     esac

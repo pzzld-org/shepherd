@@ -5,7 +5,7 @@
 -- WHY: 0007 pinned kind to ('heartbeat_payload','escalation','ack','status',
 -- 'generic'). Every doctrine that later introduced a new routing tag therefore
 -- failed CLOSED at the schema — silently. v6.1.7's staged-handoff
--- (doctrines/staged-handoff.md) sends `--kind=seed-ready`; the INSERT was
+-- (skills/shepherd/references/spawn-flags.md §--staged) sends `--kind=seed-ready`; the INSERT was
 -- rejected with "CHECK constraint failed: kind IN (...)", so the feature had
 -- NEVER worked end-to-end (caught by test_staged_handoff.sh). `kind` is a
 -- free-form routing/filter tag (consumers do `select(.kind=="…")`) and

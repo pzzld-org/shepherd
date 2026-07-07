@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shepherd hook — PreToolUse(Bash): teammate git integration guard (v6.0.9, #99).
 #
-# ENFORCES: doctrines/teammate-integration-authority.md + agents/shepherd.md
+# ENFORCES: skills/shepherd/references/pipeline.md §CLOSE-FINALIZE + agents/shepherd.md
 # root-only LANE-INTEGRATE seam.
 #
 # PROBLEM: Teammates are told in their profile (agents/conductor.md TEAMMATE
@@ -140,6 +140,6 @@ MSG+="cherry-picking onto dev, and worktree add/remove/prune are root-tier decis
 MSG+="— they require a diff review or explicit root orchestration before execution."$'\n'
 MSG+="Action: surface SendMessage(to: lead, halt_code: TEAMMATE-GIT-WRITE) and"$'\n'
 MSG+="describe the integration you need. Root will execute LANE-INTEGRATE."$'\n'
-MSG+="See doctrines/teammate-integration-authority.md + agents/shepherd.md LANE-INTEGRATE."
+MSG+="See skills/shepherd/references/pipeline.md §CLOSE-FINALIZE + agents/shepherd.md LANE-INTEGRATE."
 
 emit_deny "$MSG" "teammate_git_guard" "Bash" "conductor-teammate" "$SESSION"

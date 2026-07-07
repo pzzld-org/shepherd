@@ -4,7 +4,7 @@
 This block is maintained by the **shepherd** plugin. Edit freely OUTSIDE the
 markers; everything INSIDE is overwritten on `shctx config claude-md --force`.
 It is the portable how-to-work doctrine; the framework binding lives in
-`skills/shepherd/doctrines/operating-philosophy.md`.
+`skills/shepherd/references/operating-philosophy.md`.
 
 ## Do the whole thing
 

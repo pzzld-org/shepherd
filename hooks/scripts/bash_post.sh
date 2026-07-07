@@ -27,7 +27,7 @@ if in_subworktree; then
   msg+="  sprint root: $sr"$'\n'
   msg+="Recovery: cd $sr"$'\n'
   msg+="Then verify: git rev-parse --abbrev-ref HEAD (should be sprint branch)"$'\n'
-  msg+="See doctrines/conductor-cwd.md §Mandatory verification"
+  msg+="See skills/shepherd/references/flock.md §Mandatory verification"
   emit_context "$msg" "bash_post" "Bash" "$role" "$session"
 fi
 

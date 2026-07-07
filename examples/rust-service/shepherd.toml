@@ -49,7 +49,7 @@ target_clean_threshold_gb = 20
 # compiles green and slips every name-keyed gate. The PreToolUse hook surfaces a
 # shape match to the coder at authoring time; the [gates].extra entry above makes
 # a foundation-blocking shadow fail the sprint. See docs/configuration.md §[dups]
-# and doctrines/shape-dedup.md. Keys are dups_*-prefixed (cfg_get is section-agnostic).
+# and skills/context/SKILL.md §Dedup. Keys are dups_*-prefixed (cfg_get is section-agnostic).
 dups_hook        = "warn"     # off | warn (default) | block — block denies a ≥dups_block match
 dups_threshold   = 0.7        # cluster/check similarity floor (0..1)
 dups_block       = 0.85       # hook block threshold

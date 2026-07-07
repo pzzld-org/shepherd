@@ -2,8 +2,8 @@
 # shepherd hook — PreToolUse(Agent|Task) dispatch-contract guard (v6.0.2, Wave 1)
 #
 # The mechanical enforcement of the primitive↔axis binding
-# (doctrines/primitive-axis-binding.md) and the forbidden-dispatch matrix
-# (doctrines/dispatch-tier-separation.md §IV-bis). Prose deterrence already
+# (skills/shepherd/references/pipeline.md §Lane law) and the forbidden-dispatch matrix
+# (skills/shepherd/SKILL.md §Dispatch law §IV-bis). Prose deterrence already
 # failed in the field (#66, #89 — root spawned the conductor wave via the wrong
 # primitive; coders were dispatched as teammates; general-purpose agents slipped
 # through). This guard turns each invariant into a hard refusal.
@@ -55,7 +55,7 @@
 #   5. subagent_type = shepherd:<x>, x ∉ closed-flock+conductor → DISPATCH-OFF-FLOCK              (deny)  [mechanical]
 #   6. teammate-session AND a flock fan-out role, no compile    → PRIMITIVE-INVERSION (handrolled) (flag) [#89 inversion 2]
 #
-# Binding (doctrines/primitive-axis-binding.md): a LANE = one teammate-conductor
+# Binding (skills/shepherd/references/pipeline.md §Lane law): a LANE = one teammate-conductor
 # spawned via the native teammate-spawn (Agent Teams; no TeamCreate tool); a STEP =
 # a subagent (Agent/Task). Spawning
 # a lane is NEVER a workflow; a step fan-out is NEVER hand-rolled. This guard is
@@ -116,7 +116,7 @@ fi
 st_lc=$(printf '%s' "$subagent_type" | tr '[:upper:]' '[:lower:]')
 FLOCK_RE='^shepherd:(engineer|critic|coder|auditor|worker|discovery)$'
 CONDUCTOR='shepherd:conductor'
-DOC='doctrines/primitive-axis-binding.md + doctrines/dispatch-tier-separation.md §IV-bis'
+DOC='skills/shepherd/references/pipeline.md §Lane law + skills/shepherd/SKILL.md §Dispatch law'
 
 # ---------------------------------------------------------------------------
 # Check 1 — missing / default subagent_type (DISPATCH-MISSING-SUBAGENT-TYPE)
@@ -207,7 +207,7 @@ if [[ "$st_lc" == "shepherd:engineer" && "$mode_self_contained" -eq 1 ]]; then
   msg+="  @engineer dispatched as an Agent/Task SUBAGENT with mode: self-contained."$'\n'
   msg+="A self-contained engineer is a NAMED TEAMMATE (native teammate-spawn), never a"$'\n'
   msg+="subagent. Spawn it as a teammate, OR drop mode: self-contained to run classic"$'\n'
-  msg+="(root runs discovery + @critic). See $DOC + doctrines/engineer-self-contained-plan.md."
+  msg+="(root runs discovery + @critic). See $DOC + skills/shepherd/references/pipeline.md §INTRO."
   emit_deny "$msg" "dispatch_guard" "$tool" "unknown" "$session"
 fi
 
@@ -227,7 +227,7 @@ if [[ "$eng_self_dispatch" -eq 1 ]] && ! [[ "$st_lc" =~ ^shepherd:(discovery|aud
   msg+="The self-contained engineer's sub-flock is READ-ONLY and closed at three —"$'\n'
   msg+="@discovery, @auditor, @critic. No @coder/@worker (this phase touches no code),"$'\n'
   msg+="no nested @engineer. File a plan step for the conductor to spin a coder instead."$'\n'
-  msg+="See $DOC + doctrines/engineer-self-contained-plan.md."
+  msg+="See $DOC + skills/shepherd/references/pipeline.md §INTRO."
   emit_deny "$msg" "dispatch_guard" "$tool" "unknown" "$session"
 fi
 

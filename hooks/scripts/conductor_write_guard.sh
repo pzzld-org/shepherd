@@ -137,7 +137,7 @@ FS_WRITE_PATTERN='(^|[[:space:];|&])(rm|mv|sed[[:space:]]+-i|touch)([[:space:]]|
 # comparison operator; excludes /dev/null and process-substitution `>()`).
 REDIRECT_PATTERN='[^<>]>[[:space:]]*[^&|[:space:](][^[:space:]]*'
 # shctx subcommands that mutate registry/state rather than read it.
-SHCTX_WRITE_PATTERN='shctx[[:space:]]+(seed|plan[[:space:]]+record-critique|close-lane|adapt[[:space:]]+(roll|reflect)|loop[[:space:]]+(init|record|close|native-cmd)|loop[[:space:]]+focus[[:space:]]+upsert|mem[[:space:]]+(add|pin|unpin|rm|delete)|lock[[:space:]]+(acquire|release)|worktree[[:space:]]+(create-batch|merge|gc)|config[[:space:]]+(init|claude-md)|migrate|prune[[:space:]].*--confirm|release|dups[[:space:]]+registry|escalate|handoff|export|profile[[:space:]]+sync|style[[:space:]]+(init|edit))([[:space:]]|$)'
+SHCTX_WRITE_PATTERN='shctx[[:space:]]+(seed|plan[[:space:]]+record-critique|close-lane|adapt[[:space:]]+(roll|reflect)|loop[[:space:]]+(init|record|close|native-cmd)|loop[[:space:]]+focus[[:space:]]+upsert|mem[[:space:]]+(add|pin|unpin|rm|delete)|lock[[:space:]]+(acquire|release)|worktree[[:space:]]+(create-batch|merge|gc)|config[[:space:]]+(init|claude-md)|migrate|prune[[:space:]].*--confirm|release|dups[[:space:]]+registry|handoff|export|style[[:space:]]+(init|edit))([[:space:]]|$)'
 # `shctx seed verify` is read-only validation, not authorship — strip any such
 # occurrence from the test copy before running the mutating-verb match above,
 # so it doesn't false-positive on the bare "seed" alternative.

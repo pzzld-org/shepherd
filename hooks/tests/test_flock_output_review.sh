@@ -31,20 +31,20 @@ need() {
   fi
 }
 
-DOC="skills/shepherd/doctrines/flock-output-review.md"
+DOC="skills/shepherd/references/pipeline.md"
 
 # 1. The doctrine — the single source of truth — exists.
 need_file "$DOC"
 
 # 2. conductor.md wires the gate, the redo loop, and the cap halt code.
-need agents/conductor.md "flock-output-review.md"   "conductor cites doctrine"
+need agents/conductor.md "Wave review + REDO"        "conductor cites review contract"
 need agents/conductor.md "FLOCK-OUTPUT REVIEW"       "conductor gate name"
 need agents/conductor.md "wave-review mode"          "conductor reviewer mode"
 need agents/conductor.md "REDO loop"                 "conductor redo loop"
 need agents/conductor.md "REDO-CAP-EXCEEDED"         "conductor redo cap halt code"
 
 # 3. shepherd.md (root) delegates the verdict and forces redo through the teammate.
-need agents/shepherd.md  "flock-output-review.md"    "root cites doctrine"
+need agents/shepherd.md  "Wave review + REDO"         "root cites review contract"
 need agents/shepherd.md  "REDO-DIRECTIVE"            "root redo directive"
 need agents/shepherd.md  "review_verdict"            "root review-evidence gate"
 need agents/shepherd.md  "REDO-CAP-EXCEEDED"         "root redo cap halt code"
@@ -52,7 +52,7 @@ need agents/shepherd.md  "REDO-CAP-EXCEEDED"         "root redo cap halt code"
 # 4. auditor.md carries the wave-review mode and its verdict shape.
 need agents/auditor.md   "wave-review"               "auditor wave-review mode"
 need agents/auditor.md   "WAVE-REVIEW VERDICT"       "auditor verdict block"
-need agents/auditor.md   "flock-output-review.md"    "auditor cites doctrine"
+need agents/auditor.md   "Wave review + REDO"         "auditor cites review contract"
 
 # 4-bis. The wave-review report path MUST keep the `audit-` prefix so it stays
 # inside lock_guard.sh's @auditor write-allow regex (/<date>-(intro-)?audit-.+\.md$).
@@ -63,24 +63,23 @@ if ! grep -qF -- '{paths.reports}/<date>-audit-wave-review-' agents/auditor.md; 
 fi
 
 # 5. flock.md dispatch reference carries the mandatory per-wave review.
-need skills/shepherd/flock.md "wave-review"          "flock dispatch ref mode"
-need skills/shepherd/flock.md "flock-output-review.md" "flock cites doctrine"
+need skills/shepherd/references/flock.md "wave-review"        "flock dispatch ref mode"
+need skills/shepherd/references/flock.md "Wave review + REDO" "flock cites review contract"
 
 # 6. The invariant matrix records the enforcement coverage.
-need skills/shepherd/doctrines/invariant-enforcement-matrix.md \
-     "flock-output-review.md" "invariant matrix coverage row"
+need skills/shepherd/references/invariant-matrix.md \
+     "Wave review + REDO" "invariant matrix coverage row"
 
-# 7. Citation resolution — every doctrines/<x>.md referenced inside the new
-#    doctrine must exist (no dangling cross-references).
-if [[ -f "$DOC" ]]; then
-  while IFS= read -r ref; do
-    [[ -n "$ref" ]] || continue
-    if [[ ! -f "skills/shepherd/doctrines/$ref" ]]; then
-      printf '  FAIL  dangling citation in %s: doctrines/%s\n' "$DOC" "$ref"
-      fails=$((fails+1))
-    fi
-  done < <(grep -oE 'doctrines/[a-z0-9-]+\.md' "$DOC" | sed 's#doctrines/##' | sort -u)
-fi
+# 7. Citation lint — the doctrine dir is dissolved (v6.2.8); no plugin-doctrine
+#    path may survive in the contract files (`.claude/doctrines/` is exempt).
+for d in "$DOC" agents/conductor.md agents/auditor.md; do
+  [[ -f "$d" ]] || continue
+  while IFS= read -r hit; do
+    [[ -n "$hit" ]] || continue
+    printf '  FAIL  stale plugin-doctrine citation in %s: %s\n' "$d" "$hit"
+    fails=$((fails+1))
+  done < <(grep -oE '(^|[^a-z./])doctrines/[a-z0-9-]+\.md' "$d" | grep -v '\.claude/doctrines/' | sort -u)
+done
 
 if [[ "$fails" -gt 0 ]]; then
   printf '  FAIL  %d flock-output-review wiring assertion(s) failed\n' "$fails" >&2

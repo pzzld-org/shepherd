@@ -9,7 +9,7 @@
 # when a role is unset.
 #
 # Resolution chain (forward-compatible — profiles/modes slot into 2–3 later
-# with zero rework to this map; doctrines/engineer-self-contained-plan.md and
+# with zero rework to this map; skills/shepherd/references/pipeline.md §INTRO and
 # docs/configuration.md §models):
 #   1. explicit [models].<role> key      ← ships now (total control)
 #   2. active profile/mode preset        ← future (deferred)

@@ -27,7 +27,7 @@ Pass arguments through to `shctx`. Common invocations:
 - `shctx query dedup-check --name=<symbol>` — Layer 2 SQL fast-path.
 - `shctx worktree create-batch lane-1 lane-2 --from <sprint-branch>` — pre-create per-lane worktrees from sprint HEAD.
 
-**Pipelines (v5.0.4):**
+**Pipelines:**
 - `shctx ready` — first-time bootstrap (`init` → `migrate` → `refresh --all` → `lint` → `doctor`).
 - `shctx sync` — one-shot context refresh (`refresh` → `lint` → `status`).
 - `shctx sprint open <branch>` — sprint kickoff (lock → refresh → lint → status).

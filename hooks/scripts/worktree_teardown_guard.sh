@@ -141,7 +141,7 @@ MSG+="  git worktree remove --force .worktrees/<sprint_slug>-<lane_id>"$'\n'
 MSG+=""$'\n'
 MSG+="To tear down ALL worktrees at CLOSE (once no live teammates remain),"$'\n'
 MSG+="use the scoped form in a loop after verifying v_teammates_live = 0."$'\n'
-MSG+="See doctrines/worktree-confinement.md and agents/shepherd.md CLOSE section."
+MSG+="See skills/shepherd/references/flock.md §Write boundaries and skills/shepherd/references/pipeline.md §CLOSE-FINALIZE."
 
 if [[ "$MODE" == "warn" ]]; then
   echo "[shctx] worktree-teardown-guard: ${REASON_CODE} blocked (warn mode — proceeding anyway; live=${LIVE})" >&2

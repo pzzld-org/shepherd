@@ -93,7 +93,7 @@ if [[ "$mode" == "block" && "$blocked" == "true" ]]; then
   msg="[shepherd] SHAPE-DEDUP BLOCKED — @coder Write would create a field-shape duplicate of an existing type."$'\n'
   msg+="  Target file: $file_path"$'\n\n'
   msg+="$hits"$'\n\n'
-  msg+="Per doctrines/shape-dedup.md + zero-duplicate-tolerance.md:"$'\n'
+  msg+="Per skills/context/SKILL.md §Dedup + skills/shepherd/references/pipeline.md §DEDUP-GATE:"$'\n'
   msg+="  - REUSE the existing type (import it instead of restating its fields)"$'\n'
   msg+="  - EXTEND it, or wire to the suggested canonical home"$'\n'
   msg+="  - if the twin is intentional, allow-list it: shctx dups registry allow <A> <B>"$'\n'

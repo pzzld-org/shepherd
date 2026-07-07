@@ -4,7 +4,7 @@
 -- `shctx adapt priors --metrics` (spawn Check 8 + engineer lane guidance).
 -- Replaces the static avg_sprint_minutes=90 / avg_api=200 dispatch defaults
 -- with measured per-project averages. Empty store ⇒ unchanged behavior.
--- See skills/shepherd/doctrines/adaptation-loop.md (SQLite-canonical).
+-- See skills/adaptation/SKILL.md (SQLite-canonical).
 --
 -- Idempotent (IF NOT EXISTS / DROP VIEW IF EXISTS) so the gap-fill migrate
 -- runner may safely (re)apply it. The schema_versions row is inserted by

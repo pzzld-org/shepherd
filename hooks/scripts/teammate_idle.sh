@@ -61,14 +61,14 @@ if [[ "$changed" -lt 1 ]]; then
   echo "[shctx] TeammateIdle: no teammates row matched (name='${TEAMMATE:-}' session='${SESSION:-}') — status not flipped; coordinate-drive backstop will not see this idle" >&2
 fi
 
-# Surface open escalations + stalled deliverables. `wc -l` includes the header
-# row from sqlite3 -header, so subtract 1 to get the data-row count.
+# Surface stalled deliverables. `wc -l` includes the header row from
+# sqlite3 -header, so subtract 1 to get the data-row count. (Escalations
+# travel via SendMessage payloads — `shctx escalate` was pruned in v6.2.8.)
 LABEL="${TEAMMATE:-${SESSION:-unknown}}"
-ESC=$(bash "$ROOT/skills/context/scripts/cmd_escalate.sh" list --open-only 2>/dev/null | wc -l)
 STALLED=$(bash "$ROOT/skills/context/scripts/cmd_deliverable.sh" stalled --since-mins=10 2>/dev/null | wc -l)
 
-if [[ "$ESC" -gt 1 ]] || [[ "$STALLED" -gt 1 ]]; then
-  echo "[shctx] teammate $LABEL idle | open-escalations=$((ESC-1)) | stalled-deliverables=$((STALLED-1))" >&2
+if [[ "$STALLED" -gt 1 ]]; then
+  echo "[shctx] teammate $LABEL idle | stalled-deliverables=$((STALLED-1))" >&2
 fi
 
 exit 0

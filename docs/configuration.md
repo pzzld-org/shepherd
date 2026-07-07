@@ -1,842 +1,325 @@
 # Configuration
 
-Shepherd is project-agnostic. The framework speaks principles (Phase 0 mesh, SUBTRACT-DON'T-ADD, wrapper-must-earn, Pattern B overlap); per-language details (build commands, idioms, code-review preferences) come from per-language skills loaded via `[skills.by_domain]`.
+Shepherd speaks principles (Phase 0 mesh, SUBTRACT-DON'T-ADD, wrapper-must-earn, Pattern B
+overlap); per-language mechanics load via `[skills.by_domain]`. Examples lean Rust — see the
+[Language matrix](#language-matrix) for other languages.
 
-> **Examples in this doc lean Rust** because that's the most-tested binding so far. Equivalent values for Python, TypeScript, Go, and others appear in the [Language matrix](#language-matrix) section at the end. The framework itself has no Rust dependency.
+## Resolution
 
-To bind shepherd to your repo, drop a `shepherd.toml` at one of these locations:
+Drop a `shepherd.toml` at one of these locations, highest precedence first, **per key**:
 
 ```
-.claude/shepherd.local.toml   ← project-pinned, gitignored (operator per-key overrides)
-.claude/shepherd.toml         ← project-pinned, checked into the repo (the base)
-$XDG_CONFIG_HOME/shepherd.toml ← user-global default
+.claude/shepherd.local.toml    project-pinned, gitignored (overrides)
+.claude/shepherd.toml          project-pinned, in the repo (base)
+$XDG_CONFIG_HOME/shepherd.toml user-global default
 ```
 
-**Resolution is per-key (v6.1.5+).** For any given key, `.claude/shepherd.local.toml`
-overrides `.claude/shepherd.toml`, which overrides `$XDG_CONFIG_HOME/shepherd.toml`. A
-`.local.toml` that sets only one key inherits the rest from the project file — it is a
-partial override, not a whole-file replacement. Every hook guard and `shctx` command
-resolves config through a single helper (`cfg_get`, defined in both `_lib.sh` files), so
-the precedence is identical across the runtime and the hooks. Section-scoped blocks
-(`[models]`, `[prune]`) use the companion `cfg_section_get` (also mirrored in both
-`_lib.sh` files): same file precedence, but keys resolve *within* their `[section]` so
-bare role/window keys never collide with a same-named key elsewhere.
+A `.local.toml` setting one key inherits the rest — a partial, not whole-file, override — resolved
+via `cfg_get`. `[models]`/`[prune]`/`[eval]`/`[dups]` use `cfg_section_get` instead: keys resolve
+*within* their `[section]`, never colliding elsewhere.
 
-If no config is found, the entry commands **scaffold one and proceed** (v6.1.5 #15) rather than refusing or running blind. Run it yourself any time with:
-
-```bash
-shctx config init        # writes .claude/shepherd.toml from the bundled minimal template
-```
-
-`config init` is idempotent (it never clobbers an existing binding) and derives the load-bearing values automatically: `[project].name` from the git remote (falling back to the repo-root basename), `[gates]` from the repo's build manifest (`Cargo.toml`→cargo, `go.mod`→go, `pyproject.toml`/`setup.py`→pytest+ruff, `package.json`→npm), and `[paths]` realigned to whichever shctx namespace (`.shepherd/` or `.artifacts/`) the project already uses. The entry points wire it as follows:
-
-- **`/shepherd:start`, `/shepherd:spawn` (root):** scaffold → one-line `[CONFIG]` notice → PROCEED. Execution sessions are action-biased (`doctrines/operator-signaling.md`); they do not stop for confirmation.
-- **`/shepherd:plant`:** scaffold → **one batched `AskUserQuestion`** to confirm/refine the `[branching]` scheme and `[gates]` (the scaffold gets the toolchain right but can only guess version/branch topology) → continue. The planter plans *with* the operator, so it surfaces the choice but never blocks on a hand-edited file.
-
-You should still review `[branching]` and any non-standard `[gates]` before the first sprint — a seed authored against guessed branching is drift on arrival.
+If no config is found, entry commands MUST scaffold one and proceed — never refuse, never run
+blind: `shctx config init` writes `.claude/shepherd.toml` idempotently, deriving name/gates/paths
+from the repo. `/shepherd:spawn`: scaffold → `[CONFIG]` notice → proceed (action-biased — never
+stops to confirm, `skills/shepherd/SKILL.md §Operator surface`). `/shepherd:plant`: scaffold → one
+`AskUserQuestion` confirming `[branching]`/`[gates]` → continue.
 
 ## Schema
 
 ### `[project]` — identity
 
-```toml
-[project]
-name        = "rust-service"    # repo / project name (required)
-language    = "rust"            # primary language: rust | python | typescript | go | mixed
-description = "Multi-crate Rust service — HTTP node + background worker"
-```
-
-`language` is hand-tagged because file-extension sniffing is unreliable for mixed repos. Sets the default `[skills.by_domain]` mapping — Rust projects get `rust` + `code-style` for any `.rs` file, Python gets `code-style` (and `python` if you author one), etc.
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `name` | string | *(required)* | repo/project name |
+| `language` | enum | `"rust"` | `rust\|python\|typescript\|go\|mixed`; drives `[skills.by_domain]` |
+| `description` | string | `""` | free text |
 
 ### `[branching]` — branch topology
 
-```toml
-[branching]
-patch_branch_pattern  = "v{X}.{Y}.{Z}"          # patch-arc branch (dots — git-valid)
-sprint_branch_pattern = "v{X}.{Y}.{Z}-dev.{N}"   # sprint branch (dots — git-valid)
-# Filesystem-slug forms (v5.1.1+) — dots collapsed for filename safety
-# Used in seed/plan filenames so we don't get double-dotted paths
-patch_slug_pattern    = "v{X}{Y}{Z}"             # e.g., v512 (was v5.1.2)
-sprint_slug_pattern   = "v{X}{Y}{Z}-dev{N}"      # e.g., v512-dev3 (was v5.1.2-dev.3)
-sprints_per_patch     = 10                       # 0..N-1 sprints per patch (default 10)
-main_branch           = "main"                   # release target
-release_tag_pattern   = "v{X}.{Y}.{Z}"          # tag emitted at dev.{last} squash
-allow_direct_main_commit = false                 # NEVER true except solo bootstrap
-```
+| Key | Type | Default |
+|---|---|---|
+| `patch_branch_pattern` | string | `"v{X}.{Y}.{Z}"` |
+| `sprint_branch_pattern` | string | `"v{X}.{Y}.{Z}-dev.{N}"` |
+| `patch_slug_pattern` | string | `"v{X}{Y}{Z}"` |
+| `sprint_slug_pattern` | string | `"v{X}{Y}{Z}-dev{N}"` |
+| `sprints_per_patch` | int | `10` |
+| `main_branch` | string | `"main"` |
+| `release_tag_pattern` | string | `"v{X}.{Y}.{Z}"` |
+| `allow_direct_main_commit` | bool | `false` — MUST NEVER be `true` except solo bootstrap |
 
-The framework reads `{X}/{Y}/{Z}/{N}` as integer placeholders. Other patterns work — e.g., `release/{X}.{Y}` + `release/{X}.{Y}/sprint-{N}` — but the placeholder set is fixed.
-
-**Branch vs. slug distinction (v5.1.1+):** branches keep dots because git accepts dotted refs natively (`v5.1.2-dev.3` is a valid branch name). But `.seed.md` / `.plan.md` filenames in `{paths.plans}/` derive from `*_slug_pattern` to avoid the documented `v0.3.2-dev.5.seed.md`-style filename drift (per `doctrines/seed-naming.md`). If `*_slug_pattern` is absent, the framework falls back to `*_branch_pattern` for backward compat but emits a deprecation warning.
+`{X}{Y}{Z}{N}` are fixed integer placeholders. Branches keep dots; filenames use `*_slug_pattern`
+instead (falls back to `*_branch_pattern` + a deprecation warning). See
+`skills/shepherd/references/seed-template.md`.
 
 ### `[gates]` — between-wave validation
 
-```toml
-[gates]
-# Commands that run between coder waves and at sprint close.
-# An empty string skips the gate. The conductor runs each one in order;
-# any non-zero exit halts the wave and triggers hot-fix coder dispatch.
-check  = "cargo check --workspace --features full"
-lint   = "cargo clippy --workspace --features full -- -D warnings"
-format = "cargo fmt --all"
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `check`/`lint`/`format` | string | project-specific | run in order between waves and at close; empty skips; non-zero halts the wave + triggers hot-fix dispatch |
+| `extra` | list of `{name,cmd}` | `[]` | supplementary gates after the primary three pass |
+| `target_clean_threshold_gb` | int | `20` | auto-clean `target/` (`0` disables) |
+| `subtract_paths` | list of globs | project-specific | scopes SUBTRACT-DON'T-ADD to production source — `skills/shepherd/SKILL.md §Principles` |
 
-# Optional supplementary gates (run after the primary three pass).
-# Useful for project-specific build profiles (Fly Docker build, multi-target, etc.).
-extra = [
-    { name = "node-serve",   cmd = "cargo check -p service-node --features serve,native" },
-    { name = "worker-serve", cmd = "cargo check -p service-worker --features serve" },
-]
+### `[dups]` — field-shape dedup
 
-# Auto-clean target/ when it grows past this many GB (0 = disabled).
-target_clean_threshold_gb = 20
+Tunes `shctx dups`, the field-shape detector that catches a renamed-shadow duplicate. See
+`skills/context/SKILL.md §Dedup`.
 
-# Source-code globs the SUBTRACT-DON'T-ADD doctrine measures. The auditor
-# `completeness` concern runs `git diff --shortstat <patch_branch>..HEAD --
-# <subtract_paths>` for the LOC-delta check (per doctrines/subtract-dont-add.md).
-# Documentation, audit artifacts, plans, reports, and config files are
-# excluded by design — SUBTRACT applies to production source only.
-# Default below is Rust-leaning; override per-project for other languages.
-subtract_paths = [
-    "crates/**/*.rs",
-    "bin/**/*.rs",
-    "src/**/*.rs",
-    "**/*.toml",        # build manifests count
-    "**/*.sql",         # migrations count
-]
-```
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `dups_threshold` | float 0..1 | `0.7` | cluster/report/check similarity floor |
+| `dups_block` | float 0..1 | `0.85` | hook DENY threshold |
+| `dups_name_weight` | float | `0.5` | field-name vs typed-pair Jaccard weight |
+| `dups_min_fields` | int | `2` | ignore shapes below N fields |
+| `dups_hook` | enum | `"warn"` | `off\|warn\|block` |
 
-### `[dups]` — field-shape dedup (v6.1.8, #157)
-
-Tunes `shctx dups` — the field-shape similar-struct detector that catches the
-**renamed-shadow** duplicate (a second type for an existing concept under a
-different name) that name-matching dedup is blind to. See
-`doctrines/shape-dedup.md`.
-
-```toml
-[dups]
-# NOTE: shepherd's config reader (cfg_get) is section-agnostic and matches on the
-# bare key name, so every dups key is prefixed `dups_` to avoid collisions with
-# keys of the same short name in other sections (e.g. [context].enabled). The
-# [dups] header is for human grouping.
-dups_threshold   = 0.7        # cluster/report + check similarity floor (0..1)
-dups_block       = 0.85       # hook block threshold — a match ≥ this denies the write
-dups_name_weight = 0.5        # weight of the field-NAME Jaccard vs the typed-pair Jaccard
-dups_min_fields  = 2          # ignore shapes with fewer than N fields (markers/1-field noise)
-dups_hook        = "warn"     # PreToolUse(Write|Edit) behavior: off | warn (default) | block
-# dups_registry  = ".shepherd/dups-registry.json"   # concept→canonical pins + DO-NOT-MERGE allow-list
-```
-
-- `dups_hook = "warn"` (default) surfaces *"0.85-similar to `pkg::X` — reuse it?"*
-  as `additionalContext` for `@coder` `.rs` writes but never blocks. `"block"`
-  denies a write whose new struct/enum is ≥ `dups_block`-similar to an existing
-  type. `"off"` disables the hook. Fails open (no python3 / empty corpus → pass).
-- The corpus (`index_struct_shapes`) is refreshed by `shctx refresh --scope=shapes`
-  (folded into `refresh --all`, hence `sprint open`).
-- To make a shadow fail the sprint, add to `[gates].extra`:
-  `{ name = "shape-dedup", cmd = "shctx dups scan --fail-on foundation-blocking" }`.
-- Intentional distinct-role twins (a venue `Fill` vs a backtest `SimFill`) are
-  exempted via the DO-NOT-MERGE allow-list: `shctx dups registry allow A B`.
+Keys are `dups_`-prefixed. `warn` surfaces a reuse suggestion, never blocks; `block` denies a
+≥`dups_block`-similar write; `off` disables; fails open with no `python3` or empty corpus. Refresh:
+`shctx refresh --scope=shapes`. Fail the sprint on a shadow via a `shape-dedup` `[gates].extra`
+entry; exempt twins via `shctx dups registry allow A B`.
 
 ### `[paths]` — artifact locations
 
-```toml
-[paths]
-plans   = ".shepherd/docs/plans"     # seeds + plans (v6.1.2 standard — now under docs/)
-reports = ".shepherd/docs/reports"   # close reports + audit reports (under docs/)
-docs    = ".shepherd/docs"           # handoffs, specs, diagrams, journal, release notes
-ctx     = ".shepherd/ctx"            # workspace knowledge silo (canonical-types, dedup-ledger, etc.)
-```
-
-Paths are relative to the repo root. Directories are auto-created on first write.
-
-**Standard layout (v6.1.2).** The per-project workdir now follows a consistent internal tree — `docs/{plans,reports,diagrams,handoffs,specs,journal}/`, `logs/`, `archive/`, `cache/`, `scripts/`, `templates/`, `tmp/`, `types/`, plus `toolkit.json` (tracked) and `shepherd.db` (gitignored). `shctx init` scaffolds it for new projects. **Back-compat is total:** projects on the legacy shape (top-level `plans/`+`reports/`, `root.db`, `.artifacts/`) keep working untouched — the runtime auto-detects both. To migrate an existing project to the standard tree, run the opt-in `shctx migrate --layout v2` (idempotent; `git mv`s `plans/`→`docs/plans/`, `reports/`→`docs/reports/`, renames `root.db`→`shepherd.db`). See `skills/context/references/naming-conventions.md`.
-
-**Namespace default (v5.0.0):** the per-project namespace directory is **`.shepherd/`** by default. Projects that prefer the legacy `.artifacts/` layout opt in by running `shctx init --artifacts`; substitute `.artifacts/` for `.shepherd/` in the snippet above. The `shctx` CLI auto-detects which directory is in use at every invocation (preferring `.shepherd/` when both exist). **The `[paths]` entries here must match the active namespace** — if they diverge, `shctx doctor` will surface a conflict warning. As of v5.0.9, `shctx init` also refuses to scaffold a new namespace when the other is already initialized, preventing this split-brain at the source.
-
-#### `$SHEPHERD_WORKDIR` — work-directory override (v6.0.2)
-
-`$SHEPHERD_WORKDIR` is the first-class, public way to point shepherd at a project-local work directory. Both the `shctx` runtime and the hooks honor it with this precedence:
-
-1. **`$SHEPHERD_WORKDIR`** — if set and non-empty. An absolute path is used as-is; a relative path resolves against the repo root.
-2. `$SHCTX_ROOT_OVERRIDE` — legacy override (kept for backward compat; set by `shctx init --artifacts`).
-3. Existing **`.shepherd/`** (the default).
-4. Existing **`.artifacts/`** (accepted auto-pickup fallback for legacy projects).
-5. Otherwise default to **`.shepherd/`**.
-
-When both `.shepherd/` and `.artifacts/` exist (and no override is set), shepherd picks `.shepherd/` and emits a split-brain warning (suppressed by `SHCTX_QUIET=1`).
-
-### `[context]` — context registry (new in v5.0.0)
-
-```toml
-[context]
-enabled         = true                       # opt-out is valid in v5.0.0-c (DB-optional); rejected in v5.0.0-d (DB mandatory)
-db_path         = ".shepherd/shepherd.db"    # SQLite registry (v6.1.2; legacy root.db auto-detected; .artifacts/ for legacy namespace)
-lock_path       = ".shepherd/shepherd.lock"  # file-based single-writer lock
-project_id_path = ".shepherd/project.json"   # stable project_id (multi-project backbone)
-auto_refresh    = ["on-sprint-open"]         # triggers that fire `shctx refresh --scope=all`
-announce_shctx_path = "on"                   # v6.1.8: SessionStart surfaces the resolved absolute shctx
-                                             # path so a session never falsely reports "shctx absent"
-                                             # (shctx is plugin-local, NEVER on $PATH). on (default) | off.
-announce_core_doctrine = "on"                # v6.2.0: SessionStart surfaces a ≤1-line pointer to
-                                             # doctrines/operating-philosophy.md (the how-to-work index).
-                                             # on (default) | off.
-announce_adaptation = "on"                   # v6.2.0: SessionStart surfaces the adaptation loop —
-                                             # sprint/prior counts + newest harvested lesson + any active
-                                             # TREND ALERT — when the registry is non-empty (the empty
-                                             # cold-start note still fires either way). on (default) | off.
-
-[context.refresh]
-symbols_languages = ["rust"]                                # languages the symbol extractor walks
-github_scope      = ["issues", "prs", "releases", "milestones"]  # GH index scope
-ttl_minutes       = 30                                      # rows older than this are stale; engineer refreshes before query
-
-[context.lock]
-stale_minutes = 60     # locks older than this are reaped on next acquire attempt
-reap_on_init  = true   # `shctx init` clears stale locks automatically
-
-[context.naming]
-seed     = "*.seed.md"     # discoverable artifact glob → indexed into `index_artifacts`
-plan     = "*.plan.md"
-phase0   = "*.phase0.md"
-close    = "*.close.md"
-walk     = "*.walk.md"
-handoff  = "*.handoff.md"
-spec     = "*.spec.md"
-design   = "*.design.md"
-journal  = "????-??-??.md"
-log      = "*.log.md"          # human-readable daily logs (v6.1.2; in logs/)
-log_jsonl = "*.log.jsonl"      # machine event streams (v6.1.2; in logs/ or tmp/)
-toolkit  = "toolkit.json"      # tool registry (v6.1.2; tracked, namespace root)
-```
-
-The `<slug>.<group>.<ext>` convention is uniform: a filename is a kebab/slug stem, a `<group>` tag (`seed`, `plan`, `phase0`, `close`, `walk`, `handoff`, `spec`, `design`, `log`, …), and an extension. Seeds/plans already use it (`v512-dev3.seed.md`); logs extend it (`2026-06-11.log.md`, `2026-06-11T14-32-45.log.jsonl`).
-
-The context registry is a per-project SQLite cache that backs:
-
-- **Phase 0 mesh fast-path** — `shctx query open-issues --md`, `shctx query canonical-types --md` instead of MCP/CLI round-trips (per `agents/engineer.md` Phase 0 mesh inputs).
-- **DEDUP-GATE Layer 2 SQL pre-filter** — `shctx query dedup-check --name=<symbol>` runs before per-lane greps (per `doctrines/zero-duplicate-tolerance.md` Layer 2 SQL fast-path).
-- **`[DB-CONTEXT]` brief block** — populated via `shctx inject coder` (per `flock.md` → @coder).
-- **Memory + profiles + locks + artifacts** — replaces the external `remember` plugin; tracks active locks; indexes discoverable artifacts via `[context.naming]` globs.
-
-`enabled = false` is a valid configuration in v5.0.0-c (the DB is optional and the framework falls back to direct MCP/CLI). In v5.0.0-d the DB becomes mandatory — `shctx migrate` and `shctx status` reject `enabled = false`.
-
-`auto_refresh` triggers (additive list):
-- `on-sprint-open` — fire `shctx refresh --scope=all` at the top of every `/shepherd:start` and `/shepherd:spawn` walk (including `--auto` and `--parallel <N>` modes).
-- `on-engineer-dispatch` — fire `shctx refresh --scope=github` if `index_issues.refreshed_at` older than `[context.refresh].ttl_minutes`.
-- `on-close-finalize` — fire `shctx refresh --scope=artifacts` after handoff is written.
-- `on-wave-gate` *(v5.0.3)* — fire `shctx refresh --scope=github,artifacts` after every `WAVE-GATE` lands. Combats stale carry-forward / dedup-ledger drift mid-sprint (per v5.0.1 field feedback §2.8). Recommended for L/XL sprints with 4+ waves; LOW for S/M sprints (refresh churn outweighs benefit).
-
-#### Schema + views appendix (v5.0.0 — `schema/0001_init.sql`)
-
-Bundled tables (full DDL lives in the `context` skill at `${CLAUDE_PLUGIN_ROOT}/skills/context/schema/0001_init.sql`):
-
-| Table | Purpose |
+| Key | Default |
 |---|---|
-| `schema_migrations` | migration tracking |
-| `sessions` | session metadata |
-| `profiles` | per-project profiles |
-| `mem_entries` | memory entries (replaces external `remember` plugin) |
-| `index_issues` | GH issue cache (Phase 0 mesh fast-path) |
-| `index_prs` | GH PR cache |
-| `index_releases` | GH release cache |
-| `index_milestones` | GH milestone cache |
-| `index_symbols` | extracted source symbols (DEDUP-GATE Layer 2 fast-path; `canonical-types` view) |
-| `index_concepts` | canonical-concept ↔ symbol mapping |
-| `logs` | structured event log |
-| `index_artifacts` | filesystem-pointer table (driven by `[context.naming]` globs) |
-| `locks_history` | audit trail for the file-based lock |
-| `sprint_metadata` | sprint-state cache (deferred to milestone d) |
+| `plans` | `.shepherd/docs/plans` |
+| `reports` | `.shepherd/docs/reports` |
+| `docs` | `.shepherd/docs` |
+| `ctx` | `.shepherd/ctx` |
 
-Bundled views (`schema/views/*.sql`):
+Relative to the repo root, auto-created on write. `shctx init` scaffolds the standard tree;
+`shctx migrate --layout v2` moves a legacy project onto it. See
+`skills/context/references/naming-conventions.md`.
 
-| View | Purpose |
-|---|---|
-| `v_open_issues` | open-issue ledger sweep (Phase 0 mesh row 1) |
-| `v_canonical_types` | canonical-types index (Phase 0 mesh row 12; replaces `{paths.ctx}/canonical-types.md` regeneration) |
-| `v_drift_risk` | open CRITICAL/HIGH outside the current milestone |
-| `v_mem_recent_7d` | last-7-day memories + pinned |
-| `v_active_locks` | currently held locks |
+**Namespace default is `.shepherd/`** (legacy `.artifacts/` opts in via `shctx init --artifacts`).
+`[paths]` MUST match the active namespace or `shctx doctor` flags a conflict; `shctx init` REFUSES
+to scaffold a second namespace when the other exists. `$SHEPHERD_WORKDIR` precedence: env var →
+`$SHCTX_ROOT_OVERRIDE` (legacy) → `.shepherd/` → `.artifacts/` → default `.shepherd/`.
 
-Plus `queries/dedup-check.sql` — a parameterized SQL template bound at call time by `shctx query dedup-check --name=<symbol>`.
+### `[context]` — context registry
 
-### Toolkit registry (v6.1.2)
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `enabled` | bool | `true` | DB-optional pre-migration; refused post-migration |
+| `db_path` | string | `.shepherd/shepherd.db` | SQLite registry |
+| `lock_path` | string | `.shepherd/shepherd.lock` | single-writer lock |
+| `project_id_path` | string | `.shepherd/project.json` | stable `project_id` |
+| `auto_refresh` | list | `["on-sprint-open"]` | additive: `on-sprint-open`, `on-engineer-dispatch`, `on-close-finalize`, `on-wave-gate` |
+| `announce_shctx_path` | enum | `"on"` | `on\|off` — surfaces the resolved `shctx` path |
+| `announce_core_doctrine` | enum | `"on"` | `on\|off` — points to `skills/shepherd/references/operating-philosophy.md` |
+| `announce_adaptation` | enum | `"on"` | `on\|off` — surfaces sprint/prior counts + newest lesson + trend alert |
 
-The **toolkit** is a mutable registry of commonly-used tools — MCP servers, skills, plugins, CLIs, ssh targets — so a session never forgets a capability exists (e.g. `ssh pzzld@laptop`, the `context7` MCP). It is the tool-memory sibling of the adaptation loop's lesson-memory. Two tiers, merged at read time (local overrides global on name collision):
-
-| Tier | File | Holds |
-|---|---|---|
-| `local` | `<namespace>/toolkit.json` (tracked) | project-specific tools |
-| `global` | `$XDG_CONFIG_HOME/shepherd/toolkit.json` | cross-project tools (reused in every repo) |
-
-Each entry carries the required `{ name, scope (local\|global), type (mcp\|skill\|plugin\|cli), capabilities[], description }` plus optional `invocation`, `when`, `tags`, `pinned`. It is **file + CLI managed** — no toml block required:
-
-```bash
-shctx toolkit add --name=context7 --type=mcp --scope=global \
-  --description="library docs; prefer over web search" --capabilities=docs --pin
-shctx toolkit list --scope=all          # merged roster (local ⊕ global)
-shctx toolkit md   --scope=all          # markdown for brief / session injection
-```
-
-Three surfaces keep it in front of the model: (1) a **SessionStart hook** (`toolkit_surface.sh`) injects a compact roster every session — suppress it with `[hooks].quiet_warnings = true`; (2) the `shctx toolkit` CLI; (3) a `[TOOLKIT]` block injected into engineer/coder/planter briefs. **Never store secrets or credentials in the toolkit.** See `skills/shepherd/doctrines/toolkit.md`.
+Sub-tables `[context.refresh]`, `[context.lock]`, `[context.naming]` — see
+`skills/context/schema/0001_init.sql`. The toolkit (`toolkit.json`) is documented at
+`skills/context/references/toolkit.md`. NEVER store secrets in it.
 
 ### `[skills]` — local-skill integration
 
-```toml
-[skills]
-# Mandatory in every coder brief regardless of file scope.
-# code-style is the canonical entry — your personal language preferences.
-mandatory = ["code-style"]
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `mandatory` | list | `["code-style"]` | MUST appear in every `[SKILLS]`; Brief-Validity Checklist rejects a brief missing one |
+| `by_domain` | table | — | domain → skill-slug list |
+| `detection` | table | — | domain → glob-pattern list, matched against `[FILE-SCOPE]` |
 
-# Domain-driven additions. The engineer reads file scope and adds matching
-# entries to [SKILLS] in each coder brief.
-[skills.by_domain]
-rust       = ["rust"]
-wasm       = ["webassembly"]
-supabase   = ["supabase:supabase"]
-payments   = ["payments"]
-claude_api = ["claude-api"]
+### `[mcp]` / `[cli]` — tool availability
 
-# Detection rules — which file-scope patterns map to which domains.
-# Fallback: every Rust file → rust; every cmp/* path → wasm; etc.
-[skills.detection]
-rust       = ["**/*.rs"]
-wasm       = ["cmp/**", "**/*.wit"]
-supabase   = ["**/supabase/**", "**/migrations/**.sql"]
-payments   = ["**/payments/**", "**/billing/**"]
-```
+Boolean per server/binary; `false` downgrades the Phase 0 mesh row to "if available" and omits the
+tool from the engineer's brief.
 
-The mandatory list is enforced — every coder brief MUST carry these in `[SKILLS]` or the conductor's Brief-Validity Checklist rejects it. Domain entries are additive (the engineer plus the conductor decide which apply per lane).
-
-### `[mcp]` — MCP server availability
-
-```toml
-[mcp]
-# Which MCP servers shepherd can rely on. Affects engineer + worker tooling.
-github   = true   # plugin_github_github__*  (issues, PRs, labels, milestones)
-sentry   = true   # plugin_sentry_sentry__*  (Phase 0 mesh, error triage)
-supabase = true   # plugin_supabase_supabase__* (schema mesh, query execution)
-grafana  = false  # placeholder — wire when MCP available
-```
-
-If a server is `false`, the engineer's brief omits its tools and the corresponding mesh row is downgraded from "MUST query" to "if available, query".
-
-### `[cli]` — CLI tool availability
-
-```toml
-[cli]
-# CLI tools shepherd can shell out to via the Bash tool.
-fly      = true    # flyctl — deploy + machine inspection
-gh       = true    # gh — GH CLI (read-only enumeration; writes go through GH MCP per use_github_mcp_not_gh_cli doctrine)
-docker   = true    # build verification before Fly deploy
-just     = false   # justfile runner (if your project uses it)
-make     = false
-```
+| `[mcp]` key | Default | | `[cli]` key | Default |
+|---|---|---|---|---|
+| `github` | `true` | | `fly` | `true` |
+| `sentry` | `true` | | `gh` | `true` |
+| `supabase` | `true` | | `docker` | `true` |
+| `grafana` | `false` | | `just` / `make` | `false` |
 
 ### `[ledger]` — issue-ledger awareness
 
-```toml
-[ledger]
-# Combats the tunnel-vision failure mode where the conductor only sees
-# current-milestone deliverables and ignores the broader open-issue ledger.
-# Phase 0 mesh enumerates ALL open issues (not just current milestone) and
-# surfaces non-current-milestone CRITICAL/HIGH items as drift risks.
+| Key | Type | Default |
+|---|---|---|
+| `phase_0_full_ledger` | bool | `true` — `0` disables |
+| `classify_into` | list | `["blocking-this-sprint","labeled-non-issue","tracking-future","drift-risk"]` |
+| `non_issue_labels` | list | `["wontfix","tracking-future","design-question","rfc"]` |
+| `carry_forward_file` | string | `"{paths.plans}/v{X}.{Y}.{Z}-carry-forwards.md"` |
+| `chronic_threshold_patches` | int | `2` |
 
-# How many open issues, beyond the current milestone, the engineer must
-# enumerate and classify in Phase 0. 0 = disabled (don't do this).
-phase_0_full_ledger = true
-classify_into = ["blocking-this-sprint", "labeled-non-issue", "tracking-future", "drift-risk"]
-
-# Labels treated as "explicitly tracked but not actioned" — these are
-# expected to persist across sprints and are not drift risks.
-non_issue_labels = ["wontfix", "tracking-future", "design-question", "rfc"]
-
-# Carry-forward ledger location.
-carry_forward_file = "{paths.plans}/v{X}.{Y}.{Z}-carry-forwards.md"
-
-# Threshold beyond which an issue gets the `chronic` label (≥ N patch
-# crossings without being landed). Auditor (completeness) applies.
-chronic_threshold_patches = 2
-```
-
-This block is what the operator was getting at with "tunnel vision" — shepherd's framework now structurally requires the engineer to enumerate the full open-issue space at every sprint open and classify each, so non-current-milestone CRITICAL items can't fester invisibly.
+`phase_0_full_ledger=true` requires enumerating + classifying the full (not just current-milestone)
+open-issue space at every sprint open.
 
 ### `[release]` — release pipeline
 
-```toml
-[release]
-# When dev.{N=last} closes, who drives the squash → tag → release pipeline?
-# - "conductor"        : shepherd runs the full pipeline (squash, tag, gh release create, deploy)
-# - "github-workflow"  : shepherd writes release notes + opens PR; a GH Actions workflow handles squash/tag/release
-# - "operator"         : shepherd writes release notes; operator does the rest manually
-driver = "github-workflow"
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `driver` | enum | `"github-workflow"` | `conductor` (shepherd drives it) \| `github-workflow` (GH Actions does) \| `operator` (notes only) |
+| `release_notes_path` | string | `"{paths.docs}/v{X}.{Y}.{Z}-release-notes.md"` | |
+| `workflow_file` | string | `.github/workflows/release.yml` | required when `driver="github-workflow"` |
+| `devlast_guard` | enum | `"block"` | `block\|warn\|off` — refuses a branch numbered ≥ `sprints_per_patch` (`dev.{last}` closes to a release) |
 
-# Path to the release-notes file shepherd authors at dev.{last} close.
-release_notes_path = "{paths.docs}/v{X}.{Y}.{Z}-release-notes.md"
+### `[tmux]` — teammate pane observability
 
-# When driver = "github-workflow", the workflow filename to verify exists.
-workflow_file = ".github/workflows/release.yml"
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `pane_cleanup` | enum | `"on"` | `on\|off` — reap panes of closed teammates at SessionEnd |
 
-# (v6.1.4) Backstop for the dev.{last} release-trigger miss: refuse to create or
-# publish a sprint branch whose number N >= sprints_per_patch (there is no
-# dev.{sprints_per_patch} — closing dev.{last} is a RELEASE, not a new sprint).
-# block (default) | warn | off.
-devlast_guard = "block"
-```
-
-### `[tmux]` — teammate pane observability + cleanup (v6.1.4)
-
-```toml
-[tmux]
-# When teammateMode = "tmux" | "auto", Claude Code opens one pane per teammate.
-# pane_cleanup reaps panes of CLOSED (crashed/retired) teammates at SessionEnd —
-# the dead-pane gap (#66.6). on (default) | off.
-pane_cleanup = "on"
-```
-
-Observe live teammate panes: `shctx panes status` (per-lane liveness dashboard),
-`shctx panes capture` (snapshot each pane → `<ns>/logs/panes/<lane>.log`), and
-`shctx panes tail <lane>`. For a live view, run it under native `/loop`:
-`/loop 30s shctx panes status`. The pane id is captured automatically from each
-teammate's heartbeat (`$TMUX_PANE`) — no `--pane` wiring needed.
+`shctx panes status`/`capture`/`tail <lane>` observe live panes (pane id auto-captured).
 
 ### `[memory]` — memory + doctrine paths
 
-```toml
-[memory]
-# Where the user's auto-memory lives. Shepherd references this (read-only
-# unless in planter mode) for project-specific feedback and project entries.
-project_memory = "~/.claude/projects/<your-project>/memory"
-
-# Path to additional project doctrines (memory entries that DRIFT beyond
-# what the framework ships in skills/shepherd/doctrines/).
-# These get loaded by every flock dispatch. Optional.
-project_doctrines = ".claude/doctrines"
-```
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `project_memory` | string | `~/.claude/projects/<project>/memory` | read-only auto-memory |
+| `project_doctrines` | string | `.claude/doctrines` | project DRIFT rules; loaded into EVERY flock dispatch |
 
 ### `[hooks]` — local skill / hook integration
 
-```toml
-[hooks]
-# Skills that should be loaded by EVERY flock agent dispatch (in addition
-# to the agent's own [SKILLS] line). Use this to bake in project-wide
-# context that every agent needs — e.g., a `project-glossary` skill.
-on_every_dispatch = ["code-style"]
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `on_every_dispatch` | list | `["code-style"]` | loaded by every flock agent, plus its own `[SKILLS]` |
+| `on_conductor_only` | list | `[]` | conductor-only |
+| `on_engineer_only` | list | `["workflow"]` | engineer-only |
+| `on_planter_only` | list | `[]` | planter-only |
+| `quiet_warnings` | bool | `false` | suppress informational `additionalContext` (still logged) |
 
-# Skills loaded only by the conductor (main chat), not by flock agents.
-on_conductor_only = []
+### `[spawn]` — teammate-spawn coordination
 
-# Skills loaded only by the engineer.
-on_engineer_only = ["workflow"]
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `coordinate_drive_guard` | enum | `"block"` | `block\|warn\|off` — Stop-hook backstop |
+| `wave_ack_timeout_sec` | int | `60` | wait before continuing without a wave-ack |
+| `cross_dep_timeout_sec` | int | `300` | escalates CROSS-DEP-WAIT |
+| `max_parallel` | int | `4` | upper bound on `--parallel <N>` |
+| `dashboard_cadence` | duration | `"3m"` | `shctx dash` loop interval |
+| `staged_timeout_minutes` | int | `90` | `--staged` poll timeout before `STAGED-TIMEOUT` |
 
-# Skills loaded only by the planter.
-on_planter_only = []
+`coordinate_drive_guard`: `block` re-engages the root at a premature end-turn, capped at 2 nudges
+then fails open; `warn` nudges via stderr; `off` disables; fast-paths outside a live spawn session
+(`skills/harness/SKILL.md`, `skills/motivation/SKILL.md`). `ENABLE_PROMPT_CACHING_1H=1` opts
+`--scope >= patch` into the 1-hour prompt-cache TTL.
 
-# v5.1.8+: suppress informational additionalContext emissions from hooks
-# (bash_guard cargo-parallel warn, cd-into-worktree warn, session_open
-# hygiene warnings). When true, the warnings are still logged to
-# `<namespace>/logs/hooks/YYYY-MM-DD.jsonl` for grep, but no
-# additionalContext JSON is emitted — Claude doesn't see them and the
-# operator UI doesn't render them as a "PreToolUse error". Recommended
-# only after the operator is familiar with shepherd's discipline rules.
-# Default: false (warnings visible). Closes #19 as opt-out.
-quiet_warnings = false
-```
+### `[autorun]` — unattended sequential walks
 
-This is the integration point with locally developed skills — `code-style` is the canonical example, but you can wire any skill you want into the dispatch.
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `min_grade` | letter grade | `"B"` | floor for continuing an unattended walk |
+| `on_grade_floor` | enum | `"abort"` | `abort` (stop) \| `pause` (one operator decision) \| `continue` (warn, proceed) |
+| `inter_sprint_pause` | enum | `"brief"` | `brief` (~5s) \| `signoff` (hard pause) \| `none` |
 
-### `[spawn]` — teammate-spawn coordination (`/shepherd:spawn`)
+### `[compaction]` — compaction resilience
 
-```toml
-[spawn]
-# v6.0.5 — the coordinate-mode active-drive backstop (hooks/scripts/
-# coordinate_drive_guard.sh, a Stop hook). Controls what happens when the root
-# shepherd tries to END ITS TURN while a spawn session still has actionable,
-# root-clearable coordinate state (an idle teammate, or unread lead mail) — i.e.
-# the "spawn pauses at the dispatch boundary" failure (doctrines/
-# coordinate-active-drive.md). Outside a live spawn session the guard fast-paths
-# and never fires, so solo /shepherd:start and all non-spawn work are untouched.
-#   block (default) — re-engage the root (Stop "decision: block") so it drains
-#                     the work before yielding. Bounded by a 2-nudge runaway cap
-#                     (then fails open) so a deliberate stop is never trapped.
-#   warn            — never block; emit a one-line stderr nudge only.
-#   off             — disable the guard entirely (fast-path exit).
-coordinate_drive_guard = "block"
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `precompact_snapshot` | enum | `"on"` | `on\|off` — PreCompact hook snapshots ready/in-flight sets, trace tail, mailbox, lock, focus digest; NEVER blocks compaction |
+| `snapshot_retention` | int | `5` | snapshots retained per namespace (`0` = unlimited) |
 
-# Wave-ack / cross-dependency timeouts consumed by the escalation contract
-# (doctrines/spawn-escalation.md). Optional; defaults shown.
-wave_ack_timeout_sec  = 60     # conductor waits this long for a wave-ack before continuing
-cross_dep_timeout_sec = 300    # CROSS-DEP-WAIT escalates to operator after this
+`CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` (int 1-100, `settings.json` → `env`) is the only auto-compaction
+timing knob — global, no disable toggle. Agents CANNOT self-trigger or steer compaction; shepherd
+only makes each event safe (snapshot).
 
-# --- Toggles (v6.1.5 #10) — read via `shctx config get <key>`; defaults below
-#     preserve the pre-v6.1.5 behavior exactly. -----------------------------
+### `[focus]` — focus loop rehydration
 
-# Upper bound on `--parallel <N>` fan-out (Preflight Check 5). Default 4 — the
-# pre-v6.1.5 hard cap, above which the lead's TeammateIdle handler saturates.
-# Lower it on rate-limited plans (e.g. 2). N is still floored at 2 (N=1 is just
-# a base spawn). Resolved at Check 5 via `shctx config get max_parallel 4`.
-max_parallel      = 4          # int, 2..N — upper bound on --parallel fan-out
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `rehydrate` | enum | `"on"` | `on\|off` — re-inject the latest precompact snapshot as `additionalContext` after compaction |
+| `heartbeat_actions` | int | `20` | `0` disables — soft self-prompt: re-anchor after ~N actions |
+| `heartbeat_interval` | duration | `""` | `""` (off) or e.g. `"45m"` — deterministic wall-clock re-anchor via native `/loop` |
 
-# Recommended cadence for the observability dashboard loop (#13):
-#   /shepherd:loop <dashboard_cadence> shctx dash
-# Default 3m (suits active waves; widen to 5m+ for slow sprints). Purely a
-# recommendation surfaced in the [SPAWN] confirmation — the dashboard is
-# read-only, so the cadence never affects sprint state.
-dashboard_cadence = "3m"       # duration — default interval for the dash loop
-```
-
-> **Prompt-cache TTL (caching optimization, v6.0.5).** A multi-wave sprint easily
-> exceeds the **5-minute** default cache TTL between waves (gates, audits, operator
-> pauses), so cached brief/system prefixes silently expire and get re-created at full
-> input rate. For `--scope >= patch` (and any long autorun) set
-> **`ENABLE_PROMPT_CACHING_1H=1`** in your environment to opt into the **1-hour** TTL
-> (unified flag, April 2026; works on API key / Bedrock / Vertex / Foundry — Claude
-> *subscriptions* already request 1h automatically, so this matters most for API-key
-> use). This is the single highest-leverage token win for long runs. Refs:
-> `https://code.claude.com/docs/en/prompt-caching`, `doctrines/cache-telemetry.md`.
-
-### `[autorun]` — unattended sequential walks (`/shepherd:spawn --scope patch` / `--auto`)
-
-Governs the sequential autopilot that walks `dev.0..dev.LAST` unattended. All keys
-are read via `shctx config get <key>`; the defaults reproduce the pre-v6.1.5
-behavior exactly, so an existing project sees no change until it opts in.
-
-```toml
-[autorun]
-# Grade floor for an unattended walk. A sprint that closes BELOW this grade
-# triggers `on_grade_floor`. Grades are the close-report letter grades
-# (A+ … F) from references/grading-rubric.md. Default B.
-min_grade      = "B"           # letter grade — floor for continuing the walk
-
-# What the walk does when a sprint grades below `min_grade` (v6.1.5 #10):
-#   abort (default) — emit the AUTO ABORT REPORT and stop the walk. This is the
-#                     pre-v6.1.5 GRADE-FLOOR behavior (commands/spawn.md autorun
-#                     loop; agents/planter.md §autorun).
-#   pause           — pause and surface one operator decision (re-spawn the
-#                     failed sprint / continue anyway / stop), then honor it.
-#   continue        — log a GRADE-FLOOR warning to the walk status and proceed
-#                     to the next sprint (fully unattended; use with care).
-on_grade_floor = "abort"       # abort (default) | pause | continue
-
-# Pause posture BETWEEN sprints in a sequential walk (v6.1.5 #10):
-#   brief (default) — emit the inter-sprint status + a short (~5s) window, then
-#                     proceed. This is the pre-v6.1.5 behavior.
-#   signoff         — hard pause; require an explicit operator sign-off before
-#                     opening the next sprint (turns the walk semi-attended).
-#   none            — fully continuous; no inter-sprint pause window at all.
-inter_sprint_pause = "brief"   # brief (default) | signoff | none
-```
-
-`min_grade` has always been consulted by the `--auto` / `--scope patch` loop and the
-planter's autorun step; v6.1.5 documents the section it lives in and adds the two
-behavior toggles around it. The grade-floor abort remains the default, so nothing
-changes unless you set `on_grade_floor` / `inter_sprint_pause`.
-
-### `[compaction]` — compaction resilience (v6.0.9)
-
-```toml
-[compaction]
-# Snapshot drive-state to disk immediately before any compaction event
-# (manual /compact or auto-compact). The PreCompact hook writes a JSON
-# snapshot of state.json ready/in_flight sets, trace tail, undrained mailbox,
-# shepherd.lock, and the current focus digest into
-# <namespace>/snapshots/precompact-<session>-<epoch>.json.
-# Never blocks compaction — the hook always exits 0.
-precompact_snapshot = "on"   # on (default) | off
-
-# How many precompact snapshots to retain per namespace. Older snapshots
-# are pruned on each PreCompact firing. Set 0 for unlimited (not recommended).
-snapshot_retention  = 5      # int — keep N most-recent snapshots
-```
-
-Snapshots land in `<namespace>/snapshots/` (created automatically). They survive compaction because compaction truncates only the conversation, not the filesystem.
-
-#### Auto-compaction threshold — `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`
-
-The **only** official knob for tuning when automatic compaction fires is the environment variable `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` (integer 1–100). Set it in your `settings.json` under `env`:
-
-```json
-{
-  "env": {
-    "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "70"
-  }
-}
-```
-
-**Important constraints and honest caveats:**
-
-- **Global only.** This variable affects every Claude Code session on the machine — shepherd sessions, plain coding sessions, everything. There is no per-model, per-project, or per-session form.
-- **No disable toggle.** There is no documented way to turn auto-compaction off entirely.
-- **Agents cannot self-trigger or steer compaction.** There is no tool, slash command, SDK call, or hook return value that lets the model initiate `/compact`. The model also cannot read its own live context percentage — `/context` is display-only. Shepherd therefore cannot time compaction deliberately (e.g., at a wave boundary); it can only make each compaction event *safe* (snapshot) and statistically *earlier/cheaper* (lower threshold).
-- **No recommended default is shipped.** Lowering the threshold (e.g., to 70%) makes compactions fire earlier and more often, which tends to cluster them at lower-context moments near wave boundaries — useful for long Sonnet-root spawns. But it also increases compaction frequency, which trades against the snapshot+rehydrate overhead. Operators running long `--scope patch` or `--scope minor` sprints with Sonnet as root may find ~70 a reasonable starting point. Operators who rarely hit the context limit should leave it unset (platform default, typically 95%).
-
-### `[focus]` — focus loop rehydration (v6.0.9)
-
-```toml
-[focus]
-# Re-inject the latest precompact snapshot as additionalContext after a
-# compaction event, so the orchestrator resumes its drive deterministically.
-# Primary path: SessionStart with source == "compact".
-# Guaranteed fallback: UserPromptSubmit that drains the rehydration-pending
-# flag once (drain-once, runaway-bounded).
-# Gating this off disables both paths; the snapshot file is still written
-# (controlled separately by [compaction].precompact_snapshot).
-rehydrate        = "on"   # on (default) | off
-
-# Default max_iterations for FOCUS-LOOP pattern instances (Pattern 6,
-# FOCUS-LOOP composite). Each /shepherd:focus or shctx loop init call that
-# does not supply an explicit --max inherits this value. Raise for very long
-# sprints; lower for bounded sub-loops.
-loop_max_default = 8      # int — default max_iterations for FOCUS-LOOP
-
-# Whether the root (under /shepherd:spawn) and long-running conductors enter
-# the FOCUS-LOOP by default on team initialization / lane start. "on" means
-# active coordination is the primary operating mode (wake → act → probe),
-# not a fallback; coordinate_drive_guard.sh is the backstop that catches
-# lapses, not the mechanism. Set "off" to suppress and rely on the backstop
-# alone — not recommended.
-loop_default     = "on"   # on (default) | off — root (under /shepherd:spawn) and long-running conductors adopt the FOCUS-LOOP by default to stay active/focused (Pattern 6; doctrines/coordinate-active-drive.md)
-
-# FOCUS-HEARTBEAT (v6.2.2) — the orchestrator's OWN drift guard over a long
-# active stretch. The FOCUS-LOOP re-anchors at every wake; a long FOCUS-ACT
-# stretch with no wake (a big materialization/merge run, or the solo conductor's
-# inline work) lets the north-star recede and the orchestrator drift. The
-# heartbeat self-fires a re-anchor (re-read the focus record + emit the
-# [FOCUS-HEARTBEAT] block + self-drift-check) on a cadence with two unequal legs:
-#   - heartbeat_interval: the DETERMINISTIC leg. Delegates the clock to the native
-#     /loop command (same mechanism as interval-mode FOCUS-LOOP), so a real wake
-#     fires on a real schedule. The only leg that GUARANTEES a re-anchor — set it
-#     for a long unattended stretch. Timing belongs in a mechanism, not an in-reply
-#     estimate (operating-philosophy.md §I.1).
-#   - heartbeat_actions: a SOFT, best-effort self-prompt. The orchestrator
-#     re-anchors after ~N significant actions; this is a latent self-estimate, NOT
-#     a counted guarantee (no counter column or hook backs it). A zero-cost nudge.
-# Note: this FOCUS-HEARTBEAT (re-anchoring to the objective) is unrelated to the
-# teammate-liveness "heartbeats" (the heartbeats table / `shctx teammate heartbeat`).
-heartbeat_actions  = 20   # int (0 disables) — soft self-prompt: re-anchor after ~N actions
-heartbeat_interval = ""   # "" (off) | duration e.g. "45m" — deterministic wall-clock re-anchor via native /loop
-```
-
-The focus record itself (objective, active Stage-Graph node, ready-set, outstanding obligations, invariants) lives in `root.db` (`focus` table) and survives compaction natively. The rehydration consumer reads the latest snapshot + focus digest and emits them as `additionalContext` so the model's drive cursor is restored without manual re-orientation. The **FOCUS-HEARTBEAT** re-reads that same record on a cadence *within* a long active stretch, so the orchestrator re-anchors to the objective and self-checks for its own drift even when no compaction or teammate event forces a wake. Set `heartbeat_interval` for a guaranteed cadence on long unattended runs; `heartbeat_actions` is a soft in-session nudge (`skills/shepherd/references/workflow-templates.md §FOCUS-LOOP`; `doctrines/coordinate-active-drive.md §IV-b.3`).
+**FOCUS-HEARTBEAT has two unequal legs — do not collapse them.** `heartbeat_interval` is the
+DETERMINISTIC leg — a real `/loop`-driven wake, the only leg that GUARANTEES a re-anchor.
+`heartbeat_actions` is a SOFT self-prompt, NOT a counted guarantee. Treating it as one reintroduces
+long-active-stretch drift; set `heartbeat_interval` where a guarantee matters. See
+`skills/motivation/SKILL.md §FOCUS-HEARTBEAT`.
 
 ### `[close]` — close-phase behavior
 
-Controls authorized supervised self-heal during a post-close soak (v6.1.5 #148,
-`doctrines/autonomous-sentinel.md`).
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `autonomous_sentinel` | enum | `"off"` | `off\|on` |
 
-```toml
-[close]
-# Authorized supervised self-heal during a post-close soak (v6.1.5 #148).
-# Default OFF = detection-only: a SOAK-LOOP surfaces an OUTCOME-REGRESSION and the
-# operator decides. Setting "on" ALONE does nothing — the seed must ALSO declare
-# `close: autonomous-sentinel` AND carry a complete `sentinel_rails` block
-# (gates-before-deploy, max_severity, max_concurrent, hf_cap, no_destructive_db_ops,
-# auto_rollback, live_flip, operator_override_each_tick, audit_trail). Three
-# independent opt-in gates; the safe default is detection-only.
-# See doctrines/autonomous-sentinel.md and references/loop-templates.md §AUTONOMOUS-SENTINEL.
-autonomous_sentinel = "off"   # off (default — detection-only) | on
-```
+`off` is detection-only: a SOAK-LOOP surfaces an OUTCOME-REGRESSION, operator decides. `on` ALONE
+does nothing — the seed MUST ALSO declare `close: autonomous-sentinel` AND carry a complete
+`sentinel_rails` block (gates-before-deploy, max_severity, max_concurrent, hf_cap,
+no_destructive_db_ops, auto_rollback, live_flip, operator_override_each_tick, audit_trail). All
+THREE gates are independently required. See `skills/motivation/SKILL.md §Sentinel`.
 
-### `[eval]` — latent-output eval harness (v6.2.3)
+### `[eval]` — latent-output eval harness
 
-Controls `shctx eval`, which quality-scores a latent agent output (a conductor
-reflection, a discovery report, a seed) against a rubric, judged by the **local
-Claude Code** through the `services/llm` contract. See `services/eval/README.md`.
-
-> **Key naming.** `cfg_get` is section-agnostic and matches the bare key, so
-> every eval key is prefixed `eval_` to avoid collisions (same convention as
-> `[dups]`). The `[eval]` header is for human grouping only.
+Scores a latent output (reflection, discovery report, seed) against a rubric via `services/llm`.
+Keys are `eval_`-prefixed. See `services/eval/README.md`.
 
 | Key | Type | Default | Meaning |
 |---|---|---|---|
-| `eval_judge_model` | model alias | *(empty → `opus`)* | Model the judge runs on. Empty defers to the `services/llm` default (`opus` — best by default, never a silent downgrade for cost). Set e.g. `haiku` to trade accuracy for cost. A `--model` flag on `shctx eval run` overrides this. |
-| `eval_on_close` | `on` \| `off` | `off` | When `on`, the conductor runs `shctx eval run --kind=reflection --sprint=<branch> --record` right after `adapt reflect` at CLOSE-FINALIZE, scoring the close reflection and recording the verdict. Default `off` because it spends an LLM call per close; turn it on to track reflection quality over time (surfaced by `shctx dash` + `shctx eval report`). |
+| `eval_judge_model` | model alias | *(empty → `opus`)* | never a silent downgrade; `--model` on `shctx eval run` overrides |
+| `eval_on_close` | enum | `"off"` | `on\|off` — auto-runs the reflection eval at CLOSE-FINALIZE |
 
-```toml
-[eval]
-# eval_judge_model = "opus"   # judge model; empty defers to services/llm default (opus)
-eval_on_close   = "off"       # off (default) | on — auto-score the close reflection
-```
-
-### `[discovery]` — capability auto-discovery (SessionStart)
-
-Controls the capability auto-discovery probe (v6.1.5 #146,
-`doctrines/capability-discovery.md`).
+### `[discovery]` — capability auto-discovery
 
 | Key | Type | Default | Meaning |
 |---|---|---|---|
-| `auto_capabilities` | `on` \| `off` | `on` | When `on`, the `capability_discovery.sh` SessionStart hook enumerates installed plugins/skills and writes an EPHEMERAL capability roster to `<workdir>/cache/discovered-capabilities.json` (gitignored, distinct from the curated `toolkit.json`). Surfaced — labeled auto-discovered — in the SessionStart roster and engineer/coder/planter `[TOOLKIT]` blocks. Set `off` to disable the probe entirely. Zero hot-path cost (one-time-per-session, fail-open); never hard-depends on a third-party plugin. |
+| `auto_capabilities` | enum | `"on"` | `on\|off` — enumerates plugins/skills into ephemeral `discovered-capabilities.json` (distinct from curated `toolkit.json`, `skills/context/references/toolkit.md`); fails open |
 
-```toml
-[discovery]
-auto_capabilities = "on"   # auto-detect available plugins/skills; "off" disables
-```
+### `[models]` — per-role subagent model map
 
-### `[models]` — per-role subagent model map (v6.2.5)
+Resolved via `shctx models resolve <role>`, injected as the `model:` pin — see
+`skills/context/references/model-map.md`.
 
-The single place mapping each flock/meta role to the model it dispatches with. Every
-dispatching tier (root, conductor, engineer) resolves a role's model with
-`shctx models resolve <role>` and injects it as the Agent `model:` pin — the single
-map replaces per-spawn hand-pinning. See `doctrines/model-map.md`.
+| Role | Default |
+|---|---|
+| `root` (advisory only) | `opus[1m]` |
+| `planter`, `engineer` | `opus[1m]` |
+| `conductor`, `critic`, `discovery`, `coder`, `auditor`, `worker` | `sonnet` |
 
-> **Section-aware read (the exception).** Unlike the bare-key sections above, `[models]`
-> keys are read with `cfg_section_get`, so role keys (`coder`, `worker`, …) resolve
-> *within* `[models]` and never collide with a same-named key elsewhere.
+Resolution: explicit `[models].<role>` key, else built-in default.
 
-Resolution chain: **(1)** explicit `[models].<role>` key → **(2)** active profile/mode
-preset *(future)* → **(3)** root-tier-derived default *(future)* → **(4)** built-in
-default. Layers 2-3 are deferred; the chain leaves the slots so profiles land with zero
-rework to the map.
+### `[prune]` — workdir + registry GC
 
-| Role | Built-in default | Notes |
-|---|---|---|
-| `root` | `opus[1m]` | **advisory** — a config key cannot rebind a running main-chat session; `shctx models show` warns on mismatch |
-| `planter` | `opus[1m]` | |
-| `engineer` | `opus[1m]` | the one Opus dispatch; `ENGINEER-MODEL-FAIL` still guards the tier |
-| `conductor` | `sonnet` | if set to an opus tier, the per-lane cost advisory fires |
-| `critic` / `discovery` / `coder` / `auditor` / `worker` | `sonnet` | |
-
-```toml
-[models]
-root      = "opus[1m]"   # advisory (your live session)
-planter   = "opus[1m]"
-engineer  = "opus[1m]"
-conductor = "sonnet"
-critic    = "sonnet"
-discovery = "sonnet"
-coder     = "sonnet"
-auditor   = "sonnet"
-worker    = "sonnet"
-```
-
-Inspect with `shctx models show` (`--md` / `--json`); resolve one with
-`shctx models resolve <role>`. Unset roles fall to the built-in default, so a project
-with no `[models]` block behaves exactly as the defaults above.
-
-### `[prune]` — workdir + registry GC (v6.2.5)
-
-Retention windows for `shctx prune` (`doctrines/workdir-prune.md`). `--dry-run` is the
-default; `--confirm` executes on-disk sweeps by MOVING targets into
-`/tmp/shepherd-prune-<epoch>/` (reversible — `mv` back to restore). Eligibility is fenced
-on branch≠current ∧ terminal ∧ aged; `index_releases`, the current sprint's focus,
-`sprint_metrics`, pinned memory, and active locks/loops are never touched. DB-row sweeps
-are preview-only in v6.2.5 (eligible counts printed, nothing deleted). Keys are read
-section-aware (`cfg_section_get prune <key>`), like `[models]`.
+Retention windows for `shctx prune` (`skills/context/SKILL.md §Workdir hygiene`). `--dry-run` is
+default; `--confirm` MOVES eligible targets to `/tmp/shepherd-prune-<epoch>/` (reversible).
+Eligible: branch≠current ∧ terminal ∧ aged. NEVER touched: `index_releases`, current focus,
+`sprint_metrics`, pinned memory, active locks/loops.
 
 | Key | Type | Default | Meaning |
 |---|---|---|---|
-| `logs_days` | int (days) | `60` | age floor for `logs/events-*.jsonl` + `logs/hooks/*.jsonl` |
-| `dispatch_days` | int (days) | `30` | age floor for stale `dispatch/<sprint>/` dirs (non-current branch) |
-| `snapshots_keep` | int | `20` | precompact `memory/snapshots/` retained (newest-first) |
+| `logs_days` | int (days) | `60` | age floor: `logs/events-*.jsonl`, `logs/hooks/*.jsonl` |
+| `dispatch_days` | int (days) | `30` | age floor: `dispatch/<sprint>/` dirs |
+| `snapshots_keep` | int | `20` | precompact snapshots retained (newest-first) |
 | `findings_sprints` | int | `6` | keep discovery/audit findings for the last N sprints |
 
-```toml
-[prune]
-logs_days        = 60
-dispatch_days    = 30
-snapshots_keep   = 20
-findings_sprints = 6
-```
-
-Flags override config: `--logs-days=`, `--dispatch-days=`, `--snapshots-keep=`; `--vacuum`
-(with `--confirm`) reclaims file space; `--json` emits a machine-readable plan.
+Flags override config (`--logs-days=`, `--dispatch-days=`, `--snapshots-keep=`); `--vacuum`
+reclaims space; `--json` emits a machine-readable plan.
 
 ## Path interpolation
 
-Any `{X}/{Y}/{Z}/{N}` placeholder in `branching`, `release`, or `ledger` is interpolated at runtime. Any `{paths.*}` reference is resolved against `[paths]`. So:
-
-```toml
-release_notes_path = "{paths.docs}/v{X}.{Y}.{Z}-release-notes.md"
-```
-
-resolves to (for v0.2.9):
-
-```
-.shepherd/docs/v0.2.9-release-notes.md
-```
-
-(or `.artifacts/docs/v0.2.9-release-notes.md` for projects on the legacy namespace).
+`{X}/{Y}/{Z}/{N}` placeholders in `branching`/`release`/`ledger`, and `{paths.*}` references,
+interpolate at runtime — e.g. `"{paths.docs}/v{X}.{Y}.{Z}-release-notes.md"` → `.shepherd/docs/
+v0.2.9-release-notes.md` for v0.2.9.
 
 ## Defaults
 
-If `shepherd.toml` is missing, shepherd uses these defaults (which work for a generic Rust project):
-
-```toml
-[project]
-name = "{detected from Cargo.toml package.name or git remote}"
-language = "rust"
-
-[branching]
-patch_branch_pattern  = "v{X}.{Y}.{Z}"
-sprint_branch_pattern = "v{X}.{Y}.{Z}-dev.{N}"
-sprints_per_patch     = 10
-main_branch           = "main"
-
-[gates]
-check  = "cargo check --workspace"
-lint   = "cargo clippy --workspace -- -D warnings"
-format = "cargo fmt --all"
-
-[paths]
-plans   = ".shepherd/docs/plans"
-reports = ".shepherd/docs/reports"
-docs    = ".shepherd/docs"
-ctx     = ".shepherd/ctx"
-
-[skills]
-mandatory = ["code-style"]
-
-[skills.by_domain]
-rust = ["rust"]
-
-[mcp]
-github = true
-sentry = false
-supabase = false
-
-[cli]
-gh = true
-fly = false
-
-[ledger]
-phase_0_full_ledger = true
-chronic_threshold_patches = 2
-
-[release]
-driver = "operator"
-```
+If `shepherd.toml` is missing, shepherd falls back to the per-key defaults tabulated above and
+warns on every invocation until a file exists.
 
 ## Validation
 
-`/shepherd:start` validates `shepherd.toml` at Step 0. Errors that block the sprint:
-
-- `branching.patch_branch_pattern` and `branching.sprint_branch_pattern` don't share a common prefix → can't determine patch from sprint
-- `gates.check` references a binary that isn't on `$PATH`
-- `paths.*` directory exists but isn't writeable
-- `[skills.by_domain]` references a skill slug not present in this Claude Code installation
-- `[release].driver = "github-workflow"` but `workflow_file` doesn't resolve
-
-Warnings (don't block):
-
-- `[mcp]` server is `true` but the corresponding `mcp__plugin_*` tools aren't loaded in the current session
-- `[ledger].phase_0_full_ledger = true` but the project has < 5 open issues (likely no drift risk surface)
+`/shepherd:spawn` validates at Step 0. Blocking: patch/sprint patterns share no common prefix;
+`gates.check` binary not on `$PATH`; a `paths.*` dir isn't writeable; `[skills.by_domain]` names an
+uninstalled skill; `driver="github-workflow"` but `workflow_file` doesn't resolve. Warnings only:
+an `[mcp]` server is `true` but unloaded; `phase_0_full_ledger=true` under 5 open issues.
 
 ## Language matrix
 
-The framework expects gate commands and detection greps to come from the corresponding per-language skill. Reference table:
+| Language | check | lint | format | Build manifest |
+|---|---|---|---|---|
+| Rust | `cargo check --workspace` | `cargo clippy -- -D warnings` | `cargo fmt --all` | `Cargo.toml` |
+| Python | `uv run mypy .` | `uv run ruff check .` | `uv run ruff format .` | `pyproject.toml` |
+| TypeScript | `pnpm tsc --noEmit` | `pnpm eslint .` | `pnpm prettier --check .` | `package.json` |
+| Go | `go build ./...` | `go vet ./...` | `gofmt -l -w .` | `go.mod` |
+| Mixed | (compose per language) | (compose per language) | (compose per language) | per-language |
 
-| Language | `[gates].check` | `[gates].lint` | `[gates].format` | `[skills.by_domain]` entry | Build manifest |
-|---|---|---|---|---|---|
-| Rust | `cargo check --workspace` | `cargo clippy --workspace -- -D warnings` | `cargo fmt --all` | `rust = ["rust"]` | `Cargo.toml` |
-| Python | `uv run python -m mypy .` (or `pyright`) | `uv run ruff check .` | `uv run ruff format .` | `python = ["python"]` | `pyproject.toml` |
-| TypeScript | `pnpm tsc --noEmit` | `pnpm eslint .` | `pnpm prettier --check .` | `typescript = ["typescript"]` | `package.json` |
-| Go | `go build ./...` | `go vet ./... && staticcheck ./...` | `gofmt -l -w .` | `go = ["go"]` | `go.mod` |
-| Mixed | (compose multiple) | (compose multiple) | (compose multiple) | per-language entries | per-language manifests |
-
-For a language not listed: pick a `[gates]` triple that mirrors the (typecheck, lint, format) shape, and author a per-language skill that documents the idioms.
-
-If the corresponding language skill doesn't exist in your Claude Code installation yet, create one — the [skill-creator](https://github.com/anthropic-experimental/skill-creator) is the canonical entry point. Shepherd is designed to compose with skills, not replace them.
+Add `<lang> = ["<lang>"]` to `[skills.by_domain]`/`[skills.detection]`; author an unlisted
+language's skill via [skill-creator](https://github.com/anthropic-experimental/skill-creator).
 
 ## See also
 
-- [`docs/integration.md`](integration.md) — how shepherd integrates with `code-style`, `rust`, etc.
-- [`docs/customization.md`](customization.md) — bring-your-own branch model, custom doctrines
-- [`examples/rust-service/shepherd.toml`](../examples/rust-service/shepherd.toml) — concrete working Rust config
+- [`docs/integration.md`](integration.md) — skill composition
+- [`docs/customization.md`](customization.md) — custom branch model, doctrines
+- [`examples/rust-service/shepherd.toml`](../examples/rust-service/shepherd.toml) — worked example

@@ -4,6 +4,44 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v6.2.8 — 2026-07-07
+
+**The refinement sweep — the plugin-wide compaction v6.2.7 deferred, plus modular skills.** Prompt surface cut 73%: 202,192 → 54,725 words (~263k → ~71k est. tokens) across 122 → 51 load-bearing files, with zero behavior change outside four named removals. The 71-doctrine directory is dissolved; every load-bearing rule now lives in exactly one narrow skill, loaded per-dispatch instead of per-plugin.
+
+### New — modular skills (6, was 3)
+
+- **`skills/adaptation`** — the self-improvement loop every flock agent runs: harvest→store→inject→cite, decay-6, `prior:<mem_id>`, the canonical `## INSIGHTS` taxonomy, the excellence bar.
+- **`skills/motivation`** — focus record + FOCUS-HEARTBEAT (two-legs distinction preserved verbatim), native `/goal` templates (operator-armed; lead-session-only), `/loop` discipline + caps, drive contract, SOAK, the AUTONOMOUS-SENTINEL triple-gate (canonical, all 7 SENTINEL-* codes).
+- **`skills/harness`** — the Claude Code capability map: Agent Teams limits, Workflow tool, `/loop` modes, `/goal` semantics, ToolSearch scope rule, tool-presence truth, lazy-load economics, capability-enforcement pattern; references for workflow + loop templates (the 9×-repeated loop skeleton now stated once). Links to live docs for deterministic freshness.
+- **`skills/thinking`** — operator-authored problem-decomposition protocol (body untouched; description made trigger-specific).
+- `skills/shepherd` rebuilt as contract (≤10k-char SKILL.md) + 9 references (pipeline, flock, escalation, spawn-flags, operating-philosophy, invariant-matrix, seed-template, branching-model, grading-rubric). `skills/context` slimmed; gains `references/toolkit.md` + `references/model-map.md`.
+
+### Changed — engineer is a team lead; discovery specializes
+
+- **Self-contained `@engineer` is the INTRO default**: root spawns the engineer as a named teammate and dispatches NO discovery/orientation wave of its own (`ROOT-INTRO-USURPED`). The engineer's fixed loop: discovery wave (MINIMUM 5 — 2 `@discovery` + 3 intro-`@auditor`, scaled upward at his discretion) → draft plan → `@critic` → update → repeat until GREEN → ONE finalized plan → alert root → rest.
+- **`@discovery` specializes in external information** (documentation, web research, release notes, MCP state) compiled into research reports; codebase orientation inside a combo wave belongs to intro-`@auditor` lanes.
+- Every agent profile now ends in a skill-load list — a dispatch loads its slice, never the whole plugin.
+- New principle in the shepherd contract: **DURABLE ARTIFACT** — every top-tier dispatch terminates in exactly one durable artifact.
+
+### Removed (operator-directed)
+
+- **`/shepherd:start` + solo-conductor mode.** The teammate boot (T0 checks) folds into `agents/conductor.md §Boot verification`; the spawn boot prompt references the profile directly — no command indirection. Conductor is TEAMMATE-only; `MODE-MISUSE`/`MODE-DETECTION-AMBIGUOUS` retired; `TEAMMATE-FLAG-MISUSED` renamed `TEAMMATE-BOOT-MISSING`.
+- **shctx `escalate`, `watch`, `profile`** (44 → 41 subcommands; `profile` merged into the maintained `[models]` table system; `teammate_idle.sh` + `conductor_write_guard.sh` updated in the same commit). `handoff` STAYS — it is a gated stage of `sprint close`.
+- `doctrines/_candidates/` promotion template; unwired `[focus].loop_default`/`loop_max_default` doc keys.
+
+### Refined — staged handoff (`--staged`)
+
+Planter finalizes seed → `shctx seed verify` green → mailbox `seed-ready` to `shepherd-spawn-<slug>` → SEED-READY banner → rest. Shepherd session arms a delayed start: `shctx mailbox recv` polled via ScheduleWakeup ≤270s, explicit `shctx mailbox ack`, timeout `[spawn].staged_timeout_minutes` (default 90) → `STAGED-TIMEOUT`. No new schema.
+
+### Tooling + tests
+
+- `scripts/xref.py` (new): cross-reference map + dangling-ref gate; `scripts/filetree.sh` taught the modular layout (it was silently excluding new skills from the word-count gate).
+- 43 scripted doctrine-path retargets across hooks/tests (suffix-aware anchor mapping); wiring tests re-anchored with a stale-citation lint replacing the dead doctrine-resolution loops.
+- Suites: hooks 55/55, ctx 48/48, llm 2/2, eval 3/3. Determinism lint (hedge-word ban over load-bearing lines): 0 hits. Dangling refs: 0 (1 intentional negative-test exemption).
+- Method: 25-reader behavior inventory → 61-entry guard-string registry (the rewrite contract) → 3-lens design critique → 5 worktree lanes with per-file adversarial fidelity verifiers (REDO cap 3) → merge train → scripted hook/test retarget → seam review.
+
+---
+
 ## v6.2.7 — 2026-07-02
 
 **The conductor is read + dispatch only, mechanically — plus the field incident that proved why prose isn't enough.** During this cycle a live spawn session dispatched `@critic` as a native teammate twice, then `@coder` once, despite the profile prose forbidding both. Root cause: the platform's native teammate-spawn is a natural-language instruction, not a tool call — `dispatch_guard.sh`'s `PreToolUse(Agent|Task)` hook structurally cannot see it. This release closes that gap with two deterministic gates instead of more prose, and uses the same lever to retire the conductor's remaining direct write/git-write authority.

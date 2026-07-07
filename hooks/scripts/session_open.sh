@@ -151,7 +151,7 @@ fi
 # Config-gated [context].announce_core_doctrine = on (default) | off.
 doctrine_line=""
 if [[ "$(cfg_get announce_core_doctrine)" != "off" ]]; then
-  doctrine_path="$plugin_root/skills/shepherd/doctrines/operating-philosophy.md"
+  doctrine_path="$plugin_root/skills/shepherd/references/operating-philosophy.md"
   [[ -f "$doctrine_path" ]] && \
     doctrine_line="operating doctrine → $doctrine_path  (latent-vs-deterministic · tie-to-outcome · completeness · DONE/DONE_WITH_CONCERNS/BLOCKED/NEEDS_CONTEXT)"
 fi

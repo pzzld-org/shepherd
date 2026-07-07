@@ -14,8 +14,8 @@
 #     cache_creation.ephemeral_1h_input_tokens
 #
 # One JSONL line is appended to `<ns>/logs/events-YYYY-MM-DD.jsonl`. The line
-# follows the doctrines/cache-telemetry.md contract (see also
-# doctrines/hook-event-log.md for the broader event-log convention).
+# follows the skills/context/SKILL.md §Cache telemetry contract (see also
+# skills/context/SKILL.md §Event log for the broader event-log convention).
 #
 # Discipline:
 #   • Never block.    The hook exits 0 unconditionally; parse failures emit
@@ -271,6 +271,6 @@ log_event "subagent_telemetry" "pass" "SubagentStop" "$role" "$session_id" \
 # platform now provides natively. Teammate liveness is driven by the native
 # `TeammateIdle` hook (hooks/scripts/teammate_idle.sh — routes by teammate_name
 # OR session_id) plus the `shctx teammate liveness --stale-mins` staleness poll.
-# See doctrines/claude-code-platform-alignment.md §V + sqlite-canonical-state.md.
+# See skills/harness/SKILL.md §V + sqlite-canonical-state.md.
 
 exit 0

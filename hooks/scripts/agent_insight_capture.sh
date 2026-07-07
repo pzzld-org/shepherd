@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shepherd hook — PostToolUse(Agent|Task): capture cross-lane INSIGHTS (v5.0.9)
 #
-# Per doctrines/flock-cohesion.md §V. After an Agent/Task tool call returns,
+# Per skills/adaptation/SKILL.md §INSIGHTS §V. After an Agent/Task tool call returns,
 # scan the response for an optional `## INSIGHTS` block and write each entry
 # to `<namespace>/insights/<sprint>/<id>.json` for later consumption by the
 # engineer at Phase 0 mesh row 13.

@@ -1,488 +1,136 @@
 ---
 name: shepherd
 slug: shepherd
-version: 6.2.7
-description: "Sprint-by-sprint version-cycle conductor. Six-agent flock (engineer, critic, coder, auditor, worker, discovery) on an INTRO/BODY/CLOSE pipeline with planter/conductor/shepherd meta tiers."
+version: 6.2.8
+description: "Sprint-execution contract for the six-agent shepherd flock — dispatch law, root/sprint contracts, operator surface, principles. Use when running a /shepherd:spawn sprint."
 metadata:
   triggers:
-    - "/shepherd"
     - "/shepherd:plant"
-    - "/shepherd:start"
     - "/shepherd:spawn"
     - "/shepherd:loop"
+    - "/shepherd:focus"
+    - "/shepherd:ctx"
     - "/shepherd:toolkit"
     - "/shepherd:cleanup"
 ---
 
-# /shepherd — Conductor Quick Reference
+# /shepherd — sprint-execution contract
 
-This file is a **quick-reference index**. Operational detail lives in the sibling files and agent profile files (see §XI). When this file points at one, load it.
+This file is the contract; detailed pipeline/flock mechanics live in `references/`.
 
-**Sprint-runner behavior is canonical in `agents/conductor.md`.** This file provides orientation and cross-references; for the binding dispatch procedure, pipeline steps, and halt codes, see `agents/conductor.md §Mandatory protocol`.
+Every `/shepherd:*` invocation MUST begin by reading `.claude/shepherd.toml` (or its `.local.toml` override) — it binds branch patterns, gate commands, artifact paths, MCP/CLI availability, and the resolved `{sprint_branch}`/`{patch_branch}`/`{paths.*}`/`{gates.*}`. Missing: warn and use `${CLAUDE_PLUGIN_ROOT}/docs/configuration.md` defaults. Broken: STOP and surface the error.
 
----
+## Flock and tiers
 
-## 0. Read shepherd.toml first
+The flock is closed at six.
 
-Every `/shepherd:*` invocation MUST start by reading `.claude/shepherd.toml` (or its `.local.toml` override). This file binds the framework to the project: branch patterns, gate commands, artifact paths, skill integration, MCP/CLI availability, ledger discipline.
+| Role | Model | Job |
+|---|---|---|
+| `@engineer` | opus | Plan authorship from the seed. Once per sprint. Root-tier-exclusive under spawn. |
+| `@critic` | sonnet | Adversarial gate on every plan above XS, every money-path/schema change, every merge to main. Root-tier-exclusive under spawn. |
+| `@coder` | sonnet | Implementation. One per non-overlapping file scope, parallel waves. |
+| `@auditor` | sonnet | Read-only review. Close swarm is ALWAYS 3–5 split by concern (code-quality, data-flow, dependency-topology, datastore-state, completeness); intro ≥3 in the engineer's sub-flock (codebase orientation). |
+| `@worker` | sonnet | Bounded execution: monitoring, research, ops, MCP batches. |
+| `@discovery` | sonnet | Read-only external research (documentation, web, release notes, MCP state) compiled into reports; codebase orientation belongs to intro-`@auditor`. NEVER mutates, grades, or dispatches. |
 
-If missing, surface a warning and use the defaults documented in `${CLAUDE_PLUGIN_ROOT}/docs/configuration.md`. If broken (validation errors per `docs/configuration.md` §Validation), STOP and surface the error to the operator.
-
-Throughout this skill, references to:
-
-- `{patch_branch}` mean the resolved value of `branching.patch_branch_pattern`
-- `{sprint_branch}` mean `branching.sprint_branch_pattern`
-- `{paths.plans}`, `{paths.reports}`, `{paths.docs}`, `{paths.ctx}` mean the resolved `[paths]` values
-- `{gates.check}`, `{gates.lint}`, `{gates.format}` mean the resolved `[gates]` commands
-
----
-
-## 0-bis. Token + cache discipline (foundational, always-on)
-
-Three doctrines form the always-on framework for keeping flock dispatches
-cheap, coherent, and drift-resistant. Load them on every sprint open and
-treat them as binding for every brief, report, and commit message:
-
-- **`doctrines/brief-cache-discipline.md`** — the structural rule
-  (stable framing first, variable content last) plus a **7-step Brief
-  Assembly Checklist** the conductor follows for every dispatch.
-  Includes the byte-identical-prefix coder header to copy-paste verbatim.
-- **`doctrines/cache-telemetry.md`** — the measurement layer.
-  Per-role hit-rate targets and alarm thresholds (v5.1.5 calibration):
-  `@coder` ≥60%/<40%, `@auditor` ≥55%/<35%, `@worker` ≥65%/<40%,
-  `@discovery` ≥55%/<35%, `@critic` ≥50%/<30%, `@engineer` ≥30%/<15%.
-  Surfaced in the close report's `## Cache telemetry` subsection.
-- **`doctrines/agent-excellence.md` Rule 6** — "Conserve tokens — every
-  line in a brief is a paid line." The per-brief complement to the
-  structural cache discipline. Long briefs are not more thorough; they
-  are more expensive AND more likely to drift focus.
-
-The three are tightly coupled: ordering (brief-cache-discipline) makes
-the prefix cacheable; conservation (agent-excellence Rule 6) keeps the
-variable tail minimal; telemetry (cache-telemetry) measures whether the
-two are working. A sprint whose lane-weighted aggregate hit-rate falls
-below 40% surfaces as a MEDIUM finding at close — investigate brief
-ordering per `doctrines/brief-cache-discipline.md` first, brief length
-per `doctrines/agent-excellence.md` §Rule 6 second.
-
-**How-to-work, also foundational.** `doctrines/operating-philosophy.md` is
-the orchestrator-facing constitution — an index that names the four
-homeless principles (latent-vs-deterministic split, skillify-success, the
-context-window diagnostic, the DONE/DONE_WITH_CONCERNS/BLOCKED/NEEDS_CONTEXT
-return vocabulary) and binds the rest by pointer. Load it on every sprint
-open alongside the cache triad; it defers to the cited doctrine on detail
-and never restates it. Principle 1 is also `agent-excellence.md` Rule 7,
-read every dispatch.
-
----
-
-## 0-ter. Loops are first-class — reach for one when "done" = "no new findings"
-
-Most work is a fixed sequence of steps. Some work is **convergent**: you repeat
-until a predicate goes quiet — gate green, sources exhausted, state reconciled,
-anomaly seen. That shape is a **loop** (workflow Pattern 6). Shepherd ships a
-per-role catalog for it; do NOT hand-roll an ad-hoc `while` in prose, and do NOT
-ToolSearch for a "loop tool" — looping is a doctrine + the `/shepherd:loop` command.
-
-- **Recognize it (Q4):** is completion defined by *no new findings*, not a step count? → loop.
-- **Pick the template by role** in `references/loop-templates.md`:
-  `@coder`→CODER-CONVERGENCE · `@discovery`→DISCOVERY-EXHAUST ·
-  `@worker`→WORKER-CONVERGENCE / WORKER-WATCH / SOAK-LOOP ·
-  `@auditor`→AUDITOR-REFINE · `@engineer`→ENGINEER-PLAN-REFINE · orchestrator→FOCUS-LOOP.
-- **Author your own** (no template fits): declare `max_iterations` (mandatory),
-  role-shape the iterator, and require each iteration to emit `new_findings: true|false`.
-- **Run a generic one now:** `/shepherd:loop [task] --agent worker|discovery --max N [--interval D]`.
-
-Binding (`doctrines/loop-templates.md`): every loop is **bounded** (declare `--max`
-before iteration 1) and **measurable** (iterator emits `new_findings`). Unbounded or
-unstructured loops halt as `PLAN-MISSING-LOOP-CAP` / `LOOP-REPORT-INVALID`. Full
-catalog + Stage Graph shapes: `references/loop-templates.md`.
-
----
-
-## I. The flock (closed at six) + three-tier meta (v5.1.6+)
-
-| Agent | Model | Mode | Job |
-|-------|-------|------|-----|
-| @engineer | opus | Single, once per sprint | Authors plan from seed via `superpowers:brainstorming` + `superpowers:writing-plans`. **Root-tier-exclusive under `/shepherd:spawn`.** |
-| @critic | sonnet | Single, sequential gate | Adversarial review; gates every non-XS plan and every merge to main. **Root-tier-exclusive under `/shepherd:spawn`.** |
-| @coder | sonnet | Parallel waves | Implementation; one per non-overlapping file scope |
-| @auditor | sonnet | Swarm of 3–5 (close) OR 1–2 (intro) | Read-only review; close-mode grades, intro-mode surfaces regressions/carry-forward drift |
-| @worker | sonnet | Single or parallel | Bounded execution: monitoring, research, ops, MCP batches |
-| @discovery | sonnet | Single or parallel | Read-only orientation, comprehension, synthesis. No mutation. Pre-MESH or mid-walk research lane (v5.1.1+) |
-
-**Three-tier meta** (above the flock; v5.1.6+):
+Two meta tiers plus the planter:
 
 | Tier | Profile | Model | Adopted by |
 |---|---|---|---|
-| **3 (root)** | `agents/shepherd.md` | inherit | Main chat under `/shepherd:spawn` (operator-explicit-only) |
-| **2 (meta)** | `agents/conductor.md` | **sonnet** (downgraded in v5.1.6 from `inherit`) | Main chat under `/shepherd:start` (SOLO mode) OR teammate session under `/shepherd:spawn` (TEAMMATE mode) |
-| **PARALLEL meta** | `agents/planter.md` | opus[1m] | Main chat under `/shepherd:plant`; also loaded by shepherd profile mid-spawn for delegated seed work |
+| Root | `agents/shepherd.md` | inherit | Main chat under `/shepherd:spawn` (operator-explicit) |
+| Conductor | `agents/conductor.md` | sonnet | Teammate lane session under `/shepherd:spawn` |
+| Planter | `agents/planter.md` | opus[1m] | `/shepherd:plant`; also mid-spawn seed work |
 
-The conductor profile has **dual-mode behavior** (v5.1.6+):
-- **SOLO mode** (under `/shepherd:start`) — full dispatch surface (engineer + critic + four-lane flock); writes plans/reports/handoffs. Backward-compatible with all prior versions.
-- **TEAMMATE mode** (under `/shepherd:spawn`) — restricted dispatch (no `@engineer`, no `@critic` — those surface `PLAN-AUTHORSHIP-REQUEST`/`PLAN-GATE-REQUEST` to root); no artifact writes (returns structured payloads via `SendMessage`; root materializes).
+## Dispatch law
 
-Dispatch tier separation is binding under `/shepherd:spawn` per `doctrines/dispatch-tier-separation.md`. Solo-mode `/shepherd:start` is unaffected.
+Every flock dispatch MUST set `subagent_type: "shepherd:<role>"` (the registry auto-loads `agents/<role>.md`) and `model` per the role map, put the brief in `prompt` (NEVER inline-embed the agent body), and leave `team_name` unset. Teammate-conductor lanes are NOT flock dispatches: root stands them up via native teammate-spawn referencing `shepherd:conductor`, then drives them with `SendMessage`.
 
-**Lane-per-conductor fanout (default under spawn):** the engineer authors the plan as **`waves × steps`** (no lanes); then, **post-plan and spawn-only**, the plan is sliced **vertically across waves** into **lanes** (one teammate-conductor each, via **Agent Teams** — never a workflow). Root spawns **one teammate-conductor per lane** (the lane count, NOT a per-wave count). Lanes are a post-plan projection per `doctrines/primitive-axis-binding.md`; see `agents/engineer.md §Lane projection`.
+Tier reach: root dispatches `@engineer`, `@critic`, `@auditor`, `@worker`, `@discovery` and spawns teammate-conductors; root NEVER dispatches `@coder`. A teammate-conductor dispatches `@coder`, `@auditor`, `@worker`, `@discovery`; it NEVER dispatches `@engineer`/`@critic` (escalate `PLAN-AUTHORSHIP-REQUEST` / `PLAN-GATE-REQUEST` — `references/escalation.md §Halt-code index`) and NEVER spawns another teammate.
 
-See `agents/shepherd.md`, `agents/conductor.md`, `agents/planter.md` for canonical profiles. Three-tier reference: `flock.md §VI`.
+Forbidden dispatch constructions MUST be refused on sight:
 
-**Three hard rules:**
-- `@critic` gates every plan above XS, every money-path/schema change, every merge to main.
-- `@auditor` close-mode is always a 3–5 swarm split by concern (code-quality, data-flow, dependency-topology, datastore-state, completeness). Intro-mode is 1–2 lanes (regression, carry-forward-disposition).
-- `@discovery` is **read-only**. It absorbs exploration; it never grades, never proposes, never dispatches. See `doctrines/discovery-readonly.md`.
+| Halt code | Trigger | Refused by |
+|---|---|---|
+| `DISPATCH-MISSING-SUBAGENT-TYPE` | flock dispatch omits `subagent_type` or sets `general-purpose`/`Explore`/`Chat` | root + conductor |
+| `DISPATCH-TEAMMATE-TYPE-MISMATCH` | a role other than `shepherd:conductor` stood up as a teammate | root |
+| `DISPATCH-OFF-FLOCK` | `subagent_type` outside the closed six (or `shepherd:conductor`) | root + conductor |
+| `TEAMMATE-NESTING-ATTEMPT` | a teammate-conductor sets `team_name`, runs `/shepherd:spawn`, or spawns its own tier | teammate-conductor |
 
-**Dispatch procedure (every flock agent, every time) — MANDATORY (v6.0.0):** Set `subagent_type: "shepherd:<role>"` (e.g., `shepherd:coder`, `shepherd:auditor`) — the plugin's agent registry auto-loads the agent body from `agents/<role>.md`. **`subagent_type` is MANDATORY.** Omitting it, defaulting to `general-purpose`, or substituting `Explore`/`Chat` is a `DISPATCH-MISSING-SUBAGENT-TYPE` violation — refuse to fire. Leave `team_name` UNSET on flock dispatches (it is for root-level teammate-CONDUCTOR spawns only; a flock dispatch with `team_name` is `DISPATCH-TEAMMATE-TYPE-MISMATCH`, refuse). Set `model` per the table above. The brief goes in `prompt`. Do NOT inline-embed the agent body in the prompt (GH #20). Full procedure: **`agents/conductor.md §Mandatory protocol`**. Forbidden dispatch combinations + halt codes: **`doctrines/dispatch-tier-separation.md §IV-bis`**. Per-agent triggers, brief contracts: **`flock.md`**. Copy-paste templates: **`references/agent-briefs.md`**.
+These four are terminal — the dispatcher refuses to fire and surfaces (root) or escalates `SendMessage(to: lead, blocking: true)` (teammate). Teammate re-gating of a fixed plan is `WRONG-TIER-DISPATCH`; the self-contained `@engineer` carve-out and its `ENGINEER-TOPOLOGY-MISMATCH`/`ENGINEER-SUBFLOCK-VIOLATION` guards live in `references/flock.md §@engineer`. A specialist clears `DISPATCH-OFF-FLOCK` only via the decision tree in `references/flock.md §Dispatch`.
 
----
+## Root contract
 
-## II. Branch topology
+Work splits across the sprint's three sections, not by agent type:
 
-Driven by `[branching]` in `shepherd.toml`. Default:
+- **INTRO**: root spawns the self-contained `@engineer` as a named teammate (DEFAULT) — the engineer team-lead runs his own discovery wave (MINIMUM 5: 2 `@discovery` + 3 intro-`@auditor`, scaled upward at his discretion) and his own `@critic` loop until GREEN, then returns ONE finalized plan and alerts root. Root dispatches NO discovery/orientation wave of its own — that is `ROOT-INTRO-USURPED` (`references/pipeline.md §INTRO`). Root materializes the plan and runs the operator-approval gate. Classic fallback (teammate-spawn unavailable): root fires the INTRO-COMBO-WAVE + a distinct `@critic` itself. The engineer is the ONLY INTRO teammate — conductor teammates spawn in BODY only.
+- **BODY** (teammate-conductors): root projects the approved plan into lanes (vertical slices across waves), one teammate-conductor per lane via Agent Teams — never a workflow; lane count = teammate count, constant across waves. At each wave boundary a lane `SendMessage`s `WAVE-COMPLETE` and goes idle; root gates, commits, then refreshes the lane with a fresh teammate. Count LANES, never teammate-instances or "lanes per wave."
+- **CLOSE** (root-direct subagents): root aggregates teammate payloads, dispatches the CLOSE-SWARM (3–5 `@auditor`) on the AGGREGATED output, then runs CLOSE-FINALIZE.
 
-```
-{sprint_branch}  e.g. v{X}.{Y}.{Z}-dev.{N}
+In coordinate mode root MUST actively drive (wake → act → probe → yield-to-events every wake), NEVER passive-wait after a dispatch, reserving operator pauses for the enumerated decision points (Stop-hook backstop: `skills/harness/SKILL.md §Capability enforcement`).
 
-  X, Y, Z  ∈ Z+    project-managed
-  N        ∈ {0..sprints_per_patch-1}    sprints per patch (default 10)
-```
+Root MUST NOT write source code, dispatch `@coder` directly, nest a `/shepherd:spawn`, or silently absorb a teammate finding without materializing it. Git custody is root-exclusive: a teammate that runs `git rebase`/`merge`/`push`/`worktree` halts `TEAMMATE-GIT-WRITE` (`references/pipeline.md §CLOSE-FINALIZE`). Escalation payload: `references/escalation.md §Escalation payload`; Stage-Graph walk: `references/pipeline.md §Stage Graph`.
 
-Every patch has exactly `sprints_per_patch` dev sprints. Sprints rebase-merge into the patch branch and the dev branch is **deleted from origin AND locally** at sprint close. After dev.{last} closes, the patch branch squash-merges into main, the rollover cascade fires, and the cycle continues.
+## Sprint contract
 
-**Authoritative model:** **`references/branching-model.md`** — placeholder resolution, lifecycle, rollover algorithm, cleanup hygiene. Conductors load it on first branch-touching action. Session-start orphan-detection hygiene check is mandatory at every command open (one-liner in branching-model §V.1).
+Every `dev.N` sprint is operator-equivalent to a full patch. A "small incremental sprint" is a category error — work is patch-grade, else a `@worker` dispatch or hotfix subgraph.
 
-**Non-negotiable:**
-- Never direct-commit to `{branching.main_branch}`.
-- Never merge to main without explicit user release signal OR pre-authorized sprint-through grant.
-- Dev branches rebase-merge into the patch branch on close, then are deleted (origin + local).
-- Rollover-cascade version bump touches all referencing files; gate after bump verifies.
+- Branch shape `v{X}.{Y}.{Z}-dev.{N}`, `N ∈ {0..sprints_per_patch-1}` (default `sprints_per_patch` = 10).
+- **dev.0** — patch-grade setup + carryover + cleanup + ≥1 operator-visible feature or unblock.
+- **dev.1 … dev.{last-1}** — patch-grade theme delivery: multi-wave, multi-step, SUBTRACT delta, release-notes-eligible.
+- **dev.{last}** — wiring, polish, release-notes draft, closeout audit; release pipeline runs per `[release].driver` (`conductor` | `github-workflow` | `operator`).
 
----
+At close a dev branch rebase-merges into the patch branch and is DELETED (origin + local); after dev.{last} the patch branch squash-merges into main and rollover cascade fires. NEVER direct-commit to `{branching.main_branch}`; NEVER merge to main without an explicit operator release signal or a sprint-through grant. Each sprint MUST ship real operator-visible value (real-work test).
 
-## III. Three-section sprint pipeline + Stage Graph
+Carry-forward discipline: `CRITICAL`/`HIGH` findings are NEVER deferred; a once-deferred item cannot be deferred again without an operator override; labels in `[ledger.non_issue_labels]` (`wontfix`/`tracking-future`/`design-question`/`rfc`) are NOT carry-forwards. Full carry-forward + issue-ledger lifecycle: `references/pipeline.md §CLOSE`. Rollover: `references/branching-model.md`. Gates: `references/pipeline.md §Gates`. Grades: `references/grading-rubric.md`.
 
-A sprint is a paper: introduction → body → conclusion.
+## Operator surface
 
-- **§1 INTRODUCTION = ONE phase.** Phase 0 mesh + plan return + **Stage Graph emission**. Predictable.
-- **§2 BODY = N phases.** The engineer's plan IS the phase decomposition. N scales with sprint scope and shepherd model — opus[1m] runs deeper bodies, sonnet runs leaner.
-- **§3 CONCLUSION = ONE phase.** Audit swarm + close report + memory + rebase + DELETE dev branch + cut next + handoff. Predictable.
+The planter (`/shepherd:plant`) is the framework's SOLE `AskUserQuestion` holder; it MUST surface every question through the `AskUserQuestion` tool, NEVER as chat/terminal prose (`INLINE-QUESTION-MISUSE`).
 
-```
-[PLANT]   → /shepherd:plant (Opus, optional, upstream — produces seeds + stage hint)
+Execution sessions (root under `/shepherd:spawn`) carry NO `AskUserQuestion`; posture: proceed. They reach the operator ONLY through enumerated turn-ending pauses: pre-spawn approval gate, `--scope` gates, sprint-close PAUSE, dispute adjudication, `HARD-STOP`, explicit operator interrupt. They NEVER ask for confirmation or reassurance, stop on a decision with an obvious default (pick it, note it in the report), or invent a new stop point. Teammate-conductors NEVER contact the operator — they escalate to root via `SendMessage`; root surfaces it as a turn-ending report.
 
-§1 INTRO  → Phase 0 mesh; engineer emits BINDING Stage Graph in plan.md
-§2 BODY   → Conductor WALKS the Stage Graph: critic gate → coder waves → workers → audits → hot-fixes
-§3 CLOSE  → CLOSE-SWARM node + CLOSE-FINALIZE node + cut next + pause
-```
+Mid-flight operator amendments are classified and traced, never silently absorbed. **Clarification** → dispatcher-patch: amend the lane brief inline, no `@engineer` re-dispatch. **Feature addition** → file a GH issue; current wave if file-disjoint, else a WAVE-IMPL node. **Production regression** → file one GH issue per symptom; dispatch a diagnostic `@worker` immediately (`[BUDGET]` 15 min, 40 tool calls), then HF `@coder`s. **Architectural decision** → `@critic` (current sprint) or a GH issue + spec stub (future). NEVER defer without a target (sprint slot + milestone + justification). HARD-STOP when an amendment implies secret/credential rotation, a changed sprint north-star, or a security rollback.
 
-**The Stage Graph is the dispatch contract** (per `pipeline.md` + `doctrines/stage-graph.md`). The engineer's plan emits a YAML DAG enumerating every dispatch event (node), its predecessors (in_predicates), its agents, its parallel-batch peers (parallel_with — Pattern B is encoded here), and its outgoing edges (labeled predicates: on-green, on-yellow, on-finding, on-mechanical-drift, on-grade-cap, on-hard-stop, ...). The conductor parses the graph at sprint open and **walks it deterministically** — at each tick, fire next-eligible nodes per parallel-safety, await, evaluate edge predicates, advance.
+Every amendment gets one append-only ledger entry at `{paths.ctx}/dispatcher-patches/{sprint_slug}-pc-{N}.md` (fields: `type`, `timestamp`, `gh-issue`, verbatim `operator-quote`, `disposition`). The close report folds every entry into an "Operator amendments folded" table the `completeness` auditor checks for dispositions.
 
-The conductor does NOT compose dispatches mid-sprint. The graph is the contract; the walk is mechanical. Off-graph dispatch is a process violation auditors catch (`STAGE-GRAPH-VIOLATION` finding, grade-caps at C+).
+## Principles
 
-For the canonical default graph (SEED-VERIFY → MESH → PLAN-GATE → WAVE-N-IMPL/AUDIT/GATE → CLOSE-SWARM → CLOSE-FINALIZE → PAUSE/RELEASE), the node taxonomy, the edge labels, and the walk algorithm: **`pipeline.md`**.
+**DURABLE ARTIFACT** — every top-tier dispatch MUST terminate in exactly one durable artifact (plan, seed, skill, report, registry row); reasoning that lives only in a transcript is spend without impact. Root manifests objectives into the codebase without authoring the work; the engineer produces exactly one finalized plan.
 
-### §1 — INTRODUCTION
+**SUBTRACT** — every sprint MUST end strictly net-negative on (tables, columns, deps, abstractions, LOC), scoped to `[gates.subtract_paths]` (production source only; reports, plans, handoffs are outside scope by construction). SUBTRACT is a CONSTRAINT, not a job description — deletion that misses the seed's deliverables also caps C+; both must pass. At close the `completeness` auditor measures it; net-positive without pre-authorization files `SUBTRACT-VIOLATION` (grade-cap C+):
 
-The introduction does NOT produce code. It produces **alignment** — every actor reading from the same ground state, plus the binding Stage Graph the conductor will walk.
-
-**INTRO-COMBO-WAVE (v5.1.1+, default-on for M+ sprints):** dispatch
-discoveries + intro-mode auditors in parallel BEFORE the engineer's MESH.
-Discoveries absorb prior-state ingestion (prior close audits, GH state,
-canonical-types freshness); intro auditors surface regressions and
-carry-forward drift. Engineer reads both as `[DISCOVERY-CONTEXT]` +
-`[INTRO-AUDIT-CONTEXT]` in its brief. See `doctrines/intro-combo-wave.md`.
-
-Skip the wave for XS sprints or when `shepherd.toml [stage_graph.intro_wave].enabled = false`.
-
-**Conductor checklist:**
-- [ ] Session-start branch hygiene executed — orphan dev branches surfaced (`references/branching-model.md` §V.1)
-- [ ] Conductor anchor verified — `pwd` is the primary worktree, `git rev-parse --abbrev-ref HEAD` is `{sprint_branch}`, `git rev-parse --git-dir == --git-common-dir` (per `doctrines/conductor-cwd.md` "Mandatory verification"). HALT on any drift. **Note (v5.1.1+):** if the session open hook didn't fire (e.g., plugin not loaded at session start), run the three-anchor check manually before any git operation. The `session_open.sh` hook performs this automatically when the shepherd plugin is loaded.
-- [ ] Preflight via `shctx doctor` — surfaces git, plan, ctx, hooks, MCP, lock state (per `doctrines/preflight-doctor.md`). Strongly recommended; required before `/shepherd:spawn --auto` and `/shepherd:spawn --parallel`.
-- [ ] Sprint-patterns registry status verified — run `shctx adapt priors --metrics --lessons --md` (and `shctx adapt report` for the full table) per `doctrines/adaptation-loop.md §III/§IV`. Empty output ⇒ note "no pattern history yet — first adaptation cycle lands at this close" and continue. Otherwise act on the surfaced averages + priors before dispatching `@engineer`.
-- [ ] Verified seed at `{paths.plans}/{sprint_slug}.seed.md` present (planter authored, inline-planted via `SEED-AUTHOR`, or main-chat) — engineer authors the binding `## Stage Graph` from Phase-0 (no seed graph-hint; §7-bis removed v6.2.1)
-- [ ] **INTRO-COMBO-WAVE dispatched (M+ sprints)** — discoveries + intro auditors in ONE Agent batch BEFORE @engineer. Reports written to `{paths.reports}/<date>-discovery-*.md` and `{paths.reports}/<date>-intro-audit-*.md`.
-- [ ] Dispatched @engineer with seed + prior close report + carry-forward GH#s + `[DISCOVERY-CONTEXT]` + `[INTRO-AUDIT-CONTEXT]` + explicit instruction to run **Phase 0 mesh FIRST** + emit binding `## Stage Graph` per `pipeline.md` §XII
-- [ ] Plan returned at `{paths.plans}/{sprint_slug}.plan.md` with the seven bracketed sections per coder step + Phase 0 mesh embedded at top + `## Stage Graph` YAML block
-- [ ] Phase 0 mesh enumerated the FULL open-issue ledger (per `[ledger].phase_0_full_ledger`), classified into the configured buckets, surfaced non-current-milestone CRITICAL/HIGH as drift risks
-- [ ] Stage Graph parses cleanly — every required node present (per `pipeline.md` §IV), every node's `in_predicates` resolve, every `parallel_with` is mutual, every branch point has an `on-hard-stop` outgoing edge
-- [ ] If Phase 0 reveals SEED DRIFT: per `doctrines/chain-repair.md`, conductor verifies facts directly (MCP/file/git) + amends seed inline if 100% verifies; escalates only for theme/money-path/secrets changes — graph re-emitted from amended seed
-- [ ] Plan addresses every HIGH/CRITICAL finding from the INTRO-COMBO-WAVE as Wave 1 steps (regression hotfixes, carry-forward dispositions). Silent absorption is a process violation.
-
-### §2 — BODY
-
-The body IS the Stage Graph walk. The conductor is no longer composing dispatches — it's evaluating edge predicates and firing the next-eligible batch.
-
-**Conductor checklist (every walk-tick):**
-- [ ] PLAN-GATE node fired (@critic single dispatch). YELLOW → PLAN-REVISION node (engineer revises ONCE) → re-fire PLAN-GATE. RED → HARD-STOP.
-- [ ] Brief-Validity Checklist passed for every WAVE-IMPL node's coder briefs (in `flock.md` → @coder)
-- [ ] Each WAVE-IMPL node fires as a single Agent batch — zero file overlap across steps; single primary-build-manifest writer (Cargo.toml / package.json / pyproject.toml / go.mod — whichever the project uses)
-- [ ] WORKER-IO nodes fire in the SAME batch as WAVE-1-IMPL (graph encodes `parallel_with: [wave-1-impl]`) — non-competing
-- [ ] WAVE-GATE node (conductor inline): coders each commit in their worktrees → rebase all into sprint branch → **gate sequence** (sequential, NEVER parallel — see `doctrines/cargo-sequential-gates.md`): `{gates.format}` → `{gates.check}` → `{gates.lint}` → language-specific auto-fix if applicable (e.g., `cargo fix --allow-dirty && cargo clippy --fix --allow-dirty` for Rust; per the loaded language skill) → commit `fix(dev.N/wave-K): rebase + gate`. Worktrees deleted. Auto-clean target dir if `[gates].target_clean_threshold_gb` exceeded.
-- [ ] WAVE-N-AUDIT and WAVE-(N+1)-IMPL fire in the SAME batch (graph encodes `parallel_with` — Pattern B is structural, per `doctrines/pattern-b-overlap.md`)
-- [ ] HOTFIX subgraphs fire on `on-finding` edges from WAVE-AUDIT — < S patches, max 3 concurrent; each gets its own worktree; iteration cap (default 3) before HARD-STOP
-- [ ] Edge predicates evaluated honestly — never mark `on-pass` when a gate failed; never mark `on-no-finding` when CRITICAL was filed
-
-**The "real work" test.** The body MUST produce real value, not just structural rearrangement:
-- ✅ feature shipped, bug fixed end-to-end, test coverage added, working code that wasn't there before, structural change with operator-visible improvement
-- ❌ moved code without changing behavior, deleted dead code that wasn't doing anything, renamed without consolidating, structure-cleanup that misses the seed's promised deliverables
-
-`doctrines/subtract-dont-add.md` says every sprint MUST end net-negative. **That's a CONSTRAINT, not a JOB DESCRIPTION.** Don't mistake deletion for work. If seed deliverables are not met but a lot was deleted, close grade caps at C+.
-
-**Body-depth heuristic** (was the body worth the agent + token cost?). The unit of the plan is the **step** (≈ one `@coder` subagent); the planning bar is substantive output via narrow steps, NOT a "lanes per wave" count (`doctrines/primitive-axis-binding.md`):
-
-| T-shirt | Coder steps (minimum, per wave) | Per-step production | Body LOC floor (substantive) |
-|---------|---------------------------------|---------------------|------------------------------|
-| M       | 4                               | ~80 LOC             | ~200 LOC (C+ ceiling below)  |
-| L       | 6                               | ~100 LOC            | ~400 LOC                     |
-| XL      | 6+                              | multiple waves      | 1000+ LOC                    |
-
-**More (narrower) steps is better.** A wave of 8 focused coder steps beats one of 4 broad ones — smaller scope = less drift from `[FILE-SCOPE]`, cleaner worktree rebases, no single coder becoming a context bottleneck. Split mercilessly: if a step touches > 6 files, decompose it. The only agent never parallelized is `@engineer` (Opus, once per sprint, plan author). **Under `/shepherd:spawn`, parallelism is the post-plan lane projection** (total lanes, never per-wave) — `agents/engineer.md §Lane projection`.
-
-Deletion counts toward SUBTRACT but NOT toward this quota.
-
-### §3 — CONCLUSION
-
-§3 is two graph nodes: CLOSE-SWARM (@auditor swarm) → CLOSE-FINALIZE (conductor inline).
-
-**Conductor checklist:**
-- [ ] CLOSE-SWARM fired — 3–5 @auditor swarm dispatched (parallel, one message), split by concern. Concerns are graph-encoded; the conductor doesn't pick concerns inline.
-- [ ] Auditor `completeness` verifies real-work test passed; verifies the issue-ledger discipline from §1 INTRO (carry-forward refresh, non-current-milestone drift surface, chronic flagging at `[ledger].chronic_threshold_patches`); verifies Stage Graph discipline (no off-graph commits, no skipped Pattern B). Emits `on-grade-cap` edge if any check fails — grade caps at C+ but the walk continues to CLOSE-FINALIZE.
-- [ ] Auditor `dependency-topology` runs the wrapper-grep gate (`doctrines/wrapper-must-earn.md`)
-- [ ] If CLOSE-SWARM emits `on-finding` (CRITICAL/HIGH), HOTFIX-CLOSE subgraph fires before CLOSE-FINALIZE
-- [ ] **CLOSE-FINALIZE** — mechanical procedure. Full detail in `agents/conductor.md §Step 3 CLOSE-FINALIZE` (SOLO mode) and `agents/shepherd.md §Step 3` (root mode under `/spawn`). Summary:
-  1. Reports: close report + handoff + walk trace (optional).
-  2. State: memory + doctrines + CLAUDE.md patched.
-  3. Patch-branch advancement check (verify prior sprint merged; GH #60).
-  4. Rebase-merge dev.N → patch; verify with `git log {patch_branch} --oneline | head -5`.
-  5. DELETE dev branch (origin + local + prune) per `references/branching-model.md` §II.4.
-  6. Cut next sprint (mod-10: N+1 if N < 9; release pipeline if N = last) per §II.1.
-  7. Worktree + branch cleanup.
-  In TEAMMATE mode: steps 3–7 deferred to root via structured `SendMessage` payload.
-- [ ] **Adaptation signal** (v5.0.6+; v6.2.0 mechanized): `shctx adapt roll` (record + harvest) → `shctx adapt reflect --note="…"` (one first-person lesson) → `shctx adapt report --trends` (run it, surface output verbatim — do NOT eyeball the table; `doctrines/adaptation-loop.md §VI`). The harvest count + reflection are the close report's "Learned" line.
-- [ ] **PAUSE** fires after CLOSE-FINALIZE. RELEASE fires on dev.{last} + sprint-through grant.
-
-### Sprint impactfulness contract (v5.1.1 — sprint-as-patch binding)
-
-**Every `dev.N` sprint is operator-equivalent to a full patch.** Per
-`doctrines/sprint-as-patch.md`. A "small incremental sprint" is a category
-error in this workflow — it's either patch-grade or it's not a sprint, it's
-a worker dispatch or a hotfix subgraph.
-
-- **dev.0** — patch-grade setup + carryover + cleanup + at least one
-  operator-visible feature or unblock. Real-work test applies; "setup
-  sprint" is not a pass for low-deliverable work.
-- **dev.1 … dev.{last-1}** — patch-grade theme delivery. Multi-wave,
-  multi-step, SUBTRACT delta, release-notes-eligible at close. Never
-  typo-and-docstring.
-- **dev.{last}** — wiring, polish, release-notes draft, closeout audit.
-  **The release pipeline runs per `[release].driver`** — `conductor`
-  (shepherd drives squash → tag → release → deploy), `github-workflow`
-  (shepherd writes notes + opens PR; CI handles the rest), or `operator`
-  (shepherd writes notes; operator does the rest). Conductor's
-  dev.{last} job: ensure release notes exist at
-  `[release].release_notes_path`, get operator approval, run the
-  configured driver. Full sequence: `references/branching-model.md` §III.
-  Rollover algorithm: §IV.
-
-**Patch-arc seed (`{patch_slug}.seed.md`) is the BUNDLING** of N
-patch-grade sprints — not a master plan from which sprints are derived.
-Each `{sprint_slug}.seed.md` is patch-grade and stands alone.
-
----
-
-## IV. Coder brief contract (one-liner)
-
-Every coder brief MUST contain seven exact bracketed headers + four supporting lines. Full shape, Required-Skills Matrix, Brief-Validity Checklist: **`flock.md` → @coder**. Copy-paste templates: **`references/agent-briefs.md`**.
-
-The engineer's plan pre-populates `[CONTEXT-INVENTORY]` and `[DO-NOT-DUPLICATE]` for every step; the conductor copies them verbatim into the dispatch.
-
-**Step decomposition:** decompose each wave into many narrow coder steps (M → 4+, L → 6+, XL → 6+ per wave) to the substantive LOC floor. A wave under-decomposed below the T-shirt bar → reject back to engineer. More (narrower) steps is always better — split until each coder owns ≤ 6 files. (Spawn-mode parallelism = the total-lane projection, never per-wave — `agents/engineer.md §Lane projection`.)
-
-`[skills.mandatory]` from `shepherd.toml` is enforced — `code-style` (or whatever the project mandates) appears in `[SKILLS]` of every coder brief.
-
-**Auto-attach `[CODE-STYLE]`** for every language in `[FILE-SCOPE]`. See `flock.md` § @coder.
-
----
-
-## V. Hard stops (every command surfaces these)
-
-- @critic returns RED or substantive pass-2 flag
-- Gates broken after all coder waves exhausted
-- dev.{last} close without sprint-through grant
-- Secret/credential rotation required
-- Seed drift — Phase 0 mesh contradicts the seed's premise (verify per `doctrines/chain-repair.md` before escalating)
-- User says "pause", "stop", "exit"
-
----
-
-## VI. Carry-forward + label discipline (one-liner)
-
-Carry-forward rules + GH label/milestone discipline live in `flock.md` §IV. Summary:
-
-- **CRITICAL/HIGH** items cannot be deferred. Dispatch another wave.
-- **Once-deferred** items cannot be deferred again (operator override required).
-- Every deferral opens a GH issue with `deferred` label, target milestone, target sprint slot.
-- **Milestone = version** (`--milestone v{X}.{Y}.{Z}`). **Sprint slot = issue body line** (`Target: {sprint_branch}`). NEVER create new labels without operator approval.
-- **Labels treated as `tracking-future` per `[ledger].non_issue_labels`** (`wontfix`, `tracking-future`, `design-question`, `rfc` by default) are NOT carry-forwards — they are explicitly tracked but not actioned, and persist across sprints without becoming drift risks.
-
----
-
-## VII. Anti-patterns (you actively watch for these)
-
-The flock-level set lives in `flock.md` (13 items). Conductor-level lifters
-— each anti-pattern is a 1-line cue; full doctrine lives at the cited path:
-
-1. Sequential dispatch when parallel is safe → batch in one message.
-2. Auditors waiting for all coder waves → `doctrines/pattern-b-overlap.md`.
-3. Workers dispatched after Wave 1 → batch with Wave 1 START (`doctrines/worker-patterns.md`).
-4. Critic skipped for M+ scope → no exceptions.
-5. Coder briefs missing mandatory skills → conductor MECHANICALLY computes `[SKILLS]` from `[skills.detection]` against `[FILE-SCOPE]` (`doctrines/zero-duplicate-tolerance.md`).
-6. Soft `[CONTEXT-INVENTORY]` → cross-check against `{paths.ctx}/canonical-types.md`.
-7. **Skipping anti-duplication grep** → ZERO-TOLERANCE; conductor pre-dispatch gate (`doctrines/zero-duplicate-tolerance.md`).
-8. Missing `gh issue create` for new findings → file at the surface, not at close.
-9. Acceptance as prose → use greps + structural assertions.
-10. Tunnel vision on current milestone → Phase 0 enumerates ALL open issues (`[ledger].phase_0_full_ledger`).
-11. Under-decomposed wave (too few / too broad coder steps), or mis-sized spawn lane projection (too few genuinely-disjoint slices, or too many thin sessions) → reject back to engineer.
-12. `cargo` inside a coder dispatch → worktrees share parent `target/` (see `pipeline.md` §XV-bis); conductor runs the gate at sprint root.
-13. Off-graph dispatch → `STAGE-GRAPH-VIOLATION` per `doctrines/stage-graph.md`.
-14. Skipping the dev.0 canonical-types refresh → drift compounds across patches (`doctrines/zero-duplicate-tolerance.md`).
-15. `cd <worktree>` in conductor Bash → drifts cwd; use `git -C <path>` (`doctrines/conductor-cwd.md` Ban 1).
-16. Narrow-fix Lane 0 → run `GATES-DISCOVERY` first (`doctrines/gates-restoration.md`).
-17. Stale `[BASE-COMMIT-EXPECTED]` → coder halts with `BASE-DRIFT`; conductor re-creates worktree via `shctx worktree create-batch` (`doctrines/worktree-base-drift.md`).
-18. Stale carry-forward after lane closes → run `shctx close-lane <id>` mid-sprint (`doctrines/carry-forward-refresh.md`).
-19. **Coder writes outside worktree** → silent dropped from cherry-pick (`doctrines/worktree-confinement.md`, v5.0.4).
-20. **Auditor runs gates from worktree** → FALSE-CRITICAL findings; halt with `WORKTREE-DRIFT` (`doctrines/auditor-readonly.md`, v5.0.4).
-21. **Same shared `<namespace>/ctx/*.md` across two lanes without partition rule** → cherry-pick conflicts (`doctrines/coder-brief-format-shared-artifacts.md`, v5.0.4).
-22. **Conductor `git switch`/`git checkout` to an `agent-*` lane branch** → HEAD drift; next commit lands on the lane branch, next `shctx worktree create-batch --from HEAD` propagates the wrong base, worktrees-within-worktrees nest (`doctrines/conductor-cwd.md` Ban 2 + Ban 3, v5.0.6). The conductor's HEAD MUST be `{sprint_branch}` (or `{patch_branch}`/`{main_branch}` during release plumbing) for the entire session. Inspect agent branches via `git -C <worktree-path>` only.
-23. **@discovery dispatched for work `@worker` should do** → discovery is read-only-comprehension; worker is bounded-action. If the task mutates state, dispatch worker. If it grades / scores, dispatch auditor. Discovery is ONLY for read-and-synthesize (`doctrines/discovery-readonly.md`, v5.1.1).
-24. **Engineer ignores `[DISCOVERY-CONTEXT]` / `[INTRO-AUDIT-CONTEXT]`** → injected blocks are not decorative. HIGH intro findings not addressed in plan → completeness auditor grade-caps C+ (`doctrines/intro-combo-wave.md`, v5.1.1).
-25. **Sprint under-scoped to non-patch-grade** → planter / engineer / critic ALL responsible for catching. Under-scope → critic RECONSIDER → planter expands theme (`doctrines/sprint-as-patch.md`, v5.1.1).
-26. **Auditor files finding without Hypothesis + Falsification + Confidence** → conjecture, not finding. Auditor system-prompt requires the triple per v5.1.1; missing triple → reject report and re-fire (`doctrines/auditor-hypothesis-driven.md`).
-27. **Conductor walks a PAUSE-FOR-DEPENDENCY satellite subgraph** → retired (#70). Cross-lane deps are engineer-composed graph edges (`await`-ordered in the compiled segment); out-of-scope work is a `BRIEF-AMENDMENT REQUEST` / finding at close (`doctrines/native-coordination.md`).
-
----
-
-## VIII. Operator communication norms
-
-The conductor is the operator's agent. Keep the operator informed without becoming verbose.
-
-**Mandatory surface moments:**
-- **Session start** — one-line status: current branch, where the sprint is in the pipeline, any anomalies found during orientation.
-- **Phase 0 mesh complete** — surface drift-risk items + carry-forward count before dispatching `@engineer`. One short paragraph.
-- **PLAN-GATE result** — verdict + key concerns (even GREEN warrants "critic cleared; N concerns folded into briefs").
-- **Each WAVE-GATE** — pass/fail + LOC delta if easily available.
-- **CLOSE-SWARM result** — grades per concern + any grade-cap reasons + trend alert (if triggered) + cache-telemetry aggregate. Sprint-aggregate cache hit-rate <40%? Investigate brief ordering per `doctrines/brief-cache-discipline.md`.
-- **PAUSE** — one-paragraph summary: what shipped, what carried forward, next sprint branch.
-
-**Status line format** (use at node completions during the walk):
-```
-[NODE] {node-id} → {outcome} | {one-sentence key finding}
+```bash
+git diff {patch_branch}..HEAD --shortstat -- $(read_subtract_paths_from_config)
 ```
 
-**Communication rules:**
-- No silent proceeding on ambiguous signals — if a gate output has unexpected warnings, surface them and ask before marking on-pass.
-- No walls of text — each update fits on one screen; link reports rather than excerpting them.
-- No commentary on process steps that have no operator-relevant signal (e.g., don't narrate "running cargo fmt now").
-- Operator questions get direct answers before the next dispatch fires.
+If `[gates.subtract_paths]` is unset, the auditor falls back to the language skill's default globs (Rust: `crates/**/*.rs bin/**/*.rs **/*.toml **/*.sql`). Net-positive is pre-authorized ONLY by a seed `sprint_metadata` block declaring `expected_loc_delta` and `subtract_floor`. Ship net-negative while delivering features: (1) replace, don't append — every new line retires ≥1 old line; (2) inline single-callers; (3) collapse hollow wrappers (`references/flock.md §@auditor`); (4) delete deprecated migration shims same-sprint; (5) audit the dependency tree every dev.0, dropping ≥1 dep/patch; (6) remove dead feature flags on rollout completion; (7) inline single-impl traits no test mocks. Dependency-delta and abstraction-delta detection delegate to the project-language skill's §subtract-detection patterns (`rust`, `typescript`, `python`).
 
----
+**MCP-over-CLI** — when an MCP exists, every WRITE goes through it; CLIs are read-only bulk enumeration only:
 
-## IX. Session continuity (mid-sprint recovery)
+| Service | MCP for | CLI OK for |
+|---|---|---|
+| GitHub | issue/PR create·update·comment, label apply, milestone, releases | `gh issue list`, `gh pr list`, `gh repo view` |
+| Sentry | read-only via MCP | n/a |
+| Supabase / Postgres | schema queries, advisor checks, migration apply, table inspection | read-only `psql` if MCP unavailable |
+| Fly | Use `fly` CLI (no MCP) | All Fly ops |
+| Datadog / Grafana | queries if MCP available | streaming logs |
 
-When a session opens on an existing sprint branch (partial progress), orient before taking any action:
+When a service is `false` in both `[mcp]` and `[cli]` config, downgrade that Phase-0 mesh row to N/A and continue.
 
-1. **Locate the plan**: `ls {paths.plans}/{sprint_slug}.plan.md` — read the `## Stage Graph` section and identify which nodes are enumerated.
-2. **Read the walk trace** (if it exists): `{paths.reports}/*{sprint_slug}*-walk.md` — the most recent append shows where the walk was last active.
-3. **Survey the sprint branch log**: `git log {patch_branch}..HEAD --oneline` — landed coder commits show which WAVE-IMPL nodes have completed and been rebased.
-4. **Check orphan worktrees**: `git worktree list` — if any `agent-*` worktrees exist, check each for committed (or uncommitted) state via `git -C <path> log --oneline -3`.
-5. **Reconstruct walk position** from steps 1–4 and report to operator before firing any node: "Re-oriented. Plan has N nodes. Based on git log + walk trace, nodes [X, Y, Z] are complete. Current position: [node-id]. Next eligible: [node-id]."
+**Token + cache discipline** — every sprint open binds cache-first brief assembly (`references/flock.md §Brief assembly`), the conserve-tokens excellence bar (`skills/adaptation/SKILL.md §Excellence bar`), and the per-role cache-hit-rate targets in `skills/context/SKILL.md §Cache telemetry` for every brief, report, and commit; the telemetry hook records per-dispatch hit-rate and a sprint-aggregate rate <40% files a MEDIUM finding at close.
 
-Do NOT assume a prior session's batch completed cleanly. Do NOT assume orphan worktrees are stale. Verify, then proceed.
+**How-to-work constitution** (latent-vs-deterministic split, skillify-success, context-window diagnostic, `DONE`/`DONE_WITH_CONCERNS`/`BLOCKED`/`NEEDS_CONTEXT` vocabulary): `references/operating-philosophy.md`.
 
-The walk trace (optional, per `[stage_graph].walk_trace_enabled`) is the O(1) recovery artifact. Without it, recovery is O(N) via git log inspection — still reliable, just slower.
+## Invocation map
 
----
+`/shepherd:spawn` is the primary command for substantive sprint work; sprint inferred from the current branch when no `sprint_slug` is given.
 
-## X. Invocation
-
-**`/shepherd:spawn` is the primary command** for substantive sprint work — root-shepherd + teammate-conductor **lanes** (Agent Teams). Under `/shepherd:spawn`, BOTH the root AND each teammate-conductor compile their respective gate-free fan-out segments to **Dynamic Workflows** (`shctx graph compile --segment=<entry> --verify` → run → `shctx graph mark`); the root also operates a **FOCUS-LOOP** by default (wake → act → probe, until CLOSE-FINALIZE) as its primary coordinate engine (`doctrines/coordinate-active-drive.md §IV`; config: `[focus].loop_default`). This is mode-agnostic: compile-down is not a root-only step. **`/shepherd:start` is the solo, lightweight path** — one sprint in main chat, **no teams, no lanes** (the conductor walks the plan in-session and compiles its own gate-free fan-out). They are **disjoint execution paths**, not a wrapper relationship (`doctrines/root-shepherd-orchestration.md §I-bis`). `/shepherd:plant` (Opus) is upstream of both — it authors seeds.
-
-| Command | Profile loaded | Action |
-|---------|---|--------|
-| `/shepherd:plant [scope]` | `agents/planter.md` (Opus recommended; Fable 5 superior; Sonnet/Haiku allowed, degraded) | Author drift-resistant sprint seeds. Scope: nothing (next-sprint+future), `dev.N`, `dev.N..dev.M`, `arc`, or `next-version`. See `${CLAUDE_PLUGIN_ROOT}/commands/plant.md`. |
-| `/shepherd:start` | `agents/conductor.md` (SOLO mode) — model: sonnet | One complete sprint, then PAUSE. Backward-compatible with all prior versions; tier separation does NOT apply (conductor IS root in solo). See `${CLAUDE_PLUGIN_ROOT}/commands/start.md`. |
-| `/shepherd:spawn [sprint_slug] [--scope sprint\|patch\|minor\|version] [--parallel <N> \| --auto]` | `agents/shepherd.md` (root, v5.1.6+) | Main chat adopts root-shepherd; spawns one teammate-conductor **per lane** (the post-plan vertical projection of the `waves × steps` plan), via Agent Teams. `--scope` declares workload scale (default `sprint`). `--auto` is alias for `--scope patch`. `--parallel <N>` fans out N sibling teammates for sprint-level concurrency (`--scope >= patch` only). See `${CLAUDE_PLUGIN_ROOT}/commands/spawn.md`. **Operator-explicit invocation only — refuses from teammate sessions (nested spawn forbidden).** |
-| `/shepherd:loop [task] [--max <N>] [--agent <worker\|discovery>] [--interval <duration>] [--resume <loop-id>]` | Sonnet | **NEW v6.0.7** — Run Pattern 6 (Loop-Until-Done) as a first-class command. Dispatches `@worker` or `@discovery` repeatedly until `new_findings: false` or `--max` cap is reached. `--interval` delegates scheduling to the native Claude Code `/loop` skill. See `${CLAUDE_PLUGIN_ROOT}/commands/loop.md`. |
-| `/shepherd:toolkit [list\|add\|rm\|pin\|md ...]` | Sonnet | **NEW v6.1.2** — manage the project **toolkit** (`toolkit.json`, local ⊕ user-global). Wraps `shctx toolkit`; registered tools (mcp\|skill\|plugin\|cli — e.g. ssh targets, context7) are surfaced at session start + injected as `[TOOLKIT]` in briefs so a session never forgets a capability exists. See `${CLAUDE_PLUGIN_ROOT}/commands/toolkit.md` + `doctrines/toolkit.md`. |
-| `/shepherd:cleanup` | Sonnet | Prune stale/crashed teammate entries from the canonical-state registry (closes #51). Operator-confirmed; never auto-prune live entries. |
-
-For `:start` and `:spawn`, sprint is inferred from current branch when no `sprint_slug` is given. For `:plant`, scope arg controls how many seeds to emit. For `:spawn`, `--scope` controls workload scale; `--parallel` controls sprint-level fanout; the per-lane fanout within each sprint is implicit (the engineer's post-plan lane projection of the gated plan — no flag controls it).
-
-> **Retired commands (v5.1.4; stub files removed v6.1.3):** `/shepherd:autorun` is replaced by `/shepherd:spawn --auto` (alias for `--scope patch` in v5.1.6+). `/shepherd:parallel` is replaced by `/shepherd:spawn --parallel <N>`. The retired-redirect stub files (`commands/{autorun,parallel}.md`, `skills/shepherd/{autorun,parallel,planter}.md`) were deleted in v6.1.3 — `commands/spawn.md` is the canonical home for both replacements.
-
----
-
-## XI. See also (file map)
-
-**Foundational (always-on) — load on every sprint open:**
-
-| File | Loaded when | Owns |
-|------|-------------|------|
-| `doctrines/brief-cache-discipline.md` | Every dispatch | **Stable framing first, variable content last** — the 7-step Brief Assembly Checklist + byte-identical-prefix coder header (v5.1.3, refined v5.1.5) |
-| `doctrines/cache-telemetry.md` | Every sprint close | **Measurement layer** — per-role hit-rate ranges (v5.1.5 calibration: @coder ≥60%, @engineer ≥30%, others between) + alarm thresholds + `## Cache telemetry` close-report subsection |
-| `doctrines/agent-excellence.md` | Every dispatch | **Seven rules + strive-higher preamble** — Rule 6 "Conserve tokens" pairs with brief-cache-discipline + cache-telemetry as the token + cache discipline triad; Rule 7 "Deterministic work is code, not a model reply" |
-| `doctrines/operating-philosophy.md` | Every sprint open (orchestrator framing) | **(v6.2.0) The how-to-work index** — names the four homeless principles (latent-vs-deterministic, skillify-success, context-window diagnostic, DONE/DONE_WITH_CONCERNS/BLOCKED/NEEDS_CONTEXT vocabulary), binds the rest by pointer, declares the target-project + tone scope boundary; defers to the cited doctrine |
-
-**Three-tier meta + commands (v5.1.6+):**
-
-| File | Loaded when | Owns |
-|------|-------------|------|
-| `${CLAUDE_PLUGIN_ROOT}/agents/shepherd.md` | **`/shepherd:spawn` fires (main chat)** | **NEW v5.1.6 — root-tier profile.** Engineer/critic dispatch, artifact materialization from teammate payloads, dispute resolution, close-swarm coordination. |
-| `${CLAUDE_PLUGIN_ROOT}/agents/conductor.md` | `/shepherd:start` (SOLO) or teammate session under `/shepherd:spawn` (TEAMMATE) | **Canonical conductor profile** — dual-mode (solo: full surface; teammate: restricted). Model: **sonnet** (downgraded v5.1.6 from `inherit`). |
-| `${CLAUDE_PLUGIN_ROOT}/agents/planter.md` | `/shepherd:plant` or delegated mid-spawn | **Canonical planter profile** — seed authorship + cleanup stewardship |
-| `${CLAUDE_PLUGIN_ROOT}/commands/spawn.md` | `/shepherd:spawn` fires | Spawn command — Check 0 (operator-only), `--scope` flag, root-profile load, teammate prompt with INVOCATION-CONTEXT |
-| `doctrines/root-shepherd-orchestration.md` | `/shepherd:spawn` active | **NEW v5.1.6 — root-tier behavioral contract** (three modes: idle/dispatch/coordinate, responsibilities, escalation triage) |
-| `doctrines/dispatch-tier-separation.md` | Every dispatch under spawn | **NEW v5.1.6 — three-tier matrix** + WRONG-TIER-DISPATCH halt enforcement |
-| `doctrines/scope-scale-workload.md` | `/shepherd:spawn --scope` | **NEW v5.1.6 — flag semantics**, 4-tier mapping, --parallel composition, minor/version gating |
-| `pipeline.md` | First sprint-walk decision | **Stage Graph contract** — node taxonomy, edge labels, walk algorithm, canonical sprint DAG |
-| `flock.md` | First flock dispatch | Per-agent triggers + briefs + parallel-safety + label discipline + anti-patterns + meta tier |
-| `references/branching-model.md` | First branch-touching action | Authoritative branch lifecycle + rollover + hygiene |
-| `references/seed-template.md` | Planter authoring or seed audit | Canonical seed shape (issue-anchored deliverables; engineer authors the Stage Graph) |
-| `references/agent-briefs.md` | Brief drafting | Copy-paste brief templates + grade cutoffs |
-| `references/glossary.md` | Term ambiguity (esp. "workflow") | Disambiguates the native `Workflow` tool (always present, never ToolSearch) vs the six workflow patterns vs GitHub Actions; ToolSearch-vs-top-level rule; loop-term map |
-| `doctrines/operator-signaling.md` | Planning + seedless start | Session→operator signaling: the planter is the framework's **sole interactive asker** (the only profile carrying `AskUserQuestion`, used via the tool — never prose); execution sessions carry **no `AskUserQuestion`** (v6.1.7) and reach the operator only through enumerated turn-ending pauses. Seed is recommended, not required |
-| `doctrines/stage-graph.md` | First sprint-walk decision | Plan-IS-dispatch-contract principle (graph-as-discipline) |
-| `doctrines/conductor-cwd.md` | First worktree inspection | Conductor anchor discipline — cwd / HEAD / worktree all stay on sprint root; bans `cd`, `git switch <agent-branch>`, and `git worktree add` from inside a worktree (v5.0.3 + v5.0.6) |
-| `doctrines/gates-restoration.md` | Sprint opens with red gates | Run GATES-DISCOVERY before Lane 0; brief on full inventory, not narrow subset (v5.0.3) |
-| `doctrines/native-coordination.md` | Cross-lane dep / out-of-scope work | Native primitives (in-script ordering / SendMessage / subagents) replace pause-for-dependency, heartbeat-relay, idle-prune (v6.0.1, #70 / #53 / #58) |
-| `doctrines/cargo-sequential-gates.md` | Any WAVE-GATE run | Cargo must run sequentially on shared workspace (v5.1.1) |
-| `doctrines/plugin-reload-escape.md` | MCP tool unavailable at session start | /reload-plugins escape hatch + MCP-first preference (v5.1.1) |
-| `doctrines/dispatch-cascade.md` | First sprint-walk decision | Stage Graph rule-engine runtime — `shctx plan extract` + `shctx graph next/mark` mechanize the walk (v5.1.1) |
-| `doctrines/flock-cohesion.md` | Wave dispatch authoring + agent report writing + next-sprint mesh row 13 | Shared substrate — `[SIBLING-LANES]` briefs, `## INSIGHTS` reports, `shctx insights` registry (v5.1.1) |
-| `doctrines/adaptation-loop.md` | After CLOSE-FINALIZE; at planter seed authorship; at @engineer mesh | Sprint pattern registry — self-improvement loop (v5.0.6); write protocol (completeness auditor), read protocol (engineer + planter), conductor trend surface |
-| `doctrines/discovery-readonly.md` | First @discovery dispatch | NEW v5.1.1 — sixth-lane read-only contract; when discovery vs worker vs auditor; report shape; cross-sprint reuse |
-| `doctrines/intro-combo-wave.md` | §1 INTRO of every M+ sprint | NEW v5.1.1 — pre-MESH parallel discoveries + intro-mode auditors (regression, carry-forward-disposition) |
-| `doctrines/auditor-hypothesis-driven.md` | Every @auditor dispatch | NEW v5.1.1 — Hypothesis + Falsification + Confidence contract; superpowers:systematic-debugging discipline; Bayesian finding weighting |
-| `doctrines/sprint-as-patch.md` | Every planter, engineer, critic, auditor dispatch | NEW v5.1.1 — sprint scope = patch-equivalent; binding for planner sizing, plan-gate, close grade |
-| `doctrines/hook-event-log.md` | When inspecting hook behavior | NEW v5.1.1 — `<ns>/logs/hooks/YYYY-MM-DD.jsonl` schema, jq queries, retention |
-| `doctrines/preflight-doctor.md` | Before sprint open | NEW v5.1.1 — `shctx doctor` invocation, exit codes, integration with `/shepherd:start` |
-| `references/workflow-templates.md` | Phase 0 seed analysis; plan authoring; PLAN-GATE | **NEW v6.0.7 — six canonical workflow patterns** (Classify-And-Act, Fanout-And-Synthesize, Adversarial Verification, Generate-And-Filter, Tournament, Loop-Until-Done). Stage Graph shapes, flock agent bindings, compose notes, anti-patterns. |
-| `doctrines/workflow-patterns.md` | Phase 0 seed analysis; PLAN-GATE; every Stage Graph composition decision | **NEW v6.0.7 — binding selection doctrine**: decision tree (Q1–Q4), composition grammar, circuit-breaker invariants, halt codes, pattern-to-flock alignment table, escalation laddering, composition depth limit (≤3). |
-| `references/loop-templates.md` | Authoring a per-role loop | **NEW v6.1.2 — per-flock-role loop catalog**: CODER-CONVERGENCE, DISCOVERY-EXHAUST, WORKER-WATCH/CONVERGENCE, AUDITOR-REFINE, ENGINEER-PLAN-REFINE, shepherd/conductor FOCUS-LOOP (+ the v6.2.2 **FOCUS-HEARTBEAT** re-anchor cadence — the orchestrator's own drift guard over long active stretches; `[focus].heartbeat_actions`/`heartbeat_interval`). Selection table + `--max` caps + terminate-on predicates. Specializes the `workflow-templates.md` composites. |
-| `doctrines/loop-templates.md` | Any loop dispatch | **NEW v6.1.2 — binding loop doctrine**: every loop is bounded, role-shaped, and terminates on a measurable predicate; circuit-breaker invariants; pointer to the per-role catalog. |
-| `doctrines/toolkit.md` | Session start; any "is tool X available?" question | **NEW v6.1.2 — tool registry doctrine**: local ⊕ user-global `toolkit.json`; three surfaces (SessionStart hook, `shctx toolkit` CLI, `[TOOLKIT]` brief block); bounded + graceful-empty; tool-memory sibling of the adaptation loop; never store secrets. |
-| `doctrines/capability-discovery.md` | Session start; "is plugin/skill X available?" | **NEW v6.1.5 (#146) — auto-adapt to the environment**: a SessionStart probe enumerates installed plugins/skills and writes an EPHEMERAL capability roster (`<ns>/cache/discovered-capabilities.json`, distinct from the curated `toolkit.json`), merged into the `[TOOLKIT]` surfaces labeled auto-discovered; guarded-integration pattern (if `/remember` available → handoff/CLOSE-FINALIZE + resume, else native; `superpowers`; `pr-review-toolkit`); records the native `Workflow` tool as enabled across entrypoints (#146 corrected; degrade to `Agent(...)` only on explicit-disable / below-floor); config `[discovery].auto_capabilities`; zero hot-path cost, never hard-depends, fail-open. |
-| `doctrines/workflow-tool-self-check.md` | Session/lane open, before any fan-out | **NEW v6.1.6 — the native `Workflow` tool's operational front-end**: ONE first-action self-check (visible-tool-list test — NEVER `ToolSearch`, not even under `/effort ultracode`), recorded as `workflow_tool: present\|absent`, then branch — present → compile gate-free fan-out out-of-context (clean context + ≤16 background agents, the conductor's OWN benefit); absent (only an explicit disable / below-floor build — NOT web/remote, which is enabled; #146 corrected) → degrade to in-context `Agent(...)` (correct, not a failure). Consolidates the detection-and-benefit seam scattered across glossary §1 / capability-discovery §V / workflow-compile-down / primitive-axis-binding §IV. Anti-patterns: `WORKFLOW-SELFCHECK-TOOLSEARCH`, `PRIMITIVE-INVERSION`. |
-| `doctrines/outcome-enforcement.md` | Seed authoring; PLAN-GATE; CLOSE-FINALIZE; post-close soak | **NEW v6.1.3 — seeded-outcome enforcement** across four existing seams: SEED declares runnable acceptance predicates → `@critic` PLAN-GATE confirms they exist (`PLAN-MISSING-OUTCOME-VERIFICATION`) → close auditor RE-RUNS them before grade (`OUTCOME-REGRESSION` caps completeness) → optional post-close SOAK-LOOP (`references/loop-templates.md §SOAK-LOOP`). Behavioral wiring only — no new schema, no new gate engine. |
-| `doctrines/autonomous-sentinel.md` | Seed with `close: autonomous-sentinel`; any supervised self-heal soak | **NEW v6.1.5 (#148) — authorized supervised self-heal**: the supervised-remediation SUPERSET of SOAK-LOOP. PROBE → CLASSIFY (HOLD/REGRESSED/NEW) → ACT (≤S `@coder` hotfix via the hotfix-dispatch ladder → gates-before-deploy → re-probe) → TERMINATE (K clean ticks / N-HF cap / hard-stop). NEVER fires by default — gated behind `[close].autonomous_sentinel = "on"` + a `close: autonomous-sentinel` seed declaration + a complete `sentinel_rails` block. Detection-only SOAK-LOOP stays the default. |
-| `doctrines/dispatch-generosity.md` | Every dispatch decision; when tempted to inline or one-shot | **NEW v6.1.7 — reach for the lane, the swarm, and the loop**: only `@engineer` is count-capped; `@auditor`/`@worker`/`@discovery` are freely repeatable (close-swarm + intro waves are floors). The under-use is an incentive gap, not a cap — and out-of-context compiled fan-out (#146 corrected) makes extra dispatch context-CHEAP. Worker-first for bounded ops; audit mid-body; re-discover before risky waves; loop when completion = "no new findings". Pull, not policing (no new halt code). |
-| `doctrines/staged-handoff.md` | `/shepherd:spawn --staged` + a concurrent `/shepherd:plant` | **NEW v6.1.7 — two-session overlap**: a `--staged` spawn session orients/discovers while a separate plant session authors the seed, then waits on a durable `seed-ready` mailbox signal before plan authorship. Reuses the SQLite `mailbox` (zero new schema/tooling); opt-in; the seed file stays the source of truth. |
-| `doctrines/*.md` | Referenced by name throughout | Framework-intrinsic rules (subtract-don't-add, wrapper-must-earn, pattern-b-overlap, chain-repair, stage-graph, conductor-cwd, gates-restoration, adaptation-loop, ...) |
-| `${CLAUDE_PLUGIN_ROOT}/agents/<role>.md` | Each flock dispatch | Agent system prompt (injected into brief) — six domain lanes + three meta-orchestrators (root shepherd, conductor, planter) |
-| `doctrines/spawn-escalation.md` | `/shepherd:spawn` active | NEW v5.1.4 — escalation channel contract (file paths, payload schema, resume shape, heartbeat, wave-boundary commits; §X multiplexed; §XI sequential autopilot) |
-| `${CLAUDE_PLUGIN_ROOT}/commands/<cmd>.md` | Slash-command fire | Slash-command behavior |
-| `${CLAUDE_PLUGIN_ROOT}/docs/configuration.md` | First invocation per session | shepherd.toml schema + defaults + validation |
-| `${CLAUDE_PLUGIN_ROOT}/skills/context/SKILL.md` | DEDUP-GATE fires; Phase 0 mesh fast-path; `shctx doctor` invocation | context registry CLI (new in v5.0.0; `shctx doctor` added v5.1.1). Backs DEDUP-GATE Layer 2 SQL fast-path. See doctrines/context-registry.md. |
-| `${CLAUDE_PLUGIN_ROOT}/hooks/scripts/_lib.sh` | Every hook dispatch | NEW v5.1.1 — shared library (emit_context, emit_deny, log_event, resolve_namespace, current_role) — replaces duplicated jq-vs-python fallback across hooks |
+| Command | Profile / action |
+|---|---|
+| `/shepherd:plant [scope]` | `agents/planter.md §Plant mode` (opus[1m]) — authors patch-grade sprint seeds |
+| `/shepherd:spawn [sprint_slug] [flags]` | `agents/shepherd.md` (root) — spawns teammate-conductors; operator-explicit only, refuses from teammate sessions. Flags `references/spawn-flags.md §--scope`; preflight `commands/spawn.md §Preflight` |
+| `/shepherd:loop [task] [--max N] [--agent worker\|discovery]` | Pattern 6 Loop-Until-Done — each loop declares `--max`, each iteration emits `new_findings: true\|false`. `skills/motivation/SKILL.md §Loop discipline` |
+| `/shepherd:focus` | Focus record + FOCUS-HEARTBEAT drift guard. `skills/motivation/SKILL.md §Focus record` |
+| `/shepherd:ctx` | Context registry; backs the DEDUP-GATE fast path. `skills/context/SKILL.md` |
+| `/shepherd:toolkit` | Toolkit registry (MCP/skill/plugin/CLI), surfaced as `[TOOLKIT]` in briefs. `skills/context/SKILL.md` |
+| `/shepherd:cleanup` | Prune stale/crashed teammate entries; operator-confirmed, NEVER auto-prunes live entries |

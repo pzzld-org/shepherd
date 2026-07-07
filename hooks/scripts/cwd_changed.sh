@@ -5,7 +5,7 @@
 # mid-session — e.g. when Claude executes a `cd` via Bash.
 #
 # The conductor must stay anchored to the sprint root per
-# doctrines/conductor-cwd.md §Ban 1. Subagents (coders/auditors/workers)
+# skills/shepherd/references/flock.md §Ban 1. Subagents (coders/auditors/workers)
 # may legitimately inhabit a worktree, so this hook only surfaces a warning
 # when the active role is `conductor`.
 #
@@ -51,7 +51,7 @@ if in_subworktree; then
   msg+="  Sprint root: $sr"$'\n'
   msg+="Recover: cd $sr"$'\n'
   msg+="Worktrees should be inspected with 'git -C <path>' and absolute Read/Write —"$'\n'
-  msg+="never cd'd into. See doctrines/conductor-cwd.md §Ban 1."
+  msg+="never cd'd into. See skills/shepherd/references/flock.md §Ban 1."
   emit_context "$msg" "cwd_changed" "Cwd" "$role" "$session"
 fi
 

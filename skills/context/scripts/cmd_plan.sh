@@ -69,7 +69,7 @@ shctx plan <extract|topology|validate|hash|record-critique|verify> [args]
       hand-forged proof cannot pass.
 
 The state file is the input to `shctx graph` (the rule-engine walker).
-Critic-proof: doctrines/engineer-self-contained-plan.md. See doctrines/dispatch-cascade.md.
+Critic-proof: skills/shepherd/references/pipeline.md §INTRO. See skills/shepherd/references/flock.md §Dispatch.
 EOF
 }
 

@@ -46,7 +46,7 @@ subcmd=$(printf '%s' "$lower" | sed -E 's|^/shepherd:([a-z_-]+).*$|\1|')
 if ! is_shepherd_project; then
   msg="[shepherd] /shepherd:${subcmd} invoked but .claude/shepherd.toml not found —"$'\n'
   msg+="most shepherd commands require it. Copy examples/minimal/shepherd.toml to"$'\n'
-  msg+=".claude/shepherd.toml and adjust before running /shepherd:start or /shepherd:spawn."
+  msg+=".claude/shepherd.toml and adjust before running /shepherd:spawn."
   emit_context "$msg" "user_prompt_submit" "UserPrompt" "user" "$session"
 fi
 
@@ -54,11 +54,11 @@ fi
 ns=$(resolve_namespace)
 db="$(hook_db_path "$ns")"
 
-# Only inject for /shepherd:start and /shepherd:spawn. /shepherd:ctx is
+# Only inject for /shepherd:spawn. /shepherd:ctx is
 # self-querying (operator about to inspect the registry manually).
 # /shepherd:plant predates DB state. /shepherd:cleanup runs before state.
 case "$subcmd" in
-  start|spawn)
+  spawn)
     if [[ -f "$db" ]]; then
       # Fire shctx status; cap output at 2KB. shctx status currently emits
       # plain text — adequate for additionalContext consumption.

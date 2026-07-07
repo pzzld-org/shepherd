@@ -6,17 +6,16 @@
 
 > **Turn one Claude Code session into a disciplined release engineer.** Shepherd drives a closed six-agent flock through repeatable, audited sprint pipelines, with mechanical guardrails that refuse drift before it happens.
 
-Shepherd is a [Claude Code](https://claude.com/claude-code) plugin for **long-running engineering work**: multi-hour sprints, full patch arcs, parallel feature lanes. Instead of one model improvising its way through a large task and slowly losing the plot, you get a structured pipeline with fixed roles, gated phases, read-only audits, a per-project memory, and hooks that hard-block the failure modes long sessions are prone to.
+Shepherd is a [Claude Code](https://claude.com/claude-code) plugin for **long-running engineering work**: multi-hour sprints, full patch arcs, parallel feature lanes — a structured pipeline with fixed roles, gated phases, read-only audits, a per-project memory, and hooks that block the failure modes long sessions are prone to.
 
-It is a behavioral layer, not a heavy framework. There is no build step and no server. Everything ships as markdown briefs, YAML frontmatter, shell scripts, and a SQLite registry. It wires together Claude Code's native primitives (subagents, Agent Teams, the `/loop` scheduler, hooks) so they stay focused and on-task over a long horizon.
+A behavioral layer, not a heavy framework — no build step, no server. Everything ships as markdown, shell scripts, and a SQLite registry, wiring together Claude Code's native primitives (subagents, Agent Teams, `/loop`, hooks).
 
 ```text
 ┌────────────────────────────────────────────────────────────────────────┐
 │  /shepherd:plant    Author drift-resistant sprint seeds (Opus)         │
-│  /shepherd:start    Run ONE sprint end-to-end, then pause for sign-off │
-│  /shepherd:spawn    Root + teammate-conductor lanes (Agent Teams)      │
+│  /shepherd:spawn    The execution path — root + teammate-conductor(s)  │
 │                     --scope <sprint|patch|minor|version>               │
-│                     --parallel <N> | --auto                            │
+│                     --parallel <N> | --auto | --staged                 │
 │  /shepherd:focus    Keep the session on-task (focus loop + heartbeat)  │
 │  /shepherd:loop     Bounded loop-until-done (per-role templates)       │
 │  /shepherd:toolkit  Tool registry, so a session never forgets a tool   │
@@ -52,17 +51,15 @@ A naive long-running Claude session fails in predictable ways. Shepherd answers 
 
 | Failure mode | What goes wrong | Shepherd's mechanism |
 | :--- | :--- | :--- |
-| **Tunnel vision** | The session fixates on the current task and ignores the 200-issue ledger underneath. | Phase 0 mesh enumerates every open issue and PR, and surfaces out-of-milestone CRITICAL/HIGH as drift risks before any code is written. |
-| **Duplication** | Types and helpers get re-invented because nobody grepped first. | A `[DO-NOT-DUPLICATE]` grep gate ships in every coder brief; a write-time hook blocks a new symbol that reuses an existing name or field shape. |
-| **Scope drift** | Sprints quietly grow features that were never seeded. | Every brief is anchored to the seed; the auditor's `completeness` concern fails any lane that drifted. |
-| **Audit theater** | "It passed review" because the reviewer was the context that wrote the code. | A read-only auditor swarm (3 to 5 agents, split by concern) reviews in parallel, dispatched from a separate tier. |
-| **Unreviewed handoff** | A conductor forwards a coder's diff on the coder's own "self-gate green" claim; it compiles but reinvents a helper or misses the issue's intent, so the root becomes the de-facto reviewer of every diff. | Before any wave is forwarded, the conductor holds a PASS verdict from a wave-review auditor run against a fixed checklist; a REDO verdict forces the named author to redo the named scope, capped and never blanket. |
-| **Wrapper bloat** | Hollow structs and indirection added for structure's sake. | A wrapper gate at sprint close plus a `subtract-don't-add` doctrine that asks for net-negative lines, deps, and abstractions. |
-| **Release malpractice** | Squash-merging unsigned, untested, un-tagged commits. | The conductor drives the full squash-to-main pipeline with ordered gates and signed commits. |
-| **Going off-task after hours** | On a multi-hour sprint the root slowly drifts from the objective. | A **focus loop** that survives compaction natively, plus a **focus heartbeat** that re-anchors the root to the objective on a cadence and self-checks for drift. |
-| **Passive stalls** | The root spawns helpers and then just waits, doing nothing. | A coordinate-active-drive contract plus a Stop hook that mechanically blocks a premature halt while work is outstanding. |
-
-If you have ever watched a long agent run produce a confident summary of work it did not actually finish, shepherd is built for exactly that gap.
+| **Tunnel vision** | Ignores the issue ledger underneath. | Phase 0 mesh enumerates every open issue/PR, surfaces out-of-milestone CRITICAL/HIGH as drift risks. |
+| **Duplication** | Types/helpers get re-invented. | `[DO-NOT-DUPLICATE]` grep gate in every brief; a write-time hook blocks a reused name/field shape. |
+| **Scope drift** | Sprints grow features never seeded. | Every brief is anchored to the seed; the auditor's `completeness` concern fails a drifted lane. |
+| **Audit theater** | The reviewer wrote the code. | A read-only auditor swarm (3-5 agents, split by concern) reviews in parallel from a separate tier. |
+| **Unreviewed handoff** | Coder's "self-gate green" claim stands in for review. | The conductor holds a PASS from a wave-review auditor first; REDO forces a named, capped redo. |
+| **Wrapper bloat** | Hollow structs added for structure's sake. | A wrapper gate at close plus subtract-don't-add: net-negative lines, deps, abstractions. |
+| **Release malpractice** | Squash-merging unsigned, untested commits. | The conductor drives the squash-to-main pipeline with ordered gates, signed commits. |
+| **Off-task after hours** | A multi-hour sprint drifts from the objective. | A **focus loop** surviving compaction, plus a **focus heartbeat** re-anchoring on a cadence. |
+| **Passive stalls** | The root spawns helpers, then waits. | A coordinate-active-drive contract + Stop hook blocking a premature halt while work is outstanding. |
 
 ---
 
@@ -70,18 +67,18 @@ If you have ever watched a long agent run produce a confident summary of work it
 
 Three ideas, and you have the model.
 
-**1. A closed flock of six agents.** Each has one job and a fixed dispatch contract.
+**1. A closed flock of six agents**, each with one job and a fixed dispatch contract.
 
 | Agent | Job |
 | :--- | :--- |
-| `@engineer` | Audits ground truth, then authors the sprint plan. |
-| `@critic` | Adversarially reviews the plan and the money-paths before any code. |
-| `@coder` | The only role that writes production code, dispatched in parallel waves. |
-| `@auditor` | Read-only reviewer; a swarm at sprint close, split by concern. |
-| `@worker` | Bounded catch-all: monitoring, ops, research summaries, cleanup. |
+| `@engineer` | Audits ground truth, authors the sprint plan. |
+| `@critic` | Adversarially reviews the plan before any code. |
+| `@coder` | The only role writing production code, in parallel waves. |
+| `@auditor` | Read-only reviewer; a swarm at sprint close. |
+| `@worker` | Bounded catch-all: monitoring, ops, cleanup. |
 | `@discovery` | Read-only orientation and research. |
 
-The flock is closed on purpose. Adding a seventh role is a major-version decision, not a casual one. Non-code work goes to `@worker`; research goes to `@discovery`.
+Closed on purpose — a seventh role is a major-version decision.
 
 **2. A three-section pipeline.** Every sprint runs the same shape:
 
@@ -94,9 +91,15 @@ BODY           coder waves with between-wave gates (format / check / lint)
 CLOSE          merge -> tag -> squash-to-main -> carry-forward -> close report
 ```
 
-**3. Three meta tiers that drive it.** A planter authors seeds, a conductor runs a sprint or a lane, and a root shepherd coordinates parallel teammate-conductors. You rarely think about the tiers directly; you pick a command and the right tier is adopted for you.
+**3. Three meta tiers that drive it.** You rarely think about the tiers directly; you run a command and the right tier is adopted for you.
 
-Everything else (the SQLite memory, the toolkit, the loop templates, the hooks) exists to keep those three ideas honest over a long session.
+| Tier | Profile | Adopted under | Role |
+| :--- | :--- | :--- | :--- |
+| Root | `agents/shepherd.md` | `/shepherd:spawn` | Dispatches engineer/critic, materializes teammate output, coordinates the close swarm. |
+| Conductor | `agents/conductor.md` | a teammate under `/shepherd:spawn` | Executes a sprint or a single lane. |
+| Planter | `agents/planter.md` | `/shepherd:plant` | Authors seeds, stewards git custody. |
+
+Everything else — SQLite memory, toolkit, loop templates, hooks — keeps those three ideas honest.
 
 ---
 
@@ -109,23 +112,18 @@ Everything else (the SQLite memory, the toolkit, the loop templates, the hooks) 
 /plugin install shepherd@fl03
 ```
 
-This registers the self-hosted marketplace manifest and installs shepherd as a managed plugin. Update later with `/plugin update shepherd@fl03`.
+Update later with `/plugin update shepherd@fl03`.
 
-### Personal install via symlink
+### Personal symlink or per-project pin
 
 ```bash
 git clone https://github.com/FL03/shepherd.git ~/src/FL03/shepherd
-ln -s ~/src/FL03/shepherd ~/.claude/plugins/shepherd
+ln -s ~/src/FL03/shepherd ~/.claude/plugins/shepherd      # personal
+ln -s /path/to/FL03/shepherd .claude-plugin/shepherd      # per-project (mkdir -p .claude-plugin first)
 ```
 
-### Per-project pin
-
-```bash
-mkdir -p .claude-plugin
-ln -s /path/to/FL03/shepherd .claude-plugin/shepherd
-```
-
-Shepherd has no build system. Runtime dependencies are `git`, `bash`, `sqlite3`, and `jq` (`sqlite3` ships on macOS; install `jq` with `brew install jq` or your package manager). The GitHub issue and PR ledger that powers the Phase 0 mesh also needs the `gh` CLI; without it, that step is skipped rather than failing. It works across the Claude Code CLI, web, and IDE entrypoints.
+No build system. Runtime deps: `git`, `bash`, `sqlite3`, `jq`. `gh` powers the Phase 0 mesh's
+issue/PR ledger; without it, that step is skipped, not failed. Works across CLI, web, IDE.
 
 ---
 
@@ -134,31 +132,17 @@ Shepherd has no build system. Runtime dependencies are `git`, `bash`, `sqlite3`,
 From zero to your first audited sprint in about five minutes.
 
 ```bash
-# 1. Configure shepherd for this repo (one file, lives in your repo).
-#    Start from the bundled example and edit it to match your gates + branch scheme.
+# 1. Configure shepherd for this repo.
 cp /path/to/shepherd/examples/minimal/shepherd.toml .claude/shepherd.toml
 
 # 2. Initialize the per-project context registry.
-#    Run this from inside Claude Code:
-/shepherd:ctx
-#    or directly:  shctx init && shctx refresh --scope=all && shctx status
+/shepherd:ctx    # or: shctx init && shctx refresh --scope=all && shctx status
 ```
 
-Then, in Claude Code:
-
-```text
-# 3. Author the first sprint seed (Opus recommended for seed quality).
-/shepherd:plant
-
-# 4. Switch to Sonnet and run the sprint end-to-end.
-/shepherd:start
-```
-
-`/shepherd:start` runs one full sprint (mesh, plan, critic gate, coder waves, audit swarm, close) and then **pauses** for your sign-off before touching the next one. That pause is deliberate: the first sprint is where you confirm the gates, branch patterns, and seed quality are right for your repo.
-
-Once a sprint or two has gone clean, graduate to `/shepherd:spawn --auto` to run a whole patch arc, or `/shepherd:spawn --parallel 3` to fan out independent sprints across worktrees. See the [playbooks](#usage-playbooks).
-
-> A minimal `shepherd.toml` and a worked multi-crate Rust example both live in [`examples/`](examples/). If you skip the config file, shepherd warns at every invocation and falls back to sensible Rust-project defaults.
+Then, in Claude Code: `/shepherd:plant` (Opus, author the first seed), then `/shepherd:spawn`
+(Sonnet, run the sprint). `/shepherd:spawn` is the sole execution path — main chat becomes the
+root shepherd and spawns a teammate-conductor (one lane by default) end-to-end. Add `--auto` or
+`--parallel <N>` once a sprint or two has gone clean; see the [playbooks](#usage-playbooks).
 
 ---
 
@@ -166,279 +150,122 @@ Once a sprint or two has gone clean, graduate to `/shepherd:spawn --auto` to run
 
 | Command | What it does |
 | :--- | :--- |
-| `/shepherd:plant [scope]` | Author drift-resistant sprint seeds. Scope is one of: nothing (next sprint plus lookahead), `dev.N`, `dev.N..dev.M`, `arc` (whole patch), or `next-version`. Opus recommended. |
-| `/shepherd:start [--teammate]` | Run one complete sprint, then pause for sign-off. The lightweight solo path: one sprint, no teams, no lanes. |
-| `/shepherd:spawn [slug] [--scope ...] [--parallel N \| --auto]` | The primary command for substantive work. Main chat becomes the root shepherd and spawns one teammate-conductor per lane via Agent Teams. |
-| `/shepherd:focus [...] [--heartbeat]` | Start or refresh the sprint focus loop, or fire a re-anchor heartbeat now. Keeps a long session locked onto the objective. |
-| `/shepherd:loop [task] [--max N] [--agent ...] [--interval ...]` | Run a bounded loop-until-done with a per-role template. Dispatches `@worker` or `@discovery` until a "no new findings" condition or the iteration cap. |
-| `/shepherd:toolkit [list\|add\|rm\|pin\|md]` | Manage the tool registry so the session never forgets that an MCP server, skill, plugin, or CLI exists. |
-| `/shepherd:ctx` | Inspect or refresh the per-project SQLite context registry. |
-| `/shepherd:cleanup` | Prune stale or crashed teammate entries, leftover worktrees, and lock files. |
+| `/shepherd:plant [scope]` | Author drift-resistant sprint seeds. Opus recommended. |
+| `/shepherd:spawn [slug] [--scope ...] [--parallel N \| --auto \| --staged]` | The execution path — root spawns a teammate-conductor per lane. |
+| `/shepherd:focus [...] [--heartbeat]` | Start/refresh the focus loop, or fire a re-anchor heartbeat. |
+| `/shepherd:loop [task] [--max N] [--agent ...] [--interval ...]` | Bounded loop-until-done. |
+| `/shepherd:toolkit [list\|add\|rm\|pin\|md]` | The tool registry. |
+| `/shepherd:ctx` | Inspect/refresh the SQLite context registry. |
+| `/shepherd:cleanup` | Prune stale teammates, worktrees, locks. |
 
-`/shepherd:start` and `/shepherd:spawn` are disjoint execution paths, not a wrapper relationship. Start is solo and in-session; spawn is multi-lane via Agent Teams. Plant feeds both.
+Plant feeds spawn: seed first, then execute.
 
 ---
 
 ## Usage playbooks
 
-Concrete recipes for the situations you will actually hit.
-
-### "I want to run one careful sprint and review it myself"
-
-```text
-/shepherd:start
-```
-
-Use this when you are new to shepherd on a repo, when the change is delicate, or when you want a hand on the wheel. It runs the full pipeline once and stops. Inspect the close report, then run it again for the next sprint.
-
-### "I want to autopilot a whole patch"
-
-```text
-/shepherd:spawn --auto
-```
-
-`--auto` is an alias for `--scope patch`. It runs sequential sprints to patch completion, with a fresh context per sprint so quality does not decay as the patch grows. Each sprint still gets its plan, gates, and audit.
-
-### "I have independent work that can run in parallel"
-
-```text
-/shepherd:spawn --parallel 3
-```
-
-Fans out three disjoint sprints across separate git worktrees, each driven by its own teammate-conductor. Use this when the work decomposes into slices that do not touch the same files. The root coordinates and merges each lane as it goes green.
-
-### "I want to plan ahead before executing"
-
-```text
-/shepherd:plant arc          # seed the entire patch arc
-/shepherd:plant dev.5        # seed a specific sprint
-/shepherd:plant dev.5..dev.7 # seed a range
-```
-
-Seeds are the ground truth the engineer translates into a plan. A good seed is dense and drift-resistant. Author seeds with Opus; Sonnet and Haiku work but produce a degraded-seed advisory.
-
-### "My long sprint keeps drifting off-task after a few hours"
-
-This is what the **focus heartbeat** is for. The focus loop already re-anchors the orchestrator at every wake and survives compaction. The heartbeat adds a cadence *inside* a long active stretch, where no teammate event forces a wake:
-
-```text
-/shepherd:focus --objective "ship the v6.3 auth migration" --invariants '["no schema change without approval"]'
-# later, if you sense it wandering:
-/shepherd:focus --heartbeat
-```
-
-On `--heartbeat`, and automatically every `[focus].heartbeat_actions` orchestrator actions (default 20), the root re-reads its objective and emits a compact re-anchor block, then self-checks: did the last stretch actually advance the active node within the invariants? If it wandered into adjacent or unseeded work, it stops, returns to the objective, and files the digression instead of chasing it inline. For a true wall-clock cadence, set `[focus].heartbeat_interval = "45m"` and let the native `/loop` own the clock.
-
-### "What does shepherd already know about this repo?"
-
-```text
-/shepherd:ctx
-```
-
-Inspects the SQLite registry: indexed code symbols, GitHub issues / PRs / releases, artifact files, project memories, flock profiles, and the event log. Refresh it whenever the repo state has moved on.
-
-### "I need to poll or monitor something until a condition holds"
-
-```text
-/shepherd:loop "watch CI for the release tag, report when green" --agent worker --max 12 --interval 5m
-```
-
-Runs a bounded loop with a hard cap and a measurable termination predicate. Loops are never open-ended.
-
-### "Clean up after a parallel run"
-
-```text
-/shepherd:cleanup
-```
-
-Prunes stale or crashed teammate entries, removes leftover worktrees, and clears lock files. Operator-confirmed; it never silently removes a live lane.
+| Need | Command | Notes |
+| :--- | :--- | :--- |
+| One careful sprint, review it yourself | `/shepherd:spawn` | No flags: a single lane end to end. Good for a new repo or a delicate change. |
+| Autopilot a whole patch | `/shepherd:spawn --auto` | Alias for `--scope patch` — sequential sprints, fresh context each so quality doesn't decay. |
+| Independent work in parallel | `/shepherd:spawn --parallel 3` | Disjoint sprints across worktrees, each its own teammate-conductor. Use when work is file-disjoint. |
+| Plan ahead before executing | `/shepherd:plant arc \| dev.5 \| dev.5..dev.7` | Opus for seed quality; Sonnet/Haiku produce a degraded-seed advisory. |
+| Long sprint drifting off-task | `/shepherd:focus --heartbeat` | The heartbeat adds a cadence inside a long stretch with no wake — set `[focus].heartbeat_interval = "45m"` for wall-clock. |
+| What shepherd knows about this repo | `/shepherd:ctx` | Inspects the SQLite registry: symbols, GitHub state, artifacts, memories, event log. |
+| Poll/monitor until a condition holds | `/shepherd:loop "watch CI..." --agent worker --max 12 --interval 5m` | Hard cap + measurable termination predicate. |
+| Clean up after a parallel run | `/shepherd:cleanup` | Operator-confirmed; never removes a live lane. |
 
 ---
 
 ## Under the hood
 
-### The closed flock
+**Models.** `[models]` in `shepherd.toml`, resolved by `shctx models resolve`, is the one table
+mapping each role to its model — set once instead of hand-pinning per spawn. Coders are always
+scoped to a disjoint file set so parallel waves cannot collide.
 
-Six agents, fixed contracts. `@engineer` runs on Opus (plan quality is worth it); the rest default to Sonnet. Which model each role runs is a single per-project table — `[models]` in `shepherd.toml`, resolved by `shctx models resolve` and injected at every dispatch — so you set it once instead of hand-pinning per spawn. The contract changes only on a major version bump, so you can rely on the role boundaries staying put. Coders are the only role that writes production code, and they are always scoped to a disjoint set of files so parallel waves cannot collide.
+**Self-contained engineer.** Can run as its own named teammate, running a read-only sub-flock
+in-session (discovery + intro-audit + its own dispatched critic) and returning a hash-tied
+*critic-proof*; root then accepts the plan via a thin mechanical gate (`shctx plan verify`) instead
+of re-reviewing it.
 
-### The three-section pipeline
-
-- **Introduction.** A Phase 0 mesh audits ground truth (open issues and PRs, recent Sentry / Supabase / Fly state, carry-forwards from prior sprints). The engineer then authors the plan, and the critic gates it adversarially before a single line is written. Under `/shepherd:spawn` the engineer can run **self-contained** — as its own named teammate that runs its read-only sub-flock in-session (the discovery + intro-audit wave *and* its own dispatched critic gate) and returns a hash-tied *critic-proof*; root then runs neither wave itself and accepts the plan with a thin mechanical gate (`shctx plan verify`) instead of re-reviewing it, keeping that context out of root's window.
-- **Body.** Coder waves run with gates between them (`format`, `check`, `lint`, all configurable). Each wave is also reviewed by a wave-review auditor before it is forwarded: a conductor cannot pass a wave up on a coder's self-gate-green claim, and a REDO verdict forces the named author to redo the named scope. The auditor swarm overlaps the last wave so review is not a serial tail.
-- **Close.** Merge, tag, squash-to-main, carry-forward refresh, and a written close report. Under `/shepherd:spawn`, the body fans out as lanes (vertical slices across waves), each owned by a teammate-conductor.
-
-### The three meta tiers
-
-| Tier | Profile | Adopted under | Role |
-| :--- | :--- | :--- | :--- |
-| Root | `agents/shepherd.md` | `/shepherd:spawn` | Dispatches engineer and critic, materializes teammate output, resolves disputes, coordinates the close swarm. |
-| Conductor | `agents/conductor.md` | `/shepherd:start` (solo) or a spawned teammate | Executes a sprint or a single lane. |
-| Planter | `agents/planter.md` | `/shepherd:plant` | Authors seeds and stewards git custody and cleanup. |
-
-### Phase 0 mesh
-
-Every sprint opens with a structured ground-truth audit. The engineer cannot skip it, and the auditors verify it was complete. This is the antidote to tunnel vision: the full open-issue ledger is enumerated and classified, and anything CRITICAL or HIGH outside the current milestone is surfaced as a drift risk.
-
-### SQLite context registry
-
-`/shepherd:ctx` manages a per-project SQLite database at `.shepherd/shepherd.db`. It indexes code symbols, GitHub state, artifact files, project memories, flock profiles, lock history, and an event log. It backs the deduplication fast-path and the carry-forward ledger.
+**SQLite context registry.** `/shepherd:ctx` manages `.shepherd/shepherd.db`: code symbols, GitHub
+state, artifacts, memories, flock profiles, lock history, event log — backs the dedup fast-path
+and carry-forward ledger.
 
 ```bash
-shctx init                   # scaffold .shepherd/ and create the database
-shctx refresh --scope=all    # populate the caches
-shctx status                 # verify
-shctx style init --all       # scaffold per-language code-style files
+shctx init && shctx refresh --scope=all && shctx status
 ```
 
-The workdir follows a standard layout under `.shepherd/` (`docs/`, `logs/`, `cache/`, `scripts/`, plus `toolkit.json` and `shepherd.db`). Repos on the older layout keep working untouched; `shctx migrate --layout v2` performs the opt-in move.
+**Workdir hygiene, self-eval, toolkit.** `shctx prune`/`--confirm` reclaims accreted state (dry-run
+default, moves — never deletes — to `/tmp`); `shctx eval run/report` scores a latent output via
+your local Claude Code, never a hosted API; `shctx toolkit add/list` merges project + global tools.
 
-### The model map
+**Per-language style files.** `.shepherd/styles/<lang>.md` (rust, python, typescript, go, shell,
+sql), tracked in git, injected into every matching coder brief.
 
-Which model each of the nine roles dispatches with is one table — `[models]` in `.claude/shepherd.toml` — resolved by `shctx models resolve <role>` and injected as the model pin at every tier. Set it once; unset roles fall to the built-in defaults (planter/root/engineer on Opus, the rest on Sonnet). `root` is advisory — a config key cannot rebind your live session — so a spawn preflight warns when your session is under-powered instead of pretending to change it.
+**Mechanical enforcement hooks.** `dispatch_guard.sh` rejects a bad `subagent_type`;
+`dedup_write_guard.sh`/`dups_write_guard.sh` block a symbol reusing an existing name or shape;
+`coordinate_drive_guard.sh` blocks a premature root halt while teammates are idle. Smoke suite:
+`bash hooks/tests/run.sh`.
 
-```bash
-shctx models show            # resolved 9-role table + source per row
-shctx models resolve coder   # one role's model
-```
-
-### Workdir hygiene
-
-`shctx prune` reclaims accreted workdir and registry state — stale dispatch tags, aged logs, over-retention snapshots — without touching anything that affects an outcome. `--dry-run` is the default; `--confirm` *moves* targets to `/tmp` (reversible), fenced on non-current-branch, terminal, and aged.
-
-```bash
-shctx prune                  # dry-run: print the plan, remove nothing
-shctx prune --confirm        # move eligible transient state to /tmp
-```
-
-### Self-evaluation (the eval harness)
-
-A plugin that scores its own latent instructions. `shctx eval` grades a latent agent output (a conductor reflection, a discovery report, a seed) against a rubric, judged by your **local Claude Code** — not a hosted API. The split shepherd preaches, applied to itself: the model's per-dimension scores are latent; the rubric, the weighted overall, and the threshold verdict are deterministic, so the same scores always yield the same verdict.
-
-```bash
-echo "front-load the dups gate before the coder wave next sprint" \
-  | shctx eval run --kind=reflection -        # score text; exit 0 pass / 1 fail
-shctx eval run --kind=reflection --sprint=$(git branch --show-current) --record
-shctx eval report --md                        # recorded verdicts, surfaced on the dash too
-```
-
-Adding a new subject is one JSON file in `services/eval/rubrics/`. The judge runs through `services/llm`, the single owner of every model call. Two test lanes: a free, deterministic gate lane (the judge is mocked) and a paid live lane (`SHEPHERD_EVAL_LIVE=1`) that proves a real judge separates good outputs from bad. See `services/eval/README.md`.
-
-### The toolkit
-
-A session forgets capabilities exist. The toolkit (`toolkit.json`) is a mutable registry of the tools you actually use, so it does not. It merges a project-local file with a user-global one, surfaces a compact roster at session start, and injects a `[TOOLKIT]` block into the briefs that need it.
-
-```bash
-shctx toolkit add --name=context7 --type=mcp --scope=global \
-  --description="library docs; prefer over web search" --pin
-shctx toolkit list --scope=all
-```
-
-Never store secrets in the toolkit.
-
-### Loop templates and the focus heartbeat
-
-`/shepherd:loop` runs the loop-until-done pattern as a first-class, bounded loop. Each flock role has a ready-made template (coder fix-until-green, discovery research-until-exhausted, worker monitor-and-reconcile, auditor progressive-audit), and each declares a hard cap and a measurable termination predicate.
-
-The orchestrator runs its own variant, the **FOCUS-LOOP**, across an entire sprint to keep drive continuity through compaction and wave boundaries. The focus record (objective, active node, invariants, obligations) lives in SQLite and survives compaction natively.
-
-New in v6.2.2, the **FOCUS-HEARTBEAT** closes the remaining gap. The focus loop re-anchors at every wake, but a long active stretch with no wake (a big materialization run, or a solo conductor doing inline work) is where the orchestrator drifts after hours. The heartbeat self-fires a re-anchor on a cadence: set `[focus].heartbeat_interval` and the native `/loop` owns the clock (the deterministic leg, a real wake on a real schedule), or lean on `[focus].heartbeat_actions` as a soft, zero-cost self-prompt. On each beat it re-reads the objective from the record, restates it, and runs a self-drift-check. If the last stretch wandered off the active node, it returns to the objective and files the digression instead of chasing it. The cost is a few tokens, never a cache eviction.
-
-### Per-language style files
-
-Project-local code-style overrides live at `.shepherd/styles/<lang>.md` (rust, python, typescript, go, shell, sql), tracked in git. The conductor injects the matching style file into every coder brief whose file scope touches that language.
-
-```bash
-shctx style init rust   # scaffold from bundled defaults
-shctx style edit rust   # open in $EDITOR
-```
-
-### Mechanical enforcement hooks
-
-Shepherd ships a hook suite wired through `hooks/hooks.json`. These are guards, not guidance: they hard-refuse the action.
-
-- **`dispatch_guard.sh`** rejects a missing or wrong `subagent_type`, off-flock impersonation, and wrong-tier engineer or critic dispatch from a teammate.
-- **`dedup_write_guard.sh`** and **`dups_write_guard.sh`** block a new public symbol that reuses an existing name, or a new type that matches an existing one by field shape under a different name.
-- **`coordinate_drive_guard.sh`** blocks a premature root halt while teammates are idle or lead mail is unread.
-- **`close_finalize_check.sh`** validates close preconditions before the stop event fires.
-
-Run the smoke suite any time with `bash hooks/tests/run.sh`.
-
-### Doctrines
-
-Framework-intrinsic behavioral rules live in `skills/shepherd/doctrines/`. Each is paired with a mechanism (a hook, a guard, or a halt code) in the invariant-enforcement matrix, so a doctrine is a rule with teeth, not prose. Current doctrines include `subtract-dont-add`, `wrapper-must-earn`, `dispatch-tier-separation`, `coordinate-active-drive`, `flock-output-review`, `loop-templates`, `toolkit`, `self-improvement`, `adaptation-loop`, `brief-cache-discipline`, and more.
+**Six modular skills.** `skills/shepherd` (dispatch law, pipeline, flock briefs), `skills/adaptation`
+(lesson memory), `skills/motivation` (focus, FOCUS-HEARTBEAT, drive, sentinel), `skills/harness`
+(Agent Teams, Workflow tool, `/loop`, `/goal`), `skills/context` (the `shctx` runtime),
+`skills/thinking`. Each rule pairs with a mechanism — a hook, a guard, or a halt code.
 
 ---
 
 ## Configure
 
-Create `.claude/shepherd.toml` at the repo root. Shepherd warns at every invocation until one exists. Resolution is per-key, highest precedence first:
-
-```text
-.claude/shepherd.local.toml    project-pinned, gitignored: operator overrides (wins)
-.claude/shepherd.toml          project-pinned, checked into the repo
-$XDG_CONFIG_HOME/shepherd.toml  user-global default
-```
-
-Each key resolves independently: a value in `shepherd.local.toml` overrides the same key in `shepherd.toml`, which overrides the user-global default.
-
-A minimal config:
+Create `.claude/shepherd.toml` at the repo root. Shepherd warns at every invocation until one exists.
 
 ```toml
 [project]
 name     = "my-project"
-language = "rust"          # rust | python | typescript | go | mixed
+language = "rust"
 
 [branching]
 patch_branch_pattern  = "v{X}.{Y}.{Z}"
 sprint_branch_pattern = "v{X}.{Y}.{Z}-dev.{N}"
 sprints_per_patch     = 10
-main_branch           = "main"
 
 [gates]
 check  = "cargo check --workspace"
 lint   = "cargo clippy --workspace -- -D warnings"
 format = "cargo fmt --all"
 
-[skills]
-mandatory = ["code-style"]
-by_domain = { rust = ["rust"], wasm = ["webassembly"] }
-
-[models]                 # which model each role dispatches with (optional — these ARE the defaults)
-engineer  = "opus[1m]"   # planter/root/engineer default to Opus; the rest to Sonnet
-conductor = "sonnet"     # set any role to any slug; `shctx models show` prints the resolved table
+[models]                 # optional — these ARE the defaults
+engineer  = "opus[1m]"
+conductor = "sonnet"
 ```
 
-See [`docs/configuration.md`](docs/configuration.md) for the full schema, including `[gates.extra]`, `[spawn]`, `[release]`, `[focus]` (rehydration plus the heartbeat cadence), `[models]` (the per-role model map), `[prune]` (workdir GC windows), and the skill matrix. A working multi-crate example lives at [`examples/rust-service/shepherd.toml`](examples/rust-service/shepherd.toml).
+See [`docs/configuration.md`](docs/configuration.md) for the full schema. A working multi-crate example lives at [`examples/rust-service/shepherd.toml`](examples/rust-service/shepherd.toml).
 
 ---
 
 ## Compose with your own skills
 
-Shepherd orchestrates; your skills provide the per-keystroke voice. It is designed to wrap them, not replace them.
+Shepherd orchestrates; your skills provide the per-keystroke voice.
 
-- **`code-style`** is injected into every coder brief by default. Shepherd handles the pipeline; your style skill handles idioms, naming, and comment discipline.
-- **Domain skills** (`rust`, `webassembly`, `supabase`, and so on) wire into the required-skills matrix through `[skills.by_domain]` and attach automatically when a coder's file scope matches.
-- **`superpowers:brainstorming`** and **`superpowers:writing-plans`** are loaded by `@engineer` from inside its own dispatch. Plan quality leans on them.
+- **`code-style`** is injected into every coder brief by default.
+- **Domain skills** (`rust`, `webassembly`, `supabase`, …) wire in via `[skills.by_domain]`, attaching when a coder's file scope matches.
+- **`superpowers:brainstorming`/`writing-plans`** are loaded by `@engineer`.
 
-See [`docs/integration.md`](docs/integration.md) for the full integration model, including MCP bindings and custom doctrine authorship.
+See [`docs/integration.md`](docs/integration.md) for the full model.
 
 ---
 
 ## Troubleshooting and FAQ
 
-**Shepherd warns that `shepherd.toml` is missing.** Create `.claude/shepherd.toml` (see [Configure](#configure)). Without it, shepherd uses generic Rust defaults and warns on every invocation.
-
-**`shctx: command not found`.** The `shctx` CLI ships inside the plugin at `skills/context/scripts/`. The plugin exposes it on the path when installed; if you symlinked manually, make sure the scripts directory is reachable, or invoke the commands through `/shepherd:ctx`.
-
-**Do I have to use Agent Teams?** No. `/shepherd:start` runs a complete sprint solo in the main chat with no teams. Reach for `/shepherd:spawn` only when you want parallel lanes.
-
-**Which model should I use?** Opus for `/shepherd:plant` (seed quality) and the engineer (plan quality). Sonnet for the conductor and the rest of the flock. Shepherd sets these defaults for you; you only switch the model in main chat between plant and start.
-
-**My long sprint still drifts.** Confirm the focus loop is on (`[focus].loop_default = "on"`, the default) and lower the heartbeat cadence (`[focus].heartbeat_actions`, default 20). For multi-hour sessions, add a wall-clock heartbeat with `[focus].heartbeat_interval = "45m"`. See the [drift playbook](#my-long-sprint-keeps-drifting-off-task-after-a-few-hours).
-
-**A teammate crashed and left a worktree behind.** Run `/shepherd:cleanup`. It prunes the crashed entry and its worktree; it never touches live lanes.
-
-**Is anything sent to a third-party API?** No. When shepherd needs an LLM call it routes through your local Claude Code, never a hosted endpoint.
+| Question | Answer |
+| :--- | :--- |
+| `shepherd.toml` is missing | Create `.claude/shepherd.toml` (see [Configure](#configure)). |
+| `shctx: command not found` | Ships at `skills/context/scripts/`; invoke via `/shepherd:ctx` if symlinked manually. |
+| Do I have to use Agent Teams? | Yes — `/shepherd:spawn` always runs through a teammate-conductor, even for one lane; there's no separate solo mode. |
+| Which model should I use? | Opus for `/shepherd:plant` and the engineer; Sonnet for the rest — shepherd sets these defaults. |
+| My long sprint still drifts | Lower `[focus].heartbeat_actions` (default 20) or set `[focus].heartbeat_interval = "45m"`. |
+| A teammate crashed, left a worktree | Run `/shepherd:cleanup`. |
+| Anything sent to a third-party API? | No — every LLM call routes through your local Claude Code. |
 
 ---
 
@@ -447,17 +274,14 @@ See [`docs/integration.md`](docs/integration.md) for the full integration model,
 | Path | Purpose |
 | :--- | :--- |
 | `.claude-plugin/plugin.json` | Plugin manifest. |
-| `.claude-plugin/marketplace.json` | Self-hosted marketplace entry. |
-| `agents/{engineer,critic,coder,auditor,worker,discovery}.md` | The closed flock; full system prompt per role. |
+| `agents/{engineer,critic,coder,auditor,worker,discovery}.md` | The closed flock. |
 | `agents/{shepherd,conductor,planter}.md` | The three meta-orchestrators. |
-| `commands/{plant,start,spawn,focus,loop,toolkit,ctx,cleanup}.md` | Slash-command entry points. |
-| `skills/shepherd/SKILL.md` | Conductor quick reference, loaded by every `/shepherd:*` invocation. |
-| `skills/shepherd/doctrines/*.md` | Framework-intrinsic behavioral rules. |
-| `skills/shepherd/references/` | Branching model, seed and brief templates, loop and workflow templates, grading rubric. |
-| `skills/context/` | The `shctx` runtime: SQL migrations, views, and the bash implementation. |
-| `services/{llm,eval}/` | Self-contained services: the local-Claude-Code LLM call and the rubric-driven eval harness, each with its own contract, tests, and evals. |
-| `hooks/hooks.json` + `hooks/scripts/` | Lifecycle hooks and their implementations. |
-| `hooks/tests/` | Smoke harness: `bash hooks/tests/run.sh`. |
+| `commands/{plant,spawn,focus,loop,toolkit,ctx,cleanup}.md` | Slash-command entry points. |
+| `skills/shepherd/` | Dispatch law, sprint contract, pipeline, flock briefs, principles. |
+| `skills/{adaptation,motivation,harness,thinking}/` | Lesson memory, drive/focus, platform mechanics, thinking discipline. |
+| `skills/context/` | The `shctx` runtime: migrations, views, bash implementation. |
+| `services/{llm,eval}/` | Self-contained: the local-Claude-Code LLM call and the eval harness. |
+| `hooks/hooks.json` + `hooks/scripts/` | Lifecycle hooks; `bash hooks/tests/run.sh`. |
 | `docs/{configuration,integration,customization}.md` | Operator-facing documentation. |
 | `examples/{minimal,rust-service}/` | Starter config and a worked multi-crate example. |
 
@@ -465,21 +289,11 @@ See [`docs/integration.md`](docs/integration.md) for the full integration model,
 
 ## Versioning
 
-Shepherd follows semver:
-
-- **Major**: changes to the closed-flock contract (adding or removing a role).
-- **Minor**: new commands, doctrines, or config keys (backward-compatible).
-- **Patch**: dispatch logic, doctrine, and brief-template fixes.
-
-Current version: **6.2.7**. See [`CHANGELOG.md`](CHANGELOG.md) for the per-version history.
-
----
+Semver: **major** = closed-flock contract change; **minor** = new commands/config keys; **patch** = dispatch/brief-template fixes. Current version: **6.2.8**. See [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Contributing
 
-Issues and pull requests are welcome. See [`CONTRIBUTING.md`](CONTRIBUTING.md) and the [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md). All main-bound changes flow through a pull request; the hook suite (`bash hooks/tests/run.sh`) must stay green.
-
----
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md). All main-bound changes flow through a PR; the hook suite (`bash hooks/tests/run.sh`) must stay green.
 
 ## License
 

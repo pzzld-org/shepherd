@@ -202,3 +202,4 @@
 ## Vercel
 **/.vercel
 .DS_Store
+/scripts/.xref.json

@@ -82,7 +82,7 @@ shctx loop <init|status|record|close|list|focus> [args]   (v6.0.9)
       Upsert or show the focus record for a sprint, or a lane within it
       (--lane=<id>; omit for the sprint-level record).
 
-Doctrine: skills/shepherd/doctrines/workflow-patterns.md §Pattern 6
+Doctrine: skills/shepherd/references/pipeline.md §Pattern 6
 EOF
 }
 

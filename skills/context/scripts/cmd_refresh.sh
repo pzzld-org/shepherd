@@ -29,7 +29,7 @@ done
 # Refresh the cache-telemetry rollup from the JSONL event log. The function
 # reads every <ns>/logs/events-*.jsonl, filters for event_type=='cache_usage',
 # and inserts (idempotently via UNIQUE(session_id,agent_id,ts)) into
-# index_cache_usage. See doctrines/cache-telemetry.md.
+# index_cache_usage. See skills/context/SKILL.md §Cache telemetry.
 refresh_telemetry() {
   local project_id ns logs_dir db inserted
   project_id=$(shctx_project_id) || return 1
