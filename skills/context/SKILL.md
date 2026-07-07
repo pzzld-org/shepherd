@@ -1,7 +1,7 @@
 ---
 name: shepherd-context
 slug: shepherd-context
-version: 6.2.9
+version: 6.3.0
 description: "Per-project SQLite registry backing /shepherd:ctx — symbols, GitHub state, dedup, telemetry, locks. Use when reading or writing project context state."
 metadata:
   triggers:
