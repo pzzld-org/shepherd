@@ -18,15 +18,15 @@ fails=0
 need_file() { [[ -f "$1" ]] || { printf '  FAIL  missing file: %s\n' "$1"; fails=$((fails+1)); }; }
 need() { grep -qF -- "$2" "$1" 2>/dev/null || { printf '  FAIL  %s — %s missing %q\n' "$3" "$1" "$2"; fails=$((fails+1)); }; }
 
-DOC="skills/shepherd/doctrines/engineer-self-contained-plan.md"
-MM="skills/shepherd/doctrines/model-map.md"
-WP="skills/shepherd/doctrines/workdir-prune.md"
+DOC="skills/shepherd/references/pipeline.md"
+MM="skills/context/references/model-map.md"
+WP="skills/context/SKILL.md"
 
 # 1. The three doctrines exist.
 need_file "$DOC"; need_file "$MM"; need_file "$WP"
 
 # 2. (A) engineer self-contained + critic-proof wiring (clarified v6.2.6, #172).
-need agents/engineer.md "engineer-self-contained-plan.md" "engineer cites doctrine"
+need agents/engineer.md "references/pipeline.md §INTRO" "engineer cites INTRO contract"
 need agents/engineer.md "self-contained"                  "engineer self-contained mode"
 need agents/engineer.md "shctx plan record-critique"      "engineer records critic-proof"
 if ! grep -qE '^tools:.*(^|[, ])Agent([, ]|$)' agents/engineer.md; then
@@ -40,21 +40,21 @@ need agents/engineer.md "shepherd:critic"                "engineer sub-flock: cr
 # hard mode determination; named-teammate topology; no nested/phantom engineer.
 need agents/engineer.md "engineer-self-contained"        "engineer @critic self-gate marker"
 need agents/engineer.md "named teammate"                 "engineer named-teammate topology"
-need agents/engineer.md "no code"                        "engineer sub-flock is read-only (no code)"
+need agents/engineer.md 'NEVER `@coder`'                 "engineer sub-flock is read-only (no code)"
 if ! grep -qiE 'never .*@engineer|no nested/phantom engineer' agents/engineer.md; then
   printf '  FAIL  engineer.md — missing the no-nested/phantom-engineer prohibition\n'; fails=$((fails+1))
 fi
 # The mechanical topology + marker guards live in dispatch_guard.sh.
 need hooks/scripts/dispatch_guard.sh "ENGINEER-TOPOLOGY-MISMATCH" "guard: self-contained-as-subagent block"
 need hooks/scripts/dispatch_guard.sh "engineer-self-contained"    "guard: @critic self-gate marker"
-need agents/shepherd.md  "engineer-self-contained-plan.md" "root cites doctrine"
+need agents/shepherd.md  "references/pipeline.md §INTRO"   "root cites INTRO contract"
 need agents/shepherd.md  "shctx plan verify"               "root thin acceptance gate"
 need agents/shepherd.md  "CRITIC-PROOF-MISSING"            "root critic-proof halt code"
 need agents/shepherd.md  "PLAN-UNEDITED"                   "root unedited halt code"
-need skills/shepherd/flock.md "engineer-self-contained-plan.md" "flock cites doctrine"
-need skills/shepherd/flock.md "critic-proof"                    "flock critic-proof"
-need skills/shepherd/doctrines/invariant-enforcement-matrix.md \
-     "engineer-self-contained-plan.md" "invariant matrix coverage row"
+need skills/shepherd/references/flock.md "ENGINEER-SUBFLOCK-VIOLATION" "flock sub-flock guard"
+need skills/shepherd/references/flock.md "critic-proof"               "flock critic-proof"
+need skills/shepherd/references/invariant-matrix.md \
+     "engineer-self-contained" "invariant matrix coverage row"
 
 # 3. (B) model-map wiring.
 need agents/shepherd.md   "model-map.md"                  "root cites model-map"
@@ -74,16 +74,16 @@ need skills/context/scripts/shctx "|models|prune)"  "shctx dispatcher registers 
 need skills/context/scripts/cmd_plan.sh "record-critique" "cmd_plan record-critique verb"
 need skills/context/scripts/cmd_plan.sh "verify"          "cmd_plan verify verb"
 
-# 6. Dangling-citation resolution across all three new doctrines.
-for d in "$DOC" "$MM" "$WP"; do
+# 6. Citation lint: the doctrine dir is dissolved (v6.2.8) — no plugin-doctrine
+# path may survive anywhere in the contract files. The only legal doctrines/
+# form is the consumer-project extension dir `.claude/doctrines/`.
+for d in "$DOC" "$MM" "$WP" agents/engineer.md agents/shepherd.md; do
   [[ -f "$d" ]] || continue
-  while IFS= read -r ref; do
-    [[ -n "$ref" ]] || continue
-    if [[ ! -f "skills/shepherd/doctrines/$ref" ]]; then
-      printf '  FAIL  dangling citation in %s: doctrines/%s\n' "$d" "$ref"
-      fails=$((fails+1))
-    fi
-  done < <(grep -oE 'doctrines/[a-z0-9-]+\.md' "$d" | sed 's#doctrines/##' | sort -u)
+  while IFS= read -r hit; do
+    [[ -n "$hit" ]] || continue
+    printf '  FAIL  stale plugin-doctrine citation in %s: %s\n' "$d" "$hit"
+    fails=$((fails+1))
+  done < <(grep -oE '(^|[^a-z./])doctrines/[a-z0-9-]+\.md' "$d" | grep -v '\.claude/doctrines/' | sort -u)
 done
 
 if [[ "$fails" -gt 0 ]]; then

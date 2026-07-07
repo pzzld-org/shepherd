@@ -115,7 +115,7 @@ fi
 
 # --- Lane E parity (#78): cross-lane dependency coordinated by in-script -----
 # --- await ordering, with NO pause/heartbeat machinery in the path. ---------
-# (doctrines/native-coordination.md — the proven replacement Lane F depends on)
+# (skills/harness/references/workflow-templates.md — the proven replacement Lane F depends on)
 if grep -qiE "PAUSE|heartbeat|PAUSE-FOR-DEPENDENCY" "$wscript"; then
   echo "FAIL: pause/heartbeat machinery leaked into the compiled segment (#78)" >&2; exit 1
 fi

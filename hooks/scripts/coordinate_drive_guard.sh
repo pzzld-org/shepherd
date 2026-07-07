@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shepherd hook — Stop: coordinate-mode active-drive guard (v6.0.5).
 #
-# Backstop for doctrines/coordinate-active-drive.md. Fires at Stop (root about to
+# Backstop for skills/motivation/SKILL.md §Drive contract. Fires at Stop (root about to
 # end its turn). If a /shepherd:spawn session is live AND the root is stopping
 # with undrained, root-clearable coordinate state (an idle teammate, or lead-bound
 # unread mail), the root is exhibiting the passive-wait bug (#113/#98/#112): it
@@ -76,7 +76,7 @@ mkdir -p "$CNT_DIR" 2>/dev/null || true
 CNT="$(cat "$CNT_FILE" 2>/dev/null || echo 0)"
 [[ "$CNT" =~ ^[0-9]+$ ]] || CNT=0
 
-REASON="[coordinate-active-drive] You are the root shepherd in coordinate mode with ${LIVE} live teammate(s): ${IDLE} idle, ${UNREAD} unread message(s) addressed to you. Do NOT end your turn waiting — drain the work first (doctrines/coordinate-active-drive.md §IV): read every unread message and route by halt_code; on a WAVE-COMPLETE materialize the payload, commit the wave, release the next wave-gate; prune each idle teammate whose payload is materialized and refresh its lane next wave (scoped to that one lane's worktree via 'git worktree remove .worktrees/<sprint_slug>-<lane>' — NEVER a blanket 'git worktree list | grep agent- | remove' loop or 'git worktree prune' while siblings are live); probe any teammate that went idle without WAVE-COMPLETE. THEN sweep liveness + per-lane git diff --stat for drift before yielding. If instead you are stopping to surface a HARD-STOP or operator-question, emit that concrete question now and stop — that is the one legitimate pause."
+REASON="[coordinate-active-drive] You are the root shepherd in coordinate mode with ${LIVE} live teammate(s): ${IDLE} idle, ${UNREAD} unread message(s) addressed to you. Do NOT end your turn waiting — drain the work first (skills/motivation/SKILL.md §Drive contract §IV): read every unread message and route by halt_code; on a WAVE-COMPLETE materialize the payload, commit the wave, release the next wave-gate; prune each idle teammate whose payload is materialized and refresh its lane next wave (scoped to that one lane's worktree via 'git worktree remove .worktrees/<sprint_slug>-<lane>' — NEVER a blanket 'git worktree list | grep agent- | remove' loop or 'git worktree prune' while siblings are live); probe any teammate that went idle without WAVE-COMPLETE. THEN sweep liveness + per-lane git diff --stat for drift before yielding. If instead you are stopping to surface a HARD-STOP or operator-question, emit that concrete question now and stop — that is the one legitimate pause."
 
 if [[ "$CNT" -ge "$CAP" ]]; then
   # Runaway cap: state hasn't cleared after CAP nudges → the operator is

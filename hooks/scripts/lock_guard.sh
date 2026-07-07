@@ -48,7 +48,7 @@ case "$role" in
       msg="[shepherd] DISCOVERY-WRITE-PATH BLOCKED — @discovery may only Write to {paths.reports}/<date>-discovery-<id>.md"$'\n'
       msg+="  Attempted:  $file_path"$'\n'
       msg+="  Role:       discovery (from dispatch tag $tool_use_id)"$'\n'
-      msg+="See doctrines/discovery-readonly.md §Hard prohibitions."
+      msg+="See skills/shepherd/references/flock.md §@discovery."
       emit_deny "$msg" "lock_guard" "$tool" "$role" "$session"
     fi
     ;;
@@ -58,7 +58,7 @@ case "$role" in
       msg="[shepherd] AUDITOR-WRITE-PATH BLOCKED — @auditor may only Write to {paths.reports}/<date>-(intro-)audit-<concern>.md"$'\n'
       msg+="  Attempted:  $file_path"$'\n'
       msg+="  Role:       auditor (from dispatch tag $tool_use_id)"$'\n'
-      msg+="See doctrines/auditor-readonly.md §What auditors DO NOT."
+      msg+="See skills/shepherd/references/flock.md §@auditor."
       emit_deny "$msg" "lock_guard" "$tool" "$role" "$session"
     fi
     ;;
@@ -84,7 +84,7 @@ case "$role" in
           msg+="  Worktree:     $worktree_path"$'\n'
           msg+="  Role:         coder (from dispatch tag $tool_use_id)"$'\n'
           msg+="Writes outside the worktree are silently dropped from cherry-pick."$'\n'
-          msg+="See doctrines/worktree-confinement.md."
+          msg+="See skills/shepherd/references/flock.md §Write boundaries."
           emit_deny "$msg" "lock_guard" "$tool" "$role" "$session"
           ;;
       esac

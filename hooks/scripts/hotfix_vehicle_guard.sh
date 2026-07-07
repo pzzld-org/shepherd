@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shepherd hook — PreToolUse(Agent|Task): hotfix vehicle guard (v6.0.9, #135).
 #
-# ENFORCES: doctrines/hotfix-dispatch.md cardinality ladder.
+# ENFORCES: skills/shepherd/references/pipeline.md §Hotfix ladder cardinality ladder.
 #   H == 1 cluster  → one @coder subagent, NEVER a teammate-conductor.
 #   H ∈ (1, 5]      → batched Dynamic Workflow (multiple subagents); pass.
 #   H >= 6          → dedicated HOT-FIX lane + conductor + loop; pass.
@@ -102,7 +102,7 @@ fi
 MSG="[shepherd] WRONG-VEHICLE — H=1 hotfix MUST use a single @coder subagent, never a teammate-conductor."$'\n'
 MSG+="  H (cluster_count) : 1"$'\n'
 MSG+="  Attempted spawn   : ${SUBAGENT_TYPE:-unknown}${TEAM_NAME:+ (team: $TEAM_NAME)}"$'\n'
-MSG+="The hotfix cardinality ladder (doctrines/hotfix-dispatch.md):"$'\n'
+MSG+="The hotfix cardinality ladder (skills/shepherd/references/pipeline.md §Hotfix ladder):"$'\n'
 MSG+="  H == 1  → one @coder subagent via Agent({subagent_type: \"shepherd:coder\", ...})"$'\n'
 MSG+="  H ∈ (1,5] → batched Dynamic Workflow dispatching multiple @coder subagents"$'\n'
 MSG+="  H >= 6  → dedicated HOT-FIX lane + teammate-conductor + loop"$'\n'

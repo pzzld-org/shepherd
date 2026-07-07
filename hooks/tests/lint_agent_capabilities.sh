@@ -6,7 +6,7 @@
 # read-only behavioral contract that is only prose/graph-enforced evaporates
 # when a different dispatcher invokes the agent — e.g. a Claude Code Dynamic
 # Workflow runtime, which runs spawned agents in `acceptEdits` with no
-# orchestrator in the loop (doctrines/workflow-compile-down.md §VII). The
+# orchestrator in the loop (skills/harness/references/workflow-templates.md §VII). The
 # `tools:` allowlist is the capability-level contract; this lint pins it so a
 # read-only agent cannot silently regain a mutating verb.
 #
@@ -132,13 +132,13 @@ fi
 # ---------------------------------------------------------------------------
 # #84 least-privilege sweep — ALL NINE agents, under acceptEdits / no-orchestrator.
 # Under a Dynamic Workflow runtime every spawned agent runs in acceptEdits with NO
-# orchestrator in the loop (doctrines/workflow-compile-down.md §VII), so the `tools:`
+# orchestrator in the loop (skills/harness/references/workflow-templates.md §VII), so the `tools:`
 # allowlist is the ONLY capability boundary. No flock or meta role has a legitimate
 # need for a DESTRUCTIVE MCP verb (delete / destroy / drop): git deletions are
 # Bash-audited and conductor/shepherd-owned; DB/issue deletion is never a sprint
 # action. Pin that no agent regains one. Dual-use reads (execute_sql) and release
 # verbs (merge_pull_request, create_pull_request) on the writer/meta roles are
-# deliberate, documented retentions — see doctrines/invariant-enforcement-matrix.md §IV.
+# deliberate, documented retentions — see skills/shepherd/references/invariant-matrix.md §IV.
 # ---------------------------------------------------------------------------
 ALL_ROLES="engineer critic coder auditor worker discovery conductor shepherd planter"
 for role in $ALL_ROLES; do

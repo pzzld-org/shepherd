@@ -17,7 +17,7 @@
 #   - jq unavailable
 # FAIL-OPEN: any error → exit 0. Never blocks.
 # BOUNDED: caps at 12 tool lines; pinned entries surface first.
-# See: skills/shepherd/doctrines/toolkit.md
+# See: skills/context/references/toolkit.md
 
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"

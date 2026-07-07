@@ -48,7 +48,7 @@ if printf '%s' "$cmd" | grep -qE '[A-Za-z0-9._/-]+\.workflow\.js'; then
       msg+="lane (teammate-conductor) is the Agent Teams axis — Agent({team_name:...,"$'\n'
       msg+="subagent_type: \"shepherd:conductor\"}) — NEVER a workflow. This is the v6.0.1"$'\n'
       msg+="field regression (#89 inversion 1). Spawn lanes via Agent Teams; let each"$'\n'
-      msg+="teammate compile its OWN gate-free step fan-out. See doctrines/primitive-axis-binding.md §III.1."
+      msg+="teammate compile its OWN gate-free step fan-out. See skills/shepherd/references/pipeline.md §Lane law.1."
       emit_deny "$msg" "bash_guard" "Bash" "$role" "$session"
     fi
   done < <(printf '%s' "$cmd" | grep -oE '[A-Za-z0-9._/-]+\.workflow\.js')
@@ -62,7 +62,7 @@ if printf '%s' "$cmd" | grep -q 'git commit'; then
   if [[ "$branch" =~ ^(agent-|lane-) ]]; then
     msg="[shepherd] git commit BLOCKED — HEAD is on agent lane '${branch}'."$'\n'
     msg+="The conductor must only commit to the sprint branch, never an agent-* or lane-* branch."$'\n'
-    msg+="Recover: git checkout <sprint_branch>  (see doctrines/conductor-cwd.md §Ban 2)"
+    msg+="Recover: git checkout <sprint_branch>  (see skills/shepherd/references/flock.md §Ban 2)"
     emit_deny "$msg" "bash_guard" "Bash" "$role" "$session"
   fi
 fi
@@ -84,7 +84,7 @@ if [[ "$role" == "auditor" ]]; then
       msg+="  Command:     ${cmd:0:120}"$'\n'
       msg+="Auditors MUST run gates at the sprint root, not from a coder's worktree —"$'\n'
       msg+="otherwise uncommitted worktree state produces FALSE-CRITICAL findings."$'\n'
-      msg+="See doctrines/auditor-readonly.md §Where auditors RUN."
+      msg+="See skills/shepherd/references/flock.md §@auditor."
       emit_deny "$msg" "bash_guard" "Bash" "$role" "$session"
     fi
   fi
@@ -93,7 +93,7 @@ fi
 # ---------------------------------------------------------------------------
 # Check 3 — @discovery invoking state-modifying Bash (BLOCK)
 # ---------------------------------------------------------------------------
-# Per doctrines/discovery-readonly.md, @discovery is read-only. The agent
+# Per skills/shepherd/references/flock.md §@discovery, @discovery is read-only. The agent
 # system prompt enumerates forbidden patterns; this hook is the second line
 # of defense.
 if [[ "$role" == "discovery" ]]; then
@@ -110,7 +110,7 @@ if [[ "$role" == "discovery" ]]; then
     msg+="Discovery agents NEVER mutate state. If you need to write a report,"$'\n'
     msg+="the brief's [OUTPUT-PATH] is your ONLY write target — use the Write tool"$'\n'
     msg+="(restricted by lock_guard), not shell redirection."$'\n'
-    msg+="See doctrines/discovery-readonly.md §Hard prohibitions."
+    msg+="See skills/shepherd/references/flock.md §@discovery."
     emit_deny "$msg" "bash_guard" "Bash" "$role" "$session"
   fi
 fi
@@ -128,7 +128,7 @@ if [[ "$bg" == "true" ]] && printf '%s' "$cmd" | grep -qE '(^|[[:space:];|&])car
   msg+="run_in_background, never two gate commands in separate tool calls. Concurrent"$'\n'
   msg+="cargo deadlocks on the target/ lock and silently violates sequential gating."$'\n'
   msg+="Use: cargo fmt --all && cargo check ... && cargo clippy ... && cargo test ..."$'\n'
-  msg+="See doctrines/cargo-sequential-gates.md (Execution pattern)."
+  msg+="See skills/shepherd/references/pipeline.md §Gates (Execution pattern)."
   emit_deny "$msg" "bash_guard" "Bash" "$role" "$session"
 fi
 
@@ -141,7 +141,7 @@ if [[ "${bg_cargo_count:-0}" -gt 0 ]]; then
   warn="[shepherd] cargo parallel WARN — ${bg_cargo_count}+ backgrounded cargo invocation(s) detected."$'\n'
   warn+="Cargo holds an exclusive lock on target/; parallel cargo processes deadlock."$'\n'
   warn+="Use sequential: cargo check && cargo clippy (not '&' backgrounding)."$'\n'
-  warn+="See doctrines/cargo-sequential-gates.md"
+  warn+="See skills/shepherd/references/pipeline.md §Gates"
   emit_context "$warn" "bash_guard" "Bash" "$role" "$session"
 fi
 
@@ -151,7 +151,7 @@ fi
 if printf '%s' "$cmd" | grep -qE 'cd\s+.*\.claude/worktrees|pushd\s+.*\.claude/worktrees'; then
   warn="[shepherd] cd into worktree WARN — 'cd' into a .claude/worktrees/ path drifts conductor cwd."$'\n'
   warn+="Use 'git -C <path>' for inspection; absolute paths for Read/Write."$'\n'
-  warn+="See doctrines/conductor-cwd.md §Ban 1"
+  warn+="See skills/shepherd/references/flock.md §Ban 1"
   emit_context "$warn" "bash_guard" "Bash" "$role" "$session"
 fi
 

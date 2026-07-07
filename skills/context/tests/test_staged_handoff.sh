@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Staged-handoff seed-ready round-trip (v6.1.7 feature, verified v6.1.8).
-# Exercises the exact mailbox seam doctrines/staged-handoff.md relies on:
+# Exercises the exact mailbox seam skills/shepherd/references/spawn-flags.md §--staged relies on:
 #   planter (Session B):  shctx mailbox send --to=shepherd-spawn-<slug> --kind=seed-ready
 #   staged spawn (A):     shctx mailbox recv --as=... --unread-only --mark-read | jq '.[]|select(.kind=="seed-ready")'
 #                         shctx mailbox ack <id>

@@ -35,7 +35,7 @@
 #   - already probed this session (TTL marker under <ns>/cache/)
 #   - jq unavailable
 # FAIL-OPEN: any error → exit 0. Never blocks; never hard-depends on a plugin.
-# See: skills/shepherd/doctrines/capability-discovery.md
+# See: skills/context/references/toolkit.md
 
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -136,7 +136,7 @@ probe_plugin_dir() {
       *superpowers*)
         add_cap "$name" "plugin" "brainstorming / TDD / systematic-debugging skills — route at the right seams" "brainstorming,tdd,debugging" "plugins:$name" ;;
       *pr-review*|*review-toolkit*)
-        add_cap "$name" "plugin" "PR-review specialist agents — surface per doctrines/specialist-dispatch.md" "pr-review,specialist" "plugins:$name" ;;
+        add_cap "$name" "plugin" "PR-review specialist agents — surface per skills/shepherd/references/flock.md §Dispatch" "pr-review,specialist" "plugins:$name" ;;
       *)
         add_cap "$name" "plugin" "installed Claude Code plugin (auto-discovered)" "" "plugins:$name" ;;
     esac
@@ -193,7 +193,7 @@ ROSTER_JSON="$(jq -cn \
   '{
     version: 1,
     source: "auto-discovered",
-    note: "EPHEMERAL — gitignored cache. NEVER edit toolkit.json from this; the curated registry is operator intent (doctrines/capability-discovery.md).",
+    note: "EPHEMERAL — gitignored cache. NEVER edit toolkit.json from this; the curated registry is operator intent (skills/context/references/toolkit.md).",
     probed_at: $now,
     session_id: $session,
     capabilities: $caps,
@@ -208,7 +208,7 @@ ROSTER_JSON="$(jq -cn \
       },
       available_specialists: {
         present: null,
-        how: "Specialists (pr-review-toolkit:*, superpowers:*, etc.) are AGENTS, not tools. Enumerate them from your VISIBLE available-agents list (the system-reminder block) and record the names here. NEVER ToolSearch for an agent type — that returns nothing by design (SUBAGENT-DISCOVERY-TOOLSEARCH); ToolSearch is for deferred MCP/utility tool calls only. Per doctrines/specialist-dispatch.md §Step 2."
+        how: "Specialists (pr-review-toolkit:*, superpowers:*, etc.) are AGENTS, not tools. Enumerate them from your VISIBLE available-agents list (the system-reminder block) and record the names here. NEVER ToolSearch for an agent type — that returns nothing by design (SUBAGENT-DISCOVERY-TOOLSEARCH); ToolSearch is for deferred MCP/utility tool calls only. Per skills/shepherd/references/flock.md §Dispatch §Step 2."
       }
     }
   }' 2>/dev/null || true)"
