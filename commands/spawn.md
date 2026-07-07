@@ -99,8 +99,8 @@ INHERITED CONTEXT
 BOOT INSTRUCTION
   On your FIRST turn, load ${CLAUDE_PLUGIN_ROOT}/agents/conductor.md §Boot verification
   and begin — do NOT wait for a kickoff message. Your lane brief IS the instruction.
-  conductor.md §Boot verification owns the boot checklist, the lane micro-Stage-Graph
-  walk, the FLOCK-OUTPUT REVIEW gate, and the WAVE-COMPLETE payload schema you emit.
+  conductor.md owns the boot checklist (§Boot verification), the lane micro-Stage-Graph
+  walk (§Lane walk), and the WAVE-COMPLETE payload schema you emit (§WAVE-COMPLETE + resume).
 
 HARD PROHIBITIONS (each BINDING; on any, REFUSE and
 SendMessage(to: lead, halt_code: <code>, blocking: true)):
@@ -179,15 +179,19 @@ records an explicit override.
 
 ### Self-contained engineer
 
-Root MAY spawn `@engineer` as a self-contained teammate via the native teammate-spawn, NEVER
-the Agent/Task tool (`skills/shepherd/references/pipeline.md §INTRO`). Its brief carries
-`mode: self-contained` and `dispatcher: engineer-self-contained`. The engineer's sub-flock is
-the three read-only / adversarial roles ONLY — `@discovery`, intro-mode `@auditor`, `@critic`
-— and runs the intro combo wave + its own critic gate + ≥1 revision in its window, returning
-the plan + a hash-tied critic-proof; no code is touched. Root accepts via a thin gate (`shctx
+Root spawns `@engineer` as a self-contained teammate (the DEFAULT) via the native
+teammate-spawn, NEVER the Agent/Task tool (`skills/shepherd/references/pipeline.md §INTRO`).
+Its brief carries `mode: self-contained` and `dispatcher: root-shepherd` (the
+`engineer-self-contained` marker is what the ENGINEER tags on its own sub-flock dispatches,
+never what root puts on the engineer's brief). The engineer's sub-flock is the three
+read-only / adversarial roles ONLY — `@discovery`, intro-mode `@auditor`, `@critic` — with a
+MINIMUM 5-subagent intro wave (2 `@discovery` + 3 intro-`@auditor`, scaled upward at the
+engineer's discretion), then its own critic gate looped until GREEN, returning ONE finalized
+plan + a hash-tied critic-proof; no code is touched. Root accepts via a thin gate (`shctx
 seed verify` + `shctx plan verify --plan <plan>` + a lane-count sanity check) and runs NEITHER
-its own intro wave NOR `@critic`. Only ROOT spawns the engineer teammate; a self-contained
-engineer dispatched as an Agent/Task subagent → `ENGINEER-TOPOLOGY-MISMATCH`.
+its own intro wave NOR `@critic` (`ROOT-INTRO-USURPED`). Only ROOT spawns the engineer
+teammate; a self-contained engineer dispatched as an Agent/Task subagent →
+`ENGINEER-TOPOLOGY-MISMATCH`.
 
 ### Post-spawn confirmation
 

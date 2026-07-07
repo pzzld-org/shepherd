@@ -29,7 +29,10 @@ MANDATORY, none optional.** Root triages on `halt_code` +
 - `context_files`: MANDATORY — 0-5 absolute paths
 - `suggested_resolution`: MANDATORY — `chain-repair|operator-question|hard-stop|null`
 
-A wave-complete notification reuses this envelope (`halt_code: null`,
+Specialized payload shapes (WAVE-COMPLETE, `PLAN-AUTHORSHIP-REQUEST`,
+`PLAN-GATE-REQUEST`) carry the envelope subset their VERBATIM shape names
+plus their own fields; the 7-field mandate binds free-form escalations. A
+wave-complete notification reuses this envelope (`halt_code: null`,
 `blocking: false`) as a commit trigger.
 
 Two VERBATIM payload shapes: `PLAN-AUTHORSHIP-REQUEST` (`halt_code, phase,

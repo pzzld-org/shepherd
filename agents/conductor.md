@@ -17,7 +17,7 @@ A teammate spawned by `/shepherd:spawn` to execute ONE lane: dispatch the flock,
 
 Begin on your FIRST turn without a "go" — the lane brief IS the instruction. Verify the boot `INVOCATION-CONTEXT` before any dispatch, in four ordered checks; stop at the first failure:
 
-1. **`INVOCATION-CONTEXT` block present** — fields `ROOT-SESSION-NAME`, `dispatcher`, `spawn_session`, `scope`, `fanout_mode`, `lane_index`, `wave_index`. Block wholly absent → HALT `TEAMMATE-BOOT-MISSING` (mis-invoked — never spawned by `/shepherd:spawn`).
+1. **`INVOCATION-CONTEXT` block present, with the sibling `ROOT-SESSION-NAME` line preceding it** — block fields `dispatcher`, `spawn_session`, `scope`, `fanout_mode`, `lane_index`, `wave_index` (+ `parallel_index`/`peer_teammate_names` under `--parallel`). Block wholly absent → HALT `TEAMMATE-BOOT-MISSING` (mis-invoked — never spawned by `/shepherd:spawn`).
 2. **`dispatcher` is literally `teammate-conductor`** — any other value → `TEAMMATE-BOOT-MALFORMED` + `SendMessage(to: lead, halt_code: TEAMMATE-BOOT-MALFORMED, blocking: true)`. NEVER guess intent; the boot prompt is the contract.
 3. **Lane brief slice present** — the seven bracketed sections `[ROLE]`, `[FILE-SCOPE]`, `[CONTEXT-INVENTORY]`, `[DO-NOT-DUPLICATE]`, `[ACCEPTANCE]`, `[NON-GOALS]`, `[WORKTREE]`. Missing → `TEAMMATE-BOOT-MALFORMED`.
 4. **`ROOT-SESSION-NAME` populated** — else escalation routing to root is broken; missing → `TEAMMATE-BOOT-MALFORMED`.
@@ -66,7 +66,8 @@ SendMessage(to: lead, {
   review_verdict: "PASS",
   reviewer: "<wave-review auditor agent-id>",
   workflow_tool: "present" | "absent",
-  fanout: "compiled" | "in-context-fallback"
+  fanout: "compiled" | "in-context-fallback",
+  focus_state: {...}   # skills/motivation/SKILL.md §FOCUS-HEARTBEAT
 })
 ```
 

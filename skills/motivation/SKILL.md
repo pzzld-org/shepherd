@@ -56,7 +56,7 @@ Once `/shepherd:spawn` team liveness is confirmed, root ENTERS THE FOCUS-LOOP as
 
 **The cycle, every wake:** WAKE (`TeammateIdle`, `SendMessage`, `TaskCompleted`, or root's own continuation) → ACT (drain the lead mailbox, route by `halt_code`, release the next wave gate on `WAVE-COMPLETE`, prune a materialized idle teammate; idle teammate with NO `WAVE-COMPLETE` → `SendMessage` a status query, mark `TEAMMATE-STALL` candidate, start a 5-min staleness timer — silent past threshold surfaces `TEAMMATE-STALL`, NEVER auto-recover) → PROBE (`shctx teammate liveness --stale-mins=5`; `git diff --stat` per live lane, changed-file count > ~1.5x the brief's `[FILE-SCOPE]` → `[DRIFT-WARN]`, `SendMessage` the lane to confirm; run the FOCUS-HEARTBEAT self-drift-check) → YIELD (one status line; never `Bash sleep`-spin or an operator prompt).
 
-**Scoped per-lane removal only** (v6.0.9 regression). Prune ONE idle teammate = `git worktree remove .worktrees/{sprint_slug}-{that_lane}` for that lane only. NEVER run the blanket `git worktree list | grep agent- | ... remove` loop or `git worktree prune` while siblings are live — that kills every in-flight lane at once. The blanket sweep is CLOSE-FINALIZE's RF-5 (`agents/shepherd.md`), run only after `v_teammates_live` hits zero.
+**Scoped per-lane removal only** (v6.0.9 regression). Prune ONE idle teammate = `git worktree remove .worktrees/{sprint_slug}-{that_lane}` for that lane only. NEVER run the blanket `git worktree list | grep agent- | ... remove` loop or `git worktree prune` while siblings are live — that kills every in-flight lane at once. The blanket sweep is CLOSE-FINALIZE's RF-5 (`skills/shepherd/references/pipeline.md §CLOSE-FINALIZE`), run only after `v_teammates_live` hits zero.
 
 ## SOAK
 
