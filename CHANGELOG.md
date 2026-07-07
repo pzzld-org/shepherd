@@ -4,6 +4,56 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v6.2.9 — 2026-07-07
+
+**Closes the one dispatch primitive the model map didn't reach: hand-authored Dynamic Workflows (#178).**
+
+### New — `hooks/scripts/workflow_model_guard.sh`, `hooks/scripts/workflow_model_lint.py`
+
+- **`PreToolUse(Workflow)` dispatch-model-pin guard.** Every OTHER dispatch primitive resolves its
+  model from the single `[models]` map (`skills/context/references/model-map.md`) — Agent/Task via
+  `dispatch_guard.sh`, teammate spawns via `commands/spawn.md §Model pin` — but a raw Workflow-tool
+  `agent()` call bypassed it silently: the Workflow tool's own documented default is to omit
+  `model:` and inherit the MAIN-LOOP model, exactly the opposite of shepherd's operator law (every
+  dispatched subagent = sonnet unless explicitly overridden). Field incident (2026-07-07): a
+  Fable-5 planter session dispatched a Workflow whose `agent()` calls omitted model/agentType;
+  every deep-audit subagent ran on Fable at xhigh effort until the operator caught it mid-run.
+- **Best-effort JS-lite static scan** (`workflow_model_lint.py`), not a JS parser: masks every
+  string/template literal and comment to same-length blanks before scanning, so a prompt that
+  merely *mentions* `"model:"` in prose — or a JSON schema field happening to be named `model` —
+  can never fake a pass. Flags three shapes the same way: a bare `agent(prompt)` with no opts
+  argument, an opts object literal missing both keys at its top level, and a non-literal opts
+  expression (a variable/spread) that can't be verified statically. Scans `tool_input.script`
+  inline or reads `tool_input.scriptPath` from disk; a saved/named workflow with no visible script
+  text, or an unreadable path, fails OPEN (logged, never silently treated as clean).
+- **Operator override**: a `// shepherd:model-pin-override` line comment anywhere in the submitted
+  script acknowledges unpinned dispatch for that one call — the same brief-marker idiom
+  `dispatch_guard.sh` already uses (`mode: self-contained`, `dispatcher: engineer-self-contained`).
+  Always surfaced via `additionalContext` and logged, never a silent bypass.
+- **Config**: `[hooks].workflow_model_guard = block` (default) `| warn | off`, mirroring the
+  `[release].devlast_guard` / `[spawn].coordinate_drive_guard` convention. Halt code
+  `WORKFLOW-MODEL-PIN-MISSING`.
+
+### Docs
+
+- `docs/configuration.md §[hooks]`: new `workflow_model_guard` row + explanatory paragraph; also
+  backfilled the pre-existing but undocumented `flag_handrolled_fanout` key.
+- `README.md`: `workflow_model_guard.sh` added to the mechanical-enforcement-hooks list and the
+  Models section under "Under the hood".
+
+### Tests
+
+- `hooks/tests/test_workflow_model_guard.sh` (new, 17 cases): bare/non-compliant calls blocked;
+  `model:`/`agentType:` pins pass; string-content-blind against both a prose mention and a nested
+  schema field named `model`; a non-literal opts expression is flagged, not given the benefit of
+  the doubt; multi-call scripts name only the actual violator; the `subagent(` word-boundary is
+  respected; the override marker, `scriptPath`, `warn`/`off` modes, and the no-visible-script
+  fail-open path are each covered.
+- `hooks/tests/run.sh`: 4 new fast-path smoke cases + the dedicated suite wired in. Full suite:
+  60/60.
+
+---
+
 ## v6.2.8 — 2026-07-07
 
 **The refinement sweep — the plugin-wide compaction v6.2.7 deferred, plus modular skills.** Prompt surface cut 73%: 202,192 → 54,725 words (~263k → ~71k est. tokens) across 122 → 51 load-bearing files, with zero behavior change outside four named removals. The 71-doctrine directory is dissolved; every load-bearing rule now lives in exactly one narrow skill, loaded per-dispatch instead of per-plugin.

@@ -104,6 +104,12 @@ run_case "no-payload"          conductor_write_guard.sh ''
 run_case "non-conductor-tool"  conductor_write_guard.sh '{"session_id":"s1","tool_name":"Read","tool_input":{"file_path":"a"}}'
 run_case "no-sprint-open-edit" conductor_write_guard.sh '{"session_id":"s1","tool_name":"Edit","tool_input":{"file_path":"a.md"}}'
 
+echo "== workflow_model_guard.sh (v6.2.9 #178) — fast-path smoke =="
+run_case "no-payload"          workflow_model_guard.sh ''
+run_case "non-workflow-tool"   workflow_model_guard.sh '{"session_id":"s1","tool_name":"Agent","tool_input":{"subagent_type":"shepherd:coder"}}'
+run_case "no-script-visible"   workflow_model_guard.sh '{"session_id":"s1","tool_name":"Workflow","tool_input":{"name":"a-saved-workflow"}}'
+run_case "pinned-call"         workflow_model_guard.sh '{"session_id":"s1","tool_name":"Workflow","tool_input":{"script":"const r = await agent(\"x\", {model: \"sonnet\"})"}}'
+
 # Static lint, not a payload-driven hook: assert the read-only flock reviewers
 # carry no un-scoped mutating capability (GH #74). Runs against the real repo
 # (the lint self-locates its REPO_ROOT), independent of the ephemeral test cwd.
@@ -389,6 +395,23 @@ if cwg_out=$(bash "$TESTS_DIR/test_conductor_write_guard.sh" 2>&1); then
 else
   printf '  FAIL  %-50s\n' "conductor-write-guard"
   printf '%s\n' "$cwg_out" | sed 's/^/        /'
+  fails=$((fails+1))
+fi
+
+# Workflow dispatch-model-pin guard (v6.2.9, #178): workflow_model_guard.sh
+# blocks (default) a PreToolUse(Workflow) script whose agent() calls omit
+# BOTH model:/agentType: — the shape that silently inherits the main-loop
+# model. String-content-blind (a prompt mentioning "model:" in prose, or a
+# schema field named "model", must not false-pass), honors warn/off +
+# the `// shepherd:model-pin-override` marker, fails open on an invisible
+# named-workflow script or an unreadable scriptPath.
+echo "== test_workflow_model_guard.sh (v6.2.9 — #178 workflow dispatch-model-pin gate) =="
+total=$((total+1))
+if wmg_out=$(bash "$TESTS_DIR/test_workflow_model_guard.sh" 2>&1); then
+  printf '  PASS  %s\n' "workflow-model-guard-blocks-unpinned-dispatch"
+else
+  printf '  FAIL  %-50s\n' "workflow-model-guard"
+  printf '%s\n' "$wmg_out" | sed 's/^/        /'
   fails=$((fails+1))
 fi
 

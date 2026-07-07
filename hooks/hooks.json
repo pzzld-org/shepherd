@@ -127,6 +127,15 @@
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/hotfix_vehicle_guard.sh"
           }
         ]
+      },
+      {
+        "matcher": "Workflow",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/workflow_model_guard.sh"
+          }
+        ]
       }
     ],
     "SubagentStop": [

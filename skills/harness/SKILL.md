@@ -73,6 +73,17 @@ spawned from inside a Workflow run under `acceptEdits` (auto-approved edits)
 its restriction via tool allowlist, never via permission mode (see
 `## Capability enforcement`).
 
+**Model pin, mandatory (#178).** The platform default is to OMIT `model:` on
+`agent()` and let the call inherit the main-loop model — shepherd's operator
+law inverts that: every dispatched subagent = sonnet unless explicitly
+overridden. Every `agent()` call MUST carry `model:` or
+`agentType: "shepherd:<role>"` resolved from the single `[models]` map
+(`skills/context/references/model-map.md`), mechanically enforced by
+`hooks/scripts/workflow_model_guard.sh` (`PreToolUse(Workflow)`,
+`WORKFLOW-MODEL-PIN-MISSING`) — the same discipline `dispatch_guard.sh`
+already holds Agent/Task dispatches to, extended to the one primitive it
+cannot see (a Workflow script's internal spawns never re-enter that hook).
+
 The Workflow tool is top-level, NOT deferred and NOT an MCP tool — see
 `## ToolSearch` for why it is never a `ToolSearch` target.
 
