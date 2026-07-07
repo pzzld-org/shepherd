@@ -114,6 +114,7 @@ pre-dispatch hook. 8: doctrine plus a partial shape-block.
 | 20 | A self-contained engineer dispatches ONLY its read-only sub-flock (`@discovery`+intro-`@auditor`+`@critic` self-gate) — never `@coder`/`@worker`/nested `@engineer`/teammate; spawned as a NAMED teammate only | `dispatch_guard.sh` Check 4 blocks teammate→`@engineer`, and teammate→`@critic` unless marked `dispatcher: engineer-self-contained`; Check 4b `ENGINEER-TOPOLOGY-MISMATCH` blocks subagent dispatch; Check 4c `ENGINEER-SUBFLOCK-VIOLATION` blocks dispatch outside the trio; `lint_agent_capabilities.sh` pins `Agent` to `{discovery,auditor,critic}` | hard-block+lint | **live** |
 | 21 | Every dispatching tier injects each role's model from the single `[models]` map; root is advisory only | `shctx models resolve <role>` pins the Agent `model:` at each tier; `shctx models show` preflight | CLI+doctrine | **live** |
 | 22 | `shctx prune` reclaims only non-current∧terminal∧aged state; `--dry-run` default, `--confirm` moves to /tmp (reversible); never touches releases / current focus / metrics / pinned memory / active locks | fence (branch≠current∧terminal∧aged)+move-not-delete snapshot+`sqlite_master` guard; DB-row deletes preview-only | CLI+doctrine | **live (on-disk) / preview (DB)** |
+| 23 | A Dynamic Workflow's `agent()` calls carry an explicit `model:`/`agentType:` pin — omitting BOTH silently inherits the MAIN-LOOP model, the one dispatch primitive row 21 doesn't reach (`dispatch_guard.sh` fires on `Agent`/`Task`, never on the internal spawns a Workflow script makes) | `workflow_model_guard.sh` `PreToolUse(Workflow)`→`WORKFLOW-MODEL-PIN-MISSING`; string-content-blind static scan (`workflow_model_lint.py`); `[hooks].workflow_model_guard`=block\|warn\|off; `// shepherd:model-pin-override` marker escape hatch (#178) | hard-block | **live (tested)** |
 
 ## VI. Promotion backlog (gaps → mechanisms)
 
@@ -131,6 +132,8 @@ mechanism, so promotion is bounded, not a redesign:
 - `skills/shepherd/SKILL.md §Dispatch law` — the forbidden-dispatch halt codes
 - `hooks/scripts/dispatch_guard.sh` — checks 1-6 (dispatch shape)
 - `hooks/scripts/bash_guard.sh` — workflow-inversion + cargo-sequential checks
+- `hooks/scripts/workflow_model_guard.sh` — row 23, the Workflow-tool model-pin gate (#178)
 - `hooks/tests/test_dispatch_guard.sh` — the Gate 1 block test
+- `hooks/tests/test_workflow_model_guard.sh` — row 23's block test
 - `hooks/tests/lint_agent_capabilities.sh` — the capability lint
 - `skills/harness/references/workflow-templates.md` — why allowlists are the only `acceptEdits` boundary

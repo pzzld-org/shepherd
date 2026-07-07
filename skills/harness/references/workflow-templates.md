@@ -116,6 +116,20 @@ body, and it NEVER dispatches remediation — on anomaly it terminates and
 surfaces to the operator. (A rails-gated, opt-in-twice-over exception that
 DOES remediate is `skills/motivation/SKILL.md §Sentinel`.)
 
+## Model pin (mandatory, #178)
+
+Every `agent()` call in a hand-authored Workflow script MUST carry an explicit
+`model:` or `agentType: "shepherd:<role>"` resolved from the single `[models]`
+map (`skills/context/references/model-map.md`) — omitting BOTH silently
+inherits the main-loop model instead (the platform's own stated default),
+mechanically blocked by `hooks/scripts/workflow_model_guard.sh`
+(`PreToolUse(Workflow)`, `WORKFLOW-MODEL-PIN-MISSING`, `skills/harness/
+SKILL.md §Workflow tool`). This governs the native Workflow tool only — the
+`shctx graph compile` output below runs its own `node <segment>.workflow.js`
+execution path (a Bash invocation, not the Workflow tool), out of this
+guard's reach; its faithfulness diff (§Compile-down model, below) is that
+path's correctness mechanism instead.
+
 ## Compile-down model
 
 Compile-down is the primary execution path for gate-free agent-fanout

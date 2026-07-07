@@ -181,7 +181,9 @@ Plant feeds spawn: seed first, then execute.
 
 **Models.** `[models]` in `shepherd.toml`, resolved by `shctx models resolve`, is the one table
 mapping each role to its model — set once instead of hand-pinning per spawn. Coders are always
-scoped to a disjoint file set so parallel waves cannot collide.
+scoped to a disjoint file set so parallel waves cannot collide. `workflow_model_guard.sh` extends
+the same discipline to hand-authored Dynamic Workflow scripts: an `agent()` call with neither
+`model:` nor `agentType:` silently inherits the main-loop model instead, so it's blocked by default.
 
 **Self-contained engineer.** Can run as its own named teammate, running a read-only sub-flock
 in-session (discovery + intro-audit + its own dispatched critic) and returning a hash-tied
@@ -205,8 +207,10 @@ sql), tracked in git, injected into every matching coder brief.
 
 **Mechanical enforcement hooks.** `dispatch_guard.sh` rejects a bad `subagent_type`;
 `dedup_write_guard.sh`/`dups_write_guard.sh` block a symbol reusing an existing name or shape;
-`coordinate_drive_guard.sh` blocks a premature root halt while teammates are idle. Smoke suite:
-`bash hooks/tests/run.sh`.
+`coordinate_drive_guard.sh` blocks a premature root halt while teammates are idle;
+`workflow_model_guard.sh` blocks a Dynamic Workflow whose `agent()` calls omit both `model:` and
+`agentType:` — the shape that silently inherits the main-loop model instead of resolving from
+`[models]`. Smoke suite: `bash hooks/tests/run.sh`.
 
 **Six modular skills.** `skills/shepherd` (dispatch law, pipeline, flock briefs), `skills/adaptation`
 (lesson memory), `skills/motivation` (focus, FOCUS-HEARTBEAT, drive, sentinel), `skills/harness`

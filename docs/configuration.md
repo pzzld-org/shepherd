@@ -179,6 +179,17 @@ open-issue space at every sprint open.
 | `on_engineer_only` | list | `["workflow"]` | engineer-only |
 | `on_planter_only` | list | `[]` | planter-only |
 | `quiet_warnings` | bool | `false` | suppress informational `additionalContext` (still logged) |
+| `flag_handrolled_fanout` | bool | `false` | `dispatch_guard.sh` Check 6 — warn when a teammate hand-rolls a flock fan-out instead of compiling it |
+| `workflow_model_guard` | enum | `"block"` | `block\|warn\|off` — `workflow_model_guard.sh` PreToolUse(Workflow) dispatch-model-pin gate (#178) |
+
+`workflow_model_guard`: blocks (default) a submitted Dynamic Workflow script whose `agent()` calls
+carry neither `model:` nor `agentType:` — the shape that silently inherits the MAIN-LOOP model
+instead of resolving from `[models]` (`skills/context/references/model-map.md`). String-content-
+blind (a prompt merely mentioning "model:" cannot fake a pass) and fails open on anything it can't
+see (a saved/named workflow, an unreadable `scriptPath`, no `python3`). One-off acknowledgment: a
+`// shepherd:model-pin-override` line comment anywhere in the script — always logged, never silent,
+reported via `additionalContext` even in block mode. `warn` proceeds with the same message via
+`additionalContext`; `off` disables the scan entirely. See `hooks/scripts/workflow_model_guard.sh`.
 
 ### `[spawn]` — teammate-spawn coordination
 
