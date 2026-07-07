@@ -40,6 +40,7 @@ PAT = {
     "agent_at": re.compile(
         r"@(shepherd|planter|engineer|critic|coder|auditor|worker|discovery|conductor)\b"
     ),
+    "command": re.compile(r"commands/([a-z0-9._-]+?)\.md"),
     "shctx": re.compile(r"\bshctx\s+([a-z][a-z0-9-]*)"),
     "skill_dir": re.compile(r"skills/([a-z0-9_-]+)/"),
     "script": re.compile(r"\b(cmd_[a-z0-9_-]+\.sh|[a-z0-9_-]+\.(?:sh|py))\b"),
@@ -124,12 +125,39 @@ def main():
         sample = ", ".join(sorted({os.path.dirname(c) or c for c in callers})[:4])
         print(f"| {cmd} | {n} | {sample} |")
 
-    # 2. doctrines by inbound refs
+    # 2. dangling refs — any cited doctrine/reference/command/agent path that no
+    # longer exists on disk. Primary post-restructure gate (v6.2.8+).
+    print("\n## dangling refs (cited path missing on disk)\n")
+    dangling = 0
+    resolvers = {
+        "doctrine": lambda s: [f"skills/shepherd/doctrines/{s}.md"],
+        "command": lambda s: [f"commands/{s}.md"],
+        "agent_path": lambda s: [f"agents/{s}.md", f"skills/shepherd/agents/{s}.reference.md"],
+        "reference": lambda s: [
+            f"skills/shepherd/references/{s}.md",
+            f"skills/context/references/{s}.md",
+            f"skills/harness/references/{s}.md",
+        ],
+    }
+    for path, refs in sorted(graph.items()):
+        if path.startswith("docs/specs/"):
+            continue  # dated planning artifacts cite historical paths by design
+        for kind, resolve in resolvers.items():
+            for slug in refs.get(kind, []):
+                if not any(os.path.exists(c) for c in resolve(slug)):
+                    print(f"- {path}: {kind} `{slug}` → no candidate exists")
+                    dangling += 1
+    print(f"\ndangling refs: {dangling}")
+
+    # 3. doctrines by inbound refs (skipped once the doctrine dir is dissolved)
+    doc_dir = "skills/shepherd/doctrines"
+    if not os.path.isdir(doc_dir):
+        print("\n## doctrines: directory absent (post-v6.2.8 layout) — section skipped")
+        return
     rev_doc = reverse(graph, "doctrine")
     print("\n## doctrines by inbound reference count (excluding self + doctrine dir)\n")
     print("| doctrine | inbound | from-hooks | citers |")
     print("|---|---|---|---|")
-    doc_dir = "skills/shepherd/doctrines"
     slugs = sorted(
         os.path.splitext(n)[0]
         for n in os.listdir(doc_dir)

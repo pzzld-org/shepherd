@@ -47,6 +47,11 @@ kind_surface_of() {
     commands/*.md)                                  echo "command commands" ;;
     skills/shepherd/SKILL.md)                        echo "skill-entry shepherd-skill" ;;
     skills/context/SKILL.md)                         echo "skill-entry context-skill" ;;
+    skills/adaptation/SKILL.md)                      echo "skill-entry adaptation-skill" ;;
+    skills/motivation/SKILL.md)                      echo "skill-entry motivation-skill" ;;
+    skills/harness/SKILL.md)                         echo "skill-entry harness-skill" ;;
+    skills/thinking/SKILL.md)                        echo "skill-entry thinking-skill" ;;
+    skills/harness/references/*.md)                  echo "reference harness-skill" ;;
     skills/shepherd/pipeline.md|skills/shepherd/flock.md)
                                                      echo "core shepherd-skill" ;;
     skills/shepherd/doctrines/_candidates/*.md)      echo "doctrine-candidate shepherd-skill" ;;
