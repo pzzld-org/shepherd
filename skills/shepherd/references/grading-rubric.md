@@ -1,131 +1,86 @@
-# Reference — Sprint-Level Grading Rubric
+---
+title: grading-rubric
+description: Deterministic formula synthesizing per-concern auditor grades (A-F) into one sprint-level grade, replacing ad hoc blending. Use when a conductor computes or cites a sprint-level grade.
+---
 
-> Project-agnostic principle: an audit swarm's per-concern grades aren't a
-> sprint-level grade. The conductor synthesizes them into one. v5.0.4 makes
-> the synthesis formula explicit so close reports cite a traceable
-> calculation instead of a vibe-blend.
->
-> Field origin: shepherd v5.0.3 conductor feedback (downstream Rust service),
-> §9 — Wave-2 audits returned B+ / A- / B- / B+ across four concerns;
-> the sprint-level grade was a manual blend hard to articulate precisely.
+# Sprint-Level Grading Rubric
+
+The sole owner of the sprint-level grade table and synthesis formula. Per-concern letter definitions: `agents/auditor.md` Grade rubric.
 
 ## The grades
 
-Each per-concern auditor returns a grade from the agent prompt's rubric:
-
 | Grade | Meaning |
 |---|---|
-| A    | Excellent — exceeds all gates; SUBTRACT win; zero CRITICAL/HIGH; real-work delivered fully |
-| A-   | Strong — minor MEDIUM findings; SUBTRACT met; real-work delivered |
-| B+   | Solid — some MEDIUM findings; SUBTRACT met; real-work delivered substantially |
-| B    | Acceptable — MEDIUM findings actionable; SUBTRACT met; real-work delivered |
-| B-   | Marginal — MEDIUM/HIGH findings; SUBTRACT borderline; real-work mostly delivered |
-| C+   | Capped — failed real-work test OR SUBTRACT violation OR drift-risk silence — none of the above can grade higher |
-| C    | Poor — multiple HIGH findings; substantive scope drift; SUBTRACT violation |
-| D    | Failing — CRITICAL findings unaddressed; theme not delivered |
-| F    | Sprint-fail — gates broken at HEAD; theme abandoned; operator escalation |
+| A | Excellent — exceeds all gates; SUBTRACT win; zero CRITICAL/HIGH; real-work delivered fully |
+| A- | Strong — minor MEDIUM findings; SUBTRACT met; real-work delivered |
+| B+ | Solid — some MEDIUM findings; SUBTRACT met; real-work delivered substantially |
+| B | Acceptable — MEDIUM findings actionable; SUBTRACT met; real-work delivered |
+| B- | Marginal — MEDIUM/HIGH findings; SUBTRACT borderline; real-work mostly delivered |
+| C+ | **Capped** — failed real-work test OR SUBTRACT violation OR drift-risk silence — none of the above can grade higher |
+| C | Poor — multiple HIGH findings; substantive scope drift; SUBTRACT violation |
+| D | Failing — CRITICAL findings unaddressed; theme not delivered |
+| F | Sprint-fail — gates broken at HEAD; theme abandoned; operator escalation |
 
 ## Concern weights
 
-The conductor blends per-concern grades with these default weights:
+Default weights (MUST sum to 1.00; override via `shepherd.toml [gates.audit_weights]`):
 
 | Concern | Weight | Why |
 |---|---|---|
-| `completeness` | 0.35 | Did the seed deliver? — the most-load-bearing question |
-| `code-quality` | 0.20 | In-code discipline — observable in the diff |
-| `dependency-topology` | 0.20 | Build hygiene + wrapper discipline — propagates downstream |
-| `data-flow` | 0.15 | Money-path correctness — high-impact when violated |
-| `datastore-state` | 0.10 | Schema/RLS discipline — high-impact but narrowly visible |
-
-> Projects with a different concern set redistribute these weights in
-> `shepherd.toml` `[gates.audit_weights]`. The default sums to 1.00.
+| `completeness` | 0.35 | Did the seed deliver? — the most load-bearing question |
+| `code-quality` | 0.20 | In-code discipline, observable in the diff |
+| `dependency-topology` | 0.20 | Build hygiene + wrapper discipline, propagates downstream |
+| `data-flow` | 0.15 | Money-path correctness, high-impact when violated |
+| `datastore-state` | 0.10 | Schema/RLS discipline, high-impact but narrowly visible |
 
 ## Synthesis formula
 
 The conductor computes the sprint-level grade in three steps:
 
-1. **Map grades to numeric** (A=4.0, A-=3.7, B+=3.3, B=3.0, B-=2.7, C+=2.3,
-   C=2.0, D=1.0, F=0.0).
-2. **Weighted average** across concern grades using the weights above.
-3. **Map back** to letter, applying caps:
-   - Any concern returning **F** → sprint grade **F** (one CRITICAL gate
-     break overrides the average).
-   - Any concern returning **D** → sprint grade ≤ **C+** (cap, never
-     better than capped).
-   - Any concern flagging **SUBTRACT-VIOLATION** without operator
-     pre-auth → sprint grade ≤ **C+** (cap).
-   - Any **MISSING-`[CODE-STYLE]`** or **MISSING-`[DB-CONTEXT]`**
-     auditor finding → first occurrence cap **C+**, repeat **F**.
-   - Any unresolved **OUTCOME-REGRESSION** — a seeded acceptance
-     predicate (`seed §6`) that was promised true and now returns
-     false at close — caps the **completeness** concern grade: no
-     A/A- while a seeded outcome is false. The cap is on completeness
-     (weight 0.35), so it anchors the synthesized headline downward
-     even when other concerns are strong. Per `doctrines/outcome-enforcement.md §Seam 3`,
-     the close auditor re-runs the predicates before grading; a
-     promised-true predicate that regressed is a HIGH finding.
-4. **Otherwise**, round the numeric average to the nearest letter grade.
+1. **Map to numeric**: A=4.0, A-=3.7, B+=3.3, B=3.0, B-=2.7, C+=2.3, C=2.0, D=1.0, F=0.0.
+2. **Weighted average** across concern grades, re-normalizing weights when a concern wasn't run.
+3. **Map back to letter, applying caps** (each overrides the average):
+   - Any concern = **F** → sprint grade **F** (one CRITICAL gate break overrides the average).
+   - Any concern = **D** → sprint grade capped at **C+**.
+   - Any concern flags **SUBTRACT-VIOLATION** without operator pre-auth (`skills/shepherd/SKILL.md §Principles`) → capped at **C+**.
+   - Any **MISSING-`[CODE-STYLE]`** or **MISSING-`[DB-CONTEXT]`** finding → first occurrence caps **C+**, repeat occurrence → **F**.
+   - Any unresolved **OUTCOME-REGRESSION** (a seeded acceptance predicate from seed §6 promised true, now false at close) caps the **completeness** concern specifically — **no A/A- while a seeded outcome is false**. This propagates through the 0.35 weight and anchors the synthesized headline down even when every other concern is strong. The close auditor re-runs every predicate before grading (`references/pipeline.md §Gates`); a regressed predicate is filed HIGH.
+4. **Otherwise**, round the weighted numeric average to the nearest letter.
 
-## Worked example (a downstream Rust service)
-
-| Concern | Grade | Numeric | Weight | Contribution |
-|---|---|---|---|---|
-| code-quality | B+ | 3.3 | 0.20 | 0.66 |
-| dependency-topology | A- | 3.7 | 0.20 | 0.74 |
-| completeness | B- | 2.7 | 0.35 | 0.945 |
-| ledger-integrity ¹ | B+ | 3.3 | 0.15 | 0.495 |
-| (data-flow not run this sprint) | — | — | — | — |
-| **Weighted total** | | | **0.90 (re-normalized)** | **3.16** |
-
-¹ ledger-integrity here substitutes for `data-flow` per a downstream Rust
-service's non-default concern split.
-
-Re-normalized total numeric ≈ 3.51 → **B+/A-** range. Conductor picks
-**B+** (rounded down) because completeness (highest weight) returned
-B-, anchoring the headline. Cite this calculation in the close report's
-**## Grade rationale** section.
-
-## Conductor close-report template
+## Close-report template (required shape)
 
 ```markdown
-## Sprint-level grade: B+
+## Sprint-level grade: <letter>
 
 Per-concern grades:
-- completeness          B-  (weight 0.35)
-- code-quality          B+  (weight 0.20)
-- dependency-topology   A-  (weight 0.20)
-- ledger-integrity      B+  (weight 0.15)
-- data-flow             —   (concern not run)
+- completeness          <grade>  (weight 0.35)
+- code-quality          <grade>  (weight 0.20)
+- dependency-topology   <grade>  (weight 0.20)
+- data-flow             <grade>  (weight 0.15)
+- datastore-state       <grade>  (weight 0.10)
 
-Weighted numeric: 3.16 → B+
-Caps applied: none (no F/D/SUBTRACT-VIOLATION/MISSING-block findings).
-Rationale: completeness B- anchored the headline; dep-topology A- and
-code-quality B+ supported a B+ sprint synthesis. No CRITICAL findings
-unaddressed; carry-forward refresh complete.
+Weighted numeric: <n> → <letter>
+Caps applied: <none | list>
+
+## Grade rationale
+<one paragraph citing which concern anchored the headline and why>
 ```
+
+When a concern isn't run, drop its row and re-normalize the remaining weights to sum to 1.00 before computing the weighted numeric.
 
 ## When the formula disagrees with judgment
 
-If the conductor's read of the sprint disagrees with the formula by more
-than half a letter grade, the close report must explicitly cite the
-deviation reason:
+If the conductor's read of the sprint disagrees with the formula by more than half a letter grade, the close report MUST cite the deviation:
 
 ```markdown
 ## Sprint-level grade: B (formula computed B+; downgraded due to <reason>)
 ```
 
-Common deviation reasons:
-- Mid-sprint operator amendment that wasn't fully absorbed.
-- A passing audit whose finding-set looked light because the concern
-  was scoped too narrowly.
-- A real-work test that technically passed but produced unusable
-  output (a "moral C").
-
-Defaulting to the formula keeps grades calibrated across sprints; the
-escape hatch keeps them honest.
+Common reasons: a mid-sprint operator amendment not fully absorbed; an audit finding-set scoped too narrowly to be representative; a real-work test that technically passed but produced unusable output (a "moral C"). Defaulting to the formula keeps grades calibrated across sprints; the escape hatch keeps them honest.
 
 ## See also
 
-- `agents/auditor.md` Grade rubric — per-concern letter definitions.
-- `doctrines/subtract-dont-add.md` — SUBTRACT-VIOLATION cap logic.
-- `doctrines/issue-ledger-awareness.md` — drift-risk silence cap logic.
+- `agents/auditor.md` — per-concern letter definitions, Grade rubric section
+- `skills/shepherd/SKILL.md §Principles` — SUBTRACT-VIOLATION trigger condition
+- `references/pipeline.md §Gates` — OUTCOME-REGRESSION seam + predicate re-run
+- `references/pipeline.md §CLOSE` — drift-risk silence / ledger discipline cap
