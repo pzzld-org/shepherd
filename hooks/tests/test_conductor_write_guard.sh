@@ -1,18 +1,20 @@
 #!/usr/bin/env bash
 # hooks/tests/test_conductor_write_guard.sh — tests for conductor_write_guard.sh
 #
-# Covers the PreToolUse(Edit|Write|Bash) conductor read+dispatch-only guard
-# (v6.2.7, #180):
+# Covers the PreToolUse(Edit|Write|Bash) conductor artifact/registry-write guard
+# (v6.2.7 #180; git carve-back v6.3.1 — the conductor owns git directly):
 #   1. No shepherd.toml → PASS.
 #   2. Sprint branch + Edit → DENY CONDUCTOR-WRITE-DENIED.
 #   3. Sprint branch + Write → DENY CONDUCTOR-WRITE-DENIED.
-#   4. Sprint branch + Bash git commit → DENY CONDUCTOR-GIT-WRITE-DENIED.
-#   5. Sprint branch + Bash git rebase → DENY.
-#   6. Sprint branch + Bash git push → DENY.
-#   7. Sprint branch + Bash git worktree remove → DENY.
-#   8. Sprint branch + Bash rm -rf → DENY.
+#   4. Sprint branch + Bash git commit → PASS (git is the conductor's now, v6.3.1).
+#   5. Sprint branch + Bash git rebase → PASS.
+#   6. Sprint branch + Bash git push → PASS.
+#   7. Sprint branch + Bash git worktree remove → PASS.
+#   8. Sprint branch + Bash rm -rf → DENY CONDUCTOR-WRITE-DENIED (FS mutation).
 #   9. Sprint branch + Bash shctx seed verify → PASS (read-only shctx verb).
-#  10. Sprint branch + Bash shctx close-lane → DENY (mutating shctx verb).
+#  10. Sprint branch + Bash shctx close-lane → DENY CONDUCTOR-WRITE-DENIED (mutating shctx).
+#  10b-c. Sprint branch + git checkout / git switch → PASS (git is the conductor's).
+#  10d. Sprint branch + git branch --show-current → PASS (read-only).
 #  11. Sprint branch + Bash git log → PASS (read-only).
 #  12. Sprint branch + Bash git status → PASS (read-only).
 #  13. Non-sprint branch, non-teammate + Edit → PASS (no conductor session open).
@@ -116,36 +118,26 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 4-6. Sprint branch + Bash git commit/rebase/push → DENY.
+# 4-7. Sprint branch + Bash git commit/rebase/push/worktree → PASS (git carve-back
+# v6.3.1: the conductor owns git directly — no @worker for routine git).
 # ---------------------------------------------------------------------------
-for verb_case in "git commit -m 'fix'" 'git rebase v1.0.0' 'git push origin v1.0.0-dev.0'; do
+for verb_case in "git commit -m 'fix'" 'git rebase v1.0.0' 'git push origin v1.0.0-dev.0' 'git worktree remove --force .worktrees/x'; do
   total=$((total+1))
   out=$(run_hook "$(P_BASH sess-solo tu-4 "$verb_case")")
-  if is_deny "$out" && has_code "$out" "CONDUCTOR-GIT-WRITE-DENIED"; then
-    pass "sprint-branch + Bash '$verb_case': DENY CONDUCTOR-GIT-WRITE-DENIED"
+  if ! is_deny "$out"; then
+    pass "sprint-branch + Bash '$verb_case': PASS (conductor git direct, v6.3.1)"
   else
-    fail "sprint-branch + Bash '$verb_case': DENY" "out=${out:0:150}"
+    fail "sprint-branch + Bash '$verb_case': PASS" "unexpected deny: ${out:0:150}"
   fi
 done
 
 # ---------------------------------------------------------------------------
-# 7. Sprint branch + git worktree remove → DENY.
-# ---------------------------------------------------------------------------
-total=$((total+1))
-out=$(run_hook "$(P_BASH sess-solo tu-7 'git worktree remove --force .worktrees/x')")
-if is_deny "$out" && has_code "$out" "CONDUCTOR-GIT-WRITE-DENIED"; then
-  pass "sprint-branch + git worktree remove: DENY"
-else
-  fail "sprint-branch + git worktree remove: DENY" "out=${out:0:150}"
-fi
-
-# ---------------------------------------------------------------------------
-# 8. Sprint branch + rm -rf → DENY.
+# 8. Sprint branch + rm -rf → DENY CONDUCTOR-WRITE-DENIED (FS mutation stays dispatched).
 # ---------------------------------------------------------------------------
 total=$((total+1))
 out=$(run_hook "$(P_BASH sess-solo tu-8 'rm -rf .worktrees/x')")
-if is_deny "$out" && has_code "$out" "CONDUCTOR-GIT-WRITE-DENIED"; then
-  pass "sprint-branch + rm -rf: DENY"
+if is_deny "$out" && has_code "$out" "CONDUCTOR-WRITE-DENIED"; then
+  pass "sprint-branch + rm -rf: DENY CONDUCTOR-WRITE-DENIED"
 else
   fail "sprint-branch + rm -rf: DENY" "out=${out:0:150}"
 fi
@@ -166,23 +158,24 @@ fi
 # ---------------------------------------------------------------------------
 total=$((total+1))
 out=$(run_hook "$(P_BASH sess-solo tu-10 './shctx close-lane lane-a --sprint=v1.0.0-dev.0')")
-if is_deny "$out" && has_code "$out" "CONDUCTOR-GIT-WRITE-DENIED"; then
-  pass "sprint-branch + shctx close-lane: DENY (mutating)"
+if is_deny "$out" && has_code "$out" "CONDUCTOR-WRITE-DENIED"; then
+  pass "sprint-branch + shctx close-lane: DENY CONDUCTOR-WRITE-DENIED (mutating)"
 else
   fail "sprint-branch + shctx close-lane: DENY" "out=${out:0:150}"
 fi
 
 # ---------------------------------------------------------------------------
-# 10b-10c. Sprint branch + git checkout / git switch → DENY (v6.2.7 HEAD-drift
-# fix — a plain checkout/switch is a write-shaped command too, not just `-b`).
+# 10b-10c. Sprint branch + git checkout / git switch → PASS (git carve-back
+# v6.3.1: git is the conductor's; §Ban 2 keeps it off agent/lane branches by
+# doctrine + bash_guard Check 1, not this guard).
 # ---------------------------------------------------------------------------
-for hd_case in 'git checkout agent-lane-a' 'git switch agent-lane-a'; do
+for hd_case in 'git checkout v1.0.0-dev.0' 'git switch v1.0.0-dev.0'; do
   total=$((total+1))
   out=$(run_hook "$(P_BASH sess-solo tu-10b "$hd_case")")
-  if is_deny "$out" && has_code "$out" "CONDUCTOR-GIT-WRITE-DENIED"; then
-    pass "sprint-branch + Bash '$hd_case': DENY (HEAD-drift)"
+  if ! is_deny "$out"; then
+    pass "sprint-branch + Bash '$hd_case': PASS (conductor git direct)"
   else
-    fail "sprint-branch + Bash '$hd_case': DENY" "out=${out:0:150}"
+    fail "sprint-branch + Bash '$hd_case': PASS" "unexpected deny: ${out:0:150}"
   fi
 done
 

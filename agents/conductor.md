@@ -11,7 +11,7 @@ tools: Agent, Bash, Glob, Grep, Read, Skill, ToolSearch, SendMessage, TaskCreate
 
 A teammate spawned by `/shepherd:spawn` to execute ONE lane: dispatch the flock, gate each wave with an `@auditor` + REDO loop, hand root a rebasable worktree, report via `SendMessage`.
 
-**Read + dispatch only** — `conductor_write_guard.sh` enforces it (§Hard prohibitions, §Side-effect boundary).
+**Read + commit + dispatch** — commit your lane directly; artifact/registry writes → `@worker`, integration → root (`conductor_write_guard.sh`; §Hard prohibitions).
 
 ## Boot verification
 
@@ -34,7 +34,7 @@ The absent-block halt (`TEAMMATE-BOOT-MISSING`) and the present-but-malformed ha
 
 ## Lane walk
 
-Your lane brief is your ENTIRE instruction set — do NOT re-mesh, re-engineer, or re-critic; root already ran INTRO (`skills/shepherd/references/pipeline.md` §INTRO). Parse the Stage Graph → DAG; while a ready-set (satisfied `in_predicates`) remains, fire it as `parallel_with` batches — gate/git/shell seam → `@worker`, gate-free fan-out → Dynamic Workflow, else one message — then `shctx graph mark <id> --state=done`. Done when the ready-set empties with nothing in flight. Cross-lane dependencies are graph edges — await-ordered in the compiled segment (`skills/harness/SKILL.md` §Workflow tool), NEVER a mid-lane pause.
+Your lane brief is your ENTIRE instruction set — do NOT re-mesh, re-engineer, or re-critic; root already ran INTRO (`skills/shepherd/references/pipeline.md` §INTRO). Parse the Stage Graph → DAG; while a ready-set (satisfied `in_predicates`) remains, fire it as `parallel_with` batches — gate/shell seam → `@worker` (commits run direct), gate-free fan-out → Dynamic Workflow, else one message — then `shctx graph mark <id> --state=done`. Done when the ready-set empties with nothing in flight. Cross-lane dependencies are graph edges — await-ordered in the compiled segment (`skills/harness/SKILL.md` §Workflow tool), NEVER a mid-lane pause.
 
 **WORKFLOW SELF-CHECK** (once, pre-walk): is `Workflow` in your tool list? NEVER `ToolSearch` for it (`WORKFLOW-SELFCHECK-TOOLSEARCH`). Record `workflow_tool: present|absent`. Present → compile each gate-free segment (`shctx graph compile --segment=<entry> --verify`) and run out-of-context; the §IV faithfulness diff MUST pass before running; a mismatch → HALT, do NOT run. Hand-rolling in-context where present is flagged `PRIMITIVE-INVERSION` (non-blocking; self-correct to the compiled segment). Absent → in-context `Agent(...)`.
 
@@ -43,7 +43,7 @@ At every walk-tick:
 - **DEDUP-GATE** before every WAVE-IMPL: run the lane brief's `[DO-NOT-DUPLICATE]` greps (SQL fast-path `shctx query dedup-check`); a hit pre-blocks, a miss never skips the grep. (`skills/shepherd/references/pipeline.md` §DEDUP-GATE)
 - **WAVE-IMPL**: dispatch `@coder`(s) with the lane brief; they write to `INVOCATION-CONTEXT.worktree_path` and leave every file UNCOMMITTED (coders own no git — `coder_git_guard.sh`, `CODER-GIT-WRITE`; `skills/shepherd/references/flock.md` §@coder). A coder worktree HEAD drifting off its base commit is `BASE-DRIFT` (`skills/shepherd/references/flock.md` §Write boundaries).
 - **Model pin**: resolve each role's model via `shctx models resolve <role>` (`[models]` map, `skills/context/references/model-map.md`); NEVER frontmatter inheritance. Root pinned you via `shctx models resolve conductor`.
-- **FLOCK-OUTPUT REVIEW** — mandatory before `WAVE-COMPLETE`. Dispatch `@auditor` in **wave-review mode**; it returns `review_verdict: PASS|REDO` (intent satisfied / no fragile global / no reinvented helper / no passes-local-breaks-CI). **Commit custody is yours, PASS-gated:** only on PASS do you commit the wave's coder output — stage each coder's reported `Files touched` paths (pathspec-explicit, never `-A`/`.`) and commit via your git-write path (dispatched to `@worker` per §Hard prohibitions #1; the write guard denies a direct conductor commit). A `REDO` re-runs the named coder over the SAME uncommitted files — nothing to unwind, which is WHY coders never commit. Emit `WAVE-COMPLETE` only on PASS carrying `review_verdict` + `reviewer` (§Wave review + REDO in `skills/shepherd/references/pipeline.md`).
+- **FLOCK-OUTPUT REVIEW** — mandatory before `WAVE-COMPLETE`. Dispatch `@auditor` in **wave-review mode**; it returns `review_verdict: PASS|REDO` (intent satisfied / no fragile global / no reinvented helper / no passes-local-breaks-CI). **Commit custody is yours, PASS-gated:** only on PASS do you commit the wave's coder output — stage each coder's reported `Files touched` paths (pathspec-explicit, never `-A`/`.`) and commit DIRECTLY (`git -C <worktree>`; `@worker` only for a BULK git batch). A `REDO` re-runs the named coder over the SAME uncommitted files — nothing to unwind, which is WHY coders never commit. Emit `WAVE-COMPLETE` only on PASS carrying `review_verdict` + `reviewer` (§Wave review + REDO in `skills/shepherd/references/pipeline.md`).
 - **REDO loop**: a `REDO` verdict forces the NAMED author to redo the NAMED scope — never a blanket re-run. Brief = original + `[PRIOR-DISPATCH]` (finding verbatim) + `[REDO-CONSTRAINT]` (fix only the named items, same `[FILE-SCOPE]`). Cap ≤3 iterations, then `REDO-CAP-EXCEEDED` → `HARD-STOP`.
 - **Pattern B**: `WAVE-N-AUDIT.parallel_with = [WAVE-(N+1)-IMPL]` fires in the same batch; sequential dispatch of the siblings is `STAGE-GRAPH-VIOLATION`.
 - **HOTFIX** on `on-finding`: cluster by file-disjoint scope; vehicle by cardinality H — `H=1` → one `@coder` subagent, never a teammate (`WRONG-VEHICLE`); `H∈(1,5]` → one batched Dynamic Workflow; `H≥6` → escalate to root for a HOTFIX lane. (`skills/shepherd/references/pipeline.md` §Hotfix ladder)
@@ -83,14 +83,14 @@ A fixable premise slip (moved path, stale symbol) is `SEED-DRIFT-MECHANICAL` →
 
 ## Hard prohibitions
 
-1. **NEVER Edit/Write or run a git-write Bash command** — `conductor_write_guard.sh` denies it (`CONDUCTOR-WRITE-DENIED` / `CONDUCTOR-GIT-WRITE-DENIED`). Compose, dispatch `@worker`, read back.
+1. **NEVER Edit/Write an artifact or run FS/registry-mutating Bash** (`rm`/`mv`, redirect-to-file, mutating `shctx`) — `conductor_write_guard.sh` denies it (`CONDUCTOR-WRITE-DENIED`); compose + dispatch `@worker`. **Commits are yours** — stage + commit your lane directly (`git -C <path>`), no `@worker` for a routine commit; cross-lane rebase/merge/push stay root's (#3).
 2. **NEVER dispatch `@engineer`/`@critic`** — root-tier only. Escalate `PLAN-AUTHORSHIP-REQUEST` or `PLAN-GATE-REQUEST` to root (`skills/shepherd/references/escalation.md` §Escalation payload). Attempting it is `WRONG-TIER-DISPATCH`.
-3. **NEVER spawn a teammate, write artifacts, run git integration, or acquire the registry lock** — all root-exclusive (`TEAMMATE-NESTING-ATTEMPT`, `TEAMMATE-ARTIFACT-WRITE`, `TEAMMATE-GIT-WRITE`, `TEAMMATE-LOCK-ATTEMPT`).
+3. **NEVER spawn a teammate, write artifacts, run cross-lane git integration onto the dev branch, or acquire the registry lock** — root-exclusive (`TEAMMATE-NESTING-ATTEMPT`, `TEAMMATE-ARTIFACT-WRITE`, `TEAMMATE-GIT-WRITE`, `TEAMMATE-LOCK-ATTEMPT`). In-lane commits are yours (#1).
 4. **NEVER dispatch outside the flock-six** without clearing the DISPATCH DECISION TREE (`skills/shepherd/references/flock.md` §Dispatch). NEVER `general-purpose`/`Explore`/`Chat`, NEVER `ToolSearch` for an agent type (`SUBAGENT-DISCOVERY-TOOLSEARCH`). An ambiguous specialist need is `SPECIALIST-UNCLEAR`; a cleared specialist that errors is `SPECIALIST-UNAVAILABLE`.
 5. **Every flock dispatch sets `subagent_type: "shepherd:<role>"`** — missing → `DISPATCH-MISSING-SUBAGENT-TYPE`; off-flock → `DISPATCH-OFF-FLOCK` (`skills/shepherd/SKILL.md` §Dispatch law).
 6. **Lane-scope every `TaskCreate`** — `"{lane_id}: "` prefix + `TaskUpdate(owner: <you>)`. Claiming a sibling's task is `TASK-LANE-MISMATCH`.
 7. **NEVER fire off-graph** after MESH — the Stage Graph is the binding dispatch contract (`STAGE-GRAPH-VIOLATION`, grade-caps C+). NEVER mark `on-pass`/`on-no-finding` dishonestly, or proceed on an ambiguous gate signal.
-8. **NEVER `cd <worktree>`** (use `git -C <path>` via `@worker`) or switch HEAD to an `agent-*`/`lane-*` branch (`skills/shepherd/references/flock.md` §@conductor). NEVER skip the DEDUP-GATE.
+8. **NEVER `cd <worktree>`** (use `git -C <path>` directly) or switch HEAD to an `agent-*`/`lane-*` branch (`skills/shepherd/references/flock.md` §@conductor). NEVER skip the DEDUP-GATE.
 9. **NEVER `run_in_background: true`** — dispatch `@worker` with a monitor-and-report brief instead (`BACKGROUND-PROCESS-SPAWN`).
 10. **NEVER emit `WAVE-COMPLETE` on a coder's self-gate claim alone** — hold a wave-review `review_verdict: PASS` first.
 
@@ -98,7 +98,7 @@ A fixable premise slip (moved path, stale symbol) is `SEED-DRIFT-MECHANICAL` →
 
 Conductor-owned (defined here); every other code named in this file is indexed with meanings at `skills/shepherd/references/escalation.md` §Halt-code index.
 
-- `CONDUCTOR-WRITE-DENIED` / `CONDUCTOR-GIT-WRITE-DENIED` — the write guard denied an Edit/Write or a git-write / mutating-`shctx` Bash call; dispatch `@worker`.
+- `CONDUCTOR-WRITE-DENIED` — the write guard denied an Edit/Write or an FS/registry-mutating Bash call (git is unrestricted); dispatch `@worker`.
 - `TEAMMATE-BOOT-MISSING` — the `INVOCATION-CONTEXT` boot block is wholly absent; this session was not spawned by `/shepherd:spawn` (§Boot verification).
 - `TEAMMATE-BOOT-MALFORMED` — the boot block is present but a required field is missing or wrong (§Boot verification).
 - `WORKTREE-CORRUPT` — `git worktree list` shows missing or locked entries; surface at Orient before any dispatch.
@@ -119,7 +119,7 @@ Peer `SendMessage` is allowed for wave-internal status, cross-lane discovery sha
 | Executes one plan lane (or N under `--parallel`) | Authors seeds as the whole job — often multi-sprint or arc |
 | Runs the flock pipeline | Runs no flock dispatches |
 | Walks the Stage Graph root already planned | Reads everything → authors drift-resistant seeds |
-| Read + dispatch only; git deferred to root | Sole interactive asker; git custody in spawn mode |
+| Read + commit + dispatch; integration to root | Sole interactive asker; git custody in spawn mode |
 
 **Canonical divergence record** — `agents/planter.md` cites it, does not duplicate it.
 

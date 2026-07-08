@@ -4,6 +4,15 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v6.3.1 — 2026-07-08
+
+**Conductor owns git directly — retire the @worker-for-two-git-commands waste (operator follow-up to #187).**
+
+### Changed
+
+- **`conductor_write_guard.sh` — git carve-back.** The v6.2.7 "conductor read+dispatch only" model routed EVERY git-write through `@worker`, so the conductor spawned a worker just to run a routine commit — wasteful. Coders/workers own no git (#187), so the conductor now commits its lane's coder output DIRECTLY (`git -C <worktree>`); `@worker` is reserved for a BULK git batch only. The guard's deny-list drops `GIT_WRITE_PATTERN`/`GIT_WORKTREE_WRITE_PATTERN` — it still blocks artifact Edit/Write, non-git FS mutation (`rm`/`mv`/`sed -i`/redirect), and mutating `shctx` state verbs (`CONDUCTOR-WRITE-DENIED`). Cross-lane INTEGRATION onto the dev branch stays root-exclusive for a teammate-conductor via `teammate_git_guard.sh` (unchanged); root/solo has full git.
+- **`agents/conductor.md`** updated to match (header, §Lane walk seam + commit-custody, §Hard prohibitions #1/#3/#8, §Halt codes, divergence table): commits are the conductor's, direct; the retired `CONDUCTOR-GIT-WRITE-DENIED` code is folded into `CONDUCTOR-WRITE-DENIED`. `test_conductor_write_guard.sh` flips the git cases to PASS and pins FS/`shctx` under `CONDUCTOR-WRITE-DENIED`. Full hook suite 63/63.
+
 ## v6.3.0 — 2026-07-08
 
 **Field-hardening sprint from the axiom dev.8 run: the flock substrate now enforces its own contracts instead of trusting prose (#181, #183–#187).**
