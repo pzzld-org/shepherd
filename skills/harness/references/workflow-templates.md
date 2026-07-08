@@ -128,7 +128,11 @@ SKILL.md §Workflow tool`). This governs the native Workflow tool only — the
 `shctx graph compile` output below runs its own `node <segment>.workflow.js`
 execution path (a Bash invocation, not the Workflow tool), out of this
 guard's reach; its faithfulness diff (§Compile-down model, below) is that
-path's correctness mechanism instead.
+path's correctness mechanism instead. The compiler injects both
+`agentType: "shepherd:<role>"` and the `[models]`-resolved `model:` into every
+emitted spawn and the `--verify` **model_pin** invariant asserts it, so a
+compiled segment is pin-safe by construction and would pass this guard even
+though it never reaches it (#180).
 
 ## Compile-down model
 
@@ -154,6 +158,13 @@ MUST guarantee:
    MUST NOT skip or reorder a declared `parallel_with` pair.
 3. **Determinism** — identical predicate evaluations MUST fix the same
    dispatch sequence.
+4. **Pinned** (#180) — every emitted spawn MUST call `agent(prompt, opts)`
+   (the real Workflow signature — prompt string first, opts object second) with
+   an explicit `agentType: "shepherd:<role>"` AND a `[models]`-resolved `model:`
+   pin. A bare `agent(prompt)` / opts-less spawn silently inherits the runtime's
+   main-loop model — the #178 trap, one level removed. `--verify` asserts a pin
+   count equal to the expected spawn count and rejects the legacy `agent(s)`
+   shape.
 
 Bounded dynamism is permitted (a HOTFIX batch's coder count read from a
 prior agent's cluster analysis); unbounded dynamism is NEVER permitted. A

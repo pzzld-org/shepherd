@@ -373,13 +373,41 @@ _cmd_compile() {
   [[ -z "$out_dir" ]] && out_dir="$(shctx_artifacts_root)/graph/compiled"
   mkdir -p "$out_dir"
 
-  python3 - "$(_state_path)" "$out_dir" "$segment" "$do_verify" "$max_conc" "$fmt" "$list" "$(_trace_path)" <<'PY'
+  # Resolve each flock role's model from the single [models] map (model-map.md)
+  # so every emitted spawn carries an EXPLICIT pin (#180) instead of silently
+  # inheriting the runtime's main-loop model — the #178 inheritance trap, one
+  # level removed. cfg_section_get comes from _lib.sh; the fallbacks mirror
+  # cmd_models.sh `_model_default` exactly (unset role → built-in default).
+  _graph_role_model() {
+    local role="$1" v
+    v="$(cfg_section_get models "$role" 2>/dev/null || true)"
+    if [[ -n "$v" ]]; then printf '%s' "$v"; return; fi
+    case "$role" in
+      root|planter|engineer) printf 'opus[1m]' ;;
+      *)                     printf 'sonnet' ;;
+    esac
+  }
+  local models_json
+  models_json="$(python3 -c 'import json,sys; a=sys.argv[1:]; print(json.dumps(dict(zip(a[0::2], a[1::2]))))' \
+    coder "$(_graph_role_model coder)" auditor "$(_graph_role_model auditor)" \
+    worker "$(_graph_role_model worker)" discovery "$(_graph_role_model discovery)" \
+    critic "$(_graph_role_model critic)" engineer "$(_graph_role_model engineer)" \
+    conductor "$(_graph_role_model conductor)")"
+
+  python3 - "$(_state_path)" "$out_dir" "$segment" "$do_verify" "$max_conc" "$fmt" "$list" "$(_trace_path)" "$models_json" <<'PY'
 import json, sys, os, re, time, hashlib, collections
 
-state_path, out_dir, seg_arg, do_verify_s, max_conc_s, fmt, list_s, trace_path = sys.argv[1:9]
+state_path, out_dir, seg_arg, do_verify_s, max_conc_s, fmt, list_s, trace_path, models_json = sys.argv[1:10]
 do_verify     = do_verify_s == "1"
 list_segments = list_s == "1"
 MAX_CONCURRENT = int(max_conc_s)
+
+# Role → model map resolved from [models] (model-map.md) by the bash wrapper.
+# Every emitted spawn pins its model from here so a compiled *.workflow.js never
+# inherits the main-loop model (#178 one level removed / #180).
+ROLE_MODELS = json.loads(models_json or "{}")
+def role_model(role):
+    return ROLE_MODELS.get(role) or ("opus[1m]" if role in ("root", "planter", "engineer") else "sonnet")
 HARD_TOTAL_CAP = 1000          # doctrine §III: ≤1000 total per run
 
 state  = json.load(open(state_path))
@@ -583,9 +611,13 @@ A( "// agent fanout out-of-context; results return to the conductor in script")
 A( "// variables. On runtime failure the conductor degrades to `shctx graph next`")
 A( "// direct dispatch for this segment (doctrine §VI; no parallel engine).")
 A( "//")
-A( "// `agent` spawns a subagent; `briefs` is the conductor-resolved brief map")
-A( "// keyed \"<node>:<tag>\" (brief CONTENT lives with the conductor, not in")
-A( "// compile(G) — stage-graph.md: the graph references briefs by id).")
+A( "// `agent(prompt, opts)` spawns a subagent (the real Workflow signature —")
+A( "// prompt STRING first, opts OBJECT second). Each spawn pins opts.agentType")
+A( "// = \"shepherd:<role>\" (loads the role definition + its tool allowlist) and")
+A( "// opts.model resolved from the [models] map — NEVER a bare agent(prompt),")
+A( "// which would inherit the main-loop model (#178/#180). `briefs` is the")
+A( "// conductor-resolved brief map keyed \"<node>:<tag>\" (brief CONTENT lives")
+A( "// with the conductor, not in compile(G) — the graph references briefs by id).")
 A("")
 A("export default async function ({ agent, briefs }) {")
 A(f"  const MAX_CONCURRENT = {MAX_CONCURRENT};  // doctrine §III concurrency cap")
@@ -596,7 +628,7 @@ A("  async function fanout(spawns) {")
 A("    const out = [];")
 A("    for (let i = 0; i < spawns.length; i += MAX_CONCURRENT) {")
 A("      const chunk = spawns.slice(i, i + MAX_CONCURRENT);")
-A("      out.push(...(await Promise.all(chunk.map((s) => agent(s)))));")
+A("      out.push(...(await Promise.all(chunk.map((s) => agent(s.prompt, s.opts)))));")
 A("    }")
 A("    return out;")
 A("  }")
@@ -615,7 +647,8 @@ for oi in order:
         key  = f"{s['node']}:{s['tag'] if s['tag'] is not None else s['index']}"
         desc = f"@{s['role']}" + (f": {s['tag']}" if s['tag'] else f" {s['node']}#{s['index']}")
         ro   = "  /* read-only: allowlist-enforced, no edit tools (§VII, #74) */" if s["readonly"] else ""
-        A(f"    {{ subagent_type: \"shepherd:{s['role']}\", description: {js(desc)}, prompt: briefs[{js(key)}] }},{ro}")
+        mdl  = role_model(s["role"])
+        A(f"    {{ prompt: briefs[{js(key)}], opts: {{ agentType: \"shepherd:{s['role']}\", model: {js(mdl)}, label: {js(desc)} }} }},{ro}")
     A("  ]);")
     for nid in cl:
         A(f"  results[{js(nid)}] = {bvar};")
@@ -663,7 +696,7 @@ except Exception:
 
 # ---- §IV faithfulness diff -------------------------------------------------
 def run_verify():
-    problems = {"soundness": [], "completeness": [], "determinism": []}
+    problems = {"soundness": [], "completeness": [], "determinism": [], "model_pin": []}
 
     # Independently re-derive the expected spawn multiset + node set from the
     # SOURCE graph (state.json), then check the emitted script against it.
@@ -673,9 +706,9 @@ def run_verify():
         for s in spawns_for_node(nid):
             expected_spawns[(s["node"], s["role"])] += 1
 
-    # Parse the emitted script back: every `subagent_type: "shepherd:<role>"`
+    # Parse the emitted script back: every `agentType: "shepherd:<role>"`
     # is a spawn; every results["<id>"] = ... is a realized node.
-    parsed_roles = collections.Counter(re.findall(r'subagent_type:\s*"shepherd:([a-z]+)"', script))
+    parsed_roles = collections.Counter(re.findall(r'agentType:\s*"shepherd:([a-z]+)"', script))
     parsed_nodes = set(re.findall(r'results\[(?:"([^"]+)"|\'([^\']+)\')\]', script))
     parsed_nodes = {a or b for (a, b) in re.findall(r'results\[(?:"([^"]+)"|\'([^\']+)\')\]', script)}
 
@@ -721,6 +754,24 @@ def run_verify():
         if bad in script:
             problems["determinism"].append(f"nondeterministic construct '{bad}' in compiled script")
 
+    # MODEL-PIN (#180) — every emitted spawn MUST carry an explicit agentType +
+    # model pin. A bare `agent(prompt)` / opts-less spawn silently inherits the
+    # runtime's main-loop model (#178, one level removed). Assert the emitted
+    # script would pass workflow_model_guard.sh even though it never reaches that
+    # PreToolUse(Workflow) hook (it runs via `node`, not the Workflow tool).
+    n_agenttype = len(re.findall(r'agentType:\s*"shepherd:[a-z]+"', script))
+    n_modelpin  = len(re.findall(r'\bmodel:\s*"[^"]+"', script))
+    if n_agenttype != total_agents:
+        problems["model_pin"].append(
+            f"{total_agents} expected spawns but {n_agenttype} agentType pin(s)")
+    if n_modelpin < total_agents:
+        problems["model_pin"].append(
+            f"{total_agents - n_modelpin} spawn(s) missing an explicit model pin")
+    # regression guard: the legacy opts-less `agent(s)` call shape must be gone.
+    if re.search(r'\bagent\(\s*s\s*\)', script):
+        problems["model_pin"].append(
+            "legacy opts-less agent(s) call present — must be agent(prompt, opts) with a pin")
+
     return problems
 
 verify_result = run_verify() if do_verify else None
@@ -742,7 +793,7 @@ else:
     print(f"  sha256   : {script_sha[:16]}")
     if verify_result is not None:
         print("  faithfulness diff (§IV):")
-        for dim in ("soundness", "completeness", "determinism"):
+        for dim in ("soundness", "completeness", "determinism", "model_pin"):
             issues = verify_result[dim]
             if not issues:
                 print(f"    ✓ {dim}")

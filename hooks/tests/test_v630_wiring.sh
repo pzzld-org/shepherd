@@ -70,5 +70,14 @@ have commands/spawn.md 'shctx teammate register .* --type=engineer'             
 have hooks/scripts/teammate_idle.sh "'\.agent_id'"                                                       "#183 idle hook reads .agent_id identity fallback"
 have hooks/scripts/teammate_idle.sh 'no live rows'                                                       "#183 idle hook suppresses flood when no spawn is live"
 
+echo "== #181/#180 compile-down model pin =="
+have skills/context/scripts/cmd_graph.sh 'agent\(s.prompt, s.opts\)'                                     "#180 compiler emits agent(prompt, opts) — real signature"
+have skills/context/scripts/cmd_graph.sh 'agentType: .* model:'                                          "#180 compiler injects agentType + model pin"
+have skills/context/scripts/cmd_graph.sh '"model_pin"'                                                   "#180 --verify has the model_pin invariant"
+have skills/context/scripts/cmd_graph.sh '_graph_role_model'                                             "#180 model resolved from [models] via cfg_section_get"
+missing skills/context/scripts/cmd_graph.sh 'subagent_type: .shepherd:.\{s'                              "#180 legacy subagent_type emission removed"
+have skills/harness/references/workflow-templates.md 'Pinned.* \(#180\)'                                 "#180 workflow-templates §Compile-down adds the Pinned invariant"
+have docs/specs/v630-dispatch-pin-dsl-decision.md 'Decision: do NOT build the broad DSL now'             "#181 explore/decision doc records the DSL decision"
+
 if [[ "$fails" -eq 0 ]]; then echo "—— v6.3.0 wiring: OK ——"; else echo "—— v6.3.0 wiring: $fails FAIL ——"; fi
 exit "$fails"
