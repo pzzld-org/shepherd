@@ -100,6 +100,7 @@ the bare name.
 - `CONTEXT-INVENTORY STALE`: symbol/path absent
 - `DUPLICATION RISK`: overlaps a symbol
 - `SCOPE OVERFLOW`: edit outside `[FILE-SCOPE]`
+- `CODER-GIT-WRITE`: a @coder ran a git write (commit/add/reset/checkout/…); git custody is the conductor's, PASS-gated (`hooks/scripts/coder_git_guard.sh`, `agents/coder.md`)
 - `BRIEF-AMENDMENT REQUEST`: amendment requested
 - `SEED DRIFT`: no longer matches repo state
 - `ROOT-INTRO-USURPED`: root ran a discovery/intro wave alongside a self-contained engineer

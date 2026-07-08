@@ -415,6 +415,21 @@ else
   fails=$((fails+1))
 fi
 
+# Coder git guard (v6.3.0, #187): coder_git_guard.sh denies every git write for
+# a @coder dispatch (commit/add/reset/checkout/stash/push/worktree/…) while
+# read-only inspection (status/diff/log/show/rev-parse) passes; non-coder turns
+# fail open. Git custody moves to the conductor, PASS-gated, so a REDO re-runs
+# the coder over uncommitted files with nothing to unwind.
+echo "== test_coder_git_guard.sh (v6.3.0 — #187 coder no-git custody gate) =="
+total=$((total+1))
+if cgg_out=$(bash "$TESTS_DIR/test_coder_git_guard.sh" 2>&1); then
+  printf '  PASS  %s\n' "coder-git-guard-blocks-all-coder-git-writes"
+else
+  printf '  FAIL  %-50s\n' "coder-git-guard"
+  printf '%s\n' "$cgg_out" | sed 's/^/        /'
+  fails=$((fails+1))
+fi
+
 # v6.3.0 doctrine-wiring guard (#181/#183/#184/#185/#186/#187): the prose/contract
 # legs of the release — conductor boot lead-attested escape (#184), worker GH
 # MCP write + CLI fallback (#185), engineer SendMessage grant (#186), coder

@@ -44,12 +44,17 @@ Toolkit: before assuming a tool unavailable, check `skills/context/references/to
 | `DUPLICATION RISK` | `[DO-NOT-DUPLICATE]` grep returns a non-expected count |
 | `BRIEF-AMENDMENT REQUEST` | New dependency, scope expansion, or unblocking decision |
 | `SCOPE OVERFLOW` | Implementation requires editing outside `[FILE-SCOPE]` |
+| `CODER-GIT-WRITE` | Any git write (commit/add/reset/checkout/stash/…). Git custody is the conductor's; `coder_git_guard.sh` blocks it |
 
 Hard prohibitions:
 
 - NEVER run `cargo`/build/compile/lint/format tools. Worktrees share one `target/` lock —
   parallel coders WILL deadlock. Main chat validates once after rebase.
-- NEVER `git push` — the conductor rebases and verifies (commit mechanics: Step 5).
+- NEVER run git at all — no `commit`/`add`/`push`/`reset`/`checkout`/`stash`/`branch`/`worktree`.
+  Git custody is NEVER the coder's; `coder_git_guard.sh` blocks it (`CODER-GIT-WRITE`). The conductor
+  stages+commits your reported files AFTER the wave-review returns PASS — which is exactly why you
+  never commit: a REDO re-runs you over the SAME files, so uncommitted output means nothing to
+  unwind. Read-only inspection (`git status`/`diff`/`log`/`show`/`rev-parse`) stays yours.
 - NEVER edit outside `[FILE-SCOPE]` (reading is fine) or write outside `[WORKTREE].Path` — full
   confinement contract: `skills/shepherd/references/flock.md §Write boundaries`.
 - NEVER add a build-manifest dependency without conductor approval — file
@@ -109,10 +114,12 @@ idioms plus `code-style:<language>.md`. Honor `[NON-GOALS]`. Match `[ACCEPTANCE]
 symbol outside `[FILE-SCOPE]` unowned by a wave-sibling → `BRIEF-AMENDMENT REQUEST`, or a
 close-time finding if out-of-sprint. No mid-lane pause.
 
-### Step 5 — Commit
+### Step 5 — Hand off (no git)
 
-Stage only your files (`git add <file1> <file2> ...` — never `-A`/`.`). Commit with the
-`[WORKTREE]` template. Proceed to CODER REPORT.
+Do NOT stage, commit, or touch git — leave your files uncommitted in `[WORKTREE].Path`. List every
+file you wrote (exact paths) in the CODER REPORT `Files touched` line: that report IS the handoff.
+The conductor stages+commits your files after the wave-review returns PASS (a REDO simply re-runs
+you over the same files — nothing to unwind). Proceed to CODER REPORT.
 
 ## Output discipline
 

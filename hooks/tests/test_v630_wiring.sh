@@ -45,5 +45,22 @@ have skills/shepherd/SKILL.md 'SANCTIONED write fallback'            "#185 SKILL
 echo "== #186 engineer SendMessage grant =="
 have agents/engineer.md '^tools:.*\bSendMessage\b'                   "#186 engineer frontmatter grants SendMessage"
 
+echo "== #187 coder no-git custody =="
+have hooks/scripts/coder_git_guard.sh 'CODER-GIT-WRITE'              "#187 coder_git_guard.sh exists + emits CODER-GIT-WRITE"
+have hooks/hooks.json 'coder_git_guard.sh'                           "#187 coder_git_guard.sh registered in hooks.json"
+have agents/coder.md 'CODER-GIT-WRITE'                               "#187 coder.md registers CODER-GIT-WRITE halt"
+have agents/coder.md 'NEVER run git at all'                          "#187 coder.md prohibits all git"
+have agents/coder.md '### Step 5 — Hand off \(no git\)'             "#187 coder.md Step 5 is no-git hand-off"
+missing agents/coder.md 'Stage only your files.*Commit with the'    "#187 coder.md old commit Step 5 removed"
+have skills/shepherd/references/flock.md 'ZERO git'                  "#187 flock.md §@coder: coders run ZERO git"
+have skills/shepherd/references/flock.md 'the CONDUCTOR commits coder output' "#187 flock.md: conductor commits coder output"
+have agents/conductor.md 'Commit custody is yours, PASS-gated'       "#187 conductor.md §Lane walk: PASS-gated commit custody"
+have skills/shepherd/references/escalation.md 'CODER-GIT-WRITE'      "#187 escalation.md registers CODER-GIT-WRITE"
+if [[ -x "$REPO_ROOT/hooks/scripts/coder_git_guard.sh" ]]; then
+  printf '  PASS  %s\n' "#187 coder_git_guard.sh is executable"
+else
+  printf '  FAIL  %s — coder_git_guard.sh not executable\n' "#187 exec-bit"; fails=$((fails+1))
+fi
+
 if [[ "$fails" -eq 0 ]]; then echo "—— v6.3.0 wiring: OK ——"; else echo "—— v6.3.0 wiring: $fails FAIL ——"; fi
 exit "$fails"
