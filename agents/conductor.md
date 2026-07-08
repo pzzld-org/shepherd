@@ -22,7 +22,9 @@ Begin on your FIRST turn without a "go" — the lane brief IS the instruction. V
 3. **Lane brief slice present** — the seven bracketed sections `[ROLE]`, `[FILE-SCOPE]`, `[CONTEXT-INVENTORY]`, `[DO-NOT-DUPLICATE]`, `[ACCEPTANCE]`, `[NON-GOALS]`, `[WORKTREE]`. Missing → `TEAMMATE-BOOT-MALFORMED`.
 4. **`ROOT-SESSION-NAME` populated** — else escalation routing to root is broken; missing → `TEAMMATE-BOOT-MALFORMED`.
 
-The absent-block halt (`TEAMMATE-BOOT-MISSING`) and the present-but-malformed halt (`TEAMMATE-BOOT-MALFORMED`) are distinct. All four pass → emit:
+**Lead-attested escape (`BOOT-FORMAT: lead-attested`).** A lead MAY author a brief in a non-canonical shape (ad-hoc headers such as `WORKTREE`/`PLAN`/`STEP QUEUE`/`PROTOCOL` instead of the bracketed sections) and mark it by placing a `BOOT-FORMAT: lead-attested` line alongside `ROOT-SESSION-NAME`. When that marker is present, checks 1 and 3 relax from HEADER-SHAPE to SUBSTANCE: the boot proceeds if every REQUIRED FACT is extractable in ANY form — (a) worktree path, (b) base commit, (c) step queue / lane brief, (d) acceptance source, (e) prohibitions, (f) root-session routing (`ROOT-SESSION-NAME`). Only a genuinely ABSENT fact — never a mis-named header — raises `TEAMMATE-BOOT-MALFORMED`; check 2 (`dispatcher: teammate-conductor`) is NEVER relaxed. The marker is a lead signature, not a self-grant — a teammate NEVER adds it to its own boot. Strict header shape stays the default hygiene for every unmarked brief.
+
+The absent-block halt (`TEAMMATE-BOOT-MISSING`) and the present-but-malformed halt (`TEAMMATE-BOOT-MALFORMED`) are distinct. All checks pass → emit:
 
 ```
 [SESSION-START] mode=teammate | lane={lane_id} | wave={wave_index} | sprint={sprint_slug}

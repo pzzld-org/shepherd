@@ -128,7 +128,7 @@ the bare name.
 - `TEAMMATE-STALL`: idled with no preceding WAVE-COMPLETE
 - `WORKFLOW-SELFCHECK-TOOLSEARCH`: ToolSearches for `Workflow` vs checking
 - `TEAMMATE-BOOT-MISSING`: `INVOCATION-CONTEXT` boot block wholly absent — not spawned by `/shepherd:spawn`
-- `TEAMMATE-BOOT-MALFORMED`: boot block present but fails a Boot verification check
+- `TEAMMATE-BOOT-MALFORMED`: boot block present but fails a Boot verification check (a lead-authored non-canonical brief carrying `BOOT-FORMAT: lead-attested` substance-checks the required facts instead of the header shape — `agents/conductor.md §Boot verification`)
 - `TEAMMATE-ARTIFACT-WRITE`: writes a plan/report/handoff
 - `TEAMMATE-LOCK-ATTEMPT`: touches `.artifacts/shepherd.lock`
 - `DISCOVERY-WRITE-VIOLATION`: `@discovery` mutates

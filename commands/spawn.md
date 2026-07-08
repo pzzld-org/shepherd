@@ -114,6 +114,14 @@ SendMessage(to: lead, halt_code: <code>, blocking: true)):
   Full contract: agents/conductor.md §Hard prohibitions.
 ```
 
+**Non-canonical brief? Attest it.** The bracketed template above is the default and passes the
+conductor's strict shape check. If a lead deliberately hand-authors a brief in a different shape
+(ad-hoc headers, prose lane brief) while carrying every required fact, add a
+`BOOT-FORMAT: lead-attested` line beside `ROOT-SESSION-NAME`. The conductor then substance-checks the required
+facts (worktree path, base commit, step queue, acceptance source, prohibitions, root routing)
+instead of hard-halting on header shape (`agents/conductor.md §Boot verification`). Only a lead adds
+the marker — never a teammate to its own boot.
+
 The teammate inherits NONE of the lead's session state — this is WHY the boot prompt MUST
 carry every inherited fact above:
 

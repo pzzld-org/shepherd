@@ -415,5 +415,20 @@ else
   fails=$((fails+1))
 fi
 
+# v6.3.0 doctrine-wiring guard (#181/#183/#184/#185/#186/#187): the prose/contract
+# legs of the release — conductor boot lead-attested escape (#184), worker GH
+# MCP write + CLI fallback (#185), engineer SendMessage grant (#186), coder
+# no-git custody doctrine (#187), teammate registration wiring (#183). Fails if
+# a load-bearing leg or citation is dropped.
+echo "== test_v630_wiring.sh (v6.3.0 — #181/#183/#184/#185/#186/#187 doctrine wiring) =="
+total=$((total+1))
+if v630_out=$(bash "$TESTS_DIR/test_v630_wiring.sh" 2>&1); then
+  printf '  PASS  %s\n' "v630-doctrine-wiring"
+else
+  printf '  FAIL  %-50s\n' "v630-wiring"
+  printf '%s\n' "$v630_out" | sed 's/^/        /'
+  fails=$((fails+1))
+fi
+
 echo "—— $((total-fails))/$total passed ——"
 exit "$fails"
