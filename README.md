@@ -293,7 +293,7 @@ See [`docs/integration.md`](docs/integration.md) for the full model.
 
 ## Versioning
 
-Semver: **major** = closed-flock contract change; **minor** = new commands/config keys; **patch** = dispatch/brief-template fixes. Current version: **6.3.0**. See [`CHANGELOG.md`](CHANGELOG.md).
+Semver: **major** = closed-flock contract change; **minor** = new commands/config keys; **patch** = dispatch/brief-template fixes. Current version: **6.3.1**. See [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Contributing
 
