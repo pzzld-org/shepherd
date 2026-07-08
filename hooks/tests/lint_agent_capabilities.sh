@@ -186,24 +186,37 @@ for agent_with_agent in planter engineer; do
 done
 
 # ---------------------------------------------------------------------------
-# v6.2.1 tool-claim consistency. A profile must not CLAIM in prose to carry a
-# tool its own `tools:` frontmatter does not grant — the `conductor.md` "SOLO
-# carries AskUserQuestion" stale-claim class (a tool removed in v6.1.7 still
-# asserted as available). Scoped to AskUserQuestion (the removal that drifted).
-# Robust: positive carry / escape-valve claims MINUS negation lines (the many
-# correct "does not carry AskUserQuestion" statements all over these profiles).
+# v6.2.1 / v6.3.0 tool-claim consistency. A profile must not CLAIM in prose to
+# carry / use a session-coordination tool its own `tools:` frontmatter does not
+# grant. Original class (v6.2.1): the `conductor.md` "SOLO carries
+# AskUserQuestion" stale-claim (a tool removed in v6.1.7 still asserted).
+# v6.3.0 (#186) extends the SAME guard to SendMessage — the engineer
+# self-contained flow's step (7) "alert root via SendMessage" was prose-only
+# while the frontmatter omitted the grant, so the contract and the toolset
+# disagreed and the PLAN-READY alert raced/failed. Data-driven over the
+# coordination-tool set; a role that GRANTS the tool is skipped (legit use).
+# Robust: positive carry/use claims MINUS negation lines (the many correct
+# "does not carry / never SendMessage for X" statements across these profiles).
 # ---------------------------------------------------------------------------
-for role in $ALL_ROLES; do
-  f="$AGENTS_DIR/$role.md"
-  [[ -f "$f" ]] || continue
-  case "$(tools_line "$f")" in *AskUserQuestion*) continue ;; esac   # legitimately granted (planter)
-  claim="$(grep -nE 'carr(y|ies)[^.]{0,40}AskUserQuestion|AskUserQuestion[^.]{0,40}(escape valve|narrow escape)' "$f" 2>/dev/null \
-            | grep -viE 'not |never |no AskUserQuestion|removed|absent|without|MUST NOT|cannot|do(es)? not' || true)"
-  if [[ -n "$claim" ]]; then
-    note "FAIL $role: prose claims AskUserQuestion but frontmatter does not grant it (v6.1.7 — execution sessions carry no AskUserQuestion):"
-    printf '%s\n' "$claim" | sed 's/^/        /'
-    fails=$((fails+1))
-  fi
+CLAIM_CHECK_TOOLS="AskUserQuestion SendMessage"
+for tool in $CLAIM_CHECK_TOOLS; do
+  case "$tool" in
+    AskUserQuestion) claim_re='carr(y|ies)[^.]{0,40}AskUserQuestion|AskUserQuestion[^.]{0,40}(escape valve|narrow escape)' ;;
+    SendMessage)     claim_re='(carr(y|ies)|via|through|use[sd]?|alert[^.]{0,20}via|surface[^.]{0,20}via)[^.]{0,40}SendMessage|SendMessage[^.]{0,40}to:[[:space:]]*(lead|root)' ;;
+    *)               claim_re="carr(y|ies)[^.]{0,40}$tool" ;;
+  esac
+  for role in $ALL_ROLES; do
+    f="$AGENTS_DIR/$role.md"
+    [[ -f "$f" ]] || continue
+    case "$(tools_line "$f")" in *"$tool"*) continue ;; esac   # legitimately granted
+    claim="$(grep -nE "$claim_re" "$f" 2>/dev/null \
+              | grep -viE "not |never |no $tool|removed|absent|without|MUST NOT|cannot|do(es)? not" || true)"
+    if [[ -n "$claim" ]]; then
+      note "FAIL $role: prose claims/uses $tool but frontmatter does not grant it (v6.2.1/#186 tool-claim consistency):"
+      printf '%s\n' "$claim" | sed 's/^/        /'
+      fails=$((fails+1))
+    fi
+  done
 done
 
 if [[ "$fails" -gt 0 ]]; then

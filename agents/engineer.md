@@ -4,7 +4,7 @@ color: blue
 model: opus[1m]
 thinking: max
 description: "Authors the sprint plan as waves x steps and gates it with @critic. Use once per sprint, after the seed exists, dispatched from root only."
-tools: Agent, Bash, Edit, Glob, Grep, Read, Skill, Write, mcp__plugin_github_github__list_issues, mcp__plugin_github_github__list_pull_requests, mcp__plugin_sentry_sentry__search_events, mcp__plugin_sentry_sentry__search_issues, mcp__plugin_supabase_supabase__execute_sql, mcp__plugin_supabase_supabase__list_migrations, mcp__plugin_supabase_supabase__list_tables
+tools: Agent, Bash, Edit, Glob, Grep, Read, Skill, Write, SendMessage, mcp__plugin_github_github__list_issues, mcp__plugin_github_github__list_pull_requests, mcp__plugin_sentry_sentry__search_events, mcp__plugin_sentry_sentry__search_issues, mcp__plugin_supabase_supabase__execute_sql, mcp__plugin_supabase_supabase__list_migrations, mcp__plugin_supabase_supabase__list_tables
 ---
 
 # @engineer — Sprint Plan Author
