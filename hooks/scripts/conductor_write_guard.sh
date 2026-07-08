@@ -1,17 +1,22 @@
 #!/usr/bin/env bash
-# shepherd hook — PreToolUse(Edit|Write|Bash): conductor read+dispatch-only guard
-# (v6.2.7, #180 — "the conductor may read and dispatch; nothing else").
+# shepherd hook — PreToolUse(Edit|Write|Bash): conductor artifact/registry-write
+# guard (v6.2.7 #180; git carve-back v6.3.1 — "the conductor owns git + reads;
+# artifact + registry writes are dispatched").
 #
-# WHY: agents/conductor.md prose has always said the conductor writes only
-# `.md` (v6.1.x) or, as of v6.2.7, writes NOTHING at all — every artifact
-# (plan/report/handoff/ledger/CLAUDE.md patch) and every git-write operation
-# (gate commit, rebase-merge, branch cut/delete, worktree lifecycle, release
-# pipeline) is composed by the conductor and DISPATCHED to `@worker` as a
-# deterministic brief (exact content, exact command sequence). A prose-only
-# contract is exactly the failure mode teammate_git_guard.sh already exists to
-# close for git-integration verbs; this hook closes the same hole for the
-# FULL write surface (Edit, Write, and Bash-as-a-write-vehicle), in BOTH SOLO
-# and TEAMMATE conductor modes.
+# WHY: agents/conductor.md keeps the conductor from AUTHORING artifacts
+# (plan/report/handoff/ledger/CLAUDE.md patch) directly — a teammate returns
+# structured payloads and ROOT materializes them — so Edit/Write, non-git tree
+# mutation (rm/mv/sed -i/touch, redirection into a file), and mutating `shctx`
+# state verbs stay @worker/root territory. This hook is that mechanical backstop.
+#
+# GIT CARVE-BACK (v6.3.1): the v6.2.7 model also routed every git-write through
+# @worker, which made the conductor spawn a worker just to run two git commands
+# — wasteful. Coders/workers own NO git (#187), so the CONDUCTOR commits its
+# lane's coder output DIRECTLY (and at root/solo tier pushes + rebases too);
+# @worker is dispatched only for a BULK git batch. Cross-lane INTEGRATION onto
+# the dev branch stays root-exclusive for a TEAMMATE-conductor, but that seam is
+# teammate_git_guard.sh's job (TEAMMATE-GIT-WRITE), not this hook's. So this
+# guard no longer denies any git command.
 #
 # The conductor's ONE permitted external mutation is opening/closing GitHub
 # issues via `mcp__plugin_github_github__issue_write` — an MCP tool call, not
@@ -59,8 +64,8 @@
 # CAVEAT: heuristic regex pass over the command string, not a parsed argument
 # tree — the same acknowledged limitation teammate_git_guard.sh documents.
 #
-# HALT CODES: CONDUCTOR-WRITE-DENIED (Edit/Write), CONDUCTOR-GIT-WRITE-DENIED
-# (Bash) — both registered in agents/conductor.md §Halt codes.
+# HALT CODE: CONDUCTOR-WRITE-DENIED — Edit/Write, or a Bash FS/registry-write
+# (git is NOT denied here, v6.3.1) — registered in agents/conductor.md §Halt codes.
 
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -128,10 +133,14 @@ fi
 CMD="$(json_field "$PAYLOAD" '.tool_input.command' 2>/dev/null || true)"
 [[ -n "$CMD" ]] || exit 0
 
-# git verbs that mutate history/refs/remote/worktrees.
-GIT_WRITE_PATTERN='(^|[[:space:];|&])git[[:space:]]+(commit|push|merge|rebase|cherry-pick|reset|tag|switch|checkout|branch[[:space:]]+-[dD])([[:space:]]|$)'
-GIT_WORKTREE_WRITE_PATTERN='(^|[[:space:];|&])git[[:space:]]+worktree[[:space:]]+(add|remove|prune)([[:space:]]|$)'
-# filesystem mutation / in-place edit.
+# v6.3.1: git is NO LONGER blocked here. The conductor manages its worktree,
+# commits (its own lane's coder output — coders own no git, #187), pushes, and
+# rebases DIRECTLY — dispatching @worker for two git commands is wasteful; only
+# a BULK git batch earns a @worker. Cross-lane INTEGRATION onto the dev branch
+# stays root-exclusive for a TEAMMATE-conductor, but that seam is enforced by
+# teammate_git_guard.sh (TEAMMATE-GIT-WRITE), not here. So GIT_WRITE_PATTERN and
+# GIT_WORKTREE_WRITE_PATTERN are retired from this guard's deny-list.
+# filesystem mutation / in-place edit (non-git tree mutation stays dispatched).
 FS_WRITE_PATTERN='(^|[[:space:];|&])(rm|mv|sed[[:space:]]+-i|touch)([[:space:]]|$)'
 # shell redirection into a file (heuristic — a bare `>`/`>>` not part of a
 # comparison operator; excludes /dev/null and process-substitution `>()`).
@@ -144,7 +153,7 @@ SHCTX_WRITE_PATTERN='shctx[[:space:]]+(seed|plan[[:space:]]+record-critique|clos
 CMD_FOR_SHCTX_CHECK="$(printf '%s' "$CMD" | sed -E 's/shctx[[:space:]]+seed[[:space:]]+verify/shctx __seed_verify_exempt__/g')"
 
 MATCHED=""
-for pat_name in GIT_WRITE_PATTERN GIT_WORKTREE_WRITE_PATTERN FS_WRITE_PATTERN REDIRECT_PATTERN; do
+for pat_name in FS_WRITE_PATTERN REDIRECT_PATTERN; do
   pat="${!pat_name}"
   if printf '%s' "$CMD" | grep -qE "$pat" 2>/dev/null; then
     MATCHED="${MATCHED:+$MATCHED, }${pat_name%_PATTERN}"
@@ -158,17 +167,16 @@ if [[ -z "$MATCHED" ]]; then
   pass_silent "conductor_write_guard" "Bash" "conductor" "$SESSION"
 fi
 
-MSG="[shepherd] CONDUCTOR-GIT-WRITE-DENIED — conductor is read+dispatch only (v6.2.7)."$'\n'
+MSG="[shepherd] CONDUCTOR-WRITE-DENIED — filesystem/registry mutation is @worker's (v6.3.1)."$'\n'
 MSG+="  Command    : ${CMD:0:200}"$'\n'
 MSG+="  Matched    : ${MATCHED}"$'\n'
-MSG+="Gate commits, rebase-merges, branch cuts/deletes, worktree create/remove,"$'\n'
-MSG+="filesystem mutation, and any shctx write verb are @worker territory now —"$'\n'
-MSG+="compose the EXACT command sequence and dispatch it to @worker with a"$'\n'
-MSG+="deterministic brief (no judgment left to worker beyond running the given"$'\n'
-MSG+="commands and reporting output). Read-only Bash (git log/status/diff/show/"$'\n'
-MSG+="branch/worktree list, gh read calls, shctx query/search/status/doctor/dash/"$'\n'
-MSG+="inject/toolkit/models show/refresh/lint/seed verify/plan verify/graph"$'\n'
-MSG+="compile --verify) remains yours. See agents/conductor.md §Hard prohibitions"$'\n'
-MSG+="+ §Side-effect boundary."
+MSG+="Git is NOT blocked here — commit your lane DIRECTLY (root/solo also pushes +"$'\n'
+MSG+="rebases; a teammate's cross-lane integration stays root's via"$'\n'
+MSG+="teammate_git_guard). @worker only for a BULK git batch. But non-git tree"$'\n'
+MSG+="mutation (rm/mv/sed -i/touch, shell redirection into a file) and mutating"$'\n'
+MSG+="shctx state verbs (seed/close-lane/loop/mem/lock/migrate/…) stay @worker"$'\n'
+MSG+="territory — compose the EXACT command and dispatch it with a deterministic"$'\n'
+MSG+="brief. Read-only Bash + all git remain yours. See agents/conductor.md"$'\n'
+MSG+="§Hard prohibitions + §Side-effect boundary."
 
 emit_deny "$MSG" "conductor_write_guard" "Bash" "conductor" "$SESSION"
