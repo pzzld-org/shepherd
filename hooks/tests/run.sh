@@ -430,6 +430,20 @@ else
   fails=$((fails+1))
 fi
 
+# Teammate idle routing (v6.3.0, #183): teammate_idle.sh flips a teammate's
+# status to idle by NAME (the key named-Agent teammates register under, across
+# identity fields), and suppresses the "no row matched" flood when no spawn is
+# live — the noise that masked real stalls. Skips gracefully without sqlite3.
+echo "== test_teammate_idle.sh (v6.3.0 — #183 teammate idle status routing) =="
+total=$((total+1))
+if tid_out=$(bash "$TESTS_DIR/test_teammate_idle.sh" 2>&1); then
+  printf '  PASS  %s\n' "teammate-idle-flips-by-name-no-flood"
+else
+  printf '  FAIL  %-50s\n' "teammate-idle"
+  printf '%s\n' "$tid_out" | sed 's/^/        /'
+  fails=$((fails+1))
+fi
+
 # v6.3.0 doctrine-wiring guard (#181/#183/#184/#185/#186/#187): the prose/contract
 # legs of the release — conductor boot lead-attested escape (#184), worker GH
 # MCP write + CLI fallback (#185), engineer SendMessage grant (#186), coder

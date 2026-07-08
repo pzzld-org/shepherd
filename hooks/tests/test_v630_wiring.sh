@@ -62,5 +62,13 @@ else
   printf '  FAIL  %s — coder_git_guard.sh not executable\n' "#187 exec-bit"; fails=$((fails+1))
 fi
 
+echo "== #183 teammate registration + idle routing =="
+have skills/context/scripts/cmd_teammate.sh 'conductor\|shepherd:conductor\|engineer\|shepherd:engineer' "#183 register gate allows conductor + engineer"
+have skills/context/scripts/cmd_teammate.sh 'ON CONFLICT\(project_id, team_name, teammate_name\)'      "#183 register is an idempotent upsert"
+have commands/spawn.md 'Register teammates \(mandatory\)'                                                "#183 spawn path registers teammates before liveness"
+have commands/spawn.md 'shctx teammate register .* --type=engineer'                                      "#183 spawn registers the self-contained engineer teammate"
+have hooks/scripts/teammate_idle.sh "'\.agent_id'"                                                       "#183 idle hook reads .agent_id identity fallback"
+have hooks/scripts/teammate_idle.sh 'no live rows'                                                       "#183 idle hook suppresses flood when no spawn is live"
+
 if [[ "$fails" -eq 0 ]]; then echo "—— v6.3.0 wiring: OK ——"; else echo "—— v6.3.0 wiring: $fails FAIL ——"; fi
 exit "$fails"

@@ -167,7 +167,25 @@ first spawn; the channel is `SendMessage` plus the shared task list.
  IMMEDIATELY on spawn — it does NOT wait for a go-signal."
 ```
 
-After the instruction, root confirms liveness (`shctx teammate liveness` until each lane is
+### Register teammates (mandatory)
+
+Immediately after the spawn instruction — BEFORE polling liveness — root writes each teammate's
+row into the canonical store, once per spawned teammate:
+
+```
+shctx teammate register <name> --team={team_id} --type=conductor [--session={team_session}]
+# and, for the self-contained engineer teammate:
+shctx teammate register {engineer_name} --team={team_id} --type=engineer
+```
+
+This is the row the `TeammateIdle` hook (`hooks/scripts/teammate_idle.sh`) matches by NAME to flip
+idle status, and the row `shctx teammate liveness` reads. Native-Agent teammates boot fresh and do
+NOT self-register, so WITHOUT this step the `teammates` table stays empty: `liveness` returns
+nothing for live lanes and every `TeammateIdle` fires unmatched, flooding the lead with idle noise
+that masks real stalls (#183). Registration is idempotent (upsert on `(team, name)`), so a refresh
+or a teammate's own late self-register is safe.
+
+After registering, root confirms liveness (`shctx teammate liveness` until each lane is
 `active`/heartbeating) before the dispatch is complete. `hooks/scripts/dispatch_guard.sh`
 enforces dispatch discipline — off-tier or off-flock dispatches raise
 `WRONG-TIER-DISPATCH`, `DISPATCH-MISSING-SUBAGENT-TYPE`, `DISPATCH-OFF-FLOCK`, or

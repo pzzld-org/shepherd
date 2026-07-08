@@ -41,37 +41,57 @@ case "$sub" in
       *) echo "unknown flag: $1" >&2; exit 2;;
     esac; shift; done
     [[ -n "$team" && -n "$type" ]] || { usage; exit 2; }
-    # CONDUCTOR-ONLY-TEAMMATE gate (v6.2.7, #180). Every teammate spawned via the
-    # native teammate-spawn is a lane teammate-CONDUCTOR — no other flock role
-    # (critic, engineer classic-mode, coder, auditor, worker, discovery) is ever
-    # legitimately a teammate (skills/shepherd/references/pipeline.md §Lane law §II/§III.1;
-    # dispatch-tier-separation.md). The Agent/Task PreToolUse guard
-    # (hooks/scripts/dispatch_guard.sh) cannot see a native teammate-spawn at all —
-    # it isn't a tool call the harness exposes a hook for (see dispatch_guard.sh's
-    # own header note) — so THIS registration call is the one deterministic choke
-    # point every teammate passes through. A field incident (#180) shipped @critic
-    # as a teammate twice despite the prose contract; refuse here, loudly, instead
-    # of trusting prose alone.
+    # TEAMMATE-ROLE gate (v6.2.7 #180; widened v6.3.0 #183). Two flock profiles
+    # are legitimately spawned as native teammates: the lane teammate-CONDUCTOR
+    # (one lane = one conductor) and the self-contained @engineer that root spawns
+    # to author + self-gate the plan in-session (commands/spawn.md §Self-contained
+    # engineer; skills/shepherd/references/flock.md §@engineer). Every OTHER flock
+    # role (critic, coder, auditor, worker, discovery) is a SUBAGENT ONLY. The
+    # Agent/Task PreToolUse guard (hooks/scripts/dispatch_guard.sh) cannot see a
+    # native teammate-spawn — it isn't a hook-exposed tool call — so THIS
+    # registration call is the one deterministic choke point every teammate passes
+    # through. A field incident (#180) shipped @critic as a teammate twice despite
+    # the prose contract; refuse the non-{conductor,engineer} roles here, loudly.
+    # Refusing @engineer was ALSO a bug (#183): it left the self-contained engineer
+    # unregistered, so `teammate liveness` returned empty and TeammateIdle could
+    # not flip its status — a flood of unmatched idle pings the lead had to ignore.
     type_norm="$(printf '%s' "$type" | tr '[:upper:]' '[:lower:]')"
     case "$type_norm" in
-      conductor|shepherd:conductor) : ;;
+      conductor|shepherd:conductor|engineer|shepherd:engineer) : ;;
       *)
-        echo "ERR: CONDUCTOR-ONLY-TEAMMATE — refusing to register teammate '$name' with --type=$type." >&2
-        echo "  Only shepherd:conductor may ever be spawned as a native teammate (one lane = one" >&2
-        echo "  teammate-conductor). @critic/@engineer(classic)/@coder/@auditor/@worker/@discovery" >&2
-        echo "  are SUBAGENTS ONLY — dispatch via Agent/Task, never via a native teammate-spawn" >&2
-        echo "  instruction. If you meant to gate a plan or review a lane's output, dispatch" >&2
-        echo "  @critic/@auditor as a subagent from within the conductor teammate (or from root)," >&2
-        echo "  never as its own teammate. See skills/shepherd/references/pipeline.md §Lane law §II/§III.1 +" >&2
-        echo "  skills/shepherd/SKILL.md §Dispatch law." >&2
+        echo "ERR: TEAMMATE-ROLE-INVALID — refusing to register teammate '$name' with --type=$type." >&2
+        echo "  Only shepherd:conductor (one lane = one teammate-conductor) and the self-contained" >&2
+        echo "  shepherd:engineer may be spawned as native teammates. @critic/@coder/@auditor/" >&2
+        echo "  @worker/@discovery are SUBAGENTS ONLY — dispatch via Agent/Task, never via a native" >&2
+        echo "  teammate-spawn. To gate a plan or review a lane's output, dispatch @critic/@auditor" >&2
+        echo "  as a subagent from within the conductor teammate (or from root), never as its own" >&2
+        echo "  teammate. See skills/shepherd/references/pipeline.md §Lane law §II/§III.1 +" >&2
+        echo "  skills/shepherd/SKILL.md §Dispatch law + commands/spawn.md §Self-contained engineer." >&2
         exit 1
         ;;
     esac
     pid="$(project_id)"
     id="$(uuidgen 2>/dev/null || python3 -c 'import uuid;print(uuid.uuid4())')"
     ts="$(now_ms)"
-    sqlite3 "$DB" "INSERT INTO teammates (id, project_id, team_name, teammate_name, agent_type, session_id, tmux_pane_id, spawned_at, last_seen_at, status) VALUES ('$id','$pid','$team','$name','$type',NULLIF('$session',''),NULLIF('$pane',''),$ts,$ts,'booting');"
-    echo "$id"
+    # Idempotent register (v6.3.0 #183): root registers each teammate at spawn so
+    # the row EXISTS before the first TeammateIdle fires (the hook matches by
+    # teammate_name within the team). A re-register — root refresh, or a teammate
+    # self-register at boot — must not violate UNIQUE(project_id,team_name,
+    # teammate_name) or orphan the row id; upsert, preserving the id + heartbeat
+    # history, and revive a previously crashed/retired name back to 'booting'.
+    esc() { printf '%s' "$1" | sed "s/'/''/g"; }
+    e_team="$(esc "$team")"; e_name="$(esc "$name")"; e_type="$(esc "$type")"
+    e_session="$(esc "$session")"; e_pane="$(esc "$pane")"
+    sqlite3 "$DB" "INSERT INTO teammates (id, project_id, team_name, teammate_name, agent_type, session_id, tmux_pane_id, spawned_at, last_seen_at, status)
+      VALUES ('$id','$pid','$e_team','$e_name','$e_type',NULLIF('$e_session',''),NULLIF('$e_pane',''),$ts,$ts,'booting')
+      ON CONFLICT(project_id, team_name, teammate_name) DO UPDATE SET
+        agent_type   = excluded.agent_type,
+        session_id   = COALESCE(excluded.session_id, teammates.session_id),
+        tmux_pane_id = COALESCE(excluded.tmux_pane_id, teammates.tmux_pane_id),
+        last_seen_at = excluded.last_seen_at,
+        status       = CASE WHEN teammates.status IN ('retired','crashed') THEN 'booting' ELSE teammates.status END;"
+    # Echo the canonical row id (existing on conflict, freshly inserted otherwise).
+    sqlite3 "$DB" "SELECT id FROM teammates WHERE project_id='$pid' AND team_name='$e_team' AND teammate_name='$e_name';"
     ;;
   heartbeat)
     name="$1"; shift
