@@ -14,7 +14,10 @@ export SHCTX_QUIET=1
 # needed (keeps the test independent of commit-signing in the runner).
 cd "$SHCTX_TEST_TMP"
 git init -q .
-mkdir -p .shepherd
+mkdir -p .shepherd .claude
+# is_shepherd_project gate for workflow_model_guard.sh (the guard-clean check
+# below is a no-op without it — #180 review finding #12).
+touch .claude/shepherd.toml
 
 cat > plan.md <<'EOF'
 ## Stage Graph
@@ -90,8 +93,8 @@ assert_contains "close.briefs"        "$body" 'briefs["CLOSE-SWARM:code-quality"
 # The old broken shape passed the whole spawn object positionally as `prompt`
 # and carried no model/agentType — inheriting the main-loop model. Assert the
 # call shape is fixed and every spawn is pinned.
-assert_contains "pin.callshape"  "$body" "agent(s.prompt, s.opts)"
-if grep -qE '\bagent\(\s*s\s*\)' "$script"; then
+assert_contains "pin.callshape"  "$body" "() => agent(briefs["
+if grep -qE '=>\s*agent\(\s*s\s*\)|agent\(s\)' "$script"; then
   echo "FAIL: legacy opts-less agent(s) call shape still emitted (#180)" >&2; exit 1
 fi
 assert_eq "pin.model.count"   "$(grep -c 'model: "sonnet"' "$script")" "3"   # 3 auditors, all sonnet

@@ -67,6 +67,16 @@ dupes=$(sqlite3 "$SHCTX_DB" "SELECT count(*) FROM teammates WHERE team_name='tea
 sess=$(sqlite3 "$SHCTX_DB" "SELECT session_id FROM teammates WHERE teammate_name='conductor-idem';")
 [[ "$sess" == "sess-xyz" ]] || { echo "FAIL: re-register did not update session_id (got '$sess')"; fails=$((fails+1)); }
 
+# 8. Crashed/retired revival (#183): re-registering a crashed name flips status
+#    back to 'booting' (so a respawned teammate is live again) without churning
+#    the row id.
+id_rev=$($CMD register conductor-rev --team=team-a --type=conductor) || { echo "FAIL: revival setup register failed"; fails=$((fails+1)); }
+sqlite3 "$SHCTX_DB" "UPDATE teammates SET status='crashed' WHERE teammate_name='conductor-rev';"
+id_rev2=$($CMD register conductor-rev --team=team-a --type=conductor) || { echo "FAIL: re-register of crashed teammate errored"; fails=$((fails+1)); }
+[[ "$id_rev" == "$id_rev2" ]] || { echo "FAIL: revival changed the row id ($id_rev != $id_rev2)"; fails=$((fails+1)); }
+rev_status=$(sqlite3 "$SHCTX_DB" "SELECT status FROM teammates WHERE teammate_name='conductor-rev';")
+[[ "$rev_status" == "booting" ]] || { echo "FAIL: crashed teammate not revived to booting (got '$rev_status')"; fails=$((fails+1)); }
+
 rm -f /tmp/cwg_teammate_critic.err
 
 if [[ "$fails" -gt 0 ]]; then

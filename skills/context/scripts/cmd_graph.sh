@@ -611,24 +611,27 @@ A( "// agent fanout out-of-context; results return to the conductor in script")
 A( "// variables. On runtime failure the conductor degrades to `shctx graph next`")
 A( "// direct dispatch for this segment (doctrine §VI; no parallel engine).")
 A( "//")
-A( "// `agent(prompt, opts)` spawns a subagent (the real Workflow signature —")
-A( "// prompt STRING first, opts OBJECT second). Each spawn pins opts.agentType")
-A( "// = \"shepherd:<role>\" (loads the role definition + its tool allowlist) and")
+A( "// Each spawn is a thunk `() => agent(prompt, opts)` — the real Workflow")
+A( "// signature (prompt STRING first, opts OBJECT second), with a LITERAL opts")
+A( "// at the call site so the pin is statically visible: opts.agentType =")
+A( "// \"shepherd:<role>\" (loads the role definition + its tool allowlist) and")
 A( "// opts.model resolved from the [models] map — NEVER a bare agent(prompt),")
-A( "// which would inherit the main-loop model (#178/#180). `briefs` is the")
-A( "// conductor-resolved brief map keyed \"<node>:<tag>\" (brief CONTENT lives")
-A( "// with the conductor, not in compile(G) — the graph references briefs by id).")
+A( "// which would inherit the main-loop model (#178/#180). This shape is")
+A( "// workflow_model_guard.sh-clean by static analysis (the guard never runs on")
+A( "// this `node`-executed path, but 'would it pass the guard' is the bar).")
+A( "// `briefs` is the conductor-resolved brief map keyed \"<node>:<tag>\" (brief")
+A( "// CONTENT lives with the conductor, not in compile(G) — referenced by id).")
 A("")
 A("export default async function ({ agent, briefs }) {")
 A(f"  const MAX_CONCURRENT = {MAX_CONCURRENT};  // doctrine §III concurrency cap")
 A("")
-A("  // Bounded fan-out: spawn in chunks of MAX_CONCURRENT (unbounded Promise.all")
-A("  // is the §III anti-pattern). parallel_with peers share one batch.")
-A("  async function fanout(spawns) {")
+A("  // Bounded fan-out: run spawn thunks in chunks of MAX_CONCURRENT (unbounded")
+A("  // Promise.all is the §III anti-pattern). parallel_with peers share one batch.")
+A("  async function fanout(thunks) {")
 A("    const out = [];")
-A("    for (let i = 0; i < spawns.length; i += MAX_CONCURRENT) {")
-A("      const chunk = spawns.slice(i, i + MAX_CONCURRENT);")
-A("      out.push(...(await Promise.all(chunk.map((s) => agent(s.prompt, s.opts)))));")
+A("    for (let i = 0; i < thunks.length; i += MAX_CONCURRENT) {")
+A("      const chunk = thunks.slice(i, i + MAX_CONCURRENT);")
+A("      out.push(...(await Promise.all(chunk.map((t) => t()))));")
 A("    }")
 A("    return out;")
 A("  }")
@@ -648,7 +651,7 @@ for oi in order:
         desc = f"@{s['role']}" + (f": {s['tag']}" if s['tag'] else f" {s['node']}#{s['index']}")
         ro   = "  /* read-only: allowlist-enforced, no edit tools (§VII, #74) */" if s["readonly"] else ""
         mdl  = role_model(s["role"])
-        A(f"    {{ prompt: briefs[{js(key)}], opts: {{ agentType: \"shepherd:{s['role']}\", model: {js(mdl)}, label: {js(desc)} }} }},{ro}")
+        A(f"    () => agent(briefs[{js(key)}], {{ agentType: \"shepherd:{s['role']}\", model: {js(mdl)}, label: {js(desc)} }}),{ro}")
     A("  ]);")
     for nid in cl:
         A(f"  results[{js(nid)}] = {bvar};")
@@ -747,7 +750,8 @@ def run_verify():
     # compiler bug, not a plan defect"). compile() is a pure function of state.json.
     if prior_script is not None and prior_script != script:
         problems["determinism"].append(
-            "prior on-disk script != fresh compile(G_seg) — hand-edited or stale "
+            "prior on-disk script != fresh compile(G_seg) — hand-edited, stale, or the "
+            "[models] pin resolved differently since last compile (#180) "
             "(recompiled to the canonical form now)")
     # no nondeterministic constructs (Date/Math.random/Promise.race|any) in the script
     for bad in ("Math.random", "Date.now", "Promise.race", "Promise.any"):
@@ -768,9 +772,11 @@ def run_verify():
         problems["model_pin"].append(
             f"{total_agents - n_modelpin} spawn(s) missing an explicit model pin")
     # regression guard: the legacy opts-less `agent(s)` call shape must be gone.
-    if re.search(r'\bagent\(\s*s\s*\)', script):
+    # Anchor on the arrow-function CALL SITE (`(s) => agent(s)`) so a brief label
+    # or comment that merely contains the text "agent(s)" cannot false-trip it.
+    if re.search(r'=>\s*agent\(\s*s\s*\)', script):
         problems["model_pin"].append(
-            "legacy opts-less agent(s) call present — must be agent(prompt, opts) with a pin")
+            "legacy opts-less agent(s) call shape present — must be agent(prompt, opts) with a pin")
 
     return problems
 

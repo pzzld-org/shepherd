@@ -63,15 +63,25 @@ tmp=$(mktemp -d -t shep-cgg.XXXXXX)
 trap 'rm -rf "$tmp"' EXIT
 cd "$tmp"
 git init -q .; git config user.email t@t; git config user.name t
-git -c commit.gpgsign=false commit -q --allow-empty -m init
 mkdir -p .claude; touch .claude/shepherd.toml
+# COMMIT the shepherd.toml so a linked worktree checkout also carries it (the
+# cross-worktree case below needs is_shepherd_project to pass from the worktree).
+git add .claude/shepherd.toml
+git -c commit.gpgsign=false commit -q -m init
 sprint=$(git rev-parse --abbrev-ref HEAD)
 mkdir -p ".shepherd/dispatch/$sprint"
 printf '{"agent_role":"coder"}'   > ".shepherd/dispatch/$sprint/coder1.json"
 printf '{"agent_role":"auditor"}' > ".shepherd/dispatch/$sprint/aud1.json"
 
-# payload builder: <tool_use_id> <command>
-P() { printf '{"session_id":"s","tool_name":"Bash","tool_use_id":"%s","tool_input":{"command":"%s"}}' "$1" "$2"; }
+# payload builder: <tool_use_id> <command> — JSON-escape the command (it may
+# contain embedded quotes, e.g. bash -c "git commit").
+P() {
+  if command -v python3 >/dev/null 2>&1; then
+    python3 -c 'import json,sys; print(json.dumps({"session_id":"s","tool_name":"Bash","tool_use_id":sys.argv[1],"tool_input":{"command":sys.argv[2]}}))' "$1" "$2"
+  else
+    printf '{"session_id":"s","tool_name":"Bash","tool_use_id":"%s","tool_input":{"command":"%s"}}' "$1" "$2"
+  fi
+}
 
 deny_case() { # <label> <tool_use_id> <cmd>
   total=$((total+1)); local out; out=$(run_hook "$(P "$2" "$3")")
@@ -102,6 +112,36 @@ pass_case "coder + git rev-parse → PASS (Step 0.5)"   coder1 'git rev-parse HE
 pass_case "coder + rg (no git) → PASS"                coder1 'rg -n pattern src/'
 pass_case "auditor + git commit → PASS (non-coder)"   aud1   'git commit -m x'
 pass_case "untagged + git commit → PASS (role≠coder)" nodisp 'git commit -m x'
+
+# --- bypass regressions (review CRITICAL #2/#3, MEDIUM #8) ----------------
+deny_case "coder + bash -c \"git commit\" → DENY"     coder1 'bash -c "git commit -am x"'
+deny_case "coder + git status && bash -c git write"   coder1 'git status && bash -c "git commit -am x"'
+deny_case "coder + eval \"git reset --hard\" → DENY"  coder1 'eval "git reset --hard HEAD"'
+deny_case "coder + git read-tree (plumbing) → DENY"   coder1 'git read-tree --reset -u HEAD'
+deny_case "coder + git reflog expire → DENY"          coder1 'git reflog expire --all'
+deny_case "coder + glued git status;git commit → DENY" coder1 'git status;git commit -am x'
+deny_case "coder + sh -c git checkout → DENY"         coder1 'sh -c "git checkout -- ."'
+pass_case "coder + glued git status;git log → PASS"   coder1 'git status;git log --oneline'
+pass_case "coder + git status;echo ok → PASS"         coder1 'git status;echo ok'
+
+# --- cross-worktree role detection (review CRITICAL #1, _lib.sh current_role) ---
+# The coder's Bash runs from its OWN linked worktree (a different branch AND
+# toplevel than the sprint root where the dispatch record was written). The guard
+# must still resolve role=coder from there — else it silently no-ops, the exact
+# field bug. Reproduces by running the hook from inside a real linked worktree.
+if git -C "$tmp" worktree add -q -b agent-lane-x "$tmp/wt-x" "$sprint" 2>/dev/null; then
+  total=$((total+1))
+  out=$( cd "$tmp/wt-x" && printf '%s' "$(P coder1 'git commit -am x')" | bash "$SCRIPT" 2>/dev/null || true )
+  if is_deny "$out" && has_code "$out"; then pass "cross-worktree coder commit → DENY (current_role #1)"
+  else fail "cross-worktree commit" "guard no-op from worktree: ${out:0:80}"; fi
+  total=$((total+1))
+  out=$( cd "$tmp/wt-x" && printf '%s' "$(P coder1 'git status')" | bash "$SCRIPT" 2>/dev/null || true )
+  if ! is_deny "$out"; then pass "cross-worktree coder read → PASS"
+  else fail "cross-worktree read" "unexpected deny: ${out:0:80}"; fi
+  git -C "$tmp" worktree remove --force "$tmp/wt-x" 2>/dev/null || true
+else
+  printf '  SKIP  cross-worktree cases — git worktree add unavailable\n'
+fi
 
 echo "—— $((total-fails))/$total passed ——"
 exit "$fails"

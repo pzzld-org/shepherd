@@ -242,11 +242,11 @@ test_graph_compile.sh` demonstrates:
   exits. Team mode still runs existing Agent Teams cleanup at lane close.
 
 **Subagent primitive confirmed.** Compiled workflows orchestrate subagents
-only — every spawn is `agent({ subagent_type: "shepherd:<role>", ... })`.
-The mandatory-`subagent_type` contract (refusal on omission,
-`general-purpose`, or `Explore`) is unchanged: the compiler emits only
-`shepherd:<role>` types; the tool allowlist keeps a compiled audit step
-read-only even though the runtime auto-approves edits.
+only — every spawn is `agent(prompt, { agentType: "shepherd:<role>", model, ... })`
+(the real Workflow signature; #180). The mandatory-`agentType` contract (refusal on
+omission, `general-purpose`, or `Explore`) is unchanged: the compiler emits only
+`shepherd:<role>` types + a `[models]`-resolved `model` pin; the tool allowlist keeps a
+compiled audit step read-only even though the runtime auto-approves edits.
 
 ## Workflow self-check
 

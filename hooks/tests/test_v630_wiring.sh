@@ -56,6 +56,8 @@ have skills/shepherd/references/flock.md 'ZERO git'                  "#187 flock
 have skills/shepherd/references/flock.md 'the CONDUCTOR commits coder output' "#187 flock.md: conductor commits coder output"
 have agents/conductor.md 'Commit custody is yours, PASS-gated'       "#187 conductor.md §Lane walk: PASS-gated commit custody"
 have skills/shepherd/references/escalation.md 'CODER-GIT-WRITE'      "#187 escalation.md registers CODER-GIT-WRITE"
+have hooks/scripts/_lib.sh 'git rev-parse --git-common-dir'          "#187 current_role resolves the dispatch record from a linked worktree"
+have hooks/scripts/coder_git_guard.sh 'ALWAYS runs'                  "#187 guard runs the raw write-scan backstop unconditionally (bash -c bypass)"
 if [[ -x "$REPO_ROOT/hooks/scripts/coder_git_guard.sh" ]]; then
   printf '  PASS  %s\n' "#187 coder_git_guard.sh is executable"
 else
@@ -71,13 +73,14 @@ have hooks/scripts/teammate_idle.sh "'\.agent_id'"                              
 have hooks/scripts/teammate_idle.sh 'no live rows'                                                       "#183 idle hook suppresses flood when no spawn is live"
 
 echo "== #181/#180 compile-down model pin =="
-have skills/context/scripts/cmd_graph.sh 'agent\(s.prompt, s.opts\)'                                     "#180 compiler emits agent(prompt, opts) — real signature"
+have skills/context/scripts/cmd_graph.sh '\(\) => agent\(briefs'                                         "#180 compiler emits () => agent(prompt, opts) — real signature, static pin"
 have skills/context/scripts/cmd_graph.sh 'agentType: .* model:'                                          "#180 compiler injects agentType + model pin"
 have skills/context/scripts/cmd_graph.sh '"model_pin"'                                                   "#180 --verify has the model_pin invariant"
 have skills/context/scripts/cmd_graph.sh '_graph_role_model'                                             "#180 model resolved from [models] via cfg_section_get"
 missing skills/context/scripts/cmd_graph.sh 'subagent_type: .shepherd:.\{s'                              "#180 legacy subagent_type emission removed"
 have skills/harness/references/workflow-templates.md 'Pinned.* \(#180\)'                                 "#180 workflow-templates §Compile-down adds the Pinned invariant"
 have docs/specs/v630-dispatch-pin-dsl-decision.md 'Decision: do NOT build the broad DSL now'             "#181 explore/decision doc records the DSL decision"
+have hooks/scripts/bash_guard.sh 'subagent_type\|agentType'                                              "#180 bash_guard Check 0-bis matches the renamed agentType key"
 
 if [[ "$fails" -eq 0 ]]; then echo "—— v6.3.0 wiring: OK ——"; else echo "—— v6.3.0 wiring: $fails FAIL ——"; fi
 exit "$fails"

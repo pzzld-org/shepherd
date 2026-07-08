@@ -86,49 +86,62 @@ printf '%s' "$CMD" | grep -qE '(^|[^[:alnum:]_.-])git([[:space:]]|$)' 2>/dev/nul
 # read-only. rev-parse is required by the coder's Step 0.5 base-commit check.
 READONLY_GIT_VERBS="status diff log show rev-parse ls-files ls-tree cat-file blame show-ref rev-list merge-base describe shortlog for-each-ref name-rev diff-tree diff-index grep var whatchanged count-objects show-branch cherry version help"
 
-# Extract the effective subcommand of every `git ...` invocation, skipping git
-# global options. python3 (shlex) gives an accurate token walk across &&/;/|
-# and quoting; a whole-string tokenize is close enough for this heuristic gate.
+BAD=""
+
+# --- Layer 1: allowlist over extracted git subcommands (deny-by-default) ---
+# python3 (shlex) walks tokens, skips git global options (git -C x commit →
+# commit), and RECURSES into shell-invoking wrappers (bash/sh/zsh/eval -c
+# "<string>") so a write hidden in a quoted argument is not an opaque token.
+# Each extracted subcommand is cut at the first shell metacharacter so a glued
+# read (git status;git log) is not mis-read as one bogus subcommand.
 SUBCMDS=""
 if command -v python3 >/dev/null 2>&1; then
   SUBCMDS="$(printf '%s' "$CMD" | python3 -c '
-import sys, shlex
-cmd = sys.stdin.read()
-try:
-    toks = shlex.split(cmd, posix=True)
-except ValueError:
-    toks = cmd.split()
-# git global options that CONSUME the following token.
+import sys, shlex, re
 takes_arg = {"-C", "-c", "--git-dir", "--work-tree", "--namespace",
              "--exec-path", "--config-env", "--super-prefix"}
-subs = []
-i = 0
-n = len(toks)
-while i < n:
-    t = toks[i]
-    # strip shell path prefix so /usr/bin/git and git both match
-    base = t.rsplit("/", 1)[-1]
-    if base == "git":
-        j = i + 1
-        while j < n:
-            o = toks[j]
-            if o in takes_arg:
-                j += 2; continue
-            if o.startswith("--") and "=" in o:
-                j += 1; continue          # --git-dir=... etc (arg is inline)
-            if o.startswith("-"):
-                j += 1; continue          # bare global flag (-p, --no-pager, --bare, --paginate, …)
-            subs.append(o.lower()); break  # first bareword = the subcommand
-        i = j + 1
-    else:
-        i += 1
-print("\n".join(subs))
+SHELLS = {"bash", "sh", "zsh", "dash", "ksh", "env", "xargs"}
+def subcommands(cmd, depth=0):
+    out = []
+    if depth > 6:
+        return out
+    try:
+        toks = shlex.split(cmd, posix=True)
+    except ValueError:
+        toks = cmd.split()
+    i, n = 0, len(toks)
+    while i < n:
+        base = toks[i].rsplit("/", 1)[-1]
+        if base == "git":
+            j = i + 1
+            while j < n:
+                o = toks[j]
+                if o in takes_arg: j += 2; continue
+                if o.startswith("--") and "=" in o: j += 1; continue
+                if o.startswith("-"): j += 1; continue
+                sc = re.split(r"[;&|]", o.lower())[0]   # cut glued metachars
+                if sc: out.append(sc)
+                break
+            i = j + 1
+        elif base == "eval":
+            for k in range(i + 1, n):
+                out += subcommands(toks[k], depth + 1)   # eval <str> …
+            i += 1
+        elif base in SHELLS:
+            k = i + 1
+            while k < n:
+                if toks[k] == "-c" and k + 1 < n:
+                    out += subcommands(toks[k + 1], depth + 1)
+                    k += 2; continue
+                k += 1
+            i += 1
+        else:
+            i += 1
+    return out
+print("\n".join(subcommands(sys.stdin.read())))
 ' 2>/dev/null || true)"
 fi
-
 if [[ -n "$SUBCMDS" ]]; then
-  # Allowlist path: deny if ANY extracted subcommand is not read-only.
-  BAD=""
   while IFS= read -r sc; do
     [[ -z "$sc" ]] && continue
     case " $READONLY_GIT_VERBS " in
@@ -136,17 +149,24 @@ if [[ -n "$SUBCMDS" ]]; then
       *) BAD="${BAD:+$BAD, }git ${sc}" ;;   # anything else → blocked
     esac
   done <<< "$SUBCMDS"
-  [[ -z "$BAD" ]] && pass_silent "coder_git_guard" "Bash" "coder" "$SESSION"
-  VERBS="$BAD"
-else
-  # Fallback (python3 absent, or no subcommand parsed): comprehensive
-  # write-verb deny-list. Reads pass through unmatched.
-  WRITE_PATTERN='(^|[^[:alnum:]_.-])git[[:space:]]+([^|;&]*[[:space:]])?(add|rm|mv|commit|merge|rebase|reset|restore|checkout|switch|stash|clean|cherry-pick|revert|push|pull|fetch|clone|init|gc|prune|repack|apply|am|worktree|remote|tag|branch|config|notes|submodule|update-ref|update-index|update-server-info|replace|filter-branch|fast-import|sparse-checkout|bisect|format-patch|write-tree|commit-tree|hash-object|symbolic-ref)([[:space:]]|$)'
-  if ! printf '%s' "$CMD" | grep -qE "$WRITE_PATTERN" 2>/dev/null; then
-    pass_silent "coder_git_guard" "Bash" "coder" "$SESSION"
-  fi
-  VERBS="git write command"
 fi
+
+# --- Layer 2: comprehensive raw write-scan (ALWAYS runs) -------------------
+# Independent of Layer 1's tokenizer: catches a git write ANYWHERE in the raw
+# string — inside bash -c "…"/eval, glued to a decoy read (git status && git
+# reset), or a plumbing verb the tokenizer allowlist wouldn't have to reason
+# about. This is the sole check when python3 is absent. Verb list is
+# exhaustive: every mutating porcelain + plumbing command, plus the write forms
+# of dual-mode verbs (branch/remote/tag/config/reflog/…), which a coder never
+# needs anyway.
+WRITE_VERBS='add|rm|mv|commit|commit-tree|merge|merge-file|merge-index|rebase|reset|restore|checkout|checkout-index|switch|stash|clean|cherry-pick|revert|push|pull|fetch|clone|init|gc|prune|repack|apply|am|worktree|remote|tag|branch|config|notes|submodule|update-ref|update-index|update-server-info|replace|filter-branch|filter-repo|fast-import|sparse-checkout|bisect|format-patch|request-pull|write-tree|hash-object|symbolic-ref|read-tree|reflog|send-pack|receive-pack|http-push|http-fetch|credential|maintenance|mergetool|difftool|commit-graph|multi-pack-index|pack-refs|mktree|mktag|pack-objects|unpack-objects|prune-packed|fsck'
+WRITE_PATTERN="(^|[^[:alnum:]_.-])git[[:space:]]+([^\"';|&]*[[:space:]])?(${WRITE_VERBS})([[:space:]\"';|&]|\$)"
+if printf '%s' "$CMD" | grep -qE "$WRITE_PATTERN" 2>/dev/null; then
+  BAD="${BAD:+$BAD, }git write command"
+fi
+
+[[ -z "$BAD" ]] && pass_silent "coder_git_guard" "Bash" "coder" "$SESSION"
+VERBS="$BAD"
 
 MSG="[shepherd] CODER-GIT-WRITE — @coder may not run git (read-only inspection only)."$'\n'
 MSG+="  Session    : ${SESSION}"$'\n'

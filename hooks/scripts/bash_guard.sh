@@ -41,7 +41,7 @@ role=$(current_role "$tool_use_id" "$sprint")
 if printf '%s' "$cmd" | grep -qE '[A-Za-z0-9._/-]+\.workflow\.js'; then
   while IFS= read -r wf; do
     [[ -f "$wf" ]] || continue
-    if grep -qE "team_name[[:space:]]*:|subagent_type[\"'[:space:]]*:[\"'[:space:]]*shepherd:conductor|/shepherd:spawn" "$wf" 2>/dev/null; then
+    if grep -qE "team_name[[:space:]]*:|(subagent_type|agentType)[\"'[:space:]]*:[\"'[:space:]]*shepherd:conductor|/shepherd:spawn" "$wf" 2>/dev/null; then
       msg="[shepherd] PRIMITIVE-INVERSION — workflow-spawns-teammates — BLOCKED."$'\n'
       msg+="  Workflow: $wf"$'\n'
       msg+="A Dynamic Workflow orchestrates SUBAGENTS (the execution axis). Spawning a"$'\n'

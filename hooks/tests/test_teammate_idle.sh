@@ -64,6 +64,12 @@ run_err '{"hook_event_name":"TeammateIdle","agent_id":"lane-b"}' >/dev/null
 st=$(status_of lane-b)
 [[ "$st" == "idle" ]] && pass "name via .agent_id → flips to idle" || fail "agent_id field" "status=$st"
 
+# --- 2b. registered name via .name field → flips (#183 third fallback) ----
+total=$((total+1)); ins t2b lane-c '' active
+run_err '{"hook_event_name":"TeammateIdle","name":"lane-c"}' >/dev/null
+st=$(status_of lane-c)
+[[ "$st" == "idle" ]] && pass "name via .name → flips to idle" || fail ".name field" "status=$st"
+
 # --- 3. unregistered name, OTHER live teammates → warns ------------------
 total=$((total+1))   # lane-a/lane-b are live → table non-empty
 err=$(run_err '{"hook_event_name":"TeammateIdle","teammate_name":"ghost","session_id":"nope"}')
