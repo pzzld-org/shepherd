@@ -4,6 +4,39 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v6.3.0 — 2026-07-08
+
+**Field-hardening sprint from the axiom dev.8 run: the flock substrate now enforces its own contracts instead of trusting prose (#181, #183–#187).**
+
+### New — `hooks/scripts/coder_git_guard.sh` (#187)
+
+- **`PreToolUse(Bash)` @coder git-write guard.** Git custody is never the coder's: coders write files under `[WORKTREE].Path`, list them in the CODER REPORT, and the conductor stages+commits that output only after the wave-review returns PASS. The deeper reason coders own no git — a `REDO` verdict re-runs the named coder over the SAME files, so keeping output uncommitted means nothing to unwind (field incident: coders self-committed twice in axiom dev.8; pathspec-less commits in a SHARED lane worktree swept siblings' uncommitted files). Deny-by-default: every git subcommand except a read-only allowlist (`status`/`diff`/`log`/`show`/`rev-parse`/…) is blocked. python3 `shlex` extracts the effective subcommand past git global options (`git -C x commit` → `commit`); a write-verb deny-list is the fallback when python3 is absent. Halt code `CODER-GIT-WRITE`. Doctrine updated across `agents/coder.md` (Step 5 → no-git hand-off), `skills/shepherd/references/flock.md` §@coder/§Write boundaries/§Mandatory verification, `agents/conductor.md` §Lane walk (PASS-gated commit custody), `escalation.md`. Tests: `test_coder_git_guard.sh` (20 cases).
+
+### Fixed
+
+- **Teammate registration + TeammateIdle routing (#183).** Named-Agent teammates were never mechanically registered (prose-only step, no auto-register hook, and the CONDUCTOR-ONLY gate refused the self-contained `@engineer` teammate), so the `teammates` table stayed empty — `shctx teammate liveness` returned nothing and every `TeammateIdle` fired unmatched, flooding the lead with noise that masked real stalls. `cmd_teammate.sh` register now accepts conductor + engineer and is an idempotent upsert on `(project_id, team_name, teammate_name)`; `commands/spawn.md` wires root-side registration into the spawn path before the liveness poll; `teammate_idle.sh` matches by name across identity fields and suppresses the "no row matched" warning when no spawn is live. Tests: `test_teammate_idle.sh` (7), updated `test_cmd_teammate_conductor_only.sh`.
+- **Conductor boot hard-halt on brief SHAPE (#184).** A `BOOT-FORMAT: lead-attested` marker (placed by the lead beside `ROOT-SESSION-NAME`) relaxes the boot checks from header-shape to a SUBSTANCE check of the required facts, so a lead-authored non-canonical brief carrying every fact no longer raises `TEAMMATE-BOOT-MALFORMED`. The `dispatcher` check is never relaxed; unmarked briefs keep the strict shape check. `agents/conductor.md` §Boot verification, `commands/spawn.md`, `escalation.md`.
+- **@worker GH-write contract (#185).** Added `add_issue_comment` to `agents/worker.md` (`issue_write` already covered close/update/milestone/label). The MCP-over-CLI doctrine (`worker.md`, `skills/shepherd/SKILL.md` §Principles) now conditions the MCP preference on MCP availability and sanctions the `gh`/`psql` CLI as the explicit write fallback when the MCP is unloaded/`[mcp].<svc>=false`/absent from `[TOOLKIT]` — the axiom dev.8 W0 incident (whole-plugin absence) is no longer a contract violation.
+- **@engineer `SendMessage` grant (#186).** The self-contained engineer flow alerts root via `SendMessage`, but the frontmatter omitted the grant, so the PLAN-READY alert raced/failed. Declared `SendMessage` in `agents/engineer.md`; generalized `lint_agent_capabilities.sh`'s tool-claim consistency check (was AskUserQuestion-only) to catch any coordination tool claimed-but-ungranted.
+- **Compile-down model pins (#180, folded into #181).** `shctx graph compile` emitted spawns as one object passed positionally to `agent(s)` — the wrong Workflow signature AND unpinned, so a compiled `*.workflow.js` silently inherited the main-loop model (#178 one level removed). `cmd_graph.sh` now emits `agent(prompt, opts)` with `opts.agentType` + `[models]`-resolved `opts.model`; the `--verify` faithfulness diff gains a **model_pin** invariant. `workflow-templates.md` §Compile-down invariant (4). Tests: extended `test_graph_compile.sh`.
+
+### Explored (decided)
+
+- **#181 — template/DSL for dispatch call-sites.** With #180 shipped and the #178 `PreToolUse(Workflow)` guard live, both dispatch classes (graph-derived fanout by construction; hand-authored Workflow by interception) are covered. Decision: do NOT build a broad DSL now; escalate to a skeleton emitter only if the guard's deny-rate climbs. `docs/specs/v630-dispatch-pin-dsl-decision.md`.
+
+### Review hardening (adversarial pass)
+
+A 5-lens adversarial review (20 sonnet agents, verify-each-finding) surfaced defects fixed before landing:
+
+- **`current_role` worktree resolution (`hooks/scripts/_lib.sh`).** The dispatch-record lookup was cwd/branch-relative, so a @coder reading it from INSIDE its own linked worktree (a different toplevel AND branch) missed the record and fell back to role=conductor — making `coder_git_guard.sh` a silent no-op in the coder's normal environment (and affecting every role-scoped guard). Now resolved via `--git-common-dir` (the shared `.git` even from a linked worktree) + a `tool_use_id` glob across sprint dirs (branch-independent). Reproduced + pinned by a real cross-worktree test case.
+- **`coder_git_guard.sh` bypasses.** A git write hidden in `bash -c "…"`/`eval`/`sh -c` (opaque to the tokenizer) or glued to a decoy read slipped through; `git read-tree`/`reflog expire` and other plumbing verbs were absent from the fallback. The tokenizer now recurses into shell wrappers, a comprehensive raw write-scan ALWAYS runs as a second independent layer, and glued metacharacters are stripped. New regression cases cover each.
+- **`bash_guard.sh` Check 0-bis** now also matches the renamed `agentType:` key when detecting a compiled workflow that illegally spawns a teammate-conductor.
+- **Compiler emission** switched to `() => agent(prompt, { agentType, model, label })` thunks with a LITERAL opts at each call site, so a compiled segment is statically `workflow_model_guard.sh`-clean.
+
+### Tests
+
+- New `hooks/tests/test_v630_wiring.sh` (doctrine-wiring guard across all six issues) + `test_coder_git_guard.sh` (31 cases, incl. cross-worktree + shell-nesting bypasses) + `test_teammate_idle.sh`, all wired into `hooks/tests/run.sh`. Full hook suite 63/63.
+
 ## v6.2.9 — 2026-07-07
 
 **Closes the one dispatch primitive the model map didn't reach: hand-authored Dynamic Workflows (#178).**

@@ -310,14 +310,37 @@ current_role() {
   local tool_use_id="${1:-}" sprint="${2:-unknown}"
   [[ -z "$tool_use_id" ]] && { printf 'conductor'; return 0; }
 
-  local ns dispatch_file
-  ns=$(resolve_namespace)
-  dispatch_file="$ns/dispatch/$sprint/${tool_use_id}.json"
+  # The dispatch record was written by agent_invocation_tagger.sh from the
+  # SPRINT-ROOT context. A @coder reads it from INSIDE its own linked worktree
+  # (`shctx worktree create-batch` — a different toplevel AND a different branch),
+  # so a cwd-relative lookup (`resolve_namespace` uses `--show-toplevel`;
+  # `current_sprint` returns the checked-out branch) misses the record entirely
+  # and every consumer falls back to role=conductor — the coder_git_guard #187
+  # field no-op. Resolve robustly: search the cwd namespace AND the MAIN
+  # worktree's namespace (via `--git-common-dir`, which points at the shared .git
+  # even from a linked worktree), and match the record by its UNIQUE tool_use_id
+  # under ANY sprint dir (branch-independent) — a glob, since the reader's
+  # current branch need not equal the sprint segment recorded at write time.
+  local ns dispatch_file="" cand common main_root
+  local -a roots=()
+  ns="$(resolve_namespace 2>/dev/null || true)"; [[ -n "$ns" ]] && roots+=("$ns")
+  common="$(git rev-parse --git-common-dir 2>/dev/null || true)"
+  if [[ -n "$common" ]]; then
+    case "$common" in /*) : ;; *) common="$(pwd)/$common" ;; esac
+    main_root="$(cd "$(dirname "$common")" 2>/dev/null && pwd || true)"
+    [[ -n "$main_root" ]] && roots+=("$main_root/.shepherd" "$main_root/.artifacts")
+  fi
+  for ns in "${roots[@]}"; do
+    [[ -n "$ns" ]] || continue
+    for cand in "$ns/dispatch/$sprint/${tool_use_id}.json" "$ns"/dispatch/*/"${tool_use_id}.json"; do
+      [[ -f "$cand" ]] && { dispatch_file="$cand"; break 2; }
+    done
+  done
 
-  if [[ -f "$dispatch_file" ]] && command -v jq &>/dev/null; then
+  if [[ -n "$dispatch_file" ]] && command -v jq &>/dev/null; then
     jq -r '.agent_role // "unknown"' "$dispatch_file" 2>/dev/null || printf 'unknown'
-  elif [[ -f "$dispatch_file" ]]; then
-    python3 -c "import json; print(json.load(open('$dispatch_file')).get('agent_role','unknown'))" 2>/dev/null || printf 'unknown'
+  elif [[ -n "$dispatch_file" ]]; then
+    python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('agent_role','unknown'))" "$dispatch_file" 2>/dev/null || printf 'unknown'
   else
     printf 'conductor'
   fi

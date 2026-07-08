@@ -1,7 +1,7 @@
 ---
 name: shepherd-context
 slug: shepherd-context
-version: 6.2.9
+version: 6.3.0
 description: "Per-project SQLite registry backing /shepherd:ctx — symbols, GitHub state, dedup, telemetry, locks. Use when reading or writing project context state."
 metadata:
   triggers:
@@ -32,7 +32,7 @@ Quick reference only — detail lives in the sibling `references/` files.
 - `lock <show|acquire|release|reap>` — file lock at `<namespace>/shepherd.lock`.
 - `lint` / `migrate` / `export <kind> [--out=path]`.
 - `close-lane <id> --sprint=<branch> […]` — mid-sprint closure.
-- `worktree <list|gc|merge <agent-id>>` — manage `agent-*` worktrees; `merge` is the conductor's preferred no-`cd` way to integrate a coder commit.
+- `worktree <list|gc|merge <agent-id>>` — manage `agent-*` worktrees; `merge` is the conductor's preferred no-`cd` way to integrate a lane's committed coder output (the conductor commits it — coders own no git, §@coder).
 - `loop <init|native-cmd|status|record|close|list|focus>` — Loop-Until-Done state.
 - `config <init|claude-md|show|path|get>` — scaffold/inspect `shepherd.toml`.
 - `adapt <roll|reflect|priors|report|recommend>` — adaptation loop.

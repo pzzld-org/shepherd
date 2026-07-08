@@ -14,7 +14,10 @@ export SHCTX_QUIET=1
 # needed (keeps the test independent of commit-signing in the runner).
 cd "$SHCTX_TEST_TMP"
 git init -q .
-mkdir -p .shepherd
+mkdir -p .shepherd .claude
+# is_shepherd_project gate for workflow_model_guard.sh (the guard-clean check
+# below is a no-op without it — #180 review finding #12).
+touch .claude/shepherd.toml
 
 cat > plan.md <<'EOF'
 ## Stage Graph
@@ -76,18 +79,47 @@ assert_contains "default.segment"  "$out" "compiled segment 'CLOSE-SWARM'"
 assert_contains "default.sound"    "$out" "✓ soundness"
 assert_contains "default.complete" "$out" "✓ completeness"
 assert_contains "default.determ"   "$out" "✓ determinism"
+assert_contains "default.modelpin" "$out" "✓ model_pin"
 
 script=".shepherd/graph/compiled/CLOSE-SWARM.workflow.js"
 assert_file "$script"
 body=$(cat "$script")
-assert_eq       "close.auditor.count" "$(grep -c 'subagent_type: "shepherd:auditor"' "$script")" "3"
+assert_eq       "close.auditor.count" "$(grep -c 'agentType: "shepherd:auditor"' "$script")" "3"
 assert_contains "close.readonly"      "$body" "read-only: allowlist-enforced"
 assert_contains "close.bounded"       "$body" "MAX_CONCURRENT = 16"
 assert_contains "close.briefs"        "$body" 'briefs["CLOSE-SWARM:code-quality"]'
+
+# --- #180 model-pin: real agent(prompt, opts) shape + explicit pins ----------
+# The old broken shape passed the whole spawn object positionally as `prompt`
+# and carried no model/agentType — inheriting the main-loop model. Assert the
+# call shape is fixed and every spawn is pinned.
+assert_contains "pin.callshape"  "$body" "() => agent(briefs["
+if grep -qE '=>\s*agent\(\s*s\s*\)|agent\(s\)' "$script"; then
+  echo "FAIL: legacy opts-less agent(s) call shape still emitted (#180)" >&2; exit 1
+fi
+assert_eq "pin.model.count"   "$(grep -c 'model: "sonnet"' "$script")" "3"   # 3 auditors, all sonnet
+assert_eq "pin.agenttype.cnt" "$(grep -c 'agentType: "shepherd:auditor"' "$script")" "3"
+# every spawn object carries BOTH agentType and model (no unpinned spawn)
+nat=$(grep -c 'agentType: "shepherd:' "$script"); nmp=$(grep -c 'model: "' "$script")
+if [[ "$nat" != "$nmp" ]]; then
+  echo "FAIL: $nat agentType pins but $nmp model pins — an unpinned spawn (#180)" >&2; exit 1
+fi
+# "would it pass workflow_model_guard.sh?" — the guard never runs on this path
+# (compiled scripts run via node, not the Workflow tool) but it is the right
+# correctness bar (#180). Feed the compiled script as a Workflow payload.
+guard="$SHCTX_SKILL_ROOT/../../hooks/scripts/workflow_model_guard.sh"
+if [[ -f "$guard" ]]; then
+  gpayload=$(python3 -c 'import json,sys;print(json.dumps({"session_id":"s","tool_name":"Workflow","tool_input":{"script":open(sys.argv[1]).read()}}))' "$script")
+  gout=$(printf '%s' "$gpayload" | bash "$guard" 2>/dev/null || true)
+  if printf '%s' "$gout" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; then
+    echo "FAIL: compiled script would be DENIED by workflow_model_guard.sh (unpinned) — #180" >&2
+    printf '%s\n' "$gout" >&2; exit 1
+  fi
+fi
 # Seam content must never leak into the EXECUTABLE body (engineer is root-tier;
 # gates/finalize are conductor-inline). Doc comments may mention them; spawns
 # and result-keys may not.
-if grep -qE 'subagent_type: "shepherd:engineer"|results\["(CLOSE-FINALIZE|WAVE-1-GATE|MESH|PLAN-GATE)"\]' "$script"; then
+if grep -qE 'agentType: "shepherd:engineer"|results\["(CLOSE-FINALIZE|WAVE-1-GATE|MESH|PLAN-GATE)"\]' "$script"; then
   echo "FAIL: seam content leaked into compiled CLOSE-SWARM script body" >&2; exit 1
 fi
 
@@ -98,9 +130,9 @@ assert_contains "wave.complete" "$wave" "✓ completeness"
 wscript=".shepherd/graph/compiled/WAVE-1-IMPL.workflow.js"
 assert_file "$wscript"
 wbody=$(cat "$wscript")
-assert_eq "wave.coder"  "$(grep -c 'subagent_type: "shepherd:coder"'  "$wscript")" "3"
-assert_eq "wave.worker" "$(grep -c 'subagent_type: "shepherd:worker"' "$wscript")" "1"
-assert_eq "wave.audit"  "$(grep -c 'subagent_type: "shepherd:auditor"' "$wscript")" "2"
+assert_eq "wave.coder"  "$(grep -c 'agentType: "shepherd:coder"'  "$wscript")" "3"
+assert_eq "wave.worker" "$(grep -c 'agentType: "shepherd:worker"' "$wscript")" "1"
+assert_eq "wave.audit"  "$(grep -c 'agentType: "shepherd:auditor"' "$wscript")" "2"
 # two batches: IMPL/WORKER clique first, AUDIT second (sequential edge)
 assert_eq "wave.batches" "$(grep -c 'await fanout(' "$wscript")" "2"
 
