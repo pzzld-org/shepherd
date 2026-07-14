@@ -74,7 +74,9 @@ Root-tier vocabulary. Each code's trigger + response is defined once in
 raises or handles are: `HARD-STOP`, `PARALLEL-COLLISION`,
 `CROSS-TEAMMATE-DISPUTE`, `TEAMMATE-STALL`, `WRONG-TIER-DISPATCH`,
 `SCOPE-SEED-GAP`, `SCOPE-CONFIRMATION-MISSING`, `DISPATCH-CONTRACT-VIOLATION`
-(`WAVE-COMPLETE` lacking `review_verdict: PASS`+`reviewer`), `REDO-CAP-EXCEEDED`,
+(`WAVE-COMPLETE` lacking `review_verdict: PASS`+`reviewer`),
+`WAVE-COMPLETE-UNVERIFIED` (claimed complete but HEAD unadvanced vs base — #152),
+`REDO-CAP-EXCEEDED`,
 `OPERATOR-INTERRUPT`, `TEAMMATE-CRASHED`, `ENGINEER-MODEL-FAIL`,
 `WAVE-GATE-NOT-RELEASED`, `DISPATCH-MISSING-SUBAGENT-TYPE`,
 `DISPATCH-TEAMMATE-TYPE-MISMATCH`, `DISPATCH-OFF-FLOCK`,
@@ -187,7 +189,13 @@ contract`): every wake runs wake → act → probe → yield-to-events.
 **WAVE-COMPLETE contract**: a payload MUST carry `review_verdict: PASS` +
 `reviewer` from a wave-review `@auditor`
 (`skills/shepherd/references/pipeline.md §Wave review + REDO`); absent →
-`DISPATCH-CONTRACT-VIOLATION`, refuse the wave. A `REDO` verdict →
+`DISPATCH-CONTRACT-VIOLATION`, refuse the wave. **Treat WAVE-COMPLETE as a
+request to VERIFY, not a fact (#152):** before releasing the wave gate, root runs
+`git -C <lane-worktree> log --oneline <BASE-COMMIT-EXPECTED>..HEAD` and confirms a
+NON-EMPTY commit set — a confabulated WAVE-COMPLETE whose branch and worktree HEAD
+are both still at the base commit reports zero commits and zero diff. Empty while
+the payload claims completion → `WAVE-COMPLETE-UNVERIFIED`: refuse the wave, do not
+release the gate, and probe the teammate. A `REDO` verdict →
 `REDO-DIRECTIVE` via `SendMessage` to the owning teammate (named author +
 scope, verbatim verdict); root NEVER edits a teammate's source. The REDO loop
 caps at 3 iterations on one scope → `REDO-CAP-EXCEEDED`, surface to operator.

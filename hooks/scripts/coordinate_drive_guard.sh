@@ -41,13 +41,43 @@ NS="$(resolve_namespace 2>/dev/null || echo .)"
 DB="$(hook_db_path "$NS")"
 [[ -f "$DB" ]] || exit 0
 
-# --- fast-path: only ever engage inside a live spawn session ----------------
-LIVE="$(sqlite3 "$DB" "SELECT count(*) FROM v_teammates_live;" 2>/dev/null || echo 0)"
+# --- #197: root/lead-only. If THIS session is itself a registered, non-retired
+# teammate, the coordinate-drive contract does not apply — a teammate (e.g. the
+# self-contained @engineer, which reaches turn boundaries while authoring its
+# plan) must NEVER run the root's "drain the work first" loop, or it is trapped
+# churning root instructions instead of its own task and its output silently
+# degrades. Mirror the exact teammate detection teammate_git_guard.sh uses
+# (session_id match); fail-open (treat as root) if the query errors. ---
+SESSION="$(json_field "$PAYLOAD" '.session_id' 2>/dev/null || true)"
+[[ -n "$SESSION" ]] || SESSION="nosession"
+SELF_TM="$(sqlite3 "$DB" "SELECT count(*) FROM teammates WHERE session_id='${SESSION//\'/\'\'}' AND status NOT IN ('retired','crashed');" 2>/dev/null || echo 0)"
+[[ "$SELF_TM" =~ ^[0-9]+$ ]] || SELF_TM=0
+[[ "$SELF_TM" -gt 0 ]] && exit 0
+
+# --- fast-path: only ever engage inside a live spawn session. A teammate that
+# DECLARED complete (0019), or an undeclared row gone stale past the window (a
+# prior-session ghost, #195), is not a live worker root can drain — exclude both
+# so a stale ghost never traps root in a phantom coordinate loop. Falls back to
+# the pre-0019 count when declared_state predates migration 0019. ---
+STALE_MS=300000   # 5 min, matching `shctx teammate liveness` default
+# A row counts as a live worker unless it declared complete (terminal) or is an
+# undeclared/init row gone stale past the window (a ghost). in-progress/error/idle
+# declarations keep it live regardless of the heartbeat gap; init falls through to
+# the freshness check (a stale boot is a ghost), matching liveness + prune.
+LIVE_PRED="COALESCE(declared_state,'') <> 'complete' AND (declared_state IN ('in-progress','error','idle') OR ms_since_seen <= $STALE_MS)"
+LIVE="$(sqlite3 "$DB" "SELECT count(*) FROM v_teammates_live WHERE $LIVE_PRED;" 2>/dev/null || true)"
+if [[ "$LIVE" =~ ^[0-9]+$ ]]; then
+  IDLE_Q="SELECT count(*) FROM v_teammates_live WHERE ($LIVE_PRED) AND (status='idle' OR declared_state='idle');"
+else
+  # Pre-0019 DB (no declared_state column) → original behavior.
+  LIVE="$(sqlite3 "$DB" "SELECT count(*) FROM v_teammates_live;" 2>/dev/null || echo 0)"
+  IDLE_Q="SELECT count(*) FROM teammates WHERE status='idle';"
+fi
 [[ "$LIVE" =~ ^[0-9]+$ ]] || LIVE=0
 [[ "$LIVE" -eq 0 ]] && exit 0
 
 # --- actionable, root-clearable coordinate state ----------------------------
-IDLE="$(sqlite3 "$DB" "SELECT count(*) FROM teammates WHERE status='idle';" 2>/dev/null || echo 0)"
+IDLE="$(sqlite3 "$DB" "$IDLE_Q" 2>/dev/null || echo 0)"
 [[ "$IDLE" =~ ^[0-9]+$ ]] || IDLE=0
 # Lead-bound unread = unread mail addressed to anything that is NOT a teammate
 # (root / lead / shepherd-root — name varies, so match by exclusion). Robust to
@@ -58,8 +88,7 @@ UNREAD="$(sqlite3 "$DB" \
 [[ "$UNREAD" =~ ^[0-9]+$ ]] || UNREAD=0
 
 # --- counter (per-session; bounds the block) --------------------------------
-SESSION="$(json_field "$PAYLOAD" '.session_id' 2>/dev/null || true)"
-[[ -n "$SESSION" ]] || SESSION="nosession"
+# SESSION resolved above (used for the #197 self-teammate gate + this counter).
 CNT_DIR="$NS/tmp"
 CNT_FILE="$CNT_DIR/coordinate_drive_guard.${SESSION//[^A-Za-z0-9_.-]/_}.count"
 CAP=2

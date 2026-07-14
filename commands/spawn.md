@@ -185,6 +185,21 @@ nothing for live lanes and every `TeammateIdle` fires unmatched, flooding the le
 that masks real stalls (#183). Registration is idempotent (upsert on `(team, name)`), so a refresh
 or a teammate's own late self-register is safe.
 
+**Declare progress, don't infer it (#193/#197).** Liveness derives "crashed" from the heartbeat
+gap, but teammates don't heartbeat on a cadence, so a healthy long-running lane reads
+`presumed-crashed` after 5 min and root wrongly cancels it. Set the explicit `declared_state`
+(migration 0019) instead — mark each teammate `in-progress` right after registering, `complete`
+when you materialize its `LANE-COMPLETE` (before prune), `error` on a returned HALT:
+
+```
+shctx teammate state <name> --set=in-progress|complete|error   # heartbeat --state=<s> does both in one call
+```
+
+`in-progress` is never presumed-crashed regardless of the gap; `complete`/stale-ghost rows drop out
+of the live set that `shctx teammate liveness` and the coordinate-drive Stop hook read. That Stop
+hook is now root-only — it never fires on a teammate's own session (#197), so a self-contained
+`@engineer` is no longer trapped in root's drain loop.
+
 After registering, root confirms liveness (`shctx teammate liveness` until each lane is
 `active`/heartbeating) before the dispatch is complete. `hooks/scripts/dispatch_guard.sh`
 enforces dispatch discipline — off-tier or off-flock dispatches raise

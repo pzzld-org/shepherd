@@ -16,14 +16,25 @@ project_id() {
   # For now, use a literal default; cmd_init populated the row.
   sqlite3 "$DB" "SELECT id FROM projects LIMIT 1;"
 }
+esc() { printf '%s' "$1" | sed "s/'/''/g"; }
+
+# Explicit declared_state enum (migration 0019). NULL/'' = undeclared → liveness
+# falls back to the last_seen_at timing heuristic. A declaration wins over timing.
+DECLARED_STATES="init in-progress error complete idle"
+validate_state() {
+  case " $DECLARED_STATES " in *" $1 "*) return 0 ;; esac
+  echo "ERR: TEAMMATE-STATE-INVALID — '$1' is not a known state. Known: init | in-progress | error | complete | idle." >&2
+  return 1
+}
 
 usage() {
   cat <<'USAGE'
 shctx teammate register <name> --team=<t> --type=<role> [--session=<uuid>] [--pane=<id>]
-shctx teammate heartbeat <name> [--phase=<p>] [--tool=<t>] [--note=<n>]
+shctx teammate heartbeat <name> [--phase=<p>] [--tool=<t>] [--note=<n>] [--state=<s>]
+shctx teammate state <name> [--set=<s>]     # s ∈ init|in-progress|error|complete|idle
 shctx teammate status <name>
 shctx teammate liveness [--stale-mins=<n>]
-shctx teammate prune --confirm [--name=<n>|--crashed]
+shctx teammate prune --confirm [--name=<n>|--crashed [--stale-mins=<n>]]
 shctx teammate retire <name>
 USAGE
 }
@@ -79,7 +90,6 @@ case "$sub" in
     # self-register at boot — must not violate UNIQUE(project_id,team_name,
     # teammate_name) or orphan the row id; upsert, preserving the id + heartbeat
     # history, and revive a previously crashed/retired name back to 'booting'.
-    esc() { printf '%s' "$1" | sed "s/'/''/g"; }
     e_team="$(esc "$team")"; e_name="$(esc "$name")"; e_type="$(esc "$type")"
     e_session="$(esc "$session")"; e_pane="$(esc "$pane")"
     sqlite3 "$DB" "INSERT INTO teammates (id, project_id, team_name, teammate_name, agent_type, session_id, tmux_pane_id, spawned_at, last_seen_at, status)
@@ -95,13 +105,15 @@ case "$sub" in
     ;;
   heartbeat)
     name="$1"; shift
-    phase=""; tool=""; note=""
+    phase=""; tool=""; note=""; state=""
     while [[ $# -gt 0 ]]; do case "$1" in
       --phase=*) phase="${1#*=}";;
       --tool=*)  tool="${1#*=}";;
       --note=*)  note="${1#*=}";;
+      --state=*) state="${1#*=}";;
       *) echo "unknown flag: $1" >&2; exit 2;;
     esac; shift; done
+    [[ -z "$state" ]] || validate_state "$state" || exit 2
     ts="$(now_ms)"
     tid=$(sqlite3 "$DB" "SELECT id FROM teammates WHERE teammate_name='$name' ORDER BY spawned_at DESC LIMIT 1;")
     [[ -n "$tid" ]] || { echo "ERR: no teammate named $name" >&2; exit 1; }
@@ -111,7 +123,33 @@ case "$sub" in
     # consumer: `shctx panes` observability + the SessionEnd dead-pane cleanup.
     set_pane=""
     [[ -n "${TMUX_PANE:-}" ]] && set_pane=", tmux_pane_id = COALESCE(tmux_pane_id, '${TMUX_PANE}')"
-    sqlite3 "$DB" "UPDATE teammates SET last_seen_at=$ts, status=CASE WHEN status='booting' THEN 'active' ELSE status END${set_pane} WHERE id='$tid'; INSERT INTO heartbeats (teammate_id, ts, phase, tool_name, note) VALUES ('$tid', $ts, NULLIF('$phase',''), NULLIF('$tool',''), NULLIF('$note',''));"
+    # Optional one-call declaration: `heartbeat --state=in-progress` both stamps
+    # last_seen_at AND declares the explicit state (0019), so a teammate needs only
+    # one call per phase boundary. Omitted → declared_state untouched.
+    set_state=""
+    [[ -n "$state" ]] && set_state=", declared_state='$state'"
+    sqlite3 "$DB" "UPDATE teammates SET last_seen_at=$ts, status=CASE WHEN status='booting' THEN 'active' ELSE status END${set_pane}${set_state} WHERE id='$tid'; INSERT INTO heartbeats (teammate_id, ts, phase, tool_name, note) VALUES ('$tid', $ts, NULLIF('$phase',''), NULLIF('$tool',''), NULLIF('$note',''));"
+    ;;
+  state)
+    # Explicit progress declaration (0019). `state <name>` reads the current value;
+    # `state <name> --set=<s>` declares it. Callable by the teammate itself (its
+    # name is in its boot brief) or by the lead for any teammate. This is the fact
+    # that stops liveness / the coordinate-drive Stop hook from guessing wrong.
+    name="${1:-}"; shift || true
+    set_state=""
+    while [[ $# -gt 0 ]]; do case "$1" in
+      --set=*) set_state="${1#*=}";;
+      *) echo "unknown flag: $1" >&2; exit 2;;
+    esac; shift; done
+    [[ -n "$name" ]] || { usage; exit 2; }
+    e_name="$(esc "$name")"
+    tid=$(sqlite3 "$DB" "SELECT id FROM teammates WHERE teammate_name='$e_name' ORDER BY spawned_at DESC LIMIT 1;")
+    [[ -n "$tid" ]] || { echo "ERR: no teammate named $name" >&2; exit 1; }
+    if [[ -n "$set_state" ]]; then
+      validate_state "$set_state" || exit 2
+      sqlite3 "$DB" "UPDATE teammates SET declared_state='$set_state' WHERE id='$tid';"
+    fi
+    sqlite3 "$DB" "SELECT COALESCE(declared_state,'') FROM teammates WHERE id='$tid';"
     ;;
   status)
     name="$1"
@@ -124,20 +162,45 @@ case "$sub" in
       *) echo "unknown flag: $1" >&2; exit 2;;
     esac; shift; done
     threshold_ms=$((stale * 60 * 1000))
-    sqlite3 -header -column "$DB" "SELECT teammate_name, agent_type, status, ms_since_seen/1000 AS sec_since_seen, CASE WHEN ms_since_seen > $threshold_ms AND status IN ('booting','active') THEN 'presumed-crashed' ELSE 'ok' END AS verdict FROM v_teammates_live ORDER BY ms_since_seen DESC;"
+    # An explicit declared_state (0019) wins over the last_seen_at timing heuristic:
+    # in-progress is affirmatively alive (never presumed-crashed, no matter the
+    # heartbeat gap — #193); error is the escalation signal (#98); complete is
+    # terminal; idle is an explicit rest. `init` is a TRANSIENT boot marker — it
+    # falls through to the timing heuristic (a fresh init is fine, but an init gone
+    # stale past the window is a crashed boot), so it stays prunable. NULL is
+    # undeclared → pure pre-0019 timing behavior.
+    sqlite3 -header -column "$DB" "SELECT teammate_name, agent_type, status, COALESCE(declared_state,'-') AS declared, ms_since_seen/1000 AS sec_since_seen,
+      CASE
+        WHEN declared_state = 'in-progress' THEN 'ok'
+        WHEN declared_state = 'error'       THEN 'error'
+        WHEN declared_state = 'complete'    THEN 'complete'
+        WHEN declared_state = 'idle'        THEN 'idle'
+        WHEN ms_since_seen > $threshold_ms AND status IN ('booting','active') THEN 'presumed-crashed'
+        ELSE 'ok'
+      END AS verdict
+      FROM v_teammates_live ORDER BY ms_since_seen DESC;"
     ;;
   prune)
-    confirm=0; name=""; crashed=0
+    confirm=0; name=""; crashed=0; stale=5
     while [[ $# -gt 0 ]]; do case "$1" in
-      --confirm)  confirm=1;;
-      --name=*)   name="${1#*=}";;
-      --crashed)  crashed=1;;
+      --confirm)      confirm=1;;
+      --name=*)       name="${1#*=}";;
+      --crashed)      crashed=1;;
+      --stale-mins=*) stale="${1#*=}";;
       *) echo "unknown flag: $1" >&2; exit 2;;
     esac; shift; done
     [[ "$confirm" == "1" ]] || { echo "refusing prune without --confirm" >&2; exit 2; }
     where="1=1"
-    [[ -n "$name" ]] && where="teammate_name='$name'"
-    [[ "$crashed" == "1" ]] && where="status = 'crashed'"
+    [[ -n "$name" ]] && where="teammate_name='$(esc "$name")'"
+    # --crashed matches the DERIVED presumed-crashed verdict `liveness` shows (#194),
+    # NOT the status='crashed' literal that no writer ever sets (so the old filter
+    # matched zero rows). A crash = an UNDECLARED teammate (declared_state IS NULL)
+    # still booting/active whose last_seen_at is older than the stale window. A
+    # teammate that declared init/in-progress/error/complete/idle is never a crash.
+    if [[ "$crashed" == "1" ]]; then
+      threshold_ms=$((stale * 60 * 1000))
+      where="(declared_state IS NULL OR declared_state = 'init') AND status IN ('booting','active') AND (strftime('%s','now')*1000 - last_seen_at) > $threshold_ms"
+    fi
     n=$(sqlite3 "$DB" "SELECT count(*) FROM teammates WHERE $where;")
     sqlite3 "$DB" "DELETE FROM teammates WHERE $where;"
     echo "pruned $n teammate(s)"

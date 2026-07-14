@@ -62,7 +62,8 @@ NOW=$(( $(date +%s) * 1000 ))
 sqlite3 "$DB" <<SQL >/dev/null 2>&1
 CREATE TABLE teammates (
   id TEXT PRIMARY KEY, team_name TEXT, teammate_name TEXT,
-  agent_type TEXT, spawned_at INTEGER, last_seen_at INTEGER, status TEXT
+  agent_type TEXT, session_id TEXT, spawned_at INTEGER, last_seen_at INTEGER,
+  status TEXT, declared_state TEXT
 );
 CREATE TABLE mailbox (
   id INTEGER PRIMARY KEY AUTOINCREMENT, recipient_name TEXT,
@@ -73,8 +74,15 @@ CREATE VIEW v_teammates_live AS
   FROM teammates t WHERE t.status NOT IN ('crashed','retired');
 SQL
 
+STALE=$(( NOW - 600000 ))   # 10 min ago — past the guard's 5-min live window
 reset_db() { sqlite3 "$DB" "DELETE FROM teammates; DELETE FROM mailbox;" >/dev/null 2>&1; rm -f .artifacts/tmp/coordinate_drive_guard.*.count 2>/dev/null || true; }
-add_teammate() { sqlite3 "$DB" "INSERT INTO teammates (id,team_name,teammate_name,agent_type,spawned_at,last_seen_at,status) VALUES ('$1','team','$1','conductor',$NOW,$NOW,'$2');" >/dev/null 2>&1; }
+# add_teammate <name> <status> [declared_state] [last_seen_ms] [session_id]
+add_teammate() {
+  local ds="NULL"; [[ -n "${3:-}" ]] && ds="'$3'"
+  local seen="${4:-$NOW}"
+  local sid="NULL"; [[ -n "${5:-}" ]] && sid="'$5'"
+  sqlite3 "$DB" "INSERT INTO teammates (id,team_name,teammate_name,agent_type,session_id,spawned_at,last_seen_at,status,declared_state) VALUES ('$1','team','$1','conductor',$sid,$NOW,$seen,'$2',$ds);" >/dev/null 2>&1
+}
 add_unread()   { sqlite3 "$DB" "INSERT INTO mailbox (recipient_name,read_at,sent_at) VALUES ('$1',NULL,$NOW);" >/dev/null 2>&1; }
 guard() { printf '{"hook_event_name":"Stop","session_id":"%s"}' "$1" | bash "$SCRIPT" 2>/dev/null; }
 
@@ -153,6 +161,41 @@ printf '[spawn]\ncoordinate_drive_guard = "warn"\n' > .claude/shepherd.toml
 out=$(printf '{"hook_event_name":"Stop","session_id":"s8"}' | bash "$SCRIPT" 2>/dev/null)
 if ! is_block "$out"; then pass "config warn: no block"; else fail "config warn: no block" "out=$out"; fi
 printf '' > .claude/shepherd.toml
+
+# ---------------------------------------------------------------------------
+# 9. (#197) Hook fires on a TEAMMATE's OWN session → must NEVER block. A teammate
+#    (e.g. the self-contained engineer) must not run the root's drain loop.
+#    Detection mirrors teammate_git_guard.sh: session_id match.
+# ---------------------------------------------------------------------------
+total=$((total+1)); reset_db
+add_teammate "eng" "idle" "" "" "sess-eng"     # session_id = sess-eng
+add_unread "eng"
+out=$(guard "sess-eng")
+if ! is_block "$out"; then pass "#197 teammate session: no block (root-only gate)"; else fail "#197 teammate session: no block" "out=$out"; fi
+
+# ---------------------------------------------------------------------------
+# 10. (#195) A stale, undeclared row from a prior session (a ghost) is not a
+#     live worker root can drain → no block.
+# ---------------------------------------------------------------------------
+total=$((total+1)); reset_db; add_teammate "ghost" "idle" "" "$STALE" "old-sess"
+out=$(guard "root-1")
+if ! is_block "$out"; then pass "#195 stale ghost: no block"; else fail "#195 stale ghost: no block" "out=$out"; fi
+
+# ---------------------------------------------------------------------------
+# 11. A teammate that DECLARED complete (0019) is terminal, excluded from live
+#     even when fresh + lead-unread present → no block (finished lane).
+# ---------------------------------------------------------------------------
+total=$((total+1)); reset_db; add_teammate "done" "active" "complete"; add_unread "root"
+out=$(guard "root-2")
+if ! is_block "$out"; then pass "declared complete: no block (excluded from live)"; else fail "declared complete: no block" "out=$out"; fi
+
+# ---------------------------------------------------------------------------
+# 12. A stale row that DECLARED in-progress is NOT a ghost — the declaration
+#     keeps it live, so root must still coordinate → BLOCK.
+# ---------------------------------------------------------------------------
+total=$((total+1)); reset_db; add_teammate "busy" "idle" "in-progress" "$STALE" "tm-busy"
+out=$(guard "root-3")
+if is_block "$out"; then pass "declared in-progress (stale): BLOCK (not a ghost)"; else fail "declared in-progress (stale): BLOCK" "out=$out"; fi
 
 echo "—— $((total-fails))/$total passed ——"
 exit "$fails"

@@ -18,6 +18,14 @@ PRAGMA foreign_keys = OFF;
 
 BEGIN;
 
+-- Drop the dependent view BEFORE the table rebuild. On SQLite >= 3.25.0,
+-- `ALTER TABLE ... RENAME` re-parses every view; if v_focus_current still
+-- pointed at the just-dropped `focus`, the rename aborts with
+-- "error in view v_focus_current: no such table: main.focus", failing the
+-- whole migrate on a fresh install. 0016_mailbox_kind_relax.sql already
+-- rebuilds in this order; 0017 must too. Recreated after the rename below.
+DROP VIEW IF EXISTS v_focus_current;
+
 CREATE TABLE focus_new (
   sprint      TEXT NOT NULL,
   lane        TEXT NOT NULL DEFAULT '',  -- '' = sprint-level record; else the lane id
@@ -42,7 +50,6 @@ ALTER TABLE focus_new RENAME TO focus;
 
 -- Convenience view: the sprint-level focus record for the current branch.
 -- (lane='' is the sprint-level row; per-lane rows are read explicitly with --lane.)
-DROP VIEW IF EXISTS v_focus_current;
 CREATE VIEW v_focus_current AS
   SELECT * FROM focus WHERE lane = '' LIMIT 1;
 

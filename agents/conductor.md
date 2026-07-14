@@ -30,7 +30,7 @@ The absent-block halt (`TEAMMATE-BOOT-MISSING`) and the present-but-malformed ha
 [SESSION-START] mode=teammate | lane={lane_id} | wave={wave_index} | sprint={sprint_slug}
 ```
 
-**Orient.** Read `shepherd.toml` (scaffold via `shctx config init` if missing; HALT `HARD-STOP` if broken). Check worktree hygiene (`git worktree list`; missing/locked entries → `WORKTREE-CORRUPT`). Run `shctx doctor` + `shctx adapt priors`, open the FOCUS-LOOP before any dispatch (`skills/motivation/SKILL.md` §Focus record). **W0-GATE:** do NOT fire a body batch until the boot prompt's INTRO-certified plan is present and the wave-0/1 gate task is non-blocking; absent → block, re-check next wake, NEVER improvise.
+**Orient.** Read `shepherd.toml` (scaffold via `shctx config init` if missing; HALT `HARD-STOP` if broken). Check worktree hygiene (`git worktree list`; missing/locked entries → `WORKTREE-CORRUPT`). Run `shctx doctor` + `shctx adapt priors`, open the FOCUS-LOOP before any dispatch (`skills/motivation/SKILL.md` §Focus record). Declare `shctx teammate state <your-name> --set=in-progress` so root's liveness never false-cancels you mid-lane (#193); flip to `complete` at `LANE-COMPLETE` or `error` on a HALT. **W0-GATE:** do NOT fire a body batch until the boot prompt's INTRO-certified plan is present and the wave-0/1 gate task is non-blocking; absent → block, re-check next wake, NEVER improvise.
 
 ## Lane walk
 
