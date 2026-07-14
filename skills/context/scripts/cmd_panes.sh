@@ -50,11 +50,17 @@ case "$sub" in
       SELECT v.teammate_name                         AS lane,
              v.agent_type                            AS role,
              v.status                                AS status,
+             COALESCE(v.declared_state,'-')          AS declared,
              v.ms_since_seen/1000                    AS idle_s,
              COALESCE(v.tmux_pane_id,'-')            AS pane,
              COALESCE(h.phase,'-')                   AS phase,
-             CASE WHEN v.ms_since_seen > $threshold_ms AND v.status IN ('booting','active')
-                  THEN 'presumed-crashed' ELSE 'ok' END AS verdict
+             CASE
+               WHEN v.declared_state = 'in-progress' THEN 'ok'
+               WHEN v.declared_state = 'error'       THEN 'error'
+               WHEN v.declared_state = 'complete'    THEN 'complete'
+               WHEN v.declared_state = 'idle'        THEN 'idle'
+               WHEN v.ms_since_seen > $threshold_ms AND v.status IN ('booting','active')
+                    THEN 'presumed-crashed' ELSE 'ok' END      AS verdict
       FROM v_teammates_live v
       LEFT JOIN heartbeats h
         ON h.teammate_id = v.id
