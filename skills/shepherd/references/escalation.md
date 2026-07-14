@@ -120,6 +120,7 @@ the bare name.
 - `TOURNAMENT-CONTAMINATION`: judge saw another candidate's
 - `COMPOSITION-TOO-DEEP`: nested dispatch too deep
 - `WAVE-GATE-NOT-RELEASED`: gate never released
+- `WAVE-COMPLETE-UNVERIFIED`: teammate claimed `WAVE-COMPLETE` but `git -C <lane-worktree> log <BASE-COMMIT-EXPECTED>..HEAD` is empty (branch + worktree HEAD still at base) — refuse the wave, do not release the gate, probe the teammate (#152)
 - `CROSS-TEAMMATE-DISPUTE`: teammates read scope differently
 - `SEED-DRIFT-DETECTED`: substantive drift (theme/money-path/secret boundary) — escalate, never rewrite intent
 - `SEED-DRIFT-MECHANICAL`: fixable premise slip (moved path, stale symbol) — verify, amend, re-fire

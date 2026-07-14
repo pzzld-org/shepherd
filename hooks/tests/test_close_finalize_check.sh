@@ -184,5 +184,38 @@ else
   pass "block-reason: no destructive --delete instruction"
 fi
 
+# ---------------------------------------------------------------------------
+# 9. (#154) Runaway bound — the SAME committed state must not re-block forever.
+#    Clear the per-state counter, then CAP=2 blocks, the 3rd fails OPEN.
+# ---------------------------------------------------------------------------
+total=$((total+1))
+rm -f .artifacts/tmp/close_finalize_check.*.count 2>/dev/null || true
+b1=$(run_check); b2=$(run_check); b3=$(run_check)
+if is_block "$b1" && is_block "$b2" && ! is_block "$b3"; then
+  pass "#154 runaway bound: block,block,fail-open on same HEAD"
+else
+  fail "#154 runaway bound" "b1=$(is_block "$b1" && echo B || echo -) b2=$(is_block "$b2" && echo B || echo -) b3=$(is_block "$b3" && echo B || echo -)"
+fi
+
+# ---------------------------------------------------------------------------
+# 10. (#154) A NEW commit (HEAD changes) legitimately re-warns once — a real new
+#     close report is never masked by the bound.
+# ---------------------------------------------------------------------------
+total=$((total+1))
+commit_report "2026-06-05-v035-dev0-close.md" "close(v0.3.5-dev.0): amended report"
+git push -q origin v0.3.5-dev.0 2>/dev/null
+out=$(run_check)
+if is_block "$out"; then pass "#154 new HEAD re-warns once"; else fail "#154 new HEAD re-warns" "out=$out"; fi
+
+# ---------------------------------------------------------------------------
+# 11. (#154) Operator hold: [close].finalize_hold = "true" silences the block
+#     while the dev→patch merge is intentionally deferred.
+# ---------------------------------------------------------------------------
+total=$((total+1))
+printf '[close]\nfinalize_hold = "true"\n' > .claude/shepherd.toml
+out=$(run_check)
+if ! is_block "$out"; then pass "#154 finalize_hold escape: no block"; else fail "#154 finalize_hold escape" "out=$out"; fi
+printf '' > .claude/shepherd.toml
+
 echo "—— $((total-fails))/$total passed ——"
 exit "$fails"
