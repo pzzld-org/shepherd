@@ -51,4 +51,38 @@ if $CMD prune --crashed 2>/dev/null; then
   echo "FAIL: prune ran without --confirm"; exit 1
 fi
 
+# ---------------------------------------------------------------------------
+# declared_state (0019, #193/#194/#195/#98): explicit progress declaration and
+# its effect on the liveness verdict + prune --crashed. Registry now empty.
+# ---------------------------------------------------------------------------
+id2=$($CMD register eng-decl --team=team-b --type=engineer --session=sess-eng)
+[[ -n "$id2" ]] || { echo "FAIL: register eng-decl returned empty id"; exit 1; }
+
+# state --set declares; bare `state <name>` reads it back
+[[ "$($CMD state eng-decl --set=in-progress)" == "in-progress" ]] || { echo "FAIL: state --set/read"; exit 1; }
+[[ "$(sqlite3 "$SHCTX_DB" "SELECT declared_state FROM teammates WHERE id='$id2';")" == "in-progress" ]] || { echo "FAIL: declared_state not persisted"; exit 1; }
+
+# invalid state rejected (exit non-zero), stored value unchanged
+if $CMD state eng-decl --set=bogus 2>/dev/null; then echo "FAIL: invalid state accepted"; exit 1; fi
+[[ "$(sqlite3 "$SHCTX_DB" "SELECT declared_state FROM teammates WHERE id='$id2';")" == "in-progress" ]] || { echo "FAIL: invalid state mutated the value"; exit 1; }
+
+# heartbeat --state declares in a single call
+$CMD heartbeat eng-decl --state=idle
+[[ "$(sqlite3 "$SHCTX_DB" "SELECT declared_state FROM teammates WHERE id='$id2';")" == "idle" ]] || { echo "FAIL: heartbeat --state did not declare"; exit 1; }
+
+# liveness: an explicit in-progress on a STALE row reads 'ok', not presumed-crashed (#193)
+$CMD state eng-decl --set=in-progress >/dev/null
+sqlite3 "$SHCTX_DB" "UPDATE teammates SET last_seen_at=(strftime('%s','now')-600)*1000, status='active' WHERE id='$id2';"
+$CMD liveness | grep eng-decl | grep -q 'ok' || { echo "FAIL: stale in-progress should read ok"; exit 1; }
+if $CMD liveness | grep eng-decl | grep -q 'presumed-crashed'; then echo "FAIL: declared in-progress read presumed-crashed (#193)"; exit 1; fi
+
+# clear the declaration → the same stale row now reads presumed-crashed (pre-0019 behavior)
+sqlite3 "$SHCTX_DB" "UPDATE teammates SET declared_state=NULL WHERE id='$id2';"
+$CMD liveness | grep eng-decl | grep -q 'presumed-crashed' || { echo "FAIL: undeclared stale row should read presumed-crashed"; exit 1; }
+
+# prune --crashed matches that DERIVED verdict, not the never-written status='crashed' (#194)
+p=$($CMD prune --confirm --crashed | grep -oE '[0-9]+' | head -1)
+[[ "$p" == "1" ]] || { echo "FAIL: prune --crashed should match derived ghost, got: $p"; exit 1; }
+[[ "$(sqlite3 "$SHCTX_DB" "SELECT count(*) FROM teammates;")" == "0" ]] || { echo "FAIL: crashed ghost not pruned"; exit 1; }
+
 echo "PASS: test_cmd_teammate"

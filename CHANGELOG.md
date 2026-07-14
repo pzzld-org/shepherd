@@ -4,6 +4,23 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v6.3.2 — 2026-07-14
+
+**Cleanup + bug-hunt pass, and an explicit teammate `declared_state` that ends the false-positive liveness cancellations the axiom run kept surfacing.**
+
+### Fixed
+
+- **`0017_focus_lane.sql` broke every fresh install.** The migration dropped `focus` and renamed `focus_new → focus` while the `v_focus_current` view (from `0013`) still referenced the old table; on SQLite ≥ 3.25.0 `ALTER TABLE … RENAME` re-parses every view, so the rename aborted with `error in view v_focus_current: no such table: main.focus`. Under `cmd_migrate.sh`'s `set -e` the whole migrate aborted at `0017`, so a fresh `shctx init && migrate` landed half-migrated (`focus` stuck as `focus_new`, `0018` never applied) — which in turn failed `test_dups_write_guard.sh` and `test_session_adaptation.sh`. Reordered to drop the dependent view before the rebuild and recreate it after the rename, matching `0016_mailbox_kind_relax.sql`; existing v17 DBs are untouched (migrations are version-gated). Hook suite 61/63 → 63/63.
+
+### New — explicit teammate `declared_state` (#193 / #194 / #195 / #98 / #197)
+
+- **`teammates.declared_state` (migration `0019`).** One column a teammate (or its lead) declares from a fixed enum — `init | in-progress | error | complete | idle` — that wins over the `last_seen_at` timing heuristic. The `status` column conflated lifecycle with a `presumed-crashed` verdict no writer ever set, and it false-positives now that #93 retired the per-tool heartbeat: a healthy teammate crosses the 5-min stale window and reads crashed while actively running. `NULL` = undeclared → exact pre-`0019` behavior (backward compatible; `v_teammates_live` is `SELECT t.*` so it surfaces the column with no view edit).
+- **`shctx teammate state <name> [--set=<s>]`** declares/reads it; **`shctx teammate heartbeat --state=<s>`** stamps `last_seen_at` and declares in one call. Both validate the enum (`TEAMMATE-STATE-INVALID`).
+- **`liveness` / `panes` verdict** respects the declaration: `in-progress` is never `presumed-crashed` regardless of the gap (#193); `error` surfaces as the escalation signal the stalled conductor never sent (#98); `complete` is terminal; `idle` explicit; `init` is a transient boot marker that still falls through to timing (a stale boot stays a crash candidate).
+- **`shctx teammate prune --crashed` (#194)** matches that DERIVED verdict — an undeclared/`init` row still `booting`/`active` past the stale window — instead of the `status='crashed'` literal no writer sets (so it used to prune 0). Adds `--stale-mins`.
+- **`coordinate_drive_guard.sh` is now root-only (#197).** It exits early on any session that is itself a registered teammate (mirroring `teammate_git_guard.sh`'s `session_id` detection), so a self-contained `@engineer` is never trapped running root's "drain the work first" loop and silently degrading its plan. Its live/idle counts also drop `complete` teammates and undeclared stale ghosts (#195), so prior-session rows stop inflating the count and false-blocking a legitimate root halt.
+- Wiring: `commands/spawn.md` (declare at register / `LANE-COMPLETE` / HALT), `agents/conductor.md` §Orient, `agents/engineer.md` step (7). Tests: `skills/context/tests/test_cmd_teammate.sh` + `hooks/tests/test_coordinate_drive_guard.sh` extended. Hook suite 63/63, context suite 48/48.
+
 ## v6.3.1 — 2026-07-08
 
 **Conductor owns git directly — retire the @worker-for-two-git-commands waste (operator follow-up to #187).**
