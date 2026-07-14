@@ -49,6 +49,11 @@ need agents/shepherd.md  "REDO-DIRECTIVE"            "root redo directive"
 need agents/shepherd.md  "review_verdict"            "root review-evidence gate"
 need agents/shepherd.md  "REDO-CAP-EXCEEDED"         "root redo cap halt code"
 
+# 3-bis. (#152) root git-verifies WAVE-COMPLETE (HEAD advanced vs base) before
+# releasing the gate — a confabulated completion must not pass the field-only contract.
+need agents/shepherd.md  "WAVE-COMPLETE-UNVERIFIED"     "root git-verifies wave completion (#152)"
+need agents/shepherd.md  "request to VERIFY, not a fact" "root treats WAVE-COMPLETE as verify (#152)"
+
 # 4. auditor.md carries the wave-review mode and its verdict shape.
 need agents/auditor.md   "wave-review"               "auditor wave-review mode"
 need agents/auditor.md   "WAVE-REVIEW VERDICT"       "auditor verdict block"

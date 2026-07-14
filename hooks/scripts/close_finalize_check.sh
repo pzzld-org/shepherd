@@ -36,6 +36,8 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=/dev/null
 source "$HERE/_lib.sh" 2>/dev/null || exit 0
 
+PAYLOAD="$(cat 2>/dev/null || true)"
+
 # ── 1. Sprint-branch guard ────────────────────────────────────────────────────
 BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
 [[ -n "$BRANCH" ]] || exit 0
@@ -74,7 +76,36 @@ SIG_A="$(git log --oneline --diff-filter=A HEAD \
 SIG_B="$(git ls-remote --heads origin "$BRANCH" 2>/dev/null | head -1 || true)"
 [[ -n "$SIG_B" ]] || exit 0   # Branch gone → finalize complete
 
-# ── 6. Both signals positive → flag incomplete finalize ──────────────────────
+# ── 6. Do not re-block a deferred merge forever (#154) ────────────────────────
+# Both signals stay positive for as long as the dev→patch merge is DELIBERATELY
+# deferred (operator-gated), so an unbounded Stop hook re-blocks EVERY turn-end
+# indefinitely — the #154 unbreakable loop (field: fired every ~15-30s for hours).
+# Two escapes, both fail-open:
+#   (a) explicit operator hold — [close].finalize_hold = "true" silences the block
+#       while the merge is intentionally held;
+#   (b) a runaway bound per (session, slug, HEAD-sha): after CAP fires on the SAME
+#       committed state, fail OPEN and stop nagging (mirrors coordinate_drive_guard.sh's
+#       #114 idiom). A NEW commit changes HEAD → a fresh key → the block legitimately
+#       re-warns once, so a real new close report is never masked.
+case "$(cfg_get finalize_hold 2>/dev/null | tr '[:upper:]' '[:lower:]')" in
+  true|held|held-for-operator|yes|on|1) exit 0 ;;
+esac
+
+SESSION="$(json_field "$PAYLOAD" '.session_id' 2>/dev/null || true)"; [[ -n "$SESSION" ]] || SESSION="nosession"
+HEAD_SHA="$(git rev-parse HEAD 2>/dev/null || echo nohead)"
+CAP=2
+CNT_DIR="$NS/tmp"
+key="${SESSION}.${SLUG}.${HEAD_SHA}"; key="${key//[^A-Za-z0-9_.-]/_}"
+CNT_FILE="$CNT_DIR/close_finalize_check.${key}.count"
+CNT="$(cat "$CNT_FILE" 2>/dev/null || echo 0)"; [[ "$CNT" =~ ^[0-9]+$ ]] || CNT=0
+if [[ "$CNT" -ge "$CAP" ]]; then
+  echo "[shctx] close-finalize: ${BRANCH} still on origin after ${CAP} nudges — the dev→patch merge looks intentionally deferred; set [close].finalize_hold=\"true\" to silence it until you finish the merge." >&2
+  exit 0
+fi
+mkdir -p "$CNT_DIR" 2>/dev/null || true
+echo $((CNT + 1)) > "$CNT_FILE" 2>/dev/null || true
+
+# ── 7. Both signals positive, within bound → flag incomplete finalize ─────────
 # No destructive remediation suggested (issue #127 root cause: --delete on live branch).
 REASON="CLOSE-FINALIZE INCOMPLETE: close report committed for ${BRANCH} (${SIG_A}) but sprint branch still on origin. Verify dev→patch merge is complete: run \`git log origin/<patch_branch>..${BRANCH} --oneline\` (should be empty if merged). Then run conductor §CLOSE-FINALIZE steps 4–6 via explicit operator-confirmed commands. Confirm merge before removing the sprint branch from origin."
 
