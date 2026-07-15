@@ -10,19 +10,20 @@
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/focus_rehydrate.sh"
-          },
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/toolkit_surface.sh"
-          },
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/capability_discovery.sh"
           }
         ]
       }
     ],
     "PreToolUse": [
+      {
+        "matcher": "Bash|Edit|Write|Read|Grep|Glob|Agent|Task|Skill|ToolSearch|SendMessage|WebFetch|WebSearch|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/teammate_heartbeat.sh"
+          }
+        ]
+      },
       {
         "matcher": "Bash",
         "hooks": [

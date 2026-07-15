@@ -86,6 +86,7 @@ INVOCATION-CONTEXT:
 INHERITED CONTEXT
   Profile:              ${CLAUDE_PLUGIN_ROOT}/agents/conductor.md
   Model pin:            {resolved via shctx models resolve conductor}
+  Lead effort:          {[spawn].lead_effort, default "ultracode"}
   CLAUDE.md path:       {project_claude_md_path}
   Active seed:          {paths.plans}/{sprint_slug}.seed.md
   Active plan:          {paths.plans}/{sprint_slug}.plan.md
@@ -97,8 +98,10 @@ INHERITED CONTEXT
   shepherd.toml snapshot: inline below
 
 BOOT INSTRUCTION
-  On your FIRST turn, load ${CLAUDE_PLUGIN_ROOT}/agents/conductor.md §Boot verification
-  and begin — do NOT wait for a kickoff message. Your lane brief IS the instruction.
+  On your FIRST turn, set session effort to the `Lead effort` pin above (run `/effort
+  ultracode` unless overridden), then load ${CLAUDE_PLUGIN_ROOT}/agents/conductor.md
+  §Boot verification and begin — do NOT wait for a kickoff message. Your lane brief IS
+  the instruction.
   conductor.md owns the boot checklist (§Boot verification), the lane micro-Stage-Graph
   walk (§Lane walk), and the WAVE-COMPLETE payload schema you emit (§WAVE-COMPLETE + resume).
 
@@ -217,6 +220,16 @@ gives each role's pin; `shctx models show` renders the resolved 9-role table as 
 preflight. Root's own model is advisory — a config key cannot rebind a running session. If the
 lead is Opus and no pin is present, REFUSE to spawn until the pin is present or the operator
 records an explicit override.
+
+### Lead effort (v6.3.3)
+
+Every LEAD teammate — `@conductor` and the self-contained `@engineer` — is spawned at
+`[spawn].lead_effort` (default `ultracode`). Root pins it in the boot brief (`Lead effort:`
+line); the lead sets its session effort on turn one (`/effort ultracode`). Leads own fan-out
+— the engineer's intro wave, the conductor's per-lane steps — so the effort level itself makes
+Dynamic-Workflow orchestration the default, no brief-context spent nagging for it
+(`agents/engineer.md`, `agents/conductor.md`). Subagents/workers are unaffected; `"off"` leaves
+the lead session's effort unchanged.
 
 ### Self-contained engineer
 

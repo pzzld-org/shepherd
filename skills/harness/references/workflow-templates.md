@@ -210,10 +210,12 @@ Granting edit tools to an audit-type step defeats the read-only allowlist
 invariant (`skills/harness/SKILL.md §Capability enforcement`) — enforce
 read-only in the brief and tool allowlist, never in permission mode.
 Treating runtime progress as canonical instead of SQLite/git repeats the
-same mistake in reverse. Sprints MUST NOT run under `/effort ultracode` —
-orchestration shape belongs to the critic-gated `G`. Building a second
-graph reader for this projection instead of sharing `shctx plan extract`
-(the #27 extractor) — one graph reader, not two.
+same mistake in reverse. Leads run at `ultracode` (`[spawn].lead_effort`) to
+drive per-segment fan-out, but orchestration SHAPE stays the critic-gated
+`G`'s — effort raises throughput, never the authority for what to dispatch;
+a whole sprint compiled into one workflow (above) is forbidden regardless of
+effort. Building a second graph reader for this projection instead of sharing
+`shctx plan extract` (the #27 extractor) — one graph reader, not two.
 
 ## Native coordination
 

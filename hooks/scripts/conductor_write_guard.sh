@@ -55,8 +55,8 @@
 # verbs, filesystem mutation, in-place edits, shell redirection into a file,
 # and the `shctx` subcommands that mutate registry/state). Everything else
 # (git log/status/diff/show/branch/rev-parse/ls-remote/worktree list/fetch,
-# `gh` read calls, `shctx query/search/status/doctor/dash/inject/toolkit
-# list|show|md/models show/refresh/lint/seed verify/plan verify/plan hash/
+# `gh` read calls, `shctx query/search/status/doctor/dash/inject/models show/
+# refresh/lint/seed verify/plan verify/plan hash/
 # graph compile --verify`) passes through unmatched — deny-list, not
 # allow-list, so an unanticipated read-only command is never falsely blocked
 # (same philosophy as teammate_git_guard.sh's fail-open default).

@@ -18,7 +18,6 @@ A behavioral layer, not a heavy framework — no build step, no server. Everythi
 │                     --parallel <N> | --auto | --staged                 │
 │  /shepherd:focus    Keep the session on-task (focus loop + heartbeat)  │
 │  /shepherd:loop     Bounded loop-until-done (per-role templates)       │
-│  /shepherd:toolkit  Tool registry, so a session never forgets a tool   │
 │  /shepherd:ctx      Inspect / refresh the per-project SQLite context   │
 │  /shepherd:cleanup  Prune stale teammates, worktrees, locks            │
 └────────────────────────────────────────────────────────────────────────┘
@@ -99,7 +98,7 @@ CLOSE          merge -> tag -> squash-to-main -> carry-forward -> close report
 | Conductor | `agents/conductor.md` | a teammate under `/shepherd:spawn` | Executes a sprint or a single lane. |
 | Planter | `agents/planter.md` | `/shepherd:plant` | Authors seeds, stewards git custody. |
 
-Everything else — SQLite memory, toolkit, loop templates, hooks — keeps those three ideas honest.
+Everything else — SQLite memory, loop templates, hooks — keeps those three ideas honest.
 
 ---
 
@@ -154,7 +153,6 @@ root shepherd and spawns a teammate-conductor (one lane by default) end-to-end. 
 | `/shepherd:spawn [slug] [--scope ...] [--parallel N \| --auto \| --staged]` | The execution path — root spawns a teammate-conductor per lane. |
 | `/shepherd:focus [...] [--heartbeat]` | Start/refresh the focus loop, or fire a re-anchor heartbeat. |
 | `/shepherd:loop [task] [--max N] [--agent ...] [--interval ...]` | Bounded loop-until-done. |
-| `/shepherd:toolkit [list\|add\|rm\|pin\|md]` | The tool registry. |
 | `/shepherd:ctx` | Inspect/refresh the SQLite context registry. |
 | `/shepherd:cleanup` | Prune stale teammates, worktrees, locks. |
 
@@ -198,9 +196,9 @@ and carry-forward ledger.
 shctx init && shctx refresh --scope=all && shctx status
 ```
 
-**Workdir hygiene, self-eval, toolkit.** `shctx prune`/`--confirm` reclaims accreted state (dry-run
+**Workdir hygiene, self-eval.** `shctx prune`/`--confirm` reclaims accreted state (dry-run
 default, moves — never deletes — to `/tmp`); `shctx eval run/report` scores a latent output via
-your local Claude Code, never a hosted API; `shctx toolkit add/list` merges project + global tools.
+your local Claude Code, never a hosted API.
 
 **Per-language style files.** `.shepherd/styles/<lang>.md` (rust, python, typescript, go, shell,
 sql), tracked in git, injected into every matching coder brief.
@@ -280,8 +278,9 @@ See [`docs/integration.md`](docs/integration.md) for the full model.
 | `.claude-plugin/plugin.json` | Plugin manifest. |
 | `agents/{engineer,critic,coder,auditor,worker,discovery}.md` | The closed flock. |
 | `agents/{shepherd,conductor,planter}.md` | The three meta-orchestrators. |
-| `commands/{plant,spawn,focus,loop,toolkit,ctx,cleanup}.md` | Slash-command entry points. |
+| `commands/{plant,spawn,focus,loop,ctx,cleanup}.md` | Slash-command entry points. |
 | `skills/shepherd/` | Dispatch law, sprint contract, pipeline, flock briefs, principles. |
+| `services/{llm,eval,cli}/` | Self-contained services: local-Claude LLM, latent-output eval, and the `shepherd` Python CLI (Tortoise/Pydantic/Typer) over the registry. |
 | `skills/{adaptation,motivation,harness,thinking}/` | Lesson memory, drive/focus, platform mechanics, thinking discipline. |
 | `skills/context/` | The `shctx` runtime: migrations, views, bash implementation. |
 | `services/{llm,eval}/` | Self-contained: the local-Claude-Code LLM call and the eval harness. |

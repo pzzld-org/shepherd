@@ -36,10 +36,16 @@ bash "$HERE/scaffold.sh"
 db="$(shctx_db_path)"
 pidfile="$(shctx_project_id_path)"
 
-# Apply schema if DB absent.
+# Apply base schema if DB absent, then bring the schema to HEAD. Running the
+# migrations here — not only via a separate `shctx migrate` — is the source-side
+# fix for #200: `init` must never leave a DB stuck at 0001 that later crashes on a
+# recent column (e.g. `declared_state`, migration 0019). The apply loop is gap-fill
+# + idempotent, so re-running `init` on an existing DB simply heals any drift.
 if [[ ! -f "$db" ]]; then
   sqlite3 "$db" < "$(shctx_skill_root)/schema/0001_init.sql" >/dev/null
 fi
+shctx_apply_pending_migrations >/dev/null \
+  || echo "shctx init: WARNING — schema migration incomplete; run 'shctx migrate'" >&2
 
 # Insert the host project row exactly once. Persist the UUID to project.json.
 if [[ -f "$pidfile" ]]; then

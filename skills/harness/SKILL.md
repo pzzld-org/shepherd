@@ -43,7 +43,10 @@ MUST-know constraints (the 6 platform Limitations plus load-bearing facts):
   but ignores it.
 - Lead↔teammate channel is `SendMessage` (address a teammate by name); a
   shared task list (`TaskCreate`/`TaskUpdate`/`TaskGet`/`TaskList`) is
-  always available.
+  available but unreliable — treat it as a best-effort MIRROR, never the
+  system of record. The registry (SQLite: `shctx graph`/focus) is the
+  authority for sprint/lane/wave state; a `Task*` failure degrades to the
+  registry and NEVER blocks progression.
 - Display mode is observability-only and NEVER required: tmux is an
   optional display mode, not a dependency of teammate-spawn — enum
   `teammateMode: in-process | tmux | auto`.
@@ -155,10 +158,6 @@ The agent itself, not any hook, is the authoritative check: is the literal
 token `Workflow` (or `TaskCreate`, `SendMessage`) present in your visible
 tool list? If yes, call it directly. Only a CONFIRMED genuine absence
 degrades to an in-context `Agent(...)` fan-out as fallback.
-
-The full curated-vs-auto-discovered capability registry and surface table
-live in `skills/context/references/toolkit.md` — this section owns only the
-platform-presence truth; that file owns the registry.
 
 ## Lazy-load economics
 

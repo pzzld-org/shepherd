@@ -50,6 +50,11 @@ shctx_artifacts_root() { resolve_workdir; }
 # already exists (legacy projects untouched); default to shepherd.db for new
 # projects where neither file is present yet.
 shctx_db_path() {
+  # Explicit override (SHCTX_DB) wins over namespace auto-detection, so tests and
+  # tooling that point at a specific DB file resolve to the SAME path everywhere —
+  # including the self-heal helpers (shctx_ensure_migrated), which would otherwise
+  # heal the auto-detected DB while a command queried the override (v6.3.3 #200).
+  if [[ -n "${SHCTX_DB:-}" ]]; then echo "$SHCTX_DB"; return 0; fi
   local wd; wd="$(shctx_artifacts_root)"
   if   [[ -f "$wd/shepherd.db" ]]; then echo "$wd/shepherd.db"
   elif [[ -f "$wd/root.db"     ]]; then echo "$wd/root.db"
@@ -164,6 +169,90 @@ shctx_sql() {
 
 # Now-epoch (seconds).
 shctx_now() { date +%s; }
+
+# ── schema migrations (v6.3.3 #200 — self-heal) ─────────────────────────────
+# Apply every migration whose 4-digit version is ABSENT from schema_versions
+# (gap-fill — repairs a DB that skipped an out-of-place or half-applied migration,
+# not merely one below MAX(version)). Progress is written to STDERR; the number of
+# migrations applied is echoed to STDOUT as the sole stdout line, so a caller can
+# capture the count without swallowing progress. Concurrency-tolerant: if a
+# sibling process applied a migration between our absence-check and our write,
+# sqlite reports "duplicate column" / "already exists" — treat that as
+# already-applied rather than aborting (the schema_versions row is still recorded,
+# INSERT OR IGNORE). Any OTHER sqlite error is a hard failure (non-zero return).
+# Single source of truth for the apply loop — cmd_migrate.sh and
+# shctx_ensure_migrated both call this.
+shctx_apply_pending_migrations() {
+  local migdir db f fname num v sum applied=0 out
+  migdir="$(shctx_skill_root)/schema/migrations"
+  db="$(shctx_db_path)"
+  if [[ ! -d "$migdir" || ! -f "$db" ]]; then echo 0; return 0; fi
+  local had_nullglob=0; shopt -q nullglob && had_nullglob=1; shopt -s nullglob
+  for f in "$migdir"/[0-9][0-9][0-9][0-9]_*.sql; do
+    fname="$(basename "$f")"; num="${fname:0:4}"; v=$((10#$num))
+    [[ -z "$(sqlite3 "$db" "SELECT 1 FROM schema_versions WHERE version=$v LIMIT 1;" 2>/dev/null)" ]] || continue
+    echo "shctx migrate: applying $fname" >&2
+    sum="$(shasum -a 256 "$f" 2>/dev/null | awk '{print $1}')"
+    if ! out="$({ echo "PRAGMA busy_timeout=5000;"; cat "$f"; } | sqlite3 "$db" 2>&1)"; then
+      case "$out" in
+        *"duplicate column"*|*"already exists"*) : ;;  # sibling already applied it
+        *) echo "shctx migrate: ERROR applying $fname: $out" >&2
+           (( had_nullglob )) || shopt -u nullglob
+           echo "$applied"; return 1 ;;
+      esac
+    fi
+    sqlite3 -cmd ".timeout 5000" "$db" \
+      "INSERT OR IGNORE INTO schema_versions (version, applied_at, checksum) VALUES ($v, $(shctx_now), '$sum');" 2>/dev/null || true
+    applied=$((applied+1))
+  done
+  (( had_nullglob )) || shopt -u nullglob
+  echo "$applied"
+}
+
+# Idempotent, cheap schema self-heal (v6.3.3 #200). Ensures the project DB is at
+# the shipped HEAD schema before a caller reads a recent column. Root cause of
+# #200: `shctx init` seeds only 0001 and migrations are applied by a SEPARATE
+# `shctx migrate`, so a DB from an older plugin (or one left half-migrated by the
+# 0017 abort) lags the code — `SELECT declared_state` then fails with
+# "no such column". Calling this at the top of a stateful command closes that gap
+# structurally: the schema can no longer drift out from under the query.
+#
+# FAST path (DB already current): one MAX + one COUNT over schema_versions plus a
+# dir listing — near-zero cost, safe on every invocation. When behind, auto-applies
+# the missing migrations. Fail-soft by contract: missing DB, absent sqlite3, or an
+# unreadable/locked schema_versions returns 0 without aborting the caller (which
+# carries its own column-exists degradation as the final backstop). Never let this
+# take down a command under `set -e`.
+shctx_ensure_migrated() {
+  command -v sqlite3 >/dev/null 2>&1 || return 0
+  local migdir db
+  migdir="$(shctx_skill_root)/schema/migrations"
+  db="$(shctx_db_path)"
+  [[ -d "$migdir" && -f "$db" ]] || return 0
+  # Shipped HEAD: highest version + count of migration files.
+  local shipped_cnt=0 shipped_max=0 f num v
+  local had_nullglob=0; shopt -q nullglob && had_nullglob=1; shopt -s nullglob
+  for f in "$migdir"/[0-9][0-9][0-9][0-9]_*.sql; do
+    num="$(basename "$f")"; num="${num:0:4}"; v=$((10#$num))
+    shipped_cnt=$((shipped_cnt+1)); (( v > shipped_max )) && shipped_max=$v
+  done
+  (( had_nullglob )) || shopt -u nullglob
+  (( shipped_cnt > 0 )) || return 0
+  local applied_max applied_cnt
+  applied_max="$(sqlite3 "$db" "SELECT COALESCE(MAX(version),0) FROM schema_versions;" 2>/dev/null || echo -1)"
+  [[ "$applied_max" =~ ^-?[0-9]+$ ]] || return 0
+  (( applied_max < 0 )) && return 0   # couldn't read schema_versions → let caller degrade
+  applied_cnt="$(sqlite3 "$db" "SELECT COUNT(*) FROM schema_versions;" 2>/dev/null || echo 0)"
+  [[ "$applied_cnt" =~ ^[0-9]+$ ]] || applied_cnt=0
+  # Up-to-date iff we reached the top version AND applied at least as many rows as
+  # shipped (the count catches a GAP a middle migration left, even when max is
+  # current). Otherwise heal — best-effort, fail-soft.
+  if (( applied_max >= shipped_max && applied_cnt >= shipped_cnt )); then
+    return 0
+  fi
+  shctx_apply_pending_migrations >/dev/null 2>&1 || true
+  return 0
+}
 
 # Cross-lib compatibility shims (v5.1.8) — cmd_discovery.sh and any future
 # cmd_*.sh that get invoked via bare `bash` (not via shctx wrapper) source

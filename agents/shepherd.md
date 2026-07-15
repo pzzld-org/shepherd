@@ -179,9 +179,12 @@ contract`): every wake runs wake → act → probe → yield-to-events.
   (`skills/motivation/SKILL.md §FOCUS-HEARTBEAT`). Wandered → return to the
   active node, file the digression, don't chase it inline.
 - **Wave boundary**: all lanes finish wave-N and idle → root gates on the
-  rebased sprint branch → releases the next wave via `TaskUpdate(status:
-  completed)` on `wave-N-gate-{sprint_slug}`. Refresh the focus record after
-  each gate. Root MAY refresh an idle lane's teammate at the boundary (same
+  rebased sprint branch → records the release in the registry (`shctx graph
+  mark <wave-N-gate> --state=done`, authoritative) and mirrors it via
+  `TaskUpdate(status: completed)` on `wave-N-gate-{sprint_slug}`. A `Task*`
+  failure never stalls the gate — advance on the registry, log the downgrade
+  (`skills/shepherd/references/pipeline.md` §Wave gate). Refresh the focus
+  record after each gate. Root MAY refresh an idle lane's teammate at the boundary (same
   lane, fresh context — not a new lane).
 - **Prune idle teammates immediately** (`cmd_teammate.sh prune`); refresh the
   lane with a fresh teammate at the next wave gate.

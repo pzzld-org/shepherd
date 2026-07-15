@@ -58,6 +58,11 @@ run_case "cargo-backgrounded"  bash_guard.sh '{"session_id":"s1","tool_name":"Ba
 run_case "empty-input"         bash_guard.sh ''
 run_case "no-command-field"    bash_guard.sh '{"session_id":"s1","tool_name":"Bash","tool_input":{}}'
 
+echo "== teammate_heartbeat.sh (v6.3.3 #193 — auto liveness) =="
+run_case "hb-no-payload"       teammate_heartbeat.sh ''
+run_case "hb-bash-no-db"       teammate_heartbeat.sh '{"session_id":"s1","tool_name":"Bash","tool_input":{"command":"ls"}}'
+run_case "hb-edit-no-db"       teammate_heartbeat.sh '{"session_id":"s1","tool_name":"Edit","tool_input":{"file_path":"x"}}'
+
 echo "== bash_post.sh =="
 run_case "post-ls"             bash_post.sh '{"session_id":"s1","tool_name":"Bash","tool_input":{"command":"ls"},"tool_response":{"content":"foo"}}'
 run_case "post-empty"          bash_post.sh ''
@@ -261,34 +266,6 @@ else
   fails=$((fails+1))
 fi
 
-# Toolkit surface hook (v6.1.2, hardened v6.1.3): merges local ∪ global
-# toolkit.json, sorts pinned-first, caps at 12, graceful-empty. Verifies the
-# SessionStart roster the operator relies on every session.
-echo "== test_toolkit_surface.sh (v6.1.3 — toolkit SessionStart roster) =="
-total=$((total+1))
-if tks_out=$(bash "$TESTS_DIR/test_toolkit_surface.sh" 2>&1); then
-  printf '  PASS  %s\n' "toolkit-surface-merges-sorts-caps"
-else
-  printf '  FAIL  %-50s\n' "toolkit-surface"
-  printf '%s\n' "$tks_out" | sed 's/^/        /'
-  fails=$((fails+1))
-fi
-
-# Capability auto-discovery hook (v6.1.5, #146): the SessionStart probe writes
-# an EPHEMERAL capability roster (cache/discovered-capabilities.json), distinct
-# from the curated toolkit.json, default-on + config-gated, idempotent per
-# session, fail-open. Verifies disabled→no-op, enabled→roster (not toolkit.json),
-# plugin/skill discovery, idempotency, and the workflow-tool agent_fillin contract.
-echo "== test_capability_discovery.sh (v6.1.5 — #146 ephemeral capability probe) =="
-total=$((total+1))
-if cap_out=$(bash "$TESTS_DIR/test_capability_discovery.sh" 2>&1); then
-  printf '  PASS  %s\n' "capability-discovery-writes-ephemeral-roster"
-else
-  printf '  FAIL  %-50s\n' "capability-discovery"
-  printf '%s\n' "$cap_out" | sed 's/^/        /'
-  fails=$((fails+1))
-fi
-
 # Field-shape dedup hook (v6.1.8, #157): dups_write_guard.sh blocks a renamed
 # shadow (same field shape, different name) in block mode, warns in warn mode,
 # and fast-paths (non-coder / non-rust / no corpus) silently. Sets up a corpus
@@ -344,7 +321,7 @@ else
 fi
 
 # Exec-bit guard (v6.1.3): every path-invoked hook/CLI script must carry the
-# git-tracked executable bit. Regression guard for the v6.1.2 toolkit
+# git-tracked executable bit. Regression guard for the v6.1.2
 # "Permission denied" shipped-as-100644 class.
 echo "== test_exec_bits.sh (v6.1.3 — path-invoked scripts are executable) =="
 total=$((total+1))
@@ -456,6 +433,21 @@ if v630_out=$(bash "$TESTS_DIR/test_v630_wiring.sh" 2>&1); then
 else
   printf '  FAIL  %-50s\n' "v630-wiring"
   printf '%s\n' "$v630_out" | sed 's/^/        /'
+  fails=$((fails+1))
+fi
+
+# Automatic teammate heartbeat (v6.3.3, #193): teammate_heartbeat.sh advances a
+# REGISTERED teammate's last_seen_at (booting→active) on every tool call, so
+# liveness is trustworthy for roles that never self-report (the self-contained
+# @engineer). Observational — never blocks; fails open on any missing precondition;
+# [hooks].teammate_heartbeat=off disables it.
+echo "== test_teammate_heartbeat.sh (v6.3.3 — #193 auto liveness heartbeat) =="
+total=$((total+1))
+if hb_out=$(bash "$TESTS_DIR/test_teammate_heartbeat.sh" 2>&1); then
+  printf '  PASS  %s\n' "teammate-heartbeat-auto-advances-last-seen"
+else
+  printf '  FAIL  %-50s\n' "teammate-heartbeat"
+  printf '%s\n' "$hb_out" | sed 's/^/        /'
   fails=$((fails+1))
 fi
 

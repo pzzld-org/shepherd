@@ -9,6 +9,11 @@ source "$HERE/_lib.sh"
 # Resolve DB path via the lib (honors $SHEPHERD_WORKDIR, then .shepherd/.artifacts).
 DB="${SHCTX_DB:-$(shctx_db_path)}"
 [[ -f "$DB" ]] || { echo "ERR: registry DB not found at $DB" >&2; exit 1; }
+# Schema self-heal (v6.3.3 #200): bring a behind DB to HEAD before any query touches
+# a recent column. Without this, a DB created under an older plugin (or left behind
+# by the 0017 half-migration) crashes `liveness`/`state`/`prune` with
+# "no such column: declared_state". Fail-soft — never blocks the command.
+shctx_ensure_migrated
 
 now_ms() { echo $(($(date +%s) * 1000)); }
 project_id() {
@@ -169,16 +174,26 @@ case "$sub" in
     # falls through to the timing heuristic (a fresh init is fine, but an init gone
     # stale past the window is a crashed boot), so it stays prunable. NULL is
     # undeclared → pure pre-0019 timing behavior.
-    sqlite3 -header -column "$DB" "SELECT teammate_name, agent_type, status, COALESCE(declared_state,'-') AS declared, ms_since_seen/1000 AS sec_since_seen,
-      CASE
-        WHEN declared_state = 'in-progress' THEN 'ok'
-        WHEN declared_state = 'error'       THEN 'error'
-        WHEN declared_state = 'complete'    THEN 'complete'
-        WHEN declared_state = 'idle'        THEN 'idle'
-        WHEN ms_since_seen > $threshold_ms AND status IN ('booting','active') THEN 'presumed-crashed'
-        ELSE 'ok'
-      END AS verdict
-      FROM v_teammates_live ORDER BY ms_since_seen DESC;"
+    # Backstop for #200: the self-heal above brings declared_state into existence in
+    # virtually every case. If it could NOT (a read-only or locked DB), degrade to
+    # the pre-0019 timing-only verdict instead of crashing on the missing column —
+    # the same column-exists guard coordinate_drive_guard.sh uses.
+    if [[ -n "$(sqlite3 "$DB" "SELECT 1 FROM pragma_table_info('teammates') WHERE name='declared_state' LIMIT 1;" 2>/dev/null)" ]]; then
+      sqlite3 -header -column "$DB" "SELECT teammate_name, agent_type, status, COALESCE(declared_state,'-') AS declared, ms_since_seen/1000 AS sec_since_seen,
+        CASE
+          WHEN declared_state = 'in-progress' THEN 'ok'
+          WHEN declared_state = 'error'       THEN 'error'
+          WHEN declared_state = 'complete'    THEN 'complete'
+          WHEN declared_state = 'idle'        THEN 'idle'
+          WHEN ms_since_seen > $threshold_ms AND status IN ('booting','active') THEN 'presumed-crashed'
+          ELSE 'ok'
+        END AS verdict
+        FROM v_teammates_live ORDER BY ms_since_seen DESC;"
+    else
+      sqlite3 -header -column "$DB" "SELECT teammate_name, agent_type, status, '-' AS declared, ms_since_seen/1000 AS sec_since_seen,
+        CASE WHEN ms_since_seen > $threshold_ms AND status IN ('booting','active') THEN 'presumed-crashed' ELSE 'ok' END AS verdict
+        FROM v_teammates_live ORDER BY ms_since_seen DESC;"
+    fi
     ;;
   prune)
     confirm=0; name=""; crashed=0; stale=5
