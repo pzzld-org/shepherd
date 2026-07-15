@@ -19,6 +19,9 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$HERE/_lib.sh"
 DB="${SHCTX_DB:-$(shctx_db_path)}"
 [[ -f "$DB" ]] || { echo "ERR: registry DB not found at $DB (run 'shctx init')" >&2; exit 1; }
+# Schema self-heal (v6.3.3 #200): panes reads declared_state (0019); heal a behind
+# DB to HEAD before the query so it can't crash on the missing column. Fail-soft.
+shctx_ensure_migrated
 
 NS="$(resolve_workdir)"
 PANE_LOG_DIR="$NS/logs/panes"
@@ -46,21 +49,31 @@ case "$sub" in
       *) echo "unknown flag: $1" >&2; exit 2;;
     esac; shift; done
     threshold_ms=$((stale * 60 * 1000))
-    sqlite3 -header -column "$DB" "
-      SELECT v.teammate_name                         AS lane,
-             v.agent_type                            AS role,
-             v.status                                AS status,
-             COALESCE(v.declared_state,'-')          AS declared,
-             v.ms_since_seen/1000                    AS idle_s,
-             COALESCE(v.tmux_pane_id,'-')            AS pane,
-             COALESCE(h.phase,'-')                   AS phase,
-             CASE
+    # #200 backstop: if the self-heal could not add declared_state (read-only/locked
+    # DB), degrade to a timing-only verdict rather than crash on the missing column.
+    if [[ -n "$(sqlite3 "$DB" "SELECT 1 FROM pragma_table_info('teammates') WHERE name='declared_state' LIMIT 1;" 2>/dev/null)" ]]; then
+      declared_col="COALESCE(v.declared_state,'-')"
+      verdict_case="CASE
                WHEN v.declared_state = 'in-progress' THEN 'ok'
                WHEN v.declared_state = 'error'       THEN 'error'
                WHEN v.declared_state = 'complete'    THEN 'complete'
                WHEN v.declared_state = 'idle'        THEN 'idle'
                WHEN v.ms_since_seen > $threshold_ms AND v.status IN ('booting','active')
-                    THEN 'presumed-crashed' ELSE 'ok' END      AS verdict
+                    THEN 'presumed-crashed' ELSE 'ok' END"
+    else
+      declared_col="'-'"
+      verdict_case="CASE WHEN v.ms_since_seen > $threshold_ms AND v.status IN ('booting','active')
+                    THEN 'presumed-crashed' ELSE 'ok' END"
+    fi
+    sqlite3 -header -column "$DB" "
+      SELECT v.teammate_name                         AS lane,
+             v.agent_type                            AS role,
+             v.status                                AS status,
+             $declared_col                           AS declared,
+             v.ms_since_seen/1000                    AS idle_s,
+             COALESCE(v.tmux_pane_id,'-')            AS pane,
+             COALESCE(h.phase,'-')                   AS phase,
+             $verdict_case                           AS verdict
       FROM v_teammates_live v
       LEFT JOIN heartbeats h
         ON h.teammate_id = v.id

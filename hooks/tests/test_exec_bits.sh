@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# hooks/tests/test_exec_bits.sh — regression guard for the v6.1.2 toolkit
-# "Permission denied" class (v6.1.3).
+# hooks/tests/test_exec_bits.sh — regression guard for the "Permission denied"
+# shipped-as-100644 class (v6.1.3).
 #
 # WHY: Claude Code invokes hook scripts by PATH (the `command` in hooks.json),
 # and `shctx` dispatches its cmd_*.sh by PATH. Both require the git-tracked
 # executable bit (100755). But the smoke harness runs scripts via `bash <file>`
 # (mode-agnostic), so a script committed as 100644 passes every other test yet
-# fails the real invocation — exactly how toolkit_surface.sh + cmd_toolkit.sh
-# shipped broken in v6.1.2. This test checks the COMMITTED mode (git index),
-# which is what reaches consumers, for every path-invoked script.
+# fails the real invocation — a script shipped 100644 is broken for real
+# consumers. This test checks the COMMITTED mode (git index), which is what
+# reaches consumers, for every path-invoked script.
 
 set -eu -o pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"

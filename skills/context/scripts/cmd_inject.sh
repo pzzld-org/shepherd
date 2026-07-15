@@ -78,14 +78,6 @@ case "$role" in
       *'no history yet'*|'') : ;;
       *) body=$(printf '%s\n\n%s\n' "$body" "$rec") ;;
     esac
-    # [TOOLKIT] — available tools surface; omitted when registry is empty.
-    # Appended last so cacheable prefix (issues/drift/types/priors) is preserved.
-    tk=$(bash "$HERE/cmd_toolkit.sh" md --scope=all 2>/dev/null || true)
-    [[ -n "$tk" ]] && body=$(printf '%s\n\n## Toolkit (available tools — consult before assuming unavailable)\n%s\n' "$body" "$tk")
-    # Auto-discovered capabilities (#146) — EPHEMERAL, distinct from curated
-    # toolkit; appended at the very tail. Omitted when no probe / empty roster.
-    disc=$(bash "$HERE/cmd_toolkit.sh" discovered 2>/dev/null || true)
-    [[ -n "$disc" ]] && body=$(printf '%s\n\n%s\n' "$body" "$disc")
     emit_block "$body"
     ;;
 
@@ -103,13 +95,7 @@ case "$role" in
     else
       header="## Existing canonical types (top $limit) — REUSE; do not duplicate"
     fi
-    # [TOOLKIT] — available tools surface; omitted when registry is empty.
     body="$(printf '%s\n%s\n' "$header" "$types")"
-    tk=$(bash "$HERE/cmd_toolkit.sh" md --scope=all 2>/dev/null || true)
-    [[ -n "$tk" ]] && body=$(printf '%s\n\n## Toolkit (available tools — consult before assuming unavailable)\n%s\n' "$body" "$tk")
-    # Auto-discovered capabilities (#146) — EPHEMERAL, distinct from curated.
-    disc=$(bash "$HERE/cmd_toolkit.sh" discovered 2>/dev/null || true)
-    [[ -n "$disc" ]] && body=$(printf '%s\n\n%s\n' "$body" "$disc")
     emit_block "$body"
     ;;
 
@@ -129,13 +115,6 @@ case "$role" in
     body=$(printf '## Open issues\n%s\n\n## Drift risk\n%s\n' "$issues" "$drift")
     priors=$(bash "$HERE/cmd_adapt.sh" priors --lessons --md 2>/dev/null || true)
     [[ -n "$priors" ]] && body=$(printf '%s\n\n%s\n' "$body" "$priors")
-    # [TOOLKIT] — available tools surface; omitted when registry is empty.
-    tk=$(bash "$HERE/cmd_toolkit.sh" md --scope=all 2>/dev/null || true)
-    [[ -n "$tk" ]] && body=$(printf '%s\n\n## Toolkit (available tools — consult before assuming unavailable)\n%s\n' "$body" "$tk")
-    # Auto-discovered capabilities (#146) — EPHEMERAL, distinct from curated.
-    # The planter routes /remember, superpowers, etc. at the right seams.
-    disc=$(bash "$HERE/cmd_toolkit.sh" discovered 2>/dev/null || true)
-    [[ -n "$disc" ]] && body=$(printf '%s\n\n%s\n' "$body" "$disc")
     emit_block "$body"
     ;;
 

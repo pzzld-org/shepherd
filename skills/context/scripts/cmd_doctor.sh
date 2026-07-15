@@ -96,7 +96,12 @@ if [[ -f "$db" ]]; then
   else
     add warn db "schema_version" "no schema_versions row" "run 'shctx migrate'"
   fi
-  # Check pending migrations.
+  # Check pending migrations — GAP-AWARE (v6.3.3 #200): count any shipped migration
+  # whose version is ABSENT from schema_versions, not merely those above MAX(version).
+  # A high max can hide a missing middle migration (e.g. a DB left half-applied by the
+  # 0017 abort) — exactly the drift that crashed `teammate liveness` on the
+  # declared_state column. Stateful commands now self-heal (shctx_ensure_migrated);
+  # `shctx migrate` applies them explicitly; this surfaces the condition either way.
   pending=0
   if [[ -d "$HERE/../schema/migrations" ]]; then
     for m in "$HERE"/../schema/migrations/*.sql; do
@@ -104,15 +109,15 @@ if [[ -f "$db" ]]; then
       v=$(basename "$m" | grep -oE '^[0-9]+' || echo "")
       [[ -n "$v" ]] || continue
       v=$((10#$v))  # force base-10
-      if [[ -n "$schema_ver" ]] && (( v > schema_ver )); then
+      if [[ -z "$(shctx_sql "SELECT 1 FROM schema_versions WHERE version=$v LIMIT 1;" 2>/dev/null)" ]]; then
         pending=$((pending + 1))
       fi
     done
   fi
   if (( pending > 0 )); then
-    add warn db "pending migrations" "$pending pending" "run 'shctx migrate'"
+    add warn db "pending migrations" "$pending unapplied (schema drift)" "run 'shctx migrate' (stateful commands also self-heal — v6.3.3 #200)"
   else
-    add ok db "pending migrations" "none" ""
+    add ok db "pending migrations" "none (schema at head)" ""
   fi
 else
   add fail db "$db_name" "missing" "run 'shctx init' or 'shctx ready'"

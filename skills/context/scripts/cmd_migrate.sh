@@ -90,28 +90,15 @@ if [[ "${1:-}" == "--layout" && "${2:-}" == "v2" ]] || [[ "${1:-}" == "--layout=
 fi
 
 # ── schema migrations (default behavior — unchanged) ───────────────────────
+# The gap-fill apply loop lives in _lib.sh (shctx_apply_pending_migrations) so it
+# is the SINGLE source of truth shared with the on-demand self-heal
+# (shctx_ensure_migrated, v6.3.3 #200). Behavior is identical to the historical
+# inline loop: apply any migration whose version is ABSENT from schema_versions.
 migdir="$(shctx_skill_root)/schema/migrations"
 [[ -d "$migdir" ]] || { echo "no migrations dir"; exit 0; }
 
 current=$(shctx_sql "SELECT COALESCE(MAX(version),0) FROM schema_versions;")
-applied=0
-shopt -s nullglob
-for f in "$migdir"/[0-9][0-9][0-9][0-9]_*.sql; do
-  fname=$(basename "$f")
-  num=${fname:0:4}
-  v=$((10#$num))
-  # Gap-fill (v6.0.3): apply any migration whose version is ABSENT from
-  # schema_versions, not merely those above MAX(version). Repairs DBs that
-  # skipped an out-of-place migration (e.g. 0007 was orphaned in schema/ root
-  # and never applied, leaving DBs at v8 missing the v7 operational tables).
-  [[ -z "$(shctx_sql "SELECT 1 FROM schema_versions WHERE version=$v LIMIT 1;")" ]] || continue
-  echo "shctx migrate: applying $fname"
-  sum=$(shasum -a 256 "$f" | awk '{print $1}')
-  sqlite3 "$(shctx_db_path)" < "$f"
-  shctx_sql "INSERT INTO schema_versions (version, applied_at, checksum)
-             VALUES ($v, $(shctx_now), '$sum');"
-  applied=$((applied+1))
-done
+applied="$(shctx_apply_pending_migrations)"   # progress → stderr; count → stdout
 if (( applied == 0 )); then
   echo "shctx migrate: no migrations pending (at version $current)"
 else

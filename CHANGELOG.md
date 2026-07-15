@@ -4,6 +4,31 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v6.3.3 — 2026-07-15
+
+**State-subsystem hardening — the `declared_state` feature the field broke on first run — plus the packaged `shepherd` CLI begins; the toolkit feature is retired.**
+
+### Fixed
+
+- **`shctx teammate liveness` / `shctx panes` crashed with `no such column: declared_state` on a behind DB (#200).** `shctx init` seeded only `0001_init.sql`; migrations were applied by a SEPARATE `shctx migrate`, so a DB from an older plugin (or one left half-applied by the 0017 abort) lagged the code and the 0019 `declared_state` query errored (tests passed because the harness applies every migration file directly). Closed structurally: `_lib.sh` gains `shctx_apply_pending_migrations` (the gap-fill loop, now the single source shared with `cmd_migrate.sh`) + `shctx_ensure_migrated` (a cheap behind-check that auto-applies when the schema lags — concurrency-tolerant, fail-soft). `init` now migrates to HEAD (the source of the drift); `teammate`/`panes` call `ensure_migrated` before any `declared_state` read and degrade to a timing-only verdict when healing is impossible (read-only/locked DB, mirroring `coordinate_drive_guard.sh`); `doctor`'s pending-migration check is now GAP-aware. Tests: new `test_schema_self_heal.sh` (behind DB heals + degrades), extended `test_migrate.sh`. Context suite 48/48.
+
+### New — automatic teammate liveness (#193)
+
+- **`hooks/scripts/teammate_heartbeat.sh` — PreToolUse auto-stamp.** Non-conductor teammates (the self-contained `@engineer`) never called `shctx teammate heartbeat`, so `last_seen_at` froze at `spawned_at` and liveness read `presumed-crashed` while the teammate ran a multi-minute fan-out. The 0019 `declared_state` read-verdict was a half-fix — it needs a MANUAL declaration. Now every tool call stamps `last_seen_at` for the current teammate (booting→active): liveness is trustworthy for every role for free, no self-report, and a new role can't forget it. Observational (never blocks a tool), fail-open, `[hooks].teammate_heartbeat = on|off`. Test: `test_teammate_heartbeat.sh` (7 cases). Hook suite 65/65.
+
+### New — the packaged `shepherd` CLI begins (#198)
+
+- **`services/cli/` — Python + Poetry (Tortoise ORM / Pydantic / Typer).** A typed, session/pid-scoped data-access layer over the registry — the clean home for the scoping the bash scripts re-patch at every call site. First group ported: `teammate liveness/status/state`. Liveness is SCOPED-by-construction to the active session's team, excluding prior-session ghosts — the #195 fix, demonstrated. Tortoise models MIRROR the canonical SQL schema (coexistence: SQL migrations stay authoritative, never `generate_schemas`); the CLI self-heals the schema like #200. Un-ported subcommands shim to bash `shctx`, so `shepherd` is a working superset on day one. Deterministic feature → 30 pytest gate tests (incl. a real bash-vs-Python verdict-parity gate) are the proof; no LLM eval. Bash `shctx` is unchanged. Later increments migrate the surface group-by-group and rename the entrypoint.
+
+### Changed
+
+- **Task list demoted to a best-effort mirror; the registry is authoritative for wave-gating.** The harness Task list fails often enough that wave progression must not depend on it. Doctrine (`skills/shepherd/references/pipeline.md`, `agents/{conductor,shepherd}.md`, `skills/harness/SKILL.md`): the registry (`shctx graph`/focus) is the system of record for lane/wave state; a `Task*` failure degrades to the registry and NEVER blocks progression.
+- **Team leads spawn at `ultracode` (#198 direction).** `[spawn].lead_effort` (default `ultracode`) is injected into `@engineer`/`@conductor` boot briefs, so the effort level itself makes Dynamic-Workflow fan-out the default — no brief-context spent nagging for it. `conductor` frontmatter `thinking: high → max`. The blanket "sprints MUST NOT run under `/effort ultracode`" in `workflow-templates.md` is reconciled: leads run ultracode for per-segment fan-out, but orchestration SHAPE stays the critic-gated graph's, and a whole sprint compiled into one workflow is still forbidden regardless of effort.
+
+### Removed — the toolkit feature
+
+- **Dropped the `toolkit` registry wholesale** (forgotten, net-negative surface, per operator directive): `cmd_toolkit.sh`, `commands/toolkit.md`, `hooks/scripts/toolkit_surface.sh`, `hooks/scripts/capability_discovery.sh` (its only consumer), the three `[TOOLKIT]` inject blocks in `cmd_inject.sh`, `references/toolkit.{md,schema.json}`, the `[discovery].auto_capabilities` toggle, and every doctrine / doc / config reference. `shctx toolkit` and `/shepherd:toolkit` are gone; tests `test_toolkit.sh` / `test_toolkit_surface.sh` / `test_capability_discovery.sh` removed. Net-negative LOC.
+
 ## v6.3.2 — 2026-07-14
 
 **Cleanup + bug-hunt pass, and an explicit teammate `declared_state` that ends the false-positive liveness cancellations the axiom run kept surfacing.**

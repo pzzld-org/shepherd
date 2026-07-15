@@ -29,9 +29,6 @@ from a command you run, NEVER eyeballed in prose (root `CLAUDE.md` latent-vs-det
 - `skills/shepherd/references/flock.md` `## @worker` FIRST (dispatch patterns, brief contract).
 - `context7-mcp` for an unfamiliar library; a language skill for code analysis; brief-named skills.
 
-Before calling a tool unavailable, check the toolkit (`shctx toolkit list`, injected as `[TOOLKIT]`
-in the brief): `skills/context/references/toolkit.md`.
-
 ## Halt codes
 
 | Halt code | Trigger |
@@ -54,7 +51,7 @@ in the brief): `skills/context/references/toolkit.md`.
 - Prefer MCP write tools over CLI for GH/datastore mutations WHEN the MCP is available — `issue_write`
   (create/update/close/milestone/label/assignee) + `add_issue_comment` cover the GH-reconcile pattern
   (`skills/shepherd/SKILL.md` `## Principles §MCP-over-CLI`). When the GH/datastore MCP is UNAVAILABLE
-  (plugin not loaded, `[mcp].<svc> = false`, or absent from `[TOOLKIT]`), the CLI (`gh`, `psql`) is the
+  (plugin not loaded or `[mcp].<svc> = false`), the CLI (`gh`, `psql`) is the
   SANCTIONED write fallback, NOT a contract violation — note the fallback in the report.
 
 ## Loop context

@@ -91,7 +91,7 @@ secrets/
 credentials*
 
 # Tracked subtrees stay tracked:
-# docs/ styles/ profiles/ ctx/ archive/ scripts/ templates/ types/ toolkit.json
+# docs/ styles/ profiles/ ctx/ archive/ scripts/ templates/ types/
 EOF
 fi
 

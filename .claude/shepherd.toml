@@ -66,6 +66,23 @@ ttl_minutes = 30
 [context.lock]
 stale_after_minutes = 120
 
+[spawn]
+# Effort posture injected into TEAM-LEAD sessions (@engineer, @conductor) at spawn
+# (v6.3.3). The leads own fan-out — the engineer's parallel discovery/audit waves,
+# the conductor's per-lane step fan-out — so they run at ultracode by default: the
+# effort level itself makes Dynamic-Workflow orchestration the natural default,
+# without shepherd having to spend brief-context nagging for it (commands/spawn.md
+# §Lead effort). Subagents/workers are unaffected — this is leads only. Set to any
+# effort ("max"|"high"|…) or "off" to leave the lead session's effort as-is.
+lead_effort = "ultracode"
+
+[hooks]
+# Automatic teammate liveness (v6.3.3 #193): a PreToolUse hook stamps last_seen_at
+# for the current teammate on every tool call, so `shctx teammate liveness` is
+# trustworthy for roles that never self-report (the self-contained @engineer). "off"
+# disables it (liveness then reverts to explicit `shctx teammate heartbeat`).
+teammate_heartbeat = "on"
+
 [mcp]
 github   = true
 sentry   = false

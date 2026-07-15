@@ -28,7 +28,6 @@ Quick reference only — detail lives in the sibling `references/` files.
 - `search <text> [--scope=…] [--limit=N]` — FTS5 full-text search.
 - `inject <engineer|coder|auditor>` — emit `[DB-CONTEXT]`.
 - `mem <add|search|list|pin|unpin>` — memories.
-- `toolkit <list|add|rm|pin|unpin|show|md|init|validate>` — tool-memory registry (`toolkit.json`).
 - `lock <show|acquire|release|reap>` — file lock at `<namespace>/shepherd.lock`.
 - `lint` / `migrate` / `export <kind> [--out=path]`.
 - `close-lane <id> --sprint=<branch> […]` — mid-sprint closure.
@@ -133,7 +132,6 @@ Namespace paths are date-only vs timestamped (see `references/naming-conventions
 - `references/schema.md` — tables, views, JSON1 query patterns.
 - `references/profiles.md` — profile model (modifier/extension/override), TOML format.
 - `references/model-map.md` — `[models]` role→model table (`shctx models resolve <role>`).
-- `references/toolkit.md` — `toolkit.json` two-tier CLI contract, curated-vs-discovered table.
 - `examples/inject-coder.md` — sample `[DB-CONTEXT]` block.
 - `skills/shepherd/references/pipeline.md §DEDUP-GATE` — dedup gate + `DUPLICATION-DRIFT` cap.
 - `${CLAUDE_PLUGIN_ROOT}/docs/configuration.md` — `[context]`/`[dups]`/`[prune]` sections.

@@ -10,7 +10,6 @@ metadata:
     - "/shepherd:loop"
     - "/shepherd:focus"
     - "/shepherd:ctx"
-    - "/shepherd:toolkit"
     - "/shepherd:cleanup"
 ---
 
@@ -105,7 +104,7 @@ git diff {patch_branch}..HEAD --shortstat -- $(read_subtract_paths_from_config)
 
 If `[gates.subtract_paths]` is unset, the auditor falls back to the language skill's default globs (Rust: `crates/**/*.rs bin/**/*.rs **/*.toml **/*.sql`). Net-positive is pre-authorized ONLY by a seed `sprint_metadata` block declaring `expected_loc_delta` and `subtract_floor`. Ship net-negative while delivering features: (1) replace, don't append — every new line retires ≥1 old line; (2) inline single-callers; (3) collapse hollow wrappers (`references/flock.md §@auditor`); (4) delete deprecated migration shims same-sprint; (5) audit the dependency tree every dev.0, dropping ≥1 dep/patch; (6) remove dead feature flags on rollout completion; (7) inline single-impl traits no test mocks. Dependency-delta and abstraction-delta detection delegate to the project-language skill's §subtract-detection patterns (`rust`, `typescript`, `python`).
 
-**MCP-over-CLI** — when an MCP is AVAILABLE (plugin loaded + `[mcp].<svc>` on), every WRITE goes through it and CLIs are read-only bulk enumeration only; when the MCP is UNAVAILABLE (not loaded, `[mcp].<svc> = false`, or absent from `[TOOLKIT]`), the CLI (`gh`, `psql`) is the SANCTIONED write fallback — flag it in the report, never a contract violation (the axiom dev.8 W0 incident: a whole-plugin absence left `gh` the only GH-write mechanism, then read as non-compliant):
+**MCP-over-CLI** — when an MCP is AVAILABLE (plugin loaded + `[mcp].<svc>` on), every WRITE goes through it and CLIs are read-only bulk enumeration only; when the MCP is UNAVAILABLE (not loaded or `[mcp].<svc> = false`), the CLI (`gh`, `psql`) is the SANCTIONED write fallback — flag it in the report, never a contract violation (the axiom dev.8 W0 incident: a whole-plugin absence left `gh` the only GH-write mechanism, then read as non-compliant):
 
 | Service | MCP for | CLI OK for |
 |---|---|---|
@@ -132,5 +131,4 @@ When a service is `false` in both `[mcp]` and `[cli]` config, downgrade that Pha
 | `/shepherd:loop [task] [--max N] [--agent worker\|discovery]` | Pattern 6 Loop-Until-Done — each loop declares `--max`, each iteration emits `new_findings: true\|false`. `skills/motivation/SKILL.md §Loop discipline` |
 | `/shepherd:focus` | Focus record + FOCUS-HEARTBEAT drift guard. `skills/motivation/SKILL.md §Focus record` |
 | `/shepherd:ctx` | Context registry; backs the DEDUP-GATE fast path. `skills/context/SKILL.md` |
-| `/shepherd:toolkit` | Toolkit registry (MCP/skill/plugin/CLI), surfaced as `[TOOLKIT]` in briefs. `skills/context/SKILL.md` |
 | `/shepherd:cleanup` | Prune stale/crashed teammate entries; operator-confirmed, NEVER auto-prunes live entries |

@@ -110,8 +110,7 @@ to scaffold a second namespace when the other exists. `$SHEPHERD_WORKDIR` preced
 | `announce_adaptation` | enum | `"on"` | `on\|off` — surfaces sprint/prior counts + newest lesson + trend alert |
 
 Sub-tables `[context.refresh]`, `[context.lock]`, `[context.naming]` — see
-`skills/context/schema/0001_init.sql`. The toolkit (`toolkit.json`) is documented at
-`skills/context/references/toolkit.md`. NEVER store secrets in it.
+`skills/context/schema/0001_init.sql`.
 
 ### `[skills]` — local-skill integration
 
@@ -181,6 +180,7 @@ open-issue space at every sprint open.
 | `quiet_warnings` | bool | `false` | suppress informational `additionalContext` (still logged) |
 | `flag_handrolled_fanout` | bool | `false` | `dispatch_guard.sh` Check 6 — warn when a teammate hand-rolls a flock fan-out instead of compiling it |
 | `workflow_model_guard` | enum | `"block"` | `block\|warn\|off` — `workflow_model_guard.sh` PreToolUse(Workflow) dispatch-model-pin gate (#178) |
+| `teammate_heartbeat` | enum | `"on"` | `on\|off` — `teammate_heartbeat.sh` PreToolUse auto-stamp of the current teammate's `last_seen_at` so `shctx teammate liveness` needs no self-report (#193) |
 
 `workflow_model_guard`: blocks (default) a submitted Dynamic Workflow script whose `agent()` calls
 carry neither `model:` nor `agentType:` — the shape that silently inherits the MAIN-LOOP model
@@ -201,6 +201,13 @@ reported via `additionalContext` even in block mode. `warn` proceeds with the sa
 | `max_parallel` | int | `4` | upper bound on `--parallel <N>` |
 | `dashboard_cadence` | duration | `"3m"` | `shctx dash` loop interval |
 | `staged_timeout_minutes` | int | `90` | `--staged` poll timeout before `STAGED-TIMEOUT` |
+| `lead_effort` | enum | `"ultracode"` | effort injected into lead sessions (`@engineer`, `@conductor`) at spawn; `ultracode` makes Dynamic-Workflow fan-out the default. `off` leaves the lead session's effort unchanged (#198 direction) |
+
+`lead_effort`: the lead sets its session effort on turn one from the boot-brief `Lead effort:` pin
+(`commands/spawn.md §Lead effort`). Leads own fan-out (the engineer's intro wave, the conductor's
+per-lane steps), so the effort level itself drives Workflow-first orchestration — no brief-context
+spent nagging for it. Subagents/workers are unaffected. Orchestration SHAPE still comes from the
+critic-gated stage graph, never the effort level (`skills/harness/references/workflow-templates.md`).
 
 `coordinate_drive_guard`: `block` re-engages the root at a premature end-turn, capped at 2 nudges
 then fails open; `warn` nudges via stderr; `off` disables; fast-paths outside a live spawn session
@@ -261,12 +268,6 @@ Keys are `eval_`-prefixed. See `services/eval/README.md`.
 |---|---|---|---|
 | `eval_judge_model` | model alias | *(empty → `opus`)* | never a silent downgrade; `--model` on `shctx eval run` overrides |
 | `eval_on_close` | enum | `"off"` | `on\|off` — auto-runs the reflection eval at CLOSE-FINALIZE |
-
-### `[discovery]` — capability auto-discovery
-
-| Key | Type | Default | Meaning |
-|---|---|---|---|
-| `auto_capabilities` | enum | `"on"` | `on\|off` — enumerates plugins/skills into ephemeral `discovered-capabilities.json` (distinct from curated `toolkit.json`, `skills/context/references/toolkit.md`); fails open |
 
 ### `[models]` — per-role subagent model map
 

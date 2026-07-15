@@ -7,12 +7,14 @@ TMPDIR_T="$(mktemp -d -t shepherd-test-teammate.XXXXXX)"
 trap "rm -rf $TMPDIR_T" EXIT
 export SHCTX_DB="$TMPDIR_T/shepherd.db"
 
-# Bootstrap schema
-for f in "$ROOT/skills/context/schema/0001_init.sql" \
-         "$ROOT/skills/context/schema/migrations/"*.sql \
-         "$ROOT/skills/context/schema/migrations/0007_canonical_state.sql"; do
-  sqlite3 "$SHCTX_DB" < "$f"
-done
+# Bootstrap schema the way the real system does — seed 0001 then run the
+# version-gated migrate so schema_versions is ACCURATE. v6.3.3 #200: liveness now
+# self-heals a behind DB; an accurate schema_versions means that self-heal is a
+# no-op here (not a needless re-apply of migration DDL). shctx resolves the
+# migrations dir from its own location; SHCTX_DB (honored by shctx_db_path) targets
+# this temp DB.
+sqlite3 "$SHCTX_DB" < "$ROOT/skills/context/schema/0001_init.sql"
+SHCTX_DB="$SHCTX_DB" bash "$ROOT/skills/context/scripts/shctx" migrate >/dev/null
 sqlite3 "$SHCTX_DB" "INSERT INTO projects (id, name, created_at, updated_at) VALUES ('test-proj', 'test', $(date +%s)000, $(date +%s)000);"
 
 CMD="bash $ROOT/skills/context/scripts/cmd_teammate.sh"
