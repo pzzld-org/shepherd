@@ -51,7 +51,7 @@ require_python() {
   [[ -n "$PY" ]] || { echo "shctx dups: python3 not found — skipping (fail-open)." >&2; exit 0; }
 }
 
-# ── registry helpers (jq-managed JSON; mirrors the toolkit.json pattern) ─────
+# ── registry helpers (jq-managed JSON registry) ─────────────────────────────
 _read_registry() {
   local p; p="$(registry_path)"
   if [[ -f "$p" ]]; then cat "$p"

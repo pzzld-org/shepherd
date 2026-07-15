@@ -19,7 +19,10 @@ cat > "$mig" <<'SQL'
 CREATE TABLE _migrate_probe (id INTEGER PRIMARY KEY);
 SQL
 
-out=$("$SHCTX" migrate)
+# Capture stderr too: per-file "applying <name>" progress goes to stderr (v6.3.3
+# #200 — so the shared apply loop stays silent on stdout when called from the
+# on-demand self-heal); the "applied N migration(s)" summary stays on stdout.
+out=$("$SHCTX" migrate 2>&1)
 assert_contains "applied" "$out" "0099"
 
 v=$(sqlite3 "$SHCTX_TEST_TMP/.shepherd/shepherd.db" "SELECT MAX(version) FROM schema_versions;")

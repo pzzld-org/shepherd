@@ -1,0 +1,28 @@
+[tool.poetry]
+name = "shepherd-cli"
+version = "6.3.3"
+description = "Typer-based Python CLI for shepherd teammate liveness, coexisting with the bash shctx SQL schema."
+authors = ["Shepherd"]
+readme = "README.md"
+packages = [{ include = "shepherd_cli" }]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+tortoise-orm = "^1.1.7"
+pydantic = "^2.13"
+typer = "^0.27"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^9.1"
+pytest-asyncio = "^1.4"
+
+[tool.poetry.scripts]
+shepherd = "shepherd_cli.__main__:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

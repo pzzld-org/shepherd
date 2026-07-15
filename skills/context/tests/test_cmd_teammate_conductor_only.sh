@@ -19,10 +19,11 @@ TMPDIR_T="$(mktemp -d -t shepherd-test-conductor-only.XXXXXX)"
 trap "rm -rf $TMPDIR_T" EXIT
 export SHCTX_DB="$TMPDIR_T/shepherd.db"
 
+# Seed 0001 then run the real version-gated migrate so schema_versions is accurate
+# (v6.3.3 #200 — register now self-heals; an accurate schema_versions makes that a
+# no-op here instead of a needless re-apply).
 sqlite3 "$SHCTX_DB" < "$ROOT/skills/context/schema/0001_init.sql"
-for f in "$ROOT/skills/context/schema/migrations/"*.sql; do
-  sqlite3 "$SHCTX_DB" < "$f" 2>/dev/null || true
-done
+SHCTX_DB="$SHCTX_DB" bash "$ROOT/skills/context/scripts/shctx" migrate >/dev/null
 sqlite3 "$SHCTX_DB" "INSERT INTO projects (id, name, created_at, updated_at) VALUES ('test-proj', 'test', $(date +%s)000, $(date +%s)000);"
 
 CMD="bash $ROOT/skills/context/scripts/cmd_teammate.sh"

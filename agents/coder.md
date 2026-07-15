@@ -31,9 +31,6 @@ Listed skill not installed → halt `BRIEF INVALID — skill \`<slug>\` listed i
 Halting.` `[FILE-SCOPE]` language missing from `[SKILLS]` entirely → halt
 `BRIEF-AMENDMENT REQUEST: missing language skill for <ext>` rather than guess.
 
-Toolkit: before assuming a tool unavailable, check `skills/context/references/toolkit.md`
-(`[TOOLKIT]` in your brief).
-
 ## Protocol reminders
 
 | Halt code | Trigger |

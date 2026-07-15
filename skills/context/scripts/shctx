@@ -38,10 +38,6 @@ Subcommands (atomic):
   inject <role>           Emit a [DB-CONTEXT] block for an agent brief
   style <init|show|list|edit> [args]
   mem <add|search|list|show|pin|unpin|rm> [args]
-  toolkit <list|show|add|rm|pin|unpin|md|init|validate> [args]
-                          Tool-memory: JSON registry of commonly-used tools (MCPs, CLIs,
-                          skills, plugins). Scoped local (per-project) or global (user-wide).
-                          Graceful-empty reads; local overrides global on name collision.
   lock <show|acquire|release [--force]|reap> [args]
   lint                    Naming-convention check
   seed <verify> <path>    Deterministic seed pre-flight gate (v6.2.1).
@@ -178,7 +174,7 @@ script_for() {
 cmd="${1:-help}"; shift || true
 case "$cmd" in
   help|-h|--help) usage ;;
-  init|config|status|dash|doctor|refresh|query|search|inject|style|mem|toolkit|lock|lint|migrate|export|release|handoff|worktree|close-lane|issues|plan|graph|insights|adapt|sync|ready|sprint|audit|discovery|teammate|mailbox|deliverable|report|loop|panes|dups|seed|eval|models|prune)
+  init|config|status|dash|doctor|refresh|query|search|inject|style|mem|lock|lint|migrate|export|release|handoff|worktree|close-lane|issues|plan|graph|insights|adapt|sync|ready|sprint|audit|discovery|teammate|mailbox|deliverable|report|loop|panes|dups|seed|eval|models|prune)
     impl="$HERE/$(script_for "$cmd")"
     if [[ ! -f "$impl" ]]; then
       echo "ERROR: $cmd not yet implemented (missing $impl)" >&2; exit 2

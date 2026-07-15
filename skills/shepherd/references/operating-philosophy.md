@@ -69,7 +69,7 @@ of these four at the root/operator seam.
 | Gate tests (deterministic, <2s, free, every commit) vs periodic evals (paid, threshold) | `skills/shepherd/references/pipeline.md §Gates` |
 | Search before building; reuse before creating | `skills/adaptation/SKILL.md §Excellence bar`; `skills/context/SKILL.md` |
 | Subtract, don't add; wrappers must earn their place | `skills/shepherd/SKILL.md §Principles`; `skills/shepherd/references/flock.md §@auditor` |
-| Check for the installed specialist before reinventing | `skills/shepherd/references/flock.md §Dispatch`; `skills/context/references/toolkit.md` |
+| Check for the installed specialist before reinventing | `skills/shepherd/references/flock.md §Dispatch` |
 | Fan out by default; one primitive per axis | `skills/shepherd/references/flock.md §Dispatch`; `skills/shepherd/references/pipeline.md §Lane law` |
 | Halt rather than ship sub-standard work | `skills/adaptation/SKILL.md §Excellence bar`; `skills/shepherd/SKILL.md §Sprint contract` |
 | Confusion protocol on high-stakes ambiguity | `skills/shepherd/SKILL.md §Operator surface` (the planter is the framework's sole interactive asker) |

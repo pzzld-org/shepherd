@@ -28,7 +28,7 @@ default to `shepherd.db`. `shctx migrate --layout v2` moves `plans/*` →
 ## Layout (new-project scaffold)
 
 `shepherd.db(+wal/shm/journal)`, `shepherd.lock`, `project.json` — gitignored.
-`toolkit.json`, `CONVENTIONS.md`, `archive/`, `ctx/`, `docs/{plans,reports,
+`CONVENTIONS.md`, `archive/`, `ctx/`, `docs/{plans,reports,
 handoffs,specs,diagrams}`, `docs/journal/` (one file per day, append-mode),
 `profiles/`, `scripts/`, `styles/`, `templates/`, `types/` — tracked.
 `cache/`, `logs/`, `tmp/` — gitignored.
