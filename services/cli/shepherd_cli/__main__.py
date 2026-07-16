@@ -20,6 +20,7 @@ PORTED = {
     "search", "export", "lint", "seed", "config", "sync",
     "dash", "insights", "dups", "handoff", "ready",
     "discovery", "audit", "eval", "doctor",
+    "migrate", "init", "close-lane", "issues", "worktree", "refresh", "prune",
 }
 
 

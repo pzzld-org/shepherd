@@ -14,6 +14,7 @@ import typer
 from shepherd_cli import __version__
 from shepherd_cli.commands import (
     audit,
+    close_lane,
     config,
     dash,
     deliverable,
@@ -23,13 +24,18 @@ from shepherd_cli.commands import (
     eval,
     export,
     handoff,
+    init,
     insights,
+    issues,
     lint,
     lock,
     mem,
+    migrate,
     models,
+    prune,
     query,
     ready,
+    refresh,
     report,
     search,
     seed,
@@ -39,6 +45,7 @@ from shepherd_cli.commands import (
     style,
     sync,
     teammate,
+    worktree,
 )
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
@@ -68,6 +75,13 @@ app.add_typer(discovery.app, name="discovery")
 app.add_typer(audit.app, name="audit")
 app.add_typer(eval.app, name="eval")
 app.add_typer(doctor.app, name="doctor")
+app.add_typer(migrate.app, name="migrate")
+app.add_typer(init.app, name="init")
+app.add_typer(close_lane.app, name="close-lane")
+app.add_typer(issues.app, name="issues")
+app.add_typer(worktree.app, name="worktree")
+app.add_typer(refresh.app, name="refresh")
+app.add_typer(prune.app, name="prune")
 
 
 def _version_callback(value: bool) -> None:
