@@ -13,10 +13,14 @@ import typer
 
 from shepherd_cli import __version__
 from shepherd_cli.commands import (
+    audit,
     config,
     dash,
     deliverable,
+    discovery,
+    doctor,
     dups,
+    eval,
     export,
     handoff,
     insights,
@@ -60,6 +64,10 @@ app.add_typer(insights.app, name="insights")
 app.add_typer(dups.app, name="dups")
 app.add_typer(handoff.app, name="handoff")
 app.add_typer(ready.app, name="ready")
+app.add_typer(discovery.app, name="discovery")
+app.add_typer(audit.app, name="audit")
+app.add_typer(eval.app, name="eval")
+app.add_typer(doctor.app, name="doctor")
 
 
 def _version_callback(value: bool) -> None:
