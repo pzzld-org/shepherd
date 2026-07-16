@@ -3,15 +3,16 @@
 The `shepherd` command: a Tortoise ORM + Pydantic + Typer CLI that reads and
 writes the SAME sqlite database (`.shepherd/shepherd.db`) the bash `shctx`
 tooling already owns. Issue #198 shipped the first vertical slice
-(`shepherd teammate`); v6.3.7 adds sixteen more natively-ported groups, so
-**seventeen command groups** now run native Python. Everything else still
+(`shepherd teammate`); v6.3.7 adds twenty-one more natively-ported groups, so
+**twenty-two command groups** now run native Python. Everything else still
 runs through bash, transparently, via a passthrough shim (below). This is
 not a rewrite; it's a coexistence.
 
 **Ported groups (native Python):** `teammate`, `signal`, `mem`,
 `deliverable`, `status`, `lock`, `sprint`, `models`, `query`, `style`,
-`report`, `search`, `export`, `lint`, `seed`, `config`, `sync`. Each mirrors
-its `shctx cmd_*.sh` twin with bash parity (same
+`report`, `search`, `export`, `lint`, `seed`, `config`, `sync`, `dash`,
+`insights`, `dups`, `handoff`, `ready`. Each mirrors its `shctx cmd_*.sh`
+twin with bash parity (same
 subcommands, flags, output shape, exit codes, ordering, no-subcommand
 behavior) over the same registry. `signal` is cross-tool interoperable — a
 signal sent by `shctx signal` is polled by `shepherd signal` and vice

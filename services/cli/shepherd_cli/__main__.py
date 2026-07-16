@@ -18,6 +18,7 @@ PORTED = {
     "teammate", "signal", "deliverable", "mem", "status",
     "lock", "sprint", "models", "query", "style", "report",
     "search", "export", "lint", "seed", "config", "sync",
+    "dash", "insights", "dups", "handoff", "ready",
 }
 
 

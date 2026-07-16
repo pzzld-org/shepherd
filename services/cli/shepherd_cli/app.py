@@ -14,13 +14,18 @@ import typer
 from shepherd_cli import __version__
 from shepherd_cli.commands import (
     config,
+    dash,
     deliverable,
+    dups,
     export,
+    handoff,
+    insights,
     lint,
     lock,
     mem,
     models,
     query,
+    ready,
     report,
     search,
     seed,
@@ -50,6 +55,11 @@ app.add_typer(lint.app, name="lint")
 app.add_typer(seed.app, name="seed")
 app.add_typer(config.app, name="config")
 app.add_typer(sync.app, name="sync")
+app.add_typer(dash.app, name="dash")
+app.add_typer(insights.app, name="insights")
+app.add_typer(dups.app, name="dups")
+app.add_typer(handoff.app, name="handoff")
+app.add_typer(ready.app, name="ready")
 
 
 def _version_callback(value: bool) -> None:
