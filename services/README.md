@@ -9,7 +9,7 @@ never by reaching into each other's internals.
 |---------|---------|----------|
 | [`llm/`](llm/README.md) | Route a model call through the **local Claude Code** (`claude -p`). The single owner of the model invocation. | `llm.sh complete` — prompt in, text out |
 | [`eval/`](eval/README.md) | Quality-score a latent agent output against a rubric, using the llm service as judge. | `eval.sh run --kind=K` — item in, verdict out |
-| [`cli/`](cli/README.md) | The packaged `shepherd` CLI (Python + Poetry: Tortoise ORM / Pydantic / Typer) — a typed, session/pid-scoped data-access layer over the registry. First group ported: `teammate` liveness/status/state (#198). Un-ported subcommands shim to bash `shctx`. | `shepherd teammate liveness` — scoped read, table/JSON out |
+| [`cli/`](cli/README.md) | The packaged `shepherd` CLI (Python + Poetry: Tortoise ORM / Pydantic / Typer) — a typed, session/pid-scoped data-access layer over the registry. Natively-ported groups (v6.3.7): `teammate`, `signal`, `mem`, `deliverable`, `status`, `lock`, `sprint`, `models`, `query`, `style`, `report`, `search`, `export`, `lint`, `seed`, `config`, `sync`, `dash`, `insights`, `dups`, `handoff`, `ready`, `discovery`, `audit`, `eval`, `doctor`, `migrate`, `init`, `close-lane`, `issues`, `worktree`, `refresh`, `prune` (33 total). `graph`/`adapt`/`loop`/`plan`/`release`/`inject`/`panes` stay on the bash shim by design. | `shepherd teammate liveness` — scoped read, table/JSON out |
 
 ## How they compose
 

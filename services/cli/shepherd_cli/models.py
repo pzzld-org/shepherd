@@ -145,4 +145,33 @@ class Teammate(Model):
         return f"Teammate(teammate_name={self.teammate_name!r}, team_name={self.team_name!r})"
 
 
-__all__ = ["DECLARED_STATES", "Project", "SchemaVersion", "Teammate"]
+class SessionSignal(Model):
+    """Mirrors the ``session_signals`` table (migration ``0020_drop_mailbox.sql``, #206).
+
+    The dedicated CROSS-SESSION handoff channel — a durable nudge between two
+    INDEPENDENT sessions that share a repo but no team graph (today: the
+    ``--staged`` plant→spawn ``seed-ready`` handoff). It is NOT a teammate inbox:
+    intra-session teammate↔lead messaging is the harness-native ``SendMessage``
+    queue, and this table deliberately carries NO read/ack tri-state — only a
+    single ``consumed_at`` one-shot stamp (``signal poll --consume``). The
+    committed artifact (e.g. the verified seed file) remains the source of
+    truth; a row here is only the nudge. Bash twin: ``cmd_signal.sh``.
+    """
+
+    id = fields.IntField(pk=True)
+    project_id = fields.CharField(max_length=64)
+    sender = fields.CharField(max_length=255)
+    recipient = fields.CharField(max_length=255)
+    kind = fields.CharField(max_length=128)
+    payload = fields.TextField()
+    sent_at = fields.BigIntField()
+    consumed_at = fields.BigIntField(null=True)
+
+    class Meta:
+        table = "session_signals"
+
+    def __str__(self) -> str:
+        return f"SessionSignal(id={self.id}, recipient={self.recipient!r}, kind={self.kind!r})"
+
+
+__all__ = ["DECLARED_STATES", "Project", "SchemaVersion", "Teammate", "SessionSignal"]

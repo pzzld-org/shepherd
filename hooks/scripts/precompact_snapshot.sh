@@ -18,7 +18,6 @@
 #   2. Assemble a snapshot JSON from (all fail-open, tolerate missing):
 #        • $NS/graph/state.json  — jq the `ready` and `in_flight` node id arrays
 #        • tail 20 lines of $NS/graph/trace.jsonl  — recent trace events
-#        • unread mailbox rows from root.db  — outstanding messages
 #        • $NS/shepherd.lock  — current lock holder / sprint
 #        • focus table row for the current sprint (git branch name) from root.db
 #   3. Write snapshot to $NS/snapshots/precompact-<session>-<epoch>.json
@@ -113,16 +112,10 @@ if [[ -f "$TRACE_JSONL" ]]; then
   TRACE_TAIL="$(tail -20 "$TRACE_JSONL" 2>/dev/null || true)"
 fi
 
-# --- 3. unread mailbox rows from root.db ----------------------------------
-UNREAD_MAIL="[]"
-if [[ -f "$DB" ]] && command -v sqlite3 &>/dev/null; then
-  UNREAD_MAIL="$(sqlite3 "$DB" \
-    "SELECT json_group_array(json_object('id',id,'recipient',recipient_name,'sent_at',sent_at)) FROM mailbox WHERE read_at IS NULL;" \
-    2>/dev/null || echo '[]')"
-  [[ -n "$UNREAD_MAIL" ]] || UNREAD_MAIL="[]"
-fi
-
-# --- 4. shepherd.lock contents -------------------------------------------
+# --- 3. shepherd.lock contents -------------------------------------------
+# (The former "unread mailbox" snapshot was removed in v6.3.7 (#206): root's
+# obligations live in the harness-native SendMessage queue, which survives
+# compaction on its own and is not SQLite-readable — nothing to snapshot here.)
 LOCK_CONTENT=""
 if [[ -f "$LOCK_FILE" ]]; then
   LOCK_CONTENT="$(safe_read "$LOCK_FILE")"
@@ -151,7 +144,6 @@ fi
 # NOTE: ${VAR:-{}} and ${VAR:-[]} are ambiguous under `set -uo pipefail` — the
 # `}` inside the braces terminates the parameter expansion, producing a trailing
 # literal `}` or `]`. Use explicit temp vars for any JSON-punctuation defaults.
-_snap_unread="${UNREAD_MAIL}"; [[ -n "$_snap_unread" ]] || _snap_unread='[]'
 _snap_focus="${FOCUS_OBJ}";   [[ -n "$_snap_focus"  ]] || _snap_focus='{}'
 _snap_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo '')"
 _snap_trigger="${TRIGGER}"; [[ -n "$_snap_trigger" ]] || _snap_trigger='unknown'
@@ -165,7 +157,6 @@ if command -v jq &>/dev/null; then
     --arg ready_nodes "$READY_NODES" \
     --arg in_flight_nodes "$IN_FLIGHT_NODES" \
     --arg trace_tail "$TRACE_TAIL" \
-    --argjson unread_mail "$_snap_unread" \
     --arg lock "$LOCK_CONTENT" \
     --argjson focus "$_snap_focus" \
     '{
@@ -178,7 +169,6 @@ if command -v jq &>/dev/null; then
         in_flight_nodes: ($in_flight_nodes | split(",") | map(select(. != "")))
       },
       trace_tail: $trace_tail,
-      unread_mail: $unread_mail,
       lock: $lock,
       focus: $focus
     }' > "$SNAP_FILE" 2>/dev/null || true
@@ -195,15 +185,14 @@ d = {
     "in_flight_nodes":[x for x in sys.argv[6].split(",") if x],
   },
   "trace_tail":       sys.argv[7],
-  "unread_mail":      json.loads(sys.argv[8] or "[]"),
-  "lock":             sys.argv[9],
-  "focus":            json.loads(sys.argv[10] or "{}"),
+  "lock":             sys.argv[8],
+  "focus":            json.loads(sys.argv[9] or "{}"),
 }
 print(json.dumps(d, indent=2))
 ' "$SESSION" "$_snap_trigger" "$SPRINT" \
   "$_snap_ts" \
   "$READY_NODES" "$IN_FLIGHT_NODES" \
-  "$TRACE_TAIL" "$_snap_unread" "$LOCK_CONTENT" "$_snap_focus" \
+  "$TRACE_TAIL" "$LOCK_CONTENT" "$_snap_focus" \
   > "$SNAP_FILE" 2>/dev/null || true
 fi
 

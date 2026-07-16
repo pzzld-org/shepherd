@@ -104,7 +104,6 @@ if command -v jq &>/dev/null; then
   # Cursor from graph/state.json (ready + in_flight nodes)
   CURSOR_READY="$(jq -r '(.cursor.ready_nodes // []) | join(", ")' "$SNAP_FILE" 2>/dev/null || true)"
   CURSOR_INFLIGHT="$(jq -r '(.cursor.in_flight_nodes // []) | join(", ")' "$SNAP_FILE" 2>/dev/null || true)"
-  UNREAD_COUNT="$(jq -r '(.unread_mail // []) | length' "$SNAP_FILE" 2>/dev/null || echo "0")"
 else
   SPRINT="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d.get("sprint",""))' "$SNAP_FILE" 2>/dev/null || true)"
   TRIGGER="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d.get("trigger",""))' "$SNAP_FILE" 2>/dev/null || true)"
@@ -116,7 +115,6 @@ else
   OBJECTIVE="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d.get("focus",{}).get("objective",""))' "$SNAP_FILE" 2>/dev/null || true)"
   CURSOR_READY="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(", ".join(d.get("cursor",{}).get("ready_nodes",[])))' "$SNAP_FILE" 2>/dev/null || true)"
   CURSOR_INFLIGHT="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(", ".join(d.get("cursor",{}).get("in_flight_nodes",[])))' "$SNAP_FILE" 2>/dev/null || true)"
-  UNREAD_COUNT="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(len(d.get("unread_mail",[])))' "$SNAP_FILE" 2>/dev/null || echo "0")"
 fi
 
 # --- drain the flag (fire-once guarantee) --------------------------------
@@ -130,7 +128,6 @@ DIGEST+="Active node: ${ACTIVE_NODE:-unknown}"$'\n'
 [[ -n "$READY_SET" ]] && DIGEST+="Ready set (focus table): ${READY_SET}"$'\n'
 [[ -n "$CURSOR_READY" ]] && DIGEST+="Ready nodes (graph cursor): ${CURSOR_READY}"$'\n'
 [[ -n "$CURSOR_INFLIGHT" ]] && DIGEST+="In-flight nodes (graph cursor): ${CURSOR_INFLIGHT}"$'\n'
-[[ "${UNREAD_COUNT:-0}" -gt 0 ]] && DIGEST+="Outstanding obligations: ${UNREAD_COUNT} unread mailbox message(s)"$'\n'
 [[ -n "$OBLIGATIONS" ]] && DIGEST+="Obligations: ${OBLIGATIONS}"$'\n'
 [[ -n "$INVARIANTS" ]] && DIGEST+="Invariants: ${INVARIANTS}"$'\n'
 DIGEST+="Resume your drive from the active node above. The registry (root.db) is intact."$'\n'

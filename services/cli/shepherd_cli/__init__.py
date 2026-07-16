@@ -9,6 +9,6 @@ coexistence/phasing plan.
 
 from __future__ import annotations
 
-__version__ = "6.3.3"
+__version__ = "6.3.7"
 
 __all__ = ["__version__"]

@@ -302,7 +302,7 @@ Each flag composes with the base spawn. Full semantics per section of
   teammate per sprint with root-authored inter-sprint handoffs, until `dev.LAST` or a
   termination condition fires. `spawn-flags.md §--auto`.
 - `--staged` — two-session overlap: root orients/discovers NOW, then arms a delayed start and
-  WAITS for a `seed-ready` mailbox signal from a concurrent `/shepherd:plant` session before
-  authoring the plan (poll `shctx mailbox recv --kind=seed-ready` via ScheduleWakeup ≤270s;
+  WAITS for a `seed-ready` cross-session signal from a concurrent `/shepherd:plant` session before
+  authoring the plan (poll `shctx signal poll --as=spawn-<slug> --kind=seed-ready --consume` via ScheduleWakeup ≤270s;
   timeout `[spawn].staged_timeout_minutes` default 90 → `STAGED-TIMEOUT`). A missing seed is
   the EXPECTED start state, NOT a seedless-run trigger. `spawn-flags.md §--staged`.

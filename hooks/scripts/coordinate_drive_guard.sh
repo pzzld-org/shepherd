@@ -77,29 +77,16 @@ fi
 [[ "$LIVE" -eq 0 ]] && exit 0
 
 # --- actionable, root-clearable coordinate state ----------------------------
+# The ONLY root-clearable state this guard keys on is an IDLE teammate whose
+# payload root must materialize. Undrained "mail" is deliberately NOT a signal
+# here (v6.3.7 #206): root's canonical inbox is the harness-native SendMessage
+# queue — teammate messages arrive inline as native message blocks, NOT as rows
+# in a SQLite table — so a Stop hook cannot and must not try to count it. The
+# retired mailbox's phantom-unread desync (an empty inbox reading "N unread" and
+# re-firing this guard every fresh session, because an abandoned --staged row sat
+# read_at IS NULL forever in the shared per-repo DB) is gone with the table.
 IDLE="$(sqlite3 "$DB" "$IDLE_Q" 2>/dev/null || echo 0)"
 [[ "$IDLE" =~ ^[0-9]+$ ]] || IDLE=0
-# Lead-bound unread = unread mail addressed to anything that is NOT a teammate
-# (root / lead / shepherd-root — name varies, so match by exclusion). Robust to
-# whatever the lead's mailbox name is. EXCLUDE kind='seed-ready' (#206): the
-# native SendMessage queue — not the shctx mailbox — is root's canonical inbox,
-# and since v6.2.8 escalations moved off mailbox onto it (hooks/scripts/
-# teammate_idle.sh). The ONLY remaining mailbox sender is the --staged
-# plant→spawn cross-session seed-ready handoff (agents/planter.md §Seed handoff;
-# skills/shepherd/references/spawn-flags.md §--staged), addressed to a
-# "shepherd-spawn-<slug>" inbox drained by its OWN dedicated `mailbox recv
-# --mark-read` wait-gate poll in the spawn session — NEVER by root's
-# coordinate-drive loop. An abandoned --staged run (STAGED-TIMEOUT, crash,
-# operator override — "best-effort, non-blocking, NEVER wait on an ack") leaves
-# that row read_at IS NULL forever, and because the namespace DB is shared per
-# repo it was then miscounted as lead-bound unread by every UNRELATED coordinate
-# session's Stop hook — the #206 phantom "N unread over an empty inbox" that
-# re-fired the drive guard indefinitely (the per-session runaway cap only masks
-# 2 blocks per session, so it recurred every fresh session).
-UNREAD="$(sqlite3 "$DB" \
-  "SELECT count(*) FROM mailbox WHERE read_at IS NULL AND kind <> 'seed-ready' AND recipient_name NOT IN (SELECT teammate_name FROM teammates);" \
-  2>/dev/null || echo 0)"
-[[ "$UNREAD" =~ ^[0-9]+$ ]] || UNREAD=0
 
 # --- counter (per-session; bounds the block) --------------------------------
 # SESSION resolved above (used for the #197 self-teammate gate + this counter).
@@ -107,7 +94,7 @@ CNT_DIR="$NS/tmp"
 CNT_FILE="$CNT_DIR/coordinate_drive_guard.${SESSION//[^A-Za-z0-9_.-]/_}.count"
 CAP=2
 
-if [[ "$IDLE" -eq 0 && "$UNREAD" -eq 0 ]]; then
+if [[ "$IDLE" -eq 0 ]]; then
   # No undrained state: teammates are genuinely busy. Yielding to events here is
   # correct (doctrine §IV.4 / §VIII). Reset the counter and let the root stop.
   rm -f "$CNT_FILE" 2>/dev/null || true
@@ -119,7 +106,7 @@ mkdir -p "$CNT_DIR" 2>/dev/null || true
 CNT="$(cat "$CNT_FILE" 2>/dev/null || echo 0)"
 [[ "$CNT" =~ ^[0-9]+$ ]] || CNT=0
 
-REASON="[coordinate-active-drive] You are the root shepherd in coordinate mode with ${LIVE} live teammate(s): ${IDLE} idle, ${UNREAD} unread message(s) addressed to you. Do NOT end your turn waiting — drain the work first (skills/motivation/SKILL.md §Drive contract §IV): read every unread message and route by halt_code; on a WAVE-COMPLETE materialize the payload, commit the wave, release the next wave-gate; prune each idle teammate whose payload is materialized and refresh its lane next wave (scoped to that one lane's worktree via 'git worktree remove .worktrees/<sprint_slug>-<lane>' — NEVER a blanket 'git worktree list | grep agent- | remove' loop or 'git worktree prune' while siblings are live); probe any teammate that went idle without WAVE-COMPLETE. THEN sweep liveness + per-lane git diff --stat for drift before yielding. If instead you are stopping to surface a HARD-STOP or operator-question, emit that concrete question now and stop — that is the one legitimate pause."
+REASON="[coordinate-active-drive] You are the root shepherd in coordinate mode with ${LIVE} live teammate(s), ${IDLE} of them idle. Do NOT end your turn waiting — drain the work first (skills/motivation/SKILL.md §Drive contract §IV): read every teammate message the native SendMessage queue delivered inline and route by halt_code; on a WAVE-COMPLETE materialize the payload, commit the wave, release the next wave-gate; prune each idle teammate whose payload is materialized and refresh its lane next wave (scoped to that one lane's worktree via 'git worktree remove .worktrees/<sprint_slug>-<lane>' — NEVER a blanket 'git worktree list | grep agent- | remove' loop or 'git worktree prune' while siblings are live); probe any teammate that went idle without WAVE-COMPLETE. THEN sweep liveness + per-lane git diff --stat for drift before yielding. If instead you are stopping to surface a HARD-STOP or operator-question, emit that concrete question now and stop — that is the one legitimate pause."
 
 if [[ "$CNT" -ge "$CAP" ]]; then
   # Runaway cap: state hasn't cleared after CAP nudges → the operator is
@@ -129,22 +116,22 @@ if [[ "$CNT" -ge "$CAP" ]]; then
   # This makes the breaker a one-way trip per stuck-state, not a block/yield
   # oscillation (#114 runaway-loop class).
   echo "$CAP" > "$CNT_FILE" 2>/dev/null || true
-  echo "[shctx] coordinate-drive guard: yielding after ${CAP} nudges (${IDLE} idle / ${UNREAD} unread still pending — handle teammates or set [spawn].coordinate_drive_guard=warn)" >&2
+  echo "[shctx] coordinate-drive guard: yielding after ${CAP} nudges (${IDLE} idle teammate(s) still pending — handle teammates or set [spawn].coordinate_drive_guard=warn)" >&2
   log_event "coordinate_drive_guard" "pass" "Stop" "shepherd" "$SESSION" \
-    "$(emit_json_obj note "runaway-cap-failopen" idle "$IDLE" unread "$UNREAD")" 2>/dev/null || true
+    "$(emit_json_obj note "runaway-cap-failopen" idle "$IDLE")" 2>/dev/null || true
   exit 0
 fi
 
 if [[ "$MODE" == "warn" ]]; then
-  echo "[shctx] coordinate-drive: ${IDLE} idle teammate(s) / ${UNREAD} unread — drain before yielding (coordinate-active-drive.md §IV)" >&2
+  echo "[shctx] coordinate-drive: ${IDLE} idle teammate(s) — drain before yielding (coordinate-active-drive.md §IV)" >&2
   log_event "coordinate_drive_guard" "warn" "Stop" "shepherd" "$SESSION" \
-    "$(emit_json_obj idle "$IDLE" unread "$UNREAD")" 2>/dev/null || true
+    "$(emit_json_obj idle "$IDLE")" 2>/dev/null || true
   exit 0
 fi
 
 # block mode (default): re-engage the root.
 echo $((CNT + 1)) > "$CNT_FILE" 2>/dev/null || true
 log_event "coordinate_drive_guard" "block" "Stop" "shepherd" "$SESSION" \
-  "$(emit_json_obj idle "$IDLE" unread "$UNREAD" nudge "$((CNT + 1))")" 2>/dev/null || true
+  "$(emit_json_obj idle "$IDLE" nudge "$((CNT + 1))")" 2>/dev/null || true
 emit_json_obj decision "block" reason "$REASON"
 exit 0

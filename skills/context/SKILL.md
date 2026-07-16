@@ -1,7 +1,7 @@
 ---
 name: shepherd-context
 slug: shepherd-context
-version: 6.3.6
+version: 6.3.7
 description: "Per-project SQLite registry backing /shepherd:ctx — symbols, GitHub state, dedup, telemetry, locks. Use when reading or writing project context state."
 metadata:
   triggers:
@@ -51,7 +51,7 @@ All subcommands are project-scoped to the row `init` writes in `projects`.
 |---|---|---|
 | Cache | `index_*`, `logs_events` (last 10K) | Rebuildable via `shctx refresh`; safe to delete. |
 | Canonical — core | `projects`, `sessions`, `profiles_defs`, `mem_entries`, `artifacts`, `locks_history`, `schema_versions` | Not recoverable elsewhere. |
-| Canonical — operational | `teammates`, `heartbeats`, `mailbox`, `escalations`, `deliverables`, `discovery_findings`, `audit_findings` | Row-canonical; migration `0007_canonical_state.sql`. |
+| Canonical — operational | `teammates`, `heartbeats`, `escalations`, `deliverables`, `discovery_findings`, `audit_findings`, `session_signals` | Row-canonical; migration `0007_canonical_state.sql` (+ `session_signals`, `0020`). |
 | Canonical — loop/focus | `loops`, `loop_iterations`, `focus` | Migrations `0012_loop_state.sql` + `0013_focus.sql`. |
 | File-canonical | `CLAUDE.md`, `agents/`, `commands/`, `skills/**/*.md`, `docs/{specs,plans,seeds}/`, `CHANGELOG.md`, `README.md`, `schema/*.sql` | Version-controlled, human-edited; DB never authoritative. |
 | Disposable | Audit/discovery/close reports, status pages (`shctx report <kind>`) | Re-rendered on demand; may cache under `<ns>/cache/` (gitignored). |
@@ -106,7 +106,7 @@ Required before `--parallel <N>`; recommended before `/shepherd:spawn`/`--auto`.
 
 `shctx prune` reclaims accreted workdir + registry state without touching outcomes. `--dry-run` (default) writes the plan to `/tmp/shepherd-prune-<epoch>/plan.csv`, removing nothing; `--confirm` MOVES targets into that dir, reversible via `mv` back.
 
-Eligible only when ALL THREE hold: not the current git branch, terminal state, older than the age floor. `index_releases`, the current `focus`, `sprint_metrics`, pinned, doctrine, or decision-kind `mem_entries`, unresolved `escalations`, pending `deliverables`, active `locks`/`loops`, the whole `index_*`/`projects` core, and the tracked `.artifacts/docs/` subtree (plans, seeds, reports) are NEVER candidates. On-disk sweeps (stale dispatch dirs, aged logs, precompact snapshots) execute under `--confirm`. DB-row sweeps are preview-only — eligible-row counts (`logs_events`, terminal `heartbeats`/`mailbox`/`loops`, closed-sprint `discovery_findings`/`audit_findings`, released `locks_history`) are reported, nothing deleted, enabled incrementally. Every DB `DELETE` MUST be table-guarded — a DB missing a later migration is skipped, never errored. `--vacuum` is opt-in, requires `--confirm`. Config: `[prune] logs_days=60 dispatch_days=30 snapshots_keep=20 findings_sprints=6`.
+Eligible only when ALL THREE hold: not the current git branch, terminal state, older than the age floor. `index_releases`, the current `focus`, `sprint_metrics`, pinned, doctrine, or decision-kind `mem_entries`, unresolved `escalations`, pending `deliverables`, active `locks`/`loops`, the whole `index_*`/`projects` core, and the tracked `.artifacts/docs/` subtree (plans, seeds, reports) are NEVER candidates. On-disk sweeps (stale dispatch dirs, aged logs, precompact snapshots) execute under `--confirm`. DB-row sweeps are preview-only — eligible-row counts (`logs_events`, terminal `heartbeats`/`loops`, consumed `session_signals`, closed-sprint `discovery_findings`/`audit_findings`, released `locks_history`) are reported, nothing deleted, enabled incrementally. Every DB `DELETE` MUST be table-guarded — a DB missing a later migration is skipped, never errored. `--vacuum` is opt-in, requires `--confirm`. Config: `[prune] logs_days=60 dispatch_days=30 snapshots_keep=20 findings_sprints=6`.
 
 Per-path `git`/`fs` content-hash tracking exists at the schema layer for change detection; no hook consumes it yet.
 
