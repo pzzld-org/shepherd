@@ -12,7 +12,19 @@ from __future__ import annotations
 import typer
 
 from shepherd_cli import __version__
-from shepherd_cli.commands import deliverable, mem, signal, status, teammate
+from shepherd_cli.commands import (
+    deliverable,
+    lock,
+    mem,
+    models,
+    query,
+    report,
+    signal,
+    sprint,
+    status,
+    style,
+    teammate,
+)
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 app.add_typer(teammate.app, name="teammate")
@@ -20,6 +32,12 @@ app.add_typer(signal.app, name="signal")
 app.add_typer(deliverable.app, name="deliverable")
 app.add_typer(mem.app, name="mem")
 app.add_typer(status.app, name="status")
+app.add_typer(lock.app, name="lock")
+app.add_typer(sprint.app, name="sprint")
+app.add_typer(models.app, name="models")
+app.add_typer(query.app, name="query")
+app.add_typer(style.app, name="style")
+app.add_typer(report.app, name="report")
 
 
 def _version_callback(value: bool) -> None:
