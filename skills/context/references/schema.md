@@ -174,9 +174,12 @@ required.
   `metadata`. Index: `idx_teammates_sprint_lane`.
 - **`heartbeats`** — `teammate_id` (FK), `ts`, `status`, `payload`. Index:
   `idx_heartbeats_teammate_ts`.
-- **`mailbox`** — SendMessage envelopes: `from_session`, `to_session`,
-  `message_type`, `payload`, `sent_at`, `delivered_at`, `ack_at`. Index:
-  `idx_mailbox_to_session`.
+- **`session_signals`** (migration 0020, #206) — dedicated CROSS-SESSION
+  handoff channel between two independent sessions sharing a repo (not a
+  teammate inbox; intra-session messaging is native SendMessage): `sender`,
+  `recipient` (target session slug, e.g. `spawn-<slug>`), `kind`, `payload`
+  (JSON), `sent_at`, `consumed_at`. Index: `idx_session_signals_pending`
+  `(recipient, kind, consumed_at) WHERE consumed_at IS NULL`.
 - **`escalations`** — `teammate_id` (FK), `halt_code`, `tier` — CHECK
   `{'CRITICAL','BLOCKING','NOTIFY'}`, `payload`, `raised_at`, `resolved_at`,
   `resolved_by`, `resolution`. Index: `idx_escalations_project_open ...

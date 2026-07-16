@@ -14,7 +14,7 @@ import sys
 from shepherd_cli.app import app
 from shepherd_cli.resolution import find_bash_shctx
 
-PORTED = {"teammate"}
+PORTED = {"teammate", "signal", "deliverable", "mem", "status"}
 
 
 def main() -> None:

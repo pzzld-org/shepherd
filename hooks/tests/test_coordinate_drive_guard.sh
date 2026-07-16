@@ -3,12 +3,18 @@
 #
 # Covers the Stop-hook backstop for skills/motivation/SKILL.md §Drive contract (v6.0.5):
 #   • No-payload / no-DB → exit 0, no block (fast-path; never touches non-spawn work).
-#   • Live spawn session + 0 idle + 0 unread → no block (yield is correct).
+#   • Live spawn session + 0 idle → no block (yield is correct).
 #   • Idle teammate → BLOCK (decision:block on stdout).
-#   • Active teammate + lead-bound unread → BLOCK.
 #   • Runaway cap: blocks twice, then fails OPEN on the 3rd consecutive stop.
 #   • [spawn].coordinate_drive_guard = off → never blocks.
 #   • [spawn].coordinate_drive_guard = warn → never blocks (stderr only).
+#
+# v6.3.7 (#206): the guard NO LONGER reads any mailbox/mail channel. Root's
+# canonical inbox is the harness-native SendMessage queue, which a Stop hook
+# cannot read from SQLite — so the ONLY root-clearable state this guard keys on
+# is an IDLE teammate. The retired mailbox's phantom-unread desync (an empty
+# inbox reading "N unread" and re-firing the guard every session) is structurally
+# gone: there is no mail table to miscount. This suite proves idle-only triggering.
 #
 # Conventions match hooks/tests/run.sh and test_worktree_lifecycle.sh: pass/fail/
 # skip tally; DB-dependent cases skip silently if sqlite3 is unavailable.
@@ -44,8 +50,9 @@ if ! command -v sqlite3 >/dev/null 2>&1; then
 fi
 
 # ---------------------------------------------------------------------------
-# Ephemeral shepherd-flagged repo + minimal canonical DB (teammates + mailbox +
-# v_teammates_live), mirroring migration 0007. No FK to projects (standalone).
+# Ephemeral shepherd-flagged repo + minimal canonical DB (teammates +
+# v_teammates_live), mirroring migration 0007. No mailbox table exists here at
+# all (v6.3.7 #206) — the guard must never depend on one. No FK to projects.
 # ---------------------------------------------------------------------------
 tmp=$(mktemp -d -t shep-cdg-test.XXXXXX)
 trap 'rm -rf "$tmp"' EXIT
@@ -65,17 +72,13 @@ CREATE TABLE teammates (
   agent_type TEXT, session_id TEXT, spawned_at INTEGER, last_seen_at INTEGER,
   status TEXT, declared_state TEXT
 );
-CREATE TABLE mailbox (
-  id INTEGER PRIMARY KEY AUTOINCREMENT, recipient_name TEXT,
-  kind TEXT NOT NULL DEFAULT 'generic', read_at INTEGER, sent_at INTEGER
-);
 CREATE VIEW v_teammates_live AS
   SELECT t.*, (strftime('%s','now')*1000 - t.last_seen_at) AS ms_since_seen
   FROM teammates t WHERE t.status NOT IN ('crashed','retired');
 SQL
 
 STALE=$(( NOW - 600000 ))   # 10 min ago — past the guard's 5-min live window
-reset_db() { sqlite3 "$DB" "DELETE FROM teammates; DELETE FROM mailbox;" >/dev/null 2>&1; rm -f .artifacts/tmp/coordinate_drive_guard.*.count 2>/dev/null || true; }
+reset_db() { sqlite3 "$DB" "DELETE FROM teammates;" >/dev/null 2>&1; rm -f .artifacts/tmp/coordinate_drive_guard.*.count 2>/dev/null || true; }
 # add_teammate <name> <status> [declared_state] [last_seen_ms] [session_id]
 add_teammate() {
   local ds="NULL"; [[ -n "${3:-}" ]] && ds="'$3'"
@@ -83,15 +86,16 @@ add_teammate() {
   local sid="NULL"; [[ -n "${5:-}" ]] && sid="'$5'"
   sqlite3 "$DB" "INSERT INTO teammates (id,team_name,teammate_name,agent_type,session_id,spawned_at,last_seen_at,status,declared_state) VALUES ('$1','team','$1','conductor',$sid,$NOW,$seen,'$2',$ds);" >/dev/null 2>&1
 }
-add_unread()   { local k="${2:-generic}"; sqlite3 "$DB" "INSERT INTO mailbox (recipient_name,kind,read_at,sent_at) VALUES ('$1','$k',NULL,$NOW);" >/dev/null 2>&1; }
 guard() { printf '{"hook_event_name":"Stop","session_id":"%s"}' "$1" | bash "$SCRIPT" 2>/dev/null; }
 
 # ---------------------------------------------------------------------------
-# 2. Live spawn session present but 0 idle + 0 unread → no block (yield is OK).
+# 2. Live spawn session present but 0 idle → no block (yield is OK). Also the
+#    #206 regression: there is NO mail channel in the DB, so an all-busy flock
+#    can never be trapped by a phantom-unread — only idle state can trigger.
 # ---------------------------------------------------------------------------
 total=$((total+1)); reset_db; add_teammate "lane-a" "active"
 out=$(guard "s2")
-if ! is_block "$out"; then pass "active-only: no block (yield correct)"; else fail "active-only: no block" "out=$out"; fi
+if ! is_block "$out"; then pass "active-only (no mail channel): no block (#206)"; else fail "active-only: no block" "out=$out"; fi
 
 # ---------------------------------------------------------------------------
 # 3. Idle teammate → BLOCK.
@@ -101,48 +105,14 @@ out=$(guard "s3")
 if is_block "$out"; then pass "idle teammate: BLOCK"; else fail "idle teammate: BLOCK" "out=$out"; fi
 
 # ---------------------------------------------------------------------------
-# 4. Active teammate + lead-bound unread mail → BLOCK.
-# ---------------------------------------------------------------------------
-total=$((total+1)); reset_db; add_teammate "lane-a" "active"; add_unread "root"
-out=$(guard "s4")
-if is_block "$out"; then pass "lead-bound unread: BLOCK"; else fail "lead-bound unread: BLOCK" "out=$out"; fi
-
-# ---------------------------------------------------------------------------
-# 4b. Unread addressed to a TEAMMATE (not the lead) → no block (not root's).
-# ---------------------------------------------------------------------------
-total=$((total+1)); reset_db; add_teammate "lane-a" "active"; add_unread "lane-a"
-out=$(guard "s4b")
-if ! is_block "$out"; then pass "teammate-bound unread: no block"; else fail "teammate-bound unread: no block" "out=$out"; fi
-
-# ---------------------------------------------------------------------------
-# 4c. (#206) Seed-ready cross-session handoff mail (kind=seed-ready) addressed to
-#     a non-teammate spawn-handoff inbox is NOT lead-bound — must NOT block even
-#     though its recipient is not a teammate. Regression for the phantom-unread
-#     desync: an abandoned --staged seed-ready row must never trap an unrelated
-#     coordinate session's Stop forever. Pre-fix this exact case BLOCKED.
-# ---------------------------------------------------------------------------
-total=$((total+1)); reset_db; add_teammate "lane-a" "active"; add_unread "shepherd-spawn-foo" "seed-ready"
-out=$(guard "s4c")
-if ! is_block "$out"; then pass "#206 seed-ready unread: no block (phantom excluded)"; else fail "#206 seed-ready unread: no block" "out=$out"; fi
-
-# ---------------------------------------------------------------------------
-# 4d. (#206) A genuine (non-seed-ready) lead-bound unread ALONGSIDE a seed-ready
-#     row still blocks — the fix narrows the phantom kind only, not lead-bound
-#     unread signalling in general.
-# ---------------------------------------------------------------------------
-total=$((total+1)); reset_db; add_teammate "lane-a" "active"; add_unread "root" "generic"; add_unread "shepherd-spawn-foo" "seed-ready"
-out=$(guard "s4d")
-if is_block "$out"; then pass "#206 mixed unread: genuine still BLOCKs"; else fail "#206 mixed unread: genuine still BLOCKs" "out=$out"; fi
-
-# ---------------------------------------------------------------------------
-# 5. No live teammates (all retired) → fast-path, no block.
+# 4. No live teammates (all retired) → fast-path, no block.
 # ---------------------------------------------------------------------------
 total=$((total+1)); reset_db; add_teammate "lane-a" "retired"
-out=$(guard "s5")
+out=$(guard "s4")
 if ! is_block "$out"; then pass "no live teammates: fast-path no block"; else fail "no live teammates" "out=$out"; fi
 
 # ---------------------------------------------------------------------------
-# 6. Runaway cap: idle teammate, same session → block, block, then fail OPEN.
+# 5. Runaway cap: idle teammate, same session → block, block, then fail OPEN.
 # ---------------------------------------------------------------------------
 total=$((total+1)); reset_db; add_teammate "lane-a" "idle"
 o1=$(guard "scap"); o2=$(guard "scap"); o3=$(guard "scap"); o4=$(guard "scap")
@@ -153,7 +123,7 @@ else
   fail "runaway cap" "o1=$(is_block "$o1" && echo B || echo -) o2=$(is_block "$o2" && echo B || echo -) o3=$(is_block "$o3" && echo B || echo -) o4=$(is_block "$o4" && echo B || echo -)"
 fi
 
-# 6b. After the cap trips, clearing the state re-arms the guard (next idle blocks).
+# 5b. After the cap trips, clearing the state re-arms the guard (next idle blocks).
 total=$((total+1))
 sqlite3 "$DB" "UPDATE teammates SET status='active' WHERE teammate_name='lane-a';" >/dev/null 2>&1
 ocl=$(guard "scap")               # not actionable now → resets counter
@@ -166,52 +136,52 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 7. Config off → never blocks even with an idle teammate.
+# 6. Config off → never blocks even with an idle teammate.
 # ---------------------------------------------------------------------------
 total=$((total+1)); reset_db; add_teammate "lane-a" "idle"
 printf '[spawn]\ncoordinate_drive_guard = "off"\n' > .claude/shepherd.toml
-out=$(guard "s7")
+out=$(guard "s6")
 if ! is_block "$out"; then pass "config off: no block"; else fail "config off: no block" "out=$out"; fi
 
 # ---------------------------------------------------------------------------
-# 8. Config warn → never blocks (stderr nudge only).
+# 7. Config warn → never blocks (stderr nudge only).
 # ---------------------------------------------------------------------------
 total=$((total+1)); reset_db; add_teammate "lane-a" "idle"
 printf '[spawn]\ncoordinate_drive_guard = "warn"\n' > .claude/shepherd.toml
-out=$(printf '{"hook_event_name":"Stop","session_id":"s8"}' | bash "$SCRIPT" 2>/dev/null)
+out=$(printf '{"hook_event_name":"Stop","session_id":"s7"}' | bash "$SCRIPT" 2>/dev/null)
 if ! is_block "$out"; then pass "config warn: no block"; else fail "config warn: no block" "out=$out"; fi
 printf '' > .claude/shepherd.toml
 
 # ---------------------------------------------------------------------------
-# 9. (#197) Hook fires on a TEAMMATE's OWN session → must NEVER block. A teammate
-#    (e.g. the self-contained engineer) must not run the root's drain loop.
-#    Detection mirrors teammate_git_guard.sh: session_id match.
+# 8. (#197) Hook fires on a TEAMMATE's OWN session → must NEVER block. A teammate
+#    (e.g. the self-contained engineer) must not run the root's drain loop, even
+#    when it is itself idle. Detection mirrors teammate_git_guard.sh: session match.
 # ---------------------------------------------------------------------------
 total=$((total+1)); reset_db
 add_teammate "eng" "idle" "" "" "sess-eng"     # session_id = sess-eng
-add_unread "eng"
 out=$(guard "sess-eng")
 if ! is_block "$out"; then pass "#197 teammate session: no block (root-only gate)"; else fail "#197 teammate session: no block" "out=$out"; fi
 
 # ---------------------------------------------------------------------------
-# 10. (#195) A stale, undeclared row from a prior session (a ghost) is not a
-#     live worker root can drain → no block.
+# 9. (#195) A stale, undeclared row from a prior session (a ghost) is not a
+#    live worker root can drain → no block.
 # ---------------------------------------------------------------------------
 total=$((total+1)); reset_db; add_teammate "ghost" "idle" "" "$STALE" "old-sess"
 out=$(guard "root-1")
 if ! is_block "$out"; then pass "#195 stale ghost: no block"; else fail "#195 stale ghost: no block" "out=$out"; fi
 
 # ---------------------------------------------------------------------------
-# 11. A teammate that DECLARED complete (0019) is terminal, excluded from live
-#     even when fresh + lead-unread present → no block (finished lane).
+# 10. A teammate that DECLARED complete (0019) is terminal, excluded from live
+#     even when fresh → no block (finished lane, nothing to drain).
 # ---------------------------------------------------------------------------
-total=$((total+1)); reset_db; add_teammate "done" "active" "complete"; add_unread "root"
+total=$((total+1)); reset_db; add_teammate "done" "active" "complete"
 out=$(guard "root-2")
 if ! is_block "$out"; then pass "declared complete: no block (excluded from live)"; else fail "declared complete: no block" "out=$out"; fi
 
 # ---------------------------------------------------------------------------
-# 12. A stale row that DECLARED in-progress is NOT a ghost — the declaration
-#     keeps it live, so root must still coordinate → BLOCK.
+# 11. A stale row that DECLARED in-progress is NOT a ghost — the declaration
+#     keeps it live (never presumed-crashed), so an idle+in-progress teammate is
+#     still drainable state root must coordinate → BLOCK.
 # ---------------------------------------------------------------------------
 total=$((total+1)); reset_db; add_teammate "busy" "idle" "in-progress" "$STALE" "tm-busy"
 out=$(guard "root-3")

@@ -14,12 +14,12 @@ branch="$(git rev-parse --abbrev-ref HEAD)"
 
 # ---- empty-state: all sections present, graceful degrade --------------------
 out="$("$SHCTX" dash)"
-for section in "SHEPHERD DASH" "SPRINT" "GRAPH" "TEAMMATES" "MAILBOX" "ESCALATION" "LOOPS" "ADAPT" "STALE"; do
+for section in "SHEPHERD DASH" "SPRINT" "GRAPH" "TEAMMATES" "SIGNALS" "ESCALATION" "LOOPS" "ADAPT" "STALE"; do
   assert_contains "dash.$section" "$out" "$section"
 done
 assert_contains "dash.no-graph"   "$out" "no stage-graph state"
 assert_contains "dash.no-team"    "$out" "none live"
-assert_contains "dash.mail-clear" "$out" "all read"
+assert_contains "dash.sig-clear" "$out" "none pending"
 assert_contains "dash.no-esc"     "$out" "none open"
 assert_contains "dash.no-loop"    "$out" "none active"
 assert_contains "dash.adapt-empty" "$out" "no history yet"

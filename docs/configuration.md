@@ -226,7 +226,7 @@ then fails open; `warn` nudges via stderr; `off` disables; fast-paths outside a 
 
 | Key | Type | Default | Meaning |
 |---|---|---|---|
-| `precompact_snapshot` | enum | `"on"` | `on\|off` — PreCompact hook snapshots ready/in-flight sets, trace tail, mailbox, lock, focus digest; NEVER blocks compaction |
+| `precompact_snapshot` | enum | `"on"` | `on\|off` — PreCompact hook snapshots ready/in-flight sets, trace tail, lock, focus digest; NEVER blocks compaction |
 | `snapshot_retention` | int | `5` | snapshots retained per namespace (`0` = unlimited) |
 
 `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` (int 1-100, `settings.json` → `env`) is the only auto-compaction

@@ -6,7 +6,7 @@
 #   SPRINT/FOCUS  focus table (v6.0.9)           — north-star + cursor
 #   GRAPH         graph/state.json (cmd_graph)    — completion %, ready/in-flight
 #   TEAMMATES     v_teammates_live (0007)         — live lanes + idle time
-#   MAILBOX       v_mailbox_unread_per_recipient  — unread fan-in
+#   SIGNALS       session_signals (0020)          — pending cross-session nudges
 #   ESCALATION    v_escalations_open              — open escalations + oldest
 #   LOOPS         v_loops_active (0012)           — focus/convergence progress
 #   STALE         index_issues/index_prs          — GitHub cache freshness
@@ -70,13 +70,15 @@ else
   echo "TEAMMATES   none live"
 fi
 
-# MAILBOX: unread fan-in per recipient (only when something is unread).
-mline="$(shctx_sql "SELECT recipient_name||': '||unread_count FROM v_mailbox_unread_per_recipient ORDER BY unread_count DESC;" 2>/dev/null || true)"
-if [[ -n "$mline" ]]; then
-  echo "MAILBOX     unread"
-  printf '%s\n' "$mline" | sed 's/^/              /'
+# SIGNALS: pending (unconsumed) cross-session nudges per recipient (v6.3.7 #206).
+# The dedicated inter-session channel — NOT a teammate inbox (that is native
+# SendMessage). Shown only when something is waiting to be polled.
+sline="$(shctx_sql "SELECT recipient||': '||COUNT(*) FROM session_signals WHERE consumed_at IS NULL GROUP BY recipient ORDER BY COUNT(*) DESC;" 2>/dev/null || true)"
+if [[ -n "$sline" ]]; then
+  echo "SIGNALS     pending"
+  printf '%s\n' "$sline" | sed 's/^/              /'
 else
-  echo "MAILBOX     all read"
+  echo "SIGNALS     none pending"
 fi
 
 # ESCALATION: open count + oldest age.

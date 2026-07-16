@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "shepherd-cli"
-version = "6.3.3"
+version = "6.3.7"
 description = "Typer-based Python CLI for shepherd teammate liveness, coexisting with the bash shctx SQL schema."
 authors = ["Shepherd"]
 readme = "README.md"

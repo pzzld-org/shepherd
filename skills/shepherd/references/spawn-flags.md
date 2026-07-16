@@ -145,7 +145,11 @@ REPORT; anything else re-prompts to resume or abort.
 `--staged` overlaps seed authorship with pre-seed orientation across two
 sessions: Session A (`/shepherd:spawn <slug> --staged`) orients
 immediately, then WAITS; Session B (`/shepherd:plant <slug>`)
-authors it and signals readiness via the SQLite `mailbox` — no new schema.
+authors it and signals readiness on the dedicated CROSS-SESSION channel
+(`shctx signal`, migration 0020's `session_signals`). These are two
+INDEPENDENT operator sessions sharing a repo but no team graph, so native
+SendMessage (intra-session only) cannot bridge them — `shctx signal` is the
+purpose-built durable handoff. It is NOT a teammate inbox.
 
 **Session A — orientation wave.** MUST dispatch a repo/ledger-general
 `@discovery` pass (and MAY dispatch intro-mode `@auditor`),
@@ -154,20 +158,22 @@ against the repo as-is, not a delta-check against a nonexistent seed. Cache
 findings for the engineer's later `[DISCOVERY-CONTEXT]`.
 
 **Session B — the signal.** After the seed passes `shctx seed verify` and
-commits, planter runs `shctx mailbox send --to="shepherd-spawn-<slug>"
---kind=seed-ready` (recipient `shepherd-spawn-<slug>` and kind `seed-ready`
-are EXACT strings — `test_staged_handoff.sh` asserts both), emits its
-SEED-READY banner, continues its report.
+commits, planter runs `shctx signal send --to="spawn-<slug>"
+--kind=seed-ready` (recipient `spawn-<slug>` and kind `seed-ready` are EXACT
+strings — `test_staged_handoff.sh` asserts both), emits its SEED-READY
+banner, continues its report.
 
 **Session A — the wait gate.** After orienting, arm a `ScheduleWakeup` poll
-≤270s apart:
+≤270s apart. Poll the dedicated channel with `--consume` (a one-shot: the
+matched signal is stamped `consumed_at` so a re-nudged Session A never
+re-processes it):
 ```bash
-shctx mailbox recv --as="shepherd-spawn-<slug>" --unread-only --mark-read \
+shctx signal poll --as="spawn-<slug>" --kind=seed-ready --consume --json \
   | jq -r '.[] | select(.kind=="seed-ready")'
 ```
-A hit → read the committed seed, then `shctx mailbox ack <id>` (the explicit
-ack — `--mark-read` alone is not the ack; `test_staged_handoff.sh` exercises
-it), verify the seed, fall through to normal pipeline (INTRO-COMBO-WAVE
+A hit → read the committed seed, `shctx seed verify` it (the seed FILE, not
+the signal, is the source of truth — a signal without a committed, verifying
+seed MUST be ignored), fall through to normal pipeline (INTRO-COMBO-WAVE
 re-meshes as the delta-check). Timeout `[spawn].staged_timeout_minutes`
 (default 90) → halt `STAGED-TIMEOUT`.
 

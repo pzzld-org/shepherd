@@ -104,23 +104,23 @@ PLANTER REPORT (after commit):
 - Carry-forward ledger updated: yes/no
 - Memory + doctrines authored: <counts + paths>
 - Recommended next action: /shepherd:spawn {next sprint}
-- Seed-ready signal: <sent → shepherd-spawn-{slug} | n/a>
+- Seed-ready signal: <sent → spawn-{slug} | n/a>
 - Residual open questions: <"none" | list = unresolved ambiguity>
 - Agent ID + timestamp: <id> @ <ISO-8601>
 ```
 
-**Staged signal (`--staged` only).** When a concurrent `/shepherd:spawn <slug> --staged` session waits (`skills/shepherd/references/spawn-flags.md §--staged`), after `shctx seed verify` is green and before the PLANTER REPORT, send the durable `seed-ready` signal to `shepherd-spawn-<slug>` (`skills/context/scripts/cmd_mailbox.sh`), then emit the `SEED-READY` banner:
+**Staged signal (`--staged` only).** When a concurrent `/shepherd:spawn <slug> --staged` session waits (`skills/shepherd/references/spawn-flags.md §--staged`), after `shctx seed verify` is green and before the PLANTER REPORT, send the durable `seed-ready` signal to `spawn-<slug>` on the dedicated CROSS-SESSION channel (`skills/context/scripts/cmd_signal.sh` — NOT a teammate inbox; intra-session messaging is native SendMessage), then emit the `SEED-READY` banner:
 
 ```bash
 printf '%s' '{"event":"seed-ready","sprint_slug":"<slug>","seed_path":"<path>"}' \
-  | shctx mailbox send --to="shepherd-spawn-<slug>" --kind=seed-ready
+  | shctx signal send --to="spawn-<slug>" --kind=seed-ready
 ```
 
 ```
-SEED-READY — <slug>.seed.md committed and verified. Signal sent → shepherd-spawn-<slug>.
+SEED-READY — <slug>.seed.md committed and verified. Signal sent → spawn-<slug>.
 ```
 
-Best-effort, non-blocking — NEVER wait on an ack.
+Best-effort, non-blocking — the committed seed file is the source of truth; the signal is only a nudge, so NEVER wait on an ack.
 
 **Drift-resistance contract** — engineer plans weeks later without re-asking (`skills/shepherd/references/seed-template.md`):
 

@@ -134,7 +134,7 @@ if [[ -f "$db" ]]; then
   }
   count_pre logs_events    logs_events        "ts < $now_s - $logs_days*86400"                                                  "observability rows older than ${logs_days}d"
   count_pre crashed_hb     heartbeats         "teammate_id IN (SELECT id FROM teammates WHERE status IN ('crashed','retired'))" "heartbeats for crashed/retired teammates"
-  count_pre acked_mail     mailbox            "acked_at IS NOT NULL OR (expires_at IS NOT NULL AND expires_at < strftime('%s','now')*1000)" "mailbox acked or expired"
+  count_pre consumed_sig   session_signals    "consumed_at IS NOT NULL"                                                         "cross-session signals already consumed"
   count_pre closed_disc    discovery_findings "sprint_branch IS NOT NULL AND sprint_branch != '$cur_esc'"                       "discovery findings from non-current sprints"
   count_pre closed_audit   audit_findings     "sprint_branch IS NOT NULL AND sprint_branch != '$cur_esc'"                       "audit findings from non-current sprints"
   count_pre released_locks locks_history      "released_at IS NOT NULL"                                                         "released locks"

@@ -2,10 +2,23 @@
 
 The `shepherd` command: a Tortoise ORM + Pydantic + Typer CLI that reads and
 writes the SAME sqlite database (`.shepherd/shepherd.db`) the bash `shctx`
-tooling already owns. Issue #198 ports the first vertical slice —
-`shepherd teammate liveness|status|state` — end to end. Everything else
-still runs through bash, transparently, via a passthrough shim (below).
-This is not a rewrite; it's a coexistence.
+tooling already owns. Issue #198 shipped the first vertical slice
+(`shepherd teammate`); v6.3.7 adds four more natively-ported groups —
+`signal`, `mem`, `deliverable`, and `status` — so **five command groups**
+now run native Python. Everything else still runs through bash,
+transparently, via a passthrough shim (below). This is not a rewrite; it's
+a coexistence.
+
+**Ported groups (native Python):** `teammate`, `signal`, `mem`,
+`deliverable`, `status`. Each mirrors its `shctx cmd_*.sh` twin with bash
+parity (same subcommands, flags, output shape, exit codes, ordering) over
+the same registry. `signal` is cross-tool interoperable — a signal sent by
+`shctx signal` is polled by `shepherd signal` and vice versa. The
+`mem`/`deliverable`/`status` batch was produced by a Dynamic-Workflow wave
+(one disjoint-file agent per group). To port the next group, add its
+`shepherd_cli/commands/<g>.py` + `models_<g>.py`, register the model module
+in `db.py`'s Tortoise `modules` list, `add_typer` it in `app.py`, and add
+`<g>` to `PORTED` in `__main__.py`.
 
 ## The stack
 
