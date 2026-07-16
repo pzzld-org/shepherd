@@ -210,8 +210,8 @@ composites`; the full definition is owned by `skills/motivation/SKILL.md §FOCUS
   rehydrates it before the next wake. Canonical mechanism: `skills/motivation/SKILL.md §Focus
   record`.
 - **Anti-patterns**: running without a focus record; nesting FOCUS-LOOP inside another loop
-  (give inner work its own `loop_id`); passive-wait between waves with undrained mailbox or
-  idle teammates (`coordinate_drive_guard` enforces this); root self-drift over a long ACT
+  (give inner work its own `loop_id`); passive-wait between waves with an idle
+  teammate (`coordinate_drive_guard` enforces this); root self-drift over a long ACT
   stretch with no wake to re-anchor.
 
 ## See also

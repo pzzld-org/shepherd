@@ -49,7 +49,7 @@ DB="$(hook_db_path "$NS")"
 
 # Flip status to idle. Prefer teammate_name (when the payload carries it); fall
 # back to session_id. Capture changes() so we can fail LOUD if no row matched.
-# Pre-escape single quotes for SQL, matching the repo idiom (cmd_mailbox.sh).
+# Pre-escape single quotes for SQL, matching the repo idiom (cmd_signal.sh).
 safe_t="${TEAMMATE//\'/''}"
 safe_s="${SESSION//\'/''}"
 changed=0

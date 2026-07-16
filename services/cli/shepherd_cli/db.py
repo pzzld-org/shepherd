@@ -214,7 +214,14 @@ async def lifespan(db_path: str | None = None) -> AsyncIterator[None]:
     ensure_migrated(path)
     await Tortoise.init(
         db_url=f"sqlite://{path}",
-        modules={"models": ["shepherd_cli.models"]},
+        modules={
+            "models": [
+                "shepherd_cli.models",
+                "shepherd_cli.models_deliverable",
+                "shepherd_cli.models_mem",
+                "shepherd_cli.models_status",
+            ]
+        },
     )
     try:
         yield

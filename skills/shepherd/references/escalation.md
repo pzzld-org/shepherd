@@ -83,7 +83,8 @@ without improvising.
   `.artifacts/escalations/{sprint_slug}/{timestamp}-{role}.md`; absent →
   treat as stall; resume via that file instead.
 - **Root session drops.** Loss: all wave artifacts since last root
-  commit. Recover: reconstruct state from mailbox + filesystem tree,
+  commit. Recover: reconstruct state from the registry (teammates /
+  escalations rows) + filesystem tree,
   commit `git status` deltas; a closed teammate leaves only
   git-committed work.
 - **Operator interrupts (Ctrl-C).** Teammate orphaned: no commits, no

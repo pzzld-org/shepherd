@@ -25,7 +25,7 @@ Subcommands (atomic):
                           (local→project→XDG) — the uniform read path for the toggles.
   status                  Row counts, refresh staleness, lock state, lint summary
   dash                    One-glance sprint dashboard (v6.1.5): composes focus +
-                          graph completion + live teammates + mailbox/escalation
+                          graph completion + live teammates + signal/escalation
                           fan-in + active loops + cache staleness. Loop it:
                           `/shepherd:loop <interval> shctx dash`. Read-only.
   doctor [--md|--json]    Diagnostic / pre-flight (v5.0.4): binaries, schema, lock, refresh staleness
@@ -39,6 +39,11 @@ Subcommands (atomic):
   style <init|show|list|edit> [args]
   mem <add|search|list|show|pin|unpin|rm> [args]
   lock <show|acquire|release [--force]|reap> [args]
+  signal <send|poll>      Dedicated CROSS-SESSION handoff channel (v6.3.7, #206):
+                          send/poll a durable nudge between two independent
+                          sessions sharing a repo (e.g. --staged plant->spawn).
+                          NOT a teammate inbox — intra-session messaging uses the
+                          harness-native SendMessage. See cmd_signal.sh header.
   lint                    Naming-convention check
   seed <verify> <path>    Deterministic seed pre-flight gate (v6.2.1).
                           verify: HARD-fail (exit 1) on a hallucinated file_scope
@@ -174,7 +179,7 @@ script_for() {
 cmd="${1:-help}"; shift || true
 case "$cmd" in
   help|-h|--help) usage ;;
-  init|config|status|dash|doctor|refresh|query|search|inject|style|mem|lock|lint|migrate|export|release|handoff|worktree|close-lane|issues|plan|graph|insights|adapt|sync|ready|sprint|audit|discovery|teammate|mailbox|deliverable|report|loop|panes|dups|seed|eval|models|prune)
+  init|config|status|dash|doctor|refresh|query|search|inject|style|mem|lock|lint|migrate|export|release|handoff|worktree|close-lane|issues|plan|graph|insights|adapt|sync|ready|sprint|audit|discovery|teammate|signal|deliverable|report|loop|panes|dups|seed|eval|models|prune)
     impl="$HERE/$(script_for "$cmd")"
     if [[ ! -f "$impl" ]]; then
       echo "ERROR: $cmd not yet implemented (missing $impl)" >&2; exit 2

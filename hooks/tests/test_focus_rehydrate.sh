@@ -84,9 +84,6 @@ write_snapshot() {
     "in_flight_nodes": ["node-A"]
   },
   "trace_tail": "{\"ts\":1,\"event\":\"wave-start\"}",
-  "unread_mail": [
-    {"id": 1, "recipient": "root", "sent_at": 1234567890}
-  ],
   "lock": "{\"session_id\":\"sess-rhy-01\",\"sprint\":\"v0.9.0-dev.0\"}",
   "focus": {
     "sprint": "v0.9.0-dev.0",

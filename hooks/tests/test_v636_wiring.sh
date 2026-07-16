@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # hooks/tests/test_v636_wiring.sh — v6.3.6 doctrine-wiring regression guard
-# (#207 lead-Workflow mandate, #206 seed-ready phantom-unread).
+# (#207 lead-Workflow mandate, #206 mailbox retirement — completed v6.3.7).
 #
 # Same shape as test_v630_wiring.sh: several v6.3.6 fixes are behavioral WIRING
 # spread across a lint, a hook, and multiple doctrine/profile files rather than a
@@ -8,7 +8,8 @@
 # "regression guard" is only half-true:
 #   #207 — authoring-time lint (lint_agent_capabilities.sh) + runtime grading
 #          (auditor.md §Dispatch-substrate) + documentation (invariant-matrix).
-#   #206 — the guard SQL (coordinate_drive_guard.sh) + its regression cases.
+#   #206 — mailbox removed (migration 0020 + guard + dispatcher) → dedicated
+#          shctx signal channel; the v6.3.6 seed-ready workaround is retired.
 # This file fails if any leg is dropped or a citation dangles. The mechanical
 # behavior itself is pinned by test_lead_workflow_tool.sh and
 # test_coordinate_drive_guard.sh; this asserts the prose/contract legs match.
@@ -48,12 +49,21 @@ have    agents/auditor.md   '#207'                                      "#207 au
 # Leg 3 — documentation.
 have skills/shepherd/references/invariant-matrix.md 'LEAD_MANDATED_WORKFLOW|test_lead_workflow_tool' "#207 invariant-matrix row documents the lint+test pair"
 
-echo "== #206 seed-ready phantom-unread narrowing =="
-have    hooks/scripts/coordinate_drive_guard.sh "kind <> 'seed-ready'"  "#206 guard excludes seed-ready mail from the lead-bound unread count"
+echo "== #206 mailbox retired → dedicated shctx signal channel (v6.3.7 completion) =="
+# The v6.3.6 seed-ready narrowing was a partial workaround over the generic
+# mailbox. v6.3.7 removes the mailbox entirely (migration 0020) and replaces the
+# ONE legitimate cross-session use with a dedicated `signal` channel. Every leg
+# must agree the generic channel is GONE, not merely filtered.
+missing hooks/scripts/coordinate_drive_guard.sh 'FROM mailbox'          "#206 guard no longer queries any mailbox table"
+missing hooks/scripts/coordinate_drive_guard.sh "kind <> 'seed-ready'"  "#206 guard's seed-ready workaround retired with the table"
 have    hooks/scripts/coordinate_drive_guard.sh '#206'                  "#206 guard comment cites the concern"
-have    hooks/tests/test_coordinate_drive_guard.sh 'seed-ready unread: no block' "#206 regression case: seed-ready never blocks"
-have    hooks/tests/test_coordinate_drive_guard.sh 'genuine still BLOCKs'         "#206 regression case: genuine lead-bound unread still blocks"
-have    hooks/tests/test_coordinate_drive_guard.sh "kind TEXT NOT NULL"           "#206 test schema mirrors production mailbox.kind"
+missing skills/context/scripts/shctx '\|mailbox\|'                      "#206 shctx dispatcher drops the mailbox subcommand"
+have    skills/context/scripts/shctx '\|signal\|'                       "#206 shctx dispatcher routes the dedicated signal subcommand"
+have    skills/context/scripts/cmd_signal.sh 'CROSS-SESSION'            "#206 dedicated cross-session signal command exists"
+have    skills/context/schema/migrations/0020_drop_mailbox.sql 'DROP TABLE IF EXISTS mailbox'               "#206 migration 0020 drops the mailbox table"
+have    skills/context/schema/migrations/0020_drop_mailbox.sql 'CREATE TABLE IF NOT EXISTS session_signals' "#206 migration 0020 creates the dedicated session_signals table"
+have    skills/shepherd/references/spawn-flags.md 'shctx signal'        "#206 --staged doctrine uses the dedicated signal channel"
+have    hooks/tests/test_coordinate_drive_guard.sh 'no mail channel'    "#206 guard test proves idle-only triggering (no mail dependency)"
 
 if [[ "$fails" -eq 0 ]]; then echo "—— v6.3.6 wiring: OK ——"; else echo "—— v6.3.6 wiring: $fails FAIL ——"; fi
 exit "$fails"

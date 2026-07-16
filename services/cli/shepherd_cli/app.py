@@ -12,10 +12,14 @@ from __future__ import annotations
 import typer
 
 from shepherd_cli import __version__
-from shepherd_cli.commands import teammate
+from shepherd_cli.commands import deliverable, mem, signal, status, teammate
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 app.add_typer(teammate.app, name="teammate")
+app.add_typer(signal.app, name="signal")
+app.add_typer(deliverable.app, name="deliverable")
+app.add_typer(mem.app, name="mem")
+app.add_typer(status.app, name="status")
 
 
 def _version_callback(value: bool) -> None:

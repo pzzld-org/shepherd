@@ -4,6 +4,22 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v6.3.7 — 2026-07-16
+
+**Finish the #206 job v6.3.6 only patched: the generic mailbox is gone, replaced by a dedicated cross-session `signal` channel — and the native `shepherd` CLI grows from one command group to five.**
+
+### Fixed
+
+- **The redundant `shctx mailbox` surface is removed; a dedicated cross-session `signal` channel replaces its one real use (#206).** v6.3.6 narrowed the phantom-unread symptom (excluding `kind='seed-ready'` from the drive guard's count) but left the generic mailbox — and its confusion — in place. The root cause was a single generic inbox straddling two unrelated jobs: intra-session teammate↔lead coordination (which the harness already owns via the native `SendMessage` queue — root's canonical inbox) and cross-session handoff between two independent operator sessions. This splits them by scope. **Intra-session** stays entirely on native `SendMessage`; the `coordinate_drive_guard.sh` Stop hook no longer reads any mail table at all (a Stop hook cannot see the native queue in SQLite, so it must not try) and keys purely on idle teammates — the phantom-unread desync is now structurally impossible, not merely filtered. **Cross-session** gets a purpose-built, deliberately narrow channel: `shctx signal send/poll [--consume]` over a new `session_signals` table (migration `0020_drop_mailbox.sql`, which drops the `mailbox` table + `v_mailbox_unread_per_recipient` view and creates `session_signals`). It carries no read/ack tri-state — just a one-shot `consumed_at` — and nothing "drains" it, so it can never manufacture an unread count. The `--staged` plant→spawn `seed-ready` handoff is repointed onto it (`agents/planter.md`, `skills/shepherd/references/spawn-flags.md`, `commands/spawn.md`), and the doctrine is explicit that the committed seed file — not the signal — is the source of truth. Doctrine updated across `flock.md`, `escalation.md`, `motivation/SKILL.md`, `loop-templates.md`, `configuration.md`, `context/SKILL.md`, and `schema.md`. Tests: `cmd_mailbox` test deleted; new `test_cmd_signal.sh`; `test_staged_handoff.sh` rewritten onto the signal channel (and asserting the mailbox subcommand no longer resolves); `test_coordinate_drive_guard.sh` rewritten (no mail table, idle-only triggering); `test_v636_wiring.sh` §206 flipped to assert full removal. Context suite 48/48, hook suite green.
+
+### New — the native `shepherd` CLI grows to five command groups (#198 continuation)
+
+- **`signal`, `mem`, `deliverable`, and `status` join `teammate` as natively-ported Typer command groups** (was: one group, everything else shimmed to bash). Each mirrors its `shctx cmd_*.sh` twin with bash parity (same subcommands, flags, output shape, exit codes, ordering) over the SAME sqlite registry, under the established coexistence contract — Tortoise models MIRROR the canonical SQL schema (never `generate_schemas`), the schema self-heals like #200, and un-ported subcommands still shim to bash `shctx`, so `shepherd` remains a working superset. `signal` is cross-tool interoperable with the bash channel (a signal sent by either is polled by either). The port batch (`mem`/`deliverable`/`status`) was produced by a **Dynamic-Workflow wave** — the shepherd plugin dogfooding its own fan-out substrate to build itself, one disjoint-file agent per group. CLI package bumped 6.3.3 → 6.3.7. New gate tests per group; full CLI suite green.
+
+### Housekeeping
+
+- **Closed #207 with evidence — the lead-`Workflow` grant fix from v6.3.5/v6.3.6 is verified in-tree.** `agents/conductor.md` and `agents/engineer.md` both grant `Workflow`; `hooks/tests/test_lead_workflow_tool.sh` (the strip-and-reintroduce guard) and the `lint_agent_capabilities.sh` `LEAD_MANDATED_WORKFLOW` block are green, so the mandated Dynamic-Workflow fan-out path is reachable and can't silently regress. No code change needed in v6.3.7 beyond confirming the guard.
+
 ## v6.3.6 — 2026-07-16
 
 **Pin the #207 `Workflow`-tool grant so it can never silently regress, kill the #206 phantom-unread Stop loop, and repair the changelog gap that hid all of it.**
