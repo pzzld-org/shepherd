@@ -81,9 +81,23 @@ IDLE="$(sqlite3 "$DB" "$IDLE_Q" 2>/dev/null || echo 0)"
 [[ "$IDLE" =~ ^[0-9]+$ ]] || IDLE=0
 # Lead-bound unread = unread mail addressed to anything that is NOT a teammate
 # (root / lead / shepherd-root — name varies, so match by exclusion). Robust to
-# whatever the lead's mailbox name is.
+# whatever the lead's mailbox name is. EXCLUDE kind='seed-ready' (#206): the
+# native SendMessage queue — not the shctx mailbox — is root's canonical inbox,
+# and since v6.2.8 escalations moved off mailbox onto it (hooks/scripts/
+# teammate_idle.sh). The ONLY remaining mailbox sender is the --staged
+# plant→spawn cross-session seed-ready handoff (agents/planter.md §Seed handoff;
+# skills/shepherd/references/spawn-flags.md §--staged), addressed to a
+# "shepherd-spawn-<slug>" inbox drained by its OWN dedicated `mailbox recv
+# --mark-read` wait-gate poll in the spawn session — NEVER by root's
+# coordinate-drive loop. An abandoned --staged run (STAGED-TIMEOUT, crash,
+# operator override — "best-effort, non-blocking, NEVER wait on an ack") leaves
+# that row read_at IS NULL forever, and because the namespace DB is shared per
+# repo it was then miscounted as lead-bound unread by every UNRELATED coordinate
+# session's Stop hook — the #206 phantom "N unread over an empty inbox" that
+# re-fired the drive guard indefinitely (the per-session runaway cap only masks
+# 2 blocks per session, so it recurred every fresh session).
 UNREAD="$(sqlite3 "$DB" \
-  "SELECT count(*) FROM mailbox WHERE read_at IS NULL AND recipient_name NOT IN (SELECT teammate_name FROM teammates);" \
+  "SELECT count(*) FROM mailbox WHERE read_at IS NULL AND kind <> 'seed-ready' AND recipient_name NOT IN (SELECT teammate_name FROM teammates);" \
   2>/dev/null || echo 0)"
 [[ "$UNREAD" =~ ^[0-9]+$ ]] || UNREAD=0
 

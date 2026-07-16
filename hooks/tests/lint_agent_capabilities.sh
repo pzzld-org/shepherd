@@ -186,6 +186,31 @@ for agent_with_agent in planter engineer; do
 done
 
 # ---------------------------------------------------------------------------
+# v6.3.6 / #207 lead mandated-tool PRESENCE. The INVERSE of the tool-claim
+# consistency check below: a lead whose DOCTRINE mandates a tool must actually
+# GRANT it in `tools:` frontmatter. The `@engineer` and `@conductor` leads are
+# doctrinally required to compile gate-free fan-out into Dynamic Workflows
+# (conductor.md §WORKFLOW SELF-CHECK: "compiling gate-free fan-out to a Dynamic
+# Workflow is the default, not the exception"; engineer.md self-contained plan
+# fan-out), and both run at `[spawn].lead_effort=ultracode` which mandates that
+# path. But the `Workflow` grant was ABSENT from their frontmatter for versions
+# (#207): the mandated self-check took its "Absent → slow in-context Agent()"
+# branch on every spawn — the single highest-leverage wave-speed regression.
+# The frontmatter fix shipped in v6.3.5; this lint pins it so a lead can never
+# silently lose a doctrinally-mandated tool again (mechanizes a prose-only
+# invariant per the closed-flock contract rule — the mirror of the CLAIM check).
+# ---------------------------------------------------------------------------
+LEAD_MANDATED_WORKFLOW="engineer conductor"
+for role in $LEAD_MANDATED_WORKFLOW; do
+  f="$AGENTS_DIR/$role.md"
+  [[ -f "$f" ]] || continue   # a missing lead file is flagged by the loops above
+  if ! tools_line "$f" | tr ',' '\n' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep -qx 'Workflow'; then
+    note "FAIL $role: lead doctrinally mandates the 'Workflow' tool (Dynamic-Workflow fan-out is the default under [spawn].lead_effort=ultracode) but 'tools:' frontmatter does not grant it — #207 regression: leads silently fall back to the slow in-context Agent() path"
+    fails=$((fails+1))
+  fi
+done
+
+# ---------------------------------------------------------------------------
 # v6.2.1 / v6.3.0 tool-claim consistency. A profile must not CLAIM in prose to
 # carry / use a session-coordination tool its own `tools:` frontmatter does not
 # grant. Original class (v6.2.1): the `conductor.md` "SOLO carries
@@ -220,8 +245,8 @@ for tool in $CLAIM_CHECK_TOOLS; do
 done
 
 if [[ "$fails" -gt 0 ]]; then
-  printf 'lint_agent_capabilities: %d violation(s) — read-only mutation-free (GH #74); no destructive verb (GH #84); no ungranted-tool claim (v6.2.1)\n' "$fails"
+  printf 'lint_agent_capabilities: %d violation(s) — read-only mutation-free (GH #74); no destructive verb (GH #84); leads grant mandated Workflow (#207); no ungranted-tool claim (v6.2.1)\n' "$fails"
   exit 1
 fi
-printf 'lint_agent_capabilities: OK — read-only trio mutation-free (GH #74); all nine carry no destructive MCP verb (GH #84); no profile claims an ungranted tool (v6.2.1)\n'
+printf 'lint_agent_capabilities: OK — read-only trio mutation-free (GH #74); all nine carry no destructive MCP verb (GH #84); leads grant the mandated Workflow tool (#207); no profile claims an ungranted tool (v6.2.1)\n'
 exit 0

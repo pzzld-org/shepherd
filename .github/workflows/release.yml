@@ -123,7 +123,16 @@ jobs:
             echo "::endgroup::"
           else
             echo "use_notes_file=false" >> "$GITHUB_OUTPUT"
-            echo "No '## v${CURRENT}' section found in CHANGELOG.md; GitHub will auto-generate notes."
+            # Hard-fail instead of silently auto-generating notes: v6.3.4/v6.3.5
+            # shipped undocumented precisely because this fell back without a
+            # signal (the #207 fix went unrecorded). This step only runs on a
+            # genuine release commit (detect.proceed == 'true' → subject `vX.Y.Z`
+            # == plugin.json), so it can never block the auto-cut next-patch
+            # bump commit — only a real release that forgot its entry. Fixing it
+            # is a one-line CHANGELOG.md add + re-push. hooks/tests/
+            # test_changelog_current.sh catches the same gap pre-release/local.
+            echo "::error title=Missing changelog entry::No '## v${CURRENT}' section in CHANGELOG.md. Every release commit MUST carry its own changelog entry before merge — add '## v${CURRENT} — YYYY-MM-DD' to CHANGELOG.md and re-push. (Closes the gap that shipped v6.3.4/#204 and v6.3.5/#205 with no entry and only auto-generated notes.)"
+            exit 1
           fi
           echo "path=$NOTES" >> "$GITHUB_OUTPUT"
 

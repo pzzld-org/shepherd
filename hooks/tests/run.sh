@@ -128,6 +128,32 @@ else
   fails=$((fails+1))
 fi
 
+# Changelog-currency gate (#130-adjacent): CHANGELOG.md must document the version
+# in plugin.json — the guard that would have caught v6.3.4/v6.3.5 shipping
+# undocumented. Static, self-locating; independent of the ephemeral test cwd.
+echo "== test_changelog_current.sh (changelog-currency gate) =="
+total=$((total+1))
+if chlog_out=$(bash "$TESTS_DIR/test_changelog_current.sh" 2>&1); then
+  printf '  PASS  %s\n' "changelog-documents-current-version"
+else
+  printf '  FAIL  %-50s\n' "changelog-current"
+  printf '%s\n' "$chlog_out" | sed 's/^/        /'
+  fails=$((fails+1))
+fi
+
+# #207 regression pin: the engineer + conductor leads must GRANT the Workflow
+# tool their fan-out doctrine mandates. Exercises the lint's mandated-tool-
+# presence guard in both directions (present passes / stripped fails).
+echo "== test_lead_workflow_tool.sh (#207 lead-Workflow mandated-tool guard) =="
+total=$((total+1))
+if lead_wf_out=$(bash "$TESTS_DIR/test_lead_workflow_tool.sh" 2>&1); then
+  printf '  PASS  %s\n' "lead-workflow-tool-mandated"
+else
+  printf '  FAIL  %-50s\n' "lead-workflow-tool-mandated"
+  printf '%s\n' "$lead_wf_out" | sed 's/^/        /'
+  fails=$((fails+1))
+fi
+
 # No-residual proof for the pause-for-dependency retirement (Lane F, #70/#53/#58).
 echo "== test_pause_retired.sh (Lane F no-residual) =="
 total=$((total+1))
@@ -448,6 +474,20 @@ if hb_out=$(bash "$TESTS_DIR/test_teammate_heartbeat.sh" 2>&1); then
 else
   printf '  FAIL  %-50s\n' "teammate-heartbeat"
   printf '%s\n' "$hb_out" | sed 's/^/        /'
+  fails=$((fails+1))
+fi
+
+# v6.3.6 doctrine wiring (#207 lead-Workflow mandate, #206 seed-ready phantom):
+# the lint/hook behavior is pinned by test_lead_workflow_tool.sh +
+# test_coordinate_drive_guard.sh; this asserts the prose/contract legs agree
+# (auditor grading, invariant-matrix, guard citations) so none drifts back.
+echo "== test_v636_wiring.sh (v6.3.6 — #207 lead-Workflow / #206 seed-ready doctrine wiring) =="
+total=$((total+1))
+if v636_out=$(bash "$TESTS_DIR/test_v636_wiring.sh" 2>&1); then
+  printf '  PASS  %s\n' "v636-doctrine-wiring"
+else
+  printf '  FAIL  %-50s\n' "v636-wiring"
+  printf '%s\n' "$v636_out" | sed 's/^/        /'
   fails=$((fails+1))
 fi
 

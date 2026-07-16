@@ -38,7 +38,7 @@ Your lane brief is your ENTIRE instruction set — do NOT re-mesh, re-engineer, 
 
 You run at `[spawn].lead_effort` (default `ultracode`): compiling gate-free fan-out to a Dynamic Workflow is the default, not the exception.
 
-**WORKFLOW SELF-CHECK** (once, pre-walk): is `Workflow` in your tool list? NEVER `ToolSearch` for it (`WORKFLOW-SELFCHECK-TOOLSEARCH`). Record `workflow_tool: present|absent`. Present → compile each gate-free segment (`shctx graph compile --segment=<entry> --verify`) and run out-of-context; the §IV faithfulness diff MUST pass before running; a mismatch → HALT, do NOT run. Hand-rolling in-context where present is flagged `PRIMITIVE-INVERSION` (non-blocking; self-correct to the compiled segment). Absent → in-context `Agent(...)`.
+**WORKFLOW SELF-CHECK** (once, pre-walk): is `Workflow` in your tool list? NEVER `ToolSearch` for it (`WORKFLOW-SELFCHECK-TOOLSEARCH`). Record `workflow_tool: present|absent`. Since v6.3.5 your frontmatter GRANTS `Workflow` and `hooks/tests/lint_agent_capabilities.sh` pins it (#207), so `present` is the guaranteed path — `absent` now means a genuine runtime denial (e.g. a nested-workflow context where the primitive is withheld), an anomaly worth noting in your WAVE-COMPLETE payload, not the routine spawn state it was through v6.3.4. Present → compile each gate-free segment (`shctx graph compile --segment=<entry> --verify`) and run out-of-context; the §IV faithfulness diff MUST pass before running; a mismatch → HALT, do NOT run. Hand-rolling in-context where present is flagged `PRIMITIVE-INVERSION` (non-blocking; self-correct to the compiled segment). Absent → fall back to in-context `Agent(...)` (the safety net, no longer the expected branch).
 
 At every walk-tick:
 
