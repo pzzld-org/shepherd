@@ -19,6 +19,7 @@ PORTED = {
     "lock", "sprint", "models", "query", "style", "report",
     "search", "export", "lint", "seed", "config", "sync",
     "dash", "insights", "dups", "handoff", "ready",
+    "discovery", "audit", "eval", "doctor",
 }
 
 

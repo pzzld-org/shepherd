@@ -224,6 +224,7 @@ async def lifespan(db_path: str | None = None) -> AsyncIterator[None]:
                 "shepherd_cli.models_style",
                 "shepherd_cli.models_report",
                 "shepherd_cli.models_dash",
+                "shepherd_cli.models_eval",
             ]
         },
     )
