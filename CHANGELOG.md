@@ -4,6 +4,40 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v6.3.6 — 2026-07-16
+
+**Pin the #207 `Workflow`-tool grant so it can never silently regress, kill the #206 phantom-unread Stop loop, and repair the changelog gap that hid all of it.**
+
+### Fixed
+
+- **A team lead can no longer silently lose the `Workflow` tool its own fan-out doctrine mandates (#207 — regression guard).** The v6.3.5 one-line frontmatter fix was correct but unguarded: nothing stopped a future edit from dropping `Workflow` again and returning every `@conductor`/`@engineer` to the slow in-context `Agent()` fallback. Closed structurally with three agreeing layers. (1) **Authoring-time** — `hooks/tests/lint_agent_capabilities.sh` gains a `LEAD_MANDATED_WORKFLOW` block asserting both leads grant `Workflow` (the inverse of the existing tool-*claim*-consistency check), with a dedicated strip-and-reintroduce test `hooks/tests/test_lead_workflow_tool.sh` (each lead exercised independently) wired into the suite. (2) **Runtime** — `agents/auditor.md` §Dispatch-substrate no longer grades a `workflow_tool: absent` trace as unconditionally correct; post-#207 an unexplained `absent` is a regression signal, so the wave-review gate agrees with the static lint. (3) **Doctrine + docs** — `agents/conductor.md` §WORKFLOW SELF-CHECK reconciled (`present` is the guaranteed path; `absent` now means a genuine runtime denial worth noting, not the routine spawn state it was through v6.3.4), and `skills/shepherd/references/invariant-matrix.md` row 24 records the lint+test pair. `hooks/tests/test_v636_wiring.sh` pins all three legs so none drifts back independently. Hook suite 65/65 → 67/67.
+- **`coordinate_drive_guard.sh` stopped phantom-blocking root's Stop on a stale `seed-ready` mailbox row (#206).** The Stop guard counted "lead-bound unread" as any unread `mailbox` row whose recipient isn't a current teammate. But since v6.2.8 escalations moved off the mailbox onto the native SendMessage queue (root's real inbox), leaving the `--staged` plant→spawn `seed-ready` handoff as the mailbox's ONLY sender. That row is addressed to a `shepherd-spawn-<slug>` inbox drained by its own dedicated `mailbox recv --mark-read` wait-gate poll — never by root's coordinate loop — and an abandoned `--staged` run (STAGED-TIMEOUT, crash, or `--staged` simply never used) leaves it `read_at IS NULL` forever. Because the namespace DB is shared per repo, every UNRELATED coordinate session then miscounted it as "N unread message(s) addressed to you" and re-fired the drive block indefinitely (the per-session runaway cap only masks 2 blocks per session, so it recurred every fresh session — the field "4 unread over an empty inbox, twice"). Fix: exclude `kind = 'seed-ready'` from the unread count; general lead-bound unread signalling is preserved. Two regression cases added to `test_coordinate_drive_guard.sh` (a seed-ready row never blocks; a genuine lead-bound unread alongside it still does). Wholesale mailbox removal (the issue's alternative ask) stays out of scope: `--staged` cross-session handoff has no SendMessage equivalent (SendMessage is single-team-scoped; plant and spawn are separate sessions).
+- **Reconstructed the missing v6.3.4 and v6.3.5 changelog entries, and closed the gap that let them ship undocumented.** Both were tagged releases (#204, #205) with no `CHANGELOG.md` entry — and v6.3.5 was the #207 `Workflow`-tool fix itself, so the single most consequential recent fix went unrecorded. Root cause: `.github/workflows/release.yml` silently fell back to GitHub auto-generated notes when a `## v<version>` section was missing. That fallback now emits a loud `::warning::` GitHub Actions annotation, and a new `hooks/tests/test_changelog_current.sh` gate fails the hook suite whenever `CHANGELOG.md` lacks an entry for the current `plugin.json` version — so a version bump can never again ship without its changelog entry. The reconstructed v6.3.4 / v6.3.5 entries are below.
+
+### Housekeeping
+
+- **Closed #152 and #154 with evidence — both were fixed in v6.3.2 but left open** (the v6.3.2 housekeeping pass closed 21 other resolved issues and missed these two, though both are named in the same entry's §Fixed). #154 (the `close_finalize_check.sh` deferred-merge re-block loop) has both fail-open escapes present and covered: the `[close].finalize_hold` operator hold (`close_finalize_check.sh:90-92`) and the per-`(session,slug,HEAD-sha)` runaway bound (`:94-106`); `test_close_finalize_check.sh` 15/15. #152 is fully present too — part 1 (root git-verifies a `WAVE-COMPLETE` claim: `agents/shepherd.md:192-204` + `WAVE-COMPLETE-UNVERIFIED` in `escalation.md`, pinned by `test_flock_output_review.sh`), and part 2 (branch discipline) was subsumed by the stronger #187 `coder_git_guard.sh` blanket coder-git deny (v6.3.0 — cwd-independent, proven by `test_coder_git_guard.sh`'s cross-worktree case) plus the pre-existing conductor cwd-pin doctrine (`flock.md` §Ban 1 / `bash_guard.sh`).
+
+## v6.3.5 — 2026-07-15
+
+**Team leads (`@engineer`, `@conductor`) finally carry the `Workflow` tool their fan-out doctrine mandates (#207).**
+
+### Fixed
+
+- **`@engineer` and `@conductor` could not take the Dynamic-Workflow fan-out path their own doctrine calls the default (#207).** Both leads run at `[spawn].lead_effort = ultracode`, where compiling gate-free fan-out into a Dynamic Workflow is "the default, not the exception" (`agents/conductor.md` §WORKFLOW SELF-CHECK) — but `Workflow` was absent from their `tools:` frontmatter, so the mandated self-check hit its "Absent → in-context `Agent(...)`" branch on every spawn and every conductor/engineer silently fell back to the slow, sequential-ish in-context fan-out (no out-of-context compilation, no concurrent segment execution). Field evidence: all three v0.3.8-dev.3 Wave-1 conductors reported `workflow_tool: absent / fanout: in-context-fallback`; Wave 1 (3 file-disjoint lanes) took ~3h wall-clock. Added `Workflow` to the `tools:` allowlist of both `agents/conductor.md` and `agents/engineer.md`. (This entry was reconstructed in v6.3.6, which also adds the regression guard that keeps the grant from silently regressing again.)
+
+## v6.3.4 — 2026-07-15
+
+**Marketplace manifest identity fix + version-string sync (#204) — no agent/hook/skill/CLI behavior changed.**
+
+### Fixed
+
+- **`.claude-plugin/marketplace.json` top-level `name` was `"fl03"`, inconsistent with the plugin's own identity (`"shepherd"` everywhere else, including `plugin.json` and the marketplace's own `plugins[0].name`).** Corrected to `"shepherd"`; `repository` gained the explicit `.git` suffix (`…/shepherd` → `…/shepherd.git`), the top-level `version` was promoted next to `repository`/`homepage`, and the plugin entry's fields were normalized (`homepage` added, field order regrouped).
+
+### Changed
+
+- Bumped the plugin version 6.3.3 → 6.3.4 across `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, `skills/context/SKILL.md`, and `skills/shepherd/SKILL.md` so the marketplace manifest and skill `version:` frontmatter track the plugin. No agent, hook, skill, or CLI runtime behavior changed (confirmed via `git show 6611530 --stat`). (Entry reconstructed in v6.3.6 — omitted at release time; see v6.3.6 §Fixed.)
+
 ## v6.3.3 — 2026-07-15
 
 **State-subsystem hardening — the `declared_state` feature the field broke on first run — plus the packaged `shepherd` CLI begins; the toolkit feature is retired.**
