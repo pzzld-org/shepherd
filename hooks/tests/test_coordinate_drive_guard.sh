@@ -67,7 +67,7 @@ CREATE TABLE teammates (
 );
 CREATE TABLE mailbox (
   id INTEGER PRIMARY KEY AUTOINCREMENT, recipient_name TEXT,
-  read_at INTEGER, sent_at INTEGER
+  kind TEXT NOT NULL DEFAULT 'generic', read_at INTEGER, sent_at INTEGER
 );
 CREATE VIEW v_teammates_live AS
   SELECT t.*, (strftime('%s','now')*1000 - t.last_seen_at) AS ms_since_seen
@@ -83,7 +83,7 @@ add_teammate() {
   local sid="NULL"; [[ -n "${5:-}" ]] && sid="'$5'"
   sqlite3 "$DB" "INSERT INTO teammates (id,team_name,teammate_name,agent_type,session_id,spawned_at,last_seen_at,status,declared_state) VALUES ('$1','team','$1','conductor',$sid,$NOW,$seen,'$2',$ds);" >/dev/null 2>&1
 }
-add_unread()   { sqlite3 "$DB" "INSERT INTO mailbox (recipient_name,read_at,sent_at) VALUES ('$1',NULL,$NOW);" >/dev/null 2>&1; }
+add_unread()   { local k="${2:-generic}"; sqlite3 "$DB" "INSERT INTO mailbox (recipient_name,kind,read_at,sent_at) VALUES ('$1','$k',NULL,$NOW);" >/dev/null 2>&1; }
 guard() { printf '{"hook_event_name":"Stop","session_id":"%s"}' "$1" | bash "$SCRIPT" 2>/dev/null; }
 
 # ---------------------------------------------------------------------------
@@ -113,6 +113,26 @@ if is_block "$out"; then pass "lead-bound unread: BLOCK"; else fail "lead-bound 
 total=$((total+1)); reset_db; add_teammate "lane-a" "active"; add_unread "lane-a"
 out=$(guard "s4b")
 if ! is_block "$out"; then pass "teammate-bound unread: no block"; else fail "teammate-bound unread: no block" "out=$out"; fi
+
+# ---------------------------------------------------------------------------
+# 4c. (#206) Seed-ready cross-session handoff mail (kind=seed-ready) addressed to
+#     a non-teammate spawn-handoff inbox is NOT lead-bound — must NOT block even
+#     though its recipient is not a teammate. Regression for the phantom-unread
+#     desync: an abandoned --staged seed-ready row must never trap an unrelated
+#     coordinate session's Stop forever. Pre-fix this exact case BLOCKED.
+# ---------------------------------------------------------------------------
+total=$((total+1)); reset_db; add_teammate "lane-a" "active"; add_unread "shepherd-spawn-foo" "seed-ready"
+out=$(guard "s4c")
+if ! is_block "$out"; then pass "#206 seed-ready unread: no block (phantom excluded)"; else fail "#206 seed-ready unread: no block" "out=$out"; fi
+
+# ---------------------------------------------------------------------------
+# 4d. (#206) A genuine (non-seed-ready) lead-bound unread ALONGSIDE a seed-ready
+#     row still blocks — the fix narrows the phantom kind only, not lead-bound
+#     unread signalling in general.
+# ---------------------------------------------------------------------------
+total=$((total+1)); reset_db; add_teammate "lane-a" "active"; add_unread "root" "generic"; add_unread "shepherd-spawn-foo" "seed-ready"
+out=$(guard "s4d")
+if is_block "$out"; then pass "#206 mixed unread: genuine still BLOCKs"; else fail "#206 mixed unread: genuine still BLOCKs" "out=$out"; fi
 
 # ---------------------------------------------------------------------------
 # 5. No live teammates (all retired) → fast-path, no block.
