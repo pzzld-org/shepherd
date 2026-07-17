@@ -32,6 +32,14 @@ for arg in "$@"; do
   esac
 done
 
+# Validate --min BEFORE the arithmetic below: a non-numeric value would abort
+# under `set -u` with a raw "unbound variable" and exit 1 — indistinguishable
+# from a genuine INSUFFICIENT result. Fail loud and distinct instead (exit 2).
+if [[ ! "$min" =~ ^[0-9]+$ ]]; then
+  echo "df-guard: --min must be a non-negative integer (got '${min}')" >&2
+  exit 2
+fi
+
 # Resolve available space PORTABLY: df -Pk gives POSIX-format 1K-block
 # output with stable columns across GNU/BSD/macOS df. Take the LAST line
 # (skips the header; also survives long-devname wrap on some df builds),

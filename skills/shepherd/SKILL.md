@@ -44,7 +44,7 @@ Two meta tiers plus the planter:
 
 Every flock dispatch MUST set `subagent_type: "shepherd:<role>"` (the registry auto-loads `agents/<role>.md`) and `model` per the role map, put the brief in `prompt` (NEVER inline-embed the agent body), and leave `team_name` unset. Teammate-conductor lanes are NOT flock dispatches: root stands them up via native teammate-spawn referencing `shepherd:conductor`, then drives them with `SendMessage`.
 
-Tier reach: root dispatches `@engineer`, `@critic`, `@auditor`, `@worker`, `@discovery` and spawns teammate-conductors; root NEVER dispatches `@coder`. A teammate-conductor dispatches `@coder`, `@auditor`, `@worker`, `@discovery`; it NEVER dispatches `@engineer`/`@critic` (escalate `PLAN-AUTHORSHIP-REQUEST` / `PLAN-GATE-REQUEST` — `references/escalation.md §Halt-code index`) and NEVER spawns another teammate.
+Tier reach: root dispatches `@engineer`, `@critic`, `@auditor`, `@worker`, `@discovery` and spawns teammate-conductors; root NEVER dispatches `@coder` — EXCEPT in **root-drives-workflows mode** (`/shepherd:start`, the Agent-Teams fallback with NO teammates active), where root drives the wave routine directly and dispatches `@coder`+`@auditor` steps ITSELF, running the same serial wave gate a conductor would (`references/wave-routine.md`). A teammate-conductor dispatches `@coder`, `@auditor`, `@worker`, `@discovery`; it NEVER dispatches `@engineer`/`@critic` (escalate `PLAN-AUTHORSHIP-REQUEST` / `PLAN-GATE-REQUEST` — `references/escalation.md §Halt-code index`) and NEVER spawns another teammate.
 
 Forbidden dispatch constructions MUST be refused on sight:
 
@@ -67,7 +67,7 @@ Work splits across the sprint's three sections, not by agent type:
 
 In coordinate mode root MUST actively drive (wake → act → probe → yield-to-events every wake), NEVER passive-wait after a dispatch, reserving operator pauses for the enumerated decision points (Stop-hook backstop: `skills/harness/SKILL.md §Capability enforcement`).
 
-Root MUST NOT write source code, dispatch `@coder` directly, nest a `/shepherd:spawn`, or silently absorb a teammate finding without materializing it. Git custody is root-exclusive: a teammate that runs `git rebase`/`merge`/`push`/`worktree` halts `TEAMMATE-GIT-WRITE` (`references/pipeline.md §CLOSE-FINALIZE`). Escalation payload: `references/escalation.md §Escalation payload`; Stage-Graph walk: `references/pipeline.md §Stage Graph`.
+Root MUST NOT write source code, dispatch `@coder` directly (except in root-drives-workflows mode — `references/wave-routine.md`), nest a `/shepherd:spawn`, or silently absorb a teammate finding without materializing it. Git custody is root-exclusive: a teammate that runs `git rebase`/`merge`/`push`/`worktree` halts `TEAMMATE-GIT-WRITE` (`references/pipeline.md §CLOSE-FINALIZE`). Escalation payload: `references/escalation.md §Escalation payload`; Stage-Graph walk: `references/pipeline.md §Stage Graph`.
 
 ## Sprint contract
 

@@ -56,6 +56,8 @@ with open(path, errors="replace") as fh:
             rec = json.loads(line)
         except json.JSONDecodeError:
             continue
+        if not isinstance(rec, dict):  # a bare array/number/string/null is valid
+            continue                   # JSON but not a record — tolerate, don't crash
         t = rec.get("type")
         key = rec.get("key") or rec.get("agentId")
         if key is None:

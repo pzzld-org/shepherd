@@ -39,7 +39,7 @@ import subprocess
 import sys
 from pathlib import PurePosixPath
 
-CFG_ATTR_RE = re.compile(r"^\s*#!?\[\s*cfg\s*\((?P<pred>.*)\)\s*\]\s*$")
+CFG_ATTR_RE = re.compile(r"^\s*#!?\[\s*cfg\s*\((?P<pred>.*)\)\s*\]\s*(//.*)?$")
 
 
 def die(msg: str, code: int = 2) -> "None":
@@ -189,21 +189,31 @@ def _scan_item_end(text: str, pos: int, n: int) -> int:
 
 
 def parse_diff(diff: str):
-    """Yield (path, added_new_lines:set[int], removed_old_lines:set[int])."""
-    files = {}
-    path = None
+    """Yield (old_path, new_path, added_new_lines:set[int], removed_old_lines:set[int]).
+
+    Both sides are tracked so a DELETION (`+++ /dev/null` → new_path None, removed
+    lines keyed to the old path) and a RENAME-with-edit (`--- a/old` ≠ `+++ b/new`,
+    so the base blob is read at the OLD path) are counted correctly — dropping the
+    old side silently zeroed a deleted file and mis-scoped a renamed file's spans.
+    """
+    files = []          # one dict per `diff --git` stanza, in order
+    cur = None
     new_lineno = old_lineno = 0
     hunk_re = re.compile(r"^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@")
     for line in diff.splitlines():
-        if line.startswith("+++ "):
-            p = line[4:]
-            if p == "/dev/null":
-                path = None
-            else:
-                path = p[2:] if p.startswith("b/") else p
-                files.setdefault(path, (set(), set()))
+        if line.startswith("diff --git "):
+            cur = {"old": None, "new": None, "added": set(), "removed": set()}
+            files.append(cur)
+            continue
+        if cur is None:
             continue
         if line.startswith("--- "):
+            p = line[4:]
+            cur["old"] = None if p == "/dev/null" else (p[2:] if p.startswith("a/") else p)
+            continue
+        if line.startswith("+++ "):
+            p = line[4:]
+            cur["new"] = None if p == "/dev/null" else (p[2:] if p.startswith("b/") else p)
             continue
         if line.startswith("@@"):
             m = hunk_re.match(line)
@@ -211,19 +221,17 @@ def parse_diff(diff: str):
                 old_lineno = int(m.group(1))
                 new_lineno = int(m.group(2))
             continue
-        if path is None:
-            continue
-        if line.startswith("+") and not line.startswith("+++"):
-            files[path][0].add(new_lineno)
+        if line.startswith("+"):
+            cur["added"].add(new_lineno)
             new_lineno += 1
-        elif line.startswith("-") and not line.startswith("---"):
-            files[path][1].add(old_lineno)
+        elif line.startswith("-"):
+            cur["removed"].add(old_lineno)
             old_lineno += 1
         else:  # context (shouldn't appear with -U0) advances both
             new_lineno += 1
             old_lineno += 1
-    for p, (a, r) in files.items():
-        yield p, a, r
+    for c in files:
+        yield c["old"], c["new"], c["added"], c["removed"]
 
 
 def under_tests_dir(path: str) -> bool:
@@ -240,7 +248,8 @@ def main() -> int:
 
     diff = git(repo, "diff", "-U0", "--no-color", "--no-ext-diff", base_ref, "--", "*.rs")
 
-    changes = {p: (a, r) for p, a, r in parse_diff(diff)}
+    entries = list(parse_diff(diff))  # (old_path, new_path, added, removed)
+    seen = {p for o, n, _, _ in entries for p in (o, n) if p}
     # loc-count runs in the root gate BEFORE the wave commit, so a coder's new
     # files are still untracked — and `git diff <base>` omits untracked files.
     # Count each untracked .rs file as wholly added, else the wave undercounts.
@@ -249,34 +258,43 @@ def main() -> int:
     ).splitlines()
     for path in untracked:
         path = path.strip()
-        if not path or path in changes:
+        if not path or path in seen:
             continue
         try:
             with open(PurePosixPath(repo) / path, "r", errors="replace") as fh:
                 n_lines = len(fh.read().splitlines())
         except OSError:
             continue
-        changes[path] = (set(range(1, n_lines + 1)), set())
+        entries.append((None, path, set(range(1, n_lines + 1)), set()))
 
     total_add = total_del = 0
     rows = []
-    for path, (added, removed) in changes.items():
-        if under_tests_dir(path):
+    for old_path, new_path, added, removed in entries:
+        disp = new_path or old_path  # a deletion has no new path
+        if disp is None:
             continue
-        # New content = worktree file; old content = base_ref blob.
-        try:
-            with open(PurePosixPath(repo) / path, "r", errors="replace") as fh:
-                new_content = fh.read()
-        except OSError:
-            new_content = ""
-        old_content = git(repo, "show", f"{base_ref}:{path}", allow_fail=True)
+        # Skip a file living under tests/ on EITHER side of a move.
+        if under_tests_dir(disp) or (old_path and under_tests_dir(old_path)):
+            continue
+        # New content = worktree file at the NEW path (empty for a deletion);
+        # old content = the base_ref blob at the OLD path (empty for an add).
+        new_content = ""
+        if new_path:
+            try:
+                with open(PurePosixPath(repo) / new_path, "r", errors="replace") as fh:
+                    new_content = fh.read()
+            except OSError:
+                new_content = ""
+        old_content = (
+            git(repo, "show", f"{base_ref}:{old_path}", allow_fail=True) if old_path else ""
+        )
         new_spans = test_span_lines(new_content)
         old_spans = test_span_lines(old_content)
         a = sum(1 for ln in added if ln not in new_spans)
         d = sum(1 for ln in removed if ln not in old_spans)
         if a == 0 and d == 0:
             continue
-        rows.append((path, a, d))
+        rows.append((disp, a, d))
         total_add += a
         total_del += d
 

@@ -64,6 +64,18 @@ else
   note "--help exits 0 with Usage" fail "rc=$rc out=$out"
 fi
 
+# --- Case 5: non-numeric --min → exit 2 (distinct from INSUFFICIENT's 1). ---
+# Verify-wave regression: a typo'd threshold must fail loud and distinct, not
+# crash with an unbound-variable and exit 1 (indistinguishable from a real
+# disk-pressure failure).
+out=""; rc=0
+out="$("$SCRIPT" --min=abc . 2>&1)" || rc=$?
+if [[ "$rc" -eq 2 && "$out" == *"non-negative integer"* ]]; then
+  note "non-numeric --min exits 2 with a clear error" pass
+else
+  note "non-numeric --min exits 2 with a clear error" fail "rc=$rc out=$out"
+fi
+
 if [[ "$fails" -eq 0 ]]; then
   echo "PASS: test_df_guard"
 else

@@ -80,6 +80,14 @@ have hooks/tests/lint_agent_capabilities.sh 'LEAD_MANDATED_WORKFLOW="engineer co
 have hooks/tests/lint_agent_capabilities.sh 'read-only-role Bash PRESENCE' "lint pins read-only shctx-runners grant Bash"
 have hooks/tests/test_exec_bits.sh "scripts/\*\.sh"        "exec-bits guard covers the new scripts/ tools"
 
+echo "== root-drives-workflows doctrine reconciliation (verify-wave findings) =="
+have skills/shepherd/SKILL.md 'root-drives-workflows mode'  "SKILL.md Dispatch law carves out the root-@coder fallback"
+have agents/shepherd.md 'or by root itself in'             "shepherd prohibition #2 carves out root-driven @coder"
+have agents/shepherd.md 'BODY runs as root-driven Dynamic-Workflow waves' "shepherd prohibition #12 carves out the direct-drive BODY"
+have agents/shepherd.md 'per-wave SOURCE commit in root-drives-workflows'  "shepherd side-effect boundary permits the wave source commit"
+have hooks/scripts/bash_guard.sh 'CRITIC-MUTATE'           "bash_guard Check 3 blocks @critic shell mutation (critic gained Bash)"
+have hooks/tests/run.sh 'test_readonly_bash_guard\.sh'     "read-only reviewer mutate-guard test wired into the suite"
+
 echo "== deterministic-tooling behavior pinned by dedicated tests =="
 have hooks/tests/run.sh 'test_v638_wiring\.sh'             "this wiring test is itself wired into the suite"
 have skills/shepherd/references/invariant-matrix.md 'wave-routine|/shepherd:start|#217' "invariant-matrix records the v6.3.8 wave routine"

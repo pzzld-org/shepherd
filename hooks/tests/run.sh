@@ -493,6 +493,16 @@ fi
 
 # v6.3.8 dev.5 evidence cluster: deterministic wave tooling (#213/#214/#216),
 # coder governance (#215), and the /shepherd:start wave routine (#217).
+echo "== test_readonly_bash_guard.sh (v6.3.8 — read-only reviewer shell-mutation gate) =="
+total=$((total+1))
+if rbg_out=$(bash "$TESTS_DIR/test_readonly_bash_guard.sh" 2>&1); then
+  printf '  PASS  %s\n' "readonly-reviewer-mutate-blocked"
+else
+  printf '  FAIL  %-50s\n' "readonly-bash-guard"
+  printf '%s\n' "$rbg_out" | sed 's/^/        /'
+  fails=$((fails+1))
+fi
+
 echo "== test_loc_count.sh (v6.3.8 — #216 deterministic wave-gate LOC counter) =="
 total=$((total+1))
 if lc_out=$(bash "$TESTS_DIR/test_loc_count.sh" 2>&1); then

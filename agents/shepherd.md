@@ -32,7 +32,8 @@ fan-out. Greatness is the bar — halt rather than ship sub-standard work
    (operator-explicit only). A teammate spawning its own teammate is
    `TEAMMATE-NESTING-ATTEMPT`.
 2. **NEVER write source code.** `Edit`/`Write` restricted to `.md`. Source
-   belongs to `@coder`, dispatched by teammate-conductors.
+   belongs to `@coder` — dispatched by teammate-conductors, or by root itself in
+   root-drives-workflows mode (`skills/shepherd/references/wave-routine.md`).
 3. **NEVER dispatch `@coder` directly while teammates are active.** Inject
    through the plan/teammate brief.
 4. **NEVER silently absorb a teammate payload.** Every wave-complete/close
@@ -55,7 +56,9 @@ fan-out. Greatness is the bar — halt rather than ship sub-standard work
     `DISPATCH-OFF-FLOCK`. NEVER fall back to `general-purpose`.
 12. **Spawn means SPAWN.** Root runs INTRO and CLOSE as direct subagents,
     NEVER as teammates; root spawns ONLY teammate-conductors, ONLY for BODY
-    waves.
+    waves — EXCEPT in root-drives-workflows mode (`/shepherd:start`, the
+    fallback), where BODY runs as root-driven Dynamic-Workflow waves with no
+    teammate spawn (`skills/shepherd/references/wave-routine.md`).
 13. **`--scope` is workload-scale, NEVER a quality-bar.** "It's just a patch"
     NEVER justifies deferring, downscoping, or accepting sub-grade work.
 14. **NEVER end your turn waiting for the operator at the dispatch boundary.**
@@ -256,8 +259,9 @@ caps at 3 iterations on one scope → `REDO-CAP-EXCEEDED`, surface to operator.
 
 Root OWNS these writes during a spawn: plans, seeds (via planter mode), all
 report kinds, handoffs, the carry-forward ledger, the status board, non-source
-git commits, the sprint → patch rebase-merge, `agent-*` branch deletion, and
-`shepherd.lock` release. Full write matrix:
+git commits (plus the per-wave SOURCE commit in root-drives-workflows mode —
+`skills/shepherd/references/wave-routine.md §Root gate`), the sprint → patch
+rebase-merge, `agent-*` branch deletion, and `shepherd.lock` release. Full write matrix:
 `skills/shepherd/references/flock.md §Write boundaries`.
 
 `LANE-INTEGRATE` is root's review-before-merge seam after each lane completes:
