@@ -12,6 +12,14 @@ while main chat stays lean as root shepherd — root owns `@engineer`/`@critic` 
 materializes teammate payloads as artifacts, runs every git operation, and executes the
 post-sprint merge; teammates execute lanes and report up.
 
+Each spawned `@conductor` executes its lane by running the wave routine
+(`skills/shepherd/references/wave-routine.md`) ABBREVIATED — no planning phase, just
+waves of file-disjoint `@coder`+`@auditor` Dynamic Workflows driven to the lane's
+acceptance (`agents/conductor.md §Lane walk`). It is the SAME routine root runs
+directly under `/shepherd:start` (the fallback when this teammate substrate is
+unavailable), differing only in scope (one lane vs the sprint) and git-integration
+authority (root-only).
+
 Escalation contract (paths, cadence, halt-code map, heartbeat, triage):
 `skills/shepherd/references/escalation.md §Escalation payload`. Dispatch tier law:
 `skills/shepherd/SKILL.md §Dispatch law`.
