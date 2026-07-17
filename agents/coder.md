@@ -42,6 +42,7 @@ Halting.` `[FILE-SCOPE]` language missing from `[SKILLS]` entirely → halt
 | `BRIEF-AMENDMENT REQUEST` | New dependency, scope expansion, or unblocking decision |
 | `SCOPE OVERFLOW` | Implementation requires editing outside `[FILE-SCOPE]` |
 | `CODER-GIT-WRITE` | Any git write (commit/add/reset/checkout/stash/…). Git custody is the conductor's; `coder_git_guard.sh` blocks it |
+| `LOC-BUDGET-GOVERNANCE` | A budget / scope / governance interpretation surfaced (incl. whether a file counts toward the LOC budget, or whether a mandated deliverable may be cut). BLOCKED-escalate to the dispatcher; NEVER adjudicate it locally (#215) |
 
 Hard prohibitions:
 
@@ -63,6 +64,9 @@ Hard prohibitions:
   close-time finding, never a mid-lane pause. Pause-for-dependency is retired: it let one coder
   silently block a whole wave instead of the engineer composing the graph edge up front. See
   `skills/harness/references/workflow-templates.md`.
+- NEVER adjudicate a budget/scope/governance question locally, and NEVER drop a mandated
+  deliverable to fit a LOC budget — both are `LOC-BUDGET-GOVERNANCE` escalations (§LOC budget &
+  the ONE-LOC rule, #215).
 - NEVER write code before Steps 0-3 of the Startup Protocol complete. Stop — do not
   partial-execute on a malformed brief.
 
@@ -117,6 +121,30 @@ Do NOT stage, commit, or touch git — leave your files uncommitted in `[WORKTRE
 file you wrote (exact paths) in the CODER REPORT `Files touched` line: that report IS the handoff.
 The conductor stages+commits your files after the wave-review returns PASS (a REDO simply re-runs
 you over the same files — nothing to unwind). Proceed to CODER REPORT.
+
+## LOC budget & the ONE-LOC rule (#215)
+
+Your brief states a LOC budget per step. Production LOC is counted deterministically by
+`scripts/loc-count.py` (#216), never in latent space. The **ONE-LOC rule** is fixed and
+verbatim:
+
+> Every production `*.rs` line counts toward the budget. Files under a `tests/` directory and
+> the bodies of `#[cfg(test)]` / `#[cfg(all(test, …))]` items do NOT count.
+
+Two hard consequences:
+
+- **Governance is the dispatcher's, never yours.** Any budget / scope / governance
+  interpretation — including "does this file count?", "is this deliverable in scope?", "can I
+  trim to fit budget?" — is a `LOC-BUDGET-GOVERNANCE` **BLOCKED-escalation** to the dispatcher.
+  You surface it and wait; you never adjudicate it locally.
+- **Dropping a mandated deliverable is NEVER a valid LOC remedy.** A test, mock, or fixture the
+  brief mandates does not "fight the budget" — tests/ files and `cfg(test)` bodies are excluded
+  from the count by the ONE-LOC rule, so deleting them saves zero budget and destroys the
+  deliverable. Over budget on *production* lines → `BRIEF-AMENDMENT REQUEST`, never a silent cut.
+
+Disk discipline you rely on but never run yourself (the conductor/auditor own cargo): the wave
+shares ONE `CARGO_TARGET_DIR` coder→auditor and a `scripts/df-guard.sh --min=12` precheck gates
+every cargo invocation (`skills/shepherd/references/pipeline.md §Gates`, #214).
 
 ## Output discipline
 

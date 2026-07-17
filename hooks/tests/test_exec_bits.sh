@@ -30,7 +30,9 @@ while IFS= read -r line; do
 done < <(git ls-files --stage -- \
   'hooks/scripts/*.sh' \
   'skills/context/scripts/*.sh' \
-  'skills/context/scripts/shctx' 2>/dev/null)
+  'skills/context/scripts/shctx' \
+  'scripts/*.sh' \
+  'scripts/loc-count.py' 2>/dev/null)
 
 if [[ "$checked" -eq 0 ]]; then
   echo "  FAIL  exec-bits: no path-invoked scripts matched — pathspec drift?" >&2

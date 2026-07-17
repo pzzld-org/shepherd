@@ -96,7 +96,13 @@ fi
 # Per skills/shepherd/references/flock.md §@discovery, @discovery is read-only. The agent
 # system prompt enumerates forbidden patterns; this hook is the second line
 # of defense.
-if [[ "$role" == "discovery" ]]; then
+# @discovery and @critic are both read-only reviewers that carry Bash only to
+# run shctx registry writes + read-only inspection (critic gained Bash in v6.3.8
+# for its Step 0.5 deliverable-promise). Neither may mutate source or the
+# filesystem via shell — the mechanical second line of defense for the read-only
+# contract (`skills/shepherd/references/flock.md §@discovery`/`§@critic`). shctx
+# is NOT in the mutate pattern, so registry writes still pass.
+if [[ "$role" == "discovery" || "$role" == "critic" ]]; then
   # Patterns that mutate state. Each pattern is scoped to avoid false
   # positives on read-only invocations of the same command name.
   mutate_pattern='(^|[[:space:];|&])(rm[[:space:]]+-[rRf]|mv[[:space:]]|cp[[:space:]].*[^[:space:]]+/[^[:space:]]+[[:space:]]|tee[[:space:]]|git[[:space:]]+(commit|push|merge|rebase|reset|checkout|switch|tag)[[:space:]]?|gh[[:space:]]+(issue|pr|release)[[:space:]]+(create|close|edit|merge|reopen|delete)|npm[[:space:]]+(install|run|publish)|pnpm[[:space:]]+(install|publish)|pip[[:space:]]+install|cargo[[:space:]]+(build|run|install|publish|clean|fix|fmt|clippy)|make([[:space:]]|$)|docker[[:space:]]+(run|build|push|exec)|kubectl[[:space:]]+(apply|delete|edit)|terraform[[:space:]]+(apply|destroy))'
@@ -105,12 +111,13 @@ if [[ "$role" == "discovery" ]]; then
 
   if printf '%s' "$cmd" | grep -qE "$mutate_pattern" \
      || printf '%s' "$cmd" | grep -qE "$redirect_pattern"; then
-    msg="[shepherd] DISCOVERY-MUTATE BLOCKED — @discovery is read-only."$'\n'
+    code="DISCOVERY-MUTATE"; [[ "$role" == "critic" ]] && code="CRITIC-MUTATE"
+    msg="[shepherd] ${code} BLOCKED — @${role} is read-only on source + filesystem."$'\n'
     msg+="  Command:  ${cmd:0:160}"$'\n'
-    msg+="Discovery agents NEVER mutate state. If you need to write a report,"$'\n'
-    msg+="the brief's [OUTPUT-PATH] is your ONLY write target — use the Write tool"$'\n'
-    msg+="(restricted by lock_guard), not shell redirection."$'\n'
-    msg+="See skills/shepherd/references/flock.md §@discovery."
+    msg+="Registry writes go through shctx (allowed); source/filesystem mutation and"$'\n'
+    msg+="shell redirection are not. A report goes through the Write tool"$'\n'
+    msg+="(lock_guard-scoped), never shell redirection."$'\n'
+    msg+="See skills/shepherd/references/flock.md §@${role}."
     emit_deny "$msg" "bash_guard" "Bash" "$role" "$session"
   fi
 fi

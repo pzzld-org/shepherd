@@ -199,13 +199,40 @@ done
 # The frontmatter fix shipped in v6.3.5; this lint pins it so a lead can never
 # silently lose a doctrinally-mandated tool again (mechanizes a prose-only
 # invariant per the closed-flock contract rule — the mirror of the CLAIM check).
+# v6.3.8 (#217) adds `shepherd` (root): the root-drives-workflows mode
+# (`/shepherd:start`, agents/shepherd.md §WORKFLOW SELF-CHECK) has root compile
+# Dynamic Workflows DIRECTLY, and root's frontmatter was likewise missing the
+# grant — the identical #207 gap one tier up. Root without `Workflow` cannot
+# drive a single wave, so /shepherd:start would be dead on arrival.
 # ---------------------------------------------------------------------------
-LEAD_MANDATED_WORKFLOW="engineer conductor"
+LEAD_MANDATED_WORKFLOW="engineer conductor shepherd"
 for role in $LEAD_MANDATED_WORKFLOW; do
   f="$AGENTS_DIR/$role.md"
   [[ -f "$f" ]] || continue   # a missing lead file is flagged by the loops above
   if ! tools_line "$f" | tr ',' '\n' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep -qx 'Workflow'; then
-    note "FAIL $role: lead doctrinally mandates the 'Workflow' tool (Dynamic-Workflow fan-out is the default under [spawn].lead_effort=ultracode) but 'tools:' frontmatter does not grant it — #207 regression: leads silently fall back to the slow in-context Agent() path"
+    note "FAIL $role: lead/root doctrinally mandates the 'Workflow' tool (Dynamic-Workflow fan-out is the default under [spawn].lead_effort=ultracode; root drives it directly via /shepherd:start) but 'tools:' frontmatter does not grant it — #207/#217 regression: it silently falls back to the slow in-context Agent() path"
+    fails=$((fails+1))
+  fi
+done
+
+# ---------------------------------------------------------------------------
+# v6.3.8 read-only-role Bash PRESENCE (#207-class). The three READONLY_ROLES are
+# read-only on SOURCE, but each writes its canonical output as registry ROWS via
+# `shctx` shelled through Bash (auditor: deliverable + audit_findings; critic:
+# deliverable + verdict rows; discovery: discovery_findings insert) and runs
+# gates. critic shipped WITHOUT the Bash grant while its Step 0.5 mandated
+# `shctx deliverable promise` — a hard #207-class gap with NO fallback: the critic
+# could not register its verdict deliverable at all. Pin that every read-only
+# reviewer whose prose runs shctx actually grants Bash. Bash is NOT a source-
+# mutation verb (the mutation bans above still hold; bash_guard.sh scopes it), so
+# this composes with the read-only contract rather than weakening it.
+# ---------------------------------------------------------------------------
+for role in $READONLY_ROLES; do
+  f="$AGENTS_DIR/$role.md"
+  [[ -f "$f" ]] || continue
+  if grep -q 'shctx ' "$f" \
+     && ! tools_line "$f" | tr ',' '\n' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep -qx 'Bash'; then
+    note "FAIL $role: prose runs 'shctx' via Bash but 'tools:' does not grant Bash — #207-class no-fallback gap (the critic Step 0.5 deliverable-promise hole)"
     fails=$((fails+1))
   fi
 done
@@ -245,8 +272,8 @@ for tool in $CLAIM_CHECK_TOOLS; do
 done
 
 if [[ "$fails" -gt 0 ]]; then
-  printf 'lint_agent_capabilities: %d violation(s) — read-only mutation-free (GH #74); no destructive verb (GH #84); leads grant mandated Workflow (#207); no ungranted-tool claim (v6.2.1)\n' "$fails"
+  printf 'lint_agent_capabilities: %d violation(s) — read-only mutation-free (GH #74); no destructive verb (GH #84); lead/root grant mandated Workflow (#207/#217); read-only shctx-runners grant Bash (#207-class); no ungranted-tool claim (v6.2.1)\n' "$fails"
   exit 1
 fi
-printf 'lint_agent_capabilities: OK — read-only trio mutation-free (GH #74); all nine carry no destructive MCP verb (GH #84); leads grant the mandated Workflow tool (#207); no profile claims an ungranted tool (v6.2.1)\n'
+printf 'lint_agent_capabilities: OK — read-only trio mutation-free (GH #74); all nine carry no destructive MCP verb (GH #84); engineer/conductor/shepherd grant the mandated Workflow tool (#207/#217); read-only shctx-runners grant Bash; no profile claims an ungranted tool (v6.2.1)\n'
 exit 0

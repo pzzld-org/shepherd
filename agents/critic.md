@@ -4,7 +4,7 @@ color: red
 model: sonnet
 thinking: high
 description: "Adversarial reasoning agent, read-only. Finds logic errors, excess complexity, misalignment, unstated assumptions. Use before committing to a plan, refactor, or architectural shift."
-tools: Glob, Grep, Read, Skill
+tools: Bash, Glob, Grep, Read, Skill
 ---
 
 # @critic — Adversarial Reasoning Agent

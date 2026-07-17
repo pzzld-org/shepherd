@@ -4,6 +4,31 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v6.3.8 — 2026-07-17
+
+**The single-root-dispatcher "waves of dynamic workflows" routine is codified once and driven two ways, and its wave-gate facts move out of latent space into three deterministic scripts.**
+
+### New
+
+- **`/shepherd:start` returns as the codified root-drives-workflows execution mode (#217).** The per-wave routine — `pipeline()` over file-disjoint `@coder`+`@auditor` step pairs (redo cap 3), a hard-rule preamble on every brief, and a serial root gate (`journal-status` → `loc-count` → cross-step disjointness → workspace gate → append-only MSD ledger + wave commit) — is defined once in `skills/shepherd/references/wave-routine.md`. Two drivers: root runs it directly via the thin, execution-only `commands/start.md` (also the zero-drift fallback when Agent Teams are unavailable), and a `@conductor` runs it abbreviated per-lane (`agents/conductor.md §Lane walk`), differing only in scope and git-integration authority. `agents/shepherd.md`, `commands/spawn.md`, and the Dispatch law (`skills/shepherd/SKILL.md` + `agents/shepherd.md` prohibitions #2/#12 + the side-effect boundary) are reconciled so the direct-drive mode is a first-class path: root may dispatch `@coder` and commit source ONLY in this mode, where it runs the same wave gate a conductor would.
+
+- **Three deterministic wave-gate scripts (`scripts/`) replace latent-space computation.**
+  - **`loc-count.py` (#216)** — net production Rust LOC of the working tree vs a base ref: added-minus-removed `.rs` lines outside brace-matched `#[cfg(test)]` / `#[cfg(all(test, …))]` spans, `tests/` directories skipped, `#[cfg(not(test))]` counted as production, untracked new files plus file deletions and renames handled (the gate runs before the wave commit). The brace matcher is comment- and string/char/raw-string-literal-aware.
+  - **`journal-status.sh` (#213)** — deterministic wave-return from a Dynamic-Workflow `journal.jsonl` (`steps / returned / pass / redo / pending`; exit 3 absent, 4 pending, 0 done). The dispatcher records the `runId` + journal path in the plan frontmatter (survives `/compact`); the journal watchdog is canonical, the harness task registry is not.
+  - **`df-guard.sh` (#214)** — `--min=12` disk-pressure precheck before any cargo. The four disk rules (df precheck, shared coder→auditor `CARGO_TARGET_DIR`, delete-on-final-PASS, no concurrent workspace gate) are baked into `agents/coder.md`, `agents/auditor.md`, `pipeline.md §Gates`, and the wave routine.
+
+### Fixed
+
+- **Root (`agents/shepherd.md`) grants `Workflow`.** Root's WORKFLOW SELF-CHECK mandates compiling Dynamic Workflows and `/shepherd:start` drives them directly, but the grant was missing — root could not drive a wave. `lint_agent_capabilities.sh` `LEAD_MANDATED_WORKFLOW` now includes `shepherd`, and the self-check prose is reconciled (`present` is the guaranteed path).
+
+- **`@critic` grants `Bash`.** Its Step 0.5 runs `shctx deliverable promise` / `audit insert`, but `critic`'s tools were `Glob, Grep, Read, Skill`, so every verdict deliverable stalled. `bash_guard.sh` Check 3 now scopes critic (and discovery) to read-only: source and filesystem mutation via shell are blocked, `shctx` passes. A read-only-role Bash-presence lint block pins it.
+
+- **`agents/coder.md` states the ONE-LOC rule verbatim (#215):** every production `*.rs` line counts, `tests/` files and `cfg(test)` bodies do not; any budget/scope/governance interpretation is a `LOC-BUDGET-GOVERNANCE` escalation to the dispatcher, never local adjudication; dropping a mandated deliverable is never a valid LOC remedy.
+
+### Housekeeping
+
+- New tests: `test_loc_count.sh`, `test_journal_status.sh`, `test_df_guard.sh`, `test_readonly_bash_guard.sh`, `test_v638_wiring.sh`; `test_exec_bits.sh` extended to `scripts/`; all wired into `hooks/tests/run.sh`. `skills/shepherd/references/invariant-matrix.md` rows 25–27 record the new invariants.
+
 ## v6.3.7 — 2026-07-16
 
 **Finish the #206 job v6.3.6 only patched: the generic mailbox is gone, replaced by a dedicated cross-session `signal` channel — and the native `shepherd` CLI grows from one command group to five.**

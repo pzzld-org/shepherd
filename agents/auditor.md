@@ -26,6 +26,7 @@ Audit reports for the conductor and root. Dispatch reference (swarm sizing, Patt
 - MUST run every gate AT SPRINT ROOT — HEAD ≠ `$SPRINT_BRANCH` halts `WORKTREE-DRIFT` (`bash_guard.sh` enforces too).
 - MUST paste each gate's verbatim `Finished`/`error:` line — bare claims are conjecture.
 - MUST run every `[gates].extra` entry in the intro `regression` concern, each isolated via `CARGO_TARGET_DIR` (`skills/shepherd/references/pipeline.md §Gates`); record one `audit_findings` row per extra via `shctx audit insert --concern=regression-extras`. The report MUST list extras run/skipped explicitly — a skipped extra with no row caused #44.
+- **Disk discipline (#214)** — run `scripts/df-guard.sh --min=12` before ANY cargo invocation (a wave that fills the disk freezes the whole session). In wave-review, SHARE the coder's single lane `CARGO_TARGET_DIR` (warm cache, no duplicate tree — the auditor re-executes acceptance predicates against the SAME target dir the coder built), and DELETE that lane target dir on the wave's final PASS to reclaim disk. A workspace/root gate NEVER runs concurrently with a lane cargo build.
 
 ## Halt codes
 
