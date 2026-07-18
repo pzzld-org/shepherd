@@ -4,9 +4,43 @@
 
 set -eu -o pipefail
 
-# Resolve repo root (where shepherd.toml lives).
+# Resolve repo root (where shepherd.toml + the shared registry live).
+#
+# CRITICAL (#221): the shepherd registry (SQLite DB) and config are shared
+# per-repo across ALL worktrees. `git rev-parse --show-toplevel` returns the
+# CURRENT worktree's root, so from a linked worktree — every concurrent
+# conductor lane under `/shepherd:spawn` — it resolved to that worktree's own
+# checked-out tree. The namespace dir (.shepherd/.artifacts) is a git-TRACKED
+# subtree so it exists in every worktree checkout, while the DB file is
+# gitignored (absent); resolve_workdir then picked the worktree-local namespace,
+# shctx_db_path targeted a never-created DB there, and the first query
+# auto-vivified a 0-byte, schema-less shepherd.db (ensure_migrated's fast path
+# bails on a DB with no schema_versions row) — the field "no such table:
+# focus/teammates". Resolve to the MAIN worktree via --git-common-dir (which
+# points at the shared .git even from a linked worktree); its parent is the main
+# worktree root. Mirrors the proven hooks/scripts/_lib.sh:sprint_root pattern
+# (the two libs are deliberately not cross-sourced). Fall back to
+# --show-toplevel, then pwd, when git is unavailable.
 shctx_repo_root() {
+  local common main
+  common="$(git rev-parse --git-common-dir 2>/dev/null || true)"
+  if [[ -n "$common" ]]; then
+    case "$common" in /*) : ;; *) common="$(pwd)/$common" ;; esac
+    main="$(cd "$(dirname "$common")" 2>/dev/null && pwd || true)"
+    [[ -n "$main" ]] && { printf '%s\n' "$main"; return 0; }
+  fi
   git rev-parse --show-toplevel 2>/dev/null || pwd
+}
+
+# True when the cwd is inside a LINKED worktree (not the primary). The shared
+# registry still resolves to the main worktree via shctx_repo_root; this is the
+# signal `shctx doctor` uses to surface that scoping to the operator (#221).
+# Port of hooks/scripts/_lib.sh:in_subworktree (libs are not cross-sourced).
+shctx_in_subworktree() {
+  local git_dir git_common
+  git_dir="$(git rev-parse --git-dir 2>/dev/null)" || return 1
+  git_common="$(git rev-parse --git-common-dir 2>/dev/null)" || return 1
+  [[ -n "$git_dir" && "$git_dir" != "$git_common" ]]
 }
 
 # Resolve the project-local work directory. For milestone c we hard-code

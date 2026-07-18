@@ -9,16 +9,18 @@
 # attempting a rebase onto dev. The profile is prose; this hook is the
 # mechanical gate.
 #
-# RULE: A teammate session MAY:
-#   • git add, git commit (in-worktree local commits — these are legitimate
-#     lane commits, never blocked)
+# RULE: A teammate session MAY (within its OWN lane worktree/branch):
+#   • git add, git commit (in-worktree local commits — legitimate lane commits)
+#   • git push (publish its OWN lane branch so root harvests a clean, final
+#     product — v6.3.9 #222: a conductor is a detached manager that commits AND
+#     pushes its lane after impl + adversarial-review waves, then reports to root;
+#     cross-lane integration onto the shared dev branch stays root's, below)
 #   • git log, git status, git diff, git branch, git fetch (read-only)
 #   • git worktree list (read-only worktree subcommand — allowed)
 #
-# A teammate session MUST NOT:
+# A teammate session MUST NOT (these are ROOT's LANE-INTEGRATE seam):
 #   • git merge (onto any branch, but especially dev/main)
 #   • git rebase (onto a shared/dev branch)
-#   • git push (any remote write)
 #   • git cherry-pick (onto dev — indicates integration intent)
 #   • git worktree add (spawns a new worktree — root-exclusive)
 #   • git worktree remove (destroys a worktree — root-exclusive)
@@ -40,10 +42,10 @@
 # If sqlite3 / root.db unavailable → pass (fail-open).
 #
 # INTEGRATION-COMMAND DETECTION:
-#   Blocked: git merge, git rebase, git push, git cherry-pick,
+#   Blocked: git merge, git rebase, git cherry-pick,
 #            git worktree add, git worktree remove, git worktree prune
-#   Allowed: git add, git commit, git log, git status, git diff, git fetch,
-#            git branch, git show, git stash, git tag (read-only / local),
+#   Allowed: git add, git commit, git push, git log, git status, git diff,
+#            git fetch, git branch, git show, git stash, git tag (local/publish),
 #            git worktree list (read-only)
 #
 # CAVEAT: This is a heuristic regex pass — it does not parse git argument trees
@@ -85,7 +87,7 @@ printf '%s' "$CMD" | grep -qE '(^|[[:space:];|&])git[[:space:]]' 2>/dev/null || 
 #   FORBIDDEN_PATTERN         — single-token verbs: merge, rebase, push, cherry-pick
 #   FORBIDDEN_WORKTREE_PATTERN — two-token: git worktree (add|remove|prune)
 #                                Note: git worktree list is read-only and ALLOWED.
-FORBIDDEN_PATTERN='(^|[[:space:];|&])git[[:space:]]+(merge|rebase|push|cherry-pick)[[:space:]]?'
+FORBIDDEN_PATTERN='(^|[[:space:];|&])git[[:space:]]+(merge|rebase|cherry-pick)[[:space:]]?'
 FORBIDDEN_WORKTREE_PATTERN='(^|[[:space:];|&])git[[:space:]]+worktree[[:space:]]+(add|remove|prune)([[:space:]]|$)'
 if ! printf '%s' "$CMD" | grep -qE "$FORBIDDEN_PATTERN" 2>/dev/null && \
    ! printf '%s' "$CMD" | grep -qE "$FORBIDDEN_WORKTREE_PATTERN" 2>/dev/null; then
@@ -116,7 +118,7 @@ fi
 
 # Identify which forbidden verb(s) are present for the deny message.
 VERBS=""
-for verb in merge rebase push cherry-pick; do
+for verb in merge rebase cherry-pick; do
   if printf '%s' "$CMD" | grep -qE "(^|[[:space:];|&])git[[:space:]]+${verb}([[:space:]]|$)"; then
     VERBS="${VERBS:+$VERBS, }git ${verb}"
   fi
@@ -135,9 +137,9 @@ MSG+="  Session    : ${SESSION}"$'\n'
 MSG+="  Command    : ${CMD:0:200}"$'\n'
 MSG+="  Verb(s)    : ${VERBS}"$'\n'
 MSG+="Integration is ROOT-EXCLUSIVE (LANE-INTEGRATE seam). Teammate-conductors own"$'\n'
-MSG+="in-worktree commits (git add + git commit) only. Merging, rebasing, pushing,"$'\n'
-MSG+="cherry-picking onto dev, and worktree add/remove/prune are root-tier decisions"$'\n'
-MSG+="— they require a diff review or explicit root orchestration before execution."$'\n'
+MSG+="their lane worktree: git add + git commit + git push (their OWN lane branch)."$'\n'
+MSG+="Merging, rebasing, cherry-picking onto dev, and worktree add/remove/prune are"$'\n'
+MSG+="root-tier decisions — they require a diff review or explicit root orchestration."$'\n'
 MSG+="Action: surface SendMessage(to: lead, halt_code: TEAMMATE-GIT-WRITE) and"$'\n'
 MSG+="describe the integration you need. Root will execute LANE-INTEGRATE."$'\n'
 MSG+="See skills/shepherd/references/pipeline.md §CLOSE-FINALIZE + agents/shepherd.md LANE-INTEGRATE."
