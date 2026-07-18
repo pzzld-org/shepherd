@@ -92,6 +92,7 @@ exceeding budget.
 ```
 ## WORKER REPORT
 - Deliverable: <one line from brief>
+- Lane: <lane_id, or "root" if dispatched directly by root>
 - Status: complete | budget-exhausted | halted
 - Tool calls used: <N> / <budget>
 - Time used: <minutes> / <budget>

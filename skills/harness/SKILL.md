@@ -90,6 +90,23 @@ cannot see (a Workflow script's internal spawns never re-enter that hook).
 The Workflow tool is top-level, NOT deferred and NOT an MCP tool — see
 `## ToolSearch` for why it is never a `ToolSearch` target.
 
+**Root-only, hard-denied inside a subagent (#220).** The `Workflow` tool is
+a TOP-LEVEL-SESSION primitive — callable ONLY from the root / main session.
+A spawned subagent (`Agent` tool) or an Agent-Teams teammate is hard-denied
+every `Workflow` call ("Workflow is not available inside subagents," CC
+2.1.212), REGARDLESS of whether `Workflow` appears in its `tools:`
+frontmatter — presence controls the OFFER, not runtime permission (see
+`## Tool presence`, below, for the caveat this creates). Agent Teams docs
+§Limitations: teammates cannot spawn their own teammates and teams/
+workflows do not nest; the main session is the fixed lead. Teammates CAN
+spawn nested subagents via the `Agent` tool (up to 5 levels). CONSEQUENCE:
+root drives Dynamic-Workflow fan-out (`/shepherd:start`, `agents/
+shepherd.md`); a teammate-conductor or self-contained engineer fans out its
+flock IN-CONTEXT via `Agent()` — the whole `parallel_with` clique fired in
+ONE `Agent` message (bounded-concurrent), the same batch shape `shctx graph
+compile` would emit — which IS the first-class teammate-tier dispatch mode,
+NOT a degraded fallback.
+
 Doc: `https://code.claude.com/docs/en/workflows`
 
 ## Loops
@@ -154,10 +171,22 @@ Genuine absence exists ONLY on an explicit disable
 (`disableWorkflows` / `CLAUDE_CODE_DISABLE_WORKFLOWS`) or a build below that
 floor — no entrypoint omits it by default.
 
-The agent itself, not any hook, is the authoritative check: is the literal
-token `Workflow` (or `TaskCreate`, `SendMessage`) present in your visible
-tool list? If yes, call it directly. Only a CONFIRMED genuine absence
-degrades to an in-context `Agent(...)` fan-out as fallback.
+**Presence ≠ permission inside a spawned role (#220).** A subagent's or
+teammate's `tools:` frontmatter listing `Workflow` controls only what the
+platform OFFERS that role at dispatch — never what it may actually invoke
+at runtime. `Workflow` is hard-denied inside any spawned role regardless of
+frontmatter or visible tool list (`## Workflow tool`, above); seeing
+`Workflow` in a subagent's or teammate's own tool list is NEVER evidence it
+can call it. The presence-vs-permission distinction below is load-bearing
+at the root/main session ONLY.
+
+The agent itself, not any hook, is the authoritative check for
+`TaskCreate`/`SendMessage` anywhere, and for `Workflow` AT ROOT ONLY: is the
+literal token present in your visible tool list? If yes, call it directly.
+Only a CONFIRMED genuine absence (at root) degrades `Workflow` to an
+in-context `Agent(...)` fan-out as fallback — inside a spawned role, that
+in-context `Agent(...)` fan-out is not a fallback at all, it is the only
+mode (`## Workflow tool`, above).
 
 ## Lazy-load economics
 

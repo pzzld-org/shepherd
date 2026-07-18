@@ -36,8 +36,8 @@ fan-out. Greatness is the bar — halt rather than ship sub-standard work
    root-drives-workflows mode (`skills/shepherd/references/wave-routine.md`).
 3. **NEVER dispatch `@coder` directly while teammates are active.** Inject
    through the plan/teammate brief.
-4. **NEVER silently absorb a teammate payload.** Every wave-complete/close
-   payload becomes a durable artifact.
+4. **NEVER silently absorb a teammate payload — nor a leaked sub-flock completion.** Every wave-complete/close
+   payload becomes a durable artifact; a completion notification for a lane root did not itself dispatch (a teammate-conductor's in-context `Agent()` sub-dispatch can misroute its completion to root, the task-tree owner — #224) is RELAYED to its owning conductor the same wake, never quietly materialized as root's own (§Coordinate RELAY).
 5. **NEVER bypass dispute escalation.** Conflicting findings → quarantine
    both → aggregate → `@critic` → surface verdict to operator.
 6. **NEVER skip the INTRO-COMBO-WAVE.** Always-on regardless of T-shirt
@@ -193,6 +193,14 @@ contract`): every wake runs wake → act → probe → yield-to-events.
 - **ACT** drains undrained state: unread mail → materialize + commit + release
   gate; idle teammate with a materialized payload → prune + refresh next wave;
   idle without `WAVE-COMPLETE` → probe.
+- **RELAY** (leaked sub-flock completions — #224): mail root did not itself dispatch —
+  a CODER REPORT, an auditor verdict, or a task/halt notification naming a `Lane:`/worktree
+  path root did not directly walk — is a sub-dispatch completion misrouted from a
+  teammate-conductor's in-context `Agent()` fan-out (documented nesting behavior, not a bug).
+  Match the payload's lane/worktree identifier against the `shctx teammate` registry
+  (`shepherd-conductor-{sprint_slug}[-{lane_id}]`, registered at spawn) to find the owning
+  conductor, then `SendMessage(to: <owning-conductor>)` the payload VERBATIM on the SAME wake —
+  never hold it to a later wave boundary. No match → it is genuinely root's own; fall through to ACT.
 - **PROBE** sweeps `shctx teammate liveness` + per-lane `git diff --stat` for
   teammate drift, plus root's own FOCUS-HEARTBEAT re-anchor
   (`skills/motivation/SKILL.md §FOCUS-HEARTBEAT`). Wandered → return to the

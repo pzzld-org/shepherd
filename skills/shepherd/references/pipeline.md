@@ -28,11 +28,11 @@ Waves × steps is the **plan** (engineer authority, no primitive). A **lane** = 
 
 Decomposition floors (binding): per-step ~80–100 LOC, ≤5 files, 2–5 min; wave LOC floor S ~100 / M ~400 / L ~700 / XL 1500+; steps file-disjoint across a wave. Lane projection (spawn only): fat vertical slices, L 3–5, XL 4–6 **total** (never per-wave), file-disjoint, one conductor per lane. Under-decomposition or an under-sized projection → `RECONSIDER` to `@engineer`.
 
-One primitive per axis, never inverted: lanes = **Agent Teams**; a wave's gate-free step fan-out = a compiled **Dynamic Workflow** over subagents (`skills/harness/SKILL.md §Workflow tool`); one step = one **subagent**. Two constructions are hook-refused:
+One primitive per axis, never inverted, DRIVER-CONDITIONAL for the fan-out axis (`skills/harness/SKILL.md §Workflow tool`, #220, CC 2.1.212): lanes = **Agent Teams**; one step = one **subagent**; a wave's gate-free step fan-out = a compiled **Dynamic Workflow** over subagents ONLY when the driver is ROOT. A teammate-conductor's lane fan-out is in-context `Agent()` dispatch, UNCONDITIONALLY — `Workflow` is hard-denied inside any spawned role regardless of `tools:` frontmatter, so this is not a fallback, it is the first-class teammate-tier mode (`skills/shepherd/references/wave-routine.md §Per-wave compile`). Two constructions are hook-refused, both ROOT-TIER-ONLY — hand-rolling in-context fan-out at the teammate tier is CORRECT and never flaggable:
 
-> Halt: `PRIMITIVE-INVERSION — workflow-spawns-teammates`. Refuse the workflow-spawn.
+> Halt: `PRIMITIVE-INVERSION — workflow-spawns-teammates`. Refuse the workflow-spawn. (Root tier only.)
 
-> Halt: `PRIMITIVE-INVERSION — handrolled-fanout`. A gate-free step fan-out = `shctx graph compile`.
+> Halt: `PRIMITIVE-INVERSION — handrolled-fanout`. At ROOT, a gate-free step fan-out = `shctx graph compile`; a teammate-conductor hand-rolling its OWN lane's fan-out in-context via `Agent()` is not this violation — it is the required mode (#220).
 
 A session per step crosses axes — `PRIMITIVE-INVERSION`. A step stood up as a teammate is `DISPATCH-TEAMMATE-TYPE-MISMATCH` (`skills/shepherd/SKILL.md §Dispatch law`).
 
@@ -40,7 +40,7 @@ A session per step crosses axes — `PRIMITIVE-INVERSION`. A step stood up as a 
 
 ## Combo waves
 
-A combo wave dispatches mixed read-only lanes as ONE parallel fan-out → a Dynamic Workflow (`skills/harness/SKILL.md §Workflow tool`); hand-rolled dispatch is the fallback. Variants:
+A combo wave dispatches mixed read-only lanes as ONE parallel fan-out — a compiled Dynamic Workflow (`skills/harness/SKILL.md §Workflow tool`) when the dispatcher is ROOT; in-context `Agent()` dispatch, UNCONDITIONALLY, when the dispatcher is a teammate (e.g. the self-contained engineer's own discovery wave, §INTRO below) — `Workflow` is hard-denied inside any spawned role regardless of tool presence (#220). Variants:
 
 | | INTRO-COMBO-WAVE | DISCOVERY-COMBO-WAVE |
 |---|---|---|

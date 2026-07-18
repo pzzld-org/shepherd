@@ -76,7 +76,7 @@ have agents/coder.md 'Dropping a mandated deliverable is NEVER a valid LOC remed
 echo "== #207-class tool-wiring gaps (surfaced by the build wave's audit) =="
 have agents/shepherd.md '^tools:.*\bWorkflow\b'             "shepherd frontmatter grants Workflow (root can drive workflows)"
 have agents/critic.md '^tools:.*\bBash\b'                   "critic frontmatter grants Bash (its Step 0.5 shctx runs)"
-have hooks/tests/lint_agent_capabilities.sh 'LEAD_MANDATED_WORKFLOW="engineer conductor shepherd"' "lint pins root's Workflow grant"
+have hooks/tests/lint_agent_capabilities.sh 'LEAD_MANDATED_WORKFLOW="shepherd"' "lint pins root's Workflow grant (root-only since #220)"
 have hooks/tests/lint_agent_capabilities.sh 'read-only-role Bash PRESENCE' "lint pins read-only shctx-runners grant Bash"
 have hooks/tests/test_exec_bits.sh "scripts/\*\.sh"        "exec-bits guard covers the new scripts/ tools"
 

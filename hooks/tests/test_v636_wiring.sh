@@ -34,20 +34,22 @@ missing() { # missing <file> <regex> <label> — asserts the pattern is ABSENT
   fi
 }
 
-echo "== #207 lead-Workflow mandated-tool guard (three agreeing legs) =="
-# Leg 1 — authoring-time lint.
-have hooks/tests/lint_agent_capabilities.sh 'LEAD_MANDATED_WORKFLOW'    "#207 lint has the lead mandated-Workflow presence block"
-have hooks/tests/lint_agent_capabilities.sh 'grep -qx .Workflow.'       "#207 lint token-matches the exact Workflow grant"
-have hooks/tests/test_lead_workflow_tool.sh 'SHEPHERD_LINT_AGENTS_DIR'  "#207 strip-and-reintroduce test exercises the lint override"
-have hooks/tests/run.sh 'test_lead_workflow_tool.sh'                    "#207 regression test wired into the hook suite"
-have 'agents/engineer.md' '^tools:.*\bWorkflow\b'                       "#207 engineer frontmatter grants Workflow"
-have 'agents/conductor.md' '^tools:.*\bWorkflow\b'                      "#207 conductor frontmatter grants Workflow"
-# Leg 2 — runtime wave-review grading agrees (auditor must not wave `absent` through).
-have    agents/conductor.md 'is the guaranteed path'                    "#207 conductor §WORKFLOW SELF-CHECK reconciled (present is guaranteed)"
-missing agents/auditor.md   'absent. is correct'                        "#207 auditor no longer grades absent as unconditionally correct"
-have    agents/auditor.md   '#207'                                      "#207 auditor §Dispatch-substrate cites the regression"
+echo "== #207→#220 Workflow-tool grant partition (teammate tier denied; root drives) =="
+# Leg 1 — authoring-time lint still exists (now partitioned root-vs-teammate, #220).
+have hooks/tests/lint_agent_capabilities.sh 'LEAD_MANDATED_WORKFLOW'    "#207/#220 lint retains the Workflow grant block"
+have hooks/tests/lint_agent_capabilities.sh 'grep -qx .Workflow.'       "#207/#220 lint token-matches the exact Workflow grant"
+have hooks/tests/test_lead_workflow_tool.sh 'SHEPHERD_LINT_AGENTS_DIR'  "#207/#220 grant-partition test exercises the lint override"
+have hooks/tests/run.sh 'test_lead_workflow_tool.sh'                    "#207/#220 regression test wired into the hook suite"
+# #220: root grants Workflow; the teammate-tier leads must NOT (denied in subagents).
+have    'agents/shepherd.md'  '^tools:.*\bWorkflow\b'                   "#220 root (shepherd) frontmatter grants Workflow"
+missing 'agents/engineer.md'  '^tools:.*\bWorkflow\b'                   "#220 engineer frontmatter does NOT grant Workflow (denied in subagents)"
+missing 'agents/conductor.md' '^tools:.*\bWorkflow\b'                   "#220 conductor frontmatter does NOT grant Workflow (denied in subagents)"
+# Leg 2 — runtime doctrine agrees: conductor §DISPATCH MODE + auditor grading.
+have    agents/conductor.md 'unavailable inside subagents'             "#220 conductor §DISPATCH MODE: Workflow unavailable one tier down"
+have    agents/auditor.md   'EXPECTED and CORRECT'                     "#220 auditor grades teammate workflow_tool:absent as expected/correct"
+have    agents/auditor.md   '#220'                                     "#220 auditor §Dispatch-substrate cites the partition"
 # Leg 3 — documentation.
-have skills/shepherd/references/invariant-matrix.md 'LEAD_MANDATED_WORKFLOW|test_lead_workflow_tool' "#207 invariant-matrix row documents the lint+test pair"
+have skills/shepherd/references/invariant-matrix.md 'LEAD_MANDATED_WORKFLOW|test_lead_workflow_tool' "#207/#220 invariant-matrix row documents the lint+test pair"
 
 echo "== #206 mailbox retired → dedicated shctx signal channel (v6.3.7 completion) =="
 # The v6.3.6 seed-ready narrowing was a partial workaround over the generic

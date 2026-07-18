@@ -35,6 +35,7 @@ validate_state() {
 usage() {
   cat <<'USAGE'
 shctx teammate register <name> --team=<t> --type=<role> [--session=<uuid>] [--pane=<id>]
+shctx teammate register-lead <team_id> --session=<lead_session_id>
 shctx teammate heartbeat <name> [--phase=<p>] [--tool=<t>] [--note=<n>] [--state=<s>]
 shctx teammate state <name> [--set=<s>]     # s ∈ init|in-progress|error|complete|idle
 shctx teammate status <name>
@@ -107,6 +108,28 @@ case "$sub" in
         status       = CASE WHEN teammates.status IN ('retired','crashed') THEN 'booting' ELSE teammates.status END;"
     # Echo the canonical row id (existing on conflict, freshly inserted otherwise).
     sqlite3 "$DB" "SELECT id FROM teammates WHERE project_id='$pid' AND team_name='$e_team' AND teammate_name='$e_name';"
+    ;;
+  register-lead)
+    # #223: record which session is the LEAD of a spawned team, so
+    # coordinate_drive_guard.sh can tell "I am the recorded lead of a live
+    # team" apart from "I am a bystander session sharing this DB with someone
+    # else's live team". Spawn refuses a second concurrent team, so team_name
+    # is a safe natural key — one row per live spawned team (migration 0021).
+    team="$1"; shift || true
+    session=""
+    while [[ $# -gt 0 ]]; do case "$1" in
+      --session=*) session="${1#*=}";;
+      *) echo "unknown flag: $1" >&2; exit 2;;
+    esac; shift; done
+    [[ -n "$team" && -n "$session" ]] || { echo "ERR: register-lead requires <team_id> --session=<lead_session_id>" >&2; usage; exit 2; }
+    pid="$(project_id)"
+    ts="$(now_ms)"
+    e_team="$(esc "$team")"; e_session="$(esc "$session")"
+    sqlite3 "$DB" "INSERT INTO spawn_leads (team_name, project_id, session_id, spawned_at)
+      VALUES ('$e_team','$pid','$e_session',$ts)
+      ON CONFLICT(team_name) DO UPDATE SET
+        session_id  = excluded.session_id,
+        spawned_at  = excluded.spawned_at;"
     ;;
   heartbeat)
     name="$1"; shift

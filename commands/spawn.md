@@ -14,7 +14,7 @@ post-sprint merge; teammates execute lanes and report up.
 
 Each spawned `@conductor` executes its lane by running the wave routine
 (`skills/shepherd/references/wave-routine.md`) ABBREVIATED — no planning phase, just
-waves of file-disjoint `@coder`+`@auditor` Dynamic Workflows driven to the lane's
+waves of file-disjoint `@coder`+`@auditor` in-context `Agent()` batches driven to the lane's
 acceptance (`agents/conductor.md §Lane walk`). It is the SAME routine root runs
 directly under `/shepherd:start` (the fallback when this teammate substrate is
 unavailable), differing only in scope (one lane vs the sprint) and git-integration
@@ -121,7 +121,8 @@ SendMessage(to: lead, halt_code: <code>, blocking: true)):
     general-purpose/Explore/Chat → DISPATCH-MISSING-SUBAGENT-TYPE
   - flock dispatch outside the closed six-role flock → DISPATCH-OFF-FLOCK
   - spawning a teammate (you are not a lead) → TEAMMATE-NESTING-ATTEMPT
-  - git commit/push/branch -d/rebase/worktree add/remove → TEAMMATE-GIT-WRITE
+  - git merge/rebase/cherry-pick onto a shared branch, or worktree add/remove/prune → TEAMMATE-GIT-WRITE
+    (in-worktree git add/commit AND your OWN lane-branch git push are YOURS — agents/conductor.md §Lane walk)
   Full contract: agents/conductor.md §Hard prohibitions.
 ```
 
@@ -184,6 +185,9 @@ Immediately after the spawn instruction — BEFORE polling liveness — root wri
 row into the canonical store, once per spawned teammate:
 
 ```
+# First stamp THIS root session as the spawn lead (#223) so the coordinate-drive
+# Stop guard fires only for the real lead, never a concurrent bystander session:
+shctx teammate register-lead {team_id} --session={main_chat_session_id}
 shctx teammate register <name> --team={team_id} --type=conductor [--session={team_session}]
 # and, for the self-contained engineer teammate:
 shctx teammate register {engineer_name} --team={team_id} --type=engineer
@@ -194,7 +198,9 @@ idle status, and the row `shctx teammate liveness` reads. Native-Agent teammates
 NOT self-register, so WITHOUT this step the `teammates` table stays empty: `liveness` returns
 nothing for live lanes and every `TeammateIdle` fires unmatched, flooding the lead with idle noise
 that masks real stalls (#183). Registration is idempotent (upsert on `(team, name)`), so a refresh
-or a teammate's own late self-register is safe.
+or a teammate's own late self-register is safe. The `register-lead` line records THIS root session as the
+team's lead so `hooks/scripts/coordinate_drive_guard.sh` re-engages only the real lead on a passive-wait
+stop — never an unrelated concurrent session that merely shares the per-repo registry DB (#223).
 
 **Declare progress, don't infer it (#193/#197).** Liveness derives "crashed" from the heartbeat
 gap, but teammates don't heartbeat on a cadence, so a healthy long-running lane reads

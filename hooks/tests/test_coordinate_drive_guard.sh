@@ -75,16 +75,24 @@ CREATE TABLE teammates (
 CREATE VIEW v_teammates_live AS
   SELECT t.*, (strftime('%s','now')*1000 - t.last_seen_at) AS ms_since_seen
   FROM teammates t WHERE t.status NOT IN ('crashed','retired');
+CREATE TABLE spawn_leads (
+  team_name TEXT PRIMARY KEY, session_id TEXT, spawned_at INTEGER
+);
 SQL
 
 STALE=$(( NOW - 600000 ))   # 10 min ago — past the guard's 5-min live window
-reset_db() { sqlite3 "$DB" "DELETE FROM teammates;" >/dev/null 2>&1; rm -f .artifacts/tmp/coordinate_drive_guard.*.count 2>/dev/null || true; }
+reset_db() { sqlite3 "$DB" "DELETE FROM teammates; DELETE FROM spawn_leads;" >/dev/null 2>&1; rm -f .artifacts/tmp/coordinate_drive_guard.*.count 2>/dev/null || true; }
 # add_teammate <name> <status> [declared_state] [last_seen_ms] [session_id]
 add_teammate() {
   local ds="NULL"; [[ -n "${3:-}" ]] && ds="'$3'"
   local seen="${4:-$NOW}"
   local sid="NULL"; [[ -n "${5:-}" ]] && sid="'$5'"
   sqlite3 "$DB" "INSERT INTO teammates (id,team_name,teammate_name,agent_type,session_id,spawned_at,last_seen_at,status,declared_state) VALUES ('$1','team','$1','conductor',$sid,$NOW,$seen,'$2',$ds);" >/dev/null 2>&1
+}
+# add_lead <lead_session_id> — records <lead_session_id> as the #223 recorded
+# lead of team_name='team' (matching add_teammate's hardcoded team_name).
+add_lead() {
+  sqlite3 "$DB" "INSERT OR REPLACE INTO spawn_leads (team_name,session_id,spawned_at) VALUES ('team','$1',$NOW);" >/dev/null 2>&1
 }
 guard() { printf '{"hook_event_name":"Stop","session_id":"%s"}' "$1" | bash "$SCRIPT" 2>/dev/null; }
 
@@ -186,6 +194,25 @@ if ! is_block "$out"; then pass "declared complete: no block (excluded from live
 total=$((total+1)); reset_db; add_teammate "busy" "idle" "in-progress" "$STALE" "tm-busy"
 out=$(guard "root-3")
 if is_block "$out"; then pass "declared in-progress (stale): BLOCK (not a ghost)"; else fail "declared in-progress (stale): BLOCK" "out=$out"; fi
+
+# ---------------------------------------------------------------------------
+# 12. (#223) BYSTANDER-EXEMPT: a live idle teammate exists, but the recorded
+#     spawn_leads lead for that team is a DIFFERENT session than the one
+#     stopping. The stopping session is conclusively a bystander sharing this
+#     repo's DB with someone else's spawn — must NEVER block.
+# ---------------------------------------------------------------------------
+total=$((total+1)); reset_db; add_teammate "lane-a" "idle"; add_lead "root-lead"
+out=$(guard "root-bystander")
+if ! is_block "$out"; then pass "#223 bystander (different recorded lead): no block"; else fail "#223 bystander: no block" "out=$out"; fi
+
+# ---------------------------------------------------------------------------
+# 13. (#223) LEAD-STILL-BLOCKS: a live idle teammate exists, and the recorded
+#     spawn_leads lead for that team IS the session stopping. The drive-guard
+#     contract still applies to its own lead → must still BLOCK.
+# ---------------------------------------------------------------------------
+total=$((total+1)); reset_db; add_teammate "lane-a" "idle"; add_lead "root-lead"
+out=$(guard "root-lead")
+if is_block "$out"; then pass "#223 recorded lead: STILL BLOCKS"; else fail "#223 recorded lead: STILL BLOCKS" "out=$out"; fi
 
 echo "—— $((total-fails))/$total passed ——"
 exit "$fails"
