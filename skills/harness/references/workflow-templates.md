@@ -5,10 +5,13 @@ description: Compile-down model, native-coordination replacement matrix, the wor
 # Workflow templates — compile-down, self-check, and the pattern library
 
 Every Stage Graph is built from the six patterns below, projected via
-compile-down onto a native Dynamic Workflow. `skills/harness/SKILL.md
-§Workflow tool`/`§Tool presence` own the platform facts (tool, ≤16/1000
-caps, presence test); this file owns the compile contract, the self-check,
-and the template vocabulary.
+compile-down onto a native Dynamic Workflow AT ROOT; a teammate-conductor
+projects the identical pattern shape via in-context `Agent()` dispatch
+instead, since `Workflow` is unconditionally denied inside any spawned role
+(#220, CC 2.1.212 — `skills/harness/SKILL.md §Workflow tool`).
+`skills/harness/SKILL.md §Workflow tool`/`§Tool presence` own the platform
+facts (tool, ≤16/1000 caps, presence test); this file owns the compile
+contract, the self-check, and the template vocabulary.
 
 ## Pattern library
 
@@ -136,13 +139,17 @@ though it never reaches it (#180).
 
 ## Compile-down model
 
-Compile-down is the primary execution path for gate-free agent-fanout
-segments (`shctx graph compile`); hand-rolled in-context dispatch is the
-fallback only when the Workflow tool is confirmed absent. Both root and
-each teammate-conductor compile their own gate-free fanout: root compiles
-cross-lane/root-tier segments; each teammate-conductor compiles its own
-lane's fanout via `shctx graph compile --segment=<entry> --verify` → run the
-emitted script → `shctx graph mark`.
+Compile-down (`shctx graph compile`) is ROOT's execution path for gate-free
+agent-fanout segments — hand-rolled in-context dispatch is root's fallback
+ONLY when the Workflow tool is confirmed absent. Root compiles gate-free
+fanout to a Dynamic Workflow (cross-lane/root-tier segments,
+`/shepherd:start`) via `shctx graph compile --segment=<entry> --verify` →
+run the emitted script → `shctx graph mark`. A teammate-conductor NEVER
+calls `Workflow` (#220, CC 2.1.212 — `skills/harness/SKILL.md §Workflow
+tool`) — it dispatches its lane's fanout in-context via `Agent()`, the same
+batch shape `shctx graph compile` would emit; `--verify` MAY still validate
+that shape before dispatching, never to produce a script that gets
+executed.
 
 **The compile unit** is a maximal subgraph of agent-fanout nodes bounded by
 (a) operator-approval boundaries (`PLAN-GATE`, `PAUSE` — segment boundaries,
@@ -165,6 +172,12 @@ MUST guarantee:
    main-loop model — the #178 trap, one level removed. `--verify` asserts a pin
    count equal to the expected spawn count and rejects the legacy `agent(s)`
    shape.
+
+These four invariants describe `compile(G_seg)`, root's literal compiler
+output. A teammate-conductor's manual in-context `Agent()` batch is held to
+the SAME four properties by shape-equivalence (§Compile-down model) even
+though it never runs the compiler and never calls `Workflow` (#220) —
+`--verify` MAY check the intended batch against them before dispatch.
 
 Bounded dynamism is permitted (a HOTFIX batch's coder count read from a
 prior agent's cluster analysis); unbounded dynamism is NEVER permitted. A
@@ -219,14 +232,16 @@ effort. Building a second graph reader for this projection instead of sharing
 
 ## Native coordination
 
-Three coordination axes, all native: fan-out ordering runs on Dynamic
-Workflow `await` + bounded `Promise.all` (`shctx graph compile`); teammate
-state/cross-lane messaging runs on Agent Teams `SendMessage`; the worker
-primitive is the subagent (`subagent_type: "shepherd:<role>"`) — the closed
-flock. Execution and teammate-state axes are orthogonal and compose: a
-teammate-conductor's Agent Teams lane compiles its own fanout to a
-workflow; neither subsumes the other — canonical binding
-`skills/shepherd/references/pipeline.md §Lane law`.
+Three coordination axes, all native: root's fan-out ordering runs on
+Dynamic Workflow `await` + bounded `Promise.all` (`shctx graph compile`); a
+teammate-conductor's fan-out ordering runs on in-context `Agent()` dispatch
++ `await`, the same shape, NEVER a compiled script (#220, CC 2.1.212);
+teammate state/cross-lane messaging runs on Agent Teams `SendMessage`; the
+worker primitive is the subagent (`subagent_type: "shepherd:<role>"`) — the
+closed flock. Execution and teammate-state axes are orthogonal and compose:
+a teammate-conductor's Agent Teams lane dispatches its own fanout
+in-context, never compiling it to a workflow; neither subsumes the other —
+canonical binding `skills/shepherd/references/pipeline.md §Lane law`.
 
 **Retired mechanics, replaced.** Three mechanics shepherd used to hand-roll
 are retired, each replaced by a native primitive `skills/context/tests/
@@ -253,35 +268,42 @@ compiled audit step read-only even though the runtime auto-approves edits.
 ## Workflow self-check
 
 `skills/harness/SKILL.md §Tool presence` owns the platform fact (the
-visible-tool-list test, never `ToolSearch`). This section owns what a
-conductor does with that fact when a Stage Graph is in play.
+visible-tool-list test, never `ToolSearch`). This section owns what ROOT
+does with that fact when a Stage Graph is in play. **This self-check is
+ROOT-ONLY (#220, CC 2.1.212):** `Workflow` is unconditionally denied inside
+any spawned role, so a teammate-conductor has nothing to check and nothing
+to compile — it always dispatches its lane's gate-free fanout in-context
+via `Agent()` (`skills/shepherd/references/wave-routine.md §Abbreviated
+conductor`). Nothing below applies to a teammate.
 
-**Record once per session.** On the first `/shepherd:*` turn, record
+**Record once per session.** On the first `/shepherd:*` turn, root records
 `workflow_tool: present: true|false` (the `agent_fillin.workflow_tool`
-boolean field) in orientation, and surface it in the session-start status
-line as `workflow_tool=present|absent`. A teammate conductor carries the
-same field — plus, per segment, whether it compiled or fell back — in
-every `WAVE-COMPLETE` payload, so root can catch a lane that hand-rolled
-fanout where the tool was present. It does not change mid-session.
+boolean field) in orientation, and surfaces it in the session-start status
+line as `workflow_tool=present|absent`. It does not change mid-session. A
+teammate-conductor's `WAVE-COMPLETE` payload carries NO `workflow_tool`
+field and no per-segment compiled-or-fell-back marker — it has neither to
+report; root's own compile-vs-fallback state is tracked solely against
+root's own cross-lane/root-tier segments.
 
-**First-action placement.** A teammate conductor performs the check at lane
-start — the same first action that opens the lane's own FOCUS-LOOP
-(`skills/motivation/SKILL.md §FOCUS-HEARTBEAT`). Root performs it before
-compiling any cross-lane or root-tier gate-free segment it owns.
+**First-action placement.** Root performs the check before compiling any
+cross-lane or root-tier gate-free segment it owns — the check is
+meaningless before that first compile decision and never repeats after.
 
-**Compiling is the conductor's own benefit, not a tax.** When present,
-compiling keeps intermediate agent results out of the conversation (they
-live in script variables), runs agents in parallel while the conductor
-stays responsive, and stays mechanically faithful to the critic-gated
-graph. Choosing the in-context fallback while the tool is
-present is `PRIMITIVE-INVERSION` (`skills/shepherd/references/pipeline.md
-§Lane law`) — reached only on confirmed runtime failure, never as a
-shortcut.
+**Compiling is root's own benefit, not a tax.** When present, compiling
+keeps intermediate agent results out of the conversation (they live in
+script variables), runs agents in parallel while root stays responsive, and
+stays mechanically faithful to the critic-gated graph. Root choosing the
+in-context fallback while the tool is present is `PRIMITIVE-INVERSION`
+(`skills/shepherd/references/pipeline.md §Lane law`) — a ROOT-TIER-ONLY
+halt, reached only on confirmed runtime failure, never as a shortcut. A
+teammate-conductor's in-context `Agent()` dispatch is NEVER this violation,
+at any time — it is the required mode regardless of `Workflow` presence
+(#220).
 
 **Degrade cleanly when genuinely absent.** Same flock, same briefs, same
-graph — walked in-context instead of compiled. Never retry the presence
-check, never report the feature broken; record `present: false` and
-proceed. Reaching for `ToolSearch` on the Workflow tool is the
+graph — root walks it in-context instead of compiling. Never retry the
+presence check, never report the feature broken; record `present: false`
+and proceed. Reaching for `ToolSearch` on the Workflow tool is the
 `WORKFLOW-SELFCHECK-TOOLSEARCH` anti-pattern: `ToolSearch` resolves deferred
 tools only, and `Workflow` is top-level, never a `ToolSearch` target, so a
 nil result means the wrong index was queried, not that the tool is absent.

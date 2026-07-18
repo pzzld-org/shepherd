@@ -216,7 +216,12 @@ else:
         agents = n["agents"]
         if agents:
             for a in agents:
-                print(f"  • {n['id']:<24} ({n['type']}) — @{a.get('role')} ×{a.get('count',1)}")
+                # Defense-in-depth: `agents` is normalized to dicts by `plan
+                # extract`, but guard here too in case state.json was
+                # hand-edited or pre-dates the fix (GH #225).
+                role = a.get("role") if isinstance(a, dict) else a
+                count = a.get("count", 1) if isinstance(a, dict) else 1
+                print(f"  • {n['id']:<24} ({n['type']}) — @{role} ×{count}")
         else:
             print(f"  • {n['id']:<24} ({n['type']}) — conductor-inline")
     print()
@@ -571,10 +576,13 @@ READONLY_ROLES = {"auditor", "discovery", "critic"}
 def spawns_for_node(nid):
     out = []
     for a in (nodes[nid].get("agents") or []):
-        role  = a.get("role", "coder")
-        count = int(a.get("count", 1) or 1)
-        concerns = a.get("concerns") or a.get("concern")
-        briefs   = a.get("briefs")   or a.get("brief")
+        # Defense-in-depth: `agents` is normalized to dicts by `plan extract`,
+        # but guard here too in case state.json was hand-edited or pre-dates
+        # the fix (GH #225).
+        role  = (a.get("role", "coder") if isinstance(a, dict) else a) or "coder"
+        count = int((a.get("count", 1) if isinstance(a, dict) else 1) or 1)
+        concerns = (a.get("concerns") or a.get("concern")) if isinstance(a, dict) else None
+        briefs   = (a.get("briefs")   or a.get("brief"))   if isinstance(a, dict) else None
         for k in range(count):
             tag = None
             if   isinstance(concerns, list) and k < len(concerns): tag = concerns[k]
@@ -886,7 +894,14 @@ for nid,n in nodes.items():
     label = nid if nid == ntype(n) else f"{nid}<br/>{ntype(n)}"
     ag = n.get("agents") or []
     if ag:
-        label += "<br/>" + ", ".join(f"@{a.get('role')}×{a.get('count',1)}" for a in ag)
+        # Defense-in-depth: `agents` is normalized to dicts by `plan extract`,
+        # but guard here too in case state.json was hand-edited or pre-dates
+        # the fix (GH #225).
+        label += "<br/>" + ", ".join(
+            f"@{(a.get('role') if isinstance(a, dict) else a)}"
+            f"×{(a.get('count', 1) if isinstance(a, dict) else 1)}"
+            for a in ag
+        )
     l,r = ("{{","}}") if not is_fanout(n) else ("[","]")   # hexagon = seam, box = fanout
     L.append(f'  {mid(nid)}{l}"{label}"{r}')
 for e in edges:

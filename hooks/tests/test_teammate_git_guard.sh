@@ -7,7 +7,7 @@
 #   3. Root session (not in teammates table) → PASS for git merge.
 #   4. Teammate session + git merge → DENY with TEAMMATE-GIT-WRITE.
 #   5. Teammate session + git rebase → DENY with TEAMMATE-GIT-WRITE.
-#   6. Teammate session + git push → DENY with TEAMMATE-GIT-WRITE.
+#   6. Teammate session + git push → PASS (publishes its OWN lane branch — #222).
 #   7. Teammate session + git cherry-pick → DENY with TEAMMATE-GIT-WRITE.
 #   8. Teammate session + git add → PASS (in-worktree local commit — allowed).
 #   9. Teammate session + git commit → PASS (in-worktree local commit — allowed).
@@ -149,14 +149,17 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 5. Teammate + git push → DENY.
+# 5. Teammate + git push → PASS (v6.3.9 #222 — a conductor is a detached manager
+#    that commits AND pushes its OWN lane branch so root harvests a clean, final
+#    product; only integration onto dev (merge/rebase/cherry-pick) and worktree
+#    lifecycle stay root's LANE-INTEGRATE seam).
 # ---------------------------------------------------------------------------
 total=$((total+1))
 out=$(run_hook "$(P_BASH_CMD "$TM_SESSION" 'git push origin lane-a')")
-if is_deny "$out" && has_code "$out"; then
-  pass "teammate + git push: DENY + TEAMMATE-GIT-WRITE"
+if ! is_deny "$out"; then
+  pass "teammate + git push: PASS (lane-branch publish — #222)"
 else
-  fail "teammate + git push: DENY + TEAMMATE-GIT-WRITE" "out=${out:0:120}"
+  fail "teammate + git push: PASS (lane-branch publish — #222)" "unexpected deny: ${out:0:120}"
 fi
 
 # ---------------------------------------------------------------------------

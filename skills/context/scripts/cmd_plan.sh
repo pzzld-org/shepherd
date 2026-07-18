@@ -143,7 +143,29 @@ for n in doc:
     in_preds = n.get("in_predicates") or []
     parallel_with = n.get("parallel_with") or []
     out_edges = n.get("out_edges") or []
-    agents = n.get("agents") or []
+    # Normalize agents entries HERE (the single writer of state.json's per-node
+    # `agents` field) so every downstream reader (graph next/compile/diagram,
+    # plan topology) can assume a dict with a `role` key. Plan authors may write
+    # the natural shorthand `agents: [engineer]` (a bare role-name string, valid
+    # YAML) — expand that to {"role": "engineer", "count": 1}. A mapping must
+    # carry a truthy `role`; count coerces to int (default 1). Any other shape
+    # (e.g. `{count: 3}` with no role, or a bare int) is a malformed plan —
+    # fail extraction now instead of AttributeError-ing deep in `shctx graph`.
+    raw_agents = n.get("agents") or []
+    if not isinstance(raw_agents, list):
+        sys.exit(f"ERROR: node {nid} has malformed agents entry: {raw_agents!r} "
+                 "(expected a role-name string or a mapping with a role key)")
+    agents = []
+    for a in raw_agents:
+        if isinstance(a, str):
+            agents.append({"role": a, "count": 1})
+        elif isinstance(a, dict) and a.get("role"):
+            entry = dict(a)
+            entry["count"] = int(a.get("count", 1) or 1)
+            agents.append(entry)
+        else:
+            sys.exit(f"ERROR: node {nid} has malformed agents entry: {a!r} "
+                     "(expected a role-name string or a mapping with a role key)")
     state = "done" if n.get("type") == "SEED-VERIFY" else "pending"
     # Mark nodes with no in_predicates as ready, others blocked
     if state == "pending" and not in_preds:
@@ -218,7 +240,13 @@ for nid, n in state["nodes"].items():
 
 def pn(n):
     pw = ", ".join(n.get("parallel_with") or []) or "—"
-    agents = ", ".join(f"{a.get('role')}x{a.get('count',1)}" for a in (n.get("agents") or [])) or "inline"
+    # Defense-in-depth: `agents` is normalized to dicts by `plan extract`, but
+    # guard here too in case state.json was hand-edited or pre-dates the fix.
+    agents = ", ".join(
+        f"{(a.get('role') if isinstance(a, dict) else a)}"
+        f"x{(a.get('count', 1) if isinstance(a, dict) else 1)}"
+        for a in (n.get("agents") or [])
+    ) or "inline"
     return f"{n['id']:<24} {n['type']:<24} {agents:<24} parallel:[{pw}]"
 
 if fmt == "md":
@@ -279,6 +307,18 @@ for nid, n in nodes.items():
             problems.append(f"node {nid} parallel_with {peer} missing")
         elif nid not in (nodes[peer].get("parallel_with") or []):
             problems.append(f"parallel_with not mutual: {nid} <-> {peer}")
+
+# 5. Every agents entry must be a role-name string, or a mapping with a
+#    truthy `role` key. Catches plans that bypassed a fixed `plan extract`
+#    (e.g. a hand-edited or pre-fix state.json) so `validate` never reports
+#    OK for a graph that will AttributeError in `shctx graph`.
+for nid, n in nodes.items():
+    for a in (n.get("agents") or []):
+        if isinstance(a, str):
+            continue
+        if isinstance(a, dict) and a.get("role"):
+            continue
+        problems.append(f"node {nid} has malformed agents entry: {a!r}")
 
 # 4. Acyclic check (Kahn): topological sort by in_predicates
 remaining = {nid: set(p["predecessor"] for p in n["in_predicates"])

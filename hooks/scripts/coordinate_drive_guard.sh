@@ -76,6 +76,39 @@ fi
 [[ "$LIVE" =~ ^[0-9]+$ ]] || LIVE=0
 [[ "$LIVE" -eq 0 ]] && exit 0
 
+# --- #223: lead-only gate. A shepherd.db is scoped PER REPO, not per session —
+# two unrelated sessions (e.g. one that spawned a team, and a second,
+# unrelated session opened in the same repo) can share it. Before #223 this
+# guard only ever exempted registered TEAMMATES (#197 above); a non-teammate
+# BYSTANDER session reading the very same v_teammates_live live/idle counts
+# had no way to tell "I am the lead who spawned this team" apart from "someone
+# else spawned this team and I merely share their DB" — so it got nudged with
+# [coordinate-active-drive] on every turn despite owning no team to drain.
+#
+# MY_LEAD  = # of live teams (per v_teammates_live) for which THIS session is
+#            the recorded spawn_leads.session_id.
+# OTHER_LEAD = # of live teams for which a DIFFERENT session is the recorded
+#            lead.
+#
+# If I lead none of the live teams (MY_LEAD=0) AND some OTHER session is
+# recorded as lead of at least one (OTHER_LEAD>0), I am conclusively a
+# bystander to someone else's team → exit 0 (never trap a session that isn't
+# the drive-guard contract's audience).
+#
+# CONSERVATIVE BY DESIGN — this is NOT a plain fail-open-on-no-match. When NO
+# lead is recorded at all for the live team(s) (a pre-#223 DB that predates
+# this migration, or a spawn that never called `teammate register-lead`),
+# OTHER_LEAD is 0 and this gate does nothing: control falls through to the
+# pre-#223 behavior below (proceed to the idle/actionable check) rather than
+# silently no-op a genuine lazy-root stop just because lead data is absent.
+# Uses the identical single-quote escaping idiom as the SELF_TM query above so
+# quoting matches.
+MY_LEAD="$(sqlite3 "$DB" "SELECT count(*) FROM spawn_leads sl WHERE sl.session_id='${SESSION//\'/\'\'}' AND sl.team_name IN (SELECT DISTINCT team_name FROM v_teammates_live);" 2>/dev/null || echo 0)"
+OTHER_LEAD="$(sqlite3 "$DB" "SELECT count(*) FROM spawn_leads sl WHERE sl.session_id<>'${SESSION//\'/\'\'}' AND sl.team_name IN (SELECT DISTINCT team_name FROM v_teammates_live);" 2>/dev/null || echo 0)"
+[[ "$MY_LEAD" =~ ^[0-9]+$ ]] || MY_LEAD=0
+[[ "$OTHER_LEAD" =~ ^[0-9]+$ ]] || OTHER_LEAD=0
+[[ "$MY_LEAD" -eq 0 && "$OTHER_LEAD" -gt 0 ]] && exit 0
+
 # --- actionable, root-clearable coordinate state ----------------------------
 # The ONLY root-clearable state this guard keys on is an IDLE teammate whose
 # payload root must materialize. Undrained "mail" is deliberately NOT a signal

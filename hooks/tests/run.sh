@@ -543,5 +543,15 @@ else
   fails=$((fails+1))
 fi
 
+echo "== test_v639_wiring.sh (v6.3.9 — #220-#225 dev.6 remediation wiring) =="
+total=$((total+1))
+if v639_out=$(bash "$TESTS_DIR/test_v639_wiring.sh" 2>&1); then
+  printf '  PASS  %s\n' "v639-doctrine-wiring"
+else
+  printf '  FAIL  %-50s\n' "v639-wiring"
+  printf '%s\n' "$v639_out" | sed 's/^/        /'
+  fails=$((fails+1))
+fi
+
 echo "—— $((total-fails))/$total passed ——"
 exit "$fails"

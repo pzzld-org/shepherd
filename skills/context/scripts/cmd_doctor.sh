@@ -73,6 +73,28 @@ if [[ -d "$repo/.shepherd" && -d "$repo/.artifacts" ]]; then
     "remove $unused/ or run 'shctx init --$( echo "$unused" | tr -d '.' )' to switch"
 fi
 
+# Linked-worktree scoping (#221): the registry + config resolve to the MAIN
+# worktree (shctx_repo_root via --git-common-dir), shared across every lane
+# worktree. When doctor runs from inside a linked worktree, confirm the shared
+# root — and WARN on a STRAY per-worktree DB, the pre-#221 symptom where
+# --show-toplevel scoped resolution into the lane worktree and auto-vivified an
+# empty shepherd.db there.
+if shctx_in_subworktree; then
+  wt_top="$(git rev-parse --show-toplevel 2>/dev/null || echo '?')"
+  stray=""
+  for d in "$wt_top/.shepherd" "$wt_top/.artifacts"; do
+    [[ "$d" == "$root" ]] && continue
+    [[ -e "$d/shepherd.db" || -e "$d/root.db" ]] && stray="${stray:+$stray, }$d"
+  done
+  if [[ -n "$stray" ]]; then
+    add warn ns "stray worktree DB" \
+      "linked worktree carries its own registry ($stray); the shared main registry is $root" \
+      "remove the stray dir(s) — the pre-#221 resolver auto-created empty per-worktree DBs; the main registry is authoritative"
+  else
+    add ok ns "linked worktree" "cwd is a linked worktree ($wt_top); registry+config resolve to shared main root ($repo)" ""
+  fi
+fi
+
 pjson="$(shctx_project_id_path)"
 if [[ -f "$pjson" ]]; then
   pid=$(jq -r '.id' "$pjson" 2>/dev/null || echo "")

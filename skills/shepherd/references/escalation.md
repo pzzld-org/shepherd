@@ -121,7 +121,7 @@ the bare name.
 - `TOURNAMENT-CONTAMINATION`: judge saw another candidate's
 - `COMPOSITION-TOO-DEEP`: nested dispatch too deep
 - `WAVE-GATE-NOT-RELEASED`: gate never released
-- `WAVE-COMPLETE-UNVERIFIED`: teammate claimed `WAVE-COMPLETE` but `git -C <lane-worktree> log <BASE-COMMIT-EXPECTED>..HEAD` is empty (branch + worktree HEAD still at base) — refuse the wave, do not release the gate, probe the teammate (#152)
+- `WAVE-COMPLETE-UNVERIFIED`: teammate claimed `WAVE-COMPLETE` but `git -C <lane-worktree> log <BASE-COMMIT-EXPECTED>..HEAD` is empty (branch + worktree HEAD still at base) — refuse the wave, do not release the gate, probe the teammate (#152). Also refuse if the payload's `git_custody.committed` is `false`, `commit_shas` is empty, or `git_custody` is omitted — the conductor's own attestation disagreeing with the committed-lane model is refused before the git-log cross-check even runs (#222)
 - `CROSS-TEAMMATE-DISPUTE`: teammates read scope differently
 - `SEED-DRIFT-DETECTED`: substantive drift (theme/money-path/secret boundary) — escalate, never rewrite intent
 - `SEED-DRIFT-MECHANICAL`: fixable premise slip (moved path, stale symbol) — verify, amend, re-fire
