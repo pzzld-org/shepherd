@@ -296,7 +296,7 @@ See [`docs/integration.md`](docs/integration.md) for the full model.
 | `skills/context/` | The `shctx` runtime: migrations, views, bash implementation. |
 | `services/{llm,eval}/` | Self-contained: the local-Claude-Code LLM call and the eval harness. |
 | `hooks/hooks.json` + `hooks/scripts/` | Lifecycle hooks; `bash hooks/tests/run.sh`. |
-| `docs/{configuration,integration,customization}.md` | Operator-facing documentation. |
+| `docs/{configuration,integration,customization,permissions,memory}.md` | Operator-facing documentation. |
 | `examples/{minimal,rust-service}/` | Starter config and a worked multi-crate example. |
 
 ---
