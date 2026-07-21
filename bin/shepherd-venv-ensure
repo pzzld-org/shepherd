@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# bin/shepherd-venv-ensure -- idempotent shepherd_cli venv bootstrap.
+#
+# Installs/refreshes the services/cli poetry venv so the canonical `shepherd`
+# CLI is importable without a manual `poetry install`. Diffs the bundled
+# services/cli/pyproject.toml against a stamp from the previous run and only
+# re-installs when it actually changed, so repeated calls (the SessionStart
+# hook calls this every session) are cheap and safe to run by hand. Also
+# re-installs when the venv itself is missing (e.g. the plugin dir was purged
+# on update), so a stale stamp never leaves the wrapper with no interpreter.
+set -eu -o pipefail
+
+if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ]; then
+  ROOT="$CLAUDE_PLUGIN_ROOT"
+else
+  SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  ROOT="$(dirname "$SELF")"
+fi
+
+CLI_DIR="$ROOT/services/cli"
+PYPROJECT="$CLI_DIR/pyproject.toml"
+VENV_DIR="$CLI_DIR/.venv"
+
+# The stamp lives under ${CLAUDE_PLUGIN_DATA} (survives a plugin update, unlike
+# ${CLAUDE_PLUGIN_ROOT}); default to ~/.shepherd, the user-wide home.
+DATA_DIR="${CLAUDE_PLUGIN_DATA:-$HOME/.shepherd/plugin-data}"
+STAMP_DIR="$DATA_DIR/cli"
+STAMP_FILE="$STAMP_DIR/pyproject.toml.installed"
+
+if [ ! -f "$PYPROJECT" ]; then
+  echo "shepherd-venv-ensure: $PYPROJECT not found" >&2
+  exit 1
+fi
+
+mkdir -p "$STAMP_DIR"
+
+if [ -d "$VENV_DIR" ] && [ -f "$STAMP_FILE" ] && cmp -s "$PYPROJECT" "$STAMP_FILE"; then
+  echo "shepherd-venv-ensure: cli venv up to date (pyproject.toml unchanged)"
+  exit 0
+fi
+
+if ! command -v poetry >/dev/null 2>&1; then
+  echo "shepherd-venv-ensure: poetry not found on PATH -- skipping venv install (the wrapper falls back to 'python3 -m shepherd_cli')" >&2
+  exit 0
+fi
+
+if poetry -C "$CLI_DIR" install >&2; then
+  cp "$PYPROJECT" "$STAMP_FILE"
+  echo "shepherd-venv-ensure: cli venv installed/refreshed"
+else
+  echo "shepherd-venv-ensure: poetry install failed -- the wrapper falls back to 'python3 -m shepherd_cli'" >&2
+  exit 0
+fi

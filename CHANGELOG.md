@@ -4,6 +4,23 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v6.4.0 — 2026-07-21
+
+**Hardening + the CLI consolidates onto a single canonical Python surface.** The command-line interface moves onto the `shepherd` Python CLI (`services/cli`), retiring the loose `shctx` shell layer behind one entrypoint so future buildouts get consistency, real libraries, and community tooling. A user-wide `~/.shepherd` home, self-containment fixes, teammate engagement loops, and the dev.5–7 issue batch land alongside. (Sprint in progress; sections appended as work lands.)
+
+### New
+
+- **`bin/shepherd` is the single canonical CLI entrypoint (item 3).** A thin wrapper that resolves `${CLAUDE_PLUGIN_ROOT}`, prefers `poetry -C services/cli run shepherd`, and falls back to `python3 -m shepherd_cli` when poetry is absent — the same self-contained pattern the `myfi` plugin proved. The Python package (`shepherd_cli`) becomes the sole owner of CLI logic; the `cmd_*.sh` shell scripts are retired behind it (parity-gated; port in progress).
+- **Auto-venv under `~/.shepherd` (item 1).** `bin/shepherd-venv-ensure` bootstraps the `services/cli` poetry venv idempotently (stamp-diff on `pyproject.toml`; re-installs when the venv is missing) with the stamp under `${CLAUDE_PLUGIN_DATA:-$HOME/.shepherd/plugin-data}` so it survives a plugin update. A new `SessionStart` hook (`hooks/scripts/session_venv.sh`) keeps it fresh — gated on a shepherd project, fail-open.
+
+### Docs
+
+- **README calls out `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` (item 6).** A prominent Install note plus two FAQ rows: the execution path runs entirely through Agent-Teams teammate-conductors, which are experimental and off by default; without the variable `/shepherd:spawn` cannot spawn a teammate. README version reference corrected 6.3.3 → 6.4.0.
+
+### Changed
+
+- **`services/cli` version 6.3.7 → 6.4.0**, description updated to name it the canonical CLI rather than a surface "coexisting with bash shctx".
+
 ## v6.3.9 — 2026-07-18
 
 **The six token-costing bugs the dev.6 shepherd session filed after v6.3.8 shipped (#220–#225) are closed as the patch's pillars: three real code fixes (shctx worktree-DB race, `graph next` crash, a concurrent-session Stop-loop) and a teammate-tier doctrine reconciliation grounded in the current Claude Code harness (Workflow is denied inside subagents; conductors commit AND push their own lane).**

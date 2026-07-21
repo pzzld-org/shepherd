@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "shepherd-cli"
-version = "6.3.7"
-description = "Typer-based Python CLI for shepherd teammate liveness, coexisting with the bash shctx SQL schema."
+version = "6.4.0"
+description = "The canonical Python CLI for shepherd: the single command surface over the per-project SQLite registry, replacing the legacy bash shctx shell layer."
 authors = ["Shepherd"]
 readme = "README.md"
 packages = [{ include = "shepherd_cli" }]
