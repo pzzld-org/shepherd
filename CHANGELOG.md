@@ -20,6 +20,8 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 ### Changed
 
 - **`services/cli` version 6.3.7 → 6.4.0**, description updated to name it the canonical CLI rather than a surface "coexisting with bash shctx".
+- **`Workflow` ships in-tree on both teammate leads — `@engineer` + `@conductor` (#233).** Reverses the v6.3.9/#220 tier partition per operator decision: the manual 6.3.8 grant that 6.3.9 stripped is now canonical, so a release never clobbers it again. The grant is INERT at runtime today — Workflow is still denied inside a subagent (CC 2.1.212), so the executing fan-out stays in-context `Agent()` — and goes live automatically if the platform lifts the denial; the agent bodies keep that honest. `lint_agent_capabilities.sh` now mandates Workflow on all three leads (`LEAD_MANDATED_WORKFLOW="shepherd engineer conductor"`), `test_lead_workflow_tool.sh` is rewritten to pin it (stripping it from any lead fails), and `test_v636`/`test_v638` wiring reconciled.
+- **Conductor + root shepherd actively run focus + motivation + improvement loops (#236).** The conductor gains temporal self-motivation: a `ScheduleWakeup` grant plus a ground-truth-probe rule so a lost completion notification no longer strands it idle (no root babysits a teammate, and `/goal`/`/loop` are lead-only). Its §Lane walk now runs its own FOCUS-LOOP to the final WAVE-GATE and cites `adapt priors`. Root's standing operating mode — FOCUS-LOOP + drive contract + close-time `shctx adapt roll` — is made explicit in `skills/shepherd/SKILL.md`.
 
 ## v6.3.9 — 2026-07-18
 
