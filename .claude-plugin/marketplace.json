@@ -9,14 +9,14 @@
   },
   "homepage": "https://github.com/FL03/shepherd",
   "repository": "https://github.com/FL03/shepherd.git",
-  "version": "6.4.0",
+  "version": "6.4.1",
   "plugins": [
     {
       "name": "shepherd",
       "category": "development",
       "description": "Sprint-by-sprint version-cycle conductor. Six-agent flock (engineer, critic, coder, auditor, worker, discovery) on a three-section pipeline (INTRODUCTION → BODY → CLOSE), with hardened hooks, hypothesis-driven audits, and a per-project SQLite context registry. Configured per-project via .claude/shepherd.toml.",
       "homepage": "https://github.com/FL03/shepherd",
-      "version": "6.4.0",
+      "version": "6.4.1",
       "source": {
         "source": "github",
         "repo": "FL03/shepherd"
