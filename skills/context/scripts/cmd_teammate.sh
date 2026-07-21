@@ -143,20 +143,20 @@ case "$sub" in
     esac; shift; done
     [[ -z "$state" ]] || validate_state "$state" || exit 2
     ts="$(now_ms)"
-    tid=$(sqlite3 "$DB" "SELECT id FROM teammates WHERE teammate_name='$name' ORDER BY spawned_at DESC LIMIT 1;")
+    tid=$(sqlite3 "$DB" "SELECT id FROM teammates WHERE teammate_name='$(esc "$name")' ORDER BY spawned_at DESC LIMIT 1;")
     [[ -n "$tid" ]] || { echo "ERR: no teammate named $name" >&2; exit 1; }
     # Self-heal the tmux pane id: a teammate's heartbeat runs INSIDE its own pane,
     # so $TMUX_PANE identifies it. COALESCE keeps any value root already set via
     # --pane; this populates it when (as is usual) root spawned without one. First
     # consumer: `shctx panes` observability + the SessionEnd dead-pane cleanup.
     set_pane=""
-    [[ -n "${TMUX_PANE:-}" ]] && set_pane=", tmux_pane_id = COALESCE(tmux_pane_id, '${TMUX_PANE}')"
+    [[ -n "${TMUX_PANE:-}" ]] && set_pane=", tmux_pane_id = COALESCE(tmux_pane_id, '$(esc "${TMUX_PANE}")')"
     # Optional one-call declaration: `heartbeat --state=in-progress` both stamps
     # last_seen_at AND declares the explicit state (0019), so a teammate needs only
     # one call per phase boundary. Omitted → declared_state untouched.
     set_state=""
     [[ -n "$state" ]] && set_state=", declared_state='$state'"
-    sqlite3 "$DB" "UPDATE teammates SET last_seen_at=$ts, status=CASE WHEN status='booting' THEN 'active' ELSE status END${set_pane}${set_state} WHERE id='$tid'; INSERT INTO heartbeats (teammate_id, ts, phase, tool_name, note) VALUES ('$tid', $ts, NULLIF('$phase',''), NULLIF('$tool',''), NULLIF('$note',''));"
+    sqlite3 "$DB" "UPDATE teammates SET last_seen_at=$ts, status=CASE WHEN status='booting' THEN 'active' ELSE status END${set_pane}${set_state} WHERE id='$tid'; INSERT INTO heartbeats (teammate_id, ts, phase, tool_name, note) VALUES ('$tid', $ts, NULLIF('$(esc "$phase")',''), NULLIF('$(esc "$tool")',''), NULLIF('$(esc "$note")',''));"
     ;;
   state)
     # Explicit progress declaration (0019). `state <name>` reads the current value;

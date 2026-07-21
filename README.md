@@ -104,6 +104,15 @@ Everything else — SQLite memory, loop templates, hooks — keeps those three i
 
 ## Install
 
+> [!IMPORTANT]
+> **Agent Teams must be enabled.** Shepherd's execution path (`/shepherd:spawn`) runs entirely through Agent-Teams teammate-conductors, which are an experimental Claude Code feature that is **off by default**. Set `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` in your `settings.json` (or shell environment) or shepherd cannot spawn a single teammate:
+>
+> ```json
+> { "env": { "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1" } }
+> ```
+>
+> Without it, no team is set up at session start and `/shepherd:spawn` has nothing to drive.
+
 ### From the marketplace (recommended)
 
 ```text
@@ -263,7 +272,9 @@ See [`docs/integration.md`](docs/integration.md) for the full model.
 | :--- | :--- |
 | `shepherd.toml` is missing | Create `.claude/shepherd.toml` (see [Configure](#configure)). |
 | `shctx: command not found` | Ships at `skills/context/scripts/`; invoke via `/shepherd:ctx` if symlinked manually. |
-| Do I have to use Agent Teams? | Yes — `/shepherd:spawn` always runs through a teammate-conductor, even for one lane; there's no separate solo mode. |
+| Do I have to use Agent Teams? | Yes — `/shepherd:spawn` always runs through a teammate-conductor, even for one lane; there's no separate solo mode. It is experimental and off by default: set `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` (see [Install](#install)). |
+| `/shepherd:spawn` does nothing / no teammate appears | `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` is unset. Set it to `1` in `settings.json` and restart the session. |
+| Too many permission prompts / a "permission laundering" callout | Auto mode's classifier working as designed. Pre-approve shepherd's routine read-only calls with a `permissions.allow` list — see [`docs/permissions.md`](docs/permissions.md). Never reach for `bypassPermissions` to silence it. |
 | Which model should I use? | Opus for `/shepherd:plant` and the engineer; Sonnet for the rest — shepherd sets these defaults. |
 | My long sprint still drifts | Lower `[focus].heartbeat_actions` (default 20) or set `[focus].heartbeat_interval = "45m"`. |
 | A teammate crashed, left a worktree | Run `/shepherd:cleanup`. |
@@ -285,14 +296,14 @@ See [`docs/integration.md`](docs/integration.md) for the full model.
 | `skills/context/` | The `shctx` runtime: migrations, views, bash implementation. |
 | `services/{llm,eval}/` | Self-contained: the local-Claude-Code LLM call and the eval harness. |
 | `hooks/hooks.json` + `hooks/scripts/` | Lifecycle hooks; `bash hooks/tests/run.sh`. |
-| `docs/{configuration,integration,customization}.md` | Operator-facing documentation. |
+| `docs/{configuration,integration,customization,permissions,memory}.md` | Operator-facing documentation. |
 | `examples/{minimal,rust-service}/` | Starter config and a worked multi-crate example. |
 
 ---
 
 ## Versioning
 
-Semver: **major** = closed-flock contract change; **minor** = new commands/config keys; **patch** = dispatch/brief-template fixes. Current version: **6.3.3**. See [`CHANGELOG.md`](CHANGELOG.md).
+Semver: **major** = closed-flock contract change; **minor** = new commands/config keys; **patch** = dispatch/brief-template fixes. Current version: **6.4.0**. See [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Contributing
 

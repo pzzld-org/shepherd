@@ -186,38 +186,25 @@ for agent_with_agent in planter engineer; do
 done
 
 # ---------------------------------------------------------------------------
-# v6.3.9 / #220 Workflow-tool GRANT partition (supersedes the v6.3.6/#207 +
-# v6.3.8/#217 "every lead grants Workflow" mandate — that mandate was correct
-# only for root). The `Workflow` tool is a TOP-LEVEL-SESSION primitive: it is
-# hard-denied inside subagents ("Workflow is not available inside subagents",
-# CC 2.1.212) regardless of `tools:` presence (presence = offer, not runtime
-# permission). So the grant PARTITIONS by tier:
-#   • ROOT (`shepherd`, `LEAD_MANDATED_WORKFLOW`) drives Dynamic Workflows
-#     directly (/shepherd:start, agents/shepherd.md) — it IS the main session,
-#     NOT a subagent, so it MUST grant Workflow or /shepherd:start is dead on
-#     arrival (the #217 gap). Still pinned.
-#   • The teammate-tier leads (`@engineer`, `@conductor`, `WORKFLOW_TEAMMATE_DENIED`)
-#     are spawned one tier down (native teammate-spawn → subagents), so Workflow
-#     is denied to them at runtime; their first-class fan-out is in-context
-#     `Agent()` (#220). An inert `Workflow` grant would MISLEAD (offer ≠
-#     permission), so they MUST NOT list it. Pinned in the INVERSE.
-# Both halves pinned so neither drifts back (mirror of the CLAIM check).
+# v6.4.0 / #233 Workflow-tool GRANT — all three leads carry it (reverses the
+# v6.3.9/#220 tier partition per operator decision). The `Workflow` tool ships
+# in the `tools:` frontmatter of ROOT (`shepherd`) AND both teammate leads
+# (`@engineer`, `@conductor`). Root drives Dynamic Workflows directly
+# (/shepherd:start). The platform still hard-denies Workflow AT RUNTIME inside a
+# subagent ("Workflow is not available inside subagents", CC 2.1.212), so a
+# teammate lead's grant is INERT today — its executing fan-out remains in-context
+# `Agent()` — but shipping it in-tree (a) stops the release pipeline from
+# clobbering the operator's manual patch (#233's concrete pain), and (b) goes
+# live automatically if the platform ever lifts the denial. The runtime reality
+# is kept HONEST in agents/{conductor,engineer}.md + skills/harness/SKILL.md;
+# this lint only pins that the grant is present and never silently dropped again.
 # ---------------------------------------------------------------------------
-LEAD_MANDATED_WORKFLOW="shepherd"
+LEAD_MANDATED_WORKFLOW="shepherd engineer conductor"
 for role in $LEAD_MANDATED_WORKFLOW; do
   f="$AGENTS_DIR/$role.md"
   [[ -f "$f" ]] || continue   # a missing lead file is flagged by the loops above
   if ! tools_line "$f" | tr ',' '\n' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep -qx 'Workflow'; then
-    note "FAIL $role: root drives Dynamic Workflows directly (/shepherd:start, agents/shepherd.md) but 'tools:' frontmatter does not grant 'Workflow' — #217 regression: /shepherd:start cannot compile a single wave"
-    fails=$((fails+1))
-  fi
-done
-WORKFLOW_TEAMMATE_DENIED="engineer conductor"
-for role in $WORKFLOW_TEAMMATE_DENIED; do
-  f="$AGENTS_DIR/$role.md"
-  [[ -f "$f" ]] || continue
-  if tools_line "$f" | tr ',' '\n' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep -qx 'Workflow'; then
-    note "FAIL $role: teammate-tier lead grants 'Workflow', but it is denied inside subagents (CC 2.1.212, #220) — an inert grant misleads (offer ≠ runtime permission); teammate fan-out is in-context Agent(). Drop 'Workflow' from tools:"
+    note "FAIL $role: lead must grant 'Workflow' in tools: frontmatter (#233 — shipped in-tree so a release never clobbers the operator's patch); it is missing"
     fails=$((fails+1))
   fi
 done
@@ -279,8 +266,8 @@ for tool in $CLAIM_CHECK_TOOLS; do
 done
 
 if [[ "$fails" -gt 0 ]]; then
-  printf 'lint_agent_capabilities: %d violation(s) — read-only mutation-free (GH #74); no destructive verb (GH #84); root grants Workflow, teammate leads do NOT (#220); read-only shctx-runners grant Bash (#207-class); no ungranted-tool claim (v6.2.1)\n' "$fails"
+  printf 'lint_agent_capabilities: %d violation(s) — read-only mutation-free (GH #74); no destructive verb (GH #84); all three leads (shepherd/engineer/conductor) grant Workflow (#233); read-only shctx-runners grant Bash (#207-class); no ungranted-tool claim (v6.2.1)\n' "$fails"
   exit 1
 fi
-printf 'lint_agent_capabilities: OK — read-only trio mutation-free (GH #74); all nine carry no destructive MCP verb (GH #84); root (shepherd) grants Workflow while teammate leads (engineer/conductor) do NOT — denied inside subagents (#220); read-only shctx-runners grant Bash; no profile claims an ungranted tool (v6.2.1)\n'
+printf 'lint_agent_capabilities: OK — read-only trio mutation-free (GH #74); all nine carry no destructive MCP verb (GH #84); all three leads (shepherd/engineer/conductor) grant Workflow in-tree (#233; inert in a teammate at runtime, honest in the bodies); read-only shctx-runners grant Bash; no profile claims an ungranted tool (v6.2.1)\n'
 exit 0

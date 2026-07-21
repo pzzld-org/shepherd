@@ -4,7 +4,7 @@ color: yellow
 model: sonnet
 thinking: high
 description: "Writes production code in one file-disjoint scope per dispatch; verifies context, greps for dupes, then writes; never gates. Use when a plan needs implementing, not reviewing."
-tools: Bash, Edit, Glob, Grep, Read, Skill, Write, mcp__plugin_github_github__get_file_contents, mcp__plugin_github_github__issue_read, mcp__plugin_github_github__issue_write, mcp__plugin_github_github__list_issues, mcp__plugin_github_github__search_code, mcp__plugin_github_github__search_issues
+tools: Bash, Edit, Glob, Grep, Read, Skill, ToolSearch, Write, mcp__plugin_github_github__get_file_contents, mcp__plugin_github_github__issue_read, mcp__plugin_github_github__issue_write, mcp__plugin_github_github__list_issues, mcp__plugin_github_github__search_code, mcp__plugin_github_github__search_issues
 ---
 
 # @coder — Implementation Specialist

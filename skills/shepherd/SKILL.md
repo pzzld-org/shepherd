@@ -1,7 +1,7 @@
 ---
 name: shepherd
 slug: shepherd
-version: 6.3.9
+version: 6.4.0
 description: "Sprint-execution contract for the six-agent shepherd flock — dispatch law, root/sprint contracts, operator surface, principles. Use when running a /shepherd:spawn sprint."
 metadata:
   triggers:
@@ -65,7 +65,7 @@ Work splits across the sprint's three sections, not by agent type:
 - **BODY** (teammate-conductors): root projects the approved plan into lanes (vertical slices across waves), one teammate-conductor per lane via Agent Teams — never a workflow; lane count = teammate count, constant across waves. At each wave boundary a lane `SendMessage`s `WAVE-COMPLETE` and goes idle; root gates, commits, then refreshes the lane with a fresh teammate. Count LANES, never teammate-instances or "lanes per wave."
 - **CLOSE** (root-direct subagents): root aggregates teammate payloads, dispatches the CLOSE-SWARM (3–5 `@auditor`) on the AGGREGATED output, then runs CLOSE-FINALIZE.
 
-In coordinate mode root MUST actively drive (wake → act → probe → yield-to-events every wake), NEVER passive-wait after a dispatch, reserving operator pauses for the enumerated decision points (Stop-hook backstop: `skills/harness/SKILL.md §Capability enforcement`).
+In coordinate mode root MUST actively drive (wake → act → probe → yield-to-events every wake), NEVER passive-wait after a dispatch, reserving operator pauses for the enumerated decision points (Stop-hook backstop: `skills/harness/SKILL.md §Capability enforcement`). This active-drive FOCUS-LOOP plus the close-time `shctx adapt roll` harvest is root's STANDING operating mode from team-liveness to CLOSE-FINALIZE — focus, motivation, and improvement are the default, the Stop hook only a backstop.
 
 Root MUST NOT write source code, dispatch `@coder` directly (except in root-drives-workflows mode — `references/wave-routine.md`), nest a `/shepherd:spawn`, or silently absorb a teammate finding without materializing it. Git custody is root-exclusive: a teammate that runs `git rebase`/`merge`/`push`/`worktree` halts `TEAMMATE-GIT-WRITE` (`references/pipeline.md §CLOSE-FINALIZE`). Escalation payload: `references/escalation.md §Escalation payload`; Stage-Graph walk: `references/pipeline.md §Stage Graph`.
 
@@ -115,6 +115,8 @@ If `[gates.subtract_paths]` is unset, the auditor falls back to the language ski
 | Datadog / Grafana | queries if MCP available | streaming logs |
 
 When a service is `false` in both `[mcp]` and `[cli]` config, downgrade that Phase-0 mesh row to N/A and continue.
+
+**Provider-agnostic discovery (#110).** NEVER hard-assume an MCP namespace. Shepherd DISCOVERS a service's tools at runtime via `ToolSearch("github issues" | "sentry" | "supabase")`, which resolves whatever provider is connected — native `mcp__github__*`, Composio, or a Docker-gateway `mcp__MCP_DOCKER__*` — by capability, not by a fixed token. The `mcp__plugin_*` entries in an agent's `tools:` frontmatter are the default-provider OFFER, not a hard dependency; every flock agent that touches a service also grants `ToolSearch` for exactly this reason. A `ToolSearch` that returns nothing for a service is a DISCONNECTED-or-absent provider (#110): degrade to the sanctioned CLI fallback (`gh` / `psql`) and emit `[WARN] MCP <svc> unavailable — using <fallback>`, never a silent tool failure.
 
 **Token + cache discipline** — every sprint open binds cache-first brief assembly (`references/flock.md §Brief assembly`), the conserve-tokens excellence bar (`skills/adaptation/SKILL.md §Excellence bar`), and the per-role cache-hit-rate targets in `skills/context/SKILL.md §Cache telemetry` for every brief, report, and commit; the telemetry hook records per-dispatch hit-rate and a sprint-aggregate rate <40% files a MEDIUM finding at close.
 

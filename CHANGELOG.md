@@ -4,6 +4,34 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v6.4.0 — 2026-07-21
+
+**Hardening + the CLI consolidates onto a single canonical Python surface.** The command-line interface moves onto the `shepherd` Python CLI (`services/cli`), retiring the loose `shctx` shell layer behind one entrypoint so future buildouts get consistency, real libraries, and community tooling. A user-wide `~/.shepherd` home, self-containment fixes, teammate engagement loops, and the dev.5–7 issue batch land alongside. (Sprint in progress; sections appended as work lands.)
+
+### New
+
+- **`bin/shepherd` is the single canonical CLI entrypoint (item 3).** A thin wrapper that resolves `${CLAUDE_PLUGIN_ROOT}`, prefers `poetry -C services/cli run shepherd`, and falls back to `python3 -m shepherd_cli` when poetry is absent — the same self-contained pattern the `myfi` plugin proved. The Python package (`shepherd_cli`) becomes the sole owner of CLI logic; the `cmd_*.sh` shell scripts are retired behind it (parity-gated; port in progress).
+- **Auto-venv under `~/.shepherd` (item 1).** `bin/shepherd-venv-ensure` bootstraps the `services/cli` poetry venv idempotently (stamp-diff on `pyproject.toml`; re-installs when the venv is missing) with the stamp under `${CLAUDE_PLUGIN_DATA:-$HOME/.shepherd/plugin-data}` so it survives a plugin update. A new `SessionStart` hook (`hooks/scripts/session_venv.sh`) keeps it fresh — gated on a shepherd project, fail-open.
+
+### Docs
+
+- **README calls out `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` (item 6).** A prominent Install note plus two FAQ rows: the execution path runs entirely through Agent-Teams teammate-conductors, which are experimental and off by default; without the variable `/shepherd:spawn` cannot spawn a teammate. README version reference corrected 6.3.3 → 6.4.0.
+
+### Changed
+
+- **`services/cli` version 6.3.7 → 6.4.0**, description updated to name it the canonical CLI rather than a surface "coexisting with bash shctx".
+- **`Workflow` ships in-tree on both teammate leads — `@engineer` + `@conductor` (#233).** Reverses the v6.3.9/#220 tier partition per operator decision: the manual 6.3.8 grant that 6.3.9 stripped is now canonical, so a release never clobbers it again. The grant is INERT at runtime today — Workflow is still denied inside a subagent (CC 2.1.212), so the executing fan-out stays in-context `Agent()` — and goes live automatically if the platform lifts the denial; the agent bodies keep that honest. `lint_agent_capabilities.sh` now mandates Workflow on all three leads (`LEAD_MANDATED_WORKFLOW="shepherd engineer conductor"`), `test_lead_workflow_tool.sh` is rewritten to pin it (stripping it from any lead fails), and `test_v636`/`test_v638` wiring reconciled.
+- **Conductor + root shepherd actively run focus + motivation + improvement loops (#236).** The conductor gains temporal self-motivation: a `ScheduleWakeup` grant plus a ground-truth-probe rule so a lost completion notification no longer strands it idle (no root babysits a teammate, and `/goal`/`/loop` are lead-only). Its §Lane walk now runs its own FOCUS-LOOP to the final WAVE-GATE and cites `adapt priors`. Root's standing operating mode — FOCUS-LOOP + drive contract + close-time `shctx adapt roll` — is made explicit in `skills/shepherd/SKILL.md`.
+- **Self-containment: MCP is provider-agnostic (item 5b / #110).** Shepherd no longer hard-assumes the `mcp__plugin_github_github__*` namespace. Every flock agent that touches GitHub/Sentry/Supabase now grants `ToolSearch` (engineer, auditor, discovery, coder, worker join conductor/planter), and the dispatch contract (`skills/shepherd/SKILL.md §Principles`) discovers a service's tools at runtime by capability — a native `mcp__github__*`, Composio, or a Docker-gateway `mcp__MCP_DOCKER__*` namespace all resolve — with `gh`/`psql` CLI as the sanctioned fallback. A `ToolSearch` that returns nothing for a service is treated as a disconnected/absent provider (#110): degrade to the CLI fallback and emit `[WARN] MCP <svc> unavailable`, never a silent tool failure. The `mcp__plugin_*` frontmatter entries stay as the default-provider offer, not a dependency.
+
+### Fixed
+
+- **`shctx teammate heartbeat` no longer breaks on an apostrophe in `--note`/`--phase`/`--tool` (#234).** The heartbeat write path interpolated user text unescaped (`NULLIF('$note','')`), so a conductor engagement note like `reconciling lane-config's plan steps` threw `unrecognized token` and the heartbeat silently failed — directly undermining the #236 engagement telemetry it was meant to record. Routed `name`, `note`, `phase`, `tool`, and the tmux pane id through the existing `esc` helper (single-quote doubling), matching the `safe_*`/`_txt` escaping every other write path already used. Regression pinned in `skills/context/tests/test_cmd_teammate.sh`. (The `loop focus upsert` path #234 also named already escapes via `_txt`; the heartbeat path was the remaining live gap.)
+
+### Deferred to v6.4.1 (tracked in #239)
+
+The flagship "retire the shell scripts" work is committed as v6.4.1 deliverables, not dropped: porting the last 7 bash commands (`inject plan graph adapt loop release panes`, ~3,300 lines) to native Python with parity, bundling the schema as package data, the `shctx`→`bin/shepherd` shim cutover that retires `cmd_*.sh`, and the `~/.shepherd` cross-project `global.db` + evolvable user-wide styles/doctrines + `shepherd sync`. None of it blocks a live sprint — `bin/shepherd` already drives all 40 commands today through the shim; the parity port is completeness work that must not be rushed into a broken command.
+
 ## v6.3.9 — 2026-07-18
 
 **The six token-costing bugs the dev.6 shepherd session filed after v6.3.8 shipped (#220–#225) are closed as the patch's pillars: three real code fixes (shctx worktree-DB race, `graph next` crash, a concurrent-session Stop-loop) and a teammate-tier doctrine reconciliation grounded in the current Claude Code harness (Workflow is denied inside subagents; conductors commit AND push their own lane).**
