@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# bin/shepherd -- the single canonical entrypoint for the shepherd CLI.
+#
+# One entrypoint, one CLI. Prefers `poetry run` inside services/cli/ (dev + CI
+# use this path directly); falls back to `python3 -m shepherd_cli` on
+# PYTHONPATH when poetry is absent (an end user relying on the venv that
+# bin/shepherd-venv-ensure maintains, or a minimal image). The Python package
+# is the sole owner of CLI logic -- the loose skills/context/scripts/cmd_*.sh
+# shell layer is retired behind this surface.
+set -eu -o pipefail
+
+# Resolve the plugin root: prefer ${CLAUDE_PLUGIN_ROOT} (set by Claude Code when
+# the plugin is installed); otherwise derive it from this script's own location
+# so `bin/shepherd` also works run directly from a repo clone.
+if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ]; then
+  ROOT="$CLAUDE_PLUGIN_ROOT"
+else
+  SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  ROOT="$(dirname "$SELF")"
+fi
+
+CLI_DIR="$ROOT/services/cli"
+
+if command -v poetry >/dev/null 2>&1; then
+  exec poetry -C "$CLI_DIR" run shepherd "$@"
+fi
+
+exec env PYTHONPATH="$CLI_DIR${PYTHONPATH:+:$PYTHONPATH}" python3 -m shepherd_cli "$@"
