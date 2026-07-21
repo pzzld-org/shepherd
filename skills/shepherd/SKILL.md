@@ -116,6 +116,8 @@ If `[gates.subtract_paths]` is unset, the auditor falls back to the language ski
 
 When a service is `false` in both `[mcp]` and `[cli]` config, downgrade that Phase-0 mesh row to N/A and continue.
 
+**Provider-agnostic discovery (#110).** NEVER hard-assume an MCP namespace. Shepherd DISCOVERS a service's tools at runtime via `ToolSearch("github issues" | "sentry" | "supabase")`, which resolves whatever provider is connected — native `mcp__github__*`, Composio, or a Docker-gateway `mcp__MCP_DOCKER__*` — by capability, not by a fixed token. The `mcp__plugin_*` entries in an agent's `tools:` frontmatter are the default-provider OFFER, not a hard dependency; every flock agent that touches a service also grants `ToolSearch` for exactly this reason. A `ToolSearch` that returns nothing for a service is a DISCONNECTED-or-absent provider (#110): degrade to the sanctioned CLI fallback (`gh` / `psql`) and emit `[WARN] MCP <svc> unavailable — using <fallback>`, never a silent tool failure.
+
 **Token + cache discipline** — every sprint open binds cache-first brief assembly (`references/flock.md §Brief assembly`), the conserve-tokens excellence bar (`skills/adaptation/SKILL.md §Excellence bar`), and the per-role cache-hit-rate targets in `skills/context/SKILL.md §Cache telemetry` for every brief, report, and commit; the telemetry hook records per-dispatch hit-rate and a sprint-aggregate rate <40% files a MEDIUM finding at close.
 
 **How-to-work constitution** (latent-vs-deterministic split, skillify-success, context-window diagnostic, `DONE`/`DONE_WITH_CONCERNS`/`BLOCKED`/`NEEDS_CONTEXT` vocabulary): `references/operating-philosophy.md`.
