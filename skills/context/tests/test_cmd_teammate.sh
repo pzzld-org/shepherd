@@ -32,6 +32,13 @@ status=$(sqlite3 "$SHCTX_DB" "SELECT status FROM teammates WHERE id='$id';")
 hb=$(sqlite3 "$SHCTX_DB" "SELECT count(*) FROM heartbeats WHERE teammate_id='$id';")
 [[ "$hb" == "1" ]] || { echo "FAIL: heartbeat row count: $hb"; exit 1; }
 
+# #234 regression: a --note / --phase carrying an apostrophe must persist, not
+# break the SQL (the heartbeat path interpolated user text unescaped, so a
+# conductor's engagement note like "lane-config's plan" threw unrecognized token).
+$CMD heartbeat conductor-test --phase="wave's-2" --note="reconciling lane-config's plan steps"
+note234=$(sqlite3 "$SHCTX_DB" "SELECT note FROM heartbeats WHERE teammate_id='$id' ORDER BY rowid DESC LIMIT 1;")
+[[ "$note234" == "reconciling lane-config's plan steps" ]] || { echo "FAIL: #234 apostrophe note not persisted: [$note234]"; exit 1; }
+
 # liveness shows table
 $CMD liveness --stale-mins=10 | grep -c "conductor-test" >/dev/null || { echo "FAIL: liveness missing conductor-test"; exit 1; }
 
