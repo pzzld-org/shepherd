@@ -274,6 +274,7 @@ See [`docs/integration.md`](docs/integration.md) for the full model.
 | `shctx: command not found` | Ships at `skills/context/scripts/`; invoke via `/shepherd:ctx` if symlinked manually. |
 | Do I have to use Agent Teams? | Yes — `/shepherd:spawn` always runs through a teammate-conductor, even for one lane; there's no separate solo mode. It is experimental and off by default: set `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` (see [Install](#install)). |
 | `/shepherd:spawn` does nothing / no teammate appears | `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` is unset. Set it to `1` in `settings.json` and restart the session. |
+| Too many permission prompts / a "permission laundering" callout | Auto mode's classifier working as designed. Pre-approve shepherd's routine read-only calls with a `permissions.allow` list — see [`docs/permissions.md`](docs/permissions.md). Never reach for `bypassPermissions` to silence it. |
 | Which model should I use? | Opus for `/shepherd:plant` and the engineer; Sonnet for the rest — shepherd sets these defaults. |
 | My long sprint still drifts | Lower `[focus].heartbeat_actions` (default 20) or set `[focus].heartbeat_interval = "45m"`. |
 | A teammate crashed, left a worktree | Run `/shepherd:cleanup`. |
