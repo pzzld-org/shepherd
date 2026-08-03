@@ -18,10 +18,11 @@ sprints_per_patch     = 10
 main_branch           = "main"
 
 [paths]
-plans   = ".artifacts/docs/plans"
-reports = ".artifacts/docs/reports"
-docs    = ".artifacts/docs"
-ctx     = ".artifacts/ctx"
+plans   = ".shepherd/docs/plans"
+reports = ".shepherd/docs/reports"
+docs    = ".shepherd/docs"
+ctx     = ".shepherd/ctx"
+runs    = ".shepherd/runs"
 
 [gates]
 # Plugin has no compilable language; gates are validation of structured assets.
@@ -42,7 +43,7 @@ driver              = "operator"
 release_notes_path  = "CHANGELOG.md"
 
 [ledger]
-carry_forward_file        = ".artifacts/ctx/carry-forward.md"
+carry_forward_file        = ".shepherd/ctx/carry-forward.md"
 phase_0_full_ledger       = true
 chronic_threshold_patches = 2
 non_issue_labels          = ["wontfix", "tracking-future", "design-question", "rfc"]

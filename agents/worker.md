@@ -2,7 +2,6 @@
 name: worker
 color: green
 model: sonnet
-thinking: high
 description: "Bounded catch-all executor with a defined deliverable, budget, and output format. Use when a task fits no other flock lane (monitoring, MCP batches, research, cleanup)."
 tools: Bash, Glob, Grep, Read, Skill, ToolSearch, Write, mcp__plugin_github_github__issue_read, mcp__plugin_github_github__issue_write, mcp__plugin_github_github__add_issue_comment, mcp__plugin_github_github__list_branches, mcp__plugin_github_github__list_commits, mcp__plugin_github_github__list_issues, mcp__plugin_github_github__list_pull_requests, mcp__plugin_github_github__pull_request_read, mcp__plugin_github_github__search_code, mcp__plugin_github_github__search_issues, mcp__plugin_supabase_supabase__execute_sql, mcp__plugin_supabase_supabase__get_logs, mcp__plugin_supabase_supabase__list_tables, mcp__plugin_sentry_sentry__search_events, mcp__plugin_sentry_sentry__search_issues
 ---

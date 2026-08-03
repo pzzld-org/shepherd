@@ -192,5 +192,71 @@ else
   fail "exit-0-always: empty payload exits 0" "rc=$rc"
 fi
 
+# ---------------------------------------------------------------------------
+# 8. (v6.5.0) Active run → the snapshot reads the RUN-SCOPED graph
+#    (runs/{run}/graph/state.json) and records the run id; the legacy
+#    $NS/graph twin (different node ids) is NOT the source.
+# ---------------------------------------------------------------------------
+total=$((total+1))
+if ! command -v jq &>/dev/null; then
+  skip "run-scoped-graph" "jq missing"
+else
+  rm -f .artifacts/memory/snapshots/precompact-*.json 2>/dev/null || true
+  mkdir -p .artifacts/runs/v090-dev0/graph
+  printf '{"schema_version":1,"run":"v090-dev0","status": "executing"}\n' > .artifacts/runs/v090-dev0/run.json
+  printf '{"ready":["run-node-R"],"in_flight":["run-node-F"]}\n' > .artifacts/runs/v090-dev0/graph/state.json
+  run_hook '{"session_id":"sess-run-01","trigger":"auto"}'
+  SNAP_RUN=""
+  for f in .artifacts/memory/snapshots/precompact-sess-run-01-*.json; do [[ -f "$f" ]] && SNAP_RUN="$f"; done
+  RUN_VAL="$(jq -r '.run // ""' "$SNAP_RUN" 2>/dev/null || true)"
+  READY_VAL="$(jq -r '.cursor.ready_nodes | join(",")' "$SNAP_RUN" 2>/dev/null || true)"
+  if [[ "$RUN_VAL" == "v090-dev0" && "$READY_VAL" == "run-node-R" ]]; then
+    pass "run-scoped-graph: active run's graph read + run id recorded"
+  else
+    fail "run-scoped-graph" "run=$RUN_VAL ready=$READY_VAL snap=$SNAP_RUN"
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+# 9. (v6.5.0) Active run WITHOUT its own graph/ files → per-file fallback to
+#    the legacy $NS/graph (compat shim: mid-migration projects keep working).
+# ---------------------------------------------------------------------------
+total=$((total+1))
+if ! command -v jq &>/dev/null; then
+  skip "run-graph-fallback" "jq missing"
+else
+  rm -f .artifacts/runs/v090-dev0/graph/state.json 2>/dev/null || true
+  run_hook '{"session_id":"sess-run-02","trigger":"auto"}'
+  SNAP_FB=""
+  for f in .artifacts/memory/snapshots/precompact-sess-run-02-*.json; do [[ -f "$f" ]] && SNAP_FB="$f"; done
+  RUN_FB="$(jq -r '.run // ""' "$SNAP_FB" 2>/dev/null || true)"
+  READY_FB="$(jq -r '.cursor.ready_nodes | join(",")' "$SNAP_FB" 2>/dev/null || true)"
+  if [[ "$RUN_FB" == "v090-dev0" && "$READY_FB" == "node-B,node-C" ]]; then
+    pass "run-graph-fallback: missing run graph falls back to \$NS/graph"
+  else
+    fail "run-graph-fallback" "run=$RUN_FB ready=$READY_FB snap=$SNAP_FB"
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+# 10. (v6.5.0) No EXECUTING run (status closed) → legacy behavior: run field
+#     empty, legacy graph read.
+# ---------------------------------------------------------------------------
+total=$((total+1))
+if ! command -v jq &>/dev/null; then
+  skip "no-active-run" "jq missing"
+else
+  printf '{"schema_version":1,"run":"v090-dev0","status": "closed"}\n' > .artifacts/runs/v090-dev0/run.json
+  run_hook '{"session_id":"sess-run-03","trigger":"auto"}'
+  SNAP_NA=""
+  for f in .artifacts/memory/snapshots/precompact-sess-run-03-*.json; do [[ -f "$f" ]] && SNAP_NA="$f"; done
+  RUN_NA="$(jq -r '.run // "MISSING"' "$SNAP_NA" 2>/dev/null || true)"
+  if [[ "$RUN_NA" == "" ]]; then
+    pass "no-active-run: closed run ignored, run field empty (legacy path)"
+  else
+    fail "no-active-run" "run='$RUN_NA' snap=$SNAP_NA"
+  fi
+fi
+
 echo "—— $((total-fails))/$total passed ——"
 exit "$fails"

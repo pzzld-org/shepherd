@@ -75,17 +75,30 @@ if [[ "$(cfg_get announce_adaptation)" != "off" ]] && [[ -f "$db" ]] && command 
   fi
 fi
 
-# --- Plan validity check (v5.1.2) ---
-# If the current branch matches sprint_branch_pattern, plan.md should exist.
-# This is a heuristic — we don't parse shepherd.toml here, just look for the
-# v{X}.{Y}.{Z}-dev.{N} pattern as the default sprint shape.
+# --- Plan validity check (v5.1.2; [paths]-aware v6.5.0) ---
+# If the current branch matches sprint_branch_pattern, a plan should exist —
+# either the run-scoped `{paths.runs}/{slug}/plan.md` (v6.5.0 canonical) or
+# the legacy `{paths.plans}/{branch|slug}.plan.md` forms. Pre-v6.5.0 this hook
+# HARDCODED "$ns/plans" and ignored [paths].plans entirely (res_12 §1c), so a
+# repo whose config put plans under docs/plans got a false "no plan.md"
+# warning every session — both dirs now resolve from config, with the old
+# locations as defaults.
+repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+plans_dir="$(cfg_section_get paths plans 2>/dev/null || true)"
+if [[ -n "$plans_dir" ]]; then
+  case "$plans_dir" in /*) : ;; *) plans_dir="$repo_root/$plans_dir" ;; esac
+else
+  plans_dir="$ns/plans"
+fi
+runs_dir="$(runs_root_dir)"
 if [[ "$branch" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-dev\.[0-9]+$ ]]; then
-  plan_dotted="$ns/plans/${branch}.plan.md"
+  plan_dotted="$plans_dir/${branch}.plan.md"
   # Also check slug form (v5.1.1 sprint-slug naming convention)
   slug=$(printf '%s' "$branch" | sed -E 's/^v([0-9]+)\.([0-9]+)\.([0-9]+)-dev\.([0-9]+)$/v\1\2\3-dev\4/')
-  plan_slug="$ns/plans/${slug}.plan.md"
-  if [[ ! -f "$plan_dotted" && ! -f "$plan_slug" ]]; then
-    warnings+=("Sprint branch '$branch' has no plan.md at ${plan_dotted#$(pwd)/} or ${plan_slug#$(pwd)/}. Engineer dispatch pending? [pipeline.md §I INTRO]")
+  plan_slug="$plans_dir/${slug}.plan.md"
+  plan_run="$runs_dir/${slug}/plan.md"
+  if [[ ! -f "$plan_run" && ! -f "$plan_dotted" && ! -f "$plan_slug" ]]; then
+    warnings+=("Sprint branch '$branch' has no plan.md at ${plan_run#$(pwd)/}, ${plan_dotted#$(pwd)/}, or ${plan_slug#$(pwd)/}. Engineer dispatch pending? [pipeline.md §I INTRO]")
   fi
 fi
 
@@ -113,14 +126,18 @@ fi
 # --- Anchor 6: multiple plan.md files for current sprint (v5.1.8 — issue #26) ---
 # When a sprint has an addendum plan (dev.1.plan.md + dev.1b.plan.md), the
 # second is invisible to Step 0 by default. Surface the file list so the
-# conductor reads ALL of them, not just one.
-if [[ "$branch" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-dev\.[0-9]+$ ]] && [[ -d "$ns/plans" ]]; then
-  # Match base sprint prefix; the dot-or-letter suffix allows addendum forms
-  # (dev.1.plan.md, dev.1b.plan.md, dev.1.b.plan.md).
+# conductor reads ALL of them, not just one. ([paths]-aware v6.5.0 — same
+# plans_dir the plan-validity check resolves; run-scoped plans are one-per-run
+# by construction, so this check stays on the legacy plans dir.)
+if [[ "$branch" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-dev\.[0-9]+$ ]] && [[ -d "$plans_dir" ]]; then
+  # Match base sprint prefix; the optional-separator suffix allows every
+  # documented addendum form (dev.1.plan.md, dev.1b.plan.md, dev.1.b.plan.md).
+  # v6.5.0 fix: the old `([.-][a-z0-9]+)?` REQUIRED a separator, so the bare
+  # letter form dev.1b.plan.md this comment always promised never matched.
   plan_matches=()
   while IFS= read -r f; do
     [[ -n "$f" ]] && plan_matches+=("$f")
-  done < <(ls -1 "$ns/plans/" 2>/dev/null | grep -E "^${branch}([.-][a-z0-9]+)?\.plan\.md$" || true)
+  done < <(ls -1 "$plans_dir/" 2>/dev/null | grep -E "^${branch}([.-]?[a-z0-9]+)?\.plan\.md$" || true)
   if [[ ${#plan_matches[@]} -gt 1 ]]; then
     plan_list=$(IFS=', '; echo "${plan_matches[*]}")
     warnings+=("$( printf '%s' "${#plan_matches[@]} plan files for sprint '$branch': $plan_list — reconcile ALL (addendum plans may carry orphaned lanes). Read each in chronological order. [issue #26]" )")

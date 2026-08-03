@@ -192,5 +192,41 @@ else
   fail "flag-no-snapshot: drains flag silently, no context" "out=${out:0:80} flag_after=$FLAG_AFTER"
 fi
 
+# ---------------------------------------------------------------------------
+# 8. (v6.5.0) A snapshot carrying a `run` field surfaces the run-scoped graph
+#    home in the digest; a run-less (pre-v6.5.0) snapshot stays run-silent —
+#    the compat shim never invents a run line.
+# ---------------------------------------------------------------------------
+total=$((total+1))
+touch "$FLAG_FILE"
+write_snapshot
+# Inject the run field the v6.5.0 precompact_snapshot.sh records.
+if command -v jq &>/dev/null; then
+  jq '. + {run: "v090-dev0"}' "$SNAP_FILE" > "$SNAP_FILE.tmp" && mv "$SNAP_FILE.tmp" "$SNAP_FILE"
+else
+  python3 - "$SNAP_FILE" <<'PY'
+import json, sys
+p = sys.argv[1]
+d = json.load(open(p)); d["run"] = "v090-dev0"
+json.dump(d, open(p, "w"))
+PY
+fi
+out=$(run_hook "$PAYLOAD_SS")
+if printf '%s' "$out" | grep -q 'runs/v090-dev0/graph/'; then
+  pass "run-field: digest surfaces runs/{run}/graph/ as the state home"
+else
+  fail "run-field: digest surfaces run-scoped graph home" "out=${out:0:250}"
+fi
+
+total=$((total+1))
+touch "$FLAG_FILE"
+write_snapshot   # plain snapshot, NO run field
+out=$(run_hook "$PAYLOAD_SS")
+if is_context "$out" && ! printf '%s' "$out" | grep -q 'Run: '; then
+  pass "no-run-field: legacy snapshot digest carries no Run line (compat)"
+else
+  fail "no-run-field: legacy snapshot run-silent" "out=${out:0:250}"
+fi
+
 echo "—— $((total-fails))/$total passed ——"
 exit "$fails"

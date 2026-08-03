@@ -126,6 +126,82 @@ cfg_section_get() {
   return 0
 }
 
+# List the KEYS of a `[section]` block across the shepherd config precedence
+# (local → project → XDG), one per line, union'ed with first-seen wins — the
+# enumeration companion to cfg_section_get (which needs a known key). Used by
+# the #59 gates ledger to walk `[gates.extra]` entries whose names are
+# project-defined. bash-3.2-safe; never returns non-zero.
+cfg_section_keys() {
+  local section="$1" repo f out="" k
+  repo="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+  for f in "$repo/.claude/shepherd.local.toml" "$repo/.claude/shepherd.toml" "${XDG_CONFIG_HOME:-$HOME/.config}/shepherd.toml"; do
+    [[ -f "$f" ]] || continue
+    while IFS= read -r k; do
+      [[ -n "$k" ]] || continue
+      case $'\n'"$out" in *$'\n'"$k"$'\n'*) ;; *) out+="$k"$'\n' ;; esac
+    done < <(awk -v sect="$section" '
+      /^[ \t]*\[/ { h=$0; sub(/^[ \t]*\[/,"",h); sub(/\].*$/,"",h); gsub(/[ \t]/,"",h); cur=h; next }
+      cur==sect && /^[ \t]*[A-Za-z0-9_-]+[ \t]*=/ {
+        key=$0; sub(/^[ \t]*/,"",key); sub(/[ \t]*=.*$/,"",key); print key
+      }
+    ' "$f" 2>/dev/null || true)
+  done
+  printf '%s' "$out"
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# Run-scoped artifact layout (v6.5.0 — .shepherd/runs/{run}/)
+# ---------------------------------------------------------------------------
+
+# The [paths]-aware runs root: `[paths].runs` from config (repo-relative unless
+# absolute), else `<namespace>/runs` — the same default the Python CLI's
+# models_run.runs_root() uses, so hooks and `shepherd run` read the same tree.
+runs_root_dir() {
+  local repo cfg
+  repo="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+  cfg="$(cfg_section_get paths runs 2>/dev/null || true)"
+  if [[ -n "$cfg" ]]; then
+    case "$cfg" in /*) printf '%s' "$cfg" ;; *) printf '%s' "$repo/$cfg" ;; esac
+  else
+    printf '%s' "$(resolve_namespace)/runs"
+  fi
+  return 0
+}
+
+# Echo the DIRECTORY of the active run — the newest runs/*/run.json whose
+# status is "executing" (run.json is CLI-written via `shepherd run`, so the
+# grep against its canonical rendering is deterministic). Echoes "" when no
+# run is active; never returns non-zero.
+active_run_dir() {
+  local root f
+  root="$(runs_root_dir 2>/dev/null || true)"
+  [[ -d "$root" ]] || return 0
+  while IFS= read -r f; do
+    [[ -f "$f" ]] || continue
+    if grep -q '"status"[[:space:]]*:[[:space:]]*"executing"' "$f" 2>/dev/null; then
+      printf '%s' "$(dirname "$f")"
+      return 0
+    fi
+  done < <(ls -1t "$root"/*/run.json 2>/dev/null || true)
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# Session-tier marker (#232/#228 — positive teammate identity)
+# ---------------------------------------------------------------------------
+
+# Echo the marker path for a session: <ns>/tmp/session-tier-<session>. STAMPED
+# by user_prompt_submit.sh when a session boots as a TEAMMATE (the rendered
+# boot prompt's INVOCATION-CONTEXT dispatcher field is the signal). READ by
+# coordinate_drive_guard.sh (a marked session is NEVER nudged — fail-closed
+# for teammates) and conductor_write_guard.sh (the marker's lane_plan field
+# scopes the lane-plan custody exemption).
+session_tier_marker() {
+  local ns="${1:-$(resolve_namespace 2>/dev/null || echo .shepherd)}" session="${2:-nosession}"
+  printf '%s/tmp/session-tier-%s' "$ns" "${session//[^A-Za-z0-9_.-]/_}"
+}
+
 # ---------------------------------------------------------------------------
 # JSON extraction (jq preferred, python3 fallback)
 # ---------------------------------------------------------------------------

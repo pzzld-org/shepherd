@@ -89,11 +89,13 @@ READY_SET=""
 OBLIGATIONS=""
 INVARIANTS=""
 SPRINT=""
+RUN_ID=""
 TRIGGER=""
 CAPTURED_AT=""
 
 if command -v jq &>/dev/null; then
   SPRINT="$(jq -r '.sprint // ""' "$SNAP_FILE" 2>/dev/null || true)"
+  RUN_ID="$(jq -r '.run // ""' "$SNAP_FILE" 2>/dev/null || true)"
   TRIGGER="$(jq -r '.trigger // ""' "$SNAP_FILE" 2>/dev/null || true)"
   CAPTURED_AT="$(jq -r '.captured_at // ""' "$SNAP_FILE" 2>/dev/null || true)"
   ACTIVE_NODE="$(jq -r '.focus.active_node // ""' "$SNAP_FILE" 2>/dev/null || true)"
@@ -106,6 +108,7 @@ if command -v jq &>/dev/null; then
   CURSOR_INFLIGHT="$(jq -r '(.cursor.in_flight_nodes // []) | join(", ")' "$SNAP_FILE" 2>/dev/null || true)"
 else
   SPRINT="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d.get("sprint",""))' "$SNAP_FILE" 2>/dev/null || true)"
+  RUN_ID="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d.get("run",""))' "$SNAP_FILE" 2>/dev/null || true)"
   TRIGGER="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d.get("trigger",""))' "$SNAP_FILE" 2>/dev/null || true)"
   CAPTURED_AT="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d.get("captured_at",""))' "$SNAP_FILE" 2>/dev/null || true)"
   ACTIVE_NODE="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d.get("focus",{}).get("active_node",""))' "$SNAP_FILE" 2>/dev/null || true)"
@@ -123,6 +126,11 @@ rm -f "$FLAG_FILE" 2>/dev/null || true
 # --- assemble digest message ---------------------------------------------
 DIGEST="[shepherd] FOCUS REHYDRATE — compaction recovery digest (trigger: ${TRIGGER:-unknown}, captured: ${CAPTURED_AT:-unknown})"$'\n'
 DIGEST+="Sprint: ${SPRINT:-unknown}"$'\n'
+# v6.5.0: the snapshot records which run was executing at capture time —
+# surface the run-scoped state home so the resumed session re-reads the graph
+# cursor from runs/{run}/graph/ (legacy graph/ at the namespace root when
+# the field is absent/empty — the same compat shim precompact_snapshot.sh reads by).
+[[ -n "$RUN_ID" ]] && DIGEST+="Run: ${RUN_ID} (graph state: runs/${RUN_ID}/graph/)"$'\n'
 [[ -n "$OBJECTIVE" ]] && DIGEST+="Objective: ${OBJECTIVE}"$'\n'
 DIGEST+="Active node: ${ACTIVE_NODE:-unknown}"$'\n'
 [[ -n "$READY_SET" ]] && DIGEST+="Ready set (focus table): ${READY_SET}"$'\n'

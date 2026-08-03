@@ -84,6 +84,16 @@ ck "off-mode-silent"     "$BAD_PL"  ""
 # back to default
 printf '[project]\nname="t"\n' > .claude/shepherd.toml
 
+# v6.5.0 run-scoped naming (runs/{run}/seed.md — the rename hazard, res_12 §3):
+# the gate matches the path SEGMENT, so moving the seed into the run dir keeps
+# the deterministic pre-flight armed.
+ck "runs-form-bad-denies"   "$(payload bad.txt "$tmp/.shepherd/runs/v100-dev0/seed.md" Write)" '"permissionDecision":"deny"'
+ck "runs-form-clean-passes" "$(payload good.txt "$tmp/.shepherd/runs/v100-dev0/seed.md" Write)" ""
+# relative run-scoped path (no leading dir before runs/) is matched too
+ck "runs-form-relative-denies" "$(payload bad.txt "runs/v100-dev0/seed.md" Write)" '"permissionDecision":"deny"'
+# a file merely NAMED seed.md outside a runs/ segment is NOT a seed artifact
+ck "non-runs-seed-md-silent" "$(payload bad.txt "$tmp/docs/seed.md" Write)" ""
+
 # non-seed file path → silent
 ck "non-seed-file-silent" "$(payload bad.txt notes.md Write)" ""
 # Edit tool (only Write is gated) → silent

@@ -1,7 +1,7 @@
 ---
 name: shepherd-context
 slug: shepherd-context
-version: 6.4.1
+version: 6.5.0
 description: "Per-project SQLite registry backing /shepherd:ctx — symbols, GitHub state, dedup, telemetry, locks. Use when reading or writing project context state."
 metadata:
   triggers:
@@ -10,9 +10,9 @@ metadata:
 
 # /shepherd:ctx — Per-project Context Registry
 
-The CLI lives at `${CLAUDE_PLUGIN_ROOT}/skills/context/scripts/shctx`. The DB lives at `.shepherd/shepherd.db` (`.artifacts/shepherd.db`/`root.db` legacy, auto-detected), preferring whichever exists.
+The canonical CLI is `${CLAUDE_PLUGIN_ROOT}/bin/shepherd`; `${CLAUDE_PLUGIN_ROOT}/skills/context/scripts/shctx` is an alias shim to it (the historical name the `shctx …` invocations below use). The DB lives at `.shepherd/shepherd.db` (`.artifacts/shepherd.db`/`root.db` legacy, auto-detected), preferring whichever exists.
 
-`shctx` is plugin-local and is NEVER on `$PATH`. A bare `shctx …` / `command -v shctx` returns absent BY DESIGN — always invoke the absolute path above. Reporting "shctx absent" from a `command -v` probe is the #1 false-negative — never do it. When `$CLAUDE_PLUGIN_ROOT` doesn't propagate (remote/web launches), `session_open` prints the resolved path at SessionStart (`[context].announce_shctx_path`, default `on`); fallback: the installed plugin dir, e.g. `~/.claude/plugins/shepherd/skills/context/scripts/shctx`.
+The CLI is plugin-local and is NEVER on `$PATH`. A bare `shctx …` / `command -v shctx` returns absent BY DESIGN — always invoke the absolute path above. Reporting "shctx absent" from a `command -v` probe is the #1 false-negative — never do it. When `$CLAUDE_PLUGIN_ROOT` doesn't propagate (remote/web launches), `session_open` prints the resolved path at SessionStart (`[context].announce_shctx_path`, default `on`); fallback: the installed plugin dir, e.g. `~/.claude/plugins/shepherd/bin/shepherd`.
 
 Quick reference only — detail lives in the sibling `references/` files.
 
@@ -34,6 +34,8 @@ Quick reference only — detail lives in the sibling `references/` files.
 - `worktree <list|gc|merge <agent-id>>` — manage `agent-*` worktrees; `merge` is the conductor's preferred no-`cd` way to integrate a lane's committed coder output (the conductor commits it — coders own no git, §@coder).
 - `loop <init|native-cmd|status|record|close|list|focus>` — Loop-Until-Done state.
 - `config <init|claude-md|show|path|get>` — scaffold/inspect `shepherd.toml`.
+- `render <template> [--var k=v] [--vars-json F] [--out F] [--manifest]` — Jinja2 render (StrictUndefined); project `.shepherd/templates/` → user `~/.shepherd/templates/` → bundled.
+- `run <init|show|list|set|lane|wave>` — `{run_dir}/run.json` state + the #242 boundary-merge ledger; `run wave pending` exits 6 while accepted-but-unmerged lanes remain.
 - `adapt <roll|reflect|priors|report|recommend>` — adaptation loop.
 - `eval <run|report|list>` — quality-score output via local Claude Code, never hosted.
 - `doctor` — six-section preflight. See §Doctor.
@@ -53,7 +55,7 @@ All subcommands are project-scoped to the row `init` writes in `projects`.
 | Canonical — core | `projects`, `sessions`, `profiles_defs`, `mem_entries`, `artifacts`, `locks_history`, `schema_versions` | Not recoverable elsewhere. |
 | Canonical — operational | `teammates`, `heartbeats`, `escalations`, `deliverables`, `discovery_findings`, `audit_findings`, `session_signals` | Row-canonical; migration `0007_canonical_state.sql` (+ `session_signals`, `0020`). |
 | Canonical — loop/focus | `loops`, `loop_iterations`, `focus` | Migrations `0012_loop_state.sql` + `0013_focus.sql`. |
-| File-canonical | `CLAUDE.md`, `agents/`, `commands/`, `skills/**/*.md`, `docs/{specs,plans,seeds}/`, `CHANGELOG.md`, `README.md`, `schema/*.sql` | Version-controlled, human-edited; DB never authoritative. |
+| File-canonical | `CLAUDE.md`, `agents/`, `commands/`, `skills/**/*.md`, `<ns>/runs/*/{seed,mesh,plan,phase0,close,handoff}.md` + lane plans, `<ns>/docs/specs/`, `CHANGELOG.md`, `README.md`, `schema/*.sql` | Version-controlled, human-edited; DB never authoritative. |
 | Disposable | Audit/discovery/close reports, status pages (`shctx report <kind>`) | Re-rendered on demand; may cache under `<ns>/cache/` (gitignored). |
 
 Rules: a new operational-state kind MUST land via a schema migration + `cmd_<sub>.sh`, NEVER an ad hoc file path. Agents MUST NOT write a markdown report as canonical output — verify a write landed by querying the row directly, NEVER by re-reading a rendered view. Coordinate concurrent writers with SQLite WAL + transactions, NEVER a markdown lock file.
@@ -123,9 +125,9 @@ Per-path `git`/`fs` content-hash tracking exists at the schema layer for change 
 - Schema out of date → run `shctx migrate` after every plugin upgrade.
 - Lock held by a stale session → `shctx lock reap` clears entries past `stale_after_minutes`.
 
-## Naming conventions
+## Artifact schema
 
-Namespace paths are date-only vs timestamped (see `references/naming-conventions.md`), enforced by `shctx lint`. `shctx init` writes `<namespace>/CONVENTIONS.md`, mirrored into the consumer project.
+`references/naming-conventions.md` is the canonical artifact schema: namespace selection, the `{run_dir} = {paths.runs}/{run}` layout with fixed filenames, the per-role ownership table, identifier sanitization, the git tracked/ignored split, and profile/style resolution — enforced by `shctx lint`. `shctx init` writes `<namespace>/CONVENTIONS.md`, mirrored into the consumer project.
 
 ## See also
 
