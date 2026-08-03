@@ -957,3 +957,129 @@ def test_claude_md_bash_parity_preserve_message(work_dir: Path, xdg_dir: Path) -
 
     assert python_proc.returncode == bash_proc.returncode == 0
     assert python_proc.stdout == bash_proc.stdout
+
+
+# --------------------------------------------------------------------------
+# v6.4.2 layering contract (operator directive, 2026-08-03)
+# --------------------------------------------------------------------------
+# Three layers -- project / legacy / user -- with `local` > `<harness>` > base
+# WITHIN each, and project > user ACROSS them. `~/.shepherd` holds defaults; a
+# project overrides them simply by setting the key; `<workdir>/
+# shepherd.local.toml` is the ultimate override.
+
+
+def _layered_env(xdg_dir: Path, user_home: Path, *, harness: str = "claude") -> dict[str, str]:
+    """A `_config_env` with the user tier and harness pinned explicitly."""
+    env = _config_env(xdg_dir)
+    env["SHEPHERD_HOME"] = str(user_home)
+    env["SHEPHERD_HARNESS"] = harness
+    return env
+
+
+def _write_parallel(path: Path, value: int) -> None:
+    """Write a minimal config setting `[spawn].max_parallel` to `value`.
+
+    Distinct from this module's `_write_parallel(path, table, entries)` helper
+    above -- same file, different signature, so it must not shadow it.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f"[spawn]\nmax_parallel = {value}\n")
+
+
+def test_layering_each_tier_overrides_the_one_below(
+    work_dir: Path, xdg_dir: Path, tmp_path: Path
+) -> None:
+    """Adding each higher tier in turn moves the resolved value monotonically.
+
+    This is the whole contract in one test: six writes, six reads, each one
+    strictly overriding the last, from the user base default up to the
+    project-local ultimate override.
+    """
+    user_home = tmp_path / "userhome"
+    env = _layered_env(xdg_dir, user_home)
+    ns = work_dir / ".shepherd"
+    ns.mkdir(parents=True, exist_ok=True)
+
+    steps = [
+        (user_home / "shepherd.toml", 1),
+        (user_home / "shepherd.claude.toml", 2),
+        (user_home / "shepherd.local.toml", 3),
+        (ns / "shepherd.toml", 4),
+        (ns / "shepherd.claude.toml", 5),
+        (ns / "shepherd.local.toml", 6),
+    ]
+    for path, value in steps:
+        _write_parallel(path, value)
+        proc = run_config(["get", "max_parallel", "0"], work_dir, env)
+        assert proc.returncode == 0, proc.stderr
+        assert proc.stdout.strip() == str(value), (
+            f"after writing {path.name} in {path.parent.name}, expected {value}"
+        )
+
+
+def test_layering_user_tier_is_the_cross_project_default(
+    work_dir: Path, xdg_dir: Path, tmp_path: Path
+) -> None:
+    """A project with NO config of its own inherits `~/.shepherd` defaults."""
+    user_home = tmp_path / "userhome"
+    env = _layered_env(xdg_dir, user_home)
+    _write_parallel(user_home / "shepherd.toml", 11)
+
+    proc = run_config(["get", "max_parallel", "0"], work_dir, env)
+    assert proc.stdout.strip() == "11"
+
+
+def test_layering_legacy_claude_project_outranks_user_tier(
+    work_dir: Path, xdg_dir: Path, tmp_path: Path
+) -> None:
+    """A legacy `.claude/` PROJECT binding beats the whole user layer.
+
+    The deliberate ordering call: `.claude/shepherd.toml` is a project-level
+    file, so it outranks `~/.shepherd/*`. Ordering the user layer higher
+    would mean that merely creating `~/.shepherd/shepherd.toml` silently
+    overrode every existing project still bound through `.claude/` -- a
+    regression for every current install. Pinned so it cannot drift.
+    """
+    user_home = tmp_path / "userhome"
+    env = _layered_env(xdg_dir, user_home)
+    _write_parallel(user_home / "shepherd.local.toml", 21)  # highest USER tier
+    _write_parallel(work_dir / ".claude" / "shepherd.toml", 22)  # lowest PROJECT tier
+
+    proc = run_config(["get", "max_parallel", "0"], work_dir, env)
+    assert proc.stdout.strip() == "22"
+
+
+def test_layering_only_the_active_harness_file_is_read(
+    work_dir: Path, xdg_dir: Path, tmp_path: Path
+) -> None:
+    """A codex knob must not take effect under claude, and vice versa."""
+    user_home = tmp_path / "userhome"
+    ns = work_dir / ".shepherd"
+    _write_parallel(ns / "shepherd.toml", 30)
+    _write_parallel(ns / "shepherd.codex.toml", 31)
+
+    under_claude = run_config(
+        ["get", "max_parallel", "0"], work_dir, _layered_env(xdg_dir, user_home, harness="claude")
+    )
+    assert under_claude.stdout.strip() == "30", "codex knob leaked into a claude session"
+
+    under_codex = run_config(
+        ["get", "max_parallel", "0"], work_dir, _layered_env(xdg_dir, user_home, harness="codex")
+    )
+    assert under_codex.stdout.strip() == "31"
+
+
+def test_layering_no_harness_detected_omits_the_harness_tier(
+    work_dir: Path, xdg_dir: Path, tmp_path: Path
+) -> None:
+    """With no harness, the harness tier is absent -- not guessed at."""
+    user_home = tmp_path / "userhome"
+    env = _layered_env(xdg_dir, user_home, harness="")
+    for marker in ("SHEPHERD_HARNESS", "CLAUDE_PLUGIN_ROOT", "CLAUDECODE", "CODEX_HOME"):
+        env.pop(marker, None)
+    ns = work_dir / ".shepherd"
+    _write_parallel(ns / "shepherd.toml", 40)
+    _write_parallel(ns / "shepherd.claude.toml", 41)
+
+    proc = run_config(["get", "max_parallel", "0"], work_dir, env)
+    assert proc.stdout.strip() == "40"

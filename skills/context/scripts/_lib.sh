@@ -112,34 +112,64 @@ shctx_skill_root() {
   fi
 }
 
+# The active harness id, or "" when none can be determined. SHEPHERD_HARNESS
+# is explicit and always wins; otherwise Claude Code's own markers, then
+# CODEX_HOME. Only the ACTIVE harness's config file is read -- reading every
+# harness file would let a codex knob take effect under Claude Code, which is
+# the opposite of what a per-harness layer is for.
+# MUST mirror shepherd_cli/commands/config.py::resolve_harness.
+shctx_harness() {
+  if [[ -n "${SHEPHERD_HARNESS:-}" ]]; then printf '%s' "$SHEPHERD_HARNESS"; return 0; fi
+  if [[ -n "${CLAUDECODE:-}" || -n "${CLAUDE_PLUGIN_ROOT:-}" ]]; then printf '%s' "claude"; return 0; fi
+  if [[ -n "${CODEX_HOME:-}" ]]; then printf '%s' "codex"; return 0; fi
+  printf '%s' ""
+  return 0
+}
+
 # Echo the shepherd config precedence chain, one absolute path per line,
-# HIGHEST precedence first (v6.4.2). Single source of truth for this lib --
-# cfg_get and cfg_section_get both consume it rather than hand-copying the
-# list, which is how the two _lib.sh files and the CLI drifted apart before.
+# HIGHEST precedence first (v6.4.2 layering contract).
 #
-#   1. <namespace>/shepherd.local.toml     NEW  (namespace = .shepherd | .artifacts)
-#   2. <namespace>/shepherd.toml           NEW canonical
-#   3. .claude/shepherd.local.toml         legacy, still honored
-#   4. .claude/shepherd.toml               legacy, still honored
-#   5. $XDG_CONFIG_HOME/shepherd.toml      user global
+#   project  <ns>/shepherd.local.toml          <- ultimate override
+#            <ns>/shepherd.<harness>.toml
+#            <ns>/shepherd.toml                <- the project binding
+#   legacy   .claude/shepherd.local.toml       <- pre-v6.4.2, honored forever
+#            .claude/shepherd.toml
+#   user     ~/.shepherd/shepherd.local.toml   <- cross-project DEFAULTS
+#            ~/.shepherd/shepherd.<harness>.toml
+#            ~/.shepherd/shepherd.toml
+#            $XDG_CONFIG_HOME/shepherd.toml    <- pre-v6.4.2 global
 #
-# .claude/ is owned by ONE harness; the binding every harness must read cannot
-# live inside it. Tiers 3-5 are supported indefinitely, so a project that never
-# adds a namespace-tier config sees no behavior change.
+# Within a layer: local > harness > base. Across layers: project > user.
+# The legacy .claude/ tiers are PROJECT files, so they outrank the whole user
+# layer -- otherwise creating ~/.shepherd/shepherd.toml would silently
+# override every existing project still bound through .claude/.
+# *.local.toml is gitignored (one machine); shepherd.<harness>.toml is TRACKED.
 #
-# MUST stay byte-identical to hooks/scripts/_lib.sh's shctx_config_files and to
+# Single source of truth for this lib. MUST stay byte-identical to the other
+# _lib.sh's shctx_config_files and to
 # shepherd_cli/commands/config.py::_config_search_paths.
 # Contract: docs/configuration.md §config-resolution.
 shctx_config_files() {
-  local repo ns
+  local repo ns userhome harness
   repo="$(shctx_repo_root 2>/dev/null || pwd)"
   ns="$(SHCTX_QUIET=1 resolve_workdir 2>/dev/null || printf '%s/.shepherd' "$repo")"
-  printf '%s\n' \
-    "$ns/shepherd.local.toml" \
-    "$ns/shepherd.toml" \
-    "$repo/.claude/shepherd.local.toml" \
-    "$repo/.claude/shepherd.toml" \
-    "${XDG_CONFIG_HOME:-$HOME/.config}/shepherd.toml"
+  userhome="${SHEPHERD_HOME:-$HOME/.shepherd}"
+  harness="$(shctx_harness)"
+
+  # project layer (highest): local -> harness -> base
+  printf '%s\n' "$ns/shepherd.local.toml"
+  if [[ -n "$harness" ]]; then printf '%s\n' "$ns/shepherd.$harness.toml"; fi
+  printf '%s\n' "$ns/shepherd.toml"
+  # legacy project layer -- pre-v6.4.2, honored indefinitely
+  printf '%s\n' "$repo/.claude/shepherd.local.toml"
+  printf '%s\n' "$repo/.claude/shepherd.toml"
+  # user layer (defaults): local -> harness -> base
+  printf '%s\n' "$userhome/shepherd.local.toml"
+  if [[ -n "$harness" ]]; then printf '%s\n' "$userhome/shepherd.$harness.toml"; fi
+  printf '%s\n' "$userhome/shepherd.toml"
+  # legacy user global
+  printf '%s\n' "${XDG_CONFIG_HOME:-$HOME/.config}/shepherd.toml"
+  return 0
 }
 
 # Echo the value of a top-level `key = value` from shepherd config, resolved by

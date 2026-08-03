@@ -17,50 +17,66 @@
 #
 # This library does NOT set `set -euo pipefail` — sourcing scripts decide.
 
-# ---------------------------------------------------------------------------
-# Config precedence (v6.4.2) — first match wins, highest first
-# ---------------------------------------------------------------------------
+# The active harness id, or "" when none can be determined. SHEPHERD_HARNESS
+# is explicit and always wins; otherwise Claude Code's own markers, then
+# CODEX_HOME. Only the ACTIVE harness's config file is read -- reading every
+# harness file would let a codex knob take effect under Claude Code, which is
+# the opposite of what a per-harness layer is for.
+# MUST mirror shepherd_cli/commands/config.py::resolve_harness.
+shctx_harness() {
+  if [[ -n "${SHEPHERD_HARNESS:-}" ]]; then printf '%s' "$SHEPHERD_HARNESS"; return 0; fi
+  if [[ -n "${CLAUDECODE:-}" || -n "${CLAUDE_PLUGIN_ROOT:-}" ]]; then printf '%s' "claude"; return 0; fi
+  if [[ -n "${CODEX_HOME:-}" ]]; then printf '%s' "codex"; return 0; fi
+  printf '%s' ""
+  return 0
+}
+
+# Echo the shepherd config precedence chain, one absolute path per line,
+# HIGHEST precedence first (v6.4.2 layering contract).
 #
-#   1. <namespace>/shepherd.local.toml   <- NEW  (<namespace> = resolve_namespace,
-#   2. <namespace>/shepherd.toml         <- NEW canonical   .shepherd/ or legacy .artifacts/)
-#   3. <repo>/.claude/shepherd.local.toml       (existing, unchanged)
-#   4. <repo>/.claude/shepherd.toml             (existing, unchanged)
-#   5. $XDG_CONFIG_HOME/shepherd.toml           (existing, unchanged, default ~/.config)
+#   project  <ns>/shepherd.local.toml          <- ultimate override
+#            <ns>/shepherd.<harness>.toml
+#            <ns>/shepherd.toml                <- the project binding
+#   legacy   .claude/shepherd.local.toml       <- pre-v6.4.2, honored forever
+#            .claude/shepherd.toml
+#   user     ~/.shepherd/shepherd.local.toml   <- cross-project DEFAULTS
+#            ~/.shepherd/shepherd.<harness>.toml
+#            ~/.shepherd/shepherd.toml
+#            $XDG_CONFIG_HOME/shepherd.toml    <- pre-v6.4.2 global
 #
-# RATIONALE: `.claude/` is owned by ONE harness (Claude Code). shepherd's own
-# bridge contract (skills/bridge/SKILL.md) says implementations coordinate
-# "exclusively through the project-visible artifact schema... never harness
-# internals" — yet a project's shepherd binding lived inside a competing
-# harness's config directory, so codex-shepherd or any future harness had to
-# reach into `.claude/` just to discover that a repo uses shepherd at all.
-# `.shepherd/` (or its legacy `.artifacts/` alias) is the namespace shepherd
-# already owns and every harness can read.
+# Within a layer: local > harness > base. Across layers: project > user.
+# The legacy .claude/ tiers are PROJECT files, so they outrank the whole user
+# layer -- otherwise creating ~/.shepherd/shepherd.toml would silently
+# override every existing project still bound through .claude/.
+# *.local.toml is gitignored (one machine); shepherd.<harness>.toml is TRACKED.
 #
-# Tiers 3-5 keep working forever — a project that never adds a <namespace>/
-# config sees ZERO behavior change (this is purely additive). Every consumer
-# below (cfg_get, cfg_section_get, cfg_section_keys, is_shepherd_project)
-# reads this SAME list via shctx_config_files rather than hand-copying the
-# loop, so the precedence can't drift between them again.
-#
-# shctx_config_files echoes the 5 paths, one per line, in precedence order
-# (highest first). Tiers 1-2 resolve through resolve_namespace — the SAME
-# resolver runs_root_dir/hook_db_path/log_event already use — so this is
-# NEVER hardcoded ".shepherd"; a legacy .artifacts/ project's tiers 1-2 land
-# in .artifacts/ too. MUST mirror the Python-side config precedence
-# (services/cli/shepherd_cli/commands/config.py, the shctx_config_files
-# equivalent) — same files, same order, same parse — or config diverges
-# between hooks and the shctx runtime. Never returns non-zero.
+# Single source of truth for this lib. MUST stay byte-identical to the other
+# _lib.sh's shctx_config_files and to
+# shepherd_cli/commands/config.py::_config_search_paths.
+# Contract: docs/configuration.md §config-resolution.
 shctx_config_files() {
-  local repo ns
-  repo="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-  ns="$(resolve_namespace 2>/dev/null || true)"
-  [[ -n "$ns" ]] || ns="$repo/.shepherd"
-  printf '%s\n' \
-    "$ns/shepherd.local.toml" \
-    "$ns/shepherd.toml" \
-    "$repo/.claude/shepherd.local.toml" \
-    "$repo/.claude/shepherd.toml" \
-    "${XDG_CONFIG_HOME:-$HOME/.config}/shepherd.toml"
+  local repo ns userhome harness
+  repo="$(shctx_repo_root 2>/dev/null || pwd)"
+  # resolve_namespace is THIS lib's namespace resolver (the skills-side lib
+  # calls its equivalent resolve_workdir). Using the wrong name here silently
+  # falls through to the .shepherd fallback and ignores an .artifacts project.
+  ns="$(SHCTX_QUIET=1 resolve_namespace 2>/dev/null || printf '%s/.shepherd' "$repo")"
+  userhome="${SHEPHERD_HOME:-$HOME/.shepherd}"
+  harness="$(shctx_harness)"
+
+  # project layer (highest): local -> harness -> base
+  printf '%s\n' "$ns/shepherd.local.toml"
+  if [[ -n "$harness" ]]; then printf '%s\n' "$ns/shepherd.$harness.toml"; fi
+  printf '%s\n' "$ns/shepherd.toml"
+  # legacy project layer -- pre-v6.4.2, honored indefinitely
+  printf '%s\n' "$repo/.claude/shepherd.local.toml"
+  printf '%s\n' "$repo/.claude/shepherd.toml"
+  # user layer (defaults): local -> harness -> base
+  printf '%s\n' "$userhome/shepherd.local.toml"
+  if [[ -n "$harness" ]]; then printf '%s\n' "$userhome/shepherd.$harness.toml"; fi
+  printf '%s\n' "$userhome/shepherd.toml"
+  # legacy user global
+  printf '%s\n' "${XDG_CONFIG_HOME:-$HOME/.config}/shepherd.toml"
   return 0
 }
 

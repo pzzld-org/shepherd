@@ -6,26 +6,55 @@ overlap); per-language mechanics load via `[skills.by_domain]`. Examples lean Ru
 
 ## Resolution {#config-resolution}
 
-Drop a `shepherd.toml` at one of these locations, highest precedence first, **per key**:
+Config resolves **per key** across three layers. Within a layer, `local` beats `<harness>` beats
+base; across layers, **project beats user**:
 
 ```
-<workdir>/shepherd.local.toml       project-pinned, gitignored (overrides)   NEW (v6.4.2)
-<workdir>/shepherd.toml             project-pinned, in the repo — CANONICAL  NEW (v6.4.2)
-.claude/shepherd.local.toml         project-pinned, gitignored (overrides)   legacy, unchanged
-.claude/shepherd.toml               project-pinned, in the repo             legacy, unchanged
-$XDG_CONFIG_HOME/shepherd.toml      user-global default                     unchanged
+project   <workdir>/shepherd.local.toml        this machine only, gitignored  <- ULTIMATE OVERRIDE
+          <workdir>/shepherd.<harness>.toml    harness knobs, TRACKED
+          <workdir>/shepherd.toml              the project binding, TRACKED   <- CANONICAL
+legacy    .claude/shepherd.local.toml          pre-v6.4.2, honored forever
+          .claude/shepherd.toml                pre-v6.4.2, honored forever
+user      ~/.shepherd/shepherd.local.toml      this machine only
+          ~/.shepherd/shepherd.<harness>.toml  harness knobs
+          ~/.shepherd/shepherd.toml            cross-project DEFAULTS
+          $XDG_CONFIG_HOME/shepherd.toml       pre-v6.4.2 global
 ```
+
+`~/.shepherd` holds **default** behavior shared across every project; a project overrides a default
+simply by setting the key. `<workdir>/shepherd.local.toml` is the highest tier there is.
+
+**Why the canonical location moved out of `.claude/`.** `.claude/` is owned by *one* harness. The
+bridge contract (`skills/bridge/SKILL.md`) requires implementations to coordinate "exclusively
+through the project-visible artifact schema... never harness internals" — but a project's shepherd
+binding lived inside a competing harness's config directory, so a codex or GPT harness had to read
+`.claude/` just to discover the repo uses shepherd. `.shepherd/` is the namespace shepherd already
+owns and every harness can read. Nothing is removed: the legacy tiers resolve indefinitely, and
+`shepherd config migrate` moves the file when you choose to.
+
+**Why legacy `.claude/` outranks the whole user layer.** Those are *project* files. If the user
+layer sat higher, creating `~/.shepherd/shepherd.toml` would silently override every existing
+project still bound through `.claude/` — a regression for every current install, which is not worth
+tidier ordering.
+
+**`<harness>`** is the active harness only — `claude` or `codex`, resolved from `SHEPHERD_HARNESS`
+(explicit, always wins), then Claude Code's own markers, then `CODEX_HOME`; absent when none is
+detected. Only the active harness's file is read, so a codex knob never takes effect under Claude
+Code. These files hold harness-specific knobs and are **tracked in git**, unlike `*.local.toml`,
+because a harness knob is a property of the project, not of one developer's checkout. The scaffolded
+`.shepherd/.gitignore` encodes exactly that.
 
 `<workdir>` is the active shctx namespace — normally `.shepherd/`, `.artifacts/` on a legacy
 project — resolved through the *same* namespace resolver every other command uses
-(`shepherd_cli.resolution.resolve_workdir` in Python; `shctx_artifacts_root` in `_lib.sh`). Tiers
-1-2 are never `.shepherd/` hardcoded: a project bootstrapped with `shctx init --artifacts` gets
-tiers 1-2 at `<repo>/.artifacts/shepherd{.local,}.toml`, not a path that would silently miss it.
-The full five-path list is derived in exactly one place —
-`shepherd_cli.commands.config._config_search_paths` (bash twin:
-`skills/context/scripts/cmd_config.sh`) — and every reader (`config get`, `config show`, `config
-validate`, `is_shepherd_project`) and writer (`config path`, `config init`, `config migrate`)
-consumes that one list, so the chain can't drift between callers.
+(`shepherd_cli.resolution.resolve_workdir` in Python; `resolve_workdir` in the skills `_lib.sh`,
+`resolve_namespace` in the hooks `_lib.sh`). Namespace tiers are never `.shepherd/` hardcoded: a
+project bootstrapped with `shctx init --artifacts` gets them at
+`<repo>/.artifacts/shepherd{.local,}.toml`, not a path that would silently miss it.
+The full chain is derived in exactly one place per language —
+`shepherd_cli.commands.config._config_tiers` (bash twins: `shctx_config_files` in both
+`hooks/scripts/_lib.sh` and `skills/context/scripts/_lib.sh`) — and every reader (`config get`,
+`config show`, `config validate`, `is_shepherd_project`) and writer (`config path`, `config init`,
+`config migrate`) consumes that one list, so the chain cannot drift between callers.
 
 **Why the canonical location moved out of `.claude/`.** `.claude/` is owned by ONE harness (Claude
 Code). shepherd's own bridge contract (`skills/bridge/SKILL.md`) requires that cross-shepherd

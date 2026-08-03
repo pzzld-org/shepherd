@@ -140,10 +140,11 @@ import shutil
 import subprocess
 
 import typer
+from typing import NamedTuple
 from pydantic import BaseModel, ConfigDict
 
 from shepherd_cli.config_schema import format_report, report_to_dict, validate_config_file
-from shepherd_cli.resolution import resolve_repo_root, resolve_workdir
+from shepherd_cli.resolution import resolve_repo_root, resolve_user_home, resolve_workdir
 
 app = typer.Typer(
     add_completion=False,
@@ -480,51 +481,174 @@ def _resync_managed_block(dst_text: str, src_text: str) -> str:
     return "\n".join(out_lines) + "\n"
 
 
-def _config_search_paths(repo_root: str) -> tuple[str, str, str, str, str]:
-    """The five config file paths ``cfg_get`` (and every other reader) checks, in
-    v6.4.2 precedence order.
+#: Harness ids that may carry a per-harness config layer. A harness file is
+#: TRACKED in git (unlike ``*.local.toml``) because a harness knob is a
+#: property of the project, not of one developer's machine.
+KNOWN_HARNESSES: tuple[str, ...] = ("claude", "codex")
 
-    See the module docstring's "THE v6.4.2 HARNESS-NEUTRAL PRECEDENCE
-    CONTRACT" section for the full rationale. This is now the ONE place
-    the 5-tier chain is spelled out — :func:`_cfg_get`, :func:`_do_show`,
-    :func:`_do_validate`, :func:`is_shepherd_project`, and
-    :func:`_canonical_write_target` all consume this list rather than
-    re-deriving any subset of it, so the chain cannot drift between
-    callers the way the old 3-tier chain and
-    :mod:`shepherd_cli.commands.models`'s identically-named helper had
-    already started to (that duplication is now confined to bridging the
-    pre-v6.4.2 3-tier surface ``models.py`` still ports; this module owns
-    the 5-tier one).
 
-    Tiers 1-2 resolve through :func:`shepherd_cli.resolution.resolve_workdir`
-    — the SAME namespace resolver every other command uses — rather than a
-    literal ``".shepherd"``, so a project bootstrapped with
-    ``shctx init --artifacts`` (namespace ``.artifacts/``) gets tiers 1-2
-    at ``<repo>/.artifacts/shepherd{.local,}.toml``, not a hardcoded
-    ``.shepherd/`` path that would silently miss it.
+def resolve_harness() -> str:
+    """The active harness id, or ``""`` when none can be determined.
+
+    Order: ``SHEPHERD_HARNESS`` (explicit, always wins) -> Claude Code's own
+    markers (``CLAUDECODE`` / ``CLAUDE_PLUGIN_ROOT``) -> ``CODEX_HOME`` ->
+    ``""``. An unrecognized explicit value is returned as-is: an unknown
+    harness simply has no file on disk, which is indistinguishable from
+    having none, so there is nothing to fail about.
+
+    Only the ACTIVE harness's file is read. Reading every harness file would
+    let a codex knob take effect under Claude Code, which is the opposite of
+    what a per-harness layer is for.
+
+    Returns:
+        The harness id (e.g. ``"claude"``), or ``""`` when unknown.
+    """
+    explicit = os.environ.get("SHEPHERD_HARNESS", "").strip()
+    if explicit:
+        return explicit
+    if os.environ.get("CLAUDECODE") or os.environ.get("CLAUDE_PLUGIN_ROOT"):
+        return "claude"
+    if os.environ.get("CODEX_HOME"):
+        return "codex"
+    return ""
+
+
+def _layer(root: str, harness: str) -> list[str]:
+    """One layer's files, highest precedence first.
+
+    Within any layer: ``shepherd.local.toml`` (this machine) beats
+    ``shepherd.<harness>.toml`` (this harness) beats ``shepherd.toml``
+    (everyone).
+
+    Args:
+        root: The directory holding the layer's files.
+        harness: The active harness id, or ``""`` to omit that tier.
+
+    Returns:
+        Two or three absolute paths, highest precedence first.
+    """
+    files = [os.path.join(root, "shepherd.local.toml")]
+    if harness:
+        files.append(os.path.join(root, f"shepherd.{harness}.toml"))
+    files.append(os.path.join(root, "shepherd.toml"))
+    return files
+
+
+class ConfigTier(NamedTuple):
+    """One entry in the config precedence chain.
+
+    Attributes:
+        label: Stable machine-ish name for the tier (``"workdir"``,
+            ``"user-harness"``, ...). Used by ``doctor`` to name where a
+            binding resolved from, and by ``config validate`` to report
+            per-file. Stable across chain growth — callers key on the LABEL,
+            never on a positional index.
+        path: The absolute candidate file path.
+        scope: ``"project"`` or ``"user"``. ``config show`` displays only
+            project-scope files (bash parity: ``show`` never printed the
+            user global).
+    """
+
+    label: str
+    path: str
+    scope: str
+
+
+def _config_tiers(repo_root: str) -> tuple[ConfigTier, ...]:
+    """The full precedence chain as labelled tiers, highest first.
+
+    THE single source of truth for config resolution. Everything else --
+    :func:`_config_search_paths`, :func:`_cfg_get`, :func:`_do_show`,
+    :func:`_do_validate`, :func:`is_shepherd_project`, and ``doctor``'s
+    tier labelling -- derives from this, so growing the chain cannot leave
+    a caller behind. It already did once: ``_do_show`` sliced ``[:4]`` and
+    ``doctor`` mapped tier-to-label by position, and both silently
+    mislabelled the moment the chain grew past five entries. Labels and
+    scopes exist so no caller ever indexes positionally again.
+
+    See :func:`_config_search_paths` for the layering contract itself.
 
     Args:
         repo_root: The resolved repository root.
 
     Returns:
-        The five candidate file paths, in the order ``cfg_get`` (and
-        every other reader) tries them:
-        ``(<workdir>/shepherd.local.toml, <workdir>/shepherd.toml,
-        .claude/shepherd.local.toml, .claude/shepherd.toml,
-        $XDG_CONFIG_HOME/shepherd.toml)``.
+        Labelled tiers, highest precedence first.
     """
-    workdir = resolve_workdir()
+    harness = resolve_harness()
     xdg_config_home = os.environ.get("XDG_CONFIG_HOME") or ""
     if not xdg_config_home:
         home = os.environ.get("HOME") or os.path.expanduser("~")
         xdg_config_home = os.path.join(home, ".config")
-    return (
-        os.path.join(workdir, "shepherd.local.toml"),
-        os.path.join(workdir, "shepherd.toml"),
-        os.path.join(repo_root, ".claude", "shepherd.local.toml"),
-        os.path.join(repo_root, ".claude", "shepherd.toml"),
-        os.path.join(xdg_config_home, "shepherd.toml"),
-    )
+
+    workdir = resolve_workdir()
+    userhome = resolve_user_home()
+    tiers: list[ConfigTier] = [
+        ConfigTier("workdir-local", os.path.join(workdir, "shepherd.local.toml"), "project"),
+    ]
+    if harness:
+        tiers.append(
+            ConfigTier("workdir-harness", os.path.join(workdir, f"shepherd.{harness}.toml"), "project")
+        )
+    tiers += [
+        ConfigTier("workdir", os.path.join(workdir, "shepherd.toml"), "project"),
+        ConfigTier("legacy-local", os.path.join(repo_root, ".claude", "shepherd.local.toml"), "project"),
+        ConfigTier("legacy", os.path.join(repo_root, ".claude", "shepherd.toml"), "project"),
+        ConfigTier("user-local", os.path.join(userhome, "shepherd.local.toml"), "user"),
+    ]
+    if harness:
+        tiers.append(
+            ConfigTier("user-harness", os.path.join(userhome, f"shepherd.{harness}.toml"), "user")
+        )
+    tiers += [
+        ConfigTier("user", os.path.join(userhome, "shepherd.toml"), "user"),
+        ConfigTier("xdg", os.path.join(xdg_config_home, "shepherd.toml"), "user"),
+    ]
+    return tuple(tiers)
+
+
+def _config_search_paths(repo_root: str) -> tuple[str, ...]:
+    """Every config file a reader checks, highest precedence first.
+
+    THE LAYERING CONTRACT (v6.4.2, operator directive 2026-08-03)
+    -------------------------------------------------------------------
+    Three layers. Within each, ``local`` beats ``<harness>`` beats base;
+    across them, PROJECT always beats USER::
+
+        project   <workdir>/shepherd.local.toml        <- ultimate override
+                  <workdir>/shepherd.<harness>.toml
+                  <workdir>/shepherd.toml              <- the project binding
+        legacy    <repo>/.claude/shepherd.local.toml   <- pre-v6.4.2, honored
+                  <repo>/.claude/shepherd.toml            indefinitely
+        user      ~/.shepherd/shepherd.local.toml      <- cross-project
+                  ~/.shepherd/shepherd.<harness>.toml     DEFAULTS
+                  ~/.shepherd/shepherd.toml
+                  $XDG_CONFIG_HOME/shepherd.toml       <- pre-v6.4.2 global
+
+    ``~/.shepherd`` holds DEFAULT behavior; a project overrides it simply by
+    setting the key.
+
+    The deliberate call: the legacy ``.claude/`` tiers are PROJECT-level
+    files, so they rank above the whole user layer. Putting the user layer
+    higher would mean creating ``~/.shepherd/shepherd.toml`` silently
+    overrode every existing project still bound through ``.claude/`` — a
+    regression for every current install, which is not an acceptable price
+    for tidier ordering.
+
+    ``*.local.toml`` is gitignored (one machine); ``shepherd.<harness>.toml``
+    is TRACKED, since a harness knob is a property of the project.
+
+    Namespace tiers resolve through
+    :func:`shepherd_cli.resolution.resolve_workdir` rather than a literal
+    ``".shepherd"``, so an ``--artifacts`` project is found too.
+
+    Args:
+        repo_root: The resolved repository root.
+
+    Returns:
+        The candidate paths, highest precedence first. Length varies with
+        whether a harness is detected (:func:`resolve_harness`).
+    """
+    return tuple(tier.path for tier in _config_tiers(repo_root))
 
 
 def _canonical_write_target(workdir: str | None = None) -> str:
@@ -841,7 +965,10 @@ def _do_show() -> int:
     repo = resolve_repo_root()
     found = False
     output = ""
-    for path in _config_search_paths(repo)[:4]:
+    # Project-scope tiers only -- bash parity: `show` never printed the user
+    # global. Filtered by SCOPE, not by a positional slice: the old `[:4]`
+    # silently became wrong the moment the chain grew past five entries.
+    for path in (t.path for t in _config_tiers(repo) if t.scope == "project"):
         if os.path.isfile(path):
             found = True
             with open(path, encoding="utf-8") as fh:

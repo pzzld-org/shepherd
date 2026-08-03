@@ -1269,7 +1269,6 @@ def _bootstrap_project_row(pjson_path: str) -> Result:
 #: arity again, :func:`_bootstrap_config_row` falls back to a generic
 #: ``"tier N"`` label for any extra position rather than mislabeling or
 #: crashing -- see that function's own docstring.
-_CONFIG_TIER_LABELS: tuple[str, ...] = ("workdir-local", "workdir", "legacy-local", "legacy", "xdg")
 
 
 def _bootstrap_config_row(repo: str) -> Result:
@@ -1289,13 +1288,20 @@ def _bootstrap_config_row(repo: str) -> Result:
     """
     from shepherd_cli.commands.config import _config_search_paths
 
-    with _quiet_env():
-        candidates = _config_search_paths(repo)
+    from shepherd_cli.commands.config import _config_tiers
 
-    for index, path in enumerate(candidates):
-        if os.path.isfile(path):
-            tier = _CONFIG_TIER_LABELS[index] if index < len(_CONFIG_TIER_LABELS) else f"tier {index + 1}"
-            return Result("ok", "bootstrap", "shepherd.toml", f"present ({tier} tier) at {path}", "")
+    # Tiers carry their own LABEL, so this can never mislabel as the chain
+    # grows -- the previous positional `_CONFIG_TIER_LABELS` tuple silently
+    # reported `<workdir>/shepherd.toml` as the "legacy-local" tier the
+    # moment the v6.4.2 layering added the harness and user tiers.
+    with _quiet_env():
+        tiers = _config_tiers(repo)
+
+    for tier in tiers:
+        if os.path.isfile(tier.path):
+            return Result(
+                "ok", "bootstrap", "shepherd.toml", f"present ({tier.label} tier) at {tier.path}", ""
+            )
     return Result("warn", "bootstrap", "shepherd.toml", "not present", "shepherd init")
 
 

@@ -71,6 +71,15 @@ root.db-shm
 shepherd.lock
 project.json
 
+# Config layering (v6.4.2). *.local.toml is THIS MACHINE only and is
+# never tracked; shepherd.toml and the per-harness files ARE tracked,
+# since a harness knob is a property of the project, not of one
+# developer's checkout. The negations must follow the ignore line.
+shepherd.local.toml
+!shepherd.toml
+!shepherd.claude.toml
+!shepherd.codex.toml
+
 # Transient runtime dirs (never tracked).
 tmp/
 logs/

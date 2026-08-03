@@ -42,6 +42,18 @@ XDG_HOME="$tmp/xdg-home"
 mkdir -p "$XDG_HOME"
 export XDG_CONFIG_HOME="$XDG_HOME"
 
+# Same isolation for the v6.4.2 USER tier (~/.shepherd) -- otherwise the test
+# machine's real user config joins the chain and the expected-list assertions
+# below depend on whoever ran them.
+USER_HOME="$tmp/user-home"
+mkdir -p "$USER_HOME"
+export SHEPHERD_HOME="$USER_HOME"
+
+# Deterministic base chain: no harness detected, so the two harness tiers are
+# absent (7 entries). The layering block at the bottom sets SHEPHERD_HARNESS
+# explicitly per-invocation to exercise them.
+unset CLAUDE_PLUGIN_ROOT CLAUDECODE CODEX_HOME SHEPHERD_HARNESS 2>/dev/null || true
+
 config_files() { ( source "$LIB"; shctx_config_files ); }
 get_key() { ( source "$LIB"; cfg_get "$1" ); }
 get_section_key() { ( source "$LIB"; cfg_section_get "$1" "$2" ); }
@@ -57,8 +69,10 @@ expected="$ROOT/.shepherd/shepherd.local.toml
 $ROOT/.shepherd/shepherd.toml
 $ROOT/.claude/shepherd.local.toml
 $ROOT/.claude/shepherd.toml
+$USER_HOME/shepherd.local.toml
+$USER_HOME/shepherd.toml
 $XDG_CONFIG_HOME/shepherd.toml"
-assert_eq "config-files-five-tiers-in-order" "$(config_files)" "$expected"
+assert_eq "config-files-full-chain-in-order" "$(config_files)" "$expected"
 
 # ---------------------------------------------------------------------------
 # 2. Precedence order across all 5 tiers with real temp files: lowest tier
@@ -143,6 +157,8 @@ expected_artifacts="$ROOT/.artifacts/shepherd.local.toml
 $ROOT/.artifacts/shepherd.toml
 $ROOT/.claude/shepherd.local.toml
 $ROOT/.claude/shepherd.toml
+$USER_HOME/shepherd.local.toml
+$USER_HOME/shepherd.toml
 $XDG_CONFIG_HOME/shepherd.toml"
 assert_eq "artifacts-namespace-tiers-1-2" "$(config_files)" "$expected_artifacts"
 
@@ -157,3 +173,43 @@ if check_is_shepherd_project; then pass "is-shepherd-artifacts-namespace"; else 
 
 echo "—— $((total-fails))/$total passed ——"
 exit "$fails"
+
+# ---- v6.4.2 layering: harness + user tiers (operator directive) -------------
+# project(local > harness > base) > legacy(.claude) > user(local > harness > base) > xdg
+lay="$(mktemp -d)"; ( cd "$lay" && git init -q . && mkdir -p .shepherd )
+export SHEPHERD_HOME="$lay/userhome"; mkdir -p "$SHEPHERD_HOME"
+
+t_get() { ( cd "$lay" && SHEPHERD_HARNESS="${2:-claude}" bash -c "source $LIB; cfg_get max_parallel" ); }
+w() { printf '[spawn]\nmax_parallel = %s\n' "$2" > "$1"; }
+
+w "$SHEPHERD_HOME/shepherd.toml" 1
+assert_eq "layer-user-base"       "$(t_get)" "1"
+w "$SHEPHERD_HOME/shepherd.claude.toml" 2
+assert_eq "layer-user-harness"    "$(t_get)" "2"
+w "$SHEPHERD_HOME/shepherd.local.toml" 3
+assert_eq "layer-user-local"      "$(t_get)" "3"
+w "$lay/.shepherd/shepherd.toml" 4
+assert_eq "layer-project-base"    "$(t_get)" "4"
+w "$lay/.shepherd/shepherd.claude.toml" 5
+assert_eq "layer-project-harness" "$(t_get)" "5"
+w "$lay/.shepherd/shepherd.local.toml" 6
+assert_eq "layer-project-local"   "$(t_get)" "6"
+
+# only the ACTIVE harness file is read -- a codex knob must not apply under claude
+lay2="$(mktemp -d)"; ( cd "$lay2" && git init -q . && mkdir -p .shepherd )
+w "$lay2/.shepherd/shepherd.toml" 30
+w "$lay2/.shepherd/shepherd.codex.toml" 31
+assert_eq "harness-isolation-claude" \
+  "$( cd "$lay2" && SHEPHERD_HARNESS=claude bash -c "source $LIB; cfg_get max_parallel" )" "30"
+assert_eq "harness-isolation-codex" \
+  "$( cd "$lay2" && SHEPHERD_HARNESS=codex  bash -c "source $LIB; cfg_get max_parallel" )" "31"
+
+# a legacy .claude PROJECT binding outranks the whole USER layer
+lay3="$(mktemp -d)"; ( cd "$lay3" && git init -q . && mkdir -p .claude )
+export SHEPHERD_HOME="$lay3/uh"; mkdir -p "$SHEPHERD_HOME"
+w "$SHEPHERD_HOME/shepherd.local.toml" 21
+w "$lay3/.claude/shepherd.toml" 22
+assert_eq "legacy-project-beats-user" \
+  "$( cd "$lay3" && SHEPHERD_HARNESS=claude bash -c "source $LIB; cfg_get max_parallel" )" "22"
+unset SHEPHERD_HOME
+rm -rf "$lay" "$lay2" "$lay3"
