@@ -1,95 +1,126 @@
 """Subprocess parity tests for ``shepherd audit`` (lint -> doctor -> status pipeline + ``insert``).
 
-Bash parity target: ``skills/context/scripts/cmd_audit.sh``. Every test
-drives the real CLI as a subprocess (``${PY} -m shepherd_cli audit ...``),
-exactly like ``test_sync.py`` — never by importing ``shepherd_cli`` into
-the pytest process.
+Bash parity target: ``skills/context/scripts/cmd_audit.sh`` (retired).
+Every test drives the real CLI as a subprocess (``${PY} -m shepherd_cli
+audit ...``), exactly like ``test_sync.py`` — never by importing
+``shepherd_cli`` into the pytest process.
 
 Two independent halves, tested separately:
 
 1. **The pipeline** (bare ``shepherd audit`` / ``shepherd audit
-   --verbose``) shells out to three sibling scripts (``cmd_lint.sh``,
-   ``cmd_doctor.sh``, ``cmd_status.sh``) and touches no database of its
-   own. Driving the REAL sibling scripts from a gate test would violate
-   the "deterministic, local, free, <2s, never flaky" gate-test contract
-   (CLAUDE.md) — ``cmd_doctor.sh`` in particular resolves its namespace/
-   project.json checks against the AMBIENT repo state (not
+   --verbose``) re-invokes three ported sibling subcommands (``lint``,
+   ``doctor``, ``status``) as child processes of the same interpreter
+   (``[sys.executable, "-m", "shepherd_cli", "<stage>"]``) and touches no
+   database of its own. Driving the REAL sibling stages from a gate test
+   would violate the "deterministic, local, free, <2s, never flaky"
+   gate-test contract (CLAUDE.md) — ``doctor`` in particular resolves its
+   namespace/project.json checks against the AMBIENT repo state (not
    ``SHCTX_DB``-scoped), so it is neither hermetic nor fast. Exactly like
-   ``test_sync.py``, this suite builds a throwaway "fake plugin root"
-   (:func:`_make_fake_plugin_root`) containing tiny, fully-scripted
-   stand-ins for all three sibling scripts — each one logs its invocation
-   to ``$CALL_LOG`` and exits with a caller-controlled code (via
-   ``FAKE_RC_*`` env vars) — and points ``CLAUDE_PLUGIN_ROOT`` at it.
+   ``test_sync.py``, this suite builds a throwaway FAKE ``shepherd_cli``
+   package (:func:`fake_cli_root`) and runs the CLI with that directory as
+   the subprocess cwd: ``python -m`` puts the cwd FIRST on ``sys.path``
+   (ahead of ``PYTHONPATH``), so both the parent invocation and every
+   stage re-invocation resolve the fake package. The fake's ``__main__``
+   handles the three STAGE subcommands itself — logging each invocation
+   to ``$CALL_LOG``, printing deterministic stdout/stderr markers, and
+   exiting with a caller-controlled code (via ``FAKE_RC_*`` env vars) —
+   and DELEGATES every other subcommand (``audit``, the command under
+   test) to the real package by stripping itself off ``sys.path``.
 2. **``insert``** DOES touch a real fixture database (built the same way
    every other DB-backed suite in this package builds one —
    ``conftest.build_full_schema_db`` + ``conftest.insert_project``) and is
    tested against it directly, with stdin fed via a raw ``subprocess.run``
    call (``conftest.run_cli`` has no ``input=`` passthrough, since no
-   other ported command reads stdin yet).
+   other ported command reads stdin yet). No fake package is involved:
+   ``insert`` never runs a stage.
 """
 
 from __future__ import annotations
 
 import json
 import sqlite3
-import stat
 import subprocess
 import time
 from pathlib import Path
 
 import pytest
-from conftest import CLI_ROOT, PY, build_full_schema_db, cli_env, insert_project, run_cli
+from conftest import CLI_ROOT, PY, build_full_schema_db, cli_env, insert_project
 
 # --------------------------------------------------------------------------
-# Fake sibling scripts — deterministic stand-ins for cmd_lint.sh,
-# cmd_doctor.sh, cmd_status.sh (pipeline path only; `insert` never touches
-# these).
+# Fake shepherd_cli package — deterministic stand-ins for the lint /
+# doctor / status stage re-invocations (pipeline path only; `insert` never
+# touches these), delegating every other subcommand to the real package.
 # --------------------------------------------------------------------------
 
-_STUB_PREAMBLE = '#!/usr/bin/env bash\necho "{name} $*" >> "$CALL_LOG"\n'
+_FAKE_MAIN = '''\
+"""Test stand-in for ``python -m shepherd_cli`` (see test_audit.py docstring).
 
-_FAKE_SCRIPTS: dict[str, str] = {
-    "cmd_lint.sh": _STUB_PREAMBLE.format(name="cmd_lint.sh")
-    + ('echo "stdout:cmd_lint.sh"\necho "stderr:cmd_lint.sh" >&2\nexit "${FAKE_RC_LINT:-0}"\n'),
-    "cmd_doctor.sh": _STUB_PREAMBLE.format(name="cmd_doctor.sh")
-    + ('echo "stdout:cmd_doctor.sh"\necho "stderr:cmd_doctor.sh" >&2\nexit "${FAKE_RC_DOCTOR:-0}"\n'),
-    "cmd_status.sh": _STUB_PREAMBLE.format(name="cmd_status.sh")
-    + ('echo "stdout:cmd_status.sh"\necho "stderr:cmd_status.sh" >&2\nexit "${FAKE_RC_STATUS:-0}"\n'),
-}
+Stage subcommands (lint/doctor/status) are faked: log argv to $CALL_LOG,
+print deterministic markers, exit with $FAKE_RC_<STAGE>. Everything else
+(the ``audit`` command under test) delegates to the REAL package.
+"""
+import os
+import sys
+
+_STAGES = {"lint", "doctor", "status"}
 
 
-def _make_fake_plugin_root(tmp_path: Path) -> Path:
-    """Build a throwaway ``CLAUDE_PLUGIN_ROOT`` tree with fully-scripted sibling commands.
+def _fake_stage(cmd, args):
+    log_path = os.environ.get("CALL_LOG", "")
+    if log_path:
+        with open(log_path, "a", encoding="utf-8") as fh:
+            fh.write((cmd + " " + " ".join(args)).rstrip() + "\\n")
+    suffix = ":" + " ".join(args) if args else ""
+    print(f"stdout:{cmd}{suffix}")
+    print(f"stderr:{cmd}{suffix}", file=sys.stderr)
+    raise SystemExit(int(os.environ.get("FAKE_RC_" + cmd.upper(), "0")))
 
-    Layout mirrors the real plugin just enough for
-    :func:`shepherd_cli.resolution.find_bash_shctx` to resolve it:
-    ``skills/context/scripts/{shctx, cmd_lint.sh, cmd_doctor.sh,
-    cmd_status.sh}``.
+
+_cmd = sys.argv[1] if len(sys.argv) > 1 else ""
+if _cmd in _STAGES:
+    _fake_stage(_cmd, sys.argv[2:])
+
+# Delegate to the real shepherd_cli: drop this fake package's directory off
+# sys.path, forget the fake modules, and re-import the real entry point
+# (resolved via PYTHONPATH, which conftest points at services/cli).
+_here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path[:] = [p for p in sys.path if os.path.abspath(p or os.getcwd()) != _here]
+for _name in [n for n in list(sys.modules) if n == "shepherd_cli" or n.startswith("shepherd_cli.")]:
+    del sys.modules[_name]
+
+from shepherd_cli.__main__ import main  # noqa: E402
+
+main()
+'''
+
+
+def _make_fake_cli_root(tmp_path: Path) -> Path:
+    """Build a throwaway directory whose ``shepherd_cli`` package fakes the stages.
+
+    The returned directory is used as the subprocess CWD: ``python -m``
+    resolves packages from the cwd before ``PYTHONPATH``, so both the
+    parent ``audit`` invocation and every ``[sys.executable, "-m",
+    "shepherd_cli", "<stage>"]`` stage re-invocation import this fake
+    package first. The fake handles stage subcommands deterministically
+    (see ``_FAKE_MAIN``) and delegates ``audit`` itself to the real
+    package.
 
     Args:
         tmp_path: The pytest-provided per-test temp directory.
 
     Returns:
-        The fake plugin root directory (the ``CLAUDE_PLUGIN_ROOT`` value),
-        three levels above ``skills/context/scripts``.
+        The directory containing the fake ``shepherd_cli`` package (the
+        cwd to run the CLI from).
     """
-    scripts_dir = tmp_path / "fake-plugin-root" / "skills" / "context" / "scripts"
-    scripts_dir.mkdir(parents=True)
-
-    shctx_path = scripts_dir / "shctx"
-    shctx_path.write_text("#!/usr/bin/env bash\nexit 0\n")
-    shctx_path.chmod(shctx_path.stat().st_mode | stat.S_IEXEC)
-
-    for name, content in _FAKE_SCRIPTS.items():
-        script_path = scripts_dir / name
-        script_path.write_text(content)
-        script_path.chmod(script_path.stat().st_mode | stat.S_IEXEC)
-
-    return scripts_dir.parent.parent.parent
+    fake_root = tmp_path / "fake-cli-root"
+    pkg_dir = fake_root / "shepherd_cli"
+    pkg_dir.mkdir(parents=True)
+    (pkg_dir / "__init__.py").write_text("")
+    (pkg_dir / "__main__.py").write_text(_FAKE_MAIN)
+    return fake_root
 
 
 def audit_env(
-    fake_plugin_root: Path,
     call_log: Path,
     *,
     rc: dict[str, str] | None = None,
@@ -97,9 +128,7 @@ def audit_env(
     """Build the subprocess environment for a ``shepherd audit`` pipeline test.
 
     Args:
-        fake_plugin_root: The fake plugin root from
-            :func:`_make_fake_plugin_root`.
-        call_log: Path the fake sibling scripts append one line to per
+        call_log: Path the fake stage stand-ins append one line to per
             invocation (``$CALL_LOG``).
         rc: ``FAKE_RC_*`` overrides, e.g. ``{"FAKE_RC_DOCTOR": "2"}``.
 
@@ -109,12 +138,35 @@ def audit_env(
         (a throwaway path is set anyway purely so ``cli_env`` has
         something to point at; it is never actually opened).
     """
-    env = cli_env(fake_plugin_root / "unused.db")
-    env["CLAUDE_PLUGIN_ROOT"] = str(fake_plugin_root)
+    env = cli_env(call_log.parent / "unused.db")
     env["CALL_LOG"] = str(call_log)
     for key, value in (rc or {}).items():
         env[key] = value
     return env
+
+
+def run_audit(
+    args: list[str],
+    env: dict[str, str],
+    fake_cli_root: Path,
+    *,
+    timeout: float = 60.0,
+) -> subprocess.CompletedProcess[str]:
+    """Run ``${PY} -m shepherd_cli audit ...`` with the fake package as cwd.
+
+    ``conftest.run_cli`` pins ``cwd=CLI_ROOT`` (the real package), so the
+    pipeline half uses its own runner: the fake-cli-root cwd is exactly
+    what makes the stage re-invocations resolve the fake stand-ins (see
+    the module docstring).
+    """
+    return subprocess.run(
+        [PY, "-m", "shepherd_cli", "audit", *args],
+        env=env,
+        cwd=str(fake_cli_root),
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+    )
 
 
 def read_calls(call_log: Path) -> list[str]:
@@ -125,8 +177,8 @@ def read_calls(call_log: Path) -> list[str]:
 
 
 @pytest.fixture
-def fake_plugin_root(tmp_path: Path) -> Path:
-    return _make_fake_plugin_root(tmp_path)
+def fake_cli_root(tmp_path: Path) -> Path:
+    return _make_fake_cli_root(tmp_path)
 
 
 @pytest.fixture
@@ -145,9 +197,9 @@ def call_log(tmp_path: Path) -> Path:
 # --------------------------------------------------------------------------
 
 
-def test_bare_invocation_runs_full_pipeline_all_green(fake_plugin_root: Path, call_log: Path) -> None:
-    env = audit_env(fake_plugin_root, call_log)
-    proc = run_cli(["audit"], env)
+def test_bare_invocation_runs_full_pipeline_all_green(fake_cli_root: Path, call_log: Path) -> None:
+    env = audit_env(call_log)
+    proc = run_audit([], env, fake_cli_root)
 
     assert proc.returncode == 0, proc.stderr
     assert "shctx audit:" in proc.stdout
@@ -159,77 +211,77 @@ def test_bare_invocation_runs_full_pipeline_all_green(fake_plugin_root: Path, ca
     # at the end); lint and status exactly once each.
     calls = read_calls(call_log)
     assert calls == [
-        "cmd_lint.sh",
-        "cmd_doctor.sh",
-        "cmd_status.sh",
-        "cmd_doctor.sh",
+        "lint",
+        "doctor",
+        "status",
+        "doctor",
     ]
 
 
 def test_bare_invocation_non_verbose_suppresses_lint_and_status_output(
-    fake_plugin_root: Path, call_log: Path
+    fake_cli_root: Path, call_log: Path
 ) -> None:
-    env = audit_env(fake_plugin_root, call_log)
-    proc = run_cli(["audit"], env)
+    env = audit_env(call_log)
+    proc = run_audit([], env, fake_cli_root)
 
     assert proc.returncode == 0, proc.stderr
-    assert "stdout:cmd_lint.sh" not in proc.stdout
-    assert "stderr:cmd_lint.sh" not in proc.stderr
-    assert "stdout:cmd_status.sh" not in proc.stdout
-    assert "stderr:cmd_status.sh" not in proc.stderr
+    assert "stdout:lint" not in proc.stdout
+    assert "stderr:lint" not in proc.stderr
+    assert "stdout:status" not in proc.stdout
+    assert "stderr:status" not in proc.stderr
     assert "───" not in proc.stdout  # no "─── name ───" headers at all
 
 
 def test_doctor_output_always_printed_once_regardless_of_verbose(
-    fake_plugin_root: Path, call_log: Path
+    fake_cli_root: Path, call_log: Path
 ) -> None:
     """doctor's FIRST (rc-capturing) call is always silent; its SECOND
     (final) call always inherits stdout/stderr — independent of
     --verbose. Its output appears exactly once, and never behind a
     "─── doctor ───" header (doctor never goes through run_stage)."""
-    env = audit_env(fake_plugin_root, call_log)
-    proc = run_cli(["audit"], env)
+    env = audit_env(call_log)
+    proc = run_audit([], env, fake_cli_root)
 
     assert proc.returncode == 0, proc.stderr
-    assert proc.stdout.count("stdout:cmd_doctor.sh") == 1
-    assert proc.stderr.count("stderr:cmd_doctor.sh") == 1
+    assert proc.stdout.count("stdout:doctor") == 1
+    assert proc.stderr.count("stderr:doctor") == 1
     assert "─── doctor ───" not in proc.stdout
 
     # doctor's own output appears BEFORE the summary block.
-    doctor_pos = proc.stdout.index("stdout:cmd_doctor.sh")
+    doctor_pos = proc.stdout.index("stdout:doctor")
     summary_pos = proc.stdout.index("shctx audit:")
     assert doctor_pos < summary_pos
 
 
 def test_verbose_streams_lint_and_status_output_with_headers_but_not_doctor(
-    fake_plugin_root: Path, call_log: Path
+    fake_cli_root: Path, call_log: Path
 ) -> None:
-    env = audit_env(fake_plugin_root, call_log)
-    proc = run_cli(["audit", "--verbose"], env)
+    env = audit_env(call_log)
+    proc = run_audit(["--verbose"], env, fake_cli_root)
 
     assert proc.returncode == 0, proc.stderr
     assert "─── lint ───" in proc.stdout
     assert "─── status ───" in proc.stdout
     assert "─── doctor ───" not in proc.stdout
-    assert "stdout:cmd_lint.sh" in proc.stdout
-    assert "stderr:cmd_lint.sh" in proc.stderr
-    assert "stdout:cmd_status.sh" in proc.stdout
+    assert "stdout:lint" in proc.stdout
+    assert "stderr:lint" in proc.stderr
+    assert "stdout:status" in proc.stdout
     # doctor's output still appears exactly once (from its always-inherited
     # final call), not duplicated by --verbose.
-    assert proc.stdout.count("stdout:cmd_doctor.sh") == 1
+    assert proc.stdout.count("stdout:doctor") == 1
 
 
-def test_verbose_short_flag_is_equivalent(fake_plugin_root: Path, call_log: Path) -> None:
-    env = audit_env(fake_plugin_root, call_log)
-    proc = run_cli(["audit", "-v"], env)
+def test_verbose_short_flag_is_equivalent(fake_cli_root: Path, call_log: Path) -> None:
+    env = audit_env(call_log)
+    proc = run_audit(["-v"], env, fake_cli_root)
 
     assert proc.returncode == 0, proc.stderr
     assert "─── lint ───" in proc.stdout
 
 
-def test_multiple_verbose_flags_are_idempotent(fake_plugin_root: Path, call_log: Path) -> None:
-    env = audit_env(fake_plugin_root, call_log)
-    proc = run_cli(["audit", "-v", "--verbose"], env)
+def test_multiple_verbose_flags_are_idempotent(fake_cli_root: Path, call_log: Path) -> None:
+    env = audit_env(call_log)
+    proc = run_audit(["-v", "--verbose"], env, fake_cli_root)
 
     assert proc.returncode == 0, proc.stderr
     assert "─── lint ───" in proc.stdout
@@ -241,9 +293,9 @@ def test_multiple_verbose_flags_are_idempotent(fake_plugin_root: Path, call_log:
 # --------------------------------------------------------------------------
 
 
-def test_doctor_warn_only_exits_2_and_summarizes_warn(fake_plugin_root: Path, call_log: Path) -> None:
-    env = audit_env(fake_plugin_root, call_log, rc={"FAKE_RC_DOCTOR": "2"})
-    proc = run_cli(["audit"], env)
+def test_doctor_warn_only_exits_2_and_summarizes_warn(fake_cli_root: Path, call_log: Path) -> None:
+    env = audit_env(call_log, rc={"FAKE_RC_DOCTOR": "2"})
+    proc = run_audit([], env, fake_cli_root)
 
     assert proc.returncode == 2
     assert "  lint:   ok" in proc.stdout
@@ -252,33 +304,33 @@ def test_doctor_warn_only_exits_2_and_summarizes_warn(fake_plugin_root: Path, ca
 
 
 def test_doctor_hard_fail_exits_1_and_summarizes_fail_with_rc(
-    fake_plugin_root: Path, call_log: Path
+    fake_cli_root: Path, call_log: Path
 ) -> None:
-    env = audit_env(fake_plugin_root, call_log, rc={"FAKE_RC_DOCTOR": "1"})
-    proc = run_cli(["audit"], env)
+    env = audit_env(call_log, rc={"FAKE_RC_DOCTOR": "1"})
+    proc = run_audit([], env, fake_cli_root)
 
     assert proc.returncode == 1
     assert "  doctor: fail (rc=1)" in proc.stdout
 
 
 def test_doctor_arbitrary_nonzero_rc_summarizes_fail_with_that_rc(
-    fake_plugin_root: Path, call_log: Path
+    fake_cli_root: Path, call_log: Path
 ) -> None:
     """An rc other than 0/1/2 renders "fail (rc=N)" in the summary — but the
     aggregate exit is 0, matching cmd_audit.sh line 98 exactly: it forces exit 1
     only on `rc_doctor == 1` (not any non-zero), exit 2 only on `rc_doctor == 2`;
     every other doctor rc (7 here) falls through to `exit 0` despite the "fail"
     label. A bash quirk, reproduced faithfully."""
-    env = audit_env(fake_plugin_root, call_log, rc={"FAKE_RC_DOCTOR": "7"})
-    proc = run_cli(["audit"], env)
+    env = audit_env(call_log, rc={"FAKE_RC_DOCTOR": "7"})
+    proc = run_audit([], env, fake_cli_root)
 
     assert proc.returncode == 0
     assert "  doctor: fail (rc=7)" in proc.stdout
 
 
-def test_lint_failure_exits_1(fake_plugin_root: Path, call_log: Path) -> None:
-    env = audit_env(fake_plugin_root, call_log, rc={"FAKE_RC_LINT": "5"})
-    proc = run_cli(["audit"], env)
+def test_lint_failure_exits_1(fake_cli_root: Path, call_log: Path) -> None:
+    env = audit_env(call_log, rc={"FAKE_RC_LINT": "5"})
+    proc = run_audit([], env, fake_cli_root)
 
     assert proc.returncode == 1
     assert "  lint:   fail (rc=5)" in proc.stdout
@@ -286,35 +338,35 @@ def test_lint_failure_exits_1(fake_plugin_root: Path, call_log: Path) -> None:
     assert "  status: ok" in proc.stdout
 
 
-def test_status_failure_exits_1(fake_plugin_root: Path, call_log: Path) -> None:
-    env = audit_env(fake_plugin_root, call_log, rc={"FAKE_RC_STATUS": "3"})
-    proc = run_cli(["audit"], env)
+def test_status_failure_exits_1(fake_cli_root: Path, call_log: Path) -> None:
+    env = audit_env(call_log, rc={"FAKE_RC_STATUS": "3"})
+    proc = run_audit([], env, fake_cli_root)
 
     assert proc.returncode == 1
     assert "  status: fail (rc=3)" in proc.stdout
 
 
 def test_every_stage_runs_even_when_an_earlier_one_fails(
-    fake_plugin_root: Path, call_log: Path
+    fake_cli_root: Path, call_log: Path
 ) -> None:
     """Bash parity: each rc_* is captured independently — a failed early
     stage does NOT short-circuit later stages."""
-    env = audit_env(fake_plugin_root, call_log, rc={"FAKE_RC_LINT": "1", "FAKE_RC_STATUS": "1"})
-    proc = run_cli(["audit"], env)
+    env = audit_env(call_log, rc={"FAKE_RC_LINT": "1", "FAKE_RC_STATUS": "1"})
+    proc = run_audit([], env, fake_cli_root)
 
     assert proc.returncode == 1
     calls = read_calls(call_log)
-    assert calls == ["cmd_lint.sh", "cmd_doctor.sh", "cmd_status.sh", "cmd_doctor.sh"]
+    assert calls == ["lint", "doctor", "status", "doctor"]
 
 
 def test_lint_fail_and_doctor_warn_together_exit_1_not_2(
-    fake_plugin_root: Path, call_log: Path
+    fake_cli_root: Path, call_log: Path
 ) -> None:
     """The hard-fail branch (lint/status nonzero, or doctor==1) is checked
     BEFORE the doctor==2 warn branch — a lint failure wins even when
     doctor only warned."""
-    env = audit_env(fake_plugin_root, call_log, rc={"FAKE_RC_LINT": "1", "FAKE_RC_DOCTOR": "2"})
-    proc = run_cli(["audit"], env)
+    env = audit_env(call_log, rc={"FAKE_RC_LINT": "1", "FAKE_RC_DOCTOR": "2"})
+    proc = run_audit([], env, fake_cli_root)
 
     assert proc.returncode == 1
     assert "  lint:   fail (rc=1)" in proc.stdout
@@ -340,19 +392,19 @@ _HELP_TEXT = (
 
 
 def test_help_long_flag_prints_verbatim_bash_usage_and_exits_0(
-    fake_plugin_root: Path, call_log: Path
+    fake_cli_root: Path, call_log: Path
 ) -> None:
-    env = audit_env(fake_plugin_root, call_log)
-    proc = run_cli(["audit", "--help"], env)
+    env = audit_env(call_log)
+    proc = run_audit(["--help"], env, fake_cli_root)
 
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout.rstrip("\n") == _HELP_TEXT
     assert read_calls(call_log) == []
 
 
-def test_help_short_flag_prints_usage_and_exits_0(fake_plugin_root: Path, call_log: Path) -> None:
-    env = audit_env(fake_plugin_root, call_log)
-    proc = run_cli(["audit", "-h"], env)
+def test_help_short_flag_prints_usage_and_exits_0(fake_cli_root: Path, call_log: Path) -> None:
+    env = audit_env(call_log)
+    proc = run_audit(["-h"], env, fake_cli_root)
 
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout.rstrip("\n") == _HELP_TEXT
@@ -360,10 +412,10 @@ def test_help_short_flag_prints_usage_and_exits_0(fake_plugin_root: Path, call_l
 
 
 def test_help_flag_short_circuits_even_after_verbose(
-    fake_plugin_root: Path, call_log: Path
+    fake_cli_root: Path, call_log: Path
 ) -> None:
-    env = audit_env(fake_plugin_root, call_log)
-    proc = run_cli(["audit", "--verbose", "-h"], env)
+    env = audit_env(call_log)
+    proc = run_audit(["--verbose", "-h"], env, fake_cli_root)
 
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout.rstrip("\n") == _HELP_TEXT
@@ -375,9 +427,9 @@ def test_help_flag_short_circuits_even_after_verbose(
 # --------------------------------------------------------------------------
 
 
-def test_unknown_arg_exits_1_with_error(fake_plugin_root: Path, call_log: Path) -> None:
-    env = audit_env(fake_plugin_root, call_log)
-    proc = run_cli(["audit", "--bogus"], env)
+def test_unknown_arg_exits_1_with_error(fake_cli_root: Path, call_log: Path) -> None:
+    env = audit_env(call_log)
+    proc = run_audit(["--bogus"], env, fake_cli_root)
 
     assert proc.returncode == 1
     assert proc.stdout == ""
@@ -385,9 +437,9 @@ def test_unknown_arg_exits_1_with_error(fake_plugin_root: Path, call_log: Path) 
     assert read_calls(call_log) == []
 
 
-def test_positional_token_is_unknown_arg(fake_plugin_root: Path, call_log: Path) -> None:
-    env = audit_env(fake_plugin_root, call_log)
-    proc = run_cli(["audit", "bogus-subcommand"], env)
+def test_positional_token_is_unknown_arg(fake_cli_root: Path, call_log: Path) -> None:
+    env = audit_env(call_log)
+    proc = run_audit(["bogus-subcommand"], env, fake_cli_root)
 
     assert proc.returncode == 1
     assert proc.stderr.rstrip("\n") == "ERROR: unknown arg: bogus-subcommand"
@@ -395,13 +447,13 @@ def test_positional_token_is_unknown_arg(fake_plugin_root: Path, call_log: Path)
 
 
 def test_insert_not_in_first_position_is_unknown_arg(
-    fake_plugin_root: Path, call_log: Path
+    fake_cli_root: Path, call_log: Path
 ) -> None:
     """Bash checks the LITERAL first token (``${1:-}" == "insert"``)
     BEFORE any flag parsing — "insert" appearing after --verbose is just
     another unrecognized token to the pipeline's flag loop."""
-    env = audit_env(fake_plugin_root, call_log)
-    proc = run_cli(["audit", "--verbose", "insert"], env)
+    env = audit_env(call_log)
+    proc = run_audit(["--verbose", "insert"], env, fake_cli_root)
 
     assert proc.returncode == 1
     assert proc.stderr.rstrip("\n") == "ERROR: unknown arg: insert"
@@ -409,10 +461,10 @@ def test_insert_not_in_first_position_is_unknown_arg(
 
 
 def test_unknown_arg_short_circuits_before_later_tokens(
-    fake_plugin_root: Path, call_log: Path
+    fake_cli_root: Path, call_log: Path
 ) -> None:
-    env = audit_env(fake_plugin_root, call_log)
-    proc = run_cli(["audit", "--bogus", "--verbose"], env)
+    env = audit_env(call_log)
+    proc = run_audit(["--bogus", "--verbose"], env, fake_cli_root)
 
     assert proc.returncode == 1
     assert proc.stderr.rstrip("\n") == "ERROR: unknown arg: --bogus"
@@ -420,18 +472,25 @@ def test_unknown_arg_short_circuits_before_later_tokens(
 
 
 # --------------------------------------------------------------------------
-# _scripts_dir() failure mode.
+# _run_stage() launch-failure mode.
 # --------------------------------------------------------------------------
 
+_RUN_STAGE_SNIPPET = (
+    "import sys\n"
+    "from shepherd_cli.commands.audit import _run_stage\n"
+    "print(_run_stage('probe', [sys.argv[1]], False))\n"
+)
 
-def test_missing_bash_shctx_tooling_exits_1(tmp_path: Path) -> None:
+
+def test_unlaunchable_stage_counts_as_rc_127(tmp_path: Path) -> None:
+    """A stage that cannot be launched at all (OSError from process
+    creation — the moral equivalent of bash's missing/unexecutable
+    ``cmd_*.sh``) maps to rc 127, the shell's own command-not-found code,
+    instead of crashing the pipeline. Driven via a ``-c`` snippet in a
+    fresh subprocess (the test_panes.py private-helper pattern)."""
     env = cli_env(tmp_path / "unused.db")
-    empty_root = tmp_path / "no-plugin-here"
-    empty_root.mkdir()
-    env["CLAUDE_PLUGIN_ROOT"] = str(empty_root)
-
     proc = subprocess.run(
-        [PY, "-m", "shepherd_cli", "audit"],
+        [PY, "-c", _RUN_STAGE_SNIPPET, str(tmp_path / "no-such-interpreter")],
         env=env,
         cwd=str(tmp_path),
         capture_output=True,
@@ -439,12 +498,12 @@ def test_missing_bash_shctx_tooling_exits_1(tmp_path: Path) -> None:
         timeout=15,
     )
 
-    assert proc.returncode == 1
-    assert "ERROR: bash shctx tooling not found" in proc.stderr
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.splitlines()[-1] == "127"
 
 
 # ==========================================================================
-# `insert` subverb — real fixture DB, no fake scripts involved.
+# `insert` subverb — real fixture DB, no fake package involved.
 # ==========================================================================
 
 

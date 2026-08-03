@@ -32,7 +32,7 @@ is_shepherd_project() {
 #   4. existing .artifacts/ (legacy auto-pickup fallback)
 #   5. default .shepherd/   (matches `shctx init` for new projects)
 # Contract source of truth: docs/configuration.md §SHEPHERD_WORKDIR and
-# skills/context/scripts/_lib.sh resolve_workdir. These MUST agree or hooks
+# services/cli/shepherd_cli/resolution.py resolve_workdir. These MUST agree or hooks
 # write event logs / dispatch tags / locks into a different namespace than the
 # shctx runtime reads (split-brain — GH #121).
 resolve_namespace() {
@@ -59,7 +59,7 @@ resolve_namespace() {
 }
 
 # Registry DB path inside a namespace. Mirrors the skills-side shctx_db_path()
-# (skills/context/scripts/_lib.sh): prefer shepherd.db (the v6.1.2+ standard
+# (services/cli/shepherd_cli/resolution.py): prefer shepherd.db (the v6.1.2+ standard
 # `shctx init` creates), fall back to an EXISTING root.db (legacy projects,
 # untouched), else default to shepherd.db. Pass the already-resolved namespace
 # to preserve each caller's exact resolve_namespace fallback; omit to resolve
@@ -82,7 +82,7 @@ hook_db_path() {
 # Echoes "" if the key is unset everywhere. bash-3.2-safe (no TOML parser) and
 # never returns non-zero, so it is safe to call under `set -e`/pipefail.
 # Contract source of truth: docs/configuration.md §config-resolution. MUST agree
-# with the skills-side cfg_get (skills/context/scripts/_lib.sh) — they read the
+# with the CLI-side config resolution (services/cli/shepherd_cli/commands/config.py) — they read the
 # same files in the same order or config diverges between hooks and runtime.
 cfg_get() {
   local key="$1" repo f v
@@ -104,7 +104,7 @@ cfg_get() {
 # surrounding double-quotes and a trailing " # inline comment". Echoes "" if
 # unset; never returns non-zero. bash-3.2-safe (awk parses the section — no
 # associative arrays / mapfile). MUST mirror the skills-side cfg_section_get
-# (skills/context/scripts/_lib.sh) — same files, same order, same parse — or
+# (services/cli/shepherd_cli/commands/config.py) — same files, same order, same parse — or
 # config diverges between hooks and the shctx runtime. Contract source of truth:
 # docs/configuration.md §config-resolution.
 cfg_section_get() {

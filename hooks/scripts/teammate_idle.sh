@@ -54,7 +54,7 @@ safe_t="${TEAMMATE//\'/''}"
 safe_s="${SESSION//\'/''}"
 changed=0
 if [[ -n "$TEAMMATE" ]]; then
-  bash "$ROOT/skills/context/scripts/cmd_teammate.sh" \
+  "$ROOT/bin/shepherd" teammate \
     heartbeat "$TEAMMATE" --note='idle' 2>/dev/null || true
   changed=$(sqlite3 "$DB" \
     "UPDATE teammates SET status='idle' WHERE teammate_name='$safe_t' AND status NOT IN ('crashed','retired'); SELECT changes();" 2>/dev/null || echo 0)
@@ -85,7 +85,7 @@ fi
 # sqlite3 -header, so subtract 1 to get the data-row count. (Escalations
 # travel via SendMessage payloads — `shctx escalate` was pruned in v6.2.8.)
 LABEL="${TEAMMATE:-${SESSION:-unknown}}"
-STALLED=$(bash "$ROOT/skills/context/scripts/cmd_deliverable.sh" stalled --since-mins=10 2>/dev/null | wc -l)
+STALLED=$("$ROOT/bin/shepherd" deliverable stalled --since-mins=10 2>/dev/null | wc -l)
 
 if [[ "$STALLED" -gt 1 ]]; then
   echo "[shctx] teammate $LABEL idle | stalled-deliverables=$((STALLED-1))" >&2
