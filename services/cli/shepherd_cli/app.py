@@ -42,6 +42,7 @@ from shepherd_cli.commands import (
     query,
     ready,
     refresh,
+    release,
     render,
     report,
     run,
@@ -97,6 +98,7 @@ app.add_typer(plan.app, name="plan")
 app.add_typer(graph.app, name="graph")
 app.add_typer(loop.app, name="loop")
 app.add_typer(panes.app, name="panes")
+app.add_typer(release.app, name="release")
 app.command("render", help="Render a shepherd template deterministically (project -> user -> bundled).")(
     render.render_command
 )

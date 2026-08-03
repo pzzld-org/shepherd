@@ -7,22 +7,34 @@ idempotent pipeline::
 
 Safe to run on already-initialized projects: ``init`` only runs the first
 time (gated on ``<workdir>/project.json`` not existing yet); every other
-stage is itself idempotent by construction of the sibling script it shells
-out to.
+stage is itself idempotent by construction of the sibling subcommand it
+invokes.
 
-``cmd_ready.sh`` is a SUBCOMMAND-FREE, mostly SUBPROCESS-ORCHESTRATION
+``cmd_ready.sh`` was a SUBCOMMAND-FREE, mostly SUBPROCESS-ORCHESTRATION
 script — like ``cmd_sync.sh``, it has no verbs of its own, only flags:
-``--shepherd``/``--artifacts`` (forwarded to ``cmd_init.sh`` verbatim, only
-when the ``init`` stage actually runs) and ``--verbose``/``-v``. Four of
-its five stages are real bash sibling scripts this module SHELLS OUT to
-(``cmd_init.sh``, ``cmd_migrate.sh``, ``cmd_refresh.sh``, ``cmd_lint.sh``,
-``cmd_doctor.sh``) — none of them are inlined here, exactly mirroring how
-``cmd_ready.sh`` itself only ever coordinates them via ``bash
-"$HERE/cmd_*.sh" ...`` subprocess calls. This port locates the sibling
-scripts via :func:`shepherd_cli.resolution.find_bash_shctx` (same
-directory as the ``shctx`` dispatcher) and runs them the same way bash's
-own ``run_stage`` helper does — output suppressed by default, or
-streamed/inherited when ``--verbose``/``-v`` is given.
+``--shepherd``/``--artifacts`` (forwarded to the ``init`` stage verbatim,
+only when that stage actually runs) and ``--verbose``/``-v``. Where bash
+shelled out to five sibling scripts (``cmd_init.sh``, ``cmd_migrate.sh``,
+``cmd_refresh.sh``, ``cmd_lint.sh``, ``cmd_doctor.sh``) via ``bash
+"$HERE/cmd_*.sh" ...``, every one of those scripts now has a native port in
+this package (:mod:`shepherd_cli.commands.init`,
+:mod:`shepherd_cli.commands.migrate`, :mod:`shepherd_cli.commands.refresh`,
+:mod:`shepherd_cli.commands.lint`, :mod:`shepherd_cli.commands.doctor`), so
+this module re-invokes THIS interpreter's own CLI per stage —
+``[sys.executable, "-m", "shepherd_cli", "<stage>", ...]``, see
+:func:`_stage_argv` — and never execs bash or the retired
+``skills/context/scripts/`` tree. The sibling modules expose only Typer
+apps (no public functions), and each stage deliberately stays a separate
+OS process rather than an in-process :class:`typer.testing.CliRunner` call
+(the :mod:`shepherd_cli.commands.inject` idiom) because the per-stage
+output contracts here are FD-level: suppressing or streaming a stage must
+apply transitively to everything the stage itself spawns (``refresh``'s
+zone helpers, ``init``'s auto-refresh, ``gh``, ``git``), a stage's crash
+must not take down the pipeline, and each stage opens/closes its own DB
+lifespan exactly as each bash child process did. ``CliRunner`` swaps only
+the Python-level ``sys.stdout``/``sys.stderr`` objects, so grandchild
+subprocess output would leak past it — a subprocess of this interpreter is
+the only faithful swap.
 
 **NO DATABASE ACCESS OF ITS OWN.** ``cmd_ready.sh`` never issues a single
 ``sqlite3``/``shctx_sql`` query directly — the ONE piece of local state it
@@ -30,7 +42,7 @@ reads is a plain file existence check, ``[[ ! -f
 "$(shctx_project_id_path)" ]]`` (i.e. ``<workdir>/project.json``), used
 solely to decide whether the ``init`` stage needs to run at all. Every
 actual database write (schema creation, project row insert, migrations,
-refresh indexing) happens inside the sibling scripts it shells out to, on
+refresh indexing) happens inside the sibling subcommands it invokes, on
 their own terms. This module therefore imports neither
 :mod:`shepherd_cli.db` nor any Tortoise model, opens no ``db.lifespan()``,
 and needs no ``models_ready.py`` mirror-model module (hard rule #7's "pure
@@ -45,15 +57,15 @@ Bash parity is the bar for every branch:
   ``cmd_sprint.sh``'s ``""|-h|--help|help) usage ;;`` case); a bare
   invocation always performs a real bootstrap.
 - ``--shepherd``/``--artifacts`` are collected, in order, into a list
-  forwarded to ``cmd_init.sh`` verbatim — but ONLY when the ``init`` stage
-  actually runs (project.json absent). When the project is already
+  forwarded to the ``init`` stage verbatim — but ONLY when the ``init``
+  stage actually runs (project.json absent). When the project is already
   initialized, these flags are silently accepted and then ignored, exactly
   like bash (``init_flags`` is built regardless of whether it will ever be
   used).
 - ``--verbose``/``-v`` forwards the ``migrate``/``refresh``/``lint``
   stages' own stdout/stderr instead of discarding them, with a ``───
   <stage> ───`` header per stage (``_run_stage``, shared shape with
-  ``sprint``/``sync``). The ``init`` stage is handled separately (see
+  ``sync``/``audit``). The ``init`` stage is handled separately (see
   :func:`_run_init_stage`) since bash's own ``init`` block does NOT use
   ``run_stage`` — it always redirects stdout to ``/dev/null`` (verbose or
   not) while always leaving stderr connected, and its header is printed
@@ -72,12 +84,12 @@ Bash parity is the bar for every branch:
 - The ``init`` stage is NOT wrapped the way ``migrate``/``refresh``/
   ``lint`` are: bash's ``init`` block runs ``bash "$HERE/cmd_init.sh" ...
   >/dev/null`` with no ``|| rc=$?`` capture, under the script's own ``set
-  -eu -o pipefail``. A nonzero exit from ``cmd_init.sh`` therefore aborts
-  ``cmd_ready.sh`` IMMEDIATELY, at that exact point — no later stage runs,
-  and NONE of the final summary lines print. This port reproduces that
-  exact short-circuit (see :func:`_run_init_stage`'s ``typer.Exit``
-  behavior), unlike ``migrate``/``refresh``/``lint``, which always run
-  regardless of an earlier stage's exit code.
+  -eu -o pipefail``. A nonzero exit from the ``init`` stage therefore
+  aborts ``shepherd ready`` IMMEDIATELY, at that exact point — no later
+  stage runs, and NONE of the final summary lines print. This port
+  reproduces that exact short-circuit (see :func:`_run_init_stage`'s
+  ``typer.Exit`` behavior), unlike ``migrate``/``refresh``/``lint``, which
+  always run regardless of an earlier stage's exit code.
 - ``migrate``/``refresh``/``lint`` are each independent (bash captures
   each ``rc_*`` separately via ``run_stage ... || rc_*=$?`` rather than
   short-circuiting on the first failure) — a later stage always runs even
@@ -85,13 +97,19 @@ Bash parity is the bar for every branch:
 - ``doctor`` always runs last, unconditionally, printing its own full
   report to stdout (with a blank line before it, mirroring bash's bare
   ``echo``) — its exit code (0 ok / 1 fail / 2 warn-only, per
-  ``cmd_doctor.sh``'s own contract) feeds the ``doctor:`` summary line
+  ``shepherd doctor``'s own contract) feeds the ``doctor:`` summary line
   (``ok``/``warn``/``fail (rc=N)``) but does NOT factor into
   ``shepherd ready``'s own final exit code.
 - The final exit code is 0 only if ``migrate``, ``refresh``, AND ``lint``
   all succeeded, else 1 — bash: ``if (( rc_migrate != 0 || rc_refresh != 0
   || rc_lint != 0 )); then exit 1; fi``. Note ``doctor``'s exit code is
   deliberately excluded from this check (see above).
+- A stage that cannot be launched at all (an :class:`OSError` from process
+  creation — the moral equivalent of bash's missing/unexecutable
+  ``cmd_*.sh``) counts as rc 127, the shell's own command-not-found code:
+  captured per stage for ``migrate``/``refresh``/``lint``/``doctor``, and
+  — matching the ``set -e`` short-circuit above — an immediate exit 127
+  for the ``init`` stage.
 
 Known parity note (documented, not fixed — matches ``cmd_ready.sh``'s own
 lightly redundant bash): the bash script computes ``root="$(shctx_artifacts_root)"``
@@ -110,22 +128,24 @@ improvement (less redundant stderr noise) with no effect on exit codes,
 stdout content, or any stage's behavior, and is not worth reproducing the
 double stderr write for.
 
-Known parity note (shared with ``shepherd sprint``/``shepherd sync``):
-this module reuses the same ``_scripts_dir()``/``_now_s()``/``_run_stage()``
-shape rather than importing them, since hard rule #9 and the porting notes
-ask each command module to stay self-contained (no cross-command-module
-imports beyond the shared ``shepherd_cli`` layer).
+Known parity note (shared with ``shepherd sync``/``shepherd audit``):
+this module keeps its own ``_stage_argv()``/``_now_s()``/``_run_stage()``
+copies rather than importing them from a sibling command module, since
+hard rule #9 and the porting notes ask each command module to stay
+self-contained (no cross-command-module imports beyond the shared
+``shepherd_cli`` layer).
 """
 
 from __future__ import annotations
 
 import os
 import subprocess
+import sys
 import time
 
 import typer
 
-from shepherd_cli.resolution import find_bash_shctx, resolve_workdir
+from shepherd_cli.resolution import resolve_workdir
 
 app = typer.Typer(
     no_args_is_help=False,
@@ -153,36 +173,29 @@ _PROJECT_JSON_FILENAME = "project.json"
 
 
 # --------------------------------------------------------------------------
-# Sibling-script location + stage runner (same shape as
-# shepherd_cli.commands.sprint's/sync's own helpers, kept self-contained
+# Stage argv construction + stage runner (same shape as
+# shepherd_cli.commands.sync's/audit's own helpers, kept self-contained
 # here per hard rule #9).
 # --------------------------------------------------------------------------
-def _scripts_dir() -> str:
-    """Resolve the directory containing the sibling ``cmd_*.sh`` scripts.
+def _stage_argv(*stage_args: str) -> list[str]:
+    """Build the argv for one pipeline stage: this interpreter's own CLI.
 
-    Mirrors ``cmd_ready.sh``'s own ``HERE="$(cd "$(dirname "$0")" && pwd)"``
-    — the directory holding ``cmd_ready.sh`` itself is the same directory
-    that holds ``cmd_init.sh``, ``cmd_migrate.sh``, ``cmd_refresh.sh``,
-    ``cmd_lint.sh``, and ``cmd_doctor.sh``. This CLI locates it via
-    :func:`shepherd_cli.resolution.find_bash_shctx` (the ``shctx``
-    dispatcher lives in that same ``scripts/`` directory) rather than
-    hard-coding a path, so it resolves the same way under
-    ``CLAUDE_PLUGIN_ROOT`` or a plain repo checkout.
+    Replaces bash's ``bash "$HERE/cmd_<stage>.sh" ...`` — every stage of
+    this pipeline is a ported sibling subcommand of this same package, so
+    the stage runs as ``[sys.executable, "-m", "shepherd_cli", <stage>,
+    ...]``: a child process of THIS interpreter, deterministic, with no
+    bash and no dependency on the retired ``skills/context/scripts/``
+    tree. The child inherits this process's environment (``SHCTX_DB``,
+    ``SHEPHERD_WORKDIR``, ...) exactly as bash's child scripts did.
+
+    Args:
+        stage_args: The subcommand name followed by its arguments, e.g.
+            ``("refresh", "--scope=all")`` or ``("init", "--shepherd")``.
 
     Returns:
-        The absolute path to ``skills/context/scripts``.
-
-    Raises:
-        typer.Exit: code 1, with a stderr message, if the bash ``shctx``
-            tooling cannot be located at all — every stage of the bootstrap
-            pipeline shells out to it, so there is nothing useful this
-            command can do without it.
+        The full argv ready for ``subprocess.run``.
     """
-    shctx_path = find_bash_shctx()
-    if shctx_path is None:
-        typer.echo("ERROR: bash shctx tooling not found (skills/context/scripts/)", err=True)
-        raise typer.Exit(code=1)
-    return os.path.dirname(shctx_path)
+    return [sys.executable, "-m", "shepherd_cli", *stage_args]
 
 
 def _now_s() -> int:
@@ -215,7 +228,8 @@ def _run_stage(name: str, argv: list[str], verbose: bool) -> int:
         name: Human label for the stage header, printed only when
             ``verbose`` (bash: the ``echo "─── $name ───"`` line).
         argv: The full argv to execute, e.g.
-            ``["bash", "<scripts>/cmd_lint.sh"]``.
+            ``[sys.executable, "-m", "shepherd_cli", "lint"]`` (see
+            :func:`_stage_argv`).
         verbose: When True, print the stage header and let the child
             process inherit this process's stdout/stderr (bash: run
             ``"$@"`` directly, unredirected). When False, discard the
@@ -224,18 +238,23 @@ def _run_stage(name: str, argv: list[str], verbose: bool) -> int:
 
     Returns:
         The child process's exit code (0 on success), exactly as bash's
-        ``run_stage`` return value.
+        ``run_stage`` return value. A stage that cannot be launched at all
+        (``OSError`` from process creation) returns 127, the shell's own
+        command-not-found code for a missing ``cmd_*.sh``.
     """
-    if verbose:
-        typer.echo(f"─── {name} ───")
-        result = subprocess.run(argv, check=False)
-    else:
-        result = subprocess.run(argv, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        if verbose:
+            typer.echo(f"─── {name} ───")
+            result = subprocess.run(argv, check=False)
+        else:
+            result = subprocess.run(argv, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except OSError:
+        return 127
     return result.returncode
 
 
-def _run_init_stage(scripts_dir: str, init_flags: list[str], verbose: bool) -> bool:
-    """Run ``cmd_init.sh`` exactly once, ONLY if ``project.json`` is absent.
+def _run_init_stage(init_flags: list[str], verbose: bool) -> bool:
+    """Run the ``init`` stage exactly once, ONLY if ``project.json`` is absent.
 
     Bash::
 
@@ -254,14 +273,15 @@ def _run_init_stage(scripts_dir: str, init_flags: list[str], verbose: bool) -> b
     stderr (verbose or not — bash never redirects it at all in this
     block). And critically, there is no ``|| rc=$?`` capture: under
     ``cmd_ready.sh``'s own ``set -eu -o pipefail``, a nonzero exit from
-    ``cmd_init.sh`` aborts the ENTIRE script immediately, with that exact
-    exit code — no later stage runs, and no summary prints. This function
-    reproduces that short-circuit via ``typer.Exit``.
+    the ``init`` stage aborts the ENTIRE script immediately, with that
+    exact exit code — no later stage runs, and no summary prints. This
+    function reproduces that short-circuit via ``typer.Exit``. The stage
+    itself is the ported :mod:`shepherd_cli.commands.init`, run as a child
+    process of this interpreter (see :func:`_stage_argv`).
 
     Args:
-        scripts_dir: Directory containing ``cmd_init.sh``.
         init_flags: The ``--shepherd``/``--artifacts`` tokens collected by
-            :func:`_parse_args`, in order, forwarded to ``cmd_init.sh``
+            :func:`_parse_args`, in order, forwarded to the ``init`` stage
             verbatim.
         verbose: When True, print the ``─── init ───`` header before
             running (bash: only inside the "stage actually runs" branch —
@@ -274,9 +294,11 @@ def _run_init_stage(scripts_dir: str, init_flags: list[str], verbose: bool) -> b
         project is already initialized (``did_init=0``).
 
     Raises:
-        typer.Exit: with ``cmd_init.sh``'s own exit code, the instant it
-            returns nonzero — bash parity with the unguarded ``set -e``
-            abort described above.
+        typer.Exit: with the ``init`` stage's own exit code, the instant
+            it returns nonzero — bash parity with the unguarded ``set -e``
+            abort described above. Code 127 if the stage cannot be
+            launched at all (``OSError`` from process creation — bash's
+            command-not-found code, aborting the same way).
     """
     pidfile = os.path.join(resolve_workdir(), _PROJECT_JSON_FILENAME)
     if os.path.isfile(pidfile):
@@ -284,15 +306,17 @@ def _run_init_stage(scripts_dir: str, init_flags: list[str], verbose: bool) -> b
 
     if verbose:
         typer.echo("─── init ───")
-    init_script = os.path.join(scripts_dir, "cmd_init.sh")
-    result = subprocess.run(["bash", init_script, *init_flags], check=False, stdout=subprocess.DEVNULL)
+    try:
+        result = subprocess.run(_stage_argv("init", *init_flags), check=False, stdout=subprocess.DEVNULL)
+    except OSError:
+        raise typer.Exit(code=127) from None
     if result.returncode != 0:
         raise typer.Exit(code=result.returncode)
     return True
 
 
-def _run_doctor_stage(scripts_dir: str) -> int:
-    """Run ``cmd_doctor.sh``, always streaming its output (bash parity).
+def _run_doctor_stage() -> int:
+    """Run the ``doctor`` stage, always streaming its output (bash parity).
 
     Bash::
 
@@ -300,23 +324,27 @@ def _run_doctor_stage(scripts_dir: str) -> int:
         bash "$HERE/cmd_doctor.sh"
         rc_doctor=$?
 
-    Bash invokes ``cmd_doctor.sh`` with NO redirection at all, regardless
+    Bash invoked ``cmd_doctor.sh`` with NO redirection at all, regardless
     of ``--verbose`` — the code comment above this block calls it out
     explicitly: "emit at end as the user-visible summary". Unlike
     :func:`_run_stage`, there is no suppressed-output branch for this
-    stage.
-
-    Args:
-        scripts_dir: Directory containing ``cmd_doctor.sh``.
+    stage. The stage itself is the ported
+    :mod:`shepherd_cli.commands.doctor`, run as a child process of this
+    interpreter (see :func:`_stage_argv`).
 
     Returns:
-        ``cmd_doctor.sh``'s exit code: 0 (all checks ok), 1 (at least one
-        FAIL), or 2 (warnings only, no FAIL) — per its own contract. This
-        value feeds ONLY the ``doctor:`` summary line; it never affects
-        ``shepherd ready``'s own final exit code (see module docstring).
+        The ``doctor`` stage's exit code: 0 (all checks ok), 1 (at least
+        one FAIL), or 2 (warnings only, no FAIL) — per its own contract;
+        127 if the stage cannot be launched at all (``OSError`` from
+        process creation). This value feeds ONLY the ``doctor:`` summary
+        line; it never affects ``shepherd ready``'s own final exit code
+        (see module docstring).
     """
     typer.echo("")
-    result = subprocess.run(["bash", os.path.join(scripts_dir, "cmd_doctor.sh")], check=False)
+    try:
+        result = subprocess.run(_stage_argv("doctor"), check=False)
+    except OSError:
+        return 127
     return result.returncode
 
 
@@ -345,11 +373,11 @@ def _parse_args(argv: list[str]) -> tuple[list[str], bool]:
     Every token is visited in order; ``--shepherd``/``--artifacts`` tokens
     accumulate into ``init_flags`` (bash: ``init_flags+=("$arg")`` — an
     append, not a reassignment, so BOTH flags can appear together if given
-    together, in the order given; ``cmd_init.sh``'s own arg loop resolves
-    which one wins if both are present, not this one). ``--verbose``/
-    ``-v`` is a plain boolean flag (last-wins is moot since it only ever
-    sets True). ``-h``/``--help`` and an unrecognized token both
-    short-circuit immediately, from ANY position in ``argv``.
+    together, in the order given; the ``init`` stage's own arg loop
+    resolves which one wins if both are present, not this one).
+    ``--verbose``/``-v`` is a plain boolean flag (last-wins is moot since
+    it only ever sets True). ``-h``/``--help`` and an unrecognized token
+    both short-circuit immediately, from ANY position in ``argv``.
 
     Args:
         argv: Every token given to ``shepherd ready`` after the command
@@ -395,10 +423,12 @@ def _ready_impl(init_flags: list[str], verbose: bool) -> None:
     --scope=all`` -> ``lint`` (each of these three independent, a later
     stage always runs even if an earlier one failed) -> ``doctor``
     (always streamed, its exit code excluded from the final verdict).
+    Every stage is the ported sibling subcommand, run as a child process
+    of this interpreter (see :func:`_stage_argv`).
 
     Args:
         init_flags: The ``--shepherd``/``--artifacts`` tokens to forward
-            to ``cmd_init.sh``, in order (already resolved by
+            to the ``init`` stage, in order (already resolved by
             :func:`_parse_args`; only actually used if the ``init`` stage
             runs at all).
         verbose: Forward the ``migrate``/``refresh``/``lint`` stages' own
@@ -409,27 +439,22 @@ def _ready_impl(init_flags: list[str], verbose: bool) -> None:
             :func:`_run_doctor_stage`).
 
     Raises:
-        typer.Exit: with ``cmd_init.sh``'s own exit code if it fails (bash
-            parity: unguarded ``set -e`` abort, no summary printed). Code
-            0 if ``migrate``, ``refresh``, and ``lint`` all succeeded
+        typer.Exit: with the ``init`` stage's own exit code if it fails
+            (bash parity: unguarded ``set -e`` abort, no summary printed).
+            Code 0 if ``migrate``, ``refresh``, and ``lint`` all succeeded
             (regardless of ``doctor``'s exit code); code 1 otherwise —
             bash parity with ``if (( rc_migrate != 0 || rc_refresh != 0 ||
             rc_lint != 0 )); then exit 1; fi``.
     """
-    scripts_dir = _scripts_dir()
     t0 = _now_s()
 
-    did_init = _run_init_stage(scripts_dir, init_flags, verbose)
+    did_init = _run_init_stage(init_flags, verbose)
 
-    rc_migrate = _run_stage("migrate", ["bash", os.path.join(scripts_dir, "cmd_migrate.sh")], verbose)
-    rc_refresh = _run_stage(
-        "refresh",
-        ["bash", os.path.join(scripts_dir, "cmd_refresh.sh"), "--scope=all"],
-        verbose,
-    )
-    rc_lint = _run_stage("lint", ["bash", os.path.join(scripts_dir, "cmd_lint.sh")], verbose)
+    rc_migrate = _run_stage("migrate", _stage_argv("migrate"), verbose)
+    rc_refresh = _run_stage("refresh", _stage_argv("refresh", "--scope=all"), verbose)
+    rc_lint = _run_stage("lint", _stage_argv("lint"), verbose)
 
-    rc_doctor = _run_doctor_stage(scripts_dir)
+    rc_doctor = _run_doctor_stage()
 
     elapsed = _now_s() - t0
     typer.echo("")
@@ -481,10 +506,9 @@ def ready(
     Raises:
         typer.Exit: code 0 with the pipeline summary if ``migrate``,
             ``refresh``, and ``lint`` all succeeded; code 1 if any of
-            those three failed, if an argument was unrecognized, or if the
-            bash ``shctx`` tooling could not be located; ``cmd_init.sh``'s
-            own exit code if the ``init`` stage runs and fails; code 0
-            with the usage text if ``-h``/``--help`` was given.
+            those three failed or if an argument was unrecognized; the
+            ``init`` stage's own exit code if that stage runs and fails;
+            code 0 with the usage text if ``-h``/``--help`` was given.
     """
     argv = list(args) if args else []
     init_flags, verbose = _parse_args(argv)
