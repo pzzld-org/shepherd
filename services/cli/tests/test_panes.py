@@ -33,6 +33,7 @@ exists on the machine.
 
 from __future__ import annotations
 
+import re
 import json
 import shutil
 import sqlite3
@@ -392,13 +393,26 @@ def test_status_empty_prints_only_blank_line_and_footer(panes_db: tuple[Path, st
 
 
 def test_status_dash_alias(panes_db: tuple[Path, str], tmp_path: Path) -> None:
+    """``dash`` renders identically to ``status`` — a RENDERER contract.
+
+    The rendered row carries a live "seconds since last seen" column, so the
+    two invocations straddle a second boundary often enough to fail on the
+    clock rather than on the aliasing (observed: 119 vs 120). Normalize that
+    one column before the byte comparison — same treatment
+    ``test_eval.py``'s ``--md`` flag-parity test needs for its relative age.
+    """
     db_path, project_id = panes_db
     _seed_teammate(db_path, project_id, name="lane-a", status="active", last_seen_ago_s=120)
     env = panes_env(db_path, tmp_path / "wd")
     via_status = run_panes(["status", "--stale-mins=1"], env)
     via_dash = run_panes(["dash", "--stale-mins=1"], env)
     assert via_dash.returncode == 0, via_dash.stderr
-    assert via_dash.stdout == via_status.stdout
+
+    def _freeze_age(text: str) -> str:
+        """Replace the sec-since-seen column's value with a fixed token."""
+        return re.sub(r"\b\d+\b(?=\s+-)", "AGE", text)
+
+    assert _freeze_age(via_dash.stdout) == _freeze_age(via_status.stdout)
 
 
 def test_status_json_additive(panes_db: tuple[Path, str], tmp_path: Path) -> None:
