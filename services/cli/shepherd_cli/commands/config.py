@@ -143,7 +143,7 @@ import typer
 from typing import NamedTuple
 from pydantic import BaseModel, ConfigDict
 
-from shepherd_cli.config_schema import format_report, report_to_dict, validate_config_file
+from shepherd_cli.config_schema import format_report, report_to_dict, validate_config_tier
 from shepherd_cli.resolution import resolve_repo_root, resolve_user_home, resolve_workdir
 
 app = typer.Typer(
@@ -1070,7 +1070,14 @@ def _do_validate(as_json: bool) -> int:
         any existing tier file has at least one issue.
     """
     repo = resolve_repo_root()
-    candidates = [p for p in _config_search_paths(repo) if os.path.isfile(p)]
+    # Tracked-ness decides whether the secret-hygiene gate applies. A tier is
+    # TRACKED when git commits it: project scope AND not a `*.local.toml`.
+    # `*.local.toml` is gitignored, and the user/XDG tiers live outside the
+    # repo entirely -- all three are exactly where a machine-specific or
+    # secret value is SUPPOSED to live, so scanning them would invert the
+    # contract rather than enforce it.
+    tiers = [t for t in _config_tiers(repo) if os.path.isfile(t.path)]
+    candidates = [t.path for t in tiers]
 
     if not candidates:
         if as_json:
@@ -1079,7 +1086,13 @@ def _do_validate(as_json: bool) -> int:
             typer.echo("shctx config validate: no config files found across any precedence tier")
         return 0
 
-    reports = [validate_config_file(p) for p in candidates]
+    reports = [
+        validate_config_tier(
+            tier.path,
+            tracked=(tier.scope == "project" and not tier.path.endswith(".local.toml")),
+        )
+        for tier in tiers
+    ]
     ok = all(r.ok for r in reports)
 
     if as_json:

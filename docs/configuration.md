@@ -37,6 +37,21 @@ layer sat higher, creating `~/.shepherd/shepherd.toml` would silently override e
 project still bound through `.claude/` — a regression for every current install, which is not worth
 tidier ordering.
 
+### Secret hygiene in tracked tiers
+
+`shepherd.toml` and `shepherd.<harness>.toml` are **committed**, so they must carry only portable
+project/harness knobs. `shepherd config validate` rejects, in tracked tiers only:
+
+| flagged | examples |
+| :--- | :--- |
+| credential-shaped keys | `api_key`, `*_token`, `password`, `client_secret`, `private_key` |
+| literal credential shapes | `ghp_…`, `github_pat_…`, `sk-…`, `AKIA…`, PEM headers |
+| environment references | `$VAR`, `${VAR}` — shepherd never expands these |
+
+Put those in `shepherd.local.toml`, which is gitignored. The identical content **passes** there —
+the contract is about *where* a machine-specific value lives, not that it may never exist. Findings
+never echo the offending value, so the check cannot leak a secret into a CI transcript.
+
 **`<harness>`** is the active harness only — `claude` or `codex`, resolved from `SHEPHERD_HARNESS`
 (explicit, always wins), then Claude Code's own markers, then `CODEX_HOME`; absent when none is
 detected. Only the active harness's file is read, so a codex knob never takes effect under Claude

@@ -72,6 +72,7 @@ table — ``[[gates.extra]]``'s ``name``/``cmd`` pair (see
 from __future__ import annotations
 
 import difflib
+import re
 import tomllib
 import types
 import typing
@@ -98,6 +99,15 @@ class ProjectConfig(BaseModel):
             documented enum is extended by one value to keep that config
             validating clean.
         description: Free text.
+        harnesses: Which shepherd implementations operate in this repo,
+            e.g. ``["claude-code", "codex"]``. DECLARATIVE metadata only
+            (v6.4.2): a machine-readable anchor for the bridge contract so
+            an implementation can distinguish "no other harness is
+            configured here" from "a sibling is declared and may hold
+            custody" before it inspects ``run.json``. No feature reads it
+            for dispatch. Deliberately an open list of free strings rather
+            than a closed enum — a new harness must not fail validation on
+            a repo that names it.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -105,6 +115,7 @@ class ProjectConfig(BaseModel):
     name: str | None = None
     language: Literal["rust", "python", "typescript", "go", "mixed", "markdown"] = "rust"
     description: str = ""
+    harnesses: list[str] = Field(default_factory=list)
 
 
 # --------------------------------------------------------------------------
@@ -1147,6 +1158,120 @@ def _convert_error(err: dict) -> ConfigIssue:
 # --------------------------------------------------------------------------
 # Public API.
 # --------------------------------------------------------------------------
+#: Key names that carry a credential by convention. Matched case-insensitively
+#: against the LEAF key name anywhere in the document.
+_SECRET_KEY_RE = re.compile(
+    r"(secret|token|password|passwd|api[_-]?key|access[_-]?key|private[_-]?key"
+    r"|credential|auth[_-]?key|client[_-]?secret|webhook[_-]?url)",
+    re.IGNORECASE,
+)
+
+#: A shell/env interpolation in a VALUE: ``$VAR`` or ``${VAR}``. Config is not
+#: shell -- shepherd never expands these -- so one here is either a leaked
+#: machine-specific value or a misunderstanding; both belong in *.local.toml.
+_ENV_REF_RE = re.compile(r"\$\{?[A-Za-z_][A-Za-z0-9_]*\}?")
+
+#: Literal credential shapes worth catching even under an innocuous key name.
+_SECRET_VALUE_RE = re.compile(
+    r"(sk-[A-Za-z0-9]{16,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}"
+    r"|AKIA[0-9A-Z]{12,}|-----BEGIN [A-Z ]*PRIVATE KEY-----)"
+)
+
+
+def _walk_scalars(node: object, prefix: str = "") -> "list[tuple[str, object]]":
+    """Flatten a parsed TOML document to ``(dotted.path, scalar)`` pairs.
+
+    Args:
+        node: A parsed TOML value (dict, list, or scalar).
+        prefix: The dotted path accumulated so far.
+
+    Returns:
+        Every scalar leaf with its dotted path. List elements are indexed
+        (``key[0]``) so a finding names the exact element.
+    """
+    found: list[tuple[str, object]] = []
+    if isinstance(node, dict):
+        for key, value in node.items():
+            found += _walk_scalars(value, f"{prefix}.{key}" if prefix else str(key))
+    elif isinstance(node, list):
+        for index, value in enumerate(node):
+            found += _walk_scalars(value, f"{prefix}[{index}]")
+    else:
+        found.append((prefix, node))
+    return found
+
+
+def scan_tracked_secrets(document: dict, *, file_label: str) -> list[ConfigIssue]:
+    """Find credential-shaped content in a config file that git TRACKS.
+
+    v6.4.2 layering (operator directive): ``shepherd.toml`` and
+    ``shepherd.<harness>.toml`` are committed, so they must carry only
+    portable project/harness knobs. Anything machine-specific or secret --
+    credentials, and env-var references, which shepherd never expands
+    anyway -- belongs in ``shepherd.local.toml``, which is gitignored.
+
+    This is a HYGIENE gate, not a security boundary: it catches the
+    plausible mistake (a token pasted into the tracked file because that
+    is the file the operator had open), not a determined exfiltration. A
+    finding is reported against the tracked file with the fix named, so
+    the operator moves the key rather than committing it.
+
+    Only ever called for tracked tiers -- ``*.local.toml`` is exactly
+    where these values are SUPPOSED to live, so flagging them there would
+    invert the contract.
+
+    Args:
+        document: The parsed TOML document.
+        file_label: The file the findings are reported against.
+
+    Returns:
+        One issue per offending scalar, in document order. Values are
+        never echoed back: a leaked secret must not be duplicated into a
+        log or a CI transcript by the very check that found it.
+    """
+    issues: list[ConfigIssue] = []
+    for dotted, value in _walk_scalars(document):
+        leaf = dotted.rsplit(".", 1)[-1].split("[")[0]
+        if _SECRET_KEY_RE.search(leaf):
+            issues.append(
+                ConfigIssue(
+                    path=dotted,
+                    kind="tracked_secret",
+                    message=(
+                        f"{file_label} is tracked in git, so it must not carry a "
+                        f"credential-shaped key; move '{dotted}' to shepherd.local.toml"
+                    ),
+                )
+            )
+            continue
+        if not isinstance(value, str):
+            continue
+        if _SECRET_VALUE_RE.search(value):
+            issues.append(
+                ConfigIssue(
+                    path=dotted,
+                    kind="tracked_secret",
+                    message=(
+                        f"{file_label} is tracked in git and '{dotted}' looks like a "
+                        f"credential; move it to shepherd.local.toml"
+                    ),
+                )
+            )
+        elif _ENV_REF_RE.search(value):
+            issues.append(
+                ConfigIssue(
+                    path=dotted,
+                    kind="tracked_env_ref",
+                    message=(
+                        f"'{dotted}' references an environment variable, which shepherd "
+                        f"never expands; {file_label} is tracked in git, so machine-specific "
+                        f"values belong in shepherd.local.toml"
+                    ),
+                )
+            )
+    return issues
+
+
 def validate_config_text(text: str, *, file_label: str) -> ConfigFileReport:
     """Validate raw TOML text against :class:`ShepherdConfig`.
 
@@ -1178,6 +1303,37 @@ def validate_config_text(text: str, *, file_label: str) -> ConfigFileReport:
         return ConfigFileReport(file=file_label, ok=False, issues=issues)
 
     return ConfigFileReport(file=file_label, ok=True, issues=())
+
+
+def validate_config_tier(path: str, *, tracked: bool) -> ConfigFileReport:
+    """Validate one tier file, adding the tracked-secret gate when it is committed.
+
+    Args:
+        path: The file to validate.
+        tracked: True when git tracks this file (``shepherd.toml`` and
+            ``shepherd.<harness>.toml`` inside the repo). ``*.local.toml``
+            is gitignored and the user/XDG tiers live outside the repo, so
+            all of those pass ``False`` — they are exactly where a
+            machine-specific or secret value is SUPPOSED to live.
+
+    Returns:
+        The schema report, with any tracked-secret findings appended.
+    """
+    report = validate_config_file(path)
+    if not tracked:
+        return report
+    if report.issues and report.issues[0].kind in {"read_error", "parse_error"}:
+        return report  # unreadable/unparseable -- nothing to scan, and already reported
+    try:
+        with open(path, "rb") as handle:
+            document = tomllib.load(handle)
+    except (OSError, tomllib.TOMLDecodeError):
+        return report
+    extra = scan_tracked_secrets(document, file_label=path)
+    if not extra:
+        return report
+    issues = (*report.issues, *extra)
+    return ConfigFileReport(file=report.file, ok=False, issues=issues)
 
 
 def validate_config_file(path: str) -> ConfigFileReport:

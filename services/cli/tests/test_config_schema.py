@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
+import pytest
 
 from conftest import PY, REPO_ROOT, clean_env_dict
 
@@ -382,3 +383,108 @@ def test_validate_against_the_real_dogfood_repo_config(tmp_path: Path) -> None:
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert str(DOGFOOD_TOML) in proc.stdout
     assert "OK" in proc.stdout
+
+
+# --------------------------------------------------------------------------
+# v6.4.2 tracked-secret hygiene (operator directive, 2026-08-03)
+# --------------------------------------------------------------------------
+# `shepherd.toml` and `shepherd.<harness>.toml` are COMMITTED, so they carry
+# only portable project/harness knobs. Credentials and env-var references --
+# which shepherd never expands anyway -- belong in the gitignored
+# `shepherd.local.toml`. The gate applies to tracked tiers ONLY: flagging
+# `*.local.toml` would invert the contract, since that file is exactly where
+# such values are supposed to live.
+
+
+def test_harnesses_key_validates_clean() -> None:
+    """`[project].harnesses` is a documented key, not an unknown one."""
+    from shepherd_cli.config_schema import validate_config_text
+
+    report = validate_config_text(
+        '[project]\nname = "x"\nharnesses = ["claude-code", "codex"]\n',
+        file_label="shepherd.toml",
+    )
+    assert report.ok, [i.message for i in report.issues]
+
+
+def test_harnesses_accepts_an_unknown_harness_name() -> None:
+    """An open list: a new harness must not fail validation on a repo naming it."""
+    from shepherd_cli.config_schema import validate_config_text
+
+    report = validate_config_text(
+        '[project]\nharnesses = ["some-future-harness"]\n', file_label="shepherd.toml"
+    )
+    assert report.ok, [i.message for i in report.issues]
+
+
+@pytest.mark.parametrize(
+    "document",
+    [
+        '[gh]\napi_key = "abc123"\n',
+        '[svc]\npassword = "hunter2"\n',
+        '[svc]\nclient_secret = "x"\n',
+        '[a]\nb = "ghp_AAAAAAAAAAAAAAAAAAAAAAAA"\n',
+        '[a]\nb = "sk-AAAAAAAAAAAAAAAAAAAA"\n',
+    ],
+)
+def test_tracked_file_rejects_credential_shapes(document: str, tmp_path: Path) -> None:
+    """A credential in a COMMITTED config is a finding naming the fix."""
+    from shepherd_cli.config_schema import validate_config_tier
+
+    path = tmp_path / "shepherd.toml"
+    path.write_text(document)
+    report = validate_config_tier(str(path), tracked=True)
+
+    assert not report.ok
+    assert any(i.kind == "tracked_secret" for i in report.issues)
+    assert any("shepherd.local.toml" in i.message for i in report.issues)
+
+
+def test_tracked_file_rejects_env_var_reference(tmp_path: Path) -> None:
+    """shepherd never expands `$VAR`, so one in a tracked file is a finding."""
+    from shepherd_cli.config_schema import validate_config_tier
+
+    path = tmp_path / "shepherd.toml"
+    path.write_text('[gates]\ncheck = "cargo check --manifest ${HOME}/x"\n')
+    report = validate_config_tier(str(path), tracked=True)
+
+    assert not report.ok
+    assert any(i.kind == "tracked_env_ref" for i in report.issues)
+
+
+def test_local_file_allows_exactly_what_the_tracked_file_forbids(tmp_path: Path) -> None:
+    """The same content is fine in `*.local.toml` — that is the whole point.
+
+    This is the test that keeps the gate from being a blanket ban: the
+    contract is about WHERE a machine-specific value lives, not that it may
+    never exist. Uses a schema-VALID section so the only thing that can
+    differ between the two files is the hygiene gate itself.
+    """
+    from shepherd_cli.config_schema import validate_config_tier
+
+    document = '[gates]\ncheck = "cargo check --manifest ${HOME}/x"\n'
+    tracked = tmp_path / "shepherd.toml"
+    tracked.write_text(document)
+    local = tmp_path / "shepherd.local.toml"
+    local.write_text(document)
+
+    tracked_report = validate_config_tier(str(tracked), tracked=True)
+    assert not tracked_report.ok
+    assert any(i.kind == "tracked_env_ref" for i in tracked_report.issues)
+
+    assert validate_config_tier(str(local), tracked=False).ok
+
+
+def test_scanner_never_echoes_the_secret_value(tmp_path: Path) -> None:
+    """A finding must not duplicate the credential into a log or CI transcript."""
+    from shepherd_cli.config_schema import validate_config_tier
+
+    secret = "ghp_ZZZZZZZZZZZZZZZZZZZZZZZZ"
+    path = tmp_path / "shepherd.toml"
+    path.write_text(f'[a]\nb = "{secret}"\n')
+    report = validate_config_tier(str(path), tracked=True)
+
+    assert not report.ok
+    for issue in report.issues:
+        assert secret not in issue.message
+        assert secret not in (issue.bad_value or "")
