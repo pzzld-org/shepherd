@@ -26,6 +26,7 @@ from shepherd_cli.commands import (
     export,
     graph,
     handoff,
+    home,
     init,
     inject,
     insights,
@@ -57,7 +58,24 @@ from shepherd_cli.commands import (
     worktree,
 )
 
-app = typer.Typer(no_args_is_help=True, add_completion=False)
+# ``-h`` as a first-class alias for ``--help``, set ONCE on the root context
+# (v6.4.2, GH #249 follow-on). Click's default ``help_option_names`` is
+# ``["--help"]`` alone, so before this the CLI had two classes of command:
+# the bash-parity modules that hand-roll their own ``-h``/``--help`` branch
+# accepted both, while every Click-managed group rejected ``-h`` outright
+# ("No such option: -h", exit 2) and the catch-all-argv modules swallowed it
+# as positional data and tried to run -- ``shepherd lint -h`` silently ran
+# the real lint check to completion, the same class of bug #249 filed against
+# ``dash``/``migrate``. ``help_option_names`` is inherited down the Context
+# chain, so setting it here reaches every sub-app that does not deliberately
+# override it; the modules that set ``help_option_names=[]`` for byte-exact
+# bash parity keep their own handling and are unaffected. Pinned for all 42
+# commands by ``tests/test_help_parity.py``.
+app = typer.Typer(
+    no_args_is_help=True,
+    add_completion=False,
+    context_settings={"help_option_names": ["-h", "--help"]},
+)
 app.add_typer(teammate.app, name="teammate")
 app.add_typer(signal.app, name="signal")
 app.add_typer(deliverable.app, name="deliverable")
@@ -86,6 +104,7 @@ app.add_typer(eval.app, name="eval")
 app.add_typer(doctor.app, name="doctor")
 app.add_typer(migrate.app, name="migrate")
 app.add_typer(init.app, name="init")
+app.add_typer(home.app, name="home")
 app.add_typer(close_lane.app, name="close-lane")
 app.add_typer(issues.app, name="issues")
 app.add_typer(worktree.app, name="worktree")

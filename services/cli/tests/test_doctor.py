@@ -156,6 +156,69 @@ def _delete_schema_versions_rows(db_path: Path) -> None:
         conn.close()
 
 
+# --------------------------------------------------------------------------
+# Post-parity section stripping (sections 7-9, v6.4.1 #59/#235/#254).
+#
+# Every section `cmd_doctor.sh` itself never had is CONDITIONAL by design
+# (silent on a gate-less / version-matched / no-declared-profile fixture —
+# see `shepherd_cli/commands/doctor.py`'s module docstring), so most
+# fixtures in this file never need this. But `_doctor_env` points
+# `CLAUDE_PLUGIN_ROOT` at the real checked-out repo (needed for
+# `find_migrations_dir`/bundled-style lookups elsewhere in this suite), and
+# section 8 fires whenever the checked-out `.claude-plugin/plugin.json`
+# version drifts from the installed `shepherd_cli.__version__` — an
+# environment/release-hygiene condition entirely orthogonal to `doctor`
+# correctness. The bash-parity assertions below strip every post-parity
+# category and recompute the trailing tally from what's left, so they test
+# what they say they test: parity on `cmd_doctor.sh`'s own six sections,
+# regardless of what an unrelated version drift happens to add on top.
+# --------------------------------------------------------------------------
+_POST_PARITY_CATEGORIES = {"gates", "version", "user"}
+
+
+def _strip_post_parity_md(stdout: str) -> str:
+    """Drop every post-parity row (+ its optional `-> fix:` continuation)
+    from an md report and recompute the trailing summary line from the
+    rows that remain — see the block comment above."""
+    lines = stdout.split("\n")
+    kept: list[str] = []
+    skip_next_fix = False
+    for line in lines:
+        if skip_next_fix and line.startswith("       ") and "→ fix:" in line:
+            skip_next_fix = False
+            continue
+        skip_next_fix = False
+        if line.startswith("shctx doctor:"):
+            continue
+        columns = line.split(None, 2)
+        if len(columns) >= 2 and columns[1] in _POST_PARITY_CATEGORIES:
+            skip_next_fix = True
+            continue
+        kept.append(line)
+    while kept and kept[-1] == "":
+        kept.pop()
+    fail = sum(1 for line in kept if line.startswith("FAIL"))
+    warn = sum(1 for line in kept if line.startswith("WARN"))
+    ok = sum(1 for line in kept if line.startswith("OK"))
+    kept.append("")
+    kept.append(f"shctx doctor: {fail} fail, {warn} warn, {ok} ok")
+    kept.append("")  # preserve the trailing newline `typer.echo` (and bash's own `echo`) always emit
+    return "\n".join(kept)
+
+
+def _strip_post_parity_json(payload: dict) -> dict:
+    """JSON-mode analogue of `_strip_post_parity_md`."""
+    checks = [c for c in payload["checks"] if c["category"] not in _POST_PARITY_CATEGORIES]
+    return {
+        "summary": {
+            "total": len(checks),
+            "fail": sum(1 for c in checks if c["status"] == "fail"),
+            "warn": sum(1 for c in checks if c["status"] == "warn"),
+        },
+        "checks": checks,
+    }
+
+
 def _insert_row(db_path: Path, table: str, **columns: object) -> None:
     """Insert one row into `table` via a fixed, hardcoded column list (no user input)."""
     conn = sqlite3.connect(str(db_path))
@@ -269,7 +332,7 @@ def test_missing_db_bash_parity(work_dir: Path, xdg_dir: Path) -> None:
     bash_proc = run_bash_doctor([], work_dir, env)
 
     assert python_proc.returncode == bash_proc.returncode == 1
-    assert python_proc.stdout == bash_proc.stdout
+    assert _strip_post_parity_md(python_proc.stdout) == bash_proc.stdout
 
 
 # --------------------------------------------------------------------------
@@ -293,7 +356,8 @@ def test_happy_path_all_ok_bash_parity(work_dir: Path, xdg_dir: Path) -> None:
     bash_proc = run_bash_doctor([], work_dir, _doctor_env(xdg_dir, db_path=db_path, workdir=work_dir))
 
     assert python_proc.returncode == bash_proc.returncode == 2  # artifacts zone always warns — see module docstring
-    assert python_proc.stdout == bash_proc.stdout, f"python:\n{python_proc.stdout}\n---\nbash:\n{bash_proc.stdout}"
+    stripped = _strip_post_parity_md(python_proc.stdout)
+    assert stripped == bash_proc.stdout, f"python (stripped):\n{stripped}\n---\nbash:\n{bash_proc.stdout}"
     assert f"OK     ns        project.json           id={project_id}" in python_proc.stdout
     assert "OK     db        schema_version" in python_proc.stdout
     assert "OK     db        pending migrations     none (schema at head)" in python_proc.stdout
@@ -332,7 +396,11 @@ def test_json_matches_bash_byte_for_byte(work_dir: Path, xdg_dir: Path) -> None:
     bash_proc = run_bash_doctor(["--json"], work_dir, env)
 
     assert python_proc.returncode == bash_proc.returncode
-    assert python_proc.stdout == bash_proc.stdout
+    # Structural, not byte-for-byte: `_strip_post_parity_json` recomputes
+    # `summary` from the filtered `checks` list, so a `total`/`warn` count
+    # inflated by an unrelated `version`/`gates`/`user` row can never mask
+    # a genuine parity break in cmd_doctor.sh's own six sections.
+    assert _strip_post_parity_json(json.loads(python_proc.stdout)) == json.loads(bash_proc.stdout)
 
 
 # --------------------------------------------------------------------------
@@ -349,9 +417,16 @@ def test_section_order(work_dir: Path, xdg_dir: Path) -> None:
     lines = proc.stdout.splitlines()
     categories_in_order = [line.split()[1] for line in lines[1:] if line.strip() and not line.startswith(" ") and "shctx doctor:" not in line]
     # bin(x4), ns(x1+), db(x1-3), lock(x1), refresh(x0 or x5), config(x1) — categories must appear
-    # in this relative order (never interleaved or reordered).
+    # in this relative order (never interleaved or reordered). Post-parity
+    # categories (gates/version/user — sections 7-9) are conditional tails
+    # that may or may not fire depending on config/environment (e.g. a
+    # `plugin.json` version drift); this fixture cares only that the SIX
+    # bash-native sections stay in their fixed relative order, so those
+    # tails are dropped before comparing.
     seen_order: list[str] = []
     for cat in categories_in_order:
+        if cat in _POST_PARITY_CATEGORIES:
+            continue
         if not seen_order or seen_order[-1] != cat:
             seen_order.append(cat)
     assert seen_order == ["bin", "ns", "db", "lock", "refresh", "config"]
@@ -400,7 +475,7 @@ def test_empty_schema_versions_matches_bash(work_dir: Path, xdg_dir: Path) -> No
     python_proc = run_doctor([], work_dir, env)
     bash_proc = run_bash_doctor([], work_dir, env)
 
-    assert python_proc.stdout == bash_proc.stdout
+    assert _strip_post_parity_md(python_proc.stdout) == bash_proc.stdout
     assert python_proc.returncode == bash_proc.returncode
 
 
@@ -431,7 +506,7 @@ def test_pending_migrations_matches_bash(work_dir: Path, xdg_dir: Path) -> None:
     python_proc = run_doctor([], work_dir, env)
     bash_proc = run_bash_doctor([], work_dir, env)
 
-    assert python_proc.stdout == bash_proc.stdout
+    assert _strip_post_parity_md(python_proc.stdout) == bash_proc.stdout
     assert python_proc.returncode == bash_proc.returncode
 
 
@@ -526,7 +601,7 @@ def test_project_json_matches_bash_across_variants(work_dir: Path, xdg_dir: Path
         env = _doctor_env(xdg_dir, workdir=work_dir)
         python_proc = run_doctor([], work_dir, env)
         bash_proc = run_bash_doctor([], work_dir, env)
-        assert python_proc.stdout == bash_proc.stdout, content
+        assert _strip_post_parity_md(python_proc.stdout) == bash_proc.stdout, content
         assert python_proc.returncode == bash_proc.returncode, content
 
 
@@ -607,7 +682,7 @@ def test_lock_variants_match_bash(work_dir: Path, xdg_dir: Path) -> None:
         env = _doctor_env(xdg_dir, workdir=work_dir)
         python_proc = run_doctor([], work_dir, env)
         bash_proc = run_bash_doctor([], work_dir, env)
-        assert python_proc.stdout == bash_proc.stdout, scenario
+        assert _strip_post_parity_md(python_proc.stdout) == bash_proc.stdout, scenario
         assert python_proc.returncode == bash_proc.returncode, scenario
 
 
@@ -677,7 +752,7 @@ def test_artifacts_zone_always_never_refreshed_even_with_rows(work_dir: Path, xd
     bash_proc = run_bash_doctor([], work_dir, env)
 
     assert "WARN   refresh   artifacts              rows=1, never refreshed" in python_proc.stdout
-    assert python_proc.stdout == bash_proc.stdout
+    assert _strip_post_parity_md(python_proc.stdout) == bash_proc.stdout
 
 
 def test_refresh_zones_absent_when_db_missing(work_dir: Path, xdg_dir: Path) -> None:
@@ -729,7 +804,7 @@ def test_dual_namespace_conflict_warns_and_triplicates_stderr_warning(work_dir: 
     python_proc = run_doctor([], work_dir, env)
     bash_proc = run_bash_doctor([], work_dir, env)
 
-    assert python_proc.stdout == bash_proc.stdout
+    assert _strip_post_parity_md(python_proc.stdout) == bash_proc.stdout
     assert python_proc.returncode == bash_proc.returncode
     assert "WARN   ns        namespace conflict" in python_proc.stdout
     assert "using .shepherd/, .artifacts/ is unused" in python_proc.stdout
@@ -788,14 +863,14 @@ def test_config_matches_bash_across_variants(work_dir: Path, xdg_dir: Path) -> N
     env = _doctor_env(xdg_dir, workdir=work_dir)
     python_proc = run_doctor([], work_dir, env)
     bash_proc = run_bash_doctor([], work_dir, env)
-    assert python_proc.stdout == bash_proc.stdout
+    assert _strip_post_parity_md(python_proc.stdout) == bash_proc.stdout
 
     claude_dir = work_dir / ".claude"
     claude_dir.mkdir()
     (claude_dir / "shepherd.local.toml").write_text("name = \"local\"\n")
     python_proc = run_doctor([], work_dir, env)
     bash_proc = run_bash_doctor([], work_dir, env)
-    assert python_proc.stdout == bash_proc.stdout
+    assert _strip_post_parity_md(python_proc.stdout) == bash_proc.stdout
 
 
 # --------------------------------------------------------------------------
@@ -852,7 +927,10 @@ def test_exit_code_0_requires_config_and_refresh_all_ok(work_dir: Path, xdg_dir:
     proc = run_doctor([], work_dir, env)
 
     assert proc.returncode == 2, proc.stdout  # artifacts zone still warns — structural, see module docstring
-    assert proc.stdout.count("WARN") == 1
+    # Counted on the stripped report: an unrelated post-parity WARN (e.g. a
+    # `plugin.json` version drift, section 8) is not this fixture's concern
+    # — see `_strip_post_parity_md`.
+    assert _strip_post_parity_md(proc.stdout).count("WARN") == 1
     assert "WARN   refresh   artifacts" in proc.stdout
 
 
@@ -1026,6 +1104,125 @@ def test_version_unset_env_emits_no_row(work_dir: Path, xdg_dir: Path) -> None:
     proc = run_doctor(["--json"], work_dir, env)
     payload = json.loads(proc.stdout)
     assert [c for c in payload["checks"] if c["category"] == "version"] == []
+
+
+# --------------------------------------------------------------------------
+# Section 9 — user-level tier, `~/.shepherd` (v6.4.1 #254; post-parity, NOT
+# purely conditional — see `_check_user_tier`'s own docstring). Every test
+# below pops `CLAUDE_PLUGIN_ROOT` (`test_version_unset_env_emits_no_row`'s
+# own technique) so section 8's own real-repo version-drift condition never
+# adds noise here — `_check_user_tier` has no `CLAUDE_PLUGIN_ROOT`
+# dependency of its own.
+# --------------------------------------------------------------------------
+def _user_tier_env(xdg_dir: Path, *, db_path: Path, workdir: Path, home_dir: Path) -> dict[str, str]:
+    env = _doctor_env(xdg_dir, db_path=db_path, workdir=workdir)
+    env.pop("CLAUDE_PLUGIN_ROOT", None)
+    env["SHEPHERD_HOME"] = str(home_dir)
+    return env
+
+
+def test_user_tier_absent_is_info_not_a_failure(work_dir: Path, xdg_dir: Path, tmp_path: Path) -> None:
+    home_dir = tmp_path / "does-not-exist" / ".shepherd"
+    db_path = work_dir.parent / "shepherd.db"  # never created -> a real FAIL, to prove info != fail/warn
+    env = _user_tier_env(xdg_dir, db_path=db_path, workdir=work_dir, home_dir=home_dir)
+
+    proc = run_doctor(["--json"], work_dir, env)
+    payload = json.loads(proc.stdout)
+    rows = [c for c in payload["checks"] if c["category"] == "user"]
+
+    assert len(rows) == 1
+    assert rows[0]["name"] == "~/.shepherd"
+    assert rows[0]["status"] == "info"
+    assert str(home_dir) in rows[0]["message"]
+    assert rows[0]["fix"] == "shepherd home init"
+    # `info` must never be tallied as `fail` or `warn`.
+    assert payload["summary"]["warn"] == sum(1 for c in payload["checks"] if c["status"] == "warn")
+    assert payload["summary"]["fail"] == sum(1 for c in payload["checks"] if c["status"] == "fail")
+
+    md_proc = run_doctor([], work_dir, env)
+    assert "INFO   user      ~/.shepherd" in md_proc.stdout
+    assert "shepherd home init" in md_proc.stdout
+
+
+def test_user_tier_present_reports_ok(work_dir: Path, xdg_dir: Path, tmp_path: Path) -> None:
+    home_dir = tmp_path / "user-home" / ".shepherd"
+    home_dir.mkdir(parents=True)
+    db_path = work_dir.parent / "shepherd.db"
+    env = _user_tier_env(xdg_dir, db_path=db_path, workdir=work_dir, home_dir=home_dir)
+
+    proc = run_doctor(["--json"], work_dir, env)
+    payload = json.loads(proc.stdout)
+    rows = [c for c in payload["checks"] if c["category"] == "user"]
+
+    assert len(rows) == 1
+    assert rows[0]["status"] == "ok"
+    assert rows[0]["message"] == str(home_dir)
+    assert rows[0]["fix"] == ""
+
+
+def test_user_tier_reports_declared_profile_source(work_dir: Path, xdg_dir: Path, tmp_path: Path) -> None:
+    """A profile with a real project-tier file gets a `profile:<name>` row
+    naming the tier it resolves from."""
+    home_dir = tmp_path / "does-not-exist" / ".shepherd"
+    db_path = work_dir.parent / "shepherd.db"
+    canonical = work_dir / "profiles" / "rust" / "style.md"
+    canonical.parent.mkdir(parents=True)
+    canonical.write_text("PROJECT RUST STYLE\n")
+    env = _user_tier_env(xdg_dir, db_path=db_path, workdir=work_dir, home_dir=home_dir)
+
+    proc = run_doctor(["--json"], work_dir, env)
+    payload = json.loads(proc.stdout)
+    rows = {c["name"]: c for c in payload["checks"] if c["category"] == "user"}
+
+    assert "profile:rust" in rows
+    assert rows["profile:rust"]["status"] == "ok"
+    assert rows["profile:rust"]["message"] == "resolves from project"
+
+
+def test_user_tier_reports_legacy_and_user_tier_profiles(work_dir: Path, xdg_dir: Path, tmp_path: Path) -> None:
+    home_dir = tmp_path / "user-home" / ".shepherd"
+    db_path = work_dir.parent / "shepherd.db"
+    legacy = work_dir / "styles" / "go.md"
+    legacy.parent.mkdir(parents=True)
+    legacy.write_text("LEGACY GO STYLE\n")
+    user_style = home_dir / "profiles" / "python" / "style.md"
+    user_style.parent.mkdir(parents=True)
+    user_style.write_text("USER PYTHON STYLE\n")
+    env = _user_tier_env(xdg_dir, db_path=db_path, workdir=work_dir, home_dir=home_dir)
+
+    proc = run_doctor(["--json"], work_dir, env)
+    payload = json.loads(proc.stdout)
+    rows = {c["name"]: c["message"] for c in payload["checks"] if c["category"] == "user"}
+
+    assert rows["profile:go"] == "resolves from legacy"
+    assert rows["profile:python"] == "resolves from user"
+
+
+def test_user_tier_excludes_bundled_only_profiles(work_dir: Path, xdg_dir: Path, tmp_path: Path) -> None:
+    """A language with ONLY a bundled default (no project/legacy/user file)
+    is not "declared" by the project — no `profile:*` row for it, even
+    though `shepherd style show` would happily resolve it from bundled."""
+    home_dir = tmp_path / "does-not-exist" / ".shepherd"
+    db_path = work_dir.parent / "shepherd.db"
+    env = _user_tier_env(xdg_dir, db_path=db_path, workdir=work_dir, home_dir=home_dir)
+    env["CLAUDE_PLUGIN_ROOT"] = str(REPO_ROOT)  # real bundled styles/ exist here — must still be excluded
+
+    proc = run_doctor(["--json"], work_dir, env)
+    payload = json.loads(proc.stdout)
+    profile_rows = [c for c in payload["checks"] if c["category"] == "user" and c["name"].startswith("profile:")]
+
+    assert profile_rows == []
+
+
+def test_user_tier_row_appears_after_config_section_in_md(work_dir: Path, xdg_dir: Path, tmp_path: Path) -> None:
+    home_dir = tmp_path / "does-not-exist" / ".shepherd"
+    db_path = work_dir.parent / "shepherd.db"
+    env = _user_tier_env(xdg_dir, db_path=db_path, workdir=work_dir, home_dir=home_dir)
+
+    proc = run_doctor([], work_dir, env)
+    lines = [line for line in proc.stdout.splitlines() if line.strip() and not line.startswith(" ") and "shctx doctor:" not in line]
+    categories = [line.split()[1] for line in lines[1:]]
+    assert categories.index("config") < categories.index("user")
 
 
 def test_version_unreadable_plugin_json_emits_no_row(work_dir: Path, xdg_dir: Path, tmp_path: Path) -> None:

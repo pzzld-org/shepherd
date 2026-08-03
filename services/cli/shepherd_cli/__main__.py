@@ -14,16 +14,35 @@ import sys
 from shepherd_cli.app import app
 from shepherd_cli.resolution import find_bash_shctx
 
-PORTED = {
-    "teammate", "signal", "deliverable", "mem", "status",
-    "lock", "sprint", "models", "query", "style", "report",
-    "search", "export", "lint", "seed", "config", "sync",
-    "dash", "insights", "dups", "handoff", "ready",
-    "discovery", "audit", "eval", "doctor",
-    "migrate", "init", "close-lane", "issues", "worktree", "refresh", "prune",
-    "render", "run",
-    "adapt", "inject", "plan", "graph", "loop", "panes", "release",
-}
+def _ported() -> frozenset[str]:
+    """Every subcommand name the Typer app itself registers.
+
+    DERIVED, never hand-maintained (v6.4.2). This set used to be a literal
+    that had to mirror :mod:`shepherd_cli.app`'s ``add_typer``/``command``
+    calls exactly; the two drifted the moment a command was added to one and
+    not the other, and the failure was silent and confusing rather than
+    loud -- an unlisted-but-registered command falls through to the
+    ``os.execv`` branch below, so ``shepherd home`` answered
+    ``ERROR: unknown subcommand: home`` from the RETIRED bash layer while
+    being perfectly well registered in the Typer app three lines away.
+    (That is exactly how it shipped broken: #254's ``home`` was added to
+    ``app.py`` alone.) Reading the app object closes the class of bug --
+    registering a command is now the single act that makes it dispatchable.
+
+    Returns:
+        The registered group names (``add_typer``) plus root-level command
+        names (``app.command``), which together are every name that must
+        NOT be shimmed to bash.
+    """
+    names = {group.name for group in app.registered_groups if group.name}
+    for command in app.registered_commands:
+        name = command.name or (command.callback.__name__ if command.callback else None)
+        if name:
+            names.add(name)
+    return frozenset(names)
+
+
+PORTED = _ported()
 
 
 def main() -> None:

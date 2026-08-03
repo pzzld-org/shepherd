@@ -206,14 +206,33 @@ def test_search_symbols_is_not_actually_a_valid_kind_despite_help_text(export_db
     assert "ERROR: unknown export kind: search-symbols" in proc.stderr
 
 
-def test_bare_dash_h_as_first_token_is_not_help_bash_quirk(export_db: Path, tmp_path: Path) -> None:
-    # Bash quirk: `kind="${1:-}"` consumes "-h" as the KIND itself (then shifts
-    # it away) before the flag-scanning loop ever runs — so a bare
-    # `shctx export -h` does NOT print help, it fails as an unknown kind "-h".
+def test_bare_dash_h_as_first_token_prints_help_intentional_parity_break(
+    export_db: Path, tmp_path: Path
+) -> None:
+    """A bare ``export -h`` prints help — DELIBERATE bash-parity break (v6.4.2).
+
+    Bash's ``kind="${1:-}"`` consumed ``-h`` as the KIND itself (shifting it
+    away before the flag-scanning loop ever ran), so ``shctx export -h``
+    failed with ``unknown export kind: -h``. This port faithfully mirrored
+    that quirk, and this test asserted it.
+
+    v6.4.2 registers ``-h`` as a first-class ``--help`` alias on the root
+    context (see ``app.py``), which reaches ``export`` too. That is the
+    intended outcome, not collateral damage: the #249 follow-on audit found
+    the CLI had three different behaviors for ``-h`` across 42 commands
+    (help, ``No such option`` exit 2, and — worst — ``lint -h`` silently
+    running the real lint), and a flag that means "show help" everywhere
+    except where it means "an export kind literally named -h" is the
+    inconsistency being removed. The bash layer this quirk came from is
+    itself being retired (#239).
+
+    ``export <kind> -h`` still prints export's own bash-shaped help text —
+    pinned unchanged by ``test_dash_h_after_a_kind_prints_help_and_exits_0``.
+    """
     proc = _run_export(export_db, tmp_path / "wd", ["-h"])
-    assert proc.returncode == 1
-    assert "ERROR: unknown export kind: -h" in proc.stderr
-    assert "shctx export <kind>" not in proc.stdout
+    assert proc.returncode == 0
+    assert "unknown export kind" not in proc.stderr
+    assert "Usage:" in proc.stdout
 
 
 def test_dash_h_after_a_kind_prints_help_and_exits_0(export_db: Path, tmp_path: Path) -> None:
@@ -239,9 +258,19 @@ def test_long_form_help_flag_also_works_after_a_kind(export_db: Path, tmp_path: 
 
 
 def test_all_flag_dash_h_prints_help_before_running_bundle(export_db: Path, tmp_path: Path) -> None:
+    """``--all -h`` still short-circuits to help without bundling anything.
+
+    The SUBSTANCE of this test (exit 0, and critically: no bundle written)
+    is unchanged. Only the help TEXT moved -- v6.4.2's root ``-h`` alias
+    means Click's usage block answers here rather than export's own
+    bash-shaped heredoc; see
+    ``test_bare_dash_h_as_first_token_prints_help_intentional_parity_break``.
+    The no-side-effect assertion is the one that matters and is asserted
+    exactly as before.
+    """
     proc = _run_export(export_db, tmp_path / "wd", ["--all", "-h"])
     assert proc.returncode == 0
-    assert proc.stdout.startswith("shctx export <kind>")
+    assert "Usage:" in proc.stdout
     # No bundle directory should have been created.
     assert not (tmp_path / "wd" / "exports").exists()
 

@@ -30,6 +30,13 @@ render byte-identically to the legacy script):
 8. **Binary version** (#235) — WARN when the running CLI ``__version__``
    differs from the ``plugin.json`` version at ``CLAUDE_PLUGIN_ROOT``.
    Match / unset env / unreadable file → no row.
+9. **User-level tier** (#254) — whether ``~/.shepherd`` exists (INFO, not
+   a failure, when absent — the tier is optional and ``shepherd home
+   init`` is the fix), plus which tier each PROJECT-declared profile
+   (a real file, never a bundled default) resolves from. Unlike sections
+   7/8, the ``~/.shepherd`` row is NOT purely conditional — it always
+   prints, since the whole point is surfacing a tier nothing else ever
+   creates.
 
 Every ``add()`` call in ``cmd_doctor.sh`` becomes one :class:`Result`
 appended, in the SAME order, to the SAME five-tuple shape (status,
@@ -176,7 +183,14 @@ from dataclasses import dataclass
 
 import typer
 
-from shepherd_cli.resolution import find_migrations_dir, resolve_db_path, resolve_repo_root, resolve_workdir
+from shepherd_cli.profiles import list_profiles
+from shepherd_cli.resolution import (
+    find_migrations_dir,
+    resolve_db_path,
+    resolve_repo_root,
+    resolve_user_home,
+    resolve_workdir,
+)
 
 app = typer.Typer(
     add_completion=False,
@@ -254,7 +268,7 @@ _INT_LITERAL_RE = re.compile(r"[+-]?\d+")
 #: `cmd_doctor.sh` (`"OK   "`/`"WARN "`/`"FAIL "`), THEN padded to 6 by
 #: the format spec itself. Stored pre-padded here so `_render_md`'s
 #: `f"{icon:<6}"` reproduces the two-stage padding exactly.
-_ICON: dict[str, str] = {"ok": "OK   ", "warn": "WARN ", "fail": "FAIL "}
+_ICON: dict[str, str] = {"ok": "OK   ", "warn": "WARN ", "fail": "FAIL ", "info": "INFO "}
 
 
 @dataclass(frozen=True, slots=True)
@@ -262,7 +276,12 @@ class Result:
     """One diagnostic finding -- the five-tuple `cmd_doctor.sh`'s `add()` builds.
 
     Attributes:
-        status: One of ``"ok"``, ``"warn"``, ``"fail"``.
+        status: One of ``"ok"``, ``"warn"``, ``"fail"`` -- the three bash
+            `cmd_doctor.sh` itself uses -- plus ``"info"``, a v6.4.1
+            post-parity addition (#254, section 9) for purely informational
+            rows that must never affect the exit code or the `N ok` tally
+            (see `_render_md`'s `ok_count`, which counts `"ok"` explicitly
+            rather than by subtraction, for exactly this reason).
         category: One of ``"bin"``, ``"ns"``, ``"db"``, ``"lock"``,
             ``"refresh"``, ``"config"`` -- matches bash's `add()` call
             sites' second argument verbatim.
@@ -1057,6 +1076,58 @@ def _check_version_match() -> list[Result]:
 
 
 # --------------------------------------------------------------------------
+# Section 9 -- user-level tier, `~/.shepherd` (v6.4.1 #254; NOT in cmd_doctor.sh).
+# --------------------------------------------------------------------------
+# Unlike sections 7/8, this one is NOT purely conditional: `shepherd home
+# init` exists precisely because nothing else ever creates `~/.shepherd` (the
+# gap #254 reports), so a doctor section that stays silent whenever the tier
+# is absent would never surface that gap either -- the whole point is to
+# nudge an operator who has never run `shepherd home init` toward doing so.
+# The user-home row therefore ALWAYS prints, `info` (never `warn`/`fail`)
+# when absent, since the tier is entirely optional and its absence is not a
+# health problem. Per-profile rows stay conditional in the sections-7/8
+# spirit: they cover only profiles the PROJECT ITSELF declares -- a real
+# file under the project canonical/legacy tier or `~/.shepherd/profiles/`,
+# via `shepherd_cli.profiles.list_profiles(bundled_dir=None)`, which
+# deliberately EXCLUDES the bundled tier so a project with zero declared
+# profiles (every fixture in this port's own test suite) emits zero profile
+# rows, not one row per bundled language.
+def _check_user_tier(workdir: str) -> list[Result]:
+    """Section 9: whether `~/.shepherd` exists, + which tier each declared profile resolves from.
+
+    Args:
+        workdir: The resolved work directory (the project profiles root
+            `shepherd_cli.profiles.list_profiles` scans) -- resolved
+            QUIETLY by the caller so this section never disturbs the
+            bash-parity dual-namespace stderr-warning call count (see the
+            module docstring's note on sections 7/8, which follow the
+            same convention).
+
+    Returns:
+        One `Result` for `~/.shepherd` itself (`ok` present / `info`
+        absent), PLUS one `ok` `Result` per project-declared profile
+        naming the tier (`project`/`legacy`/`user`) it resolves from.
+    """
+    results: list[Result] = []
+    user_home = resolve_user_home()
+    if os.path.isdir(user_home):
+        results.append(Result("ok", "user", "~/.shepherd", user_home, ""))
+    else:
+        results.append(
+            Result(
+                "info",
+                "user",
+                "~/.shepherd",
+                f"not created at {user_home} (optional -- cross-project profiles/templates, #254)",
+                "shepherd home init",
+            )
+        )
+    for name, source in list_profiles(workdir=workdir):
+        results.append(Result("ok", "user", f"profile:{name}", f"resolves from {source}", ""))
+    return results
+
+
+# --------------------------------------------------------------------------
 # Collection + rendering.
 # --------------------------------------------------------------------------
 def _collect_results() -> list[Result]:
@@ -1104,6 +1175,7 @@ def _collect_results() -> list[Result]:
     # module's carefully-reproduced split-brain stderr-warning call count.
     results.extend(_check_gates(repo, _quiet_resolve_workdir()))
     results.extend(_check_version_match())
+    results.extend(_check_user_tier(_quiet_resolve_workdir()))
     return results
 
 
@@ -1200,7 +1272,10 @@ def _render_md(results: list[Result], fail_count: int, warn_count: int) -> str:
         if result.fix:
             lines.append(f"       {'':<9} {'':<22}   → fix: {result.fix}")
     lines.append("")
-    ok_count = len(results) - fail_count - warn_count
+    # Counted explicitly (not `len(results) - fail_count - warn_count`) so a
+    # post-parity `"info"` row (section 9, #254) never inflates this tally --
+    # `info` rows are neither `ok` nor `warn`/`fail`.
+    ok_count = sum(1 for r in results if r.status == "ok")
     lines.append(f"shctx doctor: {fail_count} fail, {warn_count} warn, {ok_count} ok")
     return "\n".join(lines)
 
