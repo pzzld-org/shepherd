@@ -159,14 +159,20 @@ superseded-by-plan.
   before this sprint and affected every path-taking command whenever poetry
   was installed. Wave 3's hook flip is what surfaced it — the seed gate
   silently denied clean seeds.
-- **W3 — bash-layer deletion deferred, SUBTRACT not yet satisfied.** The
-  seven ports and the hook flips landed, but `skills/context/scripts/` (45
-  scripts, ~4,400 lines) is still present because two re-point lanes
-  (`refresh`/`init` + the three `refresh-*.sh` ports, `dups-core`
-  relocation) had not landed at commit time. Deleting before they land
-  would break `refresh`, `init`, and the `dups` write guard. Consequence:
-  the sprint is net-POSITIVE (+15,810) against `v6.4.1` until the deletion
-  lands, so the SUBTRACT gate is explicitly unmet, not silently passed.
+- **W3 — bash-layer deletion deferred to a follow-up; SUBTRACT unmet.**
+  Every precondition is now satisfied: all four re-point lanes landed, so
+  no `shepherd_cli` module executes `skills/context/scripts/` at runtime
+  (verified — only compiled `.pyc` docstrings and prose parity notes still
+  mention it), and no hook references it either. The deletion itself was
+  NOT attempted, because it is not a `rm`: 45 scripts + `_lib.sh` go, and
+  with them the 50 bash tests under `skills/context/tests/` that are the
+  sole coverage for several behaviors, plus `test_shim_passthrough.py` and
+  `test_liveness_verdict_parity.py` which exec bash by design, plus the
+  `find_bash_shctx`/`PORTED` shim. Starting that with insufficient budget
+  risks a half-deleted tree, which is strictly worse than a green one.
+  Consequence, stated plainly: the sprint is net-POSITIVE (+15,810)
+  against `v6.4.1`, so the SUBTRACT gate is UNMET, not silently passed.
+  Sequenced steps are in Wave 3 above; it is now a mechanical follow-up.
 - **W4 — conductor lane-plan custody enforced at the hook, not frontmatter.**
   `agents/conductor.md` keeps its read+dispatch-only `tools:` (the
   `lint_agent_capabilities.sh` #180 pin hard-fails Edit/Write on conductor);
