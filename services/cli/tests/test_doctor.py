@@ -872,3 +872,171 @@ def test_last_format_flag_wins(work_dir: Path, xdg_dir: Path) -> None:
     env = _doctor_env(xdg_dir, workdir=work_dir)
     proc = run_doctor(["--json", "--md"], work_dir, env)
     assert proc.stdout.startswith("STATUS CATEGORY  NAME                   MESSAGE\n")
+
+
+# --------------------------------------------------------------------------
+# Section 7 — gates-invocation ledger (v6.5.0 #59; post-parity, conditional).
+# --------------------------------------------------------------------------
+_GATES_TOML = (
+    "[gates]\n"
+    'check = "jq empty plugin.json"\n'
+    'lint  = "./lint.sh"\n'
+    'format = ""\n'
+    "\n"
+    "[gates.extra]\n"
+    'hook_tests = "bash hooks/tests/run.sh"\n'
+    'ctx_tests  = "bash skills/context/tests/run.sh"\n'
+)
+
+
+def _write_gates_toml(work_dir: Path) -> None:
+    claude_dir = work_dir / ".claude"
+    claude_dir.mkdir(parents=True, exist_ok=True)
+    (claude_dir / "shepherd.toml").write_text(_GATES_TOML)
+
+
+def _write_ledger(work_dir: Path, session: str, gates: list[str]) -> Path:
+    """One ledger row per gate label, in the exact shape bash_post.sh appends."""
+    tmp_dir = work_dir / "tmp"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    ledger = tmp_dir / f"gates-ran-{session}.jsonl"
+    with ledger.open("a", encoding="utf-8") as fh:
+        for gate in gates:
+            fh.write(json.dumps({"ts": "2026-08-03T00:00:00Z", "gate": gate, "command": "x"}) + "\n")
+    return ledger
+
+
+def test_gates_section_absent_when_no_gates_configured(work_dir: Path, xdg_dir: Path) -> None:
+    """No `[gates]` config → NO gates rows at all (the conditional-row contract
+    that keeps every bash-parity fixture rendering byte-identically)."""
+    env = _doctor_env(xdg_dir, workdir=work_dir)
+    proc = run_doctor(["--json"], work_dir, env)
+    payload = json.loads(proc.stdout)
+    assert [c for c in payload["checks"] if c["category"] == "gates"] == []
+
+
+def test_gates_reports_ran_and_missing(work_dir: Path, xdg_dir: Path) -> None:
+    """Configured gates each get one row: `ok ran Nx` when the ledger records
+    the invocation, `warn no recorded invocation` otherwise. `format = ""`
+    (empty command) is not a gate and gets no row."""
+    _write_gates_toml(work_dir)
+    _write_ledger(work_dir, "sess1", ["check", "check", "extra:hook_tests"])
+    env = _doctor_env(xdg_dir, workdir=work_dir)
+
+    proc = run_doctor(["--json"], work_dir, env)
+    payload = json.loads(proc.stdout)
+    gates = {c["name"]: c for c in payload["checks"] if c["category"] == "gates"}
+
+    assert set(gates) == {"check", "lint", "extra:hook_tests", "extra:ctx_tests"}
+    assert gates["check"]["status"] == "ok"
+    assert gates["check"]["message"] == "ran 2x this session"
+    assert gates["extra:hook_tests"]["status"] == "ok"
+    assert gates["lint"]["status"] == "warn"
+    assert gates["lint"]["message"] == "no recorded invocation this session"
+    assert gates["extra:ctx_tests"]["status"] == "warn"
+    assert proc.returncode == 1  # the fixture's missing-DB FAIL dominates the warns
+
+
+def test_gates_all_warn_when_no_ledger_exists(work_dir: Path, xdg_dir: Path) -> None:
+    _write_gates_toml(work_dir)
+    env = _doctor_env(xdg_dir, workdir=work_dir)
+
+    proc = run_doctor(["--json"], work_dir, env)
+    payload = json.loads(proc.stdout)
+    gates = [c for c in payload["checks"] if c["category"] == "gates"]
+
+    assert len(gates) == 4
+    assert all(c["status"] == "warn" for c in gates)
+    assert all("bash_post.sh records it" in c["fix"] for c in gates)
+
+
+def test_gates_reads_newest_ledger_only(work_dir: Path, xdg_dir: Path) -> None:
+    """Two per-session ledgers: only the NEWEST (by mtime) counts as "this
+    session" — an older session's green ledger must not mask the current
+    session's un-run gates."""
+    import os as _os
+
+    _write_gates_toml(work_dir)
+    old = _write_ledger(work_dir, "old-sess", ["check", "lint", "extra:hook_tests", "extra:ctx_tests"])
+    new = _write_ledger(work_dir, "new-sess", ["lint"])
+    _os.utime(old, (1_000_000_000, 1_000_000_000))
+    _os.utime(new, (2_000_000_000, 2_000_000_000))
+    env = _doctor_env(xdg_dir, workdir=work_dir)
+
+    proc = run_doctor(["--json"], work_dir, env)
+    payload = json.loads(proc.stdout)
+    gates = {c["name"]: c["status"] for c in payload["checks"] if c["category"] == "gates"}
+
+    assert gates == {"check": "warn", "lint": "ok", "extra:hook_tests": "warn", "extra:ctx_tests": "warn"}
+
+
+def test_gates_rows_render_after_config_in_md(work_dir: Path, xdg_dir: Path) -> None:
+    """Section order: the gates rows append AFTER the config section (the
+    post-parity tail), never interleaved into the bash-parity region."""
+    _write_gates_toml(work_dir)
+    env = _doctor_env(xdg_dir, workdir=work_dir)
+
+    proc = run_doctor([], work_dir, env)
+    lines = [line for line in proc.stdout.splitlines() if line.strip() and not line.startswith(" ") and "shctx doctor:" not in line]
+    categories = [line.split()[1] for line in lines[1:]]
+    assert categories.index("config") < categories.index("gates")
+
+
+# --------------------------------------------------------------------------
+# Section 8 — CLI/plugin version match (v6.5.0 #235; post-parity, conditional).
+# --------------------------------------------------------------------------
+def _write_plugin_json(root: Path, version: str) -> None:
+    plugin_dir = root / ".claude-plugin"
+    plugin_dir.mkdir(parents=True, exist_ok=True)
+    (plugin_dir / "plugin.json").write_text(json.dumps({"name": "shepherd", "version": version}))
+
+
+def test_version_match_emits_no_row(work_dir: Path, xdg_dir: Path) -> None:
+    """`CLAUDE_PLUGIN_ROOT` = the real repo (plugin.json version == the
+    installed `shepherd_cli.__version__`) → silent, no `version` row."""
+    env = _doctor_env(xdg_dir, workdir=work_dir)  # CLAUDE_PLUGIN_ROOT = REPO_ROOT
+    proc = run_doctor(["--json"], work_dir, env)
+    payload = json.loads(proc.stdout)
+    assert [c for c in payload["checks"] if c["category"] == "version"] == []
+
+
+def test_version_mismatch_warns(work_dir: Path, xdg_dir: Path, tmp_path: Path) -> None:
+    plugin_root = tmp_path / "stale-plugin"
+    _write_plugin_json(plugin_root, "0.0.1")
+    env = _doctor_env(xdg_dir, workdir=work_dir)
+    env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
+
+    proc = run_doctor(["--json"], work_dir, env)
+    payload = json.loads(proc.stdout)
+    rows = [c for c in payload["checks"] if c["category"] == "version"]
+
+    from shepherd_cli import __version__
+
+    assert len(rows) == 1
+    assert rows[0]["status"] == "warn"
+    assert rows[0]["name"] == "cli/plugin"
+    assert f"running CLI {__version__} != plugin 0.0.1" in rows[0]["message"]
+    assert "session_venv.sh" in rows[0]["fix"]
+    assert proc.returncode == 1  # the fixture's missing-DB FAIL dominates the warn
+
+
+def test_version_unset_env_emits_no_row(work_dir: Path, xdg_dir: Path) -> None:
+    env = _doctor_env(xdg_dir, workdir=work_dir)
+    env.pop("CLAUDE_PLUGIN_ROOT", None)
+    proc = run_doctor(["--json"], work_dir, env)
+    payload = json.loads(proc.stdout)
+    assert [c for c in payload["checks"] if c["category"] == "version"] == []
+
+
+def test_version_unreadable_plugin_json_emits_no_row(work_dir: Path, xdg_dir: Path, tmp_path: Path) -> None:
+    """A missing or malformed plugin.json is not a mismatch — silent (the
+    binary-version check only ever reports a POSITIVE drift detection)."""
+    plugin_root = tmp_path / "broken-plugin"
+    (plugin_root / ".claude-plugin").mkdir(parents=True)
+    (plugin_root / ".claude-plugin" / "plugin.json").write_text("{not json")
+    env = _doctor_env(xdg_dir, workdir=work_dir)
+    env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
+
+    proc = run_doctor(["--json"], work_dir, env)
+    payload = json.loads(proc.stdout)
+    assert [c for c in payload["checks"] if c["category"] == "version"] == []

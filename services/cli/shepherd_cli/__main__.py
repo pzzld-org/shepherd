@@ -22,6 +22,7 @@ PORTED = {
     "discovery", "audit", "eval", "doctor",
     "migrate", "init", "close-lane", "issues", "worktree", "refresh", "prune",
     "render", "run",
+    "adapt", "inject", "plan", "graph", "loop", "panes",
 }
 
 

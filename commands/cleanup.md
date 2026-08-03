@@ -45,11 +45,12 @@ bash skills/context/scripts/shctx teammate prune --confirm --crashed
 
 ```bash
 bash skills/context/scripts/shctx report teammates --stale-mins=5 \
-  > .artifacts/cache/teammate-cleanup-$(date +%Y%m%d-%H%M%S).md
+  > .shepherd/cache/teammate-cleanup-<run>.md
 ```
 
-The cache file is gitignored; the canonical state is in
-`teammates` table.
+`<run>` is the run slug (e.g. `v650-dev0`) — deterministic; a re-run for the
+same run overwrites the same file. The cache file is gitignored; the canonical
+state is in the `teammates` table.
 
 ### Step 5: PAUSE
 

@@ -84,17 +84,17 @@ Four tiers, each a binding scope-to-sprint-count factor — **scope is workload-
 
 A patch commits to a MAX of 10 dev sprints, names one theme, decomposes into ordered sprints; >10 → split into `vX.Y.{Z}` + `vX.Y.{Z+1}`. <2 sprints is fine — the planter does NOT gatekeep on perceived semver size.
 
-**File-naming — patch-scoped for FINAL artifacts.** The patch-arc seed, the patch plan, and all roadmap artefacts are named for the patch (`vXYZ`, slug form per `references/seed-template.md §File path`), NEVER the dev sprint. `-dev.N` NEVER appears in CHANGELOG entries, tags, or release PR titles — this does NOT forbid intermediate per-sprint seeds (`vXYZ-devN.seed.md`), which legitimately carry it. A patch with multiple dev sprints gets ONE plan file, organized into phases/waves — never one plan file per sprint.
+**File-naming — patch-scoped for FINAL artifacts.** The patch-arc seed, the patch plan, and all roadmap artefacts live in the patch-slug run dir (`runs/vXYZ/`, slug form per `references/seed-template.md §File path`), NEVER a dev-sprint one. `-dev.N` NEVER appears in CHANGELOG entries, tags, or release PR titles — this does NOT forbid intermediate per-sprint seeds (`runs/vXYZ-devN/seed.md`), which legitimately carry it. A patch with multiple dev sprints gets ONE plan file (`runs/vXYZ/plan.md`), organized into phases/waves — never one plan file per sprint.
 
 **Dev branches are an optional execution affordance, not a mandate.** Use for architectural change, money-path code, multi-coder parallel risk, or a clean per-sprint history. Skip for meta/doc-only repos, single-file fixes, or hot-fixes (`chain-repair`, `references/pipeline.md §Phase-0 amendment`). Artefact naming is unaffected either way.
 
-**Anti-patterns:** `dev.N` in a patch-arc filename, CHANGELOG, tag, or release-PR title; a patch seed >10 sprints of scope; a separate plan file per dev sprint; a dev sprint promising but not delivering operator-visible change (seed/impl drift → critic RECONSIDER + auditor completeness C+ cap — never reclassify as a `@worker` dispatch to dodge grade exposure); treating dev branches as mandatory; conflating shepherd's "patch" (umbrella) with standard-practice "patch" (small fix, what shepherd calls a dev sprint).
+**Anti-patterns:** `dev.N` in a patch-arc run-dir name, CHANGELOG, tag, or release-PR title; a patch seed >10 sprints of scope; a separate plan file per dev sprint; a dev sprint promising but not delivering operator-visible change (seed/impl drift → critic RECONSIDER + auditor completeness C+ cap — never reclassify as a `@worker` dispatch to dodge grade exposure); treating dev branches as mandatory; conflating shepherd's "patch" (umbrella) with standard-practice "patch" (small fix, what shepherd calls a dev sprint).
 
 ## See also
 
 - `skills/shepherd/SKILL.md §Sprint contract` — dev.N patch-grade scope, branch topology summary
 - `references/pipeline.md §Gates` — cargo-sequential gate execution
-- `references/seed-template.md` — seed/plan filename slug form
+- `references/seed-template.md` — seed/plan run-dir slug form
 - `references/grading-rubric.md` — completeness cap on undelivered scope
 - `docs/configuration.md` — `[branching]` schema
 - `docs/customization.md` — alternative branch/release models

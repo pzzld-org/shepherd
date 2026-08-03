@@ -13,6 +13,7 @@ import typer
 
 from shepherd_cli import __version__
 from shepherd_cli.commands import (
+    adapt,
     audit,
     close_lane,
     config,
@@ -23,15 +24,20 @@ from shepherd_cli.commands import (
     dups,
     eval,
     export,
+    graph,
     handoff,
     init,
+    inject,
     insights,
     issues,
     lint,
     lock,
+    loop,
     mem,
     migrate,
     models,
+    panes,
+    plan,
     prune,
     query,
     ready,
@@ -85,6 +91,12 @@ app.add_typer(worktree.app, name="worktree")
 app.add_typer(refresh.app, name="refresh")
 app.add_typer(prune.app, name="prune")
 app.add_typer(run.app, name="run")
+app.add_typer(adapt.app, name="adapt")
+app.add_typer(inject.app, name="inject")
+app.add_typer(plan.app, name="plan")
+app.add_typer(graph.app, name="graph")
+app.add_typer(loop.app, name="loop")
+app.add_typer(panes.app, name="panes")
 app.command("render", help="Render a shepherd template deterministically (project -> user -> bundled).")(
     render.render_command
 )

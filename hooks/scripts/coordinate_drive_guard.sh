@@ -8,6 +8,14 @@
 # yields instead of draining the work. The guard re-engages it via a Stop block.
 #
 # Discipline (per the doctrine §VII):
+#   • Identity.    POSITIVE identity only (#232/#228): fires solely when THIS
+#                  session is the recorded spawn lead (spawn_leads) AND carries
+#                  no session-tier teammate marker. A marker or an unresolvable
+#                  identity → exit silently (fail-open for bystanders,
+#                  fail-CLOSED for marked teammates).
+#   • Hygiene.     Reboot stale-sweep (#229): other sessions' rows unseen past
+#                  [spawn].stale_sweep_minutes (default 60) and not declared
+#                  in-progress are marked crashed before any count is taken.
 #   • Fast-path.   No DB / no live teammates → exit 0 silently. Solo /start,
 #                  /plant, and ALL non-spawn work are never touched.
 #   • Bounded.     2-nudge cap (configurable). Past the cap → fail OPEN so a
@@ -54,6 +62,40 @@ SELF_TM="$(sqlite3 "$DB" "SELECT count(*) FROM teammates WHERE session_id='${SES
 [[ "$SELF_TM" =~ ^[0-9]+$ ]] || SELF_TM=0
 [[ "$SELF_TM" -gt 0 ]] && exit 0
 
+# --- #232/#228: POSITIVE teammate identity. user_prompt_submit.sh stamps a
+# session-tier marker at boot when the incoming prompt carries the rendered
+# INVOCATION-CONTEXT dispatcher field. A marked session is a TEAMMATE even
+# when its registry row is missing or mismatched (the #197 query above can
+# only see REGISTERED teammates) — fail CLOSED for it: this guard NEVER
+# nudges a marked teammate, no matter what the registry says. ---
+[[ -f "$(session_tier_marker "$NS" "$SESSION")" ]] && exit 0
+
+# --- #229: reboot stale-sweep (lead-session-start hygiene, run at Stop so the
+# counts below are computed over a clean live set). Rows left by OTHER
+# sessions — a prior boot of this repo's spawn — whose last_seen is older than
+# the reboot horizon AND whose declared_state is neither in-progress (the 0019
+# protected long-runner) nor complete (already terminal for the live set) are
+# ghosts: a declared error/idle row otherwise stays in v_teammates_live
+# FOREVER and traps every later lead session in phantom drive nudges. Mark
+# them status='crashed' — the teammates CHECK constraint has no 'stale' value,
+# and 'crashed' is the exact status the liveness heuristic already derives for
+# this condition ("presumed-crashed"); the log_event records it was a sweep.
+# Config: [spawn].stale_sweep_minutes (default 60; 0 disables). Fail-open:
+# a pre-0019 DB (no declared_state column) errors the count → sweep no-ops. ---
+SWEEP_MIN="$(cfg_get stale_sweep_minutes | grep -oE '[0-9]+' | tail -1 || true)"
+[[ -n "$SWEEP_MIN" ]] || SWEEP_MIN=60
+if [[ "$SWEEP_MIN" -gt 0 ]]; then
+  HORIZON_MS=$(( $(date +%s) * 1000 - SWEEP_MIN * 60000 ))
+  SWEEP_PRED="(session_id IS NULL OR session_id<>'${SESSION//\'/\'\'}') AND status IN ('booting','active','idle') AND last_seen_at < $HORIZON_MS AND COALESCE(declared_state,'') NOT IN ('in-progress','complete')"
+  SWEPT="$(sqlite3 "$DB" "SELECT count(*) FROM teammates WHERE $SWEEP_PRED;" 2>/dev/null || echo 0)"
+  [[ "$SWEPT" =~ ^[0-9]+$ ]] || SWEPT=0
+  if [[ "$SWEPT" -gt 0 ]]; then
+    sqlite3 "$DB" "UPDATE teammates SET status='crashed' WHERE $SWEEP_PRED;" 2>/dev/null || true
+    log_event "coordinate_drive_guard" "stale-sweep" "Stop" "shepherd" "$SESSION" \
+      "$(emit_json_obj swept "$SWEPT" horizon_min "$SWEEP_MIN")" 2>/dev/null || true
+  fi
+fi
+
 # --- fast-path: only ever engage inside a live spawn session. A teammate that
 # DECLARED complete (0019), or an undeclared row gone stale past the window (a
 # prior-session ghost, #195), is not a live worker root can drain — exclude both
@@ -76,38 +118,29 @@ fi
 [[ "$LIVE" =~ ^[0-9]+$ ]] || LIVE=0
 [[ "$LIVE" -eq 0 ]] && exit 0
 
-# --- #223: lead-only gate. A shepherd.db is scoped PER REPO, not per session —
-# two unrelated sessions (e.g. one that spawned a team, and a second,
-# unrelated session opened in the same repo) can share it. Before #223 this
-# guard only ever exempted registered TEAMMATES (#197 above); a non-teammate
-# BYSTANDER session reading the very same v_teammates_live live/idle counts
-# had no way to tell "I am the lead who spawned this team" apart from "someone
-# else spawned this team and I merely share their DB" — so it got nudged with
-# [coordinate-active-drive] on every turn despite owning no team to drain.
+# --- #223→#232: POSITIVE lead gate. A shepherd.db is scoped PER REPO, not per
+# session — two unrelated sessions (one that spawned a team, and a second
+# opened in the same repo) can share it. #223 exempted a bystander only when a
+# DIFFERENT session was the recorded lead, and fell through to nudging when NO
+# lead was recorded at all — registry INFERENCE. #232 flips the gate to
+# positive identity: this guard fires ONLY when THIS session is the recorded
+# spawn lead (spawn_leads.session_id) of at least one live team.
 #
-# MY_LEAD  = # of live teams (per v_teammates_live) for which THIS session is
-#            the recorded spawn_leads.session_id.
-# OTHER_LEAD = # of live teams for which a DIFFERENT session is the recorded
-#            lead.
+# MY_LEAD = # of live teams (per v_teammates_live) for which THIS session is
+#           the recorded spawn_leads.session_id.
 #
-# If I lead none of the live teams (MY_LEAD=0) AND some OTHER session is
-# recorded as lead of at least one (OTHER_LEAD>0), I am conclusively a
-# bystander to someone else's team → exit 0 (never trap a session that isn't
-# the drive-guard contract's audience).
-#
-# CONSERVATIVE BY DESIGN — this is NOT a plain fail-open-on-no-match. When NO
-# lead is recorded at all for the live team(s) (a pre-#223 DB that predates
-# this migration, or a spawn that never called `teammate register-lead`),
-# OTHER_LEAD is 0 and this gate does nothing: control falls through to the
-# pre-#223 behavior below (proceed to the idle/actionable check) rather than
-# silently no-op a genuine lazy-root stop just because lead data is absent.
-# Uses the identical single-quote escaping idiom as the SELF_TM query above so
-# quoting matches.
+# MY_LEAD=0 — whether a different session is the recorded lead (a bystander
+# sharing the per-repo DB), or no lead row exists at all (a spawn that skipped
+# `shctx teammate register-lead`, or a pre-#223 DB) — is a negative or
+# UNRESOLVABLE identity → exit silently. The pre-#232 no-lead fallback (nudge
+# anyway) is retired: commands/spawn.md §Register teammates makes
+# register-lead mandatory, so an absent row means this session has no team to
+# drain. Fail-open for bystanders; the marker check above stays fail-CLOSED
+# for marked teammates. Uses the identical single-quote escaping idiom as the
+# SELF_TM query above so quoting matches.
 MY_LEAD="$(sqlite3 "$DB" "SELECT count(*) FROM spawn_leads sl WHERE sl.session_id='${SESSION//\'/\'\'}' AND sl.team_name IN (SELECT DISTINCT team_name FROM v_teammates_live);" 2>/dev/null || echo 0)"
-OTHER_LEAD="$(sqlite3 "$DB" "SELECT count(*) FROM spawn_leads sl WHERE sl.session_id<>'${SESSION//\'/\'\'}' AND sl.team_name IN (SELECT DISTINCT team_name FROM v_teammates_live);" 2>/dev/null || echo 0)"
 [[ "$MY_LEAD" =~ ^[0-9]+$ ]] || MY_LEAD=0
-[[ "$OTHER_LEAD" =~ ^[0-9]+$ ]] || OTHER_LEAD=0
-[[ "$MY_LEAD" -eq 0 && "$OTHER_LEAD" -gt 0 ]] && exit 0
+[[ "$MY_LEAD" -gt 0 ]] || exit 0
 
 # --- actionable, root-clearable coordinate state ----------------------------
 # The ONLY root-clearable state this guard keys on is an IDLE teammate whose

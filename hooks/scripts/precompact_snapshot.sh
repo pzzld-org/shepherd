@@ -57,8 +57,22 @@ TRIGGER="$(json_field "$PAYLOAD" '.trigger' 2>/dev/null || true)"
 # --- namespace + paths ---------------------------------------------------
 NS="$(resolve_namespace 2>/dev/null || echo .shepherd)"
 DB="$(hook_db_path "$NS")"
+# v6.5.0: graph state is run-scoped when a run is active — the newest
+# {paths.runs}/*/run.json with status "executing" (CLI-written via
+# `shepherd run`). Prefer runs/{run}/graph/ PER FILE, falling back to the
+# legacy $NS/graph/ twin, so a mid-migration project (state still at the
+# namespace root) keeps snapshotting — the small compat shim res_12 §1c
+# calls for. The active run id is recorded in the snapshot for
+# focus_rehydrate.sh to surface.
+RUN_DIR="$(active_run_dir 2>/dev/null || true)"
+RUN_ID=""
+[[ -n "$RUN_DIR" ]] && RUN_ID="$(basename "$RUN_DIR")"
 STATE_JSON="$NS/graph/state.json"
 TRACE_JSONL="$NS/graph/trace.jsonl"
+if [[ -n "$RUN_DIR" ]]; then
+  [[ -f "$RUN_DIR/graph/state.json" ]] && STATE_JSON="$RUN_DIR/graph/state.json"
+  [[ -f "$RUN_DIR/graph/trace.jsonl" ]] && TRACE_JSONL="$RUN_DIR/graph/trace.jsonl"
+fi
 LOCK_FILE="$NS/shepherd.lock"
 # v6.1.3: snapshots live under memory/snapshots/ (co-located with other
 # ephemeral rehydration state). focus_rehydrate.sh reads the SAME path.
@@ -153,6 +167,7 @@ if command -v jq &>/dev/null; then
     --arg session "$SESSION" \
     --arg trigger "$_snap_trigger" \
     --arg sprint "$SPRINT" \
+    --arg run "$RUN_ID" \
     --arg ts "$_snap_ts" \
     --arg ready_nodes "$READY_NODES" \
     --arg in_flight_nodes "$IN_FLIGHT_NODES" \
@@ -163,6 +178,7 @@ if command -v jq &>/dev/null; then
       session_id: $session,
       trigger: $trigger,
       sprint: $sprint,
+      run: $run,
       captured_at: $ts,
       cursor: {
         ready_nodes: ($ready_nodes | split(",") | map(select(. != ""))),
@@ -179,17 +195,18 @@ d = {
   "session_id":       sys.argv[1],
   "trigger":          sys.argv[2],
   "sprint":           sys.argv[3],
-  "captured_at":      sys.argv[4],
+  "run":              sys.argv[4],
+  "captured_at":      sys.argv[5],
   "cursor": {
-    "ready_nodes":    [x for x in sys.argv[5].split(",") if x],
-    "in_flight_nodes":[x for x in sys.argv[6].split(",") if x],
+    "ready_nodes":    [x for x in sys.argv[6].split(",") if x],
+    "in_flight_nodes":[x for x in sys.argv[7].split(",") if x],
   },
-  "trace_tail":       sys.argv[7],
-  "lock":             sys.argv[8],
-  "focus":            json.loads(sys.argv[9] or "{}"),
+  "trace_tail":       sys.argv[8],
+  "lock":             sys.argv[9],
+  "focus":            json.loads(sys.argv[10] or "{}"),
 }
 print(json.dumps(d, indent=2))
-' "$SESSION" "$_snap_trigger" "$SPRINT" \
+' "$SESSION" "$_snap_trigger" "$SPRINT" "$RUN_ID" \
   "$_snap_ts" \
   "$READY_NODES" "$IN_FLIGHT_NODES" \
   "$TRACE_TAIL" "$LOCK_CONTENT" "$_snap_focus" \

@@ -12,7 +12,7 @@ Every unresolved question MUST reach root below.
 
 Channels: **SendMessage** (primary, async, auto-resumes a stopped
 teammate); **filesystem** —
-`.artifacts/escalations/{sprint_slug}/{ISO8601-timestamp}-{role}.md`
+`{run_dir}/dispatch/escalations/{ISO8601-timestamp}-{role}.md`
 (fallback; `~/.claude/tasks/{team-name}/config.json` runtime-owned —
 NEVER pre-author it); **`TeammateIdle`** hook — sole
 handler, BLOCKING, graceful-idle.
@@ -36,8 +36,8 @@ wave-complete notification reuses this envelope (`halt_code: null`,
 `blocking: false`) as a commit trigger.
 
 Two VERBATIM payload shapes: `PLAN-AUTHORSHIP-REQUEST` (`halt_code, phase,
-blocking: true, context_files: [<sprint_slug>.plan.md,
-<sprint_slug>.seed.md], amendment_summary`) and `PLAN-GATE-REQUEST`
+blocking: true, context_files: [{run_dir}/plan.md,
+{run_dir}/seed.md], amendment_summary`) and `PLAN-GATE-REQUEST`
 (`halt_code, phase, blocking: true, context_files: [<plan>.md],
 gate_question`).
 
@@ -78,9 +78,9 @@ without improvising.
 - **Teammate session drops (no `TeammateIdle`).** Detect: session UUID
   absent from `~/.claude/sessions/`, heartbeat stopped. Loss: current
   wave + in-transit payloads. Recover: as stall; check
-  `.artifacts/escalations/{sprint_slug}/` for a pre-drop file.
+  `{run_dir}/dispatch/escalations/` for a pre-drop file.
 - **SendMessage delivery fails.** Fallback: read
-  `.artifacts/escalations/{sprint_slug}/{timestamp}-{role}.md`; absent →
+  `{run_dir}/dispatch/escalations/{timestamp}-{role}.md`; absent →
   treat as stall; resume via that file instead.
 - **Root session drops.** Loss: all wave artifacts since last root
   commit. Recover: reconstruct state from the registry (teammates /
@@ -133,7 +133,7 @@ the bare name.
 - `TEAMMATE-BOOT-MISSING`: `INVOCATION-CONTEXT` boot block wholly absent — not spawned by `/shepherd:spawn`
 - `TEAMMATE-BOOT-MALFORMED`: boot block present but fails a Boot verification check (a lead-authored non-canonical brief carrying `BOOT-FORMAT: lead-attested` substance-checks the required facts instead of the header shape — `agents/conductor.md §Boot verification`)
 - `TEAMMATE-ARTIFACT-WRITE`: writes a plan/report/handoff
-- `TEAMMATE-LOCK-ATTEMPT`: touches `.artifacts/shepherd.lock`
+- `TEAMMATE-LOCK-ATTEMPT`: touches `.shepherd/shepherd.lock`
 - `DISCOVERY-WRITE-VIOLATION`: `@discovery` mutates
 - `SKILL-DRIFT`: skill contradicts repo state
 - `LOOP-STALL`: no progress before its cap

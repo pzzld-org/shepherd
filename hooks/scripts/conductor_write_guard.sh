@@ -110,18 +110,44 @@ fi
 [[ "$SPRINT_OPEN" -eq 1 ]] || exit 0
 
 # ---------------------------------------------------------------------------
-# Edit / Write — always denied, no carve-out.
+# Edit / Write — denied, with ONE carve-out: the conductor's OWN lane dir.
 # ---------------------------------------------------------------------------
 if [[ "$TOOL" == "Edit" || "$TOOL" == "Write" ]]; then
   FILE_PATH="$(json_field "$PAYLOAD" '.tool_input.file_path' 2>/dev/null || true)"
+
+  # --- Lane-plan custody exemption (v6.5.0, seed decision 6): a TEAMMATE-
+  # conductor OWNS runs/{run}/lanes/{lane}/ — checkbox step tracking and the
+  # append-only `## Deviations` log live in ITS lane plan, so Edit/Write
+  # inside its OWN lane dir passes. The lane comes from the session-tier
+  # marker user_prompt_submit.sh stamped at boot (its lane_plan field = the
+  # boot prompt's `Lane plan (YOURS):` path). Matched on the canonical
+  # runs/<run>/lanes/<lane> path SEGMENT so absolute vs repo-relative target
+  # shapes both resolve. Everything else — another lane's dir, the master
+  # plan.md, seed.md, reports — keeps denying. A SOLO conductor has no marker
+  # and keeps the full deny (root materializes lane plans via dispatch/CLI).
+  if [[ -n "$FILE_PATH" ]]; then
+    CWG_NS="$(resolve_namespace 2>/dev/null || echo .shepherd)"
+    CWG_MARKER="$(session_tier_marker "$CWG_NS" "$SESSION")"
+    if [[ -f "$CWG_MARKER" ]]; then
+      LANE_PLAN="$(json_field "$(cat "$CWG_MARKER" 2>/dev/null || true)" '.lane_plan' 2>/dev/null || true)"
+      LANE_SEG="$(printf '%s' "$LANE_PLAN" | grep -oE 'runs/[A-Za-z0-9._-]+/lanes/[A-Za-z0-9._-]+' | head -1 || true)"
+      if [[ -n "$LANE_SEG" ]] && [[ "/$FILE_PATH" == *"/$LANE_SEG/"* ]]; then
+        pass_silent "conductor_write_guard" "$TOOL" "conductor" "$SESSION" \
+          "$(emit_json_obj note "lane-custody-exempt" lane "$LANE_SEG")"
+      fi
+    fi
+  fi
+
   MSG="[shepherd] CONDUCTOR-WRITE-DENIED — conductor is read+dispatch only (v6.2.7)."$'\n'
   MSG+="  Tool       : $TOOL"$'\n'
   MSG+="  Target     : ${FILE_PATH:-unknown}"$'\n'
-  MSG+="The conductor never Edits or Writes a file, in EITHER mode — no '.md-only'"$'\n'
-  MSG+="carve-out remains. Compose the exact content in your own reasoning and hand"$'\n'
-  MSG+="it to a @worker dispatch as a deterministic write-brief (exact path + exact"$'\n'
-  MSG+="content); read the worker's report back. The conductor's ONLY direct external"$'\n'
-  MSG+="mutation is opening/closing GitHub issues via"$'\n'
+  MSG+="The conductor never Edits or Writes a file OUTSIDE its own lane dir. The one"$'\n'
+  MSG+="carve-out (v6.5.0): a teammate-conductor owns runs/{run}/lanes/{lane}/ — its"$'\n'
+  MSG+="lane plan's checkboxes + '## Deviations' log (agents/conductor.md §Lane-plan"$'\n'
+  MSG+="custody). For anything else, compose the exact content in your own reasoning"$'\n'
+  MSG+="and hand it to a @worker dispatch as a deterministic write-brief (exact path +"$'\n'
+  MSG+="exact content); read the worker's report back. The conductor's ONLY direct"$'\n'
+  MSG+="external mutation is opening/closing GitHub issues via"$'\n'
   MSG+="mcp__plugin_github_github__issue_write. See agents/conductor.md"$'\n'
   MSG+="§Hard prohibitions + §Side-effect boundary."
   emit_deny "$MSG" "conductor_write_guard" "$TOOL" "conductor" "$SESSION"

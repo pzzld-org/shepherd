@@ -86,15 +86,31 @@ entry; exempt twins via `shctx dups registry allow A B`.
 | `reports` | `.shepherd/docs/reports` |
 | `docs` | `.shepherd/docs` |
 | `ctx` | `.shepherd/ctx` |
+| `runs` | `.shepherd/runs` |
 
-Relative to the repo root, auto-created on write. `shctx init` scaffolds the standard tree;
-`shctx migrate --layout v2` moves a legacy project onto it. See
+Relative to the repo root, auto-created on write. `{run_dir}` = `{paths.runs}/{run}` — the per-run
+artifact directory (`{run}` == sprint/patch slug); run-scoped artifacts live there under FIXED
+names, `plans`/`reports` remain for legacy trees and genuinely cross-run docs. `shctx init`
+scaffolds the standard tree; `shepherd migrate --layout v2` moves a legacy project onto the docs/
+layout, `--layout v3` onto `runs/` + `profiles/`. Layout, ownership, and the tracked/ignored split:
 `skills/context/references/naming-conventions.md`.
+
+Two CLI commands own this layer: `shepherd run <init|show|list|set|lane|wave>` maintains
+`{run_dir}/run.json` (schema-validated, the #242 boundary-merge ledger — `run wave pending` exits 6
+while accepted-but-unmerged lanes remain); `shepherd render <template> [--vars-json F] [--out F]
+[--manifest]` renders Jinja2 templates (StrictUndefined), resolving project `.shepherd/templates/`
+→ user `~/.shepherd/templates/` → bundled package data.
 
 **Namespace default is `.shepherd/`** (legacy `.artifacts/` opts in via `shctx init --artifacts`).
 `[paths]` MUST match the active namespace or `shctx doctor` flags a conflict; `shctx init` REFUSES
 to scaffold a second namespace when the other exists. `$SHEPHERD_WORKDIR` precedence: env var →
 `$SHCTX_ROOT_OVERRIDE` (legacy) → `.shepherd/` → `.artifacts/` → default `.shepherd/`.
+
+**User home is `~/.shepherd`** (`SHEPHERD_HOME` env overrides): cross-project defaults — user
+profiles, user templates — never project state. Style-profile resolution, first hit wins: project
+`.shepherd/profiles/{profile}/style.md` → project legacy `styles/{profile}.md` →
+`~/.shepherd/profiles/{profile}/style.md` → bundled `skills/context/styles/{profile}.md`. Writes
+always target the project tier.
 
 ### `[context]` — context registry
 
@@ -202,6 +218,7 @@ reported via `additionalContext` even in block mode. `warn` proceeds with the sa
 | `dashboard_cadence` | duration | `"3m"` | `shctx dash` loop interval |
 | `staged_timeout_minutes` | int | `90` | `--staged` poll timeout before `STAGED-TIMEOUT` |
 | `lead_effort` | enum | `"ultracode"` | effort injected into lead sessions (`@engineer`, `@conductor`) at spawn; `ultracode` makes Dynamic-Workflow fan-out the default. `off` leaves the lead session's effort unchanged (#198 direction) |
+| `stale_sweep_minutes` | int | `60` | reboot horizon for the lead-session-start liveness sweep (#229): rows from OTHER sessions older than this with no in-progress declaration flip to `crashed` so they leave the live set. `0` disables the sweep |
 
 `lead_effort`: the lead sets its session effort on turn one from the boot-brief `Lead effort:` pin
 (`commands/spawn.md §Lead effort`). Leads own fan-out (the engineer's intro wave, the conductor's
@@ -303,7 +320,8 @@ reclaims space; `--json` emits a machine-readable plan.
 
 `{X}/{Y}/{Z}/{N}` placeholders in `branching`/`release`/`ledger`, and `{paths.*}` references,
 interpolate at runtime — e.g. `"{paths.docs}/v{X}.{Y}.{Z}-release-notes.md"` → `.shepherd/docs/
-v0.2.9-release-notes.md` for v0.2.9.
+v0.2.9-release-notes.md` for v0.2.9. `{run_dir}` expands to `{paths.runs}/{run}` for the run in
+scope — e.g. `{run_dir}/seed.md` → `.shepherd/runs/v650-dev0/seed.md`.
 
 ## Defaults
 

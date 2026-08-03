@@ -45,7 +45,7 @@ Check 0 runs FIRST.
 | Check | Gate | Rule |
 |---|---|---|
 | 0 | Operator-only invocation | HARD. Refuse if invoked from a teammate session (detail below). |
-| 1 | Agent Teams availability | ADVISORY. NEVER hard-refuse on `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` unset — the runtime is the authority. |
+| 1 | Substrate verification | VERIFY (#220). `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` env check + probe note (detail below). Failed verification DOWNGRADES to `/shepherd:start` — never a blind spawn. |
 | 2 | Claude Code version | ADVISORY. NEVER hard-refuse on version; act on the real runtime signal. |
 | 3 | No active team | HARD. `ls ~/.claude/teams/` non-empty with a `config.json` carrying `members[]` → refuse. One team per lead. |
 | 4 | shepherd.toml | Scaffold-then-proceed: `shctx config init` if missing, emit `[CONFIG] scaffolded`, PROCEED. Non-blocking. |
@@ -63,6 +63,24 @@ Secondary signals (ANY positive → refuse): current cwd under a `.worktrees/` p
 session's system-prompt addendum carries `INVOCATION-CONTEXT.dispatcher: teammate-conductor`. On refuse, route plan-amendment requests to `SendMessage(to: lead,
 halt_code: PLAN-AUTHORSHIP-REQUEST)`. A refused nested spawn raises `TEAMMATE-NESTING-ATTEMPT`.
 
+### Check 1 — substrate verification (#220)
+
+Verify the Agent Teams substrate BEFORE the spawn instruction fires:
+
+1. **Env check:** `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` set in the lead session's
+   environment. Unset → the teammate substrate is absent.
+2. **Probe note:** a "teammate" spawned without the substrate is silently an Agent-tool
+   SUBAGENT — `Workflow`-denied, notifications misrouted (`TeammateIdle`/`TaskCompleted`
+   never fire for it, liveness rows never match). The failure is invisible at spawn time
+   and surfaces only as a stalled sprint — WHY this is a verification, not an advisory.
+3. **Permission-mode inheritance:** teammates inherit the lead session's permission mode.
+   For unattended lanes, launch root in `acceptEdits`/auto mode — a default-mode lead
+   strands every teammate at its first edit prompt with nobody watching.
+
+On a failed verification, DOWNGRADE to `/shepherd:start` (root drives the same wave
+routine directly — `commands/start.md §Fallback role`); never spawn into an absent
+substrate.
+
 ### Cache-TTL nudge
 
 For `--scope patch` and long `--auto` loops, root MUST surface a one-line nudge to set
@@ -73,60 +91,64 @@ API-key / Bedrock / Vertex / Foundry need the flag.
 
 ## Teammate prompt
 
-Build each teammate's boot prompt before the spawn instruction. It carries every inherited
-fact so the teammate never re-asks main chat.
+The boot prompt is RENDERED, never hand-assembled. Root writes each lane's variables to
+`{run_dir}/lanes/{lane}/vars.json` (`{run_dir}` = `{paths.runs}/{run}`, default
+`.shepherd/runs/{run}`; `{run}` = the sprint slug), then renders:
 
-```
-You are a spawned teammate-conductor.
-
-ROOT-SESSION-NAME: shepherd-root @ {main_chat_session_id}
-
-INVOCATION-CONTEXT:
-  dispatcher: teammate-conductor
-  spawn_session: {team_id}
-  scope: {sprint|patch|minor|version}
-  fanout_mode: {lane|sprint}          # lane-per-conductor (default) | concurrent sprints
-  lane_index: {i_of_L_w}              # lane mode only
-  wave_index: {w_of_W}                # lane mode only
-  parallel_index: {i_of_N}            # sprint-fanout index (sprint mode only)
-  peer_teammate_names: [list]         # siblings, for peer SendMessage
-
-INHERITED CONTEXT
-  Profile:              ${CLAUDE_PLUGIN_ROOT}/agents/conductor.md
-  Model pin:            {resolved via shctx models resolve conductor}
-  Lead effort:          {[spawn].lead_effort, default "ultracode"}
-  CLAUDE.md path:       {project_claude_md_path}
-  Active seed:          {paths.plans}/{sprint_slug}.seed.md
-  Active plan:          {paths.plans}/{sprint_slug}.plan.md
-  Lane brief:           {paste the lane's seven-bracketed brief slice + steps}
-  Prior close handoff:  {paths.docs}/{prior_handoff_filename}
-  Carry-forward issues: {comma-separated #NNN from handoff}
-  Worktree path:        {abs}/.worktrees/{sprint_slug}-{lane_id}   (root pre-created it)
-  [BASE-COMMIT-EXPECTED]: {sprint_branch HEAD sha}
-  shepherd.toml snapshot: inline below
-
-BOOT INSTRUCTION
-  On your FIRST turn, set session effort to the `Lead effort` pin above (run `/effort
-  ultracode` unless overridden), then load ${CLAUDE_PLUGIN_ROOT}/agents/conductor.md
-  §Boot verification and begin — do NOT wait for a kickoff message. Your lane brief IS
-  the instruction.
-  conductor.md owns the boot checklist (§Boot verification), the lane micro-Stage-Graph
-  walk (§Lane walk), and the WAVE-COMPLETE payload schema you emit (§WAVE-COMPLETE + resume).
-
-HARD PROHIBITIONS (each BINDING; on any, REFUSE and
-SendMessage(to: lead, halt_code: <code>, blocking: true)):
-  - @engineer dispatch → WRONG-TIER-DISPATCH  (escalate PLAN-AUTHORSHIP-REQUEST)
-  - @critic dispatch   → WRONG-TIER-DISPATCH  (escalate PLAN-GATE-REQUEST)
-  - flock dispatch missing subagent_type: "shepherd:<role>" or set to
-    general-purpose/Explore/Chat → DISPATCH-MISSING-SUBAGENT-TYPE
-  - flock dispatch outside the closed six-role flock → DISPATCH-OFF-FLOCK
-  - spawning a teammate (you are not a lead) → TEAMMATE-NESTING-ATTEMPT
-  - git merge/rebase/cherry-pick onto a shared branch, or worktree add/remove/prune → TEAMMATE-GIT-WRITE
-    (in-worktree git add/commit AND your OWN lane-branch git push are YOURS — agents/conductor.md §Lane walk)
-  Full contract: agents/conductor.md §Hard prohibitions.
+```bash
+shepherd render boot-prompt.md.j2 --vars-json {run_dir}/lanes/{lane}/vars.json
 ```
 
-**Non-canonical brief? Attest it.** The bracketed template above is the default and passes the
+The template is canonical at `services/cli/shepherd_cli/templates/boot-prompt.md.j2`
+(project `.shepherd/templates/` overrides it, then user `~/.shepherd/templates/`).
+StrictUndefined: every variable below is REQUIRED — a missing one fails the render (exit 4),
+never a silent hole; optionals pass as `null`/`[]`, never omitted. The ORDER lives in the
+template, not here: stable blocks (boot instruction, hard prohibitions — identical for
+every lane; full contract `agents/conductor.md §Hard prohibitions`) render FIRST so N
+teammate prompts share the longest byte prefix; volatile lane vars render LAST (#243).
+Never hand-reorder the rendered output.
+
+The vars — every inherited fact, so the teammate never re-asks main chat:
+
+```
+root_session_name:    shepherd-root @ {main_chat_session_id}
+team_id:              {team_id}
+scope:                {sprint|patch|minor|version}
+fanout_mode:          {lane|sprint}       # lane-per-conductor (default) | concurrent sprints
+lane_index:           {i_of_L_w}          # lane mode only
+wave_index:           {w_of_W}            # lane mode only
+parallel_index:       {i_of_N}            # sprint-fanout index (sprint mode), else null
+peer_teammate_names:  [siblings, for peer SendMessage]   # else []
+plugin_root:          ${CLAUDE_PLUGIN_ROOT}
+model_pin:            {resolved via shctx models resolve conductor}
+lead_effort:          {[spawn].lead_effort, default "ultracode"}
+claude_md_path:       {project_claude_md_path}
+run_dir:              {paths.runs}/{run}
+seed_path:            {run_dir}/seed.md
+plan_path:            {run_dir}/plan.md
+lane_plan_path:       {run_dir}/lanes/{lane}/plan.md      # renders "Lane plan (YOURS):"
+prior_handoff_path:   {prior run_dir}/handoff.md
+carry_forward_issues: {comma-separated #NNN from handoff}
+worktree_path:        {abs}/.worktrees/{sprint_slug}-{lane_id}   # root pre-created it
+base_commit:          {sprint_branch HEAD sha}            # renders [BASE-COMMIT-EXPECTED]
+git_custody:          root | lane                         # structured, binding (#230)
+toml_snapshot:        {inline shepherd.toml}              # or null
+```
+
+Two fields are contracts, not context:
+
+- **`Lane plan (YOURS): {run_dir}/lanes/{lane}/plan.md`** — the prompt carries the lane
+  plan's PATH, never a pasted brief slice. The conductor reads and OWNS that file
+  (`agents/conductor.md §Lane-plan custody`); root materialized it from the plan's lane
+  projection (`shepherd render lane-plan.md.j2`, `agents/engineer.md §Lane projection`).
+  Pasting the slice inline is the cache-hostile legacy shape — refuse it.
+- **`git_custody: root|lane`** — structured and binding (#230). `lane` (default):
+  in-worktree git add/commit AND your OWN lane-branch git push are YOURS
+  (`agents/conductor.md §Lane walk`); `root`: root holds integration custody and the
+  conductor hands over a committed, unpushed worktree. The explicit field OVERRIDES
+  any profile default (`agents/conductor.md §Boot verification`).
+
+**Non-canonical brief? Attest it.** The rendered template above is the default and passes the
 conductor's strict shape check. If a lead deliberately hand-authors a brief in a different shape
 (ad-hoc headers, prose lane brief) while carrying every required fact, add a
 `BOOT-FORMAT: lead-attested` line beside `ROOT-SESSION-NAME`. The conductor then substance-checks the required
@@ -137,9 +159,11 @@ the marker — never a teammate to its own boot.
 The teammate inherits NONE of the lead's session state — this is WHY the boot prompt MUST
 carry every inherited fact above:
 
-- Conversation history: it boots fresh; every needed fact MUST be in the block.
-- Open file context: it MUST `Read` any file it needs; the lead's buffers do not carry over.
-- Permission grants beyond default mode: the lead's auto-approved tool calls do NOT propagate.
+- Conversation history: it boots fresh; every needed fact MUST be in the rendered prompt.
+- Open file context: it MUST `Read` any file it needs (its lane plan first); the lead's
+  buffers do not carry over.
+- Permission grants beyond the mode: the permission MODE itself inherits (Check 1), but the
+  lead's individually auto-approved tool calls do NOT propagate.
 
 Gate discipline (cargo `--frozen`, `CARGO_TARGET_DIR=target/.lanes/<lane-slug>`, gates
 SERIAL, `cargo fix` FORBIDDEN) is owned by `agents/conductor.md §Boot verification` and
@@ -201,6 +225,15 @@ that masks real stalls (#183). Registration is idempotent (upsert on `(team, nam
 or a teammate's own late self-register is safe. The `register-lead` line records THIS root session as the
 team's lead so `hooks/scripts/coordinate_drive_guard.sh` re-engages only the real lead on a passive-wait
 stop — never an unrelated concurrent session that merely shares the per-repo registry DB (#223).
+
+**Record the run ledger (#242).** After registering, root ensures the run rows exist:
+`shepherd run init {run}` (only if `{run_dir}/run.json` is absent — the planter normally
+created it), then `shepherd run lane add {run} {lane}` per lane. Wave boundaries write the
+boundary-merge ledger through the same group: `shepherd run wave accept {run} {lane}
+--commit <sha>` on each accepted `WAVE-COMPLETE`, `shepherd run wave merged {run} {lane}`
+on its merge, and `shepherd run wave pending {run}` MUST exit 0 before any wave gate is
+declared green — exit 6 (accepted-but-unmerged lanes remain) is a mechanical stop, never
+eyeballed (`skills/shepherd/references/pipeline.md §Wave gate`).
 
 **Declare progress, don't infer it (#193/#197).** Liveness derives "crashed" from the heartbeat
 gap, but teammates don't heartbeat on a cadence, so a healthy long-running lane reads
@@ -290,11 +323,13 @@ commit lands at every boundary.
 
 `/shepherd:spawn` MUST refuse when:
 
-1. Check 3 fails (an active team is already running). Checks 1-2 are advisory and NEVER hard-stop.
+1. Check 3 fails (an active team is already running). Check 2 is advisory and NEVER
+   hard-stops; a failed Check 1 substrate verification DOWNGRADES to `/shepherd:start`,
+   never a blind spawn.
 2. A seed is missing for `--parallel` or a multi-sprint `--scope` (patch/minor/version) walk —
    route to `/shepherd:plant` per gap. A single `--scope sprint` does NOT refuse: it plants
    inline via the `SEED-AUTHOR` node, gated by `shctx seed verify` before the intro combo wave.
-3. Corrupted `.artifacts/shepherd.lock` — non-empty, timestamp < 30 min, matching an active process.
+3. Corrupted `.shepherd/shepherd.lock` — non-empty, timestamp < 30 min, matching an active process.
 4. Active rebase — `REBASE_HEAD` or `MERGE_HEAD` present.
 5. Nested-team attempt (Check 0) → `TEAMMATE-NESTING-ATTEMPT`.
 

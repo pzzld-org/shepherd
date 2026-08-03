@@ -10,21 +10,20 @@ A seed authored by `/shepherd:plant` (or inline by operator/main-chat) MUST foll
 ## File path
 
 ```
-{paths.plans}/{sprint_slug}.seed.md
+{run_dir}/seed.md
 ```
 
-e.g. `.artifacts/plans/v029-dev5.seed.md`. Patch-arc seeds drop the sprint suffix: `{paths.plans}/{patch_slug}.seed.md` (e.g. `.artifacts/plans/v029.seed.md`).
+`{run_dir} = {paths.runs}/{run}`; `[paths].runs` defaults to `.shepherd/runs`, and `{run}` IS the sprint slug — e.g. `.shepherd/runs/v029-dev5/seed.md`. Patch-arc seeds use the patch slug as the run: `{run_dir(patch_slug)}/seed.md` (e.g. `.shepherd/runs/v029/seed.md`). `shepherd run init <run>` scaffolds the dir and writes `run.json` (CLI-written, never latent-authored).
 
-**Branches keep dots; filenames collapse them:** `X.Y.Z` → `XYZ`, `-dev.N` → `-devN`.
+**Branches keep dots; run dirs collapse them:** `X.Y.Z` → `XYZ`, `-dev.N` → `-devN`. The slug names the DIRECTORY only — file names inside a run dir are FIXED, never slug-prefixed:
 
 | Asset | Form | Example |
 |---|---|---|
 | Git branch (sprint) | dotted — `{sprint_branch_pattern}` | `v5.1.2-dev.3` |
 | Git branch (patch) | dotted — `{patch_branch_pattern}` | `v5.1.2` |
-| Seed file (sprint) | slug — `{sprint_slug_pattern}` | `v512-dev3.seed.md` |
-| Seed file (patch) | slug — `{patch_slug_pattern}` | `v512.seed.md` |
-| Plan file (sprint) | slug — `{sprint_slug_pattern}` | `v512-dev3.plan.md` |
-| Close report | dated | `<date>-{sprint_slug}-close.md` |
+| Run dir (sprint) | slug — `{sprint_slug_pattern}` | `runs/v512-dev3/` |
+| Run dir (patch-arc) | slug — `{patch_slug_pattern}` | `runs/v512/` |
+| Files inside a run dir | fixed | `run.json`, `seed.md`, `mesh.md`, `plan.md`, `phase0.md`, `close.md`, `handoff.md`, `lanes/{lane}/plan.md` |
 
 `shepherd.toml [branching]` declares `patch_branch_pattern`, `sprint_branch_pattern`, `patch_slug_pattern`, `sprint_slug_pattern`. Absent `*_slug_pattern` → falls back to `*_branch_pattern`, warns at session start.
 
@@ -43,10 +42,10 @@ date: <YYYY-MM-DD>
 revised: <YYYY-MM-DD>
 author: planter (opus) @ <session-id>
 prior_sprint: <prior {sprint_branch}>
-prior_close_report: {paths.reports}/<date>-<prior sprint>-close.md
-prior_handoff: {paths.docs}/<date>-<prior sprint>-close-handoff.md
-patch_seed: {paths.plans}/{patch_slug}.seed.md
-planter_mesh: {paths.reports}/<date>-planter-mesh.md
+prior_close_report: {run_dir(prior_run)}/close.md
+prior_handoff: {run_dir(prior_run)}/handoff.md
+patch_seed: {run_dir(patch_slug)}/seed.md
+planter_mesh: {run_dir}/mesh.md
 milestone: <GH-milestone-number-for-{patch_branch}>
 sprint_dependencies: [<prior dev branch identifiers>]
 parallel_with: [<other dev branch identifiers>]
@@ -96,8 +95,8 @@ The engineer re-runs each row at plan-time and detects drift since the planter m
 | 5 | Sentry (`[mcp].sentry`) | search-events | error baseline vs prior |
 | 6 | Datastore (`[mcp].supabase`) | schema + row counts | schema state, backlog |
 | 7 | Deploy (`[cli].fly`) | `fly status` | healthy, last image ts |
-| 8 | Prior close | `{paths.reports}/<date>-<prior sprint>-close.md` | grade, blockers, carry-forwards |
-| 9 | Prior handoff | `{paths.docs}/<date>-<prior sprint>-close-handoff.md` | shipped, next |
+| 8 | Prior close | `{run_dir(prior_run)}/close.md` | grade, blockers, carry-forwards |
+| 9 | Prior handoff | `{run_dir(prior_run)}/handoff.md` | shipped, next |
 | 10 | Project CLAUDE.md | "Current — v0.X.Y" | current state |
 | 11 | Carry-forward ledger | `[ledger.carry_forward_file]` | chronic items surfaced |
 | 12 | Knowledge silo | `{paths.ctx}/*.md` | structural-context inputs |
@@ -106,7 +105,7 @@ The engineer re-runs each row at plan-time and detects drift since the planter m
 | 15+ | doctrine extensions | `[memory].project_doctrines/planter-mesh-extensions.md` | per project |
 ```
 
-Output: `{paths.reports}/<date>-{sprint_slug}-phase0.md`.
+Output: `{run_dir}/phase0.md`.
 
 ### 5. Engineering decisions (locked)
 Non-negotiable constraints (e.g. "Cumulative live cap: $50/7d"). Changing one is a critic-RED escalation.
@@ -190,6 +189,9 @@ Ambiguities the planter could not resolve; the critic adjudicates at PLAN-GATE.
 ### 12. References
 Every doc cited above, plus the patch-arc seed, the two most recent close reports/handoffs, memory entries, and research docs.
 
+### Operational state (optional)
+The one optional extension slot (#237): 2-3 lines of live-ops context the sprint must respect — deploy state, an in-flight migration, a paused job. State only, never instructions; anything larger is a deliverable or a non-goal, not this slot.
+
 ## Patch-arc seed shape
 
 Same frontmatter with `kind: patch-seed`, `branch: {patch_branch}`, no `prior_sprint`/`parallel_with`.
@@ -206,12 +208,12 @@ Same frontmatter with `kind: patch-seed`, `branch: {patch_branch}`, no `prior_sp
 The pre-flight is mechanical — same seed, same verdict — a script, not a prose checklist. Before `git add`, run:
 
 ```
-shctx seed verify {paths.plans}/{sprint_slug}.seed.md
+shctx seed verify {run_dir}/seed.md
 ```
 
 `shctx seed verify` (`skills/context/scripts/cmd_seed.sh`) is the single source of truth for the checklist and its numbers. HARD-fails (exit 1, blocks `SEED-GATE`) on: a hallucinated `file_scope` path; an over-cap footprint (**≤400 lines sprint / ≤200 lines patch-arc**); a `TODO:`/`FIXME:` marker; a prescriptive `Lane N` token; a priority-bearing deliverable with no `**GH:**` anchor. WARNS on a thin mesh (<8 rows), missing `milestone:`/`kind:`, or a `Sequencing:` judgment call. A path existing only after Phase 0 is exempted with a trailing `(NEW)` marker.
 
-The same gate runs automatically as a `PreToolUse(Write)` hook (`hooks/scripts/seed_preflight_check.sh`, config `[seed].seed_gate = block | warn | off`) — a seed failing `SEED-GATE` cannot reach a spawn. Whether each line is genuinely runnable stays the planter's and `@critic`'s residual judgment.
+The same gate runs automatically as a `PreToolUse(Write)` hook (`hooks/scripts/seed_preflight_check.sh`, config `[seed].seed_gate = block | warn | off`) — it matches `runs/*/seed.md` (path-segment) as well as legacy `*.seed.md`, so a seed cannot dodge the gate by layout; a seed failing `SEED-GATE` cannot reach a spawn. Whether each line is genuinely runnable stays the planter's and `@critic`'s residual judgment.
 
 ## See also
 
