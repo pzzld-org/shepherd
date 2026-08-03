@@ -17,9 +17,19 @@ The run directory is the standard home for ALL run-scoped artifacts
 
 Design rules (from the codex-shepherd port-back review):
 
-- ``run.json`` is NEVER latent-space-written: this module is the one
-  writer, with a closed pydantic schema, so producer and consumer cannot
-  diverge (the exact gap codex-shepherd's own committed learning names).
+- ``run.json`` is NEVER latent-space-written: this module is the one CLI
+  writer, so a CLI-originated write cannot invent its own field shapes.
+  It is NOT the one *reader* — ``skills/bridge/SKILL.md`` names other
+  shepherd implementations (prior bash versions, codex-shepherd) that
+  read and write the same file with their own field sets. #247: a
+  brand-new closed (``extra="forbid"``) schema rejected 100% of run.json
+  files measured on live runs (33 and 17 validation errors on two
+  runs), because every mutator goes through :func:`load_run`. The fix
+  is a tolerant reader (:func:`normalize_run_document`) plus an open
+  (``extra="allow"``) schema on both :class:`RunState` and
+  :class:`LaneState`, so unknown fields — this CLI's own future fields
+  included — round-trip through load -> save untouched instead of being
+  silently dropped.
 - Writes are atomic: tempfile in the target directory -> fsync ->
   ``os.replace`` -> fsync(dir). A crashed writer never leaves a torn file.
 - Identifiers are sanitized to ``[a-z0-9][a-z0-9-]*`` — no ``..``, no
@@ -32,6 +42,7 @@ Design rules (from the codex-shepherd port-back review):
 
 from __future__ import annotations
 
+import datetime
 import json
 import os
 import re
@@ -79,9 +90,14 @@ def validate_id(value: str, *, what: str = "id") -> str:
 
 
 class LaneState(BaseModel):
-    """One lane's registration + boundary-merge ledger row."""
+    """One lane's registration + boundary-merge ledger row.
 
-    model_config = ConfigDict(extra="forbid")
+    #247: ``extra="allow"`` — other shepherd implementations (and future
+    CLI fields) attach lane keys this model does not name; a load->save
+    round trip must preserve them rather than silently drop them.
+    """
+
+    model_config = ConfigDict(extra="allow")
 
     id: str
     plan: str = ""  # repo-relative lanes/{lane}/plan.md path
@@ -94,9 +110,16 @@ class LaneState(BaseModel):
 
 
 class RunState(BaseModel):
-    """The ``run.json`` document — the machine state of one run."""
+    """The ``run.json`` document — the machine state of one run.
 
-    model_config = ConfigDict(extra="forbid")
+    #247: ``extra="allow"`` — see the module docstring. This model names
+    the fields the CLI itself reads/writes; every other top-level key a
+    document carries (``decisions``, ``blockers``, ``acceptance``, ...)
+    is preserved verbatim through :func:`load_run` / :func:`save_run`
+    instead of being rejected or dropped.
+    """
+
+    model_config = ConfigDict(extra="allow")
 
     schema_version: int = 1
     run: str
@@ -188,23 +211,156 @@ def atomic_write_json(path: str, payload: dict[str, object]) -> None:
             os.unlink(tmp_path)
 
 
-def load_run(run: str, workdir: str | None = None) -> RunState:
-    """Load + validate one run's ``run.json``.
+def _coerce_epoch(value: object) -> int:
+    """Coerce a legacy ``updated_at`` value into unix epoch seconds.
+
+    Args:
+        value: An ``int``/``float`` epoch, an ISO8601 string (bash and
+            codex-shepherd both write ``updated_at`` as ISO8601 text),
+            or anything else.
+
+    Returns:
+        The integer epoch. ``0`` for anything that cannot be parsed —
+        this function never raises.
+    """
+    if isinstance(value, bool):
+        return 0  # bool is an int subclass; never a meaningful timestamp.
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if not isinstance(value, str):
+        return 0
+    text = value.strip()
+    if not text:
+        return 0
+    try:
+        return int(text)  # an epoch already serialized as a string.
+    except ValueError:
+        pass
+    try:
+        parsed = datetime.datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return 0
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=datetime.timezone.utc)
+    return int(parsed.timestamp())
+
+
+def normalize_run_document(raw: dict[str, object]) -> tuple[dict[str, object], list[str]]:
+    """Normalize a legacy/foreign ``run.json`` document to the current shape.
+
+    #247: prior shepherd versions and the sibling codex-shepherd
+    implementation write ``run.json`` with a different field shape for
+    three keys. This is a pure function (no IO, no pydantic) precisely
+    so each divergence is independently unit-testable:
+
+    - ``run_id`` (legacy) -> ``run`` (current), only when ``run`` is not
+      already present.
+    - ``lanes`` as a ``dict`` keyed by lane id (legacy) -> the current
+      ``list[LaneState]`` shape, injecting the dict key as each lane's
+      ``id`` (deterministic: the key always wins over an inline ``id``
+      the lane dict might also carry) and sorting by id.
+    - ``updated_at`` as an ISO8601 string (legacy) -> int epoch seconds
+      via :func:`_coerce_epoch`.
+
+    Every other key — the 27+ extra top-level fields legacy documents
+    carry (``decisions``, ``blockers``, ``acceptance``, ...) — passes
+    through untouched; :class:`RunState`'s ``extra="allow"`` config is
+    what preserves them, not this function.
+
+    Args:
+        raw: The parsed JSON document, as-is off disk.
+
+    Returns:
+        A ``(normalized_document, applied)`` pair. ``applied`` lists the
+        migrations this call actually performed, in a fixed
+        ``["run_id->run", "lanes:dict->list", "updated_at:iso->epoch"]``
+        order (never dict-iteration order) — empty when ``raw`` was
+        already canonical.
+    """
+    doc = dict(raw)
+    applied: list[str] = []
+
+    if "run" not in doc and "run_id" in doc:
+        doc["run"] = doc.pop("run_id")
+        applied.append("run_id->run")
+
+    lanes = doc.get("lanes")
+    if isinstance(lanes, dict):
+        normalized_lanes: list[object] = []
+        for lane_id in sorted(lanes):
+            lane_doc = lanes[lane_id]
+            if isinstance(lane_doc, dict):
+                lane_doc = dict(lane_doc)
+            else:
+                lane_doc = {}
+            lane_doc["id"] = lane_id  # the dict key is authoritative, not any inline "id".
+            normalized_lanes.append(lane_doc)
+        doc["lanes"] = normalized_lanes
+        applied.append("lanes:dict->list")
+
+    if isinstance(doc.get("updated_at"), str):
+        doc["updated_at"] = _coerce_epoch(doc["updated_at"])
+        applied.append("updated_at:iso->epoch")
+
+    return doc, applied
+
+
+def load_run_with_migrations(run: str, workdir: str | None = None) -> tuple[RunState, list[str]]:
+    """Load + tolerantly validate one run's ``run.json``, reporting migrations.
 
     Args:
         run: The run identifier.
         workdir: Optional workdir override (tests).
 
     Returns:
-        The validated run state.
+        ``(state, applied)`` — the validated run state, and the ordered
+        list of :func:`normalize_run_document` migrations that were
+        actually applied (empty when the document was already
+        canonical).
 
     Raises:
         FileNotFoundError: No ``run.json`` for this run.
-        ValueError: The document fails schema validation (pydantic).
+        json.JSONDecodeError: The file is not valid JSON.
+        pydantic.ValidationError: The (normalized) document still fails
+            schema validation.
     """
     path = run_state_path(run, workdir)
     with open(path, "r", encoding="utf-8") as handle:
-        return RunState.model_validate(json.load(handle))
+        raw = json.load(handle)
+    if not isinstance(raw, dict):
+        # Valid JSON, but not an object (e.g. a bare list/string/number) --
+        # not this function's shape to normalize; let pydantic reject it
+        # with its own "Input should be a valid dictionary" ValidationError
+        # rather than normalize_run_document crashing on a non-dict.
+        return RunState.model_validate(raw), []
+    normalized, applied = normalize_run_document(raw)
+    return RunState.model_validate(normalized), applied
+
+
+def load_run(run: str, workdir: str | None = None) -> RunState:
+    """Load + tolerantly validate one run's ``run.json``.
+
+    A thin wrapper over :func:`load_run_with_migrations` for callers
+    that don't need the applied-migrations list (e.g. every mutator
+    other than ``run show``/``run migrate``).
+
+    Args:
+        run: The run identifier.
+        workdir: Optional workdir override (tests).
+
+    Returns:
+        The validated run state, normalized per :func:`normalize_run_document`.
+
+    Raises:
+        FileNotFoundError: No ``run.json`` for this run.
+        json.JSONDecodeError: The file is not valid JSON.
+        pydantic.ValidationError: The (normalized) document still fails
+            schema validation.
+    """
+    state, _applied = load_run_with_migrations(run, workdir)
+    return state
 
 
 def save_run(state: RunState, workdir: str | None = None) -> str:
@@ -250,6 +406,8 @@ __all__ = [
     "lane_dir",
     "list_runs",
     "load_run",
+    "load_run_with_migrations",
+    "normalize_run_document",
     "run_dir",
     "run_state_path",
     "runs_root",

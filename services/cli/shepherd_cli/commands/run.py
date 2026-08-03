@@ -11,6 +11,10 @@ lock file, latent prose). Subcommands:
 - ``run show <run> [--json]`` / ``run list [--json]`` — read side.
 - ``run set <run> [--status S] [--seed P] [--plan P]`` — field updates
   (status validated against the closed vocabulary).
+- ``run migrate <run> | --all`` — #247: load a run.json tolerantly
+  (:func:`shepherd_cli.models_run.normalize_run_document`) and rewrite
+  it in canonical form, reporting the migrations applied. Idempotent —
+  a second run reports none applied.
 - ``run lane add <run> <lane> [--plan P] [--worktree P] [--branch B]`` /
   ``run lane set <run> <lane> --state S`` — lane registration + state.
 - ``run wave accept <run> <lane> --commit SHA`` — record a
@@ -32,6 +36,7 @@ import json
 import os
 
 import typer
+from pydantic import ValidationError
 
 from shepherd_cli.models_run import (
     LANE_STATES,
@@ -42,6 +47,7 @@ from shepherd_cli.models_run import (
     lane_dir,
     list_runs,
     load_run,
+    load_run_with_migrations,
     run_dir,
     run_state_path,
     save_run,
@@ -65,6 +71,26 @@ def _fail(message: str, code: int) -> None:
     raise typer.Exit(code)
 
 
+def _unreadable_message(run: str, exc: Exception, *, schema_shaped: bool) -> str:
+    """Build the #247 non-"corrupt" wording for an unreadable run.json.
+
+    Args:
+        run: The run identifier.
+        exc: The underlying parse/validation exception.
+        schema_shaped: True when ``exc`` is a pydantic validation failure
+            (the document parsed as JSON but doesn't fit the schema —
+            exactly what ``run migrate`` exists to fix), False for a
+            genuine JSON parse failure.
+
+    Returns:
+        The message text (without the ``ERROR:`` prefix ``_fail`` adds).
+    """
+    message = f"run.json for {run} could not be read: {exc}"
+    if schema_shaped:
+        message += f" — try: shepherd run migrate {run}"
+    return message
+
+
 def _load_or_fail(run: str) -> RunState:
     try:
         return load_run(run)
@@ -72,8 +98,25 @@ def _load_or_fail(run: str) -> RunState:
         _fail(str(exc), 2)
     except FileNotFoundError:
         _fail(f"no such run: {run} (expected {run_state_path(run)})", 5)
-    except ValueError as exc:
-        _fail(f"corrupt run.json for {run}: {exc}", 2)
+    except json.JSONDecodeError as exc:
+        _fail(_unreadable_message(run, exc, schema_shaped=False), 2)
+    except ValidationError as exc:
+        _fail(_unreadable_message(run, exc, schema_shaped=True), 2)
+    raise AssertionError("unreachable")
+
+
+def _load_with_migrations_or_fail(run: str) -> tuple[RunState, list[str]]:
+    """Like :func:`_load_or_fail`, but also returns the applied #247 migrations."""
+    try:
+        return load_run_with_migrations(run)
+    except RunIdError as exc:
+        _fail(str(exc), 2)
+    except FileNotFoundError:
+        _fail(f"no such run: {run} (expected {run_state_path(run)})", 5)
+    except json.JSONDecodeError as exc:
+        _fail(_unreadable_message(run, exc, schema_shaped=False), 2)
+    except ValidationError as exc:
+        _fail(_unreadable_message(run, exc, schema_shaped=True), 2)
     raise AssertionError("unreachable")
 
 
@@ -104,10 +147,12 @@ def show_cmd(
     json_flag: bool = typer.Option(False, "--json", help="Emit the raw run.json document."),
 ) -> None:
     """Print one run's state."""
-    state = _load_or_fail(run)
+    state, applied = _load_with_migrations_or_fail(run)
     if json_flag:
         typer.echo(json.dumps(state.model_dump(mode="json"), indent=2, sort_keys=True))
         return
+    if applied:
+        typer.echo(f"(normalized: {', '.join(applied)})")
     typer.echo(f"run: {state.run}")
     typer.echo(f"kind: {state.kind}")
     typer.echo(f"status: {state.status}")
@@ -132,6 +177,30 @@ def list_cmd(
         return
     for name in runs:
         typer.echo(name)
+
+
+@app.command("migrate")
+def migrate_cmd(
+    run: str | None = typer.Argument(None, help="Run id to migrate (omit when using --all)."),
+    all_runs: bool = typer.Option(False, "--all", help="Migrate every run under runs/."),
+) -> None:
+    """#247: rewrite one (or every) run.json in canonical form.
+
+    Loads tolerantly (:func:`shepherd_cli.models_run.normalize_run_document`)
+    then saves, so the file becomes loadable by a strict reader. Prints the
+    migrations applied per run; idempotent — a second run reports none.
+    """
+    if bool(run) == all_runs:
+        _fail("pass exactly one of <run> or --all", 2)
+    targets: list[str] = list_runs() if all_runs else [run]  # type: ignore[list-item]
+    if all_runs and not targets:
+        typer.echo("no runs to migrate")
+        return
+    for target in targets:
+        state, applied = _load_with_migrations_or_fail(target)
+        path = save_run(state)
+        note = ", ".join(applied) if applied else "no changes"
+        typer.echo(f"migrated {target} ({note}): {path}")
 
 
 @app.command("set")
