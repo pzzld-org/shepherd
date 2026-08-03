@@ -13,20 +13,22 @@ throwaway ``work_dir``).
 ``shepherd init`` is the ONE command in this package that CREATES the
 sqlite file from scratch and narrates its own migration gap-fill to
 stderr (see ``shepherd_cli/commands/init.py``'s module docstring) — this
-suite therefore verifies both the resulting on-disk state (directory
-tree, ``.gitignore``, ``CONVENTIONS.md``, ``project.json``, the
-``projects`` row, ``schema_versions`` reaching HEAD) AND byte-for-byte
-stdout/stderr parity against the legacy ``skills/context/scripts/
-cmd_init.sh`` on identical fixture state, the same bash-parity pattern
-``test_doctor.py``/``test_status.py`` already established.
+suite therefore verifies the resulting on-disk state (directory tree,
+``.gitignore``, ``CONVENTIONS.md``, ``project.json``, the ``projects``
+row, ``schema_versions`` reaching HEAD) AND the exact stdout/stderr text
+the legacy ``cmd_init.sh`` produced (the fixed-string assertions below
+were captured byte-for-byte from the bash implementation before the bash
+layer's retirement — they are the parity contract, kept with no runtime
+dependency on the deleted scripts).
 
-The trailing auto-refresh trigger (a real subprocess call to the sibling
-``refresh-artifacts.sh``) is covered two ways, per the port's own
-instructions: a STUBBED sibling script (``fake_plugin_root``, mirroring
-``test_sync.py``'s pattern) pins down the exact argv invoked and exit-code
-propagation deterministically; a separate end-to-end test drives the REAL
-``refresh-artifacts.sh`` (same underlying script bash itself would call)
-against real markdown content, comparing against bash directly.
+The trailing auto-refresh trigger is an IN-PROCESS call to
+:func:`shepherd_cli.refresh_impl.refresh_artifacts` (the native port of
+``refresh-artifacts.sh``) — covered three ways below: a CANARY
+``refresh-artifacts.sh`` in a fake plugin root proves the bash script is
+never executed anymore; a dropped-``artifacts``-table DB pins down
+nonzero-exit propagation; an end-to-end test asserts the actual
+``artifacts`` rows the native indexer writes (the same rows the bash
+script wrote, verified identical during the port).
 """
 
 from __future__ import annotations
@@ -40,9 +42,8 @@ import time
 from pathlib import Path
 
 import pytest
-from conftest import PY, REPO_ROOT, clean_env_dict
+from conftest import PY, REPO_ROOT, build_full_schema_db, clean_env_dict
 
-CMD_INIT_SH = REPO_ROOT / "skills" / "context" / "scripts" / "cmd_init.sh"
 SCHEMA_DIR = REPO_ROOT / "skills" / "context" / "schema"
 SCHEMA_BASE_SQL = SCHEMA_DIR / "0001_init.sql"
 MIGRATIONS_DIR = SCHEMA_DIR / "migrations"
@@ -160,23 +161,6 @@ def run_init(args: list[str], cwd: Path, env: dict[str, str]) -> subprocess.Comp
     )
 
 
-def run_bash_init(args: list[str], cwd: Path, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
-    """Run the legacy ``cmd_init.sh`` directly under ``cwd`` (bash-parity twin)."""
-    return subprocess.run(
-        ["bash", str(CMD_INIT_SH), *args],
-        cwd=str(cwd),
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
-
-
-def _normalize(text: str, work_dir: Path) -> str:
-    """Strip the one genuinely-variable substring (the absolute tmp path) from output."""
-    return text.replace(str(work_dir), "WORK")
-
-
 # --------------------------------------------------------------------------
 # -h / --help / unknown flag.
 # --------------------------------------------------------------------------
@@ -197,16 +181,6 @@ def test_help_variants_print_usage_and_exit_0(args: list[str], work_dir: Path) -
     )
     assert proc.stderr == ""
     assert not (work_dir / ".shepherd").exists()
-
-
-def test_help_matches_bash_byte_for_byte(work_dir: Path) -> None:
-    env = _init_env()
-    python_proc = run_init(["--help"], work_dir, env)
-    bash_proc = run_bash_init(["--help"], work_dir, env)
-
-    assert python_proc.returncode == bash_proc.returncode == 0
-    assert python_proc.stdout == bash_proc.stdout
-    assert python_proc.stderr == bash_proc.stderr == ""
 
 
 def test_help_wins_even_after_other_tokens(work_dir: Path) -> None:
@@ -230,18 +204,8 @@ def test_unknown_flag_exits_1_with_bash_message(work_dir: Path) -> None:
     assert not (work_dir / ".shepherd").exists()
 
 
-def test_unknown_flag_matches_bash(work_dir: Path) -> None:
-    env = _init_env()
-    python_proc = run_init(["--nope"], work_dir, env)
-    bash_proc = run_bash_init(["--nope"], work_dir, env)
-
-    assert python_proc.returncode == bash_proc.returncode == 1
-    assert python_proc.stdout == bash_proc.stdout == ""
-    assert python_proc.stderr == bash_proc.stderr
-
-
 # --------------------------------------------------------------------------
-# Happy path — bare invocation (no flags), byte-for-byte bash parity.
+# Happy path — bare invocation (no flags), bash-captured expected output.
 # --------------------------------------------------------------------------
 def test_bare_invocation_scaffolds_full_tree(work_dir: Path) -> None:
     env = _init_env()
@@ -276,39 +240,16 @@ def test_bare_invocation_stdout_shape(work_dir: Path) -> None:
     assert len(project_id) == 36  # UUID shape
 
 
-def test_bare_invocation_stdout_matches_bash(work_dir: Path) -> None:
-    py_env = _init_env()
-    py_dir = work_dir / "py"
-    py_dir.mkdir()
-    python_proc = run_init([], py_dir, py_env)
+def test_bare_invocation_narrates_every_migration_to_stderr(work_dir: Path) -> None:
+    """The narration lines (``shctx migrate: applying NNNN_*.sql``) match
+    ``_lib.sh``'s ``shctx_apply_pending_migrations`` output exactly, one
+    per shipped migration, in sorted order."""
+    env = _init_env()
+    proc = run_init([], work_dir, env)
 
-    bash_env = _init_env()
-    bash_dir = work_dir / "bash"
-    bash_dir.mkdir()
-    bash_proc = run_bash_init([], bash_dir, bash_env)
-
-    assert python_proc.returncode == bash_proc.returncode == 0
-    py_out = _normalize(python_proc.stdout, py_dir)
-    bash_out = _normalize(bash_proc.stdout, bash_dir)
-    py_out = py_out.split("project_id = ")[0]
-    bash_out = bash_out.split("project_id = ")[0]
-    assert py_out == bash_out
-
-
-def test_bare_invocation_narrates_every_migration_to_stderr_matching_bash(work_dir: Path) -> None:
-    py_env = _init_env()
-    py_dir = work_dir / "py"
-    py_dir.mkdir()
-    python_proc = run_init([], py_dir, py_env)
-
-    bash_env = _init_env()
-    bash_dir = work_dir / "bash"
-    bash_dir.mkdir()
-    bash_proc = run_bash_init([], bash_dir, bash_env)
-
-    assert python_proc.stderr == bash_proc.stderr
+    assert proc.returncode == 0
     expected = [f"shctx migrate: applying {f.name}" for f in sorted(MIGRATIONS_DIR.glob("[0-9][0-9][0-9][0-9]_*.sql"))]
-    assert python_proc.stderr.splitlines() == expected
+    assert proc.stderr.splitlines() == expected
 
 
 def test_schema_reaches_head(work_dir: Path) -> None:
@@ -366,21 +307,6 @@ def test_artifacts_flag_creates_legacy_namespace(work_dir: Path) -> None:
         assert (root / rel).is_dir()
     assert (root / "shepherd.db").is_file()
     assert "shctx: initialized .artifacts/" in proc.stdout
-
-
-def test_artifacts_flag_matches_bash(work_dir: Path) -> None:
-    py_dir = work_dir / "py"
-    py_dir.mkdir()
-    bash_dir = work_dir / "bash"
-    bash_dir.mkdir()
-
-    python_proc = run_init(["--artifacts"], py_dir, _init_env())
-    bash_proc = run_bash_init(["--artifacts"], bash_dir, _init_env())
-
-    assert python_proc.returncode == bash_proc.returncode == 0
-    py_out = _normalize(python_proc.stdout, py_dir).split("project_id = ")[0]
-    bash_out = _normalize(bash_proc.stdout, bash_dir).split("project_id = ")[0]
-    assert py_out == bash_out
 
 
 def test_last_of_shepherd_and_artifacts_wins(work_dir: Path) -> None:
@@ -450,27 +376,6 @@ def test_conflict_guard_shepherd_blocks_fresh_artifacts(work_dir: Path) -> None:
         "    shctx init --shepherd"
     )
     assert not (work_dir / ".artifacts").exists()
-
-
-def test_conflict_guard_matches_bash_both_directions(work_dir: Path) -> None:
-    cases = ((".artifacts", "--shepherd"), (".shepherd", "--artifacts"))
-    for idx, (marker_dir, flag) in enumerate(cases):
-        py_dir = work_dir / f"py-case-{idx}"
-        py_dir.mkdir()
-        (py_dir / marker_dir).mkdir()
-        (py_dir / marker_dir / ".gitignore").touch()
-
-        bash_dir = work_dir / f"bash-case-{idx}"
-        bash_dir.mkdir()
-        (bash_dir / marker_dir).mkdir()
-        (bash_dir / marker_dir / ".gitignore").touch()
-
-        python_proc = run_init([flag], py_dir, _init_env())
-        bash_proc = run_bash_init([flag], bash_dir, _init_env())
-
-        assert python_proc.returncode == bash_proc.returncode == 1, marker_dir
-        assert python_proc.stdout == bash_proc.stdout == "", marker_dir
-        assert python_proc.stderr == bash_proc.stderr, marker_dir
 
 
 def test_conflict_guard_only_fires_when_target_missing(work_dir: Path) -> None:
@@ -548,23 +453,19 @@ def test_preexisting_pidfile_is_read_back_verbatim(work_dir: Path) -> None:
     assert json.loads((root / "project.json").read_text()) == {"id": "custom-project-id", "scaffolded_at": 123}
 
 
-def test_pidfile_null_id_renders_as_the_string_null_matching_jq(work_dir: Path) -> None:
+def test_pidfile_null_id_renders_as_the_string_null(work_dir: Path) -> None:
+    """A present-but-JSON-``null`` ``"id"`` renders as the literal string
+    ``null`` — ``jq -r '.id'``'s raw-output rendering, which the bash
+    implementation printed on this exact fixture."""
     root = work_dir / ".shepherd"
     root.mkdir()
     (root / "project.json").write_text(json.dumps({"id": None}))
     env = _init_env()
 
-    python_proc = run_init([], work_dir, env)
+    proc = run_init([], work_dir, env)
 
-    root_bash = work_dir.parent / "bash-work"
-    root_bash.mkdir()
-    (root_bash / ".shepherd").mkdir()
-    ((root_bash / ".shepherd") / "project.json").write_text(json.dumps({"id": None}))
-    bash_proc = run_bash_init([], root_bash, _init_env())
-
-    assert python_proc.returncode == bash_proc.returncode == 0
-    assert "shctx: project_id = null" in python_proc.stdout
-    assert "shctx: project_id = null" in bash_proc.stdout
+    assert proc.returncode == 0
+    assert "shctx: project_id = null" in proc.stdout
 
 
 def test_malformed_pidfile_exits_1(work_dir: Path) -> None:
@@ -636,16 +537,17 @@ def test_hard_migration_failure_warns_but_does_not_abort_init(work_dir: Path, tm
 
 
 # --------------------------------------------------------------------------
-# Auto-refresh trigger — stubbed sibling script (argv + exit-code parity).
+# Auto-refresh trigger — native in-process indexer (no bash subprocess).
 # --------------------------------------------------------------------------
-def _make_stub_refresh_plugin_root(tmp_path: Path, *, exit_code: int = 0) -> Path:
-    """A throwaway plugin root with the REAL schema but a STUBBED ``refresh-artifacts.sh``.
+def _make_canary_plugin_root(tmp_path: Path) -> Path:
+    """A throwaway plugin root with the REAL schema and a CANARY ``refresh-artifacts.sh``.
 
     Layout: ``skills/context/{schema (real copy), references (real copy),
-    scripts/{shctx, refresh-artifacts.sh (stub)}}`` — enough for
+    scripts/{shctx, refresh-artifacts.sh (canary)}}`` — enough for
     ``_bootstrap_db``/``_copy_conventions`` to run against the real
-    shipped schema while ``_maybe_auto_refresh`` shells out to a fully
-    deterministic stand-in instead of the real, database-writing script.
+    shipped schema. The canary script logs to ``$CALL_LOG`` if executed;
+    the native ``_maybe_auto_refresh`` must never run it (the log staying
+    absent is the load-bearing no-bash assertion).
     """
     fake_root = tmp_path / "fake-plugin-root"
     schema_dir = fake_root / "skills" / "context" / "schema"
@@ -660,17 +562,23 @@ def _make_stub_refresh_plugin_root(tmp_path: Path, *, exit_code: int = 0) -> Pat
     shctx_path.write_text("#!/usr/bin/env bash\nexit 0\n")
     shctx_path.chmod(shctx_path.stat().st_mode | stat.S_IEXEC)
 
-    refresh_path = scripts_dir / "refresh-artifacts.sh"
-    refresh_path.write_text(
-        '#!/usr/bin/env bash\necho "refresh-artifacts.sh $*" >> "$CALL_LOG"\nexit "${FAKE_RC:-0}"\n'
-    )
-    refresh_path.chmod(refresh_path.stat().st_mode | stat.S_IEXEC)
+    canary_path = scripts_dir / "refresh-artifacts.sh"
+    canary_path.write_text('#!/usr/bin/env bash\necho "BASH-CANARY refresh-artifacts.sh" >> "$CALL_LOG"\nexit 0\n')
+    canary_path.chmod(canary_path.stat().st_mode | stat.S_IEXEC)
 
     return fake_root
 
 
+def _artifact_rows(db_path: Path) -> list[tuple]:
+    conn = sqlite3.connect(str(db_path))
+    try:
+        return conn.execute("SELECT kind, path, title FROM artifacts;").fetchall()
+    finally:
+        conn.close()
+
+
 def test_auto_refresh_not_triggered_when_no_markdown_present(work_dir: Path, tmp_path: Path) -> None:
-    fake_root = _make_stub_refresh_plugin_root(tmp_path)
+    fake_root = _make_canary_plugin_root(tmp_path)
     call_log = tmp_path / "calls.log"
     env = _init_env(plugin_root=fake_root)
     env["CALL_LOG"] = str(call_log)
@@ -679,11 +587,12 @@ def test_auto_refresh_not_triggered_when_no_markdown_present(work_dir: Path, tmp
 
     assert proc.returncode == 0, proc.stderr
     assert "detected" not in proc.stdout
+    assert _artifact_rows(work_dir / ".shepherd" / "shepherd.db") == []
     assert not call_log.exists()
 
 
-def test_auto_refresh_triggered_invokes_exact_sibling_script(work_dir: Path, tmp_path: Path) -> None:
-    fake_root = _make_stub_refresh_plugin_root(tmp_path)
+def test_auto_refresh_triggered_runs_native_indexer_not_bash(work_dir: Path, tmp_path: Path) -> None:
+    fake_root = _make_canary_plugin_root(tmp_path)
     call_log = tmp_path / "calls.log"
     root = work_dir / ".shepherd" / "docs" / "plans"
     root.mkdir(parents=True)
@@ -695,29 +604,46 @@ def test_auto_refresh_triggered_invokes_exact_sibling_script(work_dir: Path, tmp
 
     assert proc.returncode == 0, proc.stderr
     assert "shctx: detected 2 pre-existing markdown file(s); auto-indexing" in proc.stdout
-    assert call_log.read_text().strip() == "refresh-artifacts.sh"
+    assert "shctx refresh artifacts: ok" in proc.stdout
+    # The rows were written by the native in-process indexer...
+    assert _artifact_rows(work_dir / ".shepherd" / "shepherd.db") == [
+        ("plan", ".shepherd/docs/plans/foo.plan.md", "Hello Plan")
+    ]
+    # ...and the bash sibling script was NEVER executed.
+    assert not call_log.exists()
 
 
 def test_auto_refresh_failure_propagates_exit_code(work_dir: Path, tmp_path: Path) -> None:
-    fake_root = _make_stub_refresh_plugin_root(tmp_path)
-    call_log = tmp_path / "calls.log"
-    root = work_dir / ".shepherd" / "docs" / "plans"
-    root.mkdir(parents=True)
-    (root / "foo.plan.md").write_text("# Hello Plan\n")
-    env = _init_env(plugin_root=fake_root)
-    env["CALL_LOG"] = str(call_log)
-    env["FAKE_RC"] = "7"
+    """A failing artifacts refresh aborts ``init`` with the refresh's own
+    nonzero exit code (bash parity: ``set -e`` on the trailing statement).
+    Driven by a pre-existing DB already at schema HEAD whose ``artifacts``
+    table was dropped — the refresh's INSERT then fails hard."""
+    root = work_dir / ".shepherd"
+    plans = root / "docs" / "plans"
+    plans.mkdir(parents=True)
+    (plans / "foo.plan.md").write_text("# Hello Plan\n")
+    db_path = root / "shepherd.db"
+    build_full_schema_db(db_path)
+    conn = sqlite3.connect(str(db_path))
+    try:
+        conn.execute("DROP TABLE artifacts")
+        conn.commit()
+    finally:
+        conn.close()
 
-    proc = run_init([], work_dir, env)
+    proc = run_init([], work_dir, _init_env())
 
-    assert proc.returncode == 7
-    assert call_log.read_text().strip() == "refresh-artifacts.sh"
+    assert proc.returncode == 1
+    assert "shctx: detected 2 pre-existing markdown file(s); auto-indexing" in proc.stdout
+    assert "no such table: artifacts" in proc.stderr
 
 
-def test_missing_bash_shctx_tooling_exits_1_when_auto_refresh_needed(work_dir: Path, tmp_path: Path) -> None:
-    """Pre-existing markdown triggers the auto-refresh path, but no bash
-    ``shctx`` tooling can be located at all (schema-only fake plugin root,
-    no ``scripts/shctx``) — exit 1 with a clear stderr message."""
+def test_auto_refresh_succeeds_without_scripts_dir(work_dir: Path, tmp_path: Path) -> None:
+    """The native auto-refresh has NO dependency on the (retired) bash
+    ``skills/context/scripts/`` tree: a schema-only plugin root (no
+    ``scripts/`` at all) still indexes pre-existing markdown fine — the
+    exact scenario that used to hard-fail with "bash shctx tooling not
+    found" when this step shelled out."""
     fake_root = tmp_path / "schema-only-plugin-root"
     schema_dir = fake_root / "skills" / "context" / "schema"
     references_dir = fake_root / "skills" / "context" / "references"
@@ -733,42 +659,8 @@ def test_missing_bash_shctx_tooling_exits_1_when_auto_refresh_needed(work_dir: P
 
     proc = run_init([], work_dir, env)
 
-    assert proc.returncode == 1
-    assert "ERROR: bash shctx tooling not found" in proc.stderr
-    # the scaffold + DB bootstrap steps still ran and succeeded before this point.
-    assert (work_dir / ".shepherd" / "shepherd.db").is_file()
-
-
-# --------------------------------------------------------------------------
-# Auto-refresh trigger — real end-to-end bash parity (genuine refresh-artifacts.sh).
-# --------------------------------------------------------------------------
-def test_auto_refresh_end_to_end_matches_bash(work_dir: Path) -> None:
-    py_dir = work_dir / "py"
-    bash_dir = work_dir / "bash"
-    for d in (py_dir, bash_dir):
-        plans = d / ".shepherd" / "docs" / "plans"
-        plans.mkdir(parents=True)
-        (plans / "foo.plan.md").write_text("# Hello Plan\n")
-
-    python_proc = run_init([], py_dir, _init_env())
-    bash_proc = run_bash_init([], bash_dir, _init_env())
-
-    assert python_proc.returncode == bash_proc.returncode == 0
-    py_out = _normalize(python_proc.stdout, py_dir).split("project_id = ")[0]
-    bash_out = _normalize(bash_proc.stdout, bash_dir).split("project_id = ")[0]
-    assert py_out == bash_out
-    assert "shctx: detected 2 pre-existing markdown file(s); auto-indexing" in python_proc.stdout
-
-    py_db = py_dir / ".shepherd" / "shepherd.db"
-    bash_db = bash_dir / ".shepherd" / "shepherd.db"
-    conn = sqlite3.connect(str(py_db))
-    try:
-        py_artifacts = conn.execute("SELECT kind, path, title FROM artifacts;").fetchall()
-    finally:
-        conn.close()
-    conn = sqlite3.connect(str(bash_db))
-    try:
-        bash_artifacts = conn.execute("SELECT kind, path, title FROM artifacts;").fetchall()
-    finally:
-        conn.close()
-    assert py_artifacts == bash_artifacts == [("plan", ".shepherd/docs/plans/foo.plan.md", "Hello Plan")]
+    assert proc.returncode == 0, proc.stderr
+    assert "shctx refresh artifacts: ok" in proc.stdout
+    assert _artifact_rows(work_dir / ".shepherd" / "shepherd.db") == [
+        ("plan", ".shepherd/docs/plans/foo.plan.md", "Hello Plan")
+    ]
