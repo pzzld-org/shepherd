@@ -49,7 +49,7 @@ SCHEMA_BASE_SQL = SCHEMA_DIR / "0001_init.sql"
 MIGRATIONS_DIR = SCHEMA_DIR / "migrations"
 NAMING_CONVENTIONS_MD = REPO_ROOT / "skills" / "context" / "references" / "naming-conventions.md"
 
-_USAGE_MARKER = "shctx init [--artifacts|--shepherd]"
+_USAGE_MARKER = "shctx init [--artifacts|--shepherd] [--no-config] [--no-doctor] [--user]"
 
 #: The exact ``mkdir -p`` dir set from ``scaffold.sh``, relative to the
 #: namespace root — see ``shepherd_cli/commands/init.py``'s
@@ -127,7 +127,9 @@ def work_dir(tmp_path: Path) -> Path:
     return d
 
 
-def _init_env(*, workdir: Path | None = None, plugin_root: Path | None = None) -> dict[str, str]:
+def _init_env(
+    *, workdir: Path | None = None, plugin_root: Path | None = None, home: Path | None = None
+) -> dict[str, str]:
     """A stripped-then-rebuilt environment for a ``shepherd init`` test.
 
     Args:
@@ -141,11 +143,21 @@ def _init_env(*, workdir: Path | None = None, plugin_root: Path | None = None) -
         plugin_root: ``CLAUDE_PLUGIN_ROOT`` override; defaults to this
             checkout's own real ``REPO_ROOT`` so the real base schema,
             migrations, and ``references/naming-conventions.md`` resolve.
+        home: When given, sets ``SHEPHERD_HOME`` (an absolute path) so
+            ``--user``/doctor's user-tier section resolve against an
+            isolated, throwaway directory instead of the real host
+            ``$HOME`` — see ``tests/test_home.py``'s identical
+            ``_home_env`` isolation, required by every scenario below
+            that touches ``--user`` (never omit ``home`` for one of
+            those — the real ``$HOME`` must never be written to by this
+            suite).
     """
     env = clean_env_dict()
     env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root if plugin_root is not None else REPO_ROOT)
     if workdir is not None:
         env["SHEPHERD_WORKDIR"] = str(workdir)
+    if home is not None:
+        env["SHEPHERD_HOME"] = str(home)
     return env
 
 
@@ -172,12 +184,17 @@ def test_help_variants_print_usage_and_exit_0(args: list[str], work_dir: Path) -
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout.rstrip("\n") == (
         _USAGE_MARKER + "\n\n"
-        "Scaffold the per-project shepherd namespace tree, create shepherd.db, and\n"
-        "register the host project.\n\n"
+        "Scaffold the per-project shepherd namespace tree, create shepherd.db,\n"
+        "register the host project, scaffold shepherd.toml, and run a closing\n"
+        "doctor pass — one command, a fully configured project.\n\n"
         "Default: .shepherd/ (v5.0.0+). If either .shepherd/ or .artifacts/ already\n"
         "exists in the repo, that one is used (auto-detect). Use --artifacts to force\n"
         "the legacy .artifacts/ namespace for a NEW init.\n"
-        "Legacy projects using root.db are detected automatically and left untouched."
+        "Legacy projects using root.db are detected automatically and left untouched.\n\n"
+        "  --no-config   Skip scaffolding shepherd.toml.\n"
+        "  --no-doctor   Skip the closing doctor pass.\n"
+        "  --user        Also bootstrap ~/.shepherd (shepherd home init). Off by\n"
+        "                default — the one step here that touches $HOME."
     )
     assert proc.stderr == ""
     assert not (work_dir / ".shepherd").exists()
@@ -228,12 +245,17 @@ def test_bare_invocation_scaffolds_full_tree(work_dir: Path) -> None:
 
 
 def test_bare_invocation_stdout_shape(work_dir: Path) -> None:
+    """The pre-v6.4.2 opening two lines are still the FIRST two lines emitted --
+    everything after them is the new seamless-bootstrap tail (config
+    scaffold, closing summary, doctor pass); see
+    `test_bare_invocation_full_seamless_bootstrap` for that tail's own
+    content assertions."""
     env = _init_env()
     proc = run_init([], work_dir, env)
 
     assert proc.returncode == 0, proc.stderr
     lines = proc.stdout.splitlines()
-    assert len(lines) == 2
+    assert len(lines) > 2
     assert lines[0] == f"shctx: initialized .shepherd/ at {work_dir / '.shepherd'}"
     assert lines[1].startswith("shctx: project_id = ")
     project_id = lines[1].removeprefix("shctx: project_id = ")
@@ -664,3 +686,242 @@ def test_auto_refresh_succeeds_without_scripts_dir(work_dir: Path, tmp_path: Pat
     assert _artifact_rows(work_dir / ".shepherd" / "shepherd.db") == [
         ("plan", ".shepherd/docs/plans/foo.plan.md", "Hello Plan")
     ]
+
+
+# --------------------------------------------------------------------------
+# v6.4.2 — the seamless bootstrap: config scaffold, closing summary, doctor
+# pass, and the --no-config/--no-doctor/--user flags that opt in/out of them.
+# --------------------------------------------------------------------------
+def run_doctor(args: list[str], cwd: Path, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+    """Run ``${PY} -m shepherd_cli doctor <args>`` under ``cwd`` — the
+    follow-up half of the "one command, fully configured, doctor passes"
+    contract this section's tests exercise."""
+    return subprocess.run(
+        [PY, "-m", "shepherd_cli", "doctor", *args],
+        cwd=str(cwd),
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+
+
+def _bootstrap_summary_lines(stdout: str) -> list[str]:
+    """The ``shctx init: bootstrap summary`` block's own indented lines
+    (after its header, up to the next non-indented line or EOF)."""
+    lines = stdout.splitlines()
+    try:
+        start = lines.index("shctx init: bootstrap summary") + 1
+    except ValueError:
+        return []
+    end = start
+    while end < len(lines) and lines[end].startswith("  "):
+        end += 1
+    return lines[start:end]
+
+
+def test_bare_invocation_full_seamless_bootstrap(work_dir: Path) -> None:
+    """``shepherd init`` ALONE takes a bare repo to a fully configured
+    project: namespace tree, db at schema HEAD, a project row, and
+    ``shepherd.toml`` all exist afterward — and a follow-up ``shepherd
+    doctor`` reports no FAIL (the fresh-project refresh-zone WARNs are
+    expected and are not a bootstrap defect — see
+    ``shepherd_cli/commands/doctor.py``'s own module docstring)."""
+    env = _init_env(home=work_dir.parent / "home")
+    proc = run_init([], work_dir, env)
+    assert proc.returncode == 0, proc.stderr
+
+    root = work_dir / ".shepherd"
+    assert root.is_dir()
+    db_path = root / "shepherd.db"
+    max_version, _count = _schema_versions(db_path)
+    assert max_version == _max_migration_version()
+    assert len(_projects_rows(db_path)) == 1
+    toml_path = root / "shepherd.toml"
+    assert toml_path.is_file()
+    assert "[project]" in toml_path.read_text()
+
+    assert "shctx init: bootstrap summary" in proc.stdout
+    assert "shctx init: doctor pass" in proc.stdout
+
+    doctor_proc = run_doctor([], work_dir, env)
+    assert doctor_proc.returncode != 1, doctor_proc.stdout
+
+
+def test_second_run_is_idempotent_and_reports_already_present(work_dir: Path) -> None:
+    """Running ``shepherd init`` twice creates NOTHING the second time —
+    same project row, same schema version, same ``shepherd.toml`` mtime —
+    and the closing summary reports every step as already-present, never
+    ``created``."""
+    env = _init_env(home=work_dir.parent / "home")
+    first = run_init([], work_dir, env)
+    assert first.returncode == 0, first.stderr
+
+    db_path = work_dir / ".shepherd" / "shepherd.db"
+    toml_path = work_dir / ".shepherd" / "shepherd.toml"
+    projects_before = _projects_rows(db_path)
+    schema_before = _schema_versions(db_path)
+    toml_mtime_before = toml_path.stat().st_mtime
+
+    second = run_init([], work_dir, env)
+    assert second.returncode == 0, second.stderr
+
+    assert _projects_rows(db_path) == projects_before
+    assert _schema_versions(db_path) == schema_before
+    assert toml_path.stat().st_mtime == toml_mtime_before
+
+    summary = _bootstrap_summary_lines(second.stdout)
+    assert summary, second.stdout
+    assert not any("created" in line for line in summary), summary
+    assert any("namespace" in line and "already present" in line for line in summary), summary
+    assert any(
+        line.strip().startswith("db") and "already present" in line for line in summary
+    ), summary
+    assert any(
+        line.strip().startswith("project") and "already registered" in line for line in summary
+    ), summary
+    assert any(
+        "shepherd.toml" in line and "already present" in line for line in summary
+    ), summary
+
+
+def test_no_config_flag_skips_scaffold_but_doctor_still_runs(work_dir: Path) -> None:
+    env = _init_env(home=work_dir.parent / "home")
+    proc = run_init(["--no-config"], work_dir, env)
+
+    assert proc.returncode == 0, proc.stderr
+    assert not (work_dir / ".shepherd" / "shepherd.toml").exists()
+    assert "shepherd.toml : skipped (--no-config)" in proc.stdout
+    assert "shctx config: scaffolded" not in proc.stdout
+    assert "shctx init: doctor pass" in proc.stdout  # the OTHER new step is unaffected
+
+
+def test_no_doctor_flag_skips_doctor_pass_but_config_still_scaffolds(work_dir: Path) -> None:
+    env = _init_env(home=work_dir.parent / "home")
+    proc = run_init(["--no-doctor"], work_dir, env)
+
+    assert proc.returncode == 0, proc.stderr
+    assert (work_dir / ".shepherd" / "shepherd.toml").is_file()
+    assert "shctx init: bootstrap summary" in proc.stdout
+    assert "shctx init: doctor pass" not in proc.stdout
+    assert "STATUS CATEGORY" not in proc.stdout  # the doctor report table itself never renders
+
+
+def test_no_config_and_no_doctor_together_skip_both_on_disk_effects(work_dir: Path) -> None:
+    """Bash-parity narrow behavior stays reachable: with both flags, the
+    ON-DISK effect is byte-identical to the pre-v6.4.2 command (no
+    ``shepherd.toml``, no doctor pass) — only the closing summary
+    (unconditional, per the task's own flag list) is new stdout."""
+    env = _init_env(home=work_dir.parent / "home")
+    proc = run_init(["--no-config", "--no-doctor"], work_dir, env)
+
+    assert proc.returncode == 0, proc.stderr
+    assert not (work_dir / ".shepherd" / "shepherd.toml").exists()
+    assert "shctx init: doctor pass" not in proc.stdout
+    assert "shctx config:" not in proc.stdout
+    lines = proc.stdout.splitlines()
+    assert lines[0] == f"shctx: initialized .shepherd/ at {work_dir / '.shepherd'}"
+    assert lines[1].startswith("shctx: project_id = ")
+    summary = _bootstrap_summary_lines(proc.stdout)
+    assert any("shepherd.toml" in line and "skipped (--no-config)" in line for line in summary)
+    assert any("user tier" in line and "skipped" in line for line in summary)
+
+
+def test_user_flag_bootstraps_home_and_reports_created(work_dir: Path) -> None:
+    home_dir = work_dir.parent / "user-home"
+    env = _init_env(home=home_dir)
+    assert not home_dir.exists()
+
+    proc = run_init(["--user"], work_dir, env)
+
+    assert proc.returncode == 0, proc.stderr
+    assert (home_dir / "profiles").is_dir()
+    assert (home_dir / "templates").is_dir()
+    summary = _bootstrap_summary_lines(proc.stdout)
+    assert any("user tier" in line and "created" in line for line in summary), summary
+
+
+def test_user_flag_off_by_default_never_touches_home(work_dir: Path) -> None:
+    """``--user`` is opt-IN: a bare ``shepherd init`` must never create
+    ``$SHEPHERD_HOME`` even though it is fully resolvable."""
+    home_dir = work_dir.parent / "untouched-home"
+    env = _init_env(home=home_dir)
+
+    proc = run_init([], work_dir, env)
+
+    assert proc.returncode == 0, proc.stderr
+    assert not home_dir.exists()
+    summary = _bootstrap_summary_lines(proc.stdout)
+    assert any("user tier" in line and "skipped" in line for line in summary), summary
+
+
+def test_user_flag_is_idempotent_on_second_run(work_dir: Path) -> None:
+    home_dir = work_dir.parent / "user-home"
+    env = _init_env(home=home_dir)
+
+    first = run_init(["--user"], work_dir, env)
+    assert first.returncode == 0, first.stderr
+
+    second = run_init(["--user"], work_dir, env)
+    assert second.returncode == 0, second.stderr
+
+    summary = _bootstrap_summary_lines(second.stdout)
+    assert any(
+        "user tier" in line and "already present" in line for line in summary
+    ), summary
+
+
+def test_existing_shepherd_toml_is_never_clobbered(work_dir: Path) -> None:
+    """A ``shepherd.toml`` an operator hand-edited BEFORE running
+    ``shepherd init`` must survive byte-for-byte."""
+    root = work_dir / ".shepherd"
+    root.mkdir(parents=True)
+    toml_path = root / "shepherd.toml"
+    custom_content = "# hand-written, do not touch\n[project]\nname = \"custom\"\n"
+    toml_path.write_text(custom_content)
+    env = _init_env(home=work_dir.parent / "home")
+
+    proc = run_init([], work_dir, env)
+
+    assert proc.returncode == 0, proc.stderr
+    assert toml_path.read_text() == custom_content
+    summary = _bootstrap_summary_lines(proc.stdout)
+    assert any("shepherd.toml" in line and "already present" in line for line in summary), summary
+
+
+def test_bootstrap_summary_reports_created_on_a_fresh_project(work_dir: Path) -> None:
+    """The mirror image of the idempotent-second-run test: on a FIRST run
+    every line reports ``created``/``registered``, never
+    ``already``-anything."""
+    env = _init_env(home=work_dir.parent / "home")
+    proc = run_init([], work_dir, env)
+
+    assert proc.returncode == 0, proc.stderr
+    summary = _bootstrap_summary_lines(proc.stdout)
+    assert summary, proc.stdout
+    assert not any("already" in line for line in summary), summary
+    assert any(line.strip().startswith("namespace") and "created" in line for line in summary)
+    assert any(line.strip().startswith("db") and "created" in line for line in summary)
+    assert any(line.strip().startswith("project") and "registered" in line for line in summary)
+    assert any(line.strip().startswith("shepherd.toml") and "created" in line for line in summary)
+
+
+def test_doctor_pass_matches_a_standalone_doctor_run(work_dir: Path) -> None:
+    """The closing doctor pass calls :func:`shepherd_cli.commands.doctor.run`
+    IN-PROCESS (imported, never reimplemented) — its report is therefore
+    the SAME report machinery a standalone ``shepherd doctor`` run against
+    the SAME now-bootstrapped project produces, not a hand-rolled subset
+    of it. Compared structurally (row counts per status + the trailing
+    tally line), not byte-for-byte: a ``du -h`` read between the two runs
+    can legitimately round differently at KB granularity."""
+    env = _init_env(home=work_dir.parent / "home")
+    proc = run_init([], work_dir, env)
+    assert proc.returncode == 0, proc.stderr
+
+    doctor_proc = run_doctor([], work_dir, env)
+    inline_report = proc.stdout.split("shctx init: doctor pass\n", 1)[1]
+
+    assert inline_report.count("OK ") == doctor_proc.stdout.count("OK ")
+    assert inline_report.count("WARN ") == doctor_proc.stdout.count("WARN ")
+    assert inline_report.count("FAIL ") == doctor_proc.stdout.count("FAIL ")
+    assert inline_report.splitlines()[-1] == doctor_proc.stdout.splitlines()[-1]

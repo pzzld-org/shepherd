@@ -112,9 +112,39 @@ shctx_skill_root() {
   fi
 }
 
+# Echo the shepherd config precedence chain, one absolute path per line,
+# HIGHEST precedence first (v6.4.2). Single source of truth for this lib --
+# cfg_get and cfg_section_get both consume it rather than hand-copying the
+# list, which is how the two _lib.sh files and the CLI drifted apart before.
+#
+#   1. <namespace>/shepherd.local.toml     NEW  (namespace = .shepherd | .artifacts)
+#   2. <namespace>/shepherd.toml           NEW canonical
+#   3. .claude/shepherd.local.toml         legacy, still honored
+#   4. .claude/shepherd.toml               legacy, still honored
+#   5. $XDG_CONFIG_HOME/shepherd.toml      user global
+#
+# .claude/ is owned by ONE harness; the binding every harness must read cannot
+# live inside it. Tiers 3-5 are supported indefinitely, so a project that never
+# adds a namespace-tier config sees no behavior change.
+#
+# MUST stay byte-identical to hooks/scripts/_lib.sh's shctx_config_files and to
+# shepherd_cli/commands/config.py::_config_search_paths.
+# Contract: docs/configuration.md §config-resolution.
+shctx_config_files() {
+  local repo ns
+  repo="$(shctx_repo_root 2>/dev/null || pwd)"
+  ns="$(SHCTX_QUIET=1 resolve_workdir 2>/dev/null || printf '%s/.shepherd' "$repo")"
+  printf '%s\n' \
+    "$ns/shepherd.local.toml" \
+    "$ns/shepherd.toml" \
+    "$repo/.claude/shepherd.local.toml" \
+    "$repo/.claude/shepherd.toml" \
+    "${XDG_CONFIG_HOME:-$HOME/.config}/shepherd.toml"
+}
+
 # Echo the value of a top-level `key = value` from shepherd config, resolved by
-# precedence: .claude/shepherd.local.toml (per-key local override) →
-# .claude/shepherd.toml (project) → $XDG_CONFIG_HOME/shepherd.toml (user global).
+# precedence: the shctx_config_files chain above (namespace local/project →
+# legacy .claude local/project → XDG user global).
 # Section-agnostic, last-match-wins within a file; strips surrounding double-quotes
 # and trailing " # inline comments". Echoes "" if unset; never returns non-zero
 # (safe under this lib's `set -eu -o pipefail`). MUST mirror the hooks-side cfg_get
@@ -123,12 +153,12 @@ shctx_skill_root() {
 cfg_get() {
   local key="$1" repo f v
   repo="$(shctx_repo_root 2>/dev/null || pwd)"
-  for f in "$repo/.claude/shepherd.local.toml" "$repo/.claude/shepherd.toml" "${XDG_CONFIG_HOME:-$HOME/.config}/shepherd.toml"; do
+  while IFS= read -r f; do
     [[ -f "$f" ]] || continue
     v="$(grep -E "^[[:space:]]*${key}[[:space:]]*=" "$f" 2>/dev/null | tail -1 \
           | sed -E 's/^[^=]*=[[:space:]]*//; s/[[:space:]]+#.*$//; s/^"//; s/"$//' 2>/dev/null || true)"
     if [[ -n "$v" ]]; then printf '%s' "$v"; return 0; fi
-  done
+  done < <(shctx_config_files)
   printf '%s' ""
   return 0
 }
@@ -146,7 +176,7 @@ cfg_get() {
 cfg_section_get() {
   local section="$1" key="$2" repo f v
   repo="$(shctx_repo_root 2>/dev/null || pwd)"
-  for f in "$repo/.claude/shepherd.local.toml" "$repo/.claude/shepherd.toml" "${XDG_CONFIG_HOME:-$HOME/.config}/shepherd.toml"; do
+  while IFS= read -r f; do
     [[ -f "$f" ]] || continue
     v="$(awk -v sect="$section" -v k="$key" '
       /^[ \t]*\[/ { h=$0; sub(/^[ \t]*\[/,"",h); sub(/\].*$/,"",h); gsub(/[ \t]/,"",h); cur=h; next }
@@ -157,7 +187,7 @@ cfg_section_get() {
       END { if (result!="") printf "%s", result }
     ' "$f" 2>/dev/null || true)"
     if [[ -n "$v" ]]; then printf '%s' "$v"; return 0; fi
-  done
+  done < <(shctx_config_files)
   printf '%s' ""
   return 0
 }

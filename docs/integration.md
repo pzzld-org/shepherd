@@ -3,6 +3,20 @@
 Shepherd composes with your locally developed skills rather than replacing them. Shepherd owns
 orchestration; per-language and per-domain skills own implementation detail.
 
+## Getting started
+
+Everything below assumes a project `shepherd.toml` already exists. `shepherd init` (v6.4.2) is the
+single bootstrap that gets you there — namespace, registry DB, project registration,
+`shepherd.toml` scaffold, and a closing `doctor` pass, in one command:
+
+```
+shctx init
+```
+
+There is no longer a separate "run init, then run config init" step — `shepherd init` scaffolds the
+config as part of the same pass. See `docs/configuration.md §Bootstrap` for the flags
+(`--no-config`, `--no-doctor`, `--user`) and the idempotency contract.
+
 ## The composition model
 
 ```

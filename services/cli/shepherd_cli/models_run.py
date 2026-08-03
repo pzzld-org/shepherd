@@ -38,6 +38,27 @@ Design rules (from the codex-shepherd port-back review):
   boundary-merge ledger: WAVE-COMPLETE acceptance records the commit,
   the boundary merge marks it merged, and the wave gate asserts the
   pending set (accepted, unmerged) is EMPTY before any gate goes green.
+
+CANONICAL RUN IDS (#P4, 2026-08-03 operator directive)
+=========================================================
+``skills/context/references/naming-conventions.md`` (~line 47) already states
+the law: ``{run}`` IS the sprint slug (patch-arc runs: the patch slug),
+generated from ``[branching].sprint_slug_pattern``/``patch_slug_pattern`` —
+NEVER invented ad hoc. Nothing enforced it until now: FL03/axiom's live run
+directory is ``v039-dev0-codex-01`` — a harness name and an ordinal welded
+onto the slug. That is not cosmetic — ``skills/bridge/SKILL.md`` has two
+shepherd implementations SHARING one run and arbitrating custody through
+``run.json``; a harness-suffixed directory means each implementation creates
+its OWN run and silently works in parallel instead of coordinating, the
+exact failure the bridge contract exists to prevent.
+
+:func:`derive_run_id` / :func:`is_canonical_run_id` / :func:`suggest_canonical_id`
+make the law mechanical. :func:`is_canonical_run_id` is a SEPARATE, pattern-
+SHAPE concern from :func:`validate_id`'s ``[a-z0-9][a-z0-9-]*`` grammar — the
+grammar check is the security/path-safety hard error (never bypassable);
+canonicality is a naming-convention check the CLI commands (``run init``'s
+refusal, ``run canonicalize``, ``shepherd lint``'s WARN) layer on top of it,
+not a replacement for it.
 """
 
 from __future__ import annotations
@@ -51,7 +72,7 @@ import time
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from shepherd_cli.resolution import resolve_workdir
+from shepherd_cli.resolution import resolve_repo_root, resolve_workdir
 
 #: Closed identifier grammar for run and lane ids (artifact-schema rule).
 _ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]*$")
@@ -87,6 +108,340 @@ def validate_id(value: str, *, what: str = "id") -> str:
             "must start alphanumeric; no path separators)"
         )
     return value
+
+
+# --------------------------------------------------------------------------
+# #P4 — canonical run-id derivation. See the module docstring's "CANONICAL
+# RUN IDS" section for the why; everything below is the how.
+# --------------------------------------------------------------------------
+#: Documented defaults (``docs/configuration.md`` ``[branching]`` table) —
+#: used whenever no config tier sets the corresponding key.
+_DEFAULT_SPRINT_SLUG_PATTERN = "v{X}{Y}{Z}-dev{N}"
+_DEFAULT_PATCH_SLUG_PATTERN = "v{X}{Y}{Z}"
+
+#: A version or branch string shaped like ``v{X}.{Y}.{Z}[-dev.{N}]`` (the
+#: ``*_branch_pattern`` defaults) — the ONE input shape :func:`derive_run_id`
+#: accepts. The leading ``v`` is optional so a bare ``0.3.9-dev.0`` (no
+#: branch prefix) also parses.
+_VERSION_RE = re.compile(r"^v?(?P<X>\d+)\.(?P<Y>\d+)\.(?P<Z>\d+)(?:-dev\.(?P<N>\d+))?$")
+
+#: The four fixed slug-pattern placeholders (``docs/configuration.md``:
+#: "``{X}{Y}{Z}{N}`` are fixed integer placeholders"). Anything else in a
+#: pattern string is matched/emitted literally.
+_PLACEHOLDER_RE = re.compile(r"\{[XYZN]\}")
+
+
+class RunIdDerivationError(ValueError):
+    """Raised when a version/branch string cannot become a canonical run id."""
+
+
+def _read_toml_key_last_match(path: str, key: str) -> str:
+    """One file's ``cfg_get``-parity value for ``key`` — last match wins, ``""`` if unset/missing.
+
+    Args:
+        path: A candidate ``shepherd.toml``/``shepherd.local.toml`` path.
+        key: The bare (section-agnostic) key to look for.
+
+    Returns:
+        The extracted value (:func:`shepherd_cli.commands.config._extract_cfg_value`),
+        or ``""`` if the file doesn't exist, can't be read, or has no
+        matching line.
+    """
+    if not os.path.isfile(path):
+        return ""
+    pattern = re.compile(rf"^\s*{re.escape(key)}\s*=")
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            lines = handle.readlines()
+    except (OSError, UnicodeDecodeError):
+        return ""
+    matched: str | None = None
+    for line in lines:
+        if pattern.match(line):
+            matched = line
+    if matched is None:
+        return ""
+    from shepherd_cli.commands.config import _extract_cfg_value  # local: avoid any import cycle
+
+    return _extract_cfg_value(matched)
+
+
+def _slug_pattern(key: str, default: str, *, workdir: str | None) -> str:
+    """Resolve one ``[branching]`` slug-pattern key via the CLI's shared config accessor.
+
+    Delegates to :func:`shepherd_cli.commands.config._cfg_get` — the ONE
+    5-tier ``shepherd.toml`` reader every other command already uses (see
+    that module's "v6.4.2 HARNESS-NEUTRAL PRECEDENCE CONTRACT") — rather
+    than opening a hardcoded ``.claude/shepherd.toml`` path here, so a
+    future relocation of where ``shepherd.toml`` lives is inherited
+    automatically with no change needed in this module.
+
+    ``_cfg_get`` resolves its own workdir-relative tiers (1-2) internally
+    via :func:`shepherd_cli.resolution.resolve_workdir`, with no override
+    parameter of its own. When an explicit ``workdir`` is given here
+    (tests; a caller that already resolved a non-default workdir), its two
+    workdir-relative tiers (``shepherd.local.toml``/``shepherd.toml``) are
+    checked FIRST, ahead of ``_cfg_get``'s own resolution — mirroring
+    :func:`shepherd_cli.commands.config._config_search_paths`'s tier-1/2
+    shape exactly (same two filenames, same precedence) without
+    duplicating that module's full 5-tier list. Every other tier (legacy
+    ``.claude/``, ``$XDG_CONFIG_HOME``) is workdir-independent, so falling
+    through to ``_cfg_get`` for those is always correct regardless of
+    ``workdir``.
+
+    Args:
+        key: ``"sprint_slug_pattern"`` or ``"patch_slug_pattern"``.
+        default: The documented default (``docs/configuration.md``) to
+            fall back to when no tier sets a non-empty value.
+        workdir: Optional workdir override.
+
+    Returns:
+        The resolved pattern string.
+    """
+    if workdir is not None:
+        for candidate in (
+            os.path.join(workdir, "shepherd.local.toml"),
+            os.path.join(workdir, "shepherd.toml"),
+        ):
+            value = _read_toml_key_last_match(candidate, key)
+            if value:
+                return value
+
+    from shepherd_cli.commands.config import _cfg_get  # local: avoid any import cycle
+
+    value = _cfg_get(key, resolve_repo_root())
+    return value or default
+
+
+def _parse_version_components(version_or_branch: str) -> dict[str, str | None]:
+    """Extract ``X``/``Y``/``Z``/``N`` from a ``v{X}.{Y}.{Z}[-dev.{N}]`` string.
+
+    Args:
+        version_or_branch: A version (``v0.3.9-dev.0``) or branch name
+            (``v6.4.1-dev.0``) in the ``*_branch_pattern`` shape.
+
+    Returns:
+        A ``{"X": ..., "Y": ..., "Z": ..., "N": ...}`` dict; ``N`` is None
+        when no ``-dev.{N}`` suffix was present (a patch-arc input).
+
+    Raises:
+        RunIdDerivationError: ``version_or_branch`` doesn't match the
+            expected shape at all.
+    """
+    match = _VERSION_RE.fullmatch(version_or_branch.strip())
+    if match is None:
+        raise RunIdDerivationError(
+            f"cannot derive a run id from {version_or_branch!r} "
+            "(expected v{X}.{Y}.{Z} or v{X}.{Y}.{Z}-dev.{N})"
+        )
+    return match.groupdict()
+
+
+def _fill_slug_pattern(pattern: str, components: dict[str, str | None]) -> str:
+    """Substitute ``{X}``/``{Y}``/``{Z}``/``{N}`` in ``pattern`` with parsed components.
+
+    Args:
+        pattern: A slug-pattern template.
+        components: :func:`_parse_version_components`'s return value.
+
+    Returns:
+        The filled-in slug — components are substituted as their bare
+        decimal string, UN-PADDED (see :func:`derive_run_id`'s docstring
+        for the resulting double-digit-component ambiguity, documented
+        deliberately rather than papered over with arbitrary padding).
+
+    Raises:
+        RunIdDerivationError: ``pattern`` references ``{N}`` but
+            ``components["N"]`` is None (a patch-arc/bare-version input
+            fed to a pattern that needs a sprint number).
+    """
+
+    def _substitute(match: re.Match[str]) -> str:
+        placeholder = match.group(0)[1:-1]  # "{X}" -> "X"
+        value = components.get(placeholder)
+        if value is None:
+            raise RunIdDerivationError(
+                f"pattern {pattern!r} needs a {{{placeholder}}} component, but the input has "
+                "none (a patch-arc version has no -dev.{N} suffix — pass kind='patch-arc')"
+            )
+        return value
+
+    return _PLACEHOLDER_RE.sub(_substitute, pattern)
+
+
+def derive_run_id(version: str, *, kind: str = "sprint", workdir: str | None = None) -> str:
+    """Derive THE canonical run id for a version/branch — never invent one ad hoc.
+
+    ``skills/context/references/naming-conventions.md`` (~line 47): ``{run}``
+    IS the sprint slug (patch-arc runs: the patch slug), generated from
+    ``[branching].sprint_slug_pattern``/``patch_slug_pattern`` — this is
+    that generator, made mechanical. Pure and deterministic: no I/O beyond
+    one config read (:func:`_slug_pattern`); the same ``version``/``kind``/
+    config always produces the same id.
+
+    DOUBLE-DIGIT COMPONENT AMBIGUITY (documented, not a bug): the default
+    patterns glue ``X``/``Y``/``Z`` together with no separator
+    (``v{X}{Y}{Z}-dev{N}``). Components are substituted as their bare
+    decimal string, un-padded — ``v0.3.10-dev.2`` (``Z=10``, a two-digit
+    component) yields ``v0310-dev2``, not a zero-padded or fixed-width
+    alternative. This is inherently unparseable back into discrete X/Y/Z
+    values from the slug alone (``v0310`` could equally be read as
+    0/31/0 or 03/1/0) — by design, this module never attempts that
+    reverse parse: :func:`is_canonical_run_id` only shape-matches (any
+    digit run in that position), it never recovers components. A project
+    that mints double-digit sprint/patch numbers and needs unambiguous
+    slugs should configure a separator into its own
+    ``sprint_slug_pattern``/``patch_slug_pattern``.
+
+    Args:
+        version: A version or branch string shaped like
+            ``v{X}.{Y}.{Z}[-dev.{N}]`` (``v0.3.9-dev.0``, or a branch name
+            in the same shape, e.g. ``v6.4.1-dev.0``).
+        kind: ``"sprint"`` (uses ``sprint_slug_pattern``; REQUIRES a
+            ``-dev.{N}`` component in ``version``) or ``"patch-arc"``
+            (uses ``patch_slug_pattern``; a ``-dev.{N}`` suffix, if
+            present, is parsed but ignored since the patch pattern never
+            references ``{N}``).
+        workdir: Optional workdir override — see :func:`_slug_pattern`.
+
+    Returns:
+        The canonical run id.
+
+    Raises:
+        RunIdDerivationError: ``kind`` is neither ``"sprint"`` nor
+            ``"patch-arc"``; ``version`` doesn't match the expected
+            shape; or ``kind="sprint"`` was given a version/branch with
+            no ``-dev.{N}`` component.
+    """
+    if kind not in ("sprint", "patch-arc"):
+        raise RunIdDerivationError(f"invalid kind: {kind!r} (sprint | patch-arc)")
+    components = _parse_version_components(version)
+    key, default = (
+        ("sprint_slug_pattern", _DEFAULT_SPRINT_SLUG_PATTERN)
+        if kind == "sprint"
+        else ("patch_slug_pattern", _DEFAULT_PATCH_SLUG_PATTERN)
+    )
+    pattern = _slug_pattern(key, default, workdir=workdir)
+    return _fill_slug_pattern(pattern, components)
+
+
+def _pattern_to_regex(pattern: str, *, anchor_end: bool = True) -> re.Pattern[str]:
+    """Compile a ``[branching]`` slug-pattern template into a matching regex.
+
+    Every ``{X}``/``{Y}``/``{Z}``/``{N}`` placeholder becomes ``\\d+``;
+    every other character is matched literally (``re.escape``d). The
+    default pattern glues ``X``/``Y``/``Z`` together with no separator,
+    so the compiled regex for adjacent placeholders is several consecutive
+    ``\\d+`` groups with no way to tell where one component ends and the
+    next begins from the id string alone — deliberate, see
+    :func:`derive_run_id`'s docstring: this module forward-generates and
+    shape-matches, never reverse-parses.
+
+    Args:
+        pattern: A ``sprint_slug_pattern``/``patch_slug_pattern`` value.
+        anchor_end: True for a full-string match
+            (:func:`is_canonical_run_id`); False to match only a leading
+            prefix (:func:`_canonical_prefix`'s harness-suffix
+            stripping) — still anchored at the start either way.
+
+    Returns:
+        The compiled regex.
+    """
+    parts = ["^"]
+    pos = 0
+    for match in _PLACEHOLDER_RE.finditer(pattern):
+        parts.append(re.escape(pattern[pos : match.start()]))
+        parts.append(r"\d+")
+        pos = match.end()
+    parts.append(re.escape(pattern[pos:]))
+    if anchor_end:
+        parts.append("$")
+    return re.compile("".join(parts))
+
+
+def is_canonical_run_id(run_id: str, workdir: str | None = None) -> bool:
+    """Does ``run_id`` match the SHAPE the configured slug patterns can produce?
+
+    A pure pattern-shape check, independent of :func:`validate_id`'s
+    ``[a-z0-9][a-z0-9-]*`` path-safety grammar — see the module docstring's
+    "CANONICAL RUN IDS" section for why those are two separate concerns.
+    Never raises, even for a grammar-invalid string; it simply returns
+    False.
+
+    Args:
+        run_id: The candidate run id (any string).
+        workdir: Optional workdir override — see :func:`_slug_pattern`.
+
+    Returns:
+        True iff ``run_id`` fully matches either the configured
+        ``sprint_slug_pattern`` or ``patch_slug_pattern`` shape. An
+        invented id, or an otherwise-canonical id with an extra
+        harness-name/ordinal suffix glued on (``v039-dev0-codex-01``),
+        both return False.
+    """
+    sprint_pattern = _slug_pattern("sprint_slug_pattern", _DEFAULT_SPRINT_SLUG_PATTERN, workdir=workdir)
+    patch_pattern = _slug_pattern("patch_slug_pattern", _DEFAULT_PATCH_SLUG_PATTERN, workdir=workdir)
+    return bool(
+        _pattern_to_regex(sprint_pattern).fullmatch(run_id)
+        or _pattern_to_regex(patch_pattern).fullmatch(run_id)
+    )
+
+
+def _canonical_prefix(run_id: str, *, workdir: str | None = None) -> str | None:
+    """The longest PROPER canonical-pattern prefix of ``run_id``, if any.
+
+    Used by :func:`suggest_canonical_id` to strip a harness-name/ordinal
+    suffix (the ``-codex-01`` in ``v039-dev0-codex-01``): both the sprint
+    and patch slug-pattern regexes are tried as a start-anchored (not
+    end-anchored) match; the longer of the two hits wins when both match,
+    since the more specific sprint pattern (with its trailing ``-dev{N}``)
+    legitimately consumes more of the string than the bare patch pattern
+    would for the same input.
+
+    Args:
+        run_id: The candidate (already known non-canonical) run id.
+        workdir: Optional workdir override — see :func:`_slug_pattern`.
+
+    Returns:
+        The longest matching prefix shorter than ``run_id`` itself, or
+        None when neither pattern matches any leading prefix at all (a
+        fully invented id has no canonical form to suggest).
+    """
+    sprint_pattern = _slug_pattern("sprint_slug_pattern", _DEFAULT_SPRINT_SLUG_PATTERN, workdir=workdir)
+    patch_pattern = _slug_pattern("patch_slug_pattern", _DEFAULT_PATCH_SLUG_PATTERN, workdir=workdir)
+    best: str | None = None
+    for pattern in (sprint_pattern, patch_pattern):
+        match = _pattern_to_regex(pattern, anchor_end=False).match(run_id)
+        if match is None:
+            continue
+        candidate = match.group(0)
+        if candidate == run_id:
+            continue  # a full match means run_id IS already canonical, not a suffix to strip.
+        if best is None or len(candidate) > len(best):
+            best = candidate
+    return best
+
+
+def suggest_canonical_id(run_id: str, *, workdir: str | None = None) -> str | None:
+    """Best-effort canonical id for ``run_id`` — the ``run canonicalize`` engine.
+
+    Args:
+        run_id: The run id to canonicalize.
+        workdir: Optional workdir override — see :func:`_slug_pattern`.
+
+    Returns:
+        ``run_id`` unchanged when it is already canonical (nothing to
+        rename — :func:`is_canonical_run_id` is True); the longest
+        recognizable sprint/patch-pattern prefix of ``run_id`` when it
+        carries a harness-name/ordinal suffix on an otherwise-canonical
+        shape (e.g. ``v039-dev0-codex-01`` -> ``v039-dev0``); or None
+        when ``run_id`` has no recognizable canonical-pattern prefix at
+        all — not automatically fixable, needs ``shepherd run rename``
+        with an explicit destination chosen by a human.
+    """
+    if is_canonical_run_id(run_id, workdir):
+        return run_id
+    return _canonical_prefix(run_id, workdir=workdir)
 
 
 class LaneState(BaseModel):
@@ -400,9 +755,12 @@ __all__ = [
     "LANE_STATES",
     "RUN_STATUSES",
     "LaneState",
+    "RunIdDerivationError",
     "RunIdError",
     "RunState",
     "atomic_write_json",
+    "derive_run_id",
+    "is_canonical_run_id",
     "lane_dir",
     "list_runs",
     "load_run",
@@ -412,5 +770,6 @@ __all__ = [
     "run_state_path",
     "runs_root",
     "save_run",
+    "suggest_canonical_id",
     "validate_id",
 ]

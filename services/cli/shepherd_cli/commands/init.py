@@ -24,6 +24,57 @@ subcommands) that:
    pre-existing markdown content is detected under the freshly-scaffolded
    namespace, so a namespace re-pointed at an already-populated repo gets
    indexed without a separate ``refresh --scope=artifacts`` call.
+5. (v6.4.2, THE SEAMLESS-BOOTSTRAP ADDITION) Scaffolds the project
+   ``shepherd.toml`` if absent, by calling
+   :func:`shepherd_cli.commands.config._do_init` IN-PROCESS — imported,
+   never reimplemented or copied (lane P1 owns every byte of that
+   decision: the destination path, the idempotency guards, the derived
+   ``[project]``/``[gates]`` values). Opt out with ``--no-config``.
+6. (v6.4.2) Optionally bootstraps ``~/.shepherd`` by calling
+   :func:`shepherd_cli.commands.home.init` IN-PROCESS (imported, same
+   reasoning as step 5) — the ONE new step that touches ``$HOME``, so
+   unlike every other new step here it is opt-IN via ``--user`` (default
+   OFF).
+7. (v6.4.2) Prints a closing bootstrap summary — created vs. already
+   present, for every one of the five things above — then, unless
+   ``--no-doctor``, runs :func:`shepherd_cli.commands.doctor.run` (same
+   in-process reuse) and prints its findings inline, so one command
+   both builds AND verifies the project.
+
+WHY STEPS 5-7 ARE A SEPARATE, LATER PASS — NOT FOLDED INTO STEPS 1-4
+=============================================================================
+Every new step runs strictly AFTER the existing pipeline (through the
+trailing auto-refresh) has already put the DB in a known-good state.
+:func:`shepherd_cli.commands.doctor.run` reads that state (schema
+version, ``project.json``, refresh timestamps) — running it any earlier
+would diagnose a namespace ``init`` hadn't finished building yet. The
+config/home scaffolds have no such DB dependency, but keeping ALL THREE
+new steps in one late, clearly-labeled block (rather than interleaving
+step 5 between the existing steps 1-4) keeps the "existing narrow
+behavior, still reachable" contract simple: ``--no-config --no-doctor``
+(without ``--user``) reproduces the EXACT pre-v6.4.2 ON-DISK effect
+(nothing before this block in :func:`_init_impl` changed at all — no
+``shepherd.toml`` is written, no doctor pass runs, ``~/.shepherd`` is
+never touched). Stdout gains one new, ALWAYS-printed block regardless of
+either flag — the closing "bootstrap summary" (step 7's first half) —
+since the task's own flag list opts out of the config scaffold and the
+doctor pass specifically, not the summary reporting what each step did;
+:func:`_print_bootstrap_summary` still runs unconditionally and simply
+reports ``skipped (--no-config)`` / omits the doctor-pass header when
+asked to.
+
+COUPLING NOTE — the config-scaffold import name is P1's, not a stable contract
+=============================================================================
+:func:`_maybe_scaffold_config` imports ``shepherd_cli.commands.config._do_init``
+by its CURRENT name. Lane P1 owns ``commands/config.py`` and is concurrently
+moving the canonical ``shepherd.toml`` write target to ``<workdir>/
+shepherd.toml``; this module deliberately never constructs that destination
+path itself (see :func:`_maybe_scaffold_config`'s own docstring) so the move
+is inherited automatically the moment P1 lands it. If P1 additionally renames
+``_do_init`` to a public name (the natural follow-on to "public scaffold
+function"), only this one import line needs updating — nothing else in this
+module encodes any assumption about ``config.py``'s destination path or
+internal shape.
 
 ARCHITECTURE — flag pre-parsing BEFORE any path resolution
 =============================================================================
@@ -147,22 +198,28 @@ BASH-PARITY NOTES (all preserved deliberately)
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
+import io
 import json
 import os
 import re
 import shutil
 import sqlite3
 import time
+from dataclasses import dataclass
 
 import typer
 
 from shepherd_cli import refresh_impl
+from shepherd_cli.commands.config import _do_init as _scaffold_config
+from shepherd_cli.commands.doctor import run as _run_doctor
 from shepherd_cli.resolution import (
     find_migrations_dir,
     find_schema_base,
     resolve_db_path,
     resolve_repo_root,
+    resolve_user_home,
     resolve_workdir,
 )
 
@@ -180,15 +237,21 @@ app = typer.Typer(
 #: ``cmd_init.sh``. Printed to stdout (bash parity: plain ``cat``, not
 #: stderr) on ``-h``/``--help``.
 _HELP_TEXT = (
-    "shctx init [--artifacts|--shepherd]\n"
+    "shctx init [--artifacts|--shepherd] [--no-config] [--no-doctor] [--user]\n"
     "\n"
-    "Scaffold the per-project shepherd namespace tree, create shepherd.db, and\n"
-    "register the host project.\n"
+    "Scaffold the per-project shepherd namespace tree, create shepherd.db,\n"
+    "register the host project, scaffold shepherd.toml, and run a closing\n"
+    "doctor pass — one command, a fully configured project.\n"
     "\n"
     "Default: .shepherd/ (v5.0.0+). If either .shepherd/ or .artifacts/ already\n"
     "exists in the repo, that one is used (auto-detect). Use --artifacts to force\n"
     "the legacy .artifacts/ namespace for a NEW init.\n"
-    "Legacy projects using root.db are detected automatically and left untouched."
+    "Legacy projects using root.db are detected automatically and left untouched.\n"
+    "\n"
+    "  --no-config   Skip scaffolding shepherd.toml.\n"
+    "  --no-doctor   Skip the closing doctor pass.\n"
+    "  --user        Also bootstrap ~/.shepherd (shepherd home init). Off by\n"
+    "                default — the one step here that touches $HOME."
 )
 
 #: The ``mkdir -p ROOT/{archive,cache,ctx,docs/{...},logs,scripts,templates,
@@ -301,10 +364,38 @@ _MIGRATION_NAME_RE = re.compile(r"^(\d{4})_.*\.sql$")
 _TOLERATED_ERROR_MARKERS = ("duplicate column", "already exists")
 
 
+@dataclass(frozen=True, slots=True)
+class _Flags:
+    """Parsed opt-out/opt-in switches for the v6.4.2 seamless-bootstrap steps.
+
+    Only the THREE new tokens live here — ``--artifacts``/``--shepherd``
+    stay a direct ``os.environ["SHCTX_ROOT_OVERRIDE"]`` write inside
+    :func:`_apply_flags` itself (see that function's own docstring), not a
+    field on this dataclass, so the existing pre-path-resolution ordering
+    guarantee (module docstring's first ARCHITECTURE note) is untouched.
+
+    Attributes:
+        no_config: Skip step 5 (the ``shepherd.toml`` scaffold) entirely
+            when True — the existing narrow pre-v6.4.2 behavior stays
+            reachable via ``--no-config --no-doctor``.
+        no_doctor: Skip step 7's closing doctor pass when True. The
+            closing bootstrap summary (also step 7) still prints — only
+            the doctor report is opted out of.
+        user: Also run step 6 (``shepherd home init``) when True. Default
+            OFF, unlike ``no_config``/``no_doctor``: this is the one new
+            step that writes outside the project (``~/.shepherd``), so it
+            stays opt-IN rather than opt-OUT.
+    """
+
+    no_config: bool = False
+    no_doctor: bool = False
+    user: bool = False
+
+
 # --------------------------------------------------------------------------
 # Flag parsing (bash-parity port of cmd_init.sh's pre-``_lib.sh`` loop).
 # --------------------------------------------------------------------------
-def _apply_flags(argv: list[str]) -> None:
+def _apply_flags(argv: list[str]) -> _Flags:
     """Parse ``shctx init``'s flags, mirroring ``cmd_init.sh``'s ``for arg in "$@"`` loop.
 
     Every token is visited in order; ``--artifacts``/``--shepherd`` sets
@@ -312,12 +403,22 @@ def _apply_flags(argv: list[str]) -> None:
     SHCTX_ROOT_OVERRIDE=...``) so it is visible to every downstream
     ``resolve_workdir()`` call in this same process — plain
     reassignment, last flag wins, exactly like bash's ``export`` inside a
-    ``case`` arm. ``-h``/``--help`` and an unrecognized token both
-    short-circuit immediately, from ANY position in ``argv``.
+    ``case`` arm. ``--no-config``/``--no-doctor``/``--user`` (v6.4.2, new)
+    are plain boolean accumulation into the returned :class:`_Flags` — no
+    env var, no path-resolution interaction, so they carry none of the
+    ordering sensitivity ``--artifacts``/``--shepherd`` do. ``-h``/
+    ``--help`` and an unrecognized token both short-circuit immediately,
+    from ANY position in ``argv``.
 
     Args:
         argv: Every token given to ``shepherd init`` after the command
             name itself, in order.
+
+    Returns:
+        The accumulated :class:`_Flags` — last-token-wins for each field,
+        exactly like the ``SHCTX_ROOT_OVERRIDE`` reassignment above (a
+        flag repeated, or contradicted by nothing, simply stays True once
+        set; there is no negating counterpart to any of the three).
 
     Raises:
         typer.Exit: Code 0, after printing :data:`_HELP_TEXT` to stdout,
@@ -327,17 +428,27 @@ def _apply_flags(argv: list[str]) -> None:
             generic "unknown arg" other ports use), the instant a token
             matching none of the recognized shapes is reached.
     """
+    no_config = False
+    no_doctor = False
+    user = False
     for arg in argv:
         if arg == "--artifacts":
             os.environ["SHCTX_ROOT_OVERRIDE"] = ".artifacts"
         elif arg == "--shepherd":
             os.environ["SHCTX_ROOT_OVERRIDE"] = ".shepherd"
+        elif arg == "--no-config":
+            no_config = True
+        elif arg == "--no-doctor":
+            no_doctor = True
+        elif arg == "--user":
+            user = True
         elif arg in ("-h", "--help"):
             typer.echo(_HELP_TEXT)
             raise typer.Exit(code=0)
         else:
             typer.echo(f"ERROR: unknown init flag: {arg}", err=True)
             raise typer.Exit(code=1)
+    return _Flags(no_config=no_config, no_doctor=no_doctor, user=user)
 
 
 # --------------------------------------------------------------------------
@@ -659,7 +770,7 @@ def _apply_pending_migrations(db_path: str, migrations_dir: str) -> tuple[int, s
     return applied, None
 
 
-def _bootstrap_db(db_path: str) -> None:
+def _bootstrap_db(db_path: str) -> int:
     """Seed (if absent) and gap-fill-migrate the project DB to HEAD, narrated.
 
     Bash parity with ``cmd_init.sh``'s::
@@ -684,6 +795,17 @@ def _bootstrap_db(db_path: str) -> None:
         db_path: The resolved project database path
             (``resolve_db_path()``).
 
+    Returns:
+        The number of migrations actually applied by THIS call (0 when
+        the DB was already at HEAD, or the migrations directory could not
+        be located) — v6.4.2 addition, consumed by :func:`_init_impl`'s
+        closing bootstrap summary so it can report "created" vs.
+        "already present, at HEAD" vs. "already present, self-healed N"
+        without re-deriving the gap-fill count independently (the exact
+        "IMPORT IT, do not reimplement" discipline this module's docstring
+        asks of the config/home reuse, applied here to its own internal
+        helper instead of a sibling module's).
+
     Raises:
         typer.Exit: Code 1, propagated from :func:`_create_base_schema`,
             if a fresh DB's base-schema apply fails outright. No
@@ -699,11 +821,14 @@ def _bootstrap_db(db_path: str) -> None:
         _create_base_schema(db_path, schema_base)
 
     migrations_dir = find_migrations_dir()
-    if migrations_dir is not None:
-        _applied, error = _apply_pending_migrations(db_path, migrations_dir)
-        if error is not None:
-            typer.echo(error, err=True)
-            typer.echo("shctx init: WARNING — schema migration incomplete; run 'shctx migrate'", err=True)
+    if migrations_dir is None:
+        return 0
+
+    applied, error = _apply_pending_migrations(db_path, migrations_dir)
+    if error is not None:
+        typer.echo(error, err=True)
+        typer.echo("shctx init: WARNING — schema migration incomplete; run 'shctx migrate'", err=True)
+    return applied
 
 
 # --------------------------------------------------------------------------
@@ -930,29 +1055,214 @@ def _maybe_auto_refresh(root: str) -> None:
 
 
 # --------------------------------------------------------------------------
+# Seamless-bootstrap additions (v6.4.2) — config scaffold, optional user-tier
+# bootstrap, and the closing summary + doctor pass. See the module
+# docstring's "WHY STEPS 5-7 ARE A SEPARATE, LATER PASS" note for why these
+# run strictly after the pre-existing pipeline rather than being interleaved
+# into it, and its "COUPLING NOTE" for why :func:`_maybe_scaffold_config`
+# never constructs a ``shepherd.toml`` destination path of its own.
+# --------------------------------------------------------------------------
+def _maybe_scaffold_config(*, no_config: bool) -> str:
+    """Step 5: scaffold the project ``shepherd.toml`` via lane P1's own scaffold.
+
+    Calls :func:`shepherd_cli.commands.config._do_init` (imported as
+    :data:`_scaffold_config` — never reimplemented or copied) IN-PROCESS,
+    with its own stdout captured and re-emitted verbatim so its exact
+    "scaffolded ..." / "already exists (preserving)" / local-override
+    messages still reach the operator. This function never builds a
+    ``.claude/shepherd.toml``-shaped (or any other) path itself — lane P1
+    owns the destination entirely, including its concurrent move to
+    ``<workdir>/shepherd.toml``; classification below reads only the
+    MESSAGE ``_do_init`` chose to print, never a path this module derived.
+
+    Args:
+        no_config: When True (``--no-config``), skip the call entirely.
+
+    Returns:
+        One closing-summary line (see :func:`_print_bootstrap_summary`),
+        already formatted, for: ``"skipped (--no-config)"`` when opted
+        out; ``"already present"`` when ``_do_init`` preserved an existing
+        file (project config or a local override); ``"created"`` when it
+        wrote a fresh one; ``"scaffold failed (see stderr above)"`` when
+        ``_do_init`` reported an installation defect (bundled template
+        missing) — a soft failure, bash-parity with this module's own
+        migration-gap-fill WARNING: it never aborts ``shepherd init``
+        itself (namespace/db/project already succeeded by this point).
+    """
+    if no_config:
+        return "shepherd.toml : skipped (--no-config)"
+
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        _scaffold_config(force=False)
+    text = buffer.getvalue()
+    typer.echo(text, nl=False)
+
+    if "already exists (preserving)" in text or "local-override config is present" in text:
+        return "shepherd.toml : already present"
+    if "scaffolded " in text:
+        return "shepherd.toml : created"
+    return "shepherd.toml : scaffold failed (see stderr above)"
+
+
+def _maybe_bootstrap_user(*, user: bool) -> str:
+    """Step 6: optionally bootstrap ``~/.shepherd`` via ``shepherd home init``.
+
+    Calls :func:`shepherd_cli.commands.home.init` (imported LOCALLY, only
+    when ``user`` is True — see the inline comment below) IN-PROCESS, with
+    its own stdout captured and re-emitted verbatim, same reuse contract
+    as :func:`_maybe_scaffold_config`. Default OFF: this is the one new
+    step in the whole seamless-bootstrap pipeline that writes outside the
+    project directory, so unlike ``--no-config``/``--no-doctor`` it is
+    opt-IN.
+
+    Args:
+        user: Whether ``--user`` was passed.
+
+    Returns:
+        One closing-summary line: ``"skipped ..."`` when not requested;
+        otherwise ``"created (<home>)"`` if this call actually created
+        either ``~/.shepherd/profiles`` or ``~/.shepherd/templates``, else
+        ``"already present (<home>)"``.
+    """
+    if not user:
+        return "user tier     : skipped (pass --user to also bootstrap ~/.shepherd)"
+
+    # Deferred import: shepherd_cli.commands.home pulls in
+    # shepherd_cli.render (and therefore jinja2) at module scope. --user
+    # defaults OFF, so every OTHER `shepherd init` invocation should never
+    # pay that import cost — see shepherd_cli.app's own module docstring
+    # on why this package takes CLI-startup latency seriously.
+    from shepherd_cli.commands.home import init as _home_init
+
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        _home_init(profile=[])
+    text = buffer.getvalue()
+    typer.echo(text, nl=False)
+
+    status = "created" if "created " in text else "already present"
+    return f"user tier     : {status} ({resolve_user_home()})"
+
+
+def _print_bootstrap_summary(
+    *,
+    namespace_existed: bool,
+    root: str,
+    db_existed: bool,
+    migrations_applied: int,
+    project_existed: bool,
+    project_id: str,
+    config_line: str,
+    user_line: str,
+) -> None:
+    """Step 7 (part 1): print the closing "created vs. already present" summary.
+
+    One line per bootstrap concern, in the SAME order :func:`_init_impl`
+    performs them (namespace, db, project, shepherd.toml, user tier) — the
+    idempotency contract this sprint requires ("running ``shepherd init``
+    twice must ... report that clearly") is satisfied by construction: a
+    second run's ``namespace_existed``/``db_existed``/``project_existed``
+    are all True and ``migrations_applied`` is 0, so every line below
+    reads "already present"/"already registered" verbatim, with nothing
+    further to derive.
+
+    Args:
+        namespace_existed: Whether ``root`` already existed BEFORE
+            :func:`_scaffold` ran this invocation.
+        root: The resolved namespace directory.
+        db_existed: Whether the DB file already existed BEFORE
+            :func:`_bootstrap_db` ran this invocation.
+        migrations_applied: :func:`_bootstrap_db`'s own return value —
+            migrations applied THIS run (0 on an already-HEAD DB).
+        project_existed: Whether ``project.json`` already existed BEFORE
+            :func:`_register_project` ran this invocation.
+        project_id: The active project id (fresh or read back).
+        config_line: :func:`_maybe_scaffold_config`'s pre-formatted line.
+        user_line: :func:`_maybe_bootstrap_user`'s pre-formatted line.
+    """
+    namespace_status = "already present" if namespace_existed else "created"
+    if not db_existed:
+        db_status = f"created ({migrations_applied} migration(s) applied)"
+    elif migrations_applied > 0:
+        db_status = f"already present ({migrations_applied} migration(s) self-healed)"
+    else:
+        db_status = "already present, at HEAD"
+    project_status = "already registered" if project_existed else "registered"
+
+    typer.echo("shctx init: bootstrap summary")
+    typer.echo(f"  namespace     : {namespace_status} ({root})")
+    typer.echo(f"  db            : {db_status}")
+    typer.echo(f"  project       : {project_status} (id={project_id})")
+    typer.echo(f"  {config_line}")
+    typer.echo(f"  {user_line}")
+
+
+def _maybe_run_doctor(*, no_doctor: bool) -> None:
+    """Step 7 (part 2): run the closing doctor pass and surface it inline.
+
+    Calls :func:`shepherd_cli.commands.doctor.run` (imported as
+    :data:`_run_doctor` — never reimplemented) IN-PROCESS, in the SAME
+    environment ``shepherd init``'s own DB/namespace resolution just ran
+    in, so the report reflects exactly what this invocation built.
+    Deliberately never inspects (let alone propagates) the returned exit
+    code: a fresh project's ``refresh``-zone WARNs are entirely normal
+    (nothing has been refreshed yet — see
+    :mod:`shepherd_cli.commands.doctor`'s own module docstring on the
+    ``artifacts`` zone's structural "always never refreshed" quirk), and
+    ``shepherd ready`` runs this stage as a strict, unguarded
+    ``set -e``-equivalent child (see :mod:`shepherd_cli.commands.ready`'s
+    own ``_run_init_stage`` docstring) — a doctor WARN turning into a
+    nonzero ``init`` exit would break ``shepherd ready`` on every fresh
+    project, not just report a diagnostic.
+
+    Args:
+        no_doctor: When True (``--no-doctor``), skip entirely.
+    """
+    if no_doctor:
+        return
+    typer.echo("shctx init: doctor pass")
+    report_text, _doctor_exit_code = _run_doctor("md")
+    typer.echo(report_text)
+
+
+# --------------------------------------------------------------------------
 # Driver.
 # --------------------------------------------------------------------------
-def _init_impl() -> None:
-    """Run the full scaffold -> DB bootstrap -> project registration -> auto-refresh pipeline.
+def _init_impl(flags: _Flags) -> None:
+    """Run the full seamless-bootstrap pipeline: scaffold -> db -> project ->
+    auto-refresh -> config scaffold -> optional user tier -> summary + doctor.
 
-    Bash parity with ``cmd_init.sh``'s body (post flag-parsing): every
-    step runs unconditionally EXCEPT the project registration (only the
-    first time, per :func:`_register_project`) and the trailing
-    auto-refresh (only when pre-existing markdown is found, per
-    :func:`_maybe_auto_refresh`).
+    Bash parity with ``cmd_init.sh``'s body (post flag-parsing) through the
+    auto-refresh trigger — every one of those steps runs unconditionally
+    EXCEPT the project registration (only the first time, per
+    :func:`_register_project`) and the auto-refresh itself (only when
+    pre-existing markdown is found, per :func:`_maybe_auto_refresh`).
+    Everything from the config scaffold onward is the v6.4.2 addition (see
+    the module docstring's numbered list and "WHY STEPS 5-7" note).
+
+    Args:
+        flags: The parsed opt-out/opt-in switches (:func:`_apply_flags`).
 
     Raises:
-        typer.Exit: Propagated from any of the pipeline steps; code 0
-            with the two summary lines printed if every step succeeds and
-            no auto-refresh fires (or it fires and succeeds).
+        typer.Exit: Propagated from any pre-existing pipeline step (code 1
+            on a hard scaffold/db failure, or the auto-refresh's own exit
+            code). The v6.4.2 steps never raise: a config-scaffold or
+            doctor-pass problem is reported inline, never escalated to
+            this command's own exit code (see :func:`_maybe_scaffold_config`
+            and :func:`_maybe_run_doctor`'s docstrings).
     """
     root = resolve_workdir()
     repo = resolve_repo_root()
+    namespace_existed = os.path.isdir(root)
     _scaffold(root, repo)
 
     db_path = resolve_db_path()
-    _bootstrap_db(db_path)
+    db_existed = os.path.isfile(db_path)
+    migrations_applied = _bootstrap_db(db_path)
 
+    pidfile = os.path.join(root, "project.json")
+    project_existed = os.path.isfile(pidfile)
     project_id = _register_project(root, repo, db_path)
 
     typer.echo(f"shctx: initialized {os.path.basename(root)}/ at {root}")
@@ -960,19 +1270,36 @@ def _init_impl() -> None:
 
     _maybe_auto_refresh(root)
 
+    config_line = _maybe_scaffold_config(no_config=flags.no_config)
+    user_line = _maybe_bootstrap_user(user=flags.user)
+    _print_bootstrap_summary(
+        namespace_existed=namespace_existed,
+        root=root,
+        db_existed=db_existed,
+        migrations_applied=migrations_applied,
+        project_existed=project_existed,
+        project_id=project_id,
+        config_line=config_line,
+        user_line=user_line,
+    )
+
+    _maybe_run_doctor(no_doctor=flags.no_doctor)
+
 
 @app.callback(invoke_without_command=True)
 def init(
     args: list[str] = typer.Argument(
         None,
-        metavar="[--artifacts|--shepherd] [-h|--help]",
+        metavar="[--artifacts|--shepherd] [--no-config] [--no-doctor] [--user] [-h|--help]",
         hidden=True,
         help="Flags only, no positional arguments — see cmd_init.sh's usage text (-h/--help).",
     ),
 ) -> None:
-    """Scaffold the per-project shepherd namespace tree, create shepherd.db, and register the host project.
+    """The seamless bootstrap: namespace + db + project + shepherd.toml + doctor, one command.
 
-    Native port of ``shctx init`` (``cmd_init.sh`` + ``scaffold.sh``).
+    Native port of ``shctx init`` (``cmd_init.sh`` + ``scaffold.sh``),
+    extended in v6.4.2 into the ONE command that takes a bare repo to
+    fully configured (see the module docstring's numbered step list).
     Takes no subcommands — only the flags documented in
     :data:`_HELP_TEXT` — captured together as one variadic argument
     (mirroring :mod:`shepherd_cli.commands.sync`'s identical
@@ -981,17 +1308,18 @@ def init(
     Args:
         args: Every token given after ``init`` on the command line, or
             None/empty for a bare ``shepherd init`` (bash parity: runs
-            the full scaffold + bootstrap pipeline with no namespace
-            override, NOT a usage screen).
+            the full bootstrap pipeline with no namespace override, NOT a
+            usage screen).
 
     Raises:
         typer.Exit: Propagated from :func:`_apply_flags` (help/unknown
-            flag) or :func:`_init_impl` (every pipeline failure mode).
-            Implicit code 0 on success.
+            flag) or :func:`_init_impl` (every pre-existing pipeline
+            failure mode — the v6.4.2 additions never raise). Implicit
+            code 0 on success.
     """
     argv = list(args) if args else []
-    _apply_flags(argv)
-    _init_impl()
+    flags = _apply_flags(argv)
+    _init_impl(flags)
 
 
 __all__ = ["app"]

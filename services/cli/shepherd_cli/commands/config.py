@@ -90,20 +90,59 @@ THREE DELIBERATE, DOCUMENTED DEVIATIONS FROM A BYTE-FOR-BYTE BASH PORT
    failure — never a fresh ``os.getcwd()``, matching bash's ``basename
    "$root"`` (the ALREADY-RESOLVED repo root, not a fresh ``pwd``).
 
+THE v6.4.2 HARNESS-NEUTRAL PRECEDENCE CONTRACT
+=================================================
+``.claude/`` is owned by ONE harness (Claude Code). shepherd's own bridge
+contract (``skills/bridge/SKILL.md``) says implementations coordinate
+"exclusively through the project-visible artifact schema... never harness
+internals" — yet, before this change, a project's shepherd binding lived
+INSIDE a competing harness's config directory, so ``codex-shepherd`` or any
+future harness had to reach into ``.claude/`` just to discover that a repo
+uses shepherd at all. ``.shepherd/`` (or whatever the project's namespace
+resolver returns — see below) is the namespace shepherd already owns and
+every harness can read, so it now leads the chain:
+
+    1. ``<workdir>/shepherd.local.toml``    NEW
+    2. ``<workdir>/shepherd.toml``          NEW canonical (write target)
+    3. ``<repo>/.claude/shepherd.local.toml``   unchanged
+    4. ``<repo>/.claude/shepherd.toml``         unchanged
+    5. ``$XDG_CONFIG_HOME/shepherd.toml``       unchanged
+
+First match wins, highest precedence first — see :func:`_config_search_paths`,
+the ONE list-returning function every reader (:func:`_cfg_get`, :func:`_do_show`,
+:func:`_do_validate`) and every writer (:func:`_do_path`, :func:`_do_init`,
+:func:`_do_migrate`) now consumes, so the chain is spelled out exactly once.
+
+Backward compatibility is the whole point: tiers 3-5 keep working forever,
+and a project that never adds a ``<workdir>/`` config sees ZERO behavior
+change — this is purely additive. ``<workdir>`` is NOT hardcoded to
+``.shepherd/`` — legacy projects use ``.artifacts/`` — so tiers 1-2 resolve
+through the SAME namespace resolver every other command already uses,
+:func:`shepherd_cli.resolution.resolve_workdir` (bash twin:
+``shctx_artifacts_root`` in ``_lib.sh``), never a literal ``".shepherd"``.
+:func:`is_shepherd_project` reflects the OR across both canonical locations
+(new tier 2 or legacy tier 4) so callers elsewhere in the CLI can detect a
+shepherd binding regardless of which one a project happens to use.
+:func:`_do_init` now scaffolds tier 2, :func:`_do_path` now echoes it, and
+:func:`_do_migrate` (new) moves an existing tier-4 file onto it.
+
 Timestamps: N/A — this module writes no database rows and stamps no
 epoch fields; every write here is a plain file write (``.claude/shepherd.toml``
-/ ``CLAUDE.md``).
+/ ``<workdir>/shepherd.toml`` / ``CLAUDE.md``).
 """
 
 from __future__ import annotations
 
+import json
 import os
 import re
+import shutil
 import subprocess
 
 import typer
 from pydantic import BaseModel, ConfigDict
 
+from shepherd_cli.config_schema import format_report, report_to_dict, validate_config_file
 from shepherd_cli.resolution import resolve_repo_root, resolve_workdir
 
 app = typer.Typer(
@@ -136,7 +175,19 @@ _USAGE = (
     "  shctx config get <key> [def]  Resolve one key via cfg_get (local→project→XDG),\n"
     "                                echoing [def] when unset. The uniform read path for\n"
     "                                the v6.1.5 toggles (on_grade_floor, inter_sprint_pause,\n"
-    "                                max_parallel, dashboard_cadence, …)."
+    "                                max_parallel, dashboard_cadence, …).\n"
+    "\n"
+    "Python-only additions (v6.4.2, harness-neutral config path):\n"
+    "  shctx config migrate [--dry-run]\n"
+    "                                Move .claude/shepherd.toml to the canonical\n"
+    "                                <workdir>/shepherd.toml location. Idempotent; never\n"
+    "                                overwrites an existing destination (reports and stops);\n"
+    "                                --dry-run prints the plan without moving anything.\n"
+    "  shctx config validate [--json]\n"
+    "                                Validate every existing precedence-tier config file\n"
+    "                                against the shepherd.toml schema (unknown keys/sections\n"
+    "                                get a did-you-mean, wrong types name the allowed set).\n"
+    "                                Exit 0 clean, nonzero otherwise."
 )
 
 #: The ``CLAUDE.md`` managed-block markers ``do_claude_md`` scans for.
@@ -429,33 +480,95 @@ def _resync_managed_block(dst_text: str, src_text: str) -> str:
     return "\n".join(out_lines) + "\n"
 
 
-def _config_search_paths(repo_root: str) -> tuple[str, str, str]:
-    """The three config file paths ``cfg_get`` checks, in precedence order.
+def _config_search_paths(repo_root: str) -> tuple[str, str, str, str, str]:
+    """The five config file paths ``cfg_get`` (and every other reader) checks, in
+    v6.4.2 precedence order.
 
-    Bash parity with ``_lib.sh``'s ``cfg_get`` file loop:
-    ``.claude/shepherd.local.toml`` (per-key local override) ->
-    ``.claude/shepherd.toml`` (project) -> ``$XDG_CONFIG_HOME/shepherd.toml``
-    (user global, falling back to ``$HOME/.config`` when
-    ``XDG_CONFIG_HOME`` is unset or empty). Duplicated verbatim from
-    :mod:`shepherd_cli.commands.models`'s identically-named helper — small,
-    intentional duplication, per this package's self-contained-module
-    convention.
+    See the module docstring's "THE v6.4.2 HARNESS-NEUTRAL PRECEDENCE
+    CONTRACT" section for the full rationale. This is now the ONE place
+    the 5-tier chain is spelled out — :func:`_cfg_get`, :func:`_do_show`,
+    :func:`_do_validate`, :func:`is_shepherd_project`, and
+    :func:`_canonical_write_target` all consume this list rather than
+    re-deriving any subset of it, so the chain cannot drift between
+    callers the way the old 3-tier chain and
+    :mod:`shepherd_cli.commands.models`'s identically-named helper had
+    already started to (that duplication is now confined to bridging the
+    pre-v6.4.2 3-tier surface ``models.py`` still ports; this module owns
+    the 5-tier one).
+
+    Tiers 1-2 resolve through :func:`shepherd_cli.resolution.resolve_workdir`
+    — the SAME namespace resolver every other command uses — rather than a
+    literal ``".shepherd"``, so a project bootstrapped with
+    ``shctx init --artifacts`` (namespace ``.artifacts/``) gets tiers 1-2
+    at ``<repo>/.artifacts/shepherd{.local,}.toml``, not a hardcoded
+    ``.shepherd/`` path that would silently miss it.
 
     Args:
         repo_root: The resolved repository root.
 
     Returns:
-        The three candidate file paths, in the order ``cfg_get`` tries
-        them.
+        The five candidate file paths, in the order ``cfg_get`` (and
+        every other reader) tries them:
+        ``(<workdir>/shepherd.local.toml, <workdir>/shepherd.toml,
+        .claude/shepherd.local.toml, .claude/shepherd.toml,
+        $XDG_CONFIG_HOME/shepherd.toml)``.
     """
+    workdir = resolve_workdir()
     xdg_config_home = os.environ.get("XDG_CONFIG_HOME") or ""
     if not xdg_config_home:
         home = os.environ.get("HOME") or os.path.expanduser("~")
         xdg_config_home = os.path.join(home, ".config")
     return (
+        os.path.join(workdir, "shepherd.local.toml"),
+        os.path.join(workdir, "shepherd.toml"),
         os.path.join(repo_root, ".claude", "shepherd.local.toml"),
         os.path.join(repo_root, ".claude", "shepherd.toml"),
         os.path.join(xdg_config_home, "shepherd.toml"),
+    )
+
+
+def _canonical_write_target(workdir: str | None = None) -> str:
+    """The canonical ``shepherd.toml`` WRITE location — precedence tier 2.
+
+    What ``shctx config path`` echoes and ``shctx config init`` scaffolds
+    (v6.4.2). Accepts an already-resolved ``workdir`` so a caller that
+    already paid for one ``resolve_workdir()`` call (e.g. :func:`_do_init`,
+    which also needs it for the namespace basename) doesn't pay for a
+    second — the same ``workdir if workdir is not None else
+    resolve_workdir()`` shape :mod:`shepherd_cli.profiles` and
+    :mod:`shepherd_cli.models_run` already use.
+
+    Args:
+        workdir: A pre-resolved work directory, or None to resolve one
+            here.
+
+    Returns:
+        ``<workdir>/shepherd.toml``.
+    """
+    return os.path.join(workdir if workdir is not None else resolve_workdir(), "shepherd.toml")
+
+
+def is_shepherd_project(repo_root: str | None = None) -> bool:
+    """True iff this repo has ANY shepherd.toml binding, canonical or legacy.
+
+    True when EITHER ``<workdir>/shepherd.toml`` (the v6.4.2 canonical
+    tier-2 location) OR ``<repo>/.claude/shepherd.toml`` (the legacy
+    tier-4 location this repo may still be using, pre-:func:`_do_migrate`)
+    exists — callers elsewhere in the CLI that just need "does this repo
+    use shepherd at all" should not have to know which of the two
+    locations a given project happens to bind through.
+
+    Args:
+        repo_root: A pre-resolved repository root, or None to resolve one
+            here.
+
+    Returns:
+        True iff either canonical location exists on disk.
+    """
+    root = repo_root if repo_root is not None else resolve_repo_root()
+    workdir = resolve_workdir()
+    return os.path.isfile(os.path.join(workdir, "shepherd.toml")) or os.path.isfile(
+        os.path.join(root, ".claude", "shepherd.toml")
     )
 
 
@@ -538,13 +651,25 @@ def _cfg_get(key: str, repo_root: str) -> str:
 # Subcommand handlers — each returns the bash-parity process exit code.
 # --------------------------------------------------------------------------
 def _do_init(force: bool) -> int:
-    """Scaffold ``.claude/shepherd.toml`` from the bundled minimal template.
+    """Scaffold ``<workdir>/shepherd.toml`` from the bundled minimal template.
 
-    Bash parity with ``cmd_config.sh``'s ``do_init``.
+    Bash-derived from ``cmd_config.sh``'s ``do_init``, with the v6.4.2
+    write target moved from ``.claude/shepherd.toml`` (tier 4) to
+    ``<workdir>/shepherd.toml`` (tier 2, the new canonical location — see
+    the module docstring). Two idempotency guards beyond the original:
+
+    - A pre-existing tier-4 ``.claude/shepherd.toml`` now ALSO preserves
+      (pointing the operator at :func:`_do_migrate`) rather than silently
+      scaffolding a second, tier-2 binding beside it — an un-migrated
+      legacy project would otherwise end up with two config files, the
+      new one silently shadowing any key the legacy one set that the
+      bundled template's derived values don't happen to match.
+    - The local-override check now ALSO covers ``<workdir>/
+      shepherd.local.toml`` (tier 1), not just the two ``.claude``-rooted
+      locations bash already checked.
 
     Args:
-        force: When True, skip both the "destination already exists" and
-            "a local-override config is present" idempotency guards and
+        force: When True, skip every idempotency guard above and
             overwrite unconditionally.
 
     Returns:
@@ -553,15 +678,24 @@ def _do_init(force: bool) -> int:
         defect, not a user error — bash prints this to stderr too).
     """
     repo = resolve_repo_root()
-    dst = os.path.join(repo, ".claude", "shepherd.toml")
+    workdir = _resolve_workdir_quiet()
+    dst = _canonical_write_target(workdir)
+    legacy_dst = os.path.join(repo, ".claude", "shepherd.toml")
 
     if not force:
         if os.path.isfile(dst):
             typer.echo(f"shctx config: {dst} already exists (preserving)")
             return 0
-        local_override_a = os.path.join(repo, ".claude", "shepherd.local.toml")
-        local_override_b = os.path.join(repo, ".local.toml")
-        if os.path.isfile(local_override_a) or os.path.isfile(local_override_b):
+        if os.path.isfile(legacy_dst):
+            typer.echo(
+                f"shctx config: {legacy_dst} already exists (preserving; run "
+                f"'shctx config migrate' to move it to the canonical {dst})"
+            )
+            return 0
+        local_override_a = os.path.join(workdir, "shepherd.local.toml")
+        local_override_b = os.path.join(repo, ".claude", "shepherd.local.toml")
+        local_override_c = os.path.join(repo, ".local.toml")
+        if any(os.path.isfile(p) for p in (local_override_a, local_override_b, local_override_c)):
             typer.echo(
                 "shctx config: a local-override config is present "
                 "(preserving; no project binding written)"
@@ -574,10 +708,10 @@ def _do_init(force: bool) -> int:
         return 1
 
     name = _derive_name(repo)
-    ns = os.path.basename(_resolve_workdir_quiet())
+    ns = os.path.basename(workdir)
     gates = _detect_gates(repo)
 
-    os.makedirs(os.path.join(repo, ".claude"), exist_ok=True)
+    os.makedirs(workdir, exist_ok=True)
     with open(src, encoding="utf-8") as fh:
         src_text = fh.read()
     patched = _patch_init_template(src_text, name=name, gates=gates, ns=ns)
@@ -687,16 +821,19 @@ def _do_get(key: str, default: str) -> int:
 
 
 def _do_show() -> int:
-    """Print the resolved project/local config file(s), raw.
+    """Print every existing precedence-tier config file, raw.
 
-    Bash parity with ``cmd_config.sh``'s ``show`` arm: for each of
-    ``.claude/shepherd.local.toml`` and ``.claude/shepherd.toml`` (in
-    that order) that exists, prints ``# <path>``, the file's raw
-    content verbatim, then a blank line. Prints a "no config" notice
-    instead if NEITHER file exists. Note this checks only those two
-    files — unlike :func:`_cfg_get`'s three-file precedence chain, the
-    XDG global config is never shown here (bash parity: ``show`` never
-    reads ``$XDG_CONFIG_HOME``).
+    v6.4.2: extended from bash's original two files
+    (``.claude/shepherd.local.toml`` / ``.claude/shepherd.toml``) to all
+    FOUR non-XDG tiers of :func:`_config_search_paths` — ``<workdir>/
+    shepherd.local.toml``, ``<workdir>/shepherd.toml``,
+    ``.claude/shepherd.local.toml``, ``.claude/shepherd.toml`` — in that
+    (highest-precedence-first) order, since a project may now bind
+    through either the new or the legacy canonical location. For each
+    that exists, prints ``# <path>``, the file's raw content verbatim,
+    then a blank line. Prints a "no config" notice instead if NONE
+    exist. The XDG global config (tier 5) is still never shown here
+    (bash parity: ``show`` never read ``$XDG_CONFIG_HOME`` either).
 
     Returns:
         0, always (bash parity: this subcommand never fails).
@@ -704,17 +841,14 @@ def _do_show() -> int:
     repo = resolve_repo_root()
     found = False
     output = ""
-    for path in (
-        os.path.join(repo, ".claude", "shepherd.local.toml"),
-        os.path.join(repo, ".claude", "shepherd.toml"),
-    ):
+    for path in _config_search_paths(repo)[:4]:
         if os.path.isfile(path):
             found = True
             with open(path, encoding="utf-8") as fh:
                 content = fh.read()
             output += f"# {path}\n{content}\n"
     if not found:
-        output += "(no .claude/shepherd.toml — run 'shctx config init')\n"
+        output += f"(no {_canonical_write_target()} — run 'shctx config init')\n"
     typer.echo(output, nl=False)
     return 0
 
@@ -722,15 +856,112 @@ def _do_show() -> int:
 def _do_path() -> int:
     """Echo the canonical ``shepherd.toml`` write location.
 
-    Bash parity with ``cmd_config.sh``'s ``path`` arm: always echoes
-    ``<repo_root>/.claude/shepherd.toml``, whether or not the file
-    exists.
+    v6.4.2: now echoes ``<workdir>/shepherd.toml`` (tier 2 — see the
+    module docstring), not the pre-v6.4.2 ``<repo_root>/.claude/
+    shepherd.toml``, whether or not the file exists.
 
     Returns:
         0, always.
     """
-    typer.echo(os.path.join(resolve_repo_root(), ".claude", "shepherd.toml"))
+    typer.echo(_canonical_write_target())
     return 0
+
+
+def _do_migrate(dry_run: bool) -> int:
+    """Move ``.claude/shepherd.toml`` (tier 4) onto the canonical ``<workdir>/shepherd.toml`` (tier 2).
+
+    New in v6.4.2 — no bash counterpart (this module's ``YOUR FILES``
+    lane is Python-side only; see the module docstring). A plain
+    ``shutil.move`` (git-mv semantics), never a copy-plus-pointer-comment
+    — the source location simply stops existing, exactly like a
+    ``git mv``, which is the safest and most legible thing to leave
+    behind: no stale duplicate content, no partially-trustworthy tier-4
+    file an operator could mistake for still-authoritative.
+
+    Idempotent: a second run finds no ``.claude/shepherd.toml`` (already
+    moved) and reports "nothing to migrate" rather than erroring. Never
+    clobbers an existing destination — if BOTH the legacy source and a
+    tier-2 destination already exist (a genuine conflict, not a
+    re-run), this reports the conflict and stops rather than guessing
+    which one the operator wants to keep.
+
+    Args:
+        dry_run: When True, print the plan and change nothing on disk.
+
+    Returns:
+        0 on success (including "nothing to migrate" and the dry-run
+        report); 1 when the destination already exists (a conflict the
+        operator must resolve by hand).
+    """
+    repo = resolve_repo_root()
+    workdir = resolve_workdir()
+    src = os.path.join(repo, ".claude", "shepherd.toml")
+    dst = _canonical_write_target(workdir)
+
+    if not os.path.isfile(src):
+        typer.echo(f"shctx config migrate: nothing to migrate ({src} does not exist)")
+        return 0
+
+    if os.path.isfile(dst):
+        typer.echo(
+            f"shctx config migrate: {dst} already exists — refusing to overwrite "
+            f"it (leaving {src} in place). Resolve the conflict by hand, then re-run."
+        )
+        return 1
+
+    if dry_run:
+        typer.echo(f"shctx config migrate: would move {src} -> {dst} (dry run, nothing written)")
+        return 0
+
+    os.makedirs(workdir, exist_ok=True)
+    shutil.move(src, dst)
+    typer.echo(f"shctx config migrate: moved {src} -> {dst}")
+    return 0
+
+
+def _do_validate(as_json: bool) -> int:
+    """Validate every existing precedence-tier config file against the shepherd.toml schema.
+
+    New in v6.4.2. Validates each of the (up to 5) tier files from
+    :func:`_config_search_paths` that actually exists, SEPARATELY — never
+    the merged/resolved config — so a bad key in
+    ``.claude/shepherd.local.toml`` is reported against that file, not
+    misattributed to ``.claude/shepherd.toml`` sitting one tier lower,
+    per :mod:`shepherd_cli.config_schema`'s "every message must name the
+    FILE and the ``[section].key``" contract.
+
+    Args:
+        as_json: When True, emit a single JSON object
+            (``{"ok": bool, "files": [...]}``, one entry per validated
+            file, each shaped by
+            :func:`shepherd_cli.config_schema.report_to_dict`) instead of
+            the human-readable text report.
+
+    Returns:
+        0 when every existing tier file validates clean (including when
+        NONE exist — nothing to validate is not a failure); nonzero when
+        any existing tier file has at least one issue.
+    """
+    repo = resolve_repo_root()
+    candidates = [p for p in _config_search_paths(repo) if os.path.isfile(p)]
+
+    if not candidates:
+        if as_json:
+            typer.echo(json.dumps({"ok": True, "files": []}))
+        else:
+            typer.echo("shctx config validate: no config files found across any precedence tier")
+        return 0
+
+    reports = [validate_config_file(p) for p in candidates]
+    ok = all(r.ok for r in reports)
+
+    if as_json:
+        typer.echo(json.dumps({"ok": ok, "files": [report_to_dict(r) for r in reports]}, indent=2))
+    else:
+        for report in reports:
+            typer.echo(format_report(report), nl=False)
+
+    return 0 if ok else 1
 
 
 def _do_help() -> int:
@@ -774,9 +1005,24 @@ def _dispatch(argv: list[str]) -> int:
         return _do_show()
     if sub == "path":
         return _do_path()
+    if sub == "migrate":
+        # v6.4.2, Python-only (see the module docstring) — same
+        # literal-first-token ``--force``-style check as init/claude-md
+        # above, not a general "look for the flag anywhere" scan.
+        dry_run = bool(rest) and rest[0] == "--dry-run"
+        return _do_migrate(dry_run)
+    if sub == "validate":
+        # v6.4.2, Python-only.
+        as_json = bool(rest) and rest[0] == "--json"
+        return _do_validate(as_json)
     if sub in ("help", "-h", "--help"):
         return _do_help()
 
+    # Bash-parity usage message, deliberately UNCHANGED (still names only
+    # the five subcommands bash's own cmd_config.sh implements) — migrate/
+    # validate are Python-only additions with no bash counterpart to stay
+    # in parity with; the full subcommand list lives in `help` (_USAGE)
+    # instead of this terse fallback line.
     typer.echo("ERROR: usage: shctx config <init|claude-md|show|path|get>", err=True)
     return 1
 
@@ -787,17 +1033,20 @@ def config(
         None,
         help=(
             "Subcommand + args: 'init [--force]' | 'claude-md [--force]' | 'get <key> [default]' "
-            "| 'show' | 'path' | 'help'. Defaults to 'help'."
+            "| 'show' | 'path' | 'migrate [--dry-run]' | 'validate [--json]' | 'help'. "
+            "Defaults to 'help'."
         ),
     ),
 ) -> None:
     """Scaffold / inspect the project ``shepherd.toml`` binding — native port of ``shctx config``.
 
     See the module docstring for why this is ONE variadic callback
-    rather than five ``@app.command()``s: bash's default-to-``help`` and
+    rather than N ``@app.command()``s: bash's default-to-``help`` and
     exit-1-on-unknown-subcommand contracts, plus ``init``/``claude-md``'s
     positional-only ``--force`` check, don't match Typer/Click's own
-    subcommand-dispatch defaults.
+    subcommand-dispatch defaults. ``migrate``/``validate`` (v6.4.2) are
+    Python-only additions dispatched the same way for consistency, even
+    though they have no bash ``--force``-style positional flag to mimic.
 
     Args:
         args: Every token after ``config`` on the command line, in
@@ -812,4 +1061,4 @@ def config(
     raise typer.Exit(code=_dispatch(list(args or [])))
 
 
-__all__ = ["app", "GateToolchain"]
+__all__ = ["app", "GateToolchain", "is_shepherd_project"]

@@ -4,25 +4,103 @@ Shepherd speaks principles (Phase 0 mesh, SUBTRACT-DON'T-ADD, wrapper-must-earn,
 overlap); per-language mechanics load via `[skills.by_domain]`. Examples lean Rust — see the
 [Language matrix](#language-matrix) for other languages.
 
-## Resolution
+## Resolution {#config-resolution}
 
 Drop a `shepherd.toml` at one of these locations, highest precedence first, **per key**:
 
 ```
-.claude/shepherd.local.toml    project-pinned, gitignored (overrides)
-.claude/shepherd.toml          project-pinned, in the repo (base)
-$XDG_CONFIG_HOME/shepherd.toml user-global default
+<workdir>/shepherd.local.toml       project-pinned, gitignored (overrides)   NEW (v6.4.2)
+<workdir>/shepherd.toml             project-pinned, in the repo — CANONICAL  NEW (v6.4.2)
+.claude/shepherd.local.toml         project-pinned, gitignored (overrides)   legacy, unchanged
+.claude/shepherd.toml               project-pinned, in the repo             legacy, unchanged
+$XDG_CONFIG_HOME/shepherd.toml      user-global default                     unchanged
 ```
+
+`<workdir>` is the active shctx namespace — normally `.shepherd/`, `.artifacts/` on a legacy
+project — resolved through the *same* namespace resolver every other command uses
+(`shepherd_cli.resolution.resolve_workdir` in Python; `shctx_artifacts_root` in `_lib.sh`). Tiers
+1-2 are never `.shepherd/` hardcoded: a project bootstrapped with `shctx init --artifacts` gets
+tiers 1-2 at `<repo>/.artifacts/shepherd{.local,}.toml`, not a path that would silently miss it.
+The full five-path list is derived in exactly one place —
+`shepherd_cli.commands.config._config_search_paths` (bash twin:
+`skills/context/scripts/cmd_config.sh`) — and every reader (`config get`, `config show`, `config
+validate`, `is_shepherd_project`) and writer (`config path`, `config init`, `config migrate`)
+consumes that one list, so the chain can't drift between callers.
+
+**Why the canonical location moved out of `.claude/`.** `.claude/` is owned by ONE harness (Claude
+Code). shepherd's own bridge contract (`skills/bridge/SKILL.md`) requires that cross-shepherd
+implementations coordinate "exclusively through the project-visible artifact schema... never
+harness internals" — yet, before v6.4.2, a project's *entire* shepherd binding lived inside a
+competing harness's config directory. `codex-shepherd`, or any future harness, had to reach into
+`.claude/` just to discover that a repo uses shepherd at all — the one thing the bridge contract
+says implementations must never do to each other. `.shepherd/` (or whichever namespace directory
+the resolver returns) is the namespace shepherd already owns and every harness can read, so it now
+leads the chain. This is the same reasoning `naming-conventions.md §Run identity` and
+`bridge/SKILL.md` apply to run ids below — a cross-harness contract cannot live inside a
+single-harness directory.
+
+**Backward compatibility is unconditional.** Tiers 3-5 keep working forever — nothing about
+`.claude/shepherd.toml` resolution changed. A project that never adds a `<workdir>/shepherd.toml`
+sees ZERO behavior change; this is purely additive. `is_shepherd_project()` (the "does this repo
+use shepherd at all" check consumed elsewhere in the CLI) returns true if EITHER `<workdir>/
+shepherd.toml` OR `.claude/shepherd.toml` exists, so callers don't need to know which tier a given
+project happens to bind through.
+
+**The canonical WRITE target moved.** `shctx config path` now echoes `<workdir>/shepherd.toml`
+(tier 2), not `.claude/shepherd.toml`; `shctx config init` now scaffolds tier 2. A pre-existing
+`.claude/shepherd.toml` (tier 4) is left in place and preserved — `config init` reports it and
+points at `config migrate` rather than silently scaffolding a second, shadowing binding beside it.
+
+**Migration.** `shctx config migrate [--dry-run]` moves an existing `.claude/shepherd.toml` onto
+the canonical `<workdir>/shepherd.toml`. It is a plain move (git-mv semantics), not a copy: the
+tier-4 file simply stops existing afterward, so there is never a stale duplicate an operator could
+mistake for still-authoritative. Idempotent — a second run finds nothing at tier 4 and reports
+"nothing to migrate" rather than erroring. Never overwrites an existing tier-2 destination: if both
+already exist (a genuine conflict, not a re-run), it reports the conflict and stops for the
+operator to resolve by hand. `--dry-run` prints the plan without touching disk.
 
 A `.local.toml` setting one key inherits the rest — a partial, not whole-file, override — resolved
 via `cfg_get`. `[models]`/`[prune]`/`[eval]`/`[dups]` use `cfg_section_get` instead: keys resolve
 *within* their `[section]`, never colliding elsewhere.
 
 If no config is found, entry commands MUST scaffold one and proceed — never refuse, never run
-blind: `shctx config init` writes `.claude/shepherd.toml` idempotently, deriving name/gates/paths
-from the repo. `/shepherd:spawn`: scaffold → `[CONFIG]` notice → proceed (action-biased — never
-stops to confirm, `skills/shepherd/SKILL.md §Operator surface`). `/shepherd:plant`: scaffold → one
+blind: `shctx config init` writes `<workdir>/shepherd.toml` idempotently, deriving name/gates/paths
+from the repo (see also `shepherd init`, below, which now runs this scaffold as one of its own
+steps). `/shepherd:spawn`: scaffold → `[CONFIG]` notice → proceed (action-biased — never stops to
+confirm, `skills/shepherd/SKILL.md §Operator surface`). `/shepherd:plant`: scaffold → one
 `AskUserQuestion` confirming `[branching]`/`[gates]` → continue.
+
+## Bootstrap — `shepherd init` (v6.4.2, seamless)
+
+```
+shctx init [--artifacts|--shepherd] [--no-config] [--no-doctor] [--user]
+```
+
+`shepherd init` is now the single bootstrap for a repo: it scaffolds the namespace tree, creates
+`shepherd.db` and applies every pending migration, registers the project, scaffolds the canonical
+`shepherd.toml` (§Resolution, above), and runs a closing `doctor` pass — one command from a bare
+repo to a fully configured project. Every step is idempotent: running `shepherd init` a second time
+reports what already exists rather than re-doing (or re-warning about) work already done, and a
+closing bootstrap summary states created-vs-already-present for each of the five things it touches
+(namespace, db, project, `shepherd.toml`, user tier).
+
+This **replaces** the old "run `shepherd init`, then separately run `shepherd config init`"
+sequencing — that hand-off was the friction point being removed, and no doctrine should still
+instruct an operator (or an agent) to run the two as separate steps. `shepherd init` alone now
+covers both.
+
+Flags:
+
+| Flag | Effect |
+|---|---|
+| `--artifacts` / `--shepherd` | force the legacy `.artifacts/` or new-default `.shepherd/` namespace on a fresh init (auto-detected otherwise) |
+| `--no-config` | skip the `shepherd.toml` scaffold step — reproduces the pre-v6.4.2 narrow behavior when combined with `--no-doctor` |
+| `--no-doctor` | skip the closing `doctor` pass (the summary block still prints) |
+| `--user` | also bootstrap `~/.shepherd` (`shepherd home init`) — the only step here that touches `$HOME`, so it is opt-**in**, off by default |
+
+`--no-config --no-doctor` with neither `--artifacts`/`--shepherd`/`--user` reproduces the exact
+on-disk effect of pre-v6.4.2 `shepherd init`: no `shepherd.toml` is written, no doctor pass runs,
+`~/.shepherd` is never touched.
 
 ## Schema
 
@@ -33,6 +111,15 @@ stops to confirm, `skills/shepherd/SKILL.md §Operator surface`). `/shepherd:pla
 | `name` | string | *(required)* | repo/project name |
 | `language` | enum | `"rust"` | `rust\|python\|typescript\|go\|mixed`; drives `[skills.by_domain]` |
 | `description` | string | `""` | free text |
+| `harnesses` | list of string | `[]` | which shepherd implementations operate in this repo, e.g. `["claude-code", "codex"]` |
+
+`harnesses` is declarative metadata only (v6.4.2) — a machine-readable anchor for the bridge
+contract (`skills/bridge/SKILL.md`), so an implementation booting into a repo can tell "no other
+harness is configured here" from "a sibling is declared and may hold custody over a run" before it
+even looks at `run.json`. It is deliberately **not** enforced and **not** wired into dispatch:
+shepherd does not coordinate harnesses automatically, no command reads this key to decide what to
+run, and an undeclared harness working in the repo is not blocked or warned about. Keep the scope
+claim honest — this is a label an operator sets, not a mechanism.
 
 ### `[branching]` — branch topology
 
@@ -334,6 +421,37 @@ warns on every invocation until a file exists.
 `gates.check` binary not on `$PATH`; a `paths.*` dir isn't writeable; `[skills.by_domain]` names an
 uninstalled skill; `driver="github-workflow"` but `workflow_file` doesn't resolve. Warnings only:
 an `[mcp]` server is `true` but unloaded; `phase_0_full_ledger=true` under 5 open issues.
+
+### `shepherd config validate` — schema validation (v6.4.2)
+
+```
+shctx config validate [--json]
+```
+
+Validates every existing precedence-tier file (§Resolution, above) **separately** against the
+`shepherd.toml` pydantic schema — never the merged/resolved config. A bad key in
+`.claude/shepherd.local.toml` is reported against that file, not misattributed to `.claude/
+shepherd.toml` sitting one tier lower: every issue names both the FILE it came from and the
+`[section].key` path inside it, so an operator with config spread across two or three tiers knows
+exactly which one to fix. A tier that doesn't exist on disk is skipped, not reported as missing.
+
+Unknown keys and unknown `[section]`s are now **errors**, not silent fallbacks — a typo in a key
+name used to be silently ignored (the default simply applied, with no signal anything was wrong).
+Each unknown-key/-section error carries a `difflib`-computed did-you-mean against the real schema
+(cutoff `0.6`) when a close match exists — e.g. `[gates] lint_` → `did you mean 'lint'?`. A wrong
+*type* for a known key names the allowed set/type directly rather than a raw pydantic traceback.
+
+Exit 0 when every existing tier validates clean (including when none exist at all — nothing to
+validate is not a failure); nonzero when any existing tier has at least one issue. `--json` emits
+`{"ok": bool, "files": [{"file", "ok", "issues": [{"path", "kind", "message", "bad_value",
+"allowed", "suggestion"}, ...]}, ...]}` instead of the human-readable text report, for tooling.
+
+### Run id canonicality — `shepherd lint` (v6.4.2)
+
+`shctx lint` also WARNs on a non-canonical run id — a run directory whose name isn't exactly what
+`[branching].sprint_slug_pattern`/`patch_slug_pattern` derives for it (e.g. a harness or ordinal
+suffix appended by hand). See `skills/context/references/naming-conventions.md §Run identity` for
+the full rule and rationale, and `shepherd run canonicalize` for migrating an existing violation.
 
 ## Language matrix
 

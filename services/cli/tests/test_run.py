@@ -317,7 +317,10 @@ def test_run_migrate_rewrites_legacy_file_and_is_idempotent(tmp_path: Path) -> N
 def test_run_migrate_all(tmp_path: Path) -> None:
     """``--all`` migrates every run under runs/, mixed legacy + canonical."""
     env = _env(tmp_path)
-    run_cli(["run", "init", "already-canonical"], env)
+    # "already-canonical" describes its run.json SHAPE (no #247 migration
+    # needed), not its #P4 run-id SHAPE -- it doesn't match the configured
+    # slug patterns, so --force is required post-#P4.
+    run_cli(["run", "init", "already-canonical", "--force"], env)
     _write_run_json(tmp_path, "legacy-a", _legacy_doc("legacy-a", 0, {}))
     _write_run_json(tmp_path, "legacy-b", _legacy_doc("legacy-b", 0, {}))
 

@@ -62,16 +62,25 @@ detect_gates() {
 do_init() {
   local force=0
   [[ "${1:-}" == "--force" ]] && force=1
-  local repo dst src name ns gates lang check lint fmt
+  local repo dst legacy_dst ns_dir src name ns gates lang check lint fmt
   repo="$(shctx_repo_root)"
-  dst="$repo/.claude/shepherd.toml"
+  ns_dir="$(SHCTX_QUIET=1 resolve_workdir)"
+  # v6.4.2: scaffold to the canonical <namespace>/shepherd.toml (tier 2).
+  dst="$ns_dir/shepherd.toml"
+  legacy_dst="$repo/.claude/shepherd.toml"
 
   # Idempotent: never clobber an existing project or local-override binding.
   if [[ "$force" -eq 0 ]]; then
     if [[ -f "$dst" ]]; then
       echo "shctx config: $dst already exists (preserving)"; return 0
     fi
-    if [[ -f "$repo/.claude/shepherd.local.toml" || -f "$repo/.local.toml" ]]; then
+    # A legacy .claude/ binding still governs (tiers 3-4 are supported
+    # indefinitely), so writing a tier-2 file here would create a SECOND,
+    # silently-shadowing binding. Point at `config migrate` instead.
+    if [[ -f "$legacy_dst" ]]; then
+      echo "shctx config: $legacy_dst already exists (preserving; run 'shctx config migrate' to move it to the canonical $dst)"; return 0
+    fi
+    if [[ -f "$ns_dir/shepherd.local.toml" || -f "$repo/.claude/shepherd.local.toml" || -f "$repo/.local.toml" ]]; then
       echo "shctx config: a local-override config is present (preserving; no project binding written)"; return 0
     fi
   fi
@@ -86,7 +95,7 @@ do_init() {
   check="${gates%%|*}"; gates="${gates#*|}"
   lint="${gates%%|*}"; fmt="${gates#*|}"
 
-  mkdir -p "$repo/.claude"
+  mkdir -p "$ns_dir"
   # Patch derived values into the bundled minimal template. Only the key lines are
   # rewritten; comments and structure are preserved verbatim. The [paths] namespace
   # is realigned to the project's active shctx namespace (resolve_workdir), so a
@@ -180,14 +189,24 @@ case "$sub" in
     [[ -n "$v" ]] && printf '%s\n' "$v" || printf '%s\n' "$def"
     ;;
   show)
-    repo="$(shctx_repo_root)"; found=0
-    for f in "$repo/.claude/shepherd.local.toml" "$repo/.claude/shepherd.toml"; do
+    # v6.4.2: all FOUR non-XDG precedence tiers, highest first (was just the
+    # two .claude/ files) — a project may bind through the new canonical
+    # <namespace>/shepherd.toml or the legacy .claude/shepherd.toml. The XDG
+    # global (tier 5) is still never shown (unchanged bash behavior). MUST
+    # match shepherd_cli/commands/config.py::_do_show — pinned by
+    # tests/test_config.py's python-vs-bash parity tests.
+    repo="$(shctx_repo_root)"; ns_dir="$(SHCTX_QUIET=1 resolve_workdir)"; found=0
+    for f in "$ns_dir/shepherd.local.toml" "$ns_dir/shepherd.toml" \
+             "$repo/.claude/shepherd.local.toml" "$repo/.claude/shepherd.toml"; do
       if [[ -f "$f" ]]; then echo "# $f"; cat "$f"; echo; found=1; fi
     done
-    [[ "$found" -eq 1 ]] || echo "(no .claude/shepherd.toml — run 'shctx config init')"
+    [[ "$found" -eq 1 ]] || echo "(no $ns_dir/shepherd.toml — run 'shctx config init')"
     ;;
   path)
-    echo "$(shctx_repo_root)/.claude/shepherd.toml"
+    # v6.4.2: the canonical WRITE target moved to <namespace>/shepherd.toml
+    # (precedence tier 2). .claude/ is owned by one harness; the binding that
+    # every harness must read cannot live inside it.
+    echo "$(SHCTX_QUIET=1 resolve_workdir)/shepherd.toml"
     ;;
   help|-h|--help)
     cat <<'EOF'
