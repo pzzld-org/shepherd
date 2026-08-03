@@ -1,7 +1,7 @@
 ---
 name: shepherd
 slug: shepherd
-version: 6.4.1
+version: 6.4.2
 description: "Sprint-execution contract for the six-agent shepherd flock — dispatch law, root/sprint contracts, operator surface, principles. Use when running a /shepherd:spawn sprint."
 metadata:
   triggers:
