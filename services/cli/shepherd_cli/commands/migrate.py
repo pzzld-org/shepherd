@@ -516,12 +516,12 @@ def _validate_layout_tokens(tokens: list[str]) -> None:
             ``<value>`` other than ``v2``.
     """
     for token in tokens:
-        if token in ("--layout=v2", "--layout"):
+        if token in ("--layout=v2", "--layout=v3", "--layout"):
             continue
         if token.startswith("--layout="):
-            typer.echo("ERROR: unknown --layout value (only 'v2' supported)", err=True)
+            typer.echo("ERROR: unknown --layout value (only 'v2' and 'v3' supported)", err=True)
             raise typer.Exit(code=1)
-        # "v2" on its own, or any other token: silently ignored (bash `*) ;;`).
+        # "v2"/"v3" on its own, or any other token: silently ignored (bash `*) ;;`).
 
 
 def _is_layout_v2(tokens: list[str]) -> bool:
@@ -547,6 +547,125 @@ def _is_layout_v2(tokens: list[str]) -> bool:
     first = tokens[0] if len(tokens) >= 1 else ""
     second = tokens[1] if len(tokens) >= 2 else ""
     return (first == "--layout" and second == "v2") or first == "--layout=v2"
+
+
+def _is_layout_v3(tokens: list[str]) -> bool:
+    """Does this argv select the ``--layout v3`` branch?
+
+    Same positional shape as :func:`_is_layout_v2`, for the v6.5.0
+    run-scoped layout migration (NEW in Python; no bash counterpart —
+    the bash layer never learned v3).
+
+    Args:
+        tokens: Every argv token given after ``migrate``, in order.
+
+    Returns:
+        True if ``tokens[0:2] == ["--layout", "v3"]`` or
+        ``tokens[0] == "--layout=v3"``.
+    """
+    first = tokens[0] if len(tokens) >= 1 else ""
+    second = tokens[1] if len(tokens) >= 2 else ""
+    return (first == "--layout" and second == "v3") or first == "--layout=v3"
+
+
+#: Filename suffixes _layout_v3_migrate maps into a run directory, in
+#: match order: `<slug>.seed.md` -> `runs/<slug>/seed.md`,
+#: `<slug>.plan.md` -> `runs/<slug>/plan.md`.
+_LAYOUT_V3_RUN_SUFFIXES = ((".seed.md", "seed.md"), (".plan.md", "plan.md"))
+
+#: The run/lane id grammar (mirrors shepherd_cli.models_run.validate_id) —
+#: a plans/ filename whose slug falls outside it is SKIPped, never moved
+#: to an invalid run directory.
+_LAYOUT_V3_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+
+
+def _layout_v3_migrate() -> int:
+    """Run the ``--layout v3`` migration: run-scoped artifacts + profiles.
+
+    NEW in v6.5.0 (no bash counterpart). Two idempotent moves, both
+    collision-safe (an existing destination is a SKIP, never an
+    overwrite), both ``git mv``-aware via :func:`_mv_file`:
+
+    1. Seeds/plans into run directories: ``docs/plans/<slug>.seed.md`` ->
+       ``runs/<slug>/seed.md`` and ``docs/plans/<slug>.plan.md`` ->
+       ``runs/<slug>/plan.md`` (legacy top-level ``plans/`` handled too).
+       A ``<slug>`` outside the run-id grammar (lowercase alphanumerics +
+       hyphens) is SKIPped — dated spec-style names stay where they are.
+    2. Styles into profile directories: ``styles/<profile>.md`` ->
+       ``profiles/<profile>/style.md`` (the v6.5.0 profiles layout;
+       ``shepherd_cli.profiles`` reads BOTH shapes, so a partial
+       migration is never a breakage). The ``styles`` DB table's
+       ``source_path`` values self-heal on the next ``style init``/
+       ``edit`` upsert — this branch stays DB-free like ``--layout v2``.
+
+    Historical reports/handoffs under ``docs/`` are NOT moved: their
+    date-prefixed names have no deterministic run mapping, and new runs
+    write ``runs/{run}/``-scoped reports going forward.
+
+    Returns:
+        Always 0 (same contract as :func:`_layout_v2_migrate`).
+    """
+    workdir = resolve_workdir()
+    typer.echo(f"shctx migrate --layout v3: workdir = {workdir}")
+
+    moved = 0
+    skipped = 0
+    created = 0
+
+    def _mv_into(src_path: str, dst_path: str) -> None:
+        nonlocal moved, skipped
+        if os.path.exists(dst_path):
+            typer.echo(f"  SKIP (dest exists): {src_path} -> {dst_path}")
+            skipped += 1
+            return
+        os.makedirs(os.path.dirname(dst_path), exist_ok=True)
+        _mv_file(workdir, src_path, dst_path)
+        typer.echo(f"  moved: {src_path} -> {dst_path}")
+        moved += 1
+
+    # 1. Seeds/plans -> runs/<slug>/.
+    for plans_rel in (os.path.join("docs", "plans"), "plans"):
+        plans_dir = os.path.join(workdir, plans_rel)
+        if not os.path.isdir(plans_dir):
+            continue
+        for name in sorted(os.listdir(plans_dir)):
+            src_path = os.path.join(plans_dir, name)
+            if not os.path.isfile(src_path):
+                continue
+            for suffix, target_name in _LAYOUT_V3_RUN_SUFFIXES:
+                if not name.endswith(suffix):
+                    continue
+                slug = name[: -len(suffix)]
+                if not _LAYOUT_V3_ID_RE.fullmatch(slug):
+                    typer.echo(f"  SKIP (slug outside run-id grammar): {src_path}")
+                    skipped += 1
+                    break
+                _mv_into(src_path, os.path.join(workdir, "runs", slug, target_name))
+                break
+
+    # 2. styles/<profile>.md -> profiles/<profile>/style.md.
+    styles_dir = os.path.join(workdir, "styles")
+    if os.path.isdir(styles_dir):
+        for name in sorted(os.listdir(styles_dir)):
+            if not name.endswith(".md"):
+                continue
+            src_path = os.path.join(styles_dir, name)
+            if not os.path.isfile(src_path):
+                continue
+            profile = name[: -len(".md")]
+            _mv_into(src_path, os.path.join(workdir, "profiles", profile, "style.md"))
+
+    # 3. Scaffold the v3 standard dirs (idempotent).
+    for rel_dir in ("runs", "profiles"):
+        dir_path = os.path.join(workdir, rel_dir)
+        if not os.path.isdir(dir_path):
+            os.makedirs(dir_path, exist_ok=True)
+            Path(os.path.join(dir_path, ".gitkeep")).touch()
+            typer.echo(f"  created: {dir_path}/")
+            created += 1
+
+    typer.echo(f"shctx migrate --layout v3: done — moved={moved} skipped={skipped} created={created}")
+    return 0
 
 
 @app.callback(invoke_without_command=True)
@@ -593,6 +712,8 @@ def migrate(
 
     if _is_layout_v2(tokens):
         exit_code = _layout_v2_migrate()
+    elif _is_layout_v3(tokens):
+        exit_code = _layout_v3_migrate()
     else:
         exit_code = _default_migrate()
 

@@ -93,6 +93,7 @@ import typer
 from tortoise import Tortoise
 
 from shepherd_cli import db
+from shepherd_cli.render import build_env
 from shepherd_cli.resolution import find_bash_shctx, resolve_workdir
 
 app = typer.Typer(
@@ -402,27 +403,28 @@ async def _fetch_metrics_async(project_id: str) -> dict[str, int]:
 # Template rendering.
 # --------------------------------------------------------------------------
 def _render_template(template_text: str, values: dict[str, str]) -> str:
-    """Substitute every ``{{KEY}}`` placeholder, bash parity with the ``awk`` pass.
+    """Render the handoff template through the ONE jinja engine (v6.5.0).
 
-    Bash renders via one ``awk`` script that does a plain ``gsub`` per
-    placeholder (``{{BRANCH}}``, ``{{DATE}}``, ..., ``{{COMMITS}}`` handled
-    with an explicit ``index()``-guarded ``sub()`` since it is the only
-    multi-line value) over the WHOLE template text, one pass, every
-    occurrence replaced. Python's ``str.replace`` (no count limit) is the
-    exact same operation for every key here.
+    Historically this was the repo's second hand-rolled render engine (a
+    naive ``str.replace`` twin of bash's ``awk gsub`` pass). Both dialects
+    are retired behind :mod:`shepherd_cli.render` (#244): the template's
+    ``{{KEY}}`` placeholders are already valid Jinja2 variable syntax, so
+    an in-memory ``from_string`` render with the same StrictUndefined
+    environment produces identical bytes for the 13-key context while
+    gaining hard missing-variable failures instead of silently-unfilled
+    placeholders.
 
     Args:
-        template_text: The raw ``handoff-template.md`` contents.
-        values: Every placeholder key (without the ``{{``/``}}`` delimiters)
-            mapped to its substitution text.
+        template_text: The raw ``handoff-template.md`` contents (the
+            skill reference file keeps working as an operator override;
+            the bundled ``templates/handoff.md.j2`` is its byte-twin).
+        values: Every placeholder key (without the ``{{``/``}}``
+            delimiters) mapped to its substitution text.
 
     Returns:
         The fully-rendered document text.
     """
-    rendered = template_text
-    for key, value in values.items():
-        rendered = rendered.replace("{{" + key + "}}", value)
-    return rendered
+    return build_env().from_string(template_text).render(**values)
 
 
 # --------------------------------------------------------------------------
