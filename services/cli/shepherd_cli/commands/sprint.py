@@ -206,13 +206,22 @@ def _run_stage(name: str, argv: list[str], verbose: bool) -> int:
         The child process's exit code (0 on success), exactly as bash's
         ``run_stage`` return value — the underlying command's exit status
         is preserved regardless of whether its output was captured or
-        suppressed.
+        suppressed. A stage argv that cannot be spawned at all (an
+        unresolvable ``SHEPHERD_SPRINT_STAGE_CMD`` override; the default
+        ``sys.executable`` prefix always resolves) returns 127, the shell
+        convention for command-not-found that bash's ``"$@"`` produced in
+        the same situation — a per-stage ``fail (rc=127)`` summary line,
+        never a traceback.
     """
     if verbose:
         typer.echo(f"─── {name} ───")
-        result = subprocess.run(argv, check=False)
-    else:
-        result = subprocess.run(argv, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        if verbose:
+            result = subprocess.run(argv, check=False)
+        else:
+            result = subprocess.run(argv, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except OSError:
+        return 127
     return result.returncode
 
 
@@ -539,13 +548,20 @@ async def _close_lanes_async(branch: str, base_argv: list[str]) -> tuple[int, in
         for lane_id in await _pending_lane_ids(project_id, branch):
             if not lane_id:
                 continue
-            result = subprocess.run(
-                [*base_argv, "close-lane", lane_id, f"--sprint={branch}", "--status=clean"],
-                check=False,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-            if result.returncode == 0:
+            try:
+                result = subprocess.run(
+                    [*base_argv, "close-lane", lane_id, f"--sprint={branch}", "--status=clean"],
+                    check=False,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                returncode = result.returncode
+            except OSError:
+                # Unspawnable runner (bad SHEPHERD_SPRINT_STAGE_CMD
+                # override) — count it as a failed lane, the same outcome
+                # bash's rc-127 close-lane invocation produced.
+                returncode = 127
+            if returncode == 0:
                 closed += 1
             else:
                 lane_failed += 1

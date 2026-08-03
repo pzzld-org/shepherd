@@ -67,7 +67,7 @@ if [[ "$(cfg_get announce_adaptation)" != "off" ]] && [[ -f "$db" ]] && command 
     # Trend (deterministic SQL; emits nothing on a healthy streak). The detector
     # needs >=3 closes, so skip the subprocess fork below that — keeps the common
     # early-history SessionStart cheap. shctx is plugin-local, never on $PATH.
-    sh_cli="$plugin_root/skills/context/scripts/shctx"
+    sh_cli="$plugin_root/bin/shepherd"
     if [[ "${n:-0}" -ge 3 && -x "$sh_cli" ]]; then
       trend=$("$sh_cli" adapt report --trends 2>/dev/null | grep -c 'TREND ALERT' || true)
       [[ "${trend:-0}" -gt 0 ]] && adapt_line+=$'\n'"  ⚠ TREND ALERT active — run: shctx adapt report --trends"
@@ -154,7 +154,7 @@ fi
 # invocation. Config-gated: [context].announce_shctx_path = on (default) | off.
 shctx_line=""
 if [[ "$(cfg_get announce_shctx_path)" != "off" ]]; then
-  shctx_path="$plugin_root/skills/context/scripts/shctx"
+  shctx_path="$plugin_root/bin/shepherd"
   if [[ -f "$shctx_path" ]]; then
     [[ -n "${CLAUDE_PLUGIN_ROOT:-}" ]] && cpr="set" || cpr="UNSET"
     shctx_line="shctx CLI → $shctx_path"$'\n'

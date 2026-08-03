@@ -27,7 +27,7 @@ runs    = ".shepherd/runs"
 [gates]
 # Plugin has no compilable language; gates are validation of structured assets.
 check  = "jq empty .claude-plugin/plugin.json .claude-plugin/marketplace.json hooks/hooks.json"
-lint   = "skills/context/scripts/shctx lint"
+lint   = "bin/shepherd lint"
 format = ""
 
 [gates.extra]

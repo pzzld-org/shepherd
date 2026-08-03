@@ -494,7 +494,7 @@ def test_wave_partial_refresh_failure_formats_g_and_a_rcs(
 def test_wave_lint_failure_exits_1(
     db_path: Path, project_id: str, stage_cli: Path, workdir: Path, call_log: Path
 ) -> None:
-    env = sprint_env(db_path, fake_plugin_root, workdir, call_log, rc={"FAKE_RC_LINT": "5"})
+    env = sprint_env(db_path, stage_cli, workdir, call_log, rc={"FAKE_RC_LINT": "5"})
     proc = run_cli(["sprint", "wave", "w1"], env)
 
     assert proc.returncode == 1
@@ -630,32 +630,83 @@ def test_close_verbose_streams_handoff_gc_lock_output(
 
 
 # --------------------------------------------------------------------------
-# _scripts_dir() failure mode.
+# _stage_base_argv() resolution (the no-bash guarantee + the test seam).
 # --------------------------------------------------------------------------
 
 
-def test_missing_bash_shctx_tooling_exits_1(db_path: Path, project_id: str, tmp_path: Path) -> None:
-    """When the bash shctx tooling cannot be located at all (no
-    CLAUDE_PLUGIN_ROOT match and no skills/context/scripts/shctx found by
-    walking up from the repo root), every pipeline is unusable — exit 1
-    with a clear stderr message rather than a stack trace."""
-    env = cli_env(db_path)
-    # Point CLAUDE_PLUGIN_ROOT somewhere with no skills/context/scripts/shctx,
-    # and run from an empty cwd outside any git repo so the walk-up fallback
-    # in find_bash_shctx() also fails to find the real tree.
-    empty_root = tmp_path / "no-plugin-here"
-    empty_root.mkdir()
-    env["CLAUDE_PLUGIN_ROOT"] = str(empty_root)
-    env["SHEPHERD_WORKDIR"] = str(tmp_path / "workdir")
+def _resolve_stage_base_argv(env: dict[str, str]) -> dict[str, object]:
+    """Resolve ``sprint._stage_base_argv()`` in a fresh ``${PY}`` subprocess.
 
+    Mirrors ``conftest.resolve_fields``'s pattern (a ``-c`` snippet, never
+    an import into the pytest process) so the environment the function
+    reads — ``SHEPHERD_SPRINT_STAGE_CMD`` present or absent — is exactly
+    what the test built, with no pytest bleed-through.
+    """
+    code = (
+        "import json, sys\n"
+        "from shepherd_cli.commands import sprint\n"
+        "print(json.dumps({'argv': sprint._stage_base_argv(), 'exe': sys.executable}))\n"
+    )
     proc = subprocess.run(
-        [PY, "-m", "shepherd_cli", "sprint", "open", "feature-x"],
+        [PY, "-c", code],
         env=env,
-        cwd=str(tmp_path),
         capture_output=True,
         text=True,
         timeout=15,
     )
+    assert proc.returncode == 0, proc.stderr
+    return json.loads(proc.stdout)
+
+
+def test_default_stage_argv_is_this_interpreter_never_bash() -> None:
+    """With no SHEPHERD_SPRINT_STAGE_CMD set, every stage is spawned as
+    ``[sys.executable, "-m", "shepherd_cli"]`` — a child of the invoking
+    interpreter running this same CLI's native subcommands. There is no
+    bash, no cmd_*.sh, and no plugin-root lookup left in the call path
+    (the old ``_scripts_dir()``/``find_bash_shctx`` failure mode is
+    structurally gone, which is why this file no longer has a
+    missing-tooling exit-1 test)."""
+    env = clean_env_dict()
+    env.pop("SHEPHERD_SPRINT_STAGE_CMD", None)
+
+    data = _resolve_stage_base_argv(env)
+
+    assert data["argv"] == [data["exe"], "-m", "shepherd_cli"]
+
+
+def test_unspawnable_stage_cmd_degrades_to_rc_127_per_stage(
+    db_path: Path, project_id: str, workdir: Path, call_log: Path, tmp_path: Path
+) -> None:
+    """A stage argv that cannot be spawned at all (here: an override
+    pointing at a nonexistent binary) must degrade to the shell's
+    command-not-found convention — every stage reports ``fail (rc=127)``
+    in the summary and the pipeline exits 1 — never a Python traceback.
+    Bash produced exactly this shape when a ``cmd_*.sh`` was missing
+    (``"$@"`` -> rc 127 per stage). The default runner is immune
+    (``sys.executable`` always resolves); only the seam can hit this."""
+    env = cli_env(db_path)
+    env["SHEPHERD_SPRINT_STAGE_CMD"] = str(tmp_path / "no-such-binary")
+    env["SHEPHERD_WORKDIR"] = str(workdir)
+    env["CALL_LOG"] = str(call_log)
+
+    proc = run_cli(["sprint", "open", "feature-x"], env)
 
     assert proc.returncode == 1
-    assert "ERROR: bash shctx tooling not found" in proc.stderr
+    assert "Traceback" not in proc.stderr
+    assert "  lock:    fail (rc=127)" in proc.stdout
+    assert "  refresh: fail (rc=127)" in proc.stdout
+    assert "  lint:    fail (rc=127)" in proc.stdout
+    assert "  status:  fail (rc=127)" in proc.stdout
+    assert read_calls(call_log) == []
+
+
+def test_stage_cmd_override_is_shlex_split() -> None:
+    """SHEPHERD_SPRINT_STAGE_CMD replaces the default prefix wholesale and
+    is parsed with shlex (quoted segments with spaces survive intact) —
+    the contract sprint_env()'s quoting relies on."""
+    env = clean_env_dict()
+    env["SHEPHERD_SPRINT_STAGE_CMD"] = "/opt/py '/tmp/some dir/stub.py'"
+
+    data = _resolve_stage_base_argv(env)
+
+    assert data["argv"] == ["/opt/py", "/tmp/some dir/stub.py"]

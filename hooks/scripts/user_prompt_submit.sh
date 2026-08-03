@@ -99,7 +99,7 @@ case "$subcmd" in
     if [[ -f "$db" ]]; then
       # Fire shctx status; cap output at 2KB. shctx status currently emits
       # plain text — adequate for additionalContext consumption.
-      status_out=$(bash "${PLUGIN_ROOT}/skills/context/scripts/shctx" status 2>/dev/null || true)
+      status_out=$("${PLUGIN_ROOT}/bin/shepherd" status 2>/dev/null || true)
       if [[ -n "$status_out" ]]; then
         # Tail to 2KB if longer to keep within UserPromptSubmit's 30s budget.
         byte_count=$(printf '%s' "$status_out" | wc -c | tr -d ' ')

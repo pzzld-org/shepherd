@@ -26,8 +26,8 @@ cfg="$(cfg_get pane_cleanup | grep -oE '(on|off)' | tail -1 || true)"
 [[ "$MODE" == "off" ]] && exit 0
 
 # Delegate to the single cleanup implementation. shctx lives two dirs up from
-# hooks/scripts/ at skills/context/scripts/shctx (CLAUDE_PLUGIN_ROOT-relative).
-SHCTX="${CLAUDE_PLUGIN_ROOT:-$HERE/../..}/skills/context/scripts/shctx"
+# hooks/scripts/ at bin/shepherd (CLAUDE_PLUGIN_ROOT-relative).
+SHCTX="${CLAUDE_PLUGIN_ROOT:-$HERE/../..}/bin/shepherd"
 [[ -f "$SHCTX" ]] || exit 0
 bash "$SHCTX" panes prune --closed-only >/dev/null 2>&1 || true
 exit 0
