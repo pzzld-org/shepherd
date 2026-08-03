@@ -13,9 +13,20 @@ name: claude-review
 # filter is a job-level `if` on github.head_ref. Draft PRs are skipped until
 # marked ready.
 
+# DISABLED (2026-08-03, operator decision). The automatic pull_request
+# triggers are commented out below because `anthropic_api_key` bills against
+# the Anthropic API separately from a Claude subscription. Left in-tree,
+# manual-only, so nothing fires and nothing is billed.
+#
+# To re-enable: uncomment the pull_request block. Before doing so, check
+# whether the action's subscription-backed auth input (an OAuth token rather
+# than `anthropic_api_key`) covers this use — that is the path that would
+# avoid separate API billing, and it should be verified against the current
+# claude-code-action docs rather than assumed.
 on:
-  pull_request:
-    types: [opened, synchronize, ready_for_review]
+  workflow_dispatch:
+  # pull_request:
+  #   types: [opened, synchronize, ready_for_review]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
