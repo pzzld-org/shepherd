@@ -10,21 +10,26 @@ not a CRUD surface of its own.
 * ``close <branch>``  finale:    close-lane (each known lane) -> handoff ->
   worktree gc -> lock release
 
-Every stage but the lane-closure loop in ``close`` is a bash sibling script
-this module SHELLS OUT to (``cmd_lock.sh``, ``cmd_refresh.sh``,
-``cmd_lint.sh``, ``cmd_status.sh``, ``cmd_handoff.sh``, ``cmd_worktree.sh``,
-``cmd_close-lane.sh``) — none of those subcommands are ported to this
-Python CLI yet, and ``cmd_sprint.sh`` itself only ever coordinates them via
+Every stage but the lane-closure loop in ``close`` is a sibling
+subcommand of THIS CLI (``lock``, ``refresh``, ``lint``, ``status``,
+``handoff``, ``worktree``, ``close-lane`` — all natively ported) that this
+module runs as a child process of THIS interpreter:
+``[sys.executable, "-m", "shepherd_cli", "lock", "acquire", ...]`` and so
+on. No stage touches the retired bash ``cmd_*.sh`` layer. The bash
+original, ``cmd_sprint.sh``, only ever coordinated its stages via
 ``bash "$HERE/cmd_*.sh" ...`` subprocess calls, never by inlining their
-logic. This port mirrors that architecture exactly: it locates the sibling
-scripts via :func:`shepherd_cli.resolution.find_bash_shctx` (same
-directory as the ``shctx`` dispatcher) and runs them the same way bash's
-own ``run_stage`` helper does — output suppressed by default, or
-inherited/streamed when ``--verbose``/``-v`` is given.
+logic; this port keeps that process-per-stage architecture (each stage
+owns its own DB lifespan, its own exit code, its own stdout/stderr) and
+runs each child the same way bash's own ``run_stage`` helper did —
+output suppressed by default, or inherited/streamed when
+``--verbose``/``-v`` is given. The argv prefix every stage is spawned
+with comes from :func:`_stage_base_argv`, which also documents the
+``SHEPHERD_SPRINT_STAGE_CMD`` dependency-injection seam the gate tests
+use in place of the old fake-``cmd_*.sh`` trick.
 
 The ONE piece of this pipeline that touches the database directly is
 ``close``'s first stage: finding every ``lane_closures`` row tied to the
-closing sprint branch that still needs ``cmd_close-lane.sh`` invoked on it
+closing sprint branch that still needs ``close-lane`` invoked on it
 (see :mod:`shepherd_cli.models_sprint`). That query — and the
 ``sqlite_master`` introspection bash uses to defend against an unmigrated
 DB — is the only part of this module that opens a Tortoise connection;
@@ -47,7 +52,9 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import shlex
 import subprocess
+import sys
 import time
 
 import typer
@@ -55,7 +62,7 @@ from tortoise import Tortoise
 
 from shepherd_cli import db
 from shepherd_cli.models_sprint import LaneClosure
-from shepherd_cli.resolution import find_bash_shctx, resolve_workdir
+from shepherd_cli.resolution import resolve_workdir
 
 app = typer.Typer(
     no_args_is_help=False,
@@ -121,33 +128,39 @@ def help_() -> None:
     typer.echo(_USAGE)
 
 
-def _scripts_dir() -> str:
-    """Resolve the directory containing the sibling ``cmd_*.sh`` scripts.
+def _stage_base_argv() -> list[str]:
+    """Resolve the argv prefix every pipeline stage is spawned with.
 
-    Mirrors ``cmd_sprint.sh``'s own ``HERE="$(cd "$(dirname "$0")" && pwd)"``
-    — the directory holding ``cmd_sprint.sh`` itself is the same directory
-    that holds ``cmd_lock.sh``, ``cmd_refresh.sh``, ``cmd_lint.sh``,
-    ``cmd_status.sh``, ``cmd_handoff.sh``, ``cmd_worktree.sh``, and
-    ``cmd_close-lane.sh``. This CLI locates it via
-    :func:`shepherd_cli.resolution.find_bash_shctx` (the ``shctx``
-    dispatcher lives in that same ``scripts/`` directory) rather than
-    hard-coding a path, so it resolves the same way under
-    ``CLAUDE_PLUGIN_ROOT`` or a plain repo checkout.
+    Successor to the retired ``_scripts_dir()``/``find_bash_shctx``
+    resolution (the bash ``skills/context/scripts/`` layer is gone):
+    stages are sibling subcommands of this very CLI, run as child
+    processes of THIS interpreter — ``[sys.executable, "-m",
+    "shepherd_cli"]`` plus the stage's own tokens. That preserves
+    ``cmd_sprint.sh``'s process-per-stage architecture (independent exit
+    codes, independent DB lifespans, per-stage output suppression) with
+    no bash anywhere in the call path, and no PATH/plugin-root lookup
+    that could fail — which is why this function, unlike ``_scripts_dir``
+    before it, has no error branch at all.
+
+    The ``SHEPHERD_SPRINT_STAGE_CMD`` environment variable, when set
+    non-empty, REPLACES the default prefix (parsed with
+    :func:`shlex.split`). It is a dependency-injection seam for the gate
+    tests (``tests/test_sprint.py``), which substitute a tiny
+    deterministic stand-in stage CLI for the real subcommands — the
+    successor to the old tests' trick of pointing ``CLAUDE_PLUGIN_ROOT``
+    at a directory of fake ``cmd_*.sh`` scripts (the real stages are not
+    gate-testable: ``refresh --scope=github`` talks to GitHub and
+    ``worktree gc`` runs real git plumbing). Production invocations never
+    set it.
 
     Returns:
-        The absolute path to ``skills/context/scripts``.
-
-    Raises:
-        typer.Exit: code 1, with a stderr message, if the bash ``shctx``
-            tooling cannot be located at all — every stage of every sprint
-            pipeline shells out to it, so there is nothing useful this
-            command can do without it.
+        The argv prefix a stage's subcommand tokens are appended to,
+        e.g. ``["/venv/bin/python", "-m", "shepherd_cli"]``.
     """
-    shctx_path = find_bash_shctx()
-    if shctx_path is None:
-        typer.echo("ERROR: bash shctx tooling not found (skills/context/scripts/)", err=True)
-        raise typer.Exit(code=1)
-    return os.path.dirname(shctx_path)
+    override = os.environ.get("SHEPHERD_SPRINT_STAGE_CMD", "")
+    if override.strip():
+        return shlex.split(override)
+    return [sys.executable, "-m", "shepherd_cli"]
 
 
 def _now_s() -> int:
@@ -180,7 +193,9 @@ def _run_stage(name: str, argv: list[str], verbose: bool) -> int:
         name: Human label for the stage header, printed only when
             ``verbose`` (bash: the ``echo "─── $name ───"`` line).
         argv: The full argv to execute, e.g.
-            ``["bash", "<scripts>/cmd_lock.sh", "acquire", "--mode=sprint"]``.
+            ``[*_stage_base_argv(), "lock", "acquire", "--mode=sprint"]``
+            (this interpreter running the sibling native subcommand —
+            never bash).
         verbose: When True, print the stage header and let the child
             process inherit this process's stdout/stderr (bash: run
             ``"$@"`` directly, unredirected). When False, discard the
@@ -226,21 +241,21 @@ def _open_impl(branch: str, verbose: bool) -> None:
             0 && rc_status == 0 ))`` as the case branch's (and therefore
             the whole script's) final exit status.
     """
-    scripts_dir = _scripts_dir()
+    base = _stage_base_argv()
     t0 = _now_s()
 
     rc_lock = _run_stage(
         "lock acquire",
-        ["bash", os.path.join(scripts_dir, "cmd_lock.sh"), "acquire", "--mode=sprint"],
+        [*base, "lock", "acquire", "--mode=sprint"],
         verbose,
     )
     rc_refresh = _run_stage(
         "refresh --all",
-        ["bash", os.path.join(scripts_dir, "cmd_refresh.sh"), "--scope=all"],
+        [*base, "refresh", "--scope=all"],
         verbose,
     )
-    rc_lint = _run_stage("lint", ["bash", os.path.join(scripts_dir, "cmd_lint.sh")], verbose)
-    rc_status = _run_stage("status", ["bash", os.path.join(scripts_dir, "cmd_status.sh")], verbose)
+    rc_lint = _run_stage("lint", [*base, "lint"], verbose)
+    rc_status = _run_stage("status", [*base, "status"], verbose)
 
     elapsed = _now_s() - t0
     typer.echo(f"shctx sprint open {branch}: elapsed={elapsed}s")
@@ -312,21 +327,20 @@ def _wave_impl(wave_id: str, all_scope: bool, verbose: bool) -> None:
         typer.Exit: code 0 if every stage succeeded, else code 1 — bash
             parity with ``(( rc_g == 0 && rc_a == 0 && rc_lint == 0 ))``.
     """
-    scripts_dir = _scripts_dir()
-    refresh_script = os.path.join(scripts_dir, "cmd_refresh.sh")
+    base = _stage_base_argv()
     t0 = _now_s()
 
     rc_g = 0
     rc_a = 0
     if all_scope:
         scope = "all"
-        rc_g = _run_stage("refresh --all", ["bash", refresh_script, "--scope=all"], verbose)
+        rc_g = _run_stage("refresh --all", [*base, "refresh", "--scope=all"], verbose)
     else:
         scope = "github,artifacts"
-        rc_g = _run_stage("refresh github", ["bash", refresh_script, "--scope=github"], verbose)
-        rc_a = _run_stage("refresh artifacts", ["bash", refresh_script, "--scope=artifacts"], verbose)
+        rc_g = _run_stage("refresh github", [*base, "refresh", "--scope=github"], verbose)
+        rc_a = _run_stage("refresh artifacts", [*base, "refresh", "--scope=artifacts"], verbose)
 
-    rc_lint = _run_stage("lint", ["bash", os.path.join(scripts_dir, "cmd_lint.sh")], verbose)
+    rc_lint = _run_stage("lint", [*base, "lint"], verbose)
 
     elapsed = _now_s() - t0
     typer.echo(f"shctx sprint wave {wave_id}: scope={scope} elapsed={elapsed}s")
@@ -494,36 +508,39 @@ async def _pending_lane_ids(project_id: str, branch: str) -> list[str]:
     return [row.lane_id for row in rows]
 
 
-async def _close_lanes_async(branch: str, scripts_dir: str) -> tuple[int, int]:
+async def _close_lanes_async(branch: str, base_argv: list[str]) -> tuple[int, int]:
     """Close every known lane tied to this sprint branch (``close`` stage 1).
 
     Bash parity with ``cmd_sprint.sh``'s ``close`` branch, step 1: gated on
     a non-empty project id AND the ``lane_closures`` table existing; for
-    each matching lane id, shells out to ``cmd_close-lane.sh <lane-id>
-    --sprint=<branch> --status=clean`` with its output always discarded
+    each matching lane id, runs the native ``close-lane`` sibling
+    subcommand as a child of this interpreter (``<base_argv> close-lane
+    <lane-id> --sprint=<branch> --status=clean`` — bash ran
+    ``cmd_close-lane.sh`` here) with its output always discarded
     (bash: ``>/dev/null 2>&1``, unconditionally — NOT gated on
     ``--verbose`` the way the other stages' ``run_stage`` calls are).
 
     Args:
         branch: The sprint branch being closed.
-        scripts_dir: Directory containing ``cmd_close-lane.sh``.
+        base_argv: The stage argv prefix (:func:`_stage_base_argv`'s
+            return value, resolved once by the caller for the whole
+            pipeline).
 
     Returns:
-        ``(closed, lane_failed)`` — counts of lanes whose
-        ``cmd_close-lane.sh`` invocation exited 0 vs. nonzero,
-        respectively. ``(0, 0)`` when there is no project id yet, the
-        ``lane_closures`` table doesn't exist, or no lane matches.
+        ``(closed, lane_failed)`` — counts of lanes whose ``close-lane``
+        invocation exited 0 vs. nonzero, respectively. ``(0, 0)`` when
+        there is no project id yet, the ``lane_closures`` table doesn't
+        exist, or no lane matches.
     """
     project_id = _read_project_id()
     closed = 0
     lane_failed = 0
     if project_id and await _lane_closures_table_exists():
-        close_lane_script = os.path.join(scripts_dir, "cmd_close-lane.sh")
         for lane_id in await _pending_lane_ids(project_id, branch):
             if not lane_id:
                 continue
             result = subprocess.run(
-                ["bash", close_lane_script, lane_id, f"--sprint={branch}", "--status=clean"],
+                [*base_argv, "close-lane", lane_id, f"--sprint={branch}", "--status=clean"],
                 check=False,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
@@ -556,19 +573,19 @@ async def _close_async(branch: str, verbose: bool) -> None:
             ``(( rc_h == 0 && rc_gc == 0 && rc_l == 0 && lane_failed == 0
             ))``.
     """
-    scripts_dir = _scripts_dir()
+    base = _stage_base_argv()
     t0 = _now_s()
 
     async with db.lifespan():
-        closed, lane_failed = await _close_lanes_async(branch, scripts_dir)
+        closed, lane_failed = await _close_lanes_async(branch, base)
 
     rc_h = _run_stage(
         "handoff",
-        ["bash", os.path.join(scripts_dir, "cmd_handoff.sh"), "create", f"--branch={branch}"],
+        [*base, "handoff", "create", f"--branch={branch}"],
         verbose,
     )
-    rc_gc = _run_stage("worktree gc", ["bash", os.path.join(scripts_dir, "cmd_worktree.sh"), "gc"], verbose)
-    rc_l = _run_stage("lock release", ["bash", os.path.join(scripts_dir, "cmd_lock.sh"), "release"], verbose)
+    rc_gc = _run_stage("worktree gc", [*base, "worktree", "gc"], verbose)
+    rc_l = _run_stage("lock release", [*base, "lock", "release"], verbose)
 
     elapsed = _now_s() - t0
     typer.echo(f"shctx sprint close {branch}: elapsed={elapsed}s")
