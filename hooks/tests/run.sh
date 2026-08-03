@@ -580,5 +580,15 @@ else
   fails=$((fails+1))
 fi
 
+echo "== test_config_precedence.sh (v6.4.2 — .shepherd/.artifacts config precedence, bash side) =="
+total=$((total+1))
+if cfgp_out=$(bash "$TESTS_DIR/test_config_precedence.sh" 2>&1); then
+  printf '  PASS  %s\n' "config-precedence-namespace-first"
+else
+  printf '  FAIL  %-50s\n' "config-precedence"
+  printf '%s\n' "$cfgp_out" | sed 's/^/        /'
+  fails=$((fails+1))
+fi
+
 echo "—— $((total-fails))/$total passed ——"
 exit "$fails"
