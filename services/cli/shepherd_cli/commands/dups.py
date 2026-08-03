@@ -14,29 +14,45 @@ Three subcommands, mirrored exactly:
 
 **PURE SUBPROCESS-ORCHESTRATION + FILE, NO ORM.** Exactly like
 ``cmd_dups.sh`` itself, this module never runs the shape parse / weighted-
-Jaccard similarity / union-find clustering logic in Python — that entire
-engine already exists, byte-for-byte, in the sibling stdlib script
-``skills/context/scripts/dups-core.py`` (pure ``argparse`` + ``re`` + a
-hand-rolled Rust brace/generic-aware scanner; no build step). ``cmd_dups.sh``
-itself does only four things: config resolution, git-aware ``*.rs`` file
-enumeration, argv construction, and JSON-registry curation via ``jq`` — this
-port mirrors that division of labor precisely, locating ``dups-core.py`` via
-:func:`shepherd_cli.resolution.find_bash_shctx` (same directory as the
-``shctx`` dispatcher, exactly like :mod:`shepherd_cli.commands.sync`'s
-``_scripts_dir()``) and running it as a real ``python3`` subprocess with the
-SAME argv shape bash builds. Reimplementing the parser/clusterer in this
-package would risk silent behavioral drift from the one true engine bash
-(and the PreToolUse hook, and ``dups check``'s own authoring gate) already
-depend on — hard rule #9's "subprocess-orchestration" shape, generalized
-from "shells to a sibling ``shctx`` subcommand" to "shells to a sibling
-stdlib script", which is what ``cmd_dups.sh`` itself actually does.
+Jaccard similarity / union-find clustering logic inline — that entire
+engine lives, byte-for-byte, in the package-resident stdlib module
+:mod:`shepherd_cli.dups_core` (pure ``argparse`` + ``re`` + a hand-rolled
+Rust brace/generic-aware scanner; no build step), relocated verbatim from
+the retired ``skills/context/scripts/dups-core.py``. ``cmd_dups.sh``
+itself did only four things: config resolution, git-aware ``*.rs`` file
+enumeration, argv construction, and JSON-registry curation via ``jq`` —
+this port mirrors that division of labor precisely, running the engine as
+a subprocess of THIS interpreter (``[sys.executable, "-m",
+"shepherd_cli.dups_core", ...]``, see :func:`_core_argv`) with the SAME
+argv shape bash built for ``python3 dups-core.py``. No bash, no ``PATH``
+lookup, no path resolution into the retired ``skills/context/scripts/``
+tree. The engine stays one process boundary away (rather than an
+in-process ``main()`` call) because bash's FD contracts are load-bearing
+here: ``scan`` pipes the file list to the child's stdin while ``check
+--stdin`` hands the child THIS process's own inherited stdin, and
+``scan --quiet`` must silence the ENGINE's stdout while keeping this
+process's stderr — subprocess plumbing reproduces all three exactly.
+One deliberate parity divergence: ``cmd_dups.sh``'s ``require_python()``
+fail-open branch (``command -v python3`` missing -> stderr notice, exit 0)
+is GONE, structurally unreachable — the engine now rides ``sys.executable``,
+the very interpreter already running this command, so "no python3" cannot
+happen without this process not existing either. ``scan``/``check``/
+``registry update`` therefore run the real engine even on a ``PATH`` with
+no ``python3`` at all (the tests pin this stronger behavior down).
+Reimplementing the parser/clusterer inline in this module instead would
+risk silent behavioral drift from the one true engine the PreToolUse hook
+(``hooks/scripts/dups_write_guard.sh`` shelling ``shepherd dups check``,
+exit 5 contract) and ``dups check``'s own authoring gate already depend
+on — hard rule #9's "subprocess-orchestration" shape, generalized from
+"shells to a sibling ``shctx`` subcommand" to "runs the sibling engine
+module", which is what ``cmd_dups.sh`` itself effectively did.
 
 **NO ``models_dups.py``.** ``index_struct_shapes`` (migration
 ``0015_struct_shapes.sql``) is real, and ``scan --update``/``registry
 update`` DO end up writing rows into it — but every one of those writes
-happens INSIDE the ``dups-core.py`` subprocess's own ``persist_shapes()``
-(a raw ``sqlite3`` connection dups-core.py opens itself, with its own
-self-healing ``CREATE TABLE IF NOT EXISTS``), never through a Tortoise
+happens INSIDE the ``shepherd_cli.dups_core`` subprocess's own
+``persist_shapes()`` (a raw ``sqlite3`` connection the engine opens
+itself, with its own self-healing ``CREATE TABLE IF NOT EXISTS``), never through a Tortoise
 connection this module opens. This module therefore imports neither
 :mod:`shepherd_cli.db` nor any Tortoise model and opens no
 ``db.lifespan()`` — the exact same "a subprocess-orchestration command
@@ -75,9 +91,9 @@ raw ``list[str]`` with no Click-level arity checks) — this module owns
 framework-level arg checking.
 
 Timestamps: N/A at this layer. ``index_struct_shapes.refreshed_at`` (epoch
-SECONDS, ``int(time.time())``) is stamped entirely inside ``dups-core.py``'s
-own ``persist_shapes()`` — this module never constructs or reads that
-column itself.
+SECONDS, ``int(time.time())``) is stamped entirely inside
+``shepherd_cli.dups_core``'s own ``persist_shapes()`` — this module never
+constructs or reads that column itself.
 """
 
 from __future__ import annotations
@@ -85,13 +101,13 @@ from __future__ import annotations
 import json
 import os
 import re
-import shutil
 import subprocess
+import sys
 
 import typer
 from pydantic import BaseModel, ConfigDict, Field
 
-from shepherd_cli.resolution import find_bash_shctx, resolve_db_path, resolve_repo_root, resolve_workdir
+from shepherd_cli.resolution import resolve_db_path, resolve_repo_root, resolve_workdir
 
 app = typer.Typer(
     add_completion=False,
@@ -166,8 +182,8 @@ class DupsRegistry(BaseModel):
     Mirrors ``cmd_dups.sh``'s ``_read_registry``/``_write_registry`` shape
     exactly: a JSON object with a schema ``version``, a concept→canonical
     pin map, and a DO-NOT-MERGE allow-list of intentional-twin pairs.
-    ``dups-core.py``'s own ``_read_registry`` (the corpus-matching side)
-    reads the identical shape.
+    :mod:`shepherd_cli.dups_core`'s own ``_read_registry`` (the
+    corpus-matching side) reads the identical shape.
 
     Attributes:
         version: Schema version tag. Always ``1`` for a freshly-scaffolded
@@ -181,7 +197,7 @@ class DupsRegistry(BaseModel):
             :func:`_registry_allow`).
         allow: DO-NOT-MERGE pairs, each a two-element ``[A, B]`` list of
             ``package::Type`` strings (order-insensitive when matched by
-            ``dups-core.py``'s own ``_allow_listed``, but the ARRAY itself
+            ``shepherd_cli.dups_core``'s own ``_allow_listed``, but the ARRAY itself
             preserves whatever order each element was stored/sorted in).
     """
 
@@ -286,8 +302,8 @@ def _cfg_default(key: str, default: str, repo_root: str) -> str:
     Returns:
         The resolved (or default) value, as a raw string -- never parsed
         to float/int here; every threshold/weight/count flows straight
-        through to ``dups-core.py``'s own ``argparse`` as a CLI arg string,
-        exactly as bash passes it.
+        through to ``shepherd_cli.dups_core``'s own ``argparse`` as a CLI
+        arg string, exactly as bash passed it.
     """
     value = _cfg_get(key, repo_root)
     return value if value else default
@@ -352,50 +368,31 @@ def _registry_path(repo_root: str) -> str:
     return f"{resolve_workdir()}/dups-registry.json"
 
 
-def _scripts_dir() -> str:
-    """Resolve the directory containing ``dups-core.py`` (and the ``shctx`` dispatcher).
+def _core_argv() -> list[str]:
+    """Build the argv prefix that runs the engine: this interpreter's own module.
 
-    Bash parity with ``cmd_dups.sh``'s own ``HERE="$(cd "$(dirname "$0")"
-    && pwd)"`` -- the directory holding ``cmd_dups.sh`` itself is the same
-    directory that holds ``dups-core.py``. Located via
-    :func:`shepherd_cli.resolution.find_bash_shctx`, mirroring
-    :mod:`shepherd_cli.commands.sync`'s identically-named helper.
+    Replaces bash's ``"$PY" "$HERE/dups-core.py"`` (and this port's former
+    ``find_bash_shctx()``-derived path into ``skills/context/scripts/``):
+    the engine is now the package-resident :mod:`shepherd_cli.dups_core`,
+    run as ``[sys.executable, "-m", "shepherd_cli.dups_core", ...]`` -- a
+    child process of THIS interpreter, deterministic, with no bash, no
+    ``PATH`` lookup for ``python3``, and no dependency on the retired
+    ``skills/context/scripts/`` tree (same technique as
+    :mod:`shepherd_cli.commands.sync`'s ``_stage_argv()``). The child
+    inherits this process's environment and importability of
+    ``shepherd_cli`` (venv install, ``bin/shepherd``'s ``PYTHONPATH``, or
+    the test harness's own) exactly as bash's child inherited its env.
 
-    Returns:
-        The absolute path to ``skills/context/scripts``.
-
-    Raises:
-        typer.Exit: code 1, with a stderr message, if the bash ``shctx``
-            tooling cannot be located at all -- ``scan``/``check``/
-            ``registry update`` all shell out to ``dups-core.py`` in that
-            same directory, so there is nothing useful this command can do
-            without it.
-    """
-    shctx_path = find_bash_shctx()
-    if shctx_path is None:
-        typer.echo("ERROR: bash shctx tooling not found (skills/context/scripts/)", err=True)
-        raise typer.Exit(code=1)
-    return os.path.dirname(shctx_path)
-
-
-def _require_python() -> str | None:
-    """Locate ``python3`` on ``PATH``, bash-parity with ``require_python()``.
-
-    Bash: ``PY="$(command -v python3 || true)"`` at module scope, then
-    ``require_python() { [[ -n "$PY" ]] || { echo "... skipping
-    (fail-open)." >&2; exit 0; } }`` called at the top of every subcommand
-    that needs it (``scan``, ``check``, ``registry update`` -- NOT the pure
-    JSON-curation registry actions, which never touch ``dups-core.py`` at
-    all).
+    Because ``sys.executable`` is by definition the interpreter already
+    running this command, bash's ``require_python()`` fail-open branch has
+    no analog here -- there is no "python3 missing" state left to fail
+    open on (see the module docstring's parity-divergence note).
 
     Returns:
-        The resolved ``python3`` executable path, or ``None`` if not found
-        on ``PATH`` -- the caller is responsible for printing the
-        fail-open stderr message and returning exit code 0, exactly like
-        bash's ``require_python`` does inline (this helper itself never
-        raises/exits, so it stays a plain, testable lookup).
+        The argv prefix ready to extend with the engine subcommand and its
+        flags, e.g. ``[..., "scan", "--files-stdin", ...]``.
     """
-    return shutil.which("python3")
+    return [sys.executable, "-m", "shepherd_cli.dups_core"]
 
 
 # --------------------------------------------------------------------------
@@ -454,16 +451,16 @@ def _list_rust_files(repo_root: str) -> list[str]:
 
 
 def _rust_files_stdin(repo_root: str) -> str:
-    """Build the newline-joined ``*.rs`` file list ``dups-core.py --files-stdin`` expects.
+    """Build the newline-joined ``*.rs`` file list the engine's ``--files-stdin`` expects.
 
     Args:
         repo_root: The resolved repository root.
 
     Returns:
         Every listed file path, one per line, with a trailing newline
-        (empty string if no files matched) -- exactly what
-        ``list_rust_files | python3 dups-core.py ...`` pipes to the
-        subprocess's stdin.
+        (empty string if no files matched) -- exactly what bash's
+        ``list_rust_files | python3 dups-core.py ...`` pipeline piped to
+        the engine's stdin, now fed via ``subprocess.run(..., input=)``.
     """
     files = _list_rust_files(repo_root)
     return "\n".join(files) + ("\n" if files else "")
@@ -604,36 +601,28 @@ def _do_scan(rest: list[str]) -> int:
     """Run ``shctx dups scan``: census, cluster, report (and optionally persist).
 
     Bash parity with ``cmd_dups.sh``'s ``scan)`` case arm: resolves
-    ``$db``/``$pid``, builds ``dups-core.py``'s argv, pipes the git-aware
-    ``*.rs`` file list to its stdin from a subshell ``cd``'d to the repo
-    root, and returns its exit code verbatim (0 normally, 3 on a
-    ``--fail-on`` gate failure, or ``dups-core.py``'s own ``argparse``
-    error code for a malformed ``--fail-on`` choice).
+    ``$db``/``$pid``, builds the engine's argv (see :func:`_core_argv` --
+    the SAME argv shape bash built for ``python3 dups-core.py``), pipes the
+    git-aware ``*.rs`` file list to its stdin from a child ``cd``'d to the
+    repo root, and returns its exit code verbatim (0 normally, 3 on a
+    ``--fail-on`` gate failure, or the engine's own ``argparse`` error
+    code for a malformed ``--fail-on`` choice). Bash's python3-missing
+    fail-open branch is gone -- the engine rides ``sys.executable``.
 
     Args:
         rest: Every token after ``dups scan``.
 
     Returns:
-        ``dups-core.py``'s subprocess exit code. 0 if ``python3`` is
-        unavailable (bash's fail-open contract) -- NOT an error.
+        The engine subprocess's exit code.
     """
     repo_root = resolve_repo_root()
     scan_args = _parse_scan_args(rest, repo_root)
-
-    python_bin = _require_python()
-    if python_bin is None:
-        typer.echo("shctx dups: python3 not found — skipping (fail-open).", err=True)
-        return 0
-
-    scripts_dir = _scripts_dir()
-    core = os.path.join(scripts_dir, "dups-core.py")
 
     db_path = resolve_db_path()
     project_id = _read_project_id()
 
     argv = [
-        python_bin,
-        core,
+        *_core_argv(),
         "scan",
         "--files-stdin",
         "--threshold",
@@ -770,29 +759,23 @@ def _do_check(rest: list[str]) -> int:
 
     Bash parity with ``cmd_dups.sh``'s ``check)`` case arm: normalizes
     ``--as`` to repo-relative when it starts with the repo root (so
-    self-exclusion matches the corpus), then runs ``dups-core.py`` either
-    reading the candidate's content from THIS process's own inherited
-    stdin (``--stdin``) or from the given file path positionally.
+    self-exclusion matches the corpus), then runs the engine (see
+    :func:`_core_argv`) either reading the candidate's content from THIS
+    process's own inherited stdin (``--stdin`` -- the PreToolUse hook's
+    invocation shape, whose exit-5 contract this preserves verbatim) or
+    from the given file path positionally. Bash's python3-missing
+    fail-open branch is gone -- the engine rides ``sys.executable``.
 
     Args:
         rest: Every token after ``dups check``.
 
     Returns:
-        ``dups-core.py``'s subprocess exit code (0 normally, 5 when a
-        match at or above ``--block-threshold`` exists). 0 if ``python3``
-        is unavailable (fail-open). 1, with a stderr usage message, if
-        neither ``--stdin`` nor a file argument was given.
+        The engine subprocess's exit code (0 normally, 5 when a match at
+        or above ``--block-threshold`` exists). 1, with a stderr usage
+        message, if neither ``--stdin`` nor a file argument was given.
     """
     repo_root = resolve_repo_root()
     check_args = _parse_check_args(rest, repo_root)
-
-    python_bin = _require_python()
-    if python_bin is None:
-        typer.echo("shctx dups: python3 not found — skipping (fail-open).", err=True)
-        return 0
-
-    scripts_dir = _scripts_dir()
-    core = os.path.join(scripts_dir, "dups-core.py")
 
     db_path = resolve_db_path()
     project_id = _read_project_id()
@@ -804,8 +787,7 @@ def _do_check(rest: list[str]) -> int:
             as_path = as_path[len(prefix) :]
 
     argv = [
-        python_bin,
-        core,
+        *_core_argv(),
         "check",
         "--threshold",
         check_args.threshold,
@@ -1059,35 +1041,28 @@ def _registry_unpin(args: list[str], repo_root: str) -> int:
 def _registry_update(repo_root: str) -> int:
     """``shctx dups registry update``.
 
-    Bash parity with ``cmd_dups.sh``'s ``update)`` arm: runs a JSON
-    ``dups-core.py scan`` (no ``--update``/``--db``/``--project-id`` --
-    this action never persists to ``index_struct_shapes``, only reads the
-    scan's clusters), then merges a canonical pin for every cluster whose
+    Bash parity with ``cmd_dups.sh``'s ``update)`` arm: runs a JSON engine
+    ``scan`` (no ``--update``/``--db``/``--project-id`` -- this action
+    never persists to ``index_struct_shapes``, only reads the scan's
+    clusters), then merges a canonical pin for every cluster whose
     ``concept`` is not ALREADY pinned (existing pins are never overwritten
-    -- non-destructive merge).
+    -- non-destructive merge). Bash's python3-missing fail-open branch is
+    gone -- the engine rides ``sys.executable`` (see :func:`_core_argv`).
 
     Args:
         repo_root: The resolved repository root.
 
     Returns:
-        0 in every case: python3-unavailable (fail-open), empty scan
-        output ("no scan output"), or a successful merge-and-write.
+        0 in every case: empty scan output ("no scan output") or a
+        successful merge-and-write.
     """
-    python_bin = _require_python()
-    if python_bin is None:
-        typer.echo("shctx dups: python3 not found — skipping (fail-open).", err=True)
-        return 0
-
-    scripts_dir = _scripts_dir()
-    core = os.path.join(scripts_dir, "dups-core.py")
     threshold = _cfg_default("dups_threshold", "0.7", repo_root)
     name_weight = _cfg_default("dups_name_weight", "0.5", repo_root)
     min_fields = _cfg_default("dups_min_fields", "2", repo_root)
     registry_file = _registry_path(repo_root)
 
     argv = [
-        python_bin,
-        core,
+        *_core_argv(),
         "scan",
         "--files-stdin",
         "--threshold",

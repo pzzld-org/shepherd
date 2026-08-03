@@ -149,3 +149,32 @@ superseded-by-plan.
 ## Deviations
 
 (append-only; entries added as they occur)
+
+- **W1 — `bin/shepherd` cwd bug found while flipping hooks (not planned).**
+  `poetry -C <dir> run` executes with cwd set to `<dir>`, so every relative
+  path argument resolved against `services/cli/` instead of the caller's
+  directory; `shepherd seed verify my.seed.md` returned "no such file" where
+  the bash twin passed. Fixed by resolving the venv interpreter via
+  `poetry env info --executable` and exec'ing it directly. This was latent
+  before this sprint and affected every path-taking command whenever poetry
+  was installed. Wave 3's hook flip is what surfaced it — the seed gate
+  silently denied clean seeds.
+- **W3 — bash-layer deletion deferred, SUBTRACT not yet satisfied.** The
+  seven ports and the hook flips landed, but `skills/context/scripts/` (45
+  scripts, ~4,400 lines) is still present because two re-point lanes
+  (`refresh`/`init` + the three `refresh-*.sh` ports, `dups-core`
+  relocation) had not landed at commit time. Deleting before they land
+  would break `refresh`, `init`, and the `dups` write guard. Consequence:
+  the sprint is net-POSITIVE (+15,810) against `v6.4.1` until the deletion
+  lands, so the SUBTRACT gate is explicitly unmet, not silently passed.
+- **W4 — conductor lane-plan custody enforced at the hook, not frontmatter.**
+  `agents/conductor.md` keeps its read+dispatch-only `tools:` (the
+  `lint_agent_capabilities.sh` #180 pin hard-fails Edit/Write on conductor);
+  the lane-plan write exemption is implemented as a
+  `conductor_write_guard.sh` carve-out scoped to the session's own
+  `runs/{run}/lanes/{lane}/`. Same outcome, one enforcement point.
+- **W4 — #229 stale-sweep marks rows `crashed`, not `stale`.** The spec's
+  `stale` value violates the `teammates` CHECK constraint (0007 allows
+  `booting|active|idle|crashed|retired`) and a schema migration was outside
+  that lane's scope; `crashed` is the verdict liveness already derives for
+  the condition.

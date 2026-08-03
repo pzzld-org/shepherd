@@ -1,25 +1,32 @@
 """Subprocess parity tests for ``shepherd dups`` (field-shape similar-struct detection).
 
 Bash parity target: ``skills/context/scripts/cmd_dups.sh`` (v6.1.8, #157),
-driving the REAL ``skills/context/scripts/dups-core.py`` engine (pure
-stdlib, no network, no build step, fully deterministic for a fixed set of
-small ``*.rs`` source strings) -- exactly like the module under test itself
-does. This suite therefore needs no fake-sibling-script harness the way
-``test_sync.py``/``test_sprint.py`` do for their bash siblings: every test
-below builds a throwaway git repo with a handful of tiny Rust source files
-and lets ``shepherd dups`` shell out to the genuine ``dups-core.py``, which
-easily clears the "deterministic, local, free, <2s" gate-test bar on inputs
-this small.
+driving the REAL :mod:`shepherd_cli.dups_core` engine (relocated
+byte-for-byte from the retired ``skills/context/scripts/dups-core.py``;
+pure stdlib, no network, no build step, fully deterministic for a fixed set
+of small ``*.rs`` source strings) -- exactly like the module under test
+itself does: ``[sys.executable, "-m", "shepherd_cli.dups_core", ...]``, a
+child of the CLI's own interpreter, never bash and never a path lookup
+into ``skills/context/scripts/``. This suite therefore needs no
+fake-sibling-script harness the way ``test_sync.py``/``test_sprint.py`` do
+for their bash siblings: every test below builds a throwaway git repo with
+a handful of tiny Rust source files and lets ``shepherd dups`` run the
+genuine engine, which easily clears the "deterministic, local, free, <2s"
+gate-test bar on inputs this small. ``CLAUDE_PLUGIN_ROOT`` is deliberately
+NEVER set here (and the throwaway repos live under ``tmp_path``, far from
+any ``skills/context/`` tree), so a regression back toward locating the
+engine via ``find_bash_shctx()`` would fail loudly instead of silently
+passing against the real checkout.
 
 No fixture database is built anywhere in this suite via
 ``conftest.build_full_schema_db`` -- ``shepherd dups`` never opens a
 Tortoise connection (see the module docstring in
 ``shepherd_cli/commands/dups.py``). The few tests that DO exercise
 ``--update``/``registry update`` (which persist rows into
-``index_struct_shapes`` via ``dups-core.py``'s own raw ``sqlite3``
-connection) point ``SHCTX_DB`` at a bare, not-yet-existing sqlite file and
-verify the resulting rows with plain ``sqlite3`` -- no ORM involved on
-either side of that assertion.
+``index_struct_shapes`` via ``shepherd_cli.dups_core``'s own raw
+``sqlite3`` connection) point ``SHCTX_DB`` at a bare, not-yet-existing
+sqlite file and verify the resulting rows with plain ``sqlite3`` -- no ORM
+involved on either side of that assertion.
 
 Every test drives the real CLI as a subprocess
 (``${PY} -m shepherd_cli dups ...``), never by importing ``shepherd_cli``
@@ -39,7 +46,7 @@ import sqlite3
 import subprocess
 from pathlib import Path
 
-from conftest import PY, REPO_ROOT, clean_env_dict
+from conftest import PY, clean_env_dict
 
 # --------------------------------------------------------------------------
 # Rust fixture source -- a same-shape, different-name pair (the "rename to
@@ -94,27 +101,30 @@ def _dups_env(
 
     Args:
         db_path: When given, sets ``SHCTX_DB`` (need not exist yet --
-            ``dups-core.py``'s own ``persist_shapes()`` creates it via
-            plain ``sqlite3.connect``).
+            ``shepherd_cli.dups_core``'s own ``persist_shapes()`` creates
+            it via plain ``sqlite3.connect``).
         workdir: When given, sets ``SHEPHERD_WORKDIR`` to this ABSOLUTE
             path (so ``resolve_workdir()``/``registry_path()``/
             ``project.json`` resolution land here instead of auto-detecting
             ``.shepherd``/``.artifacts`` under the repo).
         no_python3: When True, sets ``PATH`` to a directory containing no
-            ``python3`` binary at all, driving ``shepherd dups``'s
-            fail-open branch (``shutil.which("python3")`` resolves to
-            ``None`` inside the subprocess) -- the harness's own ``${PY}``
-            invocation still works since it is launched by absolute path,
-            never looked up on ``PATH``.
+            ``python3`` (or ``git``) binary at all. Under bash this drove
+            ``require_python()``'s fail-open skip; the native port runs
+            the engine via ``sys.executable`` (never a ``PATH`` lookup),
+            so the same starved environment now proves the STRONGER
+            contract: scan/check/registry-update all still do their real
+            work (``resolve_repo_root()``/``_list_rust_files()`` fall back
+            to ``os.getcwd()``/``os.walk`` when git is unreachable). The
+            harness's own ``${PY}`` invocation is unaffected since it is
+            launched by absolute path.
 
     Returns:
-        A stripped-then-rebuilt environment: ``CLAUDE_PLUGIN_ROOT`` (so
-        ``find_bash_shctx()`` resolves to the REAL
-        ``skills/context/scripts/dups-core.py``), plus whatever of the
-        above was requested.
+        A stripped-then-rebuilt environment holding whatever of the above
+        was requested. ``CLAUDE_PLUGIN_ROOT`` is deliberately NOT set --
+        nothing in the ported dups pipeline may depend on locating the
+        retired ``skills/context/scripts/`` tree (see module docstring).
     """
     env = clean_env_dict()
-    env["CLAUDE_PLUGIN_ROOT"] = str(REPO_ROOT)
     if db_path is not None:
         env["SHCTX_DB"] = str(db_path)
     if workdir is not None:
@@ -337,13 +347,17 @@ def test_scan_threshold_flag_missing_value_exits_1(tmp_path: Path) -> None:
     assert "ERROR: --threshold needs a value" in proc.stderr
 
 
-def test_scan_python3_missing_fails_open(tmp_path: Path) -> None:
+def test_scan_runs_engine_without_python3_on_path(tmp_path: Path) -> None:
+    """Bash's require_python() fail-open (skip everything when python3 is
+    not on PATH) is retired: the engine runs via sys.executable, so a
+    PATH with no python3 (and no git -- _list_rust_files falls back to
+    its os.walk branch) still performs the REAL scan."""
     repo = _init_repo(tmp_path, {"shapes_a.rs": _ALPHA_RS, "shapes_b.rs": _BETA_RS})
     proc = _run(["dups", "scan"], _dups_env(no_python3=True), repo)
 
-    assert proc.returncode == 0
-    assert proc.stdout == ""
-    assert "shctx dups: python3 not found — skipping (fail-open)." in proc.stderr
+    assert proc.returncode == 0, proc.stderr
+    assert "2 public struct/enum defs in 2 files; 1 similar-shape cluster(s)" in proc.stdout
+    assert "python3 not found" not in proc.stderr
 
 
 def test_scan_update_persists_shapes_to_index_struct_shapes(tmp_path: Path) -> None:
@@ -412,15 +426,33 @@ def test_check_unknown_flag_exits_1(tmp_path: Path) -> None:
     assert "ERROR: unknown arg: --bogus" in proc.stderr
 
 
-def test_check_python3_missing_fails_open(tmp_path: Path) -> None:
-    repo = _init_repo(tmp_path, {})
-    candidate = tmp_path / "candidate.rs"
-    candidate.write_text(_GAMMA_RS)
-    proc = _run(["dups", "check", str(candidate)], _dups_env(no_python3=True), repo)
+def test_check_runs_engine_without_python3_on_path(tmp_path: Path) -> None:
+    """The authoring gate keeps its exit-5 block contract even on a PATH
+    with no python3 at all -- the retired fail-open branch would have
+    silently exited 0 here, letting a shape duplicate through."""
+    repo = _init_repo(tmp_path, {"shapes_a.rs": _ALPHA_RS})
+    workdir = tmp_path / "workdir"
+    workdir.mkdir()
+    (workdir / "project.json").write_text(json.dumps({"id": "proj-dups-nopy"}))
+    db_path = tmp_path / "shepherd.db"
 
-    assert proc.returncode == 0
-    assert proc.stdout == ""
-    assert "shctx dups: python3 not found — skipping (fail-open)." in proc.stderr
+    scan_proc = _run(["dups", "scan", "--update"], _dups_env(db_path=db_path, workdir=workdir), repo)
+    assert scan_proc.returncode == 0, scan_proc.stderr
+
+    candidate_dir = tmp_path / "outside-repo"
+    candidate_dir.mkdir()
+    candidate = candidate_dir / "gamma.rs"
+    candidate.write_text(_GAMMA_RS)
+
+    check_proc = _run(
+        ["dups", "check", str(candidate)],
+        _dups_env(db_path=db_path, workdir=workdir, no_python3=True),
+        repo,
+    )
+
+    assert check_proc.returncode == 5
+    assert "BLOCKED" in check_proc.stdout
+    assert "python3 not found" not in check_proc.stderr
 
 
 def test_check_no_corpus_reports_nothing(tmp_path: Path) -> None:
@@ -775,23 +807,28 @@ def test_registry_update_no_rust_files_reports_no_scan_output_or_empty_merge(tmp
     assert registry["canonical"] == {}
 
 
-def test_registry_update_python3_missing_fails_open(tmp_path: Path) -> None:
+def test_registry_update_runs_engine_without_python3_on_path(tmp_path: Path) -> None:
+    """registry update also lost the fail-open skip: with no python3 (or
+    git) on PATH the engine still scans (os.walk fallback file listing)
+    and the canonical-pin merge still lands on disk."""
     repo = _init_repo(tmp_path, {"shapes_a.rs": _ALPHA_RS, "shapes_b.rs": _BETA_RS})
     workdir = tmp_path / "workdir"
     workdir.mkdir()
     proc = _run(["dups", "registry", "update"], _dups_env(workdir=workdir, no_python3=True), repo)
 
-    assert proc.returncode == 0
-    assert proc.stdout == ""
-    assert "shctx dups: python3 not found — skipping (fail-open)." in proc.stderr
-    assert not (workdir / "dups-registry.json").exists()
+    assert proc.returncode == 0, proc.stderr
+    assert "shctx dups registry update: considered 1 cluster concept(s)." in proc.stdout
+    assert "python3 not found" not in proc.stderr
+
+    registry = json.loads((workdir / "dups-registry.json").read_text())
+    assert registry["canonical"] == {"AlphaProfile": "(root)::AlphaProfile"}
 
 
 def test_registry_show_and_path_do_not_require_python3(tmp_path: Path) -> None:
-    """Bash parity: only scan/check/registry-update ever call
-    require_python() -- the pure JSON-curation actions never touch
-    dups-core.py at all, so they must keep working even with no python3
-    on PATH."""
+    """The pure JSON-curation actions never touch the engine at all (no
+    subprocess anywhere on their path), so a PATH with no python3/git
+    changes nothing for them -- true under bash (they skipped
+    require_python()) and still true natively."""
     repo = _init_repo(tmp_path, {})
     workdir = tmp_path / "workdir"
     workdir.mkdir()
@@ -805,3 +842,46 @@ def test_registry_show_and_path_do_not_require_python3(tmp_path: Path) -> None:
 
     pin_proc = _run(["dups", "registry", "pin", "x", "pkg::X"], env, repo)
     assert pin_proc.returncode == 0, pin_proc.stderr
+
+
+# ==========================================================================
+# The relocated engine module itself (shepherd_cli.dups_core).
+# ==========================================================================
+
+
+def test_dups_core_module_is_directly_invocable(tmp_path: Path) -> None:
+    """The engine's package home is a real runnable module: ``${PY} -m
+    shepherd_cli.dups_core extract --files-stdin`` parses shapes with no
+    wrapper CLI involved -- the exact child argv prefix ``shepherd dups``
+    builds (see ``dups.py``'s ``_core_argv()``)."""
+    src = tmp_path / "alpha.rs"
+    src.write_text(_ALPHA_RS)
+
+    proc = subprocess.run(
+        [PY, "-m", "shepherd_cli.dups_core", "extract", "--files-stdin"],
+        env=clean_env_dict(),
+        cwd=str(tmp_path),
+        input=f"{src}\n",
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    shape = json.loads(proc.stdout.splitlines()[0])
+    assert shape["name"] == "AlphaProfile"
+    assert shape["kind"] == "struct"
+    assert shape["field_names"] == ["email", "id", "name"]
+
+
+def test_dups_core_bad_fail_on_choice_is_argparse_exit_2(tmp_path: Path) -> None:
+    """A malformed ``--fail-on`` value flows through the wrapper's own
+    no-validation parse loop (bash parity) and lands in the engine's
+    argparse: exit 2, with the engine's byte-parity ``prog``
+    ("dups-core.py") in the error text -- exactly how bash surfaced it."""
+    repo = _init_repo(tmp_path, {"shapes_a.rs": _ALPHA_RS})
+    proc = _run(["dups", "scan", "--fail-on", "bogus"], _dups_env(), repo)
+
+    assert proc.returncode == 2
+    assert "dups-core.py" in proc.stderr
+    assert "invalid choice" in proc.stderr
