@@ -42,6 +42,7 @@ test module in this suite.
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 import subprocess
 import time
@@ -778,7 +779,12 @@ def test_list_md_flag_falls_back_to_plain_text_rendering(eval_db: tuple[Path, st
     proc_default = run_cli(["eval", "list"], eval_env(db_path, tmp_path / "wd", project_id=project_id))
     proc_md = run_cli(["eval", "list", "--md"], eval_env(db_path, tmp_path / "wd2", project_id=project_id))
     assert proc_default.returncode == proc_md.returncode == 0
-    assert proc_default.stdout == proc_md.stdout
+    # The rendered row embeds a relative "<N>s ago" age; the two invocations
+    # can straddle a second boundary, so normalize the age token before the
+    # byte comparison (the flag-parity contract under test is about the
+    # RENDERER, not wall-clock timing).
+    _age = re.compile(r"\b\d+[smhd] ago\b")
+    assert _age.sub("AGE ago", proc_default.stdout) == _age.sub("AGE ago", proc_md.stdout)
     assert "|" not in proc_md.stdout
 
 

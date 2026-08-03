@@ -200,7 +200,7 @@ def test_init_happy_path_copies_file_and_upserts_row(db_path: Path, project_id: 
     after = _now()
 
     assert proc.returncode == 0, proc.stderr
-    dst = workdir / "styles" / "python.md"
+    dst = workdir / "profiles" / "python" / "style.md"
     assert f"shctx style: wrote {dst}" in proc.stdout
     assert dst.is_file()
     bundled = REPO_ROOT / "skills" / "context" / "styles" / "python.md"
@@ -222,7 +222,7 @@ def test_init_all_writes_every_bundled_language(db_path: Path, project_id: str, 
 
     assert proc.returncode == 0, proc.stderr
     for lang in _BUNDLED_LANGUAGES:
-        assert (workdir / "styles" / f"{lang}.md").is_file(), f"{lang}.md not written"
+        assert (workdir / "profiles" / lang / "style.md").is_file(), f"{lang} style not written"
         assert fetch_style_row(db_path, project_id, lang) is not None, f"{lang} row missing"
     assert count_styles(db_path) == len(_BUNDLED_LANGUAGES)
 
@@ -295,12 +295,17 @@ def test_init_no_project_registered_exits_1(db_path: Path, workdir: Path) -> Non
 # --------------------------------------------------------------------------
 
 
-def test_list_before_any_init_prints_nothing(db_path: Path, project_id: str, workdir: Path) -> None:
+def test_list_before_any_init_shows_bundled_tier(db_path: Path, project_id: str, workdir: Path) -> None:
+    """v6.5.0: with no project/user profiles, list surfaces the bundled
+    defaults annotated with their source tier (the four-tier chain makes
+    bundled styles first-class instead of invisible-until-init)."""
     env = style_env(db_path, workdir)
     proc = run_cli(["style", "list"], env)
 
     assert proc.returncode == 0, proc.stderr
-    assert proc.stdout == ""
+    lines = proc.stdout.strip().split("\n")
+    assert "python\tbundled" in lines
+    assert "rust\tbundled" in lines
 
 
 def test_bare_style_with_no_subcommand_defaults_to_list(db_path: Path, project_id: str, workdir: Path) -> None:
@@ -313,10 +318,10 @@ def test_bare_style_with_no_subcommand_defaults_to_list(db_path: Path, project_i
     proc = run_cli(["style"], env)
 
     assert proc.returncode == 0, proc.stderr
-    assert proc.stdout.strip() == "python.md"
+    assert "python\tproject" in proc.stdout.strip().split("\n")
 
 
-def test_list_text_mode_lists_filenames_alphabetically(db_path: Path, project_id: str, workdir: Path) -> None:
+def test_list_text_mode_sorted_with_source_tiers(db_path: Path, project_id: str, workdir: Path) -> None:
     env = style_env(db_path, workdir)
     run_cli(["style", "init", "rust"], env)
     run_cli(["style", "init", "go"], env)
@@ -324,7 +329,11 @@ def test_list_text_mode_lists_filenames_alphabetically(db_path: Path, project_id
     proc = run_cli(["style", "list"], env)
 
     assert proc.returncode == 0, proc.stderr
-    assert proc.stdout.strip().split("\n") == ["go.md", "rust.md"]
+    lines = proc.stdout.strip().split("\n")
+    assert "go\tproject" in lines
+    assert "rust\tproject" in lines
+    names = [line.split("\t")[0] for line in lines]
+    assert names == sorted(names)
 
 
 def test_list_json_shape_and_language_ordering(db_path: Path, project_id: str, workdir: Path) -> None:
@@ -399,7 +408,8 @@ def test_show_json_wraps_content_with_metadata(db_path: Path, project_id: str, w
     assert proc.returncode == 0, proc.stderr
     payload = json.loads(proc.stdout)
     assert payload["language"] == "python"
-    assert payload["source_path"] == str(workdir / "styles" / "python.md")
+    assert payload["source_path"] == str(workdir / "profiles" / "python" / "style.md")
+    assert payload["source"] == "project"
     assert payload["content"] == bundled.read_text()
 
 
@@ -411,15 +421,58 @@ def test_show_missing_lang_arg_exits_1(db_path: Path, project_id: str, workdir: 
     assert "ERROR: usage: shctx style show <lang>" in proc.stderr
 
 
-def test_show_never_initialized_language_exits_1_cat_style_message(
+def test_show_uninitialized_bundled_language_falls_back_to_bundled_tier(
+    db_path: Path, project_id: str, workdir: Path
+) -> None:
+    """v6.5.0: an uninitialized bundled language resolves through the
+    four-tier chain to the plugin's bundled copy instead of erroring."""
+    env = style_env(db_path, workdir)
+    proc = run_cli(["style", "show", "python", "--json"], env)
+
+    assert proc.returncode == 0, proc.stderr
+    payload = json.loads(proc.stdout)
+    assert payload["source"] == "bundled"
+    assert len(payload["content"]) > 0
+
+
+def test_show_unknown_profile_exits_1_cat_style_message(
     db_path: Path, project_id: str, workdir: Path
 ) -> None:
     env = style_env(db_path, workdir)
-    proc = run_cli(["style", "show", "python"], env)  # never init'd -> no dst file
+    proc = run_cli(["style", "show", "no-such-profile"], env)
 
     assert proc.returncode == 1
-    expected_path = workdir / "styles" / "python.md"
+    expected_path = workdir / "profiles" / "no-such-profile" / "style.md"
     assert f"cat: {expected_path}: No such file or directory" in proc.stderr
+
+
+def test_show_resolves_legacy_and_user_tiers_in_order(
+    db_path: Path, project_id: str, workdir: Path, tmp_path: Path
+) -> None:
+    """Chain order: project profiles > legacy styles/ > ~/.shepherd profiles."""
+    env = style_env(db_path, workdir)
+    user_home = tmp_path / "shepherd-home"
+    env["SHEPHERD_HOME"] = str(user_home)
+
+    user_style = user_home / "profiles" / "zig" / "style.md"
+    user_style.parent.mkdir(parents=True)
+    user_style.write_text("USER ZIG STYLE")
+    proc_user = run_cli(["style", "show", "zig", "--json"], env)
+    assert proc_user.returncode == 0, proc_user.stderr
+    assert json.loads(proc_user.stdout)["source"] == "user"
+
+    legacy = workdir / "styles" / "zig.md"
+    legacy.parent.mkdir(parents=True, exist_ok=True)
+    legacy.write_text("LEGACY ZIG STYLE")
+    proc_legacy = run_cli(["style", "show", "zig", "--json"], env)
+    assert json.loads(proc_legacy.stdout)["source"] == "legacy"
+
+    canonical = workdir / "profiles" / "zig" / "style.md"
+    canonical.parent.mkdir(parents=True)
+    canonical.write_text("PROJECT ZIG STYLE")
+    proc_project = run_cli(["style", "show", "zig", "--json"], env)
+    assert json.loads(proc_project.stdout)["source"] == "project"
+    assert json.loads(proc_project.stdout)["content"] == "PROJECT ZIG STYLE"
 
 
 def test_show_no_project_registered_exits_1(db_path: Path, workdir: Path) -> None:
@@ -446,7 +499,7 @@ def test_edit_seeds_from_bundle_when_missing_then_invokes_editor(
     proc = run_cli(["style", "edit", "go"], env)
 
     assert proc.returncode == 0, proc.stderr
-    dst = workdir / "styles" / "go.md"
+    dst = workdir / "profiles" / "go" / "style.md"
     assert dst.is_file()  # seeded from the bundled source, since it didn't exist
     assert fetch_style_row(db_path, project_id, "go") is not None  # init_one's upsert ran
     assert marker.read_text().strip() == str(dst)  # editor was invoked with the dst path

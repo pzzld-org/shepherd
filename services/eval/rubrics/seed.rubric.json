@@ -6,7 +6,8 @@
   "dimensions": [
     { "key": "drift_resistance", "weight": 2, "desc": "Objective + invariants are sharp enough that an agent hours in could not wander; scope is bounded." },
     { "key": "groundedness",     "weight": 2, "desc": "file_scope paths look real (or marked NEW); acceptance is concrete and checkable, not aspirational." },
-    { "key": "leanness",         "weight": 2, "desc": "Says what's needed and stops — no prescriptive Lane-N micromanagement, no padding the agent will ignore." }
+    { "key": "leanness",         "weight": 2, "desc": "Says what's needed and stops — no prescriptive Lane-N micromanagement, no padding the agent will ignore." },
+    { "key": "no_placeholders",  "weight": 1, "desc": "Zero deferred-content markers: no TBD/TODO, no 'add appropriate error handling', no 'similar to X', no reference to a file, issue, or symbol the seed never anchors." }
   ],
-  "guidance": "Reward a seed that an engineer could turn into a plan with zero clarifying questions. Penalize hallucinated paths, vague acceptance ('make it better'), and over-specification that usurps the engineer's planning job."
+  "guidance": "Reward a seed that an engineer could turn into a plan with zero clarifying questions. Penalize hallucinated paths, vague acceptance ('make it better'), over-specification that usurps the engineer's planning job, and any placeholder that pushes authoring work onto the reader."
 }

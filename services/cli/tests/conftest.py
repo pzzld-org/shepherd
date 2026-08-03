@@ -29,9 +29,11 @@ from typing import Sequence
 import pytest
 
 # --------------------------------------------------------------------------
-# Fixed locations (issue #198 contract, v6.3.3).
+# Fixed locations (issue #198 contract, v6.3.3), derived from this file's own
+# position so the suite runs from any clone path, worktree, or CI checkout —
+# never from a hardcoded developer-machine absolute path.
 # --------------------------------------------------------------------------
-REPO_ROOT = Path("/home/user/shepherd")
+REPO_ROOT = Path(__file__).resolve().parents[3]
 CLI_ROOT = REPO_ROOT / "services" / "cli"
 PY = str(CLI_ROOT / ".venv" / "bin" / "python")
 
@@ -62,6 +64,7 @@ CURRENT_SESSION = "current-session-0001"
 _STRIP_ENV_KEYS = (
     "SHCTX_DB",
     "SHEPHERD_WORKDIR",
+    "SHEPHERD_HOME",
     "SHCTX_ROOT_OVERRIDE",
     "SHEPHERD_SESSION_ID",
     "CLAUDE_SESSION_ID",

@@ -1,0 +1,82 @@
+{#
+  Conductor-owned lane plan: .shepherd/runs/{run}/lanes/{lane}/plan.md.
+
+  Root/engineer materializes this file from the master plan's lane
+  projection; the conductor OWNS it from boot to LANE-CLOSE — checking off
+  steps, recording acceptance results, and appending to ## Deviations for
+  every mid-lane choice. Every lane is its own plan with dedicated
+  objectives and outcomes.
+#}
+# Lane {{ lane_id }} — {{ objective_title }}
+
+**Run:** {{ run }}
+**Objective:** {{ objective }}
+**Worktree:** {{ worktree_path }}
+**Base commit:** {{ base_commit }}
+**git_custody:** {{ git_custody }}
+
+## File scope
+
+- Exclusive (OWNED):
+{% for path in file_scope_exclusive %}
+  - `{{ path }}`
+{% endfor %}
+{% if file_scope_may_read %}
+- May read:
+{% for path in file_scope_may_read %}
+  - `{{ path }}`
+{% endfor %}
+{% endif %}
+
+## Interfaces
+
+- Consumes:
+{% for item in interfaces_consumes %}
+  - {{ item }}
+{% else %}
+  - none
+{% endfor %}
+- Produces:
+{% for item in interfaces_produces %}
+  - {{ item }}
+{% else %}
+  - none
+{% endfor %}
+
+## Do not duplicate
+
+{% for entry in do_not_duplicate %}
+- `{{ entry }}`
+{% else %}
+- none
+{% endfor %}
+
+## Steps
+
+{% for step in steps %}
+### {{ step.id }}: {{ step.title }}
+
+{% for action in step.actions %}
+- [ ] {{ action }}
+{% endfor %}
+- **Acceptance:** {{ step.acceptance }}
+{% endfor %}
+
+## Lane acceptance
+
+{% for check in acceptance %}
+- [ ] {{ check }}
+{% endfor %}
+
+## Non-goals
+
+{% for item in non_goals %}
+- {{ item }}
+{% else %}
+- none
+{% endfor %}
+
+## Deviations
+
+(append-only — the conductor records every mid-lane modification or choice
+here: what changed, why, and the step affected; never rewrite prior entries)

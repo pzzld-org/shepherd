@@ -36,7 +36,9 @@ from shepherd_cli.commands import (
     query,
     ready,
     refresh,
+    render,
     report,
+    run,
     search,
     seed,
     signal,
@@ -82,6 +84,10 @@ app.add_typer(issues.app, name="issues")
 app.add_typer(worktree.app, name="worktree")
 app.add_typer(refresh.app, name="refresh")
 app.add_typer(prune.app, name="prune")
+app.add_typer(run.app, name="run")
+app.command("render", help="Render a shepherd template deterministically (project -> user -> bundled).")(
+    render.render_command
+)
 
 
 def _version_callback(value: bool) -> None:
