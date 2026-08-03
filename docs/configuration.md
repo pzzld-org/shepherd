@@ -321,7 +321,7 @@ reclaims space; `--json` emits a machine-readable plan.
 `{X}/{Y}/{Z}/{N}` placeholders in `branching`/`release`/`ledger`, and `{paths.*}` references,
 interpolate at runtime — e.g. `"{paths.docs}/v{X}.{Y}.{Z}-release-notes.md"` → `.shepherd/docs/
 v0.2.9-release-notes.md` for v0.2.9. `{run_dir}` expands to `{paths.runs}/{run}` for the run in
-scope — e.g. `{run_dir}/seed.md` → `.shepherd/runs/v650-dev0/seed.md`.
+scope — e.g. `{run_dir}/seed.md` → `.shepherd/runs/v641-dev0/seed.md`.
 
 ## Defaults
 

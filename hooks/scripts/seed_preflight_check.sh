@@ -34,7 +34,7 @@ tool=$(json_field "$input" '.tool_name')
 
 file_path=$(json_field "$input" '.tool_input.file_path')
 [[ -z "$file_path" ]] && file_path=$(json_field "$input" '.tool_input.path')
-# Two naming shapes are gated (v6.5.0 — the rename hazard, res_12 §3): the
+# Two naming shapes are gated (v6.4.1 — the rename hazard, res_12 §3): the
 # legacy `{slug}.seed.md` suffix AND the run-scoped `runs/{run}/seed.md`
 # (path-segment match on `runs/<run>/` + basename `seed.md`, so moving the
 # seed into the run dir cannot silently disable this gate).

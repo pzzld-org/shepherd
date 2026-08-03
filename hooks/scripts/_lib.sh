@@ -151,7 +151,7 @@ cfg_section_keys() {
 }
 
 # ---------------------------------------------------------------------------
-# Run-scoped artifact layout (v6.5.0 — .shepherd/runs/{run}/)
+# Run-scoped artifact layout (v6.4.1 — .shepherd/runs/{run}/)
 # ---------------------------------------------------------------------------
 
 # The [paths]-aware runs root: `[paths].runs` from config (repo-relative unless

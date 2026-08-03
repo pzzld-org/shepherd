@@ -1,5 +1,5 @@
 ---
-title: v6.5.0-dev.0 Seed — CLI completion, run-scoped artifacts, templating, planning refinement
+title: v6.4.1-dev.0 Seed — CLI completion, run-scoped artifacts, templating, planning refinement
 branch: claude/plugin-robustness-planning-2xd9mi
 base: main
 kind: sprint-seed
@@ -7,7 +7,7 @@ status: approved
 date: 2026-08-02
 author: operator (Joe) + session a496101e
 prior_close_report: n/a (operator-directed robustness sprint)
-milestone: v6.5.0
+milestone: v6.4.1
 sprint_size: XL
 file_scope:
   exclusive:
@@ -46,7 +46,7 @@ superpowers-derived discipline — nothing forced, no new skills.
 # Engineering decisions (locked)
 
 1. `.shepherd/` is the only project-visible namespace; `.artifacts/` legacy.
-2. Run identity: `{run}` == sprint slug (e.g. `v650-dev0`); patch-arc runs use
+2. Run identity: `{run}` == sprint slug (e.g. `v641-dev0`); patch-arc runs use
    the patch slug. Identifiers sanitized to `[a-z0-9-]`.
 3. Run layout: `runs/{run}/{run.json,seed.md,mesh.md,plan.md,phase0.md,
    close.md,handoff.md,lanes/{lane}/plan.md,graph/,dispatch/,reports/,audits/}`.

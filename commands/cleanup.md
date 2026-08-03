@@ -48,7 +48,7 @@ bin/shepherd report teammates --stale-mins=5 \
   > .shepherd/cache/teammate-cleanup-<run>.md
 ```
 
-`<run>` is the run slug (e.g. `v650-dev0`) — deterministic; a re-run for the
+`<run>` is the run slug (e.g. `v641-dev0`) — deterministic; a re-run for the
 same run overwrites the same file. The cache file is gitignored; the canonical
 state is in the `teammates` table.
 

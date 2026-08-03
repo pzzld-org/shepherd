@@ -21,7 +21,7 @@
 #  14. Sprint branch + tagged @coder dispatch + Edit → PASS (not the conductor's turn).
 #  15. Teammate session (non-sprint branch) + Edit → DENY (leg 2 via teammates row).
 #  16. Retired teammate, non-sprint branch + Edit → PASS.
-#  17-21. v6.5.0 lane-plan custody exemption (seed decision 6): a teammate-
+#  17-21. v6.4.1 lane-plan custody exemption (seed decision 6): a teammate-
 #      conductor whose session-tier marker (stamped by user_prompt_submit.sh
 #      from the boot prompt's `Lane plan (YOURS):` path) names a lane may
 #      Edit/Write inside ITS OWN runs/{run}/lanes/{lane}/ dir — relative or
@@ -260,7 +260,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 17-20. v6.5.0 lane-plan custody exemption. Stamp the teammate's session-tier
+# 17-20. v6.4.1 lane-plan custody exemption. Stamp the teammate's session-tier
 # marker through the REAL stamper (user_prompt_submit.sh over a rendered boot
 # prompt carrying `Lane plan (YOURS):`), then drive the guard.
 # ---------------------------------------------------------------------------

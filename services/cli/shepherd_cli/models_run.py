@@ -1,7 +1,7 @@
 """Run-state schema + atomic IO for ``.shepherd/runs/{run}/run.json``.
 
 The run directory is the standard home for ALL run-scoped artifacts
-(v6.5.0 artifact schema — ``skills/context/references/naming-conventions.md``):
+(v6.4.1 artifact schema — ``skills/context/references/naming-conventions.md``):
 
     runs/{run}/
       run.json          # THIS module's document — CLI-written, validated

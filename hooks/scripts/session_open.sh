@@ -75,10 +75,10 @@ if [[ "$(cfg_get announce_adaptation)" != "off" ]] && [[ -f "$db" ]] && command 
   fi
 fi
 
-# --- Plan validity check (v5.1.2; [paths]-aware v6.5.0) ---
+# --- Plan validity check (v5.1.2; [paths]-aware v6.4.1) ---
 # If the current branch matches sprint_branch_pattern, a plan should exist —
-# either the run-scoped `{paths.runs}/{slug}/plan.md` (v6.5.0 canonical) or
-# the legacy `{paths.plans}/{branch|slug}.plan.md` forms. Pre-v6.5.0 this hook
+# either the run-scoped `{paths.runs}/{slug}/plan.md` (v6.4.1 canonical) or
+# the legacy `{paths.plans}/{branch|slug}.plan.md` forms. Pre-v6.4.1 this hook
 # HARDCODED "$ns/plans" and ignored [paths].plans entirely (res_12 §1c), so a
 # repo whose config put plans under docs/plans got a false "no plan.md"
 # warning every session — both dirs now resolve from config, with the old
@@ -126,13 +126,13 @@ fi
 # --- Anchor 6: multiple plan.md files for current sprint (v5.1.8 — issue #26) ---
 # When a sprint has an addendum plan (dev.1.plan.md + dev.1b.plan.md), the
 # second is invisible to Step 0 by default. Surface the file list so the
-# conductor reads ALL of them, not just one. ([paths]-aware v6.5.0 — same
+# conductor reads ALL of them, not just one. ([paths]-aware v6.4.1 — same
 # plans_dir the plan-validity check resolves; run-scoped plans are one-per-run
 # by construction, so this check stays on the legacy plans dir.)
 if [[ "$branch" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-dev\.[0-9]+$ ]] && [[ -d "$plans_dir" ]]; then
   # Match base sprint prefix; the optional-separator suffix allows every
   # documented addendum form (dev.1.plan.md, dev.1b.plan.md, dev.1.b.plan.md).
-  # v6.5.0 fix: the old `([.-][a-z0-9]+)?` REQUIRED a separator, so the bare
+  # v6.4.1 fix: the old `([.-][a-z0-9]+)?` REQUIRED a separator, so the bare
   # letter form dev.1b.plan.md this comment always promised never matched.
   plan_matches=()
   while IFS= read -r f; do

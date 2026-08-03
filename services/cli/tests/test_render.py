@@ -15,7 +15,7 @@ from conftest import clean_env_dict, run_cli
 
 #: The full 13-key handoff context (skills/context/references/handoff-template.md).
 HANDOFF_VARS = {
-    "BRANCH": "v6.5.0-dev.0",
+    "BRANCH": "v6.4.1-dev.0",
     "DATE": "2026-08-02",
     "SESSION": "sess-0001",
     "NORTH_STAR": "one canonical CLI",
@@ -61,7 +61,7 @@ def test_render_handoff_is_deterministic(tmp_path: Path) -> None:
     second = run_cli(["render", "handoff.md.j2", "--vars-json", str(vars_file)], env)
     assert first.returncode == 0, first.stderr
     assert first.stdout == second.stdout
-    assert "v6.5.0-dev.0" in first.stdout
+    assert "v6.4.1-dev.0" in first.stdout
     assert "abc1234 first" in first.stdout
 
 
@@ -96,7 +96,7 @@ def test_var_flag_overrides_vars_json(tmp_path: Path) -> None:
     )
     assert proc.returncode == 0, proc.stderr
     assert "override-branch" in proc.stdout
-    assert "v6.5.0-dev.0" not in proc.stdout
+    assert "v6.4.1-dev.0" not in proc.stdout
 
 
 def test_out_and_manifest_lineage(tmp_path: Path) -> None:
@@ -131,7 +131,7 @@ def test_project_template_shadows_bundled(tmp_path: Path) -> None:
     vars_file = _vars_file(tmp_path, HANDOFF_VARS)
     proc = run_cli(["render", "handoff.md.j2", "--vars-json", str(vars_file)], _env(tmp_path))
     assert proc.returncode == 0, proc.stderr
-    assert proc.stdout == "PROJECT OVERRIDE v6.5.0-dev.0\n"
+    assert proc.stdout == "PROJECT OVERRIDE v6.4.1-dev.0\n"
 
 
 def test_user_template_shadows_bundled_but_not_project(tmp_path: Path) -> None:
@@ -159,12 +159,12 @@ def test_boot_prompt_stable_prefix_ordering(tmp_path: Path) -> None:
         "model_pin": "sonnet",
         "lead_effort": "ultracode",
         "claude_md_path": "/repo/CLAUDE.md",
-        "run_dir": ".shepherd/runs/v650-dev0",
-        "seed_path": ".shepherd/runs/v650-dev0/seed.md",
-        "plan_path": ".shepherd/runs/v650-dev0/plan.md",
+        "run_dir": ".shepherd/runs/v641-dev0",
+        "seed_path": ".shepherd/runs/v641-dev0/seed.md",
+        "plan_path": ".shepherd/runs/v641-dev0/plan.md",
         "prior_handoff_path": "-",
         "carry_forward_issues": "-",
-        "worktree_path": "/repo/.worktrees/v650-dev0-lane-1",
+        "worktree_path": "/repo/.worktrees/v641-dev0-lane-1",
         "base_commit": "abc1234",
         "git_custody": "lane",
         "toml_snapshot": "",
@@ -177,8 +177,8 @@ def test_boot_prompt_stable_prefix_ordering(tmp_path: Path) -> None:
         "peer_teammate_names": [],
     }
     env = _env(tmp_path)
-    lane_a = dict(base_vars, lane_plan_path=".shepherd/runs/v650-dev0/lanes/a/plan.md", lane_index="1_of_2")
-    lane_b = dict(base_vars, lane_plan_path=".shepherd/runs/v650-dev0/lanes/b/plan.md", lane_index="2_of_2")
+    lane_a = dict(base_vars, lane_plan_path=".shepherd/runs/v641-dev0/lanes/a/plan.md", lane_index="1_of_2")
+    lane_b = dict(base_vars, lane_plan_path=".shepherd/runs/v641-dev0/lanes/b/plan.md", lane_index="2_of_2")
     out_a = run_cli(["render", "boot-prompt.md.j2", "--vars-json", str(_vars_file(tmp_path, lane_a))], env)
     vars_b = tmp_path / "vars-b.json"
     vars_b.write_text(json.dumps(lane_b))

@@ -95,7 +95,7 @@ echo "== cwd_changed.sh (v5.1.8) =="
 run_case "no-payload"          cwd_changed.sh ''
 run_case "cwd-event"           cwd_changed.sh '{"session_id":"s1","hook_event_name":"CwdChanged","cwd":"/tmp"}'
 
-echo "== user_prompt_submit.sh (v5.1.8; v6.5.0 session-tier stamp) =="
+echo "== user_prompt_submit.sh (v5.1.8; v6.4.1 session-tier stamp) =="
 run_case "no-payload"          user_prompt_submit.sh ''
 run_case "plain-prompt"        user_prompt_submit.sh '{"session_id":"s1","hook_event_name":"UserPromptSubmit","prompt":"hello"}'
 run_case "shepherd-prompt"     user_prompt_submit.sh '{"session_id":"s1","hook_event_name":"UserPromptSubmit","prompt":"/shepherd:status"}'
@@ -334,10 +334,10 @@ else
   fails=$((fails+1))
 fi
 
-# v6.5.0 #59 gates-ran ledger: bash_post.sh appends configured-gate invocations
+# v6.4.1 #59 gates-ran ledger: bash_post.sh appends configured-gate invocations
 # to <ns>/tmp/gates-ran-<session>.jsonl; close_finalize_check.sh warns once per
 # session (never blocks) on [gates.extra] entries with no recorded invocation.
-echo "== test_gates_ledger.sh (v6.5.0 — #59 gates-ran ledger + close warn) =="
+echo "== test_gates_ledger.sh (v6.4.1 — #59 gates-ran ledger + close warn) =="
 total=$((total+1))
 if gl_out=$(bash "$TESTS_DIR/test_gates_ledger.sh" 2>&1); then
   printf '  PASS  %s\n' "gates-ledger-records-and-warns"
@@ -347,10 +347,10 @@ else
   fails=$((fails+1))
 fi
 
-# v6.5.0 [paths]-aware session_open plan validity: [paths].plans honored, the
+# v6.4.1 [paths]-aware session_open plan validity: [paths].plans honored, the
 # run-scoped runs/{slug}/plan.md satisfies the check, multi-plan reconciliation
 # reads the configured dir (fixes the pre-existing hardcoded-plans/ bug).
-echo "== test_session_open_paths.sh (v6.5.0 — [paths]-aware plan validity) =="
+echo "== test_session_open_paths.sh (v6.4.1 — [paths]-aware plan validity) =="
 total=$((total+1))
 if sop_out=$(bash "$TESTS_DIR/test_session_open_paths.sh" 2>&1); then
   printf '  PASS  %s\n' "session-open-paths-aware"

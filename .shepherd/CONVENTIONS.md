@@ -3,7 +3,7 @@
 Scaffolded mirror for in-project reference. The CANONICAL artifact schema —
 full layout, ownership table, id grammar, git split — lives at
 `skills/context/references/naming-conventions.md` in the shepherd plugin;
-`shepherd lint` enforces it. This mirror summarizes the v6.5.0 shape.
+`shepherd lint` enforces it. This mirror summarizes the v6.4.1 shape.
 
 ## Layout
 
@@ -25,7 +25,7 @@ full layout, ownership table, id grammar, git split — lives at
 
 ## Rules
 
-- `{run}` == sprint slug (`v650-dev0`) or patch slug (`v650`); identifiers
+- `{run}` == sprint slug (`v641-dev0`) or patch slug (`v641`); identifiers
   are `[a-z0-9][a-z0-9-]*` — no path separators, no `..`, never absolute.
 - `run.json` is written ONLY via `shepherd run …` (schema-validated,
   atomic); never hand-authored.

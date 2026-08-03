@@ -1,6 +1,6 @@
 """Profile resolution — ``profiles/{profile}/style.md`` across three tiers.
 
-v6.5.0 restructure (operator directive, 2026-08-02): the flat
+v6.4.1 restructure (operator directive, 2026-08-02): the flat
 ``<workdir>/styles/<lang>.md`` layout becomes a directory per profile —
 ``<workdir>/profiles/<profile>/style.md`` — so user-specific instructions
 can live ALONGSIDE the language-standard style file inside the profile
@@ -11,7 +11,7 @@ general.
 Resolution chain for a profile's style, first hit wins:
 
 1. project ``<workdir>/profiles/<profile>/style.md``
-2. project legacy ``<workdir>/styles/<profile>.md`` (pre-v6.5.0 layout;
+2. project legacy ``<workdir>/styles/<profile>.md`` (pre-v6.4.1 layout;
    ``shepherd migrate --layout v3`` moves it)
 3. user ``~/.shepherd/profiles/<profile>/style.md`` (``SHEPHERD_HOME``
    honored — user-level defaults shared across projects)
@@ -59,7 +59,7 @@ def canonical_style_path(profile: str, workdir: str | None = None) -> str:
 
 
 def legacy_style_path(profile: str, workdir: str | None = None) -> str:
-    """The pre-v6.5.0 flat path: ``<workdir>/styles/<profile>.md``."""
+    """The pre-v6.4.1 flat path: ``<workdir>/styles/<profile>.md``."""
     return os.path.join(
         workdir if workdir is not None else resolve_workdir(), "styles", f"{profile}.md"
     )

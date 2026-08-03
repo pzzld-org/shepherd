@@ -193,14 +193,14 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 8. (v6.5.0) A snapshot carrying a `run` field surfaces the run-scoped graph
-#    home in the digest; a run-less (pre-v6.5.0) snapshot stays run-silent —
+# 8. (v6.4.1) A snapshot carrying a `run` field surfaces the run-scoped graph
+#    home in the digest; a run-less (pre-v6.4.1) snapshot stays run-silent —
 #    the compat shim never invents a run line.
 # ---------------------------------------------------------------------------
 total=$((total+1))
 touch "$FLAG_FILE"
 write_snapshot
-# Inject the run field the v6.5.0 precompact_snapshot.sh records.
+# Inject the run field the v6.4.1 precompact_snapshot.sh records.
 if command -v jq &>/dev/null; then
   jq '. + {run: "v090-dev0"}' "$SNAP_FILE" > "$SNAP_FILE.tmp" && mv "$SNAP_FILE.tmp" "$SNAP_FILE"
 else

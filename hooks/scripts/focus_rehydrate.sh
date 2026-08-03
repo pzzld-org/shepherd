@@ -126,7 +126,7 @@ rm -f "$FLAG_FILE" 2>/dev/null || true
 # --- assemble digest message ---------------------------------------------
 DIGEST="[shepherd] FOCUS REHYDRATE — compaction recovery digest (trigger: ${TRIGGER:-unknown}, captured: ${CAPTURED_AT:-unknown})"$'\n'
 DIGEST+="Sprint: ${SPRINT:-unknown}"$'\n'
-# v6.5.0: the snapshot records which run was executing at capture time —
+# v6.4.1: the snapshot records which run was executing at capture time —
 # surface the run-scoped state home so the resumed session re-reads the graph
 # cursor from runs/{run}/graph/ (legacy graph/ at the namespace root when
 # the field is absent/empty — the same compat shim precompact_snapshot.sh reads by).

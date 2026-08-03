@@ -16,7 +16,7 @@
 # inbox reading "N unread" and re-firing the guard every session) is structurally
 # gone: there is no mail table to miscount. This suite proves idle-only triggering.
 #
-# v6.5.0 (#232/#228/#229): POSITIVE identity + hygiene —
+# v6.4.1 (#232/#228/#229): POSITIVE identity + hygiene —
 #   • The guard fires ONLY for the recorded spawn lead (spawn_leads row); a
 #     session with NO lead row is never nudged (the pre-#232 no-lead fallback
 #     is retired), so every actionable case below records the lead first.

@@ -368,9 +368,9 @@ async def _init_one(lang: str, project_id: str, now: int, src_dir: str, dst_dir:
             $lang" >&2; return 1; }``.
     """
     src = os.path.join(src_dir, f"{lang}.md")
-    # v6.5.0 profiles layout: new writes target the project canonical
+    # v6.4.1 profiles layout: new writes target the project canonical
     # profiles/<lang>/style.md (shepherd_cli.profiles). An EXISTING file in
-    # either project tier — canonical or the pre-v6.5.0 flat legacy
+    # either project tier — canonical or the pre-v6.4.1 flat legacy
     # styles/<lang>.md — is preserved in place (never overwritten, never
     # relocated; `shepherd migrate --layout v3` owns relocation).
     dst = canonical_style_path(lang)
@@ -450,7 +450,7 @@ async def _run_show(rest: list[str], dst_dir: str, json_out: bool) -> None:
     if not arg:
         typer.echo("ERROR: usage: shctx style show <lang>", err=True)
         raise typer.Exit(code=1)
-    # v6.5.0: resolve through the four-tier chain (project profiles ->
+    # v6.4.1: resolve through the four-tier chain (project profiles ->
     # legacy styles/ -> user profiles -> bundled) instead of one flat path.
     hit = resolve_style_path(arg, bundled_dir=_resolve_bundled_styles_dir())
     if hit is None:
@@ -501,7 +501,7 @@ async def _run_list(project_id: str, dst_dir: str, json_out: bool) -> None:
         views = [StyleRow.model_validate(row) for row in rows]
         typer.echo(json.dumps([view.model_dump(mode="json") for view in views], indent=2))
         return
-    # v6.5.0: enumerate profiles across all four tiers, annotated with the
+    # v6.4.1: enumerate profiles across all four tiers, annotated with the
     # winning source, instead of a flat ls of one directory.
     profiles = list_profiles(bundled_dir=_resolve_bundled_styles_dir())
     if profiles:

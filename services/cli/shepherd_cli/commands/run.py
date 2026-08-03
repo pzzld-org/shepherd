@@ -1,6 +1,6 @@
 """``shepherd run`` — run-directory lifecycle Typer sub-app.
 
-NEW surface (v6.5.0) — the deterministic writer for
+NEW surface (v6.4.1) — the deterministic writer for
 ``.shepherd/runs/{run}/`` state (``shepherd_cli.models_run``). No bash
 counterpart existed; run state was previously scattered (graph/ dir,
 lock file, latent prose). Subcommands:
@@ -79,7 +79,7 @@ def _load_or_fail(run: str) -> RunState:
 
 @app.command("init")
 def init_cmd(
-    run: str = typer.Argument(..., help="Run id (sprint slug, e.g. v650-dev0)."),
+    run: str = typer.Argument(..., help="Run id (sprint slug, e.g. v641-dev0)."),
     kind: str = typer.Option("sprint", "--kind", help="sprint | patch-arc."),
     branch: str = typer.Option("", "--branch", help="The run's git branch."),
     base: str = typer.Option("", "--base", help="The run's base branch."),
