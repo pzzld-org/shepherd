@@ -11,8 +11,9 @@ from __future__ import annotations
 import os
 import sys
 
-from shepherd_cli.app import app
+from shepherd_cli.app import app, command_names
 from shepherd_cli.resolution import find_bash_shctx
+
 
 def _ported() -> frozenset[str]:
     """Every subcommand name the Typer app itself registers.
@@ -30,16 +31,11 @@ def _ported() -> frozenset[str]:
     registering a command is now the single act that makes it dispatchable.
 
     Returns:
-        The registered group names (``add_typer``) plus root-level command
-        names (``app.command``), which together are every name that must
-        NOT be shimmed to bash.
+        Every name the Typer app serves (:func:`shepherd_cli.app.command_names`,
+        which reads the lazy dispatch table) — i.e. every name that must NOT
+        be shimmed to bash.
     """
-    names = {group.name for group in app.registered_groups if group.name}
-    for command in app.registered_commands:
-        name = command.name or (command.callback.__name__ if command.callback else None)
-        if name:
-            names.add(name)
-    return frozenset(names)
+    return command_names()
 
 
 PORTED = _ported()

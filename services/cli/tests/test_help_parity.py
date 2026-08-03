@@ -99,7 +99,10 @@ def _registered_commands() -> list[str]:
         "import typer.main\n"
         "from shepherd_cli.app import app\n"
         "click_app = typer.main.get_command(app)\n"
-        "print(json.dumps(sorted(click_app.commands.keys())))\n"
+        # list_commands(), not .commands: under v6.4.2's lazy dispatch the
+        # eager .commands dict is empty by design, while list_commands()
+        # reports the real surface (eager + lazy) for both shapes.
+        "print(json.dumps(sorted(click_app.list_commands(None))))\n"
     )
     proc = subprocess.run(
         [PY, "-c", code],
