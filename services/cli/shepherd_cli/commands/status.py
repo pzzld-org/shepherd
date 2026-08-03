@@ -24,6 +24,14 @@ reserved for cross-command scoping logic that doesn't apply here.
 This module renders exactly those four sections, in the same order, with
 the same column widths (``printf "  %-20s %s\\n"`` bash-parity) and the
 same not-found behavior (missing DB file -> stderr + exit 1).
+
+**WRITE-SAFETY (#250): this command is fully READ-ONLY.** It opens the DB
+via ``db.lifespan(db_path, migrate=False)`` — it NEVER self-heals/mutates
+``schema_versions`` as a side effect of being asked a question, unlike
+:func:`shepherd_cli.db.lifespan`'s own default. Before opening the DB it
+checks :func:`shepherd_cli.db.schema_is_current`; a behind schema is
+refused loudly (one stderr line, exit 1 — see :func:`_status_async`)
+rather than silently upgraded or left to surface as a confusing crash.
 """
 
 from __future__ import annotations
@@ -96,6 +104,11 @@ _STALENESS_TABLES: tuple[str, ...] = (
 
 _LOCK_FILENAME = "shepherd.lock"
 _COLUMN_WIDTH = 20
+
+#: #250 refusal message: this command opens the DB with ``migrate=False``
+#: (see the module docstring), so a behind schema is reported this way
+#: instead of being silently self-healed.
+_SCHEMA_BEHIND_MSG = "schema is behind the shipped migrations; run: shepherd migrate"
 
 
 class LockState(BaseModel):
@@ -311,15 +324,24 @@ async def _status_async(json_out: bool) -> None:
             BEFORE opening any Tortoise connection: unlike bash's
             ``sqlite3``, Tortoise's sqlite backend silently creates a
             missing file on connect, which would turn a genuine
-            "never initialized" error into a fresh empty database.
+            "never initialized" error into a fresh empty database. Also
+            code 1 (and a distinct stderr message) if the DB file exists
+            but its schema is behind the shipped migrations (#250) — see
+            :func:`shepherd_cli.db.schema_is_current`. This command opens
+            the DB with ``migrate=False`` (see the module docstring), so
+            that check runs BEFORE ``db.lifespan`` instead of relying on
+            self-heal to paper over the gap.
     """
     db_path = resolve_db_path()
     if not os.path.isfile(db_path):
         typer.echo(f"ERROR: no DB at {db_path} — run 'shctx init'", err=True)
         raise typer.Exit(code=1)
+    if not db.schema_is_current(db_path):
+        typer.echo(_SCHEMA_BEHIND_MSG, err=True)
+        raise typer.Exit(code=1)
 
     now_s = int(time.time())
-    async with db.lifespan(db_path):
+    async with db.lifespan(db_path, migrate=False):
         schema_version = await _schema_version()
         tables = await _table_counts()
         staleness = await _refresh_staleness(now_s)

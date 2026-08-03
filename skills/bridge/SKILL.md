@@ -1,7 +1,7 @@
 ---
 name: bridge
 slug: bridge
-version: 6.4.1
+version: 6.4.2
 description: "Cross-shepherd coordination contract: how a claude-shepherd and a codex-shepherd (or any future harness implementation) share runs, lanes, and custody through the filesystem artifact schema — never through harness internals. Use when two shepherd implementations touch the same repository or hand work across."
 metadata:
   triggers:
@@ -42,6 +42,32 @@ through the project-visible artifact schema
 Identifier grammar everywhere: `[a-z0-9][a-z0-9-]*` — no path separators,
 no `..`, no absolute paths. Timestamps live in `run.json`/manifests, never
 in artifact bodies (byte-stable renders are the cache and diff contract).
+
+## Content contract vs. path contract (#252)
+
+Sharing a path is not the same guarantee as sharing what's inside it. Two
+implementations agreeing where an artifact lives (PATH-compatible) does not
+mean they agree what sections it must carry (CONTENT-contracted) — and a
+consumer that assumes the stronger guarantee on a path-only artifact will
+read a well-formed empty box. Observed: a codex-shepherd-authored run puts a
+real file at every `lanes/{lane}/plan.md` path (path contract satisfied) but
+the file is a thin pointer doc with no `## Steps`, no `## Lane acceptance`,
+no `## Deviations` (content contract violated) — a claude-shepherd conductor
+booting onto it via `agents/conductor.md §Boot verification` Check 3 is told
+to check off steps that don't exist.
+
+| Artifact | Contract | Required shape |
+|---|---|---|
+| `run.json` | Content | `schema_version`-gated JSON; a reader seeing a HIGHER version than it knows treats the run as foreign (read-only) rather than assume the shape |
+| `seed.md`, `plan.md` | Content | prose contract, identical shape in every implementation — the seed/plan templates ARE the normative scaffold |
+| `lanes/{lane}/plan.md` | Content (#252) | MUST carry `## Steps` (per step: `- [ ]` actions + an `**Acceptance:**` line), `## Lane acceptance`, and an append-only `## Deviations` section. A file present at the right path with none of these is NOT a valid lane plan — a consuming implementation self-heals it from `plan.md`'s `## Lane projection` before executing rather than treat the empty shape as instruction (`agents/conductor.md §Boot verification` Check 3) |
+| `.shepherd/learnings/`, `.shepherd/ctx/` | Path | durable knowledge, shared read, single-writer per file — internal shape is each implementation's own business |
+| dispatch envelope (`dispatch/`) | Content | fixed `SHEPHERD_*` header grammar + `SHEPHERD_STATUS`/`SHEPHERD_EVIDENCE` completion footer (§Dispatch envelope below) — a file at the right path with a different header shape is not grammar-checked and is treated as unfinished |
+
+When in doubt: an artifact this contract NAMES a required section or field
+for is content-contracted — assume nothing about its interior. An artifact
+it only names a PATH for is path-compatible only — the path is the whole
+guarantee.
 
 ## Custody
 

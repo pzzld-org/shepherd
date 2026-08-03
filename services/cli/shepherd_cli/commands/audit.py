@@ -81,10 +81,28 @@ fi; exit 0``): 1 if lint or status failed OR doctor hard-failed
 is warn-only and must not trip this branch); else 2 if doctor warned only;
 else 0.
 
-**NO DATABASE for the pipeline path.** Exactly like ``cmd_sync.sh``, the
-pipeline itself never touches ``sqlite3``/Tortoise directly — every table
-read happens inside the subprocess stages it shells out to. No
-``db.lifespan()``, no model module, for THIS half of the module.
+**NO TORTOISE for the pipeline path** (one narrow #250 exception below).
+Exactly like ``cmd_sync.sh``, the pipeline itself never opens
+``db.lifespan()`` — every table read happens inside the subprocess stages
+it shells out to. No model module for THIS half of the module.
+
+**WRITE-SAFETY (#250): the schema-currency pre-check.** ``audit``'s own
+module-level claim ("read-only validation pipeline") is only true if a
+behind schema is refused up front, not silently self-healed by whichever
+stage happens to touch the DB first — and ``status`` doing exactly that
+was #250's original report. This module's own fix for ``status.py`` (see
+that module) already stops ``status`` from migrating, but that alone is
+not enough for ``audit`` to keep its OWN promise: the non-``--verbose``
+default suppresses every stage's stdout/stderr (see ``_run_stage``
+above), so ``status``'s own refusal message would never reach the
+operator, only its exit code would. :func:`_audit_pipeline` therefore
+runs :func:`shepherd_cli.db.schema_is_current` itself, directly against
+``resolve_db_path()``, BEFORE spawning any stage at all — a single raw
+``sqlite3`` read (never Tortoise, never ``db.lifespan()``), matching
+``doctor.py``'s own no-Tortoise DB-reading style for the same reason. A
+behind schema short-circuits the WHOLE pipeline (no stage runs at all,
+``--verbose`` or not) with one stderr line and exit 1, so the operator
+sees it unconditionally and nothing downstream gets a chance to migrate.
 
 **``insert`` subverb — DOES touch the database, raw SQL only.**
 ``audit_findings`` already has a READ-scoped Tortoise model
@@ -287,6 +305,11 @@ _INSERT_FLAGS = (
     "--sprint=",
 )
 
+#: #250 refusal message — the pipeline's own :func:`shepherd_cli.db.schema_is_current`
+#: pre-check (module docstring's WRITE-SAFETY section) reports a behind
+#: schema this way instead of letting a stage silently self-heal it.
+_SCHEMA_BEHIND_MSG = "schema is behind the shipped migrations; run: shepherd migrate"
+
 
 # --------------------------------------------------------------------------
 # Stage argv construction + stage runner (same shape as
@@ -425,10 +448,20 @@ def _audit_pipeline(verbose: bool) -> None:
             receives a stage header, matching bash exactly).
 
     Raises:
-        typer.Exit: code 1 if ``lint`` or ``status`` failed, or ``doctor``
-            hard-failed (exit 1, NOT exit 2); else code 2 if ``doctor``
-            warned only (exit 2); else code 0.
+        typer.Exit: code 1, with :data:`_SCHEMA_BEHIND_MSG` on stderr and
+            NO stage run at all, if the DB's schema is behind the shipped
+            migrations (#250 — see the module docstring's WRITE-SAFETY
+            section); this check runs regardless of ``verbose``, so the
+            message always reaches the operator even though a normal
+            stage failure's own output is suppressed unless ``--verbose``.
+            Otherwise: code 1 if ``lint`` or ``status`` failed, or
+            ``doctor`` hard-failed (exit 1, NOT exit 2); else code 2 if
+            ``doctor`` warned only (exit 2); else code 0.
     """
+    if not db.schema_is_current(resolve_db_path()):
+        typer.echo(_SCHEMA_BEHIND_MSG, err=True)
+        raise typer.Exit(code=1)
+
     doctor_argv = _stage_argv("doctor")
 
     rc_lint = _run_stage("lint", _stage_argv("lint"), verbose)

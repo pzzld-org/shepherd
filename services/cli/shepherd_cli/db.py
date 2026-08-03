@@ -9,6 +9,21 @@ is the CLI-side twin of ``_lib.sh``'s ``shctx_ensure_migrated`` /
 synchronously, with stdlib ``sqlite3``, BEFORE Tortoise ever opens a
 connection, so Tortoise never observes a schema behind the shipped
 migrations.
+
+**READ-SAFETY (#250).** :func:`lifespan` calls :func:`ensure_migrated`
+unconditionally by default, which is correct for every command that
+intends to WRITE — but a command that only presents itself as an
+inspection tool (``status``, ``audit``, ``style show``/``list``) has no
+business mutating a live project's on-disk schema as a side effect of
+being asked a question. Callers that want that guarantee pass
+``lifespan(db_path, migrate=False)``, which skips :func:`ensure_migrated`
+entirely and opens Tortoise against the DB exactly as it sits on disk.
+Because a read-only open can then walk straight into a query against a
+column a pending migration hasn't added yet, :func:`schema_is_current` is
+the paired cheap pre-check: a caller opting out of self-heal is expected
+to call it FIRST and refuse loudly (one stderr line, a nonzero exit) when
+it returns False, rather than let a stale schema surface as a confusing
+500 or a silently-empty result set.
 """
 
 from __future__ import annotations
@@ -60,6 +75,104 @@ def _shipped_migrations(migrations_dir: str) -> list[tuple[int, str]]:
     ]
     shipped.sort(key=lambda pair: pair[1])
     return shipped
+
+
+def _shipped_head(shipped: list[tuple[int, str]]) -> tuple[int, int]:
+    """The ``(MAX(version), COUNT(*))`` a fully-caught-up DB would show for ``shipped``.
+
+    Shared by :func:`ensure_migrated`'s fast path and :func:`schema_is_current`
+    so the "what does current even mean" arithmetic lives in exactly one
+    place.
+
+    Args:
+        shipped: A non-empty :func:`_shipped_migrations` result — callers
+            must not pass an empty list (there is no shipped HEAD to
+            compare against; both callers below short-circuit before
+            reaching here in that case).
+
+    Returns:
+        ``(highest shipped version, count of shipped migration files)``.
+    """
+    return max(version for version, _ in shipped), len(shipped)
+
+
+def _schema_versions_maxcount(conn: sqlite3.Connection) -> tuple[int, int] | None:
+    """Read ``(COALESCE(MAX(version), 0), COUNT(*))`` from ``schema_versions`` via ``conn``.
+
+    The one place ``ensure_migrated``'s fast path and :func:`schema_is_current`
+    both go for the applied side of the currency comparison — factored out
+    so the two callers can never drift on what "reading schema_versions"
+    means.
+
+    Args:
+        conn: An already-open sqlite3 connection.
+
+    Returns:
+        ``(applied_max, applied_cnt)``, or None if ``schema_versions`` is
+        missing/unreadable (mirrors ``ensure_migrated``'s own fail-soft
+        contract: nothing safe to compare against).
+    """
+    try:
+        row = conn.execute(
+            "SELECT COALESCE(MAX(version), 0), COUNT(*) FROM schema_versions;"
+        ).fetchone()
+    except sqlite3.Error:
+        return None
+    return (row[0], row[1]) if row is not None else (0, 0)
+
+
+def schema_is_current(db_path: str) -> bool:
+    """Cheaply check whether ``db_path``'s schema is caught up to the shipped HEAD (#250).
+
+    Read-only: opens its own short-lived sqlite3 connection (never
+    Tortoise, never :func:`ensure_migrated`) purely to run the identical
+    ``MAX(version)``/``COUNT(*)`` comparison :func:`ensure_migrated`'s fast
+    path already does, via the SAME shared helpers
+    (:func:`_shipped_head`/:func:`_schema_versions_maxcount`) — this
+    function never re-derives that arithmetic itself. Intended as the
+    pre-check a caller opting out of self-heal (``lifespan(migrate=False)``)
+    runs BEFORE opening Tortoise, so a stale schema is refused loudly
+    instead of surfacing as a missing-column crash or a silently-empty
+    query result.
+
+    Args:
+        db_path: Path to the sqlite database file.
+
+    Returns:
+        True if the DB is already at (or ahead of — never possible in
+        practice, but not penalized either) the shipped migration set, OR
+        if there is nothing meaningful to compare (the migrations
+        directory can't be located, no migration files are shipped, or
+        the DB file doesn't exist yet — none of those is "behind", they
+        are "nothing to be behind on", matching :func:`ensure_migrated`'s
+        own fail-soft treatment of the same conditions). False if
+        ``schema_versions`` is missing/unreadable (a schema at or before
+        ``0001_init.sql`` that somehow lost its own bookkeeping table
+        counts as behind, not "nothing to compare") or its
+        ``MAX(version)``/``COUNT(*)`` falls short of the shipped HEAD.
+    """
+    migrations_dir = find_migrations_dir()
+    if migrations_dir is None or not os.path.isfile(db_path):
+        return True
+
+    shipped = _shipped_migrations(migrations_dir)
+    if not shipped:
+        return True
+    shipped_max, shipped_cnt = _shipped_head(shipped)
+
+    try:
+        conn = sqlite3.connect(db_path)
+    except sqlite3.Error:
+        return False
+    try:
+        state = _schema_versions_maxcount(conn)
+    finally:
+        conn.close()
+    if state is None:
+        return False
+
+    applied_max, applied_cnt = state
+    return applied_max >= shipped_max and applied_cnt >= shipped_cnt
 
 
 def ensure_migrated(db_path: str) -> int:
@@ -127,17 +240,13 @@ def ensure_migrated(db_path: str) -> int:
         except sqlite3.Error:
             return applied
 
-        shipped_max = max(version for version, _ in shipped)
-        shipped_cnt = len(shipped)
-        try:
-            row = conn.execute(
-                "SELECT COALESCE(MAX(version), 0), COUNT(*) FROM schema_versions;"
-            ).fetchone()
-        except sqlite3.Error:
+        shipped_max, shipped_cnt = _shipped_head(shipped)
+        state = _schema_versions_maxcount(conn)
+        if state is None:
             # schema_versions missing/unreadable — nothing safe to heal;
             # the caller's own column-exists degradation is the backstop.
             return applied
-        applied_max, applied_cnt = (row[0], row[1]) if row is not None else (0, 0)
+        applied_max, applied_cnt = state
 
         if applied_max >= shipped_max and applied_cnt >= shipped_cnt:
             return applied  # already current — fast path, matches shctx_ensure_migrated
@@ -183,12 +292,12 @@ def ensure_migrated(db_path: str) -> int:
 
 
 @asynccontextmanager
-async def lifespan(db_path: str | None = None) -> AsyncIterator[None]:
+async def lifespan(db_path: str | None = None, *, migrate: bool = True) -> AsyncIterator[None]:
     """Tortoise ORM lifecycle for one shepherd CLI command invocation.
 
-    Runs :func:`ensure_migrated` first (self-heal the schema before any
-    query can hit a missing column), then initializes Tortoise against
-    the SAME sqlite file the bash ``shctx`` tooling reads/writes.
+    Runs :func:`ensure_migrated` first by default (self-heal the schema
+    before any query can hit a missing column), then initializes Tortoise
+    against the SAME sqlite file the bash ``shctx`` tooling reads/writes.
     ``Tortoise.generate_schemas`` is NEVER called — the SQL migrations
     remain the single schema source of truth; Tortoise only mirrors
     existing tables via :mod:`shepherd_cli.models`.
@@ -198,12 +307,29 @@ async def lifespan(db_path: str | None = None) -> AsyncIterator[None]:
         async with lifespan():
             rows = await queries.teammates_live(session_id)
 
+        # A read-only inspection command that must never mutate schema
+        # as a side effect (#250) — pair with schema_is_current() first:
+        async with lifespan(db_path, migrate=False):
+            rows = await queries.teammates_live(session_id)
+
     Args:
         db_path: Path to the sqlite database file. Defaults to
             :func:`shepherd_cli.resolution.resolve_db_path` when omitted
             (the normal CLI path; tests pass an explicit path via
             ``SHCTX_DB`` instead, which ``resolve_db_path`` already
             honors, so most callers can omit this too).
+        migrate: When True (the default — every existing caller keeps its
+            current behavior unchanged), run :func:`ensure_migrated`
+            before opening Tortoise. When False, skip it entirely and
+            open Tortoise against the DB exactly as it sits on disk — for
+            a command that presents itself as read-only and must not
+            silently bump a live project's schema version (#250). A
+            caller passing ``migrate=False`` is expected to have already
+            checked :func:`schema_is_current` and refused loudly if it
+            returned False; this function itself does not check it, so a
+            behind schema opened this way can still surface as an
+            ordinary Tortoise ``OperationalError`` on the first query that
+            touches a missing column.
 
     Yields:
         None. The Tortoise connection is live for the duration of the
@@ -211,7 +337,8 @@ async def lifespan(db_path: str | None = None) -> AsyncIterator[None]:
         an exception raised inside the block.
     """
     path = db_path if db_path is not None else resolve_db_path()
-    ensure_migrated(path)
+    if migrate:
+        ensure_migrated(path)
     await Tortoise.init(
         db_url=f"sqlite://{path}",
         modules={
@@ -234,4 +361,4 @@ async def lifespan(db_path: str | None = None) -> AsyncIterator[None]:
         await Tortoise.close_connections()
 
 
-__all__ = ["ensure_migrated", "lifespan"]
+__all__ = ["ensure_migrated", "lifespan", "schema_is_current"]

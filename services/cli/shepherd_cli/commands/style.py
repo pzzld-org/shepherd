@@ -83,6 +83,17 @@ Timestamps are epoch SECONDS throughout (``styles.created_at`` /
 ``updated_at``), matching ``_lib.sh``'s ``shctx_now`` (``date +%s``) — NOT
 the epoch-millisecond unit ``teammates``/``deliverables``/
 ``session_signals`` use.
+
+**WRITE-SAFETY (#250): only ``show``/``list`` are read-only.** ``init``
+and ``edit`` both write (``_upsert_row``, plus ``init``'s file copy and
+``edit``'s editor launch after a possible seed) and keep the
+:func:`shepherd_cli.db.lifespan` default (``migrate=True``) — a fresh
+project's first ``style init`` is exactly the self-heal-on-write case
+that default exists for. ``show``/``list`` open the DB with
+``migrate=False`` and pre-check :func:`shepherd_cli.db.schema_is_current`
+first: a behind schema is refused loudly (one stderr line, exit 1)
+instead of silently bumping a live project's schema version just because
+an operator asked to read a style guide. See :func:`_style_async`.
 """
 
 from __future__ import annotations
@@ -108,7 +119,7 @@ from shepherd_cli.profiles import (
     list_profiles,
     resolve_style_path,
 )
-from shepherd_cli.resolution import resolve_repo_root, resolve_workdir
+from shepherd_cli.resolution import resolve_db_path, resolve_repo_root, resolve_workdir
 
 app = typer.Typer(
     add_completion=False,
@@ -126,6 +137,17 @@ _USAGE_ERR = "ERROR: usage: shctx style <init|show|list|edit>"
 #: The four subcommand names ``cmd_style.sh``'s ``case`` statement
 #: recognizes — anything else falls through to :data:`_USAGE_ERR`.
 _KNOWN_SUBCOMMANDS = ("init", "show", "list", "edit")
+
+#: The two subcommands that never write (#250) — see the module
+#: docstring's WRITE-SAFETY note. ``init``/``edit`` are not in this set:
+#: both upsert a ``styles`` row (and may copy a bundled file into place),
+#: so they keep :func:`shepherd_cli.db.lifespan`'s default self-heal.
+_READ_ONLY_SUBCOMMANDS = ("show", "list")
+
+#: #250 refusal message — this module's ``show``/``list`` open the DB with
+#: ``migrate=False``, so a behind schema is reported this way instead of
+#: being silently self-healed.
+_SCHEMA_BEHIND_MSG = "schema is behind the shipped migrations; run: shepherd migrate"
 
 
 # --------------------------------------------------------------------------
@@ -580,11 +602,21 @@ async def _style_async(argv: list[str], json_out: bool) -> None:
         typer.Exit: Propagated from whichever subcommand handler ran;
             code 1 with :data:`_USAGE_ERR` on stderr if ``argv[0]`` is
             not one of :data:`_KNOWN_SUBCOMMANDS` (bash's ``*)`` branch).
+            Also code 1 with :data:`_SCHEMA_BEHIND_MSG` on stderr, for
+            ``show``/``list`` only, if the DB's schema is behind the
+            shipped migrations (#250) — checked BEFORE ``db.lifespan``
+            opens, since those two subcommands open it with
+            ``migrate=False`` (see the module docstring).
     """
     sub = argv[0] if argv else "list"
     rest = argv[1:]
+    read_only = sub in _READ_ONLY_SUBCOMMANDS
 
-    async with db.lifespan():
+    if read_only and not db.schema_is_current(resolve_db_path()):
+        typer.echo(_SCHEMA_BEHIND_MSG, err=True)
+        raise typer.Exit(code=1)
+
+    async with db.lifespan(migrate=not read_only):
         project_id = await _require_project_id()
         now = _now()
         src_dir = _resolve_bundled_styles_dir()

@@ -46,16 +46,31 @@ Every flock dispatch MUST set `subagent_type: "shepherd:<role>"` (the registry a
 
 Tier reach: root dispatches `@engineer`, `@critic`, `@auditor`, `@worker`, `@discovery` and spawns teammate-conductors; root NEVER dispatches `@coder` — EXCEPT in **root-drives-workflows mode** (`/shepherd:start`, the Agent-Teams fallback with NO teammates active), where root drives the wave routine directly and dispatches `@coder`+`@auditor` steps ITSELF, running the same serial wave gate a conductor would (`references/wave-routine.md`). A teammate-conductor dispatches `@coder`, `@auditor`, `@worker`, `@discovery`; it NEVER dispatches `@engineer`/`@critic` (escalate `PLAN-AUTHORSHIP-REQUEST` / `PLAN-GATE-REQUEST` — `references/escalation.md §Halt-code index`) and NEVER spawns another teammate.
 
+**Two tools, one law (#255).** `Agent(subagent_type: "shepherd:<role>")` and `Workflow`'s `agent({agentType: "shepherd:<role>"})` are the SAME dispatch law under two spellings — a Dynamic Workflow's `agent()` call is a flock dispatch exactly like an in-context `Agent()` call, and omitting the option is the SAME violation under either spelling: `DISPATCH-MISSING-SUBAGENT-TYPE`. A workflow script that fires `agent()` without `agentType` produces a generic workflow subagent — no `shepherd:<role>` body, no code-style/language skills, no CODER REPORT shape, no model pin — and nothing in that call's shape objects; the doctrine catches it only if this law is read as covering both spellings. `Workflow agent()` ALSO does NOT consult `shepherd.toml [models]` — the `shctx models resolve <role>` map that `Agent()` dispatches inherit is NOT read by the Workflow runtime, so `model` MUST be pinned literally on EVERY `agent()` call in the script; an unpinned call silently inherits whatever model the workflow's host session runs under (observed: opus instead of the mandated sonnet) — `DISPATCH-MODEL-UNPINNED`.
+
+Author every Dynamic Workflow `agent()` call through a guarded wrapper, never a bare call — this is the sanctioned pattern, not a suggestion:
+
+```js
+function flockAgent(prompt, opts = {}) {
+  if (!opts.agentType?.startsWith("shepherd:"))
+    throw new Error("DISPATCH-MISSING-SUBAGENT-TYPE: agentType must be shepherd:")
+  if (!opts.model)
+    throw new Error("DISPATCH-MODEL-UNPINNED: Workflow agent() bypasses [models]")
+  return agent(prompt, opts)
+}
+```
+
 Forbidden dispatch constructions MUST be refused on sight:
 
 | Halt code | Trigger | Refused by |
 |---|---|---|
-| `DISPATCH-MISSING-SUBAGENT-TYPE` | flock dispatch omits `subagent_type` or sets `general-purpose`/`Explore`/`Chat` | root + conductor |
+| `DISPATCH-MISSING-SUBAGENT-TYPE` | flock dispatch omits `subagent_type` (`Agent()`) or `agentType` (`Workflow agent()`), or sets either to `general-purpose`/`Explore`/`Chat` | root + conductor |
 | `DISPATCH-TEAMMATE-TYPE-MISMATCH` | a role other than `shepherd:conductor` stood up as a teammate | root |
 | `DISPATCH-OFF-FLOCK` | `subagent_type` outside the closed six (or `shepherd:conductor`) | root + conductor |
+| `WORKFLOW-OFF-FLOCK` | a Dynamic Workflow `agent()` call sets `agentType` outside the closed six (or `shepherd:conductor`), or fires bare `agent()` without the `flockAgent` guard | root |
 | `TEAMMATE-NESTING-ATTEMPT` | a teammate-conductor sets `team_name`, runs `/shepherd:spawn`, or spawns its own tier | teammate-conductor |
 
-These four are terminal — the dispatcher refuses to fire and surfaces (root) or escalates `SendMessage(to: lead, blocking: true)` (teammate). Teammate re-gating of a fixed plan is `WRONG-TIER-DISPATCH`; the self-contained `@engineer` carve-out and its `ENGINEER-TOPOLOGY-MISMATCH`/`ENGINEER-SUBFLOCK-VIOLATION` guards live in `references/flock.md §@engineer`. A specialist clears `DISPATCH-OFF-FLOCK` only via the decision tree in `references/flock.md §Dispatch`.
+These five are terminal — the dispatcher refuses to fire and surfaces (root) or escalates `SendMessage(to: lead, blocking: true)` (teammate). Teammate re-gating of a fixed plan is `WRONG-TIER-DISPATCH`; the self-contained `@engineer` carve-out and its `ENGINEER-TOPOLOGY-MISMATCH`/`ENGINEER-SUBFLOCK-VIOLATION` guards live in `references/flock.md §@engineer`. A specialist clears `DISPATCH-OFF-FLOCK`/`WORKFLOW-OFF-FLOCK` only via the decision tree in `references/flock.md §Dispatch`.
 
 ## Root contract
 
@@ -68,6 +83,16 @@ Work splits across the sprint's three sections, not by agent type:
 In coordinate mode root MUST actively drive (wake → act → probe → yield-to-events every wake), NEVER passive-wait after a dispatch, reserving operator pauses for the enumerated decision points (Stop-hook backstop: `skills/harness/SKILL.md §Capability enforcement`). This active-drive FOCUS-LOOP plus the close-time `shctx adapt roll` harvest is root's STANDING operating mode from team-liveness to CLOSE-FINALIZE — focus, motivation, and improvement are the default, the Stop hook only a backstop.
 
 Root MUST NOT write source code, dispatch `@coder` directly (except in root-drives-workflows mode — `references/wave-routine.md`), nest a `/shepherd:spawn`, or silently absorb a teammate finding without materializing it. Git custody is root-exclusive: a teammate that runs `git rebase`/`merge`/`push`/`worktree` halts `TEAMMATE-GIT-WRITE` (`references/pipeline.md §CLOSE-FINALIZE`). Escalation payload: `references/escalation.md §Escalation payload`; Stage-Graph walk: `references/pipeline.md §Stage Graph`.
+
+## Fan-out counterweight (#256)
+
+Everything above pushes ONE direction: fan out by default, lane count = teammate count, gate-free segments compile to a Dynamic Workflow. Nothing in it pushes back, and a dispatcher following it to the letter can take down the machine — measured on FL03/axiom, 16 GB box: a verify phase of 12 agents each independently invoking `cargo` for the same expensive build drove free physical memory to 16 MB and swap to 8.6/9.2 GB; the kernel SIGKILLed a *teammate's* `cargo nextest list` mid-enumeration — the OS picked the victim, and it picked the lane doing useful work, not the excess fan-out. Cargo target dirs separately reached ~147 GiB. The six *fix* agents in that wave were correct — genuinely disjoint file scopes are exactly what the fan-out doctrine authorizes. The twelve *verify* agents were the error. These five rules are the missing counterweight:
+
+1. **Shared-resource clause.** File-disjointness authorizes concurrent WRITES; it does NOT authorize concurrent BUILDS. A wave fanning out N agents that each invoke the project's build command needs an EXPLICIT concurrency cap — disjoint `[FILE-SCOPE]` is the write test, not the build test.
+2. **Verify-phase asymmetry.** *Fan out fixes. Verify once, centrally.* One workspace-wide gate run is both cheaper AND more rigorous than N agents spot-checking their own scopes — it is the only run that catches a cross-scope interaction no single agent's slice can see. Fanning out the verify phase instead of centralizing it requires a stated reason in the wave brief, not the default.
+3. **Resource preflight.** The project declares its build's approximate peak memory and disk (`shepherd.toml` or the language skill's default); the dispatcher divides available headroom by that figure to get a concurrency cap BEFORE firing the wave. Rust-specific trap: `codegen-units` means the job count UNDERSTATES real `rustc` concurrency — a naive `-j$(nproc)` is already wrong before N agents multiply it.
+4. **Watch swap-free, not disk-free.** Disk is the lagging indicator — minutes of warning. Swap is the leading one — seconds. Every disk warning in the incident above was downstream of an unnoticed memory problem; a dispatcher monitoring disk alone sees the crisis after it's unrecoverable.
+5. **Kill your own, not the OS's choice.** If a build must be killed to recover headroom, the dispatcher kills ITS OWN largest allocator (the process it dispatched) rather than letting the OS choose — the OS will choose the gate, or a teammate doing useful work, exactly as it did in the incident.
 
 ## Sprint contract
 
@@ -115,6 +140,15 @@ If `[gates.subtract_paths]` is unset, the auditor falls back to the language ski
 | Datadog / Grafana | queries if MCP available | streaming logs |
 
 When a service is `false` in both `[mcp]` and `[cli]` config, downgrade that Phase-0 mesh row to N/A and continue.
+
+**Availability means bounded latency, not presence (#257).** "AVAILABLE" above is binary on discovery — plugin loaded, `[mcp].<svc>` on — and that predicate is incomplete: a tool can be loaded, enumerated, resolved by `ToolSearch`, and still not answer. Measured 2026-08-03: `add_issue_comment` through a Docker-gateway MCP timed out at 1824s and then 1804s (~30 min each, two attempts) before the `gh issue comment` fallback posted instantly — an hour of wall-clock lost to a tool that was "available" the whole time by the discovery-only reading. An MCP write that has not returned within a stated budget is UNAVAILABLE for contract purposes, and the sanctioned CLI fallback applies WITHOUT counting as a violation:
+
+- **Budget: 120s** for issue/PR writes — generous against a normal 1–3s call, tight against a genuine hang.
+- The existing `[WARN] MCP <tool> unavailable — using <cli>` line covers the timeout case too, and MUST record the elapsed time (`[WARN] MCP <tool> unavailable — using <cli> (timed out after Ns)`) so the pattern is visible across sprints, not silently indistinguishable from a clean discovery-absence.
+- **One retry, then commit to the fallback for the remainder of the dispatch** — no re-probing per call. Two independent 30-minute hangs (the measured incident) is the actual failure mode a single retry-then-commit rule prevents.
+- **Bulk ledger writes are CLI-first outright** — a sprint close writing many comments never probes the MCP first: aggregate hang risk (N writes × a possible 120s budget each) is a real availability problem for the close itself, and `gh`'s output (a URL) is not meaningfully worse than the MCP's for a write of this shape.
+
+Distinguish this from the axiom dev.8 W0 incident cited above (a whole-plugin ABSENCE left `gh` the only mechanism, and the resulting CLI use was misread at close as non-compliance): that was *chose the CLI correctly, graded wrongly*; a timeout under the old binary reading produces evidence of NEITHER "chose the CLI wrongly" nor "the MCP did not answer" — the elapsed-time `[WARN]` line above is what makes a close report able to tell the two failures apart.
 
 **Provider-agnostic discovery (#110).** NEVER hard-assume an MCP namespace. Shepherd DISCOVERS a service's tools at runtime via `ToolSearch("github issues" | "sentry" | "supabase")`, which resolves whatever provider is connected — native `mcp__github__*`, Composio, or a Docker-gateway `mcp__MCP_DOCKER__*` — by capability, not by a fixed token. The `mcp__plugin_*` entries in an agent's `tools:` frontmatter are the default-provider OFFER, not a hard dependency; every flock agent that touches a service also grants `ToolSearch` for exactly this reason. A `ToolSearch` that returns nothing for a service is a DISCONNECTED-or-absent provider (#110): degrade to the sanctioned CLI fallback (`gh` / `psql`) and emit `[WARN] MCP <svc> unavailable — using <fallback>`, never a silent tool failure.
 

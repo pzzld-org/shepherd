@@ -360,9 +360,20 @@ def test_graph_section_matching_sprint_renders_normally(db_path: Path, workdir: 
     assert "    completion: 1/2 (50%)" in stdout
 
 
-def test_graph_section_missing_sprint_key_renders_normally_no_banner(db_path: Path, workdir: Path) -> None:
+def test_graph_section_missing_sprint_key_takes_normal_path_no_banner(db_path: Path, workdir: Path) -> None:
     """GH #248: absence of the ``sprint`` field is NOT staleness (an older
-    state.json may predate it) -- must render normally, no banner."""
+    state.json may predate it) -- the staleness gate must NOT intervene,
+    falling through to the normal (non-banner) render path exactly like
+    before this fix.
+
+    The walker itself (:mod:`shepherd_cli.commands.graph`, out of this
+    lane's scope) separately requires ``state['sprint']`` for its own
+    text rendering and degrades to the pre-existing
+    ``"  (graph status error)"`` line without it -- that degrade is
+    unrelated to and unaffected by the staleness gate added here, and is
+    the SAME line :func:`test_graph_section_error_degradation_on_corrupt_state`
+    already pins for a differently-broken state.json.
+    """
     graph_dir = workdir / "graph"
     graph_dir.mkdir(parents=True, exist_ok=True)
     state = {"nodes": {"n1": {"state": "done"}, "n2": {"state": "ready"}}}  # no "sprint" key at all
@@ -375,7 +386,7 @@ def test_graph_section_missing_sprint_key_renders_normally_no_banner(db_path: Pa
     stdout = proc.stdout
     assert "STALE —" not in stdout
     assert "GRAPH\n" in stdout
-    assert "    completion: 1/2 (50%)" in stdout
+    assert "  (graph status error)" in stdout
 
 
 def test_graph_section_run_active_but_state_not_run_scoped_notes_it(db_path: Path, workdir: Path) -> None:

@@ -26,6 +26,7 @@ from pathlib import Path
 from conftest import (
     MIGRATIONS_DIR,
     REPO_ROOT,
+    SCHEMA_BASE_SQL,
     build_full_schema_db,
     clean_env_dict,
     insert_project,
@@ -354,6 +355,36 @@ def test_missing_db_bash_parity(tmp_path: Path) -> None:
     assert python_proc.returncode == bash_proc.returncode == 1
     assert python_proc.stdout == bash_proc.stdout == ""
     assert python_proc.stderr == bash_proc.stderr
+
+
+# --------------------------------------------------------------------------
+# Behind-schema validation branch (#250) — distinct from the missing-DB
+# branch above: the DB file exists but its schema predates the shipped
+# migration set. See tests/test_db_readonly.py for the full #250 suite
+# (library-level lifespan(migrate=False)/schema_is_current() coverage plus
+# the sha256-unchanged assertion shared by status/audit/style); this test
+# pins that `shepherd status` specifically still refuses correctly and
+# keeps this file's own missing-DB-vs-behind-schema branches distinguished
+# in one place.
+# --------------------------------------------------------------------------
+def test_behind_schema_refuses_distinctly_from_missing_db(tmp_path: Path) -> None:
+    db_path = tmp_path / "shepherd.db"
+    workdir = tmp_path / "work"
+    conn = sqlite3.connect(str(db_path))
+    try:
+        conn.executescript(SCHEMA_BASE_SQL.read_text())  # ONLY 0001_init.sql — no migrations applied
+        conn.commit()
+    finally:
+        conn.close()
+    env = _status_env(db_path, workdir)
+
+    proc = run_cli(["status"], env)
+
+    assert proc.returncode == 1
+    assert proc.stdout == ""
+    assert proc.stderr.strip() == "schema is behind the shipped migrations; run: shepherd migrate"
+    # Distinct message from the missing-DB branch above — never confusable.
+    assert "ERROR: no DB at" not in proc.stderr
 
 
 # --------------------------------------------------------------------------
