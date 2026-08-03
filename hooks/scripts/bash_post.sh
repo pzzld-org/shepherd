@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shepherd hook — PostToolUse(Bash): cwd drift detection (v5.1.2) + the #59
-# gates-ran ledger (v6.5.0).
+# gates-ran ledger (v6.4.1).
 #
 # Fires after every Bash tool call. Detects if the conductor's cwd has drifted
 # into a sub-worktree — the most common silent fault (conductor-cwd.md §IV) —

@@ -57,7 +57,7 @@ TRIGGER="$(json_field "$PAYLOAD" '.trigger' 2>/dev/null || true)"
 # --- namespace + paths ---------------------------------------------------
 NS="$(resolve_namespace 2>/dev/null || echo .shepherd)"
 DB="$(hook_db_path "$NS")"
-# v6.5.0: graph state is run-scoped when a run is active — the newest
+# v6.4.1: graph state is run-scoped when a run is active — the newest
 # {paths.runs}/*/run.json with status "executing" (CLI-written via
 # `shepherd run`). Prefer runs/{run}/graph/ PER FILE, falling back to the
 # legacy $NS/graph/ twin, so a mid-migration project (state still at the

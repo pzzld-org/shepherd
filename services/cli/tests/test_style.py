@@ -296,7 +296,7 @@ def test_init_no_project_registered_exits_1(db_path: Path, workdir: Path) -> Non
 
 
 def test_list_before_any_init_shows_bundled_tier(db_path: Path, project_id: str, workdir: Path) -> None:
-    """v6.5.0: with no project/user profiles, list surfaces the bundled
+    """v6.4.1: with no project/user profiles, list surfaces the bundled
     defaults annotated with their source tier (the four-tier chain makes
     bundled styles first-class instead of invisible-until-init)."""
     env = style_env(db_path, workdir)
@@ -424,7 +424,7 @@ def test_show_missing_lang_arg_exits_1(db_path: Path, project_id: str, workdir: 
 def test_show_uninitialized_bundled_language_falls_back_to_bundled_tier(
     db_path: Path, project_id: str, workdir: Path
 ) -> None:
-    """v6.5.0: an uninitialized bundled language resolves through the
+    """v6.4.1: an uninitialized bundled language resolves through the
     four-tier chain to the plugin's bundled copy instead of erroring."""
     env = style_env(db_path, workdir)
     proc = run_cli(["style", "show", "python", "--json"], env)

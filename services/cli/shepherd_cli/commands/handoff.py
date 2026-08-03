@@ -403,7 +403,7 @@ async def _fetch_metrics_async(project_id: str) -> dict[str, int]:
 # Template rendering.
 # --------------------------------------------------------------------------
 def _render_template(template_text: str, values: dict[str, str]) -> str:
-    """Render the handoff template through the ONE jinja engine (v6.5.0).
+    """Render the handoff template through the ONE jinja engine (v6.4.1).
 
     Historically this was the repo's second hand-rolled render engine (a
     naive ``str.replace`` twin of bash's ``awk gsub`` pass). Both dialects

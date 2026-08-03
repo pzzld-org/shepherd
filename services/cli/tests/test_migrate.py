@@ -435,7 +435,7 @@ def test_unrecognized_extra_tokens_are_silently_ignored(tmp_path: Path) -> None:
 
 
 # --------------------------------------------------------------------------
-# --layout v3 (v6.5.0 run-scoped artifacts + profiles) — NEW, no bash twin.
+# --layout v3 (v6.4.1 run-scoped artifacts + profiles) — NEW, no bash twin.
 # --------------------------------------------------------------------------
 def _run_migrate(args: list[str], env: dict[str, str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
     """Drive ``shepherd migrate <args>`` as a subprocess (general form)."""
@@ -455,9 +455,9 @@ def test_layout_v3_moves_seeds_plans_and_styles(tmp_path: Path, one_token: bool)
     workdir = tmp_path / "ws" / ".shepherd"
     plans = workdir / "docs" / "plans"
     plans.mkdir(parents=True)
-    (plans / "v650-dev0.seed.md").write_text("seed body")
-    (plans / "v650-dev0.plan.md").write_text("plan body")
-    (plans / "v650.seed.md").write_text("arc seed")
+    (plans / "v641-dev0.seed.md").write_text("seed body")
+    (plans / "v641-dev0.plan.md").write_text("plan body")
+    (plans / "v641.seed.md").write_text("arc seed")
     styles = workdir / "styles"
     styles.mkdir()
     (styles / "python.md").write_text("py style")
@@ -468,11 +468,11 @@ def test_layout_v3_moves_seeds_plans_and_styles(tmp_path: Path, one_token: bool)
     proc = _run_migrate(args, env, cwd=tmp_path)
 
     assert proc.returncode == 0, proc.stderr
-    assert (workdir / "runs" / "v650-dev0" / "seed.md").read_text() == "seed body"
-    assert (workdir / "runs" / "v650-dev0" / "plan.md").read_text() == "plan body"
-    assert (workdir / "runs" / "v650" / "seed.md").read_text() == "arc seed"
+    assert (workdir / "runs" / "v641-dev0" / "seed.md").read_text() == "seed body"
+    assert (workdir / "runs" / "v641-dev0" / "plan.md").read_text() == "plan body"
+    assert (workdir / "runs" / "v641" / "seed.md").read_text() == "arc seed"
     assert (workdir / "profiles" / "python" / "style.md").read_text() == "py style"
-    assert not (plans / "v650-dev0.seed.md").exists()
+    assert not (plans / "v641-dev0.seed.md").exists()
     assert not (styles / "python.md").exists()
     assert "moved=4" in proc.stdout
 
@@ -483,8 +483,8 @@ def test_layout_v3_skips_bad_slugs_and_existing_destinations(tmp_path: Path) -> 
     plans = workdir / "docs" / "plans"
     plans.mkdir(parents=True)
     (plans / "2026-05-20-v517-Canonical_State.plan.md").write_text("dated spec-style")
-    (plans / "v650-dev0.seed.md").write_text("incoming")
-    existing_run = workdir / "runs" / "v650-dev0"
+    (plans / "v641-dev0.seed.md").write_text("incoming")
+    existing_run = workdir / "runs" / "v641-dev0"
     existing_run.mkdir(parents=True)
     (existing_run / "seed.md").write_text("already here")
 
@@ -494,7 +494,7 @@ def test_layout_v3_skips_bad_slugs_and_existing_destinations(tmp_path: Path) -> 
 
     assert proc.returncode == 0, proc.stderr
     assert (plans / "2026-05-20-v517-Canonical_State.plan.md").exists()  # never moved
-    assert (plans / "v650-dev0.seed.md").exists()  # collision -> SKIP, source kept
+    assert (plans / "v641-dev0.seed.md").exists()  # collision -> SKIP, source kept
     assert (existing_run / "seed.md").read_text() == "already here"  # never clobbered
     assert "SKIP" in proc.stdout
 
@@ -503,7 +503,7 @@ def test_layout_v3_is_idempotent_on_second_run(tmp_path: Path) -> None:
     workdir = tmp_path / "ws" / ".shepherd"
     plans = workdir / "docs" / "plans"
     plans.mkdir(parents=True)
-    (plans / "v650-dev0.seed.md").write_text("seed body")
+    (plans / "v641-dev0.seed.md").write_text("seed body")
 
     env = clean_env_dict()
     env["SHEPHERD_WORKDIR"] = str(workdir)
@@ -513,7 +513,7 @@ def test_layout_v3_is_idempotent_on_second_run(tmp_path: Path) -> None:
     assert first.returncode == 0 and second.returncode == 0
     assert "moved=1" in first.stdout
     assert "moved=0" in second.stdout
-    assert (workdir / "runs" / "v650-dev0" / "seed.md").read_text() == "seed body"
+    assert (workdir / "runs" / "v641-dev0" / "seed.md").read_text() == "seed body"
 
 
 def test_layout_bogus_value_names_both_supported_layouts(tmp_path: Path) -> None:

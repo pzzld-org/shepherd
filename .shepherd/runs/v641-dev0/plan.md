@@ -1,4 +1,4 @@
-# v6.5.0-dev.0 Implementation Plan
+# v6.4.1-dev.0 Implementation Plan
 
 **Goal:** Retire the bash CLI layer behind a complete Python CLI with a Jinja2
 template engine, standardize run artifacts under `.shepherd/runs/{run}/`, and
@@ -127,8 +127,8 @@ with filesystem fallback).
 
 Repo self-migration (`.artifacts/` → `.shepherd/` via `shepherd migrate
 --layout v3` + config repoint + carry-forward file move); `.gitignore` run
-split; CHANGELOG entries for v6.4.1 (repairing the missed gate) and v6.5.0;
-plugin.json + pyproject 6.5.0; full suites (pytest, hooks, remaining ctx);
+split; CHANGELOG entries for v6.4.1 (repairing the missed gate) and v6.4.1;
+plugin.json + pyproject 6.4.1; full suites (pytest, hooks, remaining ctx);
 eval rubric refresh (seed rubric gains placeholder/interface checks); push;
 draft PR; close #239 #244 #234 #225 #241 #235 #230 #242 #220 #59 #232 #228
 #229 #221 #231 #181 with evidence, close #243 #130 #30 #29 #28 #27 as
@@ -143,7 +143,7 @@ superseded-by-plan.
 - `git check-ignore .shepherd/runs/x/graph/f` passes;
   `git check-ignore .shepherd/runs/x/seed.md` fails (tracked).
 - `shepherd render handoff --vars-json <f>` byte-identical across two runs.
-- `shepherd run init v650-dev0 && shepherd run show v650-dev0` round-trips.
+- `shepherd run init v641-dev0 && shepherd run show v641-dev0` round-trips.
 - LOC delta net-negative on production source (`git diff --shortstat`).
 
 ## Deviations

@@ -4,9 +4,9 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
-## v6.5.0 — 2026-08-03
+## v6.4.1 — 2026-08-03
 
-**The robustness release: one canonical Python CLI (bash layer retired), one Jinja2 template engine, one standard `.shepherd/runs/{run}/` artifact layout, and a planning contract refined with internalized planning discipline.** Board triage closed 19 stale shipped-but-open issues before a line changed; the sprint plan lives at `.shepherd/runs/v650-dev0/plan.md` (the first artifact in the new layout).
+**The robustness release: the canonical Python CLI completes (all seven remaining bash commands ported), one Jinja2 template engine, one standard `.shepherd/runs/{run}/` artifact layout, and a planning contract refined with internalized planning discipline.** This is the release `d0c9462` bumped the version for and #239 scoped; the bump shipped ahead of the work, and this entry documents what landed under it. Board triage closed 19 stale shipped-but-open issues before a line changed; the sprint plan lives at `.shepherd/runs/v641-dev0/plan.md` (the first artifact in the new layout).
 
 ### New
 
@@ -29,10 +29,6 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 - **Planning contract refined (no new skills, nothing forced).** The engineer's plan discipline is internalized (superpowers skills load only IF INSTALLED, never a grade-cap): per-step `Interfaces: Consumes/Produces` contracts, a banned-placeholder law, a pre-critic self-review walk (seed coverage / placeholder scan / symbol consistency). Lane plans materialize as files — root renders `runs/{run}/lanes/{lane}/plan.md` from the lane projection; the **conductor owns its lane plan** (checkbox tracking, append-only `## Deviations`, acceptance results) as its ONE write exemption. Boot prompts are rendered (`shepherd render boot-prompt.md.j2`) with the lane-plan PATH instead of a pasted brief slice, and carry a structured `git_custody: root|lane` field the profile must obey (#230). Spawn preflight Check 1 verifies the Agent-Teams substrate instead of advising (#220).
 - **`.shepherd/` is the only project-visible namespace.** This repo's own dogfood config and artifacts migrated off `.artifacts/` (resolvers still honor legacy trees). `skills/context/references/naming-conventions.md` is the canonical artifact schema: exact-path table, ownership table, identifier grammar, git split.
 - **Eval rubrics.** `seed.rubric.json` gains a `no_placeholders` dimension; new `plan.rubric.json` grades seed coverage, buildability, interface contracts, and placeholders at the wave-review bar.
-
-## v6.4.1 — 2026-07-22
-
-**Version-bump repair entry.** v6.4.1 shipped as a bare plugin-version bump (6.4.0 → 6.4.1, commit `d0c9462`) with no changelog entry — exactly the omission the changelog-currency gate exists to catch; this entry closes the gap retroactively. No functional changes beyond the bump; the #239 deliverables it named landed in v6.5.0.
 
 ## v6.4.0 — 2026-07-21
 

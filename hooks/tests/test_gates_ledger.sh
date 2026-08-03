@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# hooks/tests/test_gates_ledger.sh — the #59 gates-ran ledger (v6.5.0).
+# hooks/tests/test_gates_ledger.sh — the #59 gates-ran ledger (v6.4.1).
 #
 # Two legs of the deterministic gates-invocation record:
 #   • bash_post.sh appends one JSONL row {ts, gate, command} to

@@ -14,7 +14,7 @@
 #             (e.g. .artifacts/reports/2026-04-16-v034-dev9-close.md)
 #   Signal B: the sprint branch still exists on origin
 #
-# SIDE CHANNEL (v6.5.0 #59, after Signal A, never a block): warns ONCE per
+# SIDE CHANNEL (v6.4.1 #59, after Signal A, never a block): warns ONCE per
 # session on stderr when a [gates.extra] entry has no recorded invocation in
 # this session's gates ledger (<NS>/tmp/gates-ran-<session>.jsonl, written by
 # bash_post.sh; `shepherd doctor` reports the same).

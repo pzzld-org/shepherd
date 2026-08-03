@@ -193,7 +193,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 8. (v6.5.0) Active run → the snapshot reads the RUN-SCOPED graph
+# 8. (v6.4.1) Active run → the snapshot reads the RUN-SCOPED graph
 #    (runs/{run}/graph/state.json) and records the run id; the legacy
 #    $NS/graph twin (different node ids) is NOT the source.
 # ---------------------------------------------------------------------------
@@ -218,7 +218,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 9. (v6.5.0) Active run WITHOUT its own graph/ files → per-file fallback to
+# 9. (v6.4.1) Active run WITHOUT its own graph/ files → per-file fallback to
 #    the legacy $NS/graph (compat shim: mid-migration projects keep working).
 # ---------------------------------------------------------------------------
 total=$((total+1))
@@ -239,7 +239,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 10. (v6.5.0) No EXECUTING run (status closed) → legacy behavior: run field
+# 10. (v6.4.1) No EXECUTING run (status closed) → legacy behavior: run field
 #     empty, legacy graph read.
 # ---------------------------------------------------------------------------
 total=$((total+1))

@@ -1,6 +1,6 @@
 """``shepherd render`` — deterministic template rendering Typer sub-app.
 
-NEW surface (v6.5.0, #244/#243/#181) — no bash counterpart existed; this
+NEW surface (v6.4.1, #244/#243/#181) — no bash counterpart existed; this
 command RETIRES the repo's five placeholder dialects by fronting the one
 ``shepherd_cli.render`` engine. Contract:
 

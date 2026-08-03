@@ -55,7 +55,7 @@ echo "== #223 coordinate-drive guard fires only for the recorded lead =="
 have skills/context/schema/migrations/0021_spawn_lead.sql 'CREATE TABLE IF NOT EXISTS spawn_leads' "#223 migration 0021 creates spawn_leads"
 have skills/context/scripts/cmd_teammate.sh      'register-lead'         "#223 teammate register-lead subcommand exists"
 have hooks/scripts/coordinate_drive_guard.sh     'spawn_leads'           "#223 guard lead-only gate reads spawn_leads"
-# v6.5.0 #232 superseded the #223 conservative OTHER_LEAD bystander predicate:
+# v6.4.1 #232 superseded the #223 conservative OTHER_LEAD bystander predicate:
 # the guard now requires POSITIVE lead identity (MY_LEAD > 0) and exits for any
 # unresolvable identity — pin the new shape and the marker fail-close.
 have hooks/scripts/coordinate_drive_guard.sh     'MY_LEAD" -gt 0'        "#232 guard requires positive recorded-lead identity"

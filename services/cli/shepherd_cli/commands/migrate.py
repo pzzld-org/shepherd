@@ -552,7 +552,7 @@ def _is_layout_v2(tokens: list[str]) -> bool:
 def _is_layout_v3(tokens: list[str]) -> bool:
     """Does this argv select the ``--layout v3`` branch?
 
-    Same positional shape as :func:`_is_layout_v2`, for the v6.5.0
+    Same positional shape as :func:`_is_layout_v2`, for the v6.4.1
     run-scoped layout migration (NEW in Python; no bash counterpart —
     the bash layer never learned v3).
 
@@ -582,7 +582,7 @@ _LAYOUT_V3_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 def _layout_v3_migrate() -> int:
     """Run the ``--layout v3`` migration: run-scoped artifacts + profiles.
 
-    NEW in v6.5.0 (no bash counterpart). Two idempotent moves, both
+    NEW in v6.4.1 (no bash counterpart). Two idempotent moves, both
     collision-safe (an existing destination is a SKIP, never an
     overwrite), both ``git mv``-aware via :func:`_mv_file`:
 
@@ -592,7 +592,7 @@ def _layout_v3_migrate() -> int:
        A ``<slug>`` outside the run-id grammar (lowercase alphanumerics +
        hyphens) is SKIPped — dated spec-style names stay where they are.
     2. Styles into profile directories: ``styles/<profile>.md`` ->
-       ``profiles/<profile>/style.md`` (the v6.5.0 profiles layout;
+       ``profiles/<profile>/style.md`` (the v6.4.1 profiles layout;
        ``shepherd_cli.profiles`` reads BOTH shapes, so a partial
        migration is never a breakage). The ``styles`` DB table's
        ``source_path`` values self-heal on the next ``style init``/

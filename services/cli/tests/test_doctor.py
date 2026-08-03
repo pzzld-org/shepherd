@@ -875,7 +875,7 @@ def test_last_format_flag_wins(work_dir: Path, xdg_dir: Path) -> None:
 
 
 # --------------------------------------------------------------------------
-# Section 7 — gates-invocation ledger (v6.5.0 #59; post-parity, conditional).
+# Section 7 — gates-invocation ledger (v6.4.1 #59; post-parity, conditional).
 # --------------------------------------------------------------------------
 _GATES_TOML = (
     "[gates]\n"
@@ -983,7 +983,7 @@ def test_gates_rows_render_after_config_in_md(work_dir: Path, xdg_dir: Path) -> 
 
 
 # --------------------------------------------------------------------------
-# Section 8 — CLI/plugin version match (v6.5.0 #235; post-parity, conditional).
+# Section 8 — CLI/plugin version match (v6.4.1 #235; post-parity, conditional).
 # --------------------------------------------------------------------------
 def _write_plugin_json(root: Path, version: str) -> None:
     plugin_dir = root / ".claude-plugin"

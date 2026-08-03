@@ -19,7 +19,7 @@ READ-ONLY health check across six sections, in this exact order —
 6. **Config** — whether ``shepherd.toml`` is locatable at any of three
    standard paths.
 
-Two POST-PARITY sections follow (v6.5.0 — not in ``cmd_doctor.sh``; both
+Two POST-PARITY sections follow (v6.4.1 — not in ``cmd_doctor.sh``; both
 emit rows only CONDITIONALLY, so gate-less / version-matched fixtures still
 render byte-identically to the legacy script):
 
@@ -832,7 +832,7 @@ def _check_config(repo: str) -> Result:
 
 
 # --------------------------------------------------------------------------
-# Section 7 -- gates-invocation ledger (v6.5.0 #59; NOT in cmd_doctor.sh).
+# Section 7 -- gates-invocation ledger (v6.4.1 #59; NOT in cmd_doctor.sh).
 # --------------------------------------------------------------------------
 # The first post-parity sections: `cmd_doctor.sh` never had them, and both are
 # CONDITIONAL rows (emitted only when their subject exists -- gates configured /
@@ -1016,7 +1016,7 @@ def _check_gates(repo: str, workdir: str) -> list[Result]:
 
 
 # --------------------------------------------------------------------------
-# Section 8 -- CLI/plugin binary-version match (v6.5.0 #235; NOT in cmd_doctor.sh).
+# Section 8 -- CLI/plugin binary-version match (v6.4.1 #235; NOT in cmd_doctor.sh).
 # --------------------------------------------------------------------------
 def _check_version_match() -> list[Result]:
     """Section 8: WARN when the running CLI `__version__` differs from plugin.json.
@@ -1099,7 +1099,7 @@ def _collect_results() -> list[Result]:
 
     results.append(_check_config(repo))
 
-    # v6.5.0 post-parity sections (both conditional -- see their docstrings).
+    # v6.4.1 post-parity sections (both conditional -- see their docstrings).
     # The workdir is re-resolved QUIETLY so these additions never change the
     # module's carefully-reproduced split-brain stderr-warning call count.
     results.extend(_check_gates(repo, _quiet_resolve_workdir()))

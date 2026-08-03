@@ -9,7 +9,7 @@
 # Covers: registered teammate advances + revives; non-teammate session is a no-op;
 # terminal (retired/crashed) teammate untouched; missing DB fails open; [hooks].
 # teammate_heartbeat=off disables it; an 'active' teammate keeps status active;
-# v6.5.0 #229 liveness scoping — the stamp is refused for rows whose team is
+# v6.4.1 #229 liveness scoping — the stamp is refused for rows whose team is
 # not the CURRENT session's (newest-registration) team, so a prior team's row
 # carrying the same session_id can never be kept artificially "alive".
 # Conventions mirror hooks/tests/test_coordinate_drive_guard.sh.

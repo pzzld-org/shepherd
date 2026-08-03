@@ -42,8 +42,8 @@ plugin defaults.
 
 ## Run identity
 
-`{run}` == the sprint slug (e.g. `v650-dev0`); patch-arc runs use the patch
-slug (e.g. `v650`). Slugs are generated from
+`{run}` == the sprint slug (e.g. `v641-dev0`); patch-arc runs use the patch
+slug (e.g. `v641`). Slugs are generated from
 `[branching].sprint_slug_pattern`/`patch_slug_pattern` — NEVER invented ad
 hoc. Run and lane identifiers sanitize to `[a-z0-9][a-z0-9-]*`: lowercase,
 starts alphanumeric, no `..`, no path separators, no absolute paths. A
@@ -148,7 +148,7 @@ A style profile is a DIRECTORY: `profiles/{profile}/style.md`, where
 `instructions.md`, tool configs). Resolution, first hit wins:
 
 1. project `<ns>/profiles/{profile}/style.md`
-2. project legacy `<ns>/styles/{profile}.md` (pre-v6.5.0 flat layout;
+2. project legacy `<ns>/styles/{profile}.md` (pre-v6.4.1 flat layout;
    `shepherd migrate --layout v3` moves it)
 3. user `~/.shepherd/profiles/{profile}/style.md` (`SHEPHERD_HOME` honored)
 4. bundled `${CLAUDE_PLUGIN_ROOT}/skills/context/styles/{profile}.md`

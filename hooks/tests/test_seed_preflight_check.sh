@@ -84,7 +84,7 @@ ck "off-mode-silent"     "$BAD_PL"  ""
 # back to default
 printf '[project]\nname="t"\n' > .claude/shepherd.toml
 
-# v6.5.0 run-scoped naming (runs/{run}/seed.md — the rename hazard, res_12 §3):
+# v6.4.1 run-scoped naming (runs/{run}/seed.md — the rename hazard, res_12 §3):
 # the gate matches the path SEGMENT, so moving the seed into the run dir keeps
 # the deterministic pre-flight armed.
 ck "runs-form-bad-denies"   "$(payload bad.txt "$tmp/.shepherd/runs/v100-dev0/seed.md" Write)" '"permissionDecision":"deny"'

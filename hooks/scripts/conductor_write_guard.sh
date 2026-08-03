@@ -115,7 +115,7 @@ fi
 if [[ "$TOOL" == "Edit" || "$TOOL" == "Write" ]]; then
   FILE_PATH="$(json_field "$PAYLOAD" '.tool_input.file_path' 2>/dev/null || true)"
 
-  # --- Lane-plan custody exemption (v6.5.0, seed decision 6): a TEAMMATE-
+  # --- Lane-plan custody exemption (v6.4.1, seed decision 6): a TEAMMATE-
   # conductor OWNS runs/{run}/lanes/{lane}/ — checkbox step tracking and the
   # append-only `## Deviations` log live in ITS lane plan, so Edit/Write
   # inside its OWN lane dir passes. The lane comes from the session-tier
@@ -142,7 +142,7 @@ if [[ "$TOOL" == "Edit" || "$TOOL" == "Write" ]]; then
   MSG+="  Tool       : $TOOL"$'\n'
   MSG+="  Target     : ${FILE_PATH:-unknown}"$'\n'
   MSG+="The conductor never Edits or Writes a file OUTSIDE its own lane dir. The one"$'\n'
-  MSG+="carve-out (v6.5.0): a teammate-conductor owns runs/{run}/lanes/{lane}/ — its"$'\n'
+  MSG+="carve-out (v6.4.1): a teammate-conductor owns runs/{run}/lanes/{lane}/ — its"$'\n'
   MSG+="lane plan's checkboxes + '## Deviations' log (agents/conductor.md §Lane-plan"$'\n'
   MSG+="custody). For anything else, compose the exact content in your own reasoning"$'\n'
   MSG+="and hand it to a @worker dispatch as a deterministic write-brief (exact path +"$'\n'

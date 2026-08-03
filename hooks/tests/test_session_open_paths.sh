@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # hooks/tests/test_session_open_paths.sh — session_open.sh plan-validity is
-# [paths]-aware (v6.5.0; fixes the pre-existing hardcoded-plans/ bug res_12 §1c).
+# [paths]-aware (v6.4.1; fixes the pre-existing hardcoded-plans/ bug res_12 §1c).
 #
-# Pre-v6.5.0 the plan-validity check HARDCODED "$ns/plans" — a repo whose
+# Pre-v6.4.1 the plan-validity check HARDCODED "$ns/plans" — a repo whose
 # config put plans under docs/plans (this dogfood repo's own shape) got a
 # false "no plan.md" warning at every session start. Now:
 #   • [paths].plans is honored for the legacy {branch|slug}.plan.md forms;
@@ -55,7 +55,7 @@ fi
 
 # ---------------------------------------------------------------------------
 # 2. Plan at the CONFIGURED [paths].plans dir (slug form) → no warning.
-#    (Pre-v6.5.0 this exact layout false-warned: the hook only read $ns/plans.)
+#    (Pre-v6.4.1 this exact layout false-warned: the hook only read $ns/plans.)
 # ---------------------------------------------------------------------------
 total=$((total+1))
 mkdir -p .shepherd/docs/plans
