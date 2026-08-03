@@ -46,8 +46,20 @@
 .shepherd/discoveries/
 .shepherd/insights/
 .shepherd/pauses/
-.shepherd/runs/
 .shepherd/memory/
+# runs/ split (v6.4.1 artifact schema): durable run artifacts tracked,
+# run state (run.json, graph/, dispatch/, reports/, audits/) ignored
+.shepherd/runs/**
+!.shepherd/runs/*/
+!.shepherd/runs/*/seed.md
+!.shepherd/runs/*/mesh.md
+!.shepherd/runs/*/plan.md
+!.shepherd/runs/*/phase0.md
+!.shepherd/runs/*/close.md
+!.shepherd/runs/*/handoff.md
+!.shepherd/runs/*/lanes/
+!.shepherd/runs/*/lanes/*/
+!.shepherd/runs/*/lanes/*/plan.md
 
 # Dev-only tooling output (scripts/ — not part of the shipped plugin surface)
 /scripts/.filetree.json

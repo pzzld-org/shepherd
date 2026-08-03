@@ -33,6 +33,8 @@ NEVER refuse to plant on a lower tier — operator may have deliberately chosen 
 
 Load `agents/planter.md` in full as system-prompt addendum; `§Plant mode` is canonical past Step 0: config/doctrine load, 12-row mesh, seed authorship, pre-flight verification, commit, PLANTER REPORT.
 
+Artifacts land run-scoped: the planter creates the run dir FIRST via `shepherd run init {run}` (`{run}` = the sprint or patch slug, sanitized `[a-z0-9-]`), then writes the seed to `{run_dir}/seed.md` and the mesh report to `{run_dir}/mesh.md` (`{run_dir}` = `{paths.runs}/{run}`, default `.shepherd/runs/{run}`) — `agents/planter.md §Plant mode`, `skills/shepherd/references/seed-template.md §File path`.
+
 For a brand-new patch arc (no `dev.*` branches on origin), sprint numbering N is ALWAYS 0 — never derived from prior patch's counter (`agents/planter.md §Sprint numbering`).
 
 Scope argument: nothing (next-sprint + future skeletons), `dev.N`, `dev.N..dev.M`, `arc`, `next-version`.

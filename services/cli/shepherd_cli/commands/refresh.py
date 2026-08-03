@@ -4,48 +4,53 @@ Native port of ``skills/context/scripts/cmd_refresh.sh`` (v5.1.3+): a
 ``--scope=<zone>``/``--all`` dispatcher over five independent cache-rebuild
 zones —
 
-    symbols   -> ``refresh-symbols.sh``   (rust public-symbol index, via cargo)
-    shapes    -> ``cmd_dups.sh scan --update --quiet`` (struct/enum field
-                 shapes for ``shctx dups``)
-    github    -> ``refresh-github.sh``    (issues/PRs/releases/milestones via ``gh``)
-    artifacts -> ``refresh-artifacts.sh`` (markdown specs/plans/handoffs/journal)
+    symbols   -> :func:`shepherd_cli.refresh_impl.refresh_symbols`
+                 (rust public-symbol index, via cargo — bash: ``refresh-symbols.sh``)
+    shapes    -> the :mod:`shepherd_cli.commands.dups` module IN-PROCESS,
+                 dispatched as ``scan --update --quiet`` (struct/enum field
+                 shapes for ``shctx dups`` — bash: ``cmd_dups.sh scan --update --quiet``)
+    github    -> :func:`shepherd_cli.refresh_impl.refresh_github`
+                 (issues/PRs/releases/milestones via ``gh`` — bash: ``refresh-github.sh``)
+    artifacts -> :func:`shepherd_cli.refresh_impl.refresh_artifacts`
+                 (markdown specs/plans/handoffs/journal — bash: ``refresh-artifacts.sh``)
     telemetry -> cache-usage rollup, INLINE (see below)
     all       -> every zone above, each isolated (default)
 
 ``cmd_refresh.sh`` is a SUBCOMMAND-FREE, flags-only script exactly like
 :mod:`shepherd_cli.commands.sync` — no ``--verbose`` flag (unlike
-``cmd_sync.sh``), just ``--scope=<value>`` and its ``--all`` alias. Four of
-the five zones are pure SUBPROCESS-ORCHESTRATION: this module locates the
-real sibling scripts via :func:`shepherd_cli.resolution.find_bash_shctx`
-(same directory as the ``shctx`` dispatcher, exactly like
-:mod:`shepherd_cli.commands.sync`/:mod:`shepherd_cli.commands.audit`) and
-runs them with output fully inherited (unredirected) — bash's own
-``symbols)``/``github)``/``artifacts)`` case arms call
-``bash "$HERE/refresh-*.sh"`` directly, with no ``run_stage``-style
-suppression at all (that pattern belongs to ``cmd_sync.sh``/
-``cmd_audit.sh``, not this script). ``shapes`` similarly shells out to
-``cmd_dups.sh scan --update --quiet`` (bash: the ``refresh_shapes()``
-helper), whose own ``--quiet`` flag handles its internal output
-suppression — this module does not additionally redirect anything.
+``cmd_sync.sh``), just ``--scope=<value>`` and its ``--all`` alias.
 
-**``telemetry`` is the one zone this module reimplements NATIVELY rather
-than subprocessing.** Bash's own ``refresh_telemetry()`` helper does not
-shell out to a sibling ``cmd_*.sh`` script either — it pipes a raw
-``python3 -`` heredoc into a subshell that reads every
-``<ns>/logs/events-*.jsonl`` file, filters for ``event_type ==
-"cache_usage"``, and ``INSERT OR IGNORE``s into ``index_cache_usage``
-(idempotent via its ``UNIQUE(session_id, agent_id, ts)`` constraint —
-migration ``0006_cache_telemetry.sql``). Since bash's own "external tool"
-here is already a bespoke Python script (not ``git``/``gh``/a genuine
-sibling ``cmd_*.sh``), the faithful, non-reinventing port is to translate
-that embedded Python verbatim into a first-class async function using this
-CLI's own Tortoise connection (:func:`_insert_cache_usage_rows`) — group
-notes for this port explicitly call this out: "index_cache_usage writes
-via raw SQL". No mirror model is declared for ``index_cache_usage``
-(no other ported module maps it, so the COLLISION RULE does not apply
-either way) — the single ``INSERT OR IGNORE ... RETURNING id`` statement
-this module needs is a poor fit for a full Tortoise model (hard rule #8),
-so it goes straight through ``Tortoise.get_connection("default")
+**CALL PATH (v6.4 native port — no bash subprocesses).** The three
+``refresh-*.sh`` stage scripts were ported natively into
+:mod:`shepherd_cli.refresh_impl`; this module calls those functions
+directly, in-process, and maps each one's returned process-style exit code
+onto its own ``typer.Exit`` — exactly the exit-code contract the former
+``bash "$HERE/refresh-*.sh"`` subprocesses had, with the same
+stdout/stderr lines (unredirected, matching bash's own unsuppressed
+``symbols)``/``github)``/``artifacts)`` case arms). ``shapes`` similarly
+invokes :func:`shepherd_cli.commands.dups._dispatch` with the exact argv
+bash passed (``["scan", "--update", "--quiet"]``, whose own ``--quiet``
+flag handles its internal output suppression) — a ``typer.Exit`` escaping
+that in-process dispatch is converted to its ``exit_code``, mirroring a
+child process's return code. Nothing in this module ever executes
+``bash``; the only real subprocesses left in the pipeline are the genuine
+external binaries the impl functions themselves drive (``cargo``, ``gh``,
+and dups' own ``python3 dups-core.py``).
+
+**``telemetry`` is reimplemented INLINE in this module** (it always was —
+bash's own ``refresh_telemetry()`` helper does not shell out to a sibling
+``cmd_*.sh`` script either; it pipes a raw ``python3 -`` heredoc into a
+subshell that reads every ``<ns>/logs/events-*.jsonl`` file, filters for
+``event_type == "cache_usage"``, and ``INSERT OR IGNORE``s into
+``index_cache_usage`` (idempotent via its ``UNIQUE(session_id, agent_id,
+ts)`` constraint — migration ``0006_cache_telemetry.sql``). Since bash's
+own "external tool" here is already a bespoke Python script, the faithful,
+non-reinventing port is to translate that embedded Python verbatim into a
+first-class async function using this CLI's own Tortoise connection
+(:func:`_insert_cache_usage_rows`). No mirror model is declared for
+``index_cache_usage`` — the single ``INSERT OR IGNORE ... RETURNING id``
+statement this module needs is a poor fit for a full Tortoise model (hard
+rule #8), so it goes straight through ``Tortoise.get_connection("default")
 .execute_query_dict(...)`` inside ``db.lifespan()``, exactly like
 ``commands/audit.py``'s ``insert`` subverb and ``commands/lock.py``'s
 ``locks_history`` writes.
@@ -78,12 +83,13 @@ printing ``"ERROR: <path> missing — run 'shctx init' first"`` to stderr and
 returning non-zero when the file is absent. :func:`_telemetry_project_id`
 mirrors this (self-contained per hard rule #9, duplicated from the nearly
 identical helpers in ``commands/query.py``/``commands/dups.py``/
-``commands/search.py``/``commands/handoff.py``/``commands/sprint.py``):
-missing file -> the exact bash stderr message, returns ``None``; malformed
-JSON -> an equivalent (not byte-identical — jq's own parse-error text is
-not reproduced) message, returns ``None``; present-but-JSON-``null``
-``"id"`` -> the literal string ``"null"`` (jq -r's raw-output rendering of
-JSON ``null``), matching every other such helper in this codebase.
+``commands/search.py``/``commands/handoff.py``/``commands/sprint.py`` and
+:mod:`shepherd_cli.refresh_impl`'s ``_project_id``): missing file -> the
+exact bash stderr message, returns ``None``; malformed JSON -> an
+equivalent (not byte-identical — jq's own parse-error text is not
+reproduced) message, returns ``None``; present-but-JSON-``null`` ``"id"``
+-> the literal string ``"null"`` (jq -r's raw-output rendering of JSON
+``null``), matching every other such helper in this codebase.
 
 **``--scope=all`` ALWAYS exits 0, regardless of any zone's failure.** Bash:
 
@@ -112,34 +118,13 @@ propagates that ONE stage's exit code verbatim.** Bash: e.g.
 ``|| echo ...`` — under ``set -e``, a non-zero exit from that one command
 (the last command the script runs for that scope) IS the script's own
 final exit code. :func:`_refresh_impl` mirrors this: each single-scope
-branch calls ``raise typer.Exit(code=rc)`` with the sibling process's own
-``returncode``, unmodified. ``shapes``'s extra nuance: bash's
+branch calls ``raise typer.Exit(code=rc)`` with the stage function's own
+returned code, unmodified. ``shapes``'s extra nuance: bash's
 ``refresh_shapes()`` helper only prints ``"shctx refresh shapes: ok"``
 AFTER ``bash "$HERE/cmd_dups.sh" scan --update --quiet`` succeeds — a
-failing ``cmd_dups.sh`` aborts ``refresh_shapes()`` (and thus the whole
-script, via ``set -e``) BEFORE that echo ever runs, so :func:`_run_shapes`
-only echoes ``"ok"`` on a zero return code, matching exactly.
-
-**A locate-the-sibling-scripts failure has no bash equivalent** (bash
-always knows its own ``$HERE`` — it can never fail to find itself). This
-port's :func:`find_bash_shctx`-based lookup CAN fail (e.g. a ``git``-less
-environment with no matching ``CLAUDE_PLUGIN_ROOT``). For a single script-
-dependent scope (``symbols``/``shapes``/``github``/``artifacts``), this is
-treated as a hard blocker — ``"ERROR: bash shctx tooling not found
-(skills/context/scripts/)"`` on stderr, exit 1 — the SAME established
-precedent as :mod:`shepherd_cli.commands.sync`/
-:mod:`shepherd_cli.commands.audit`'s own ``_scripts_dir()``. For
-``--scope=all``, since bash's own invariant ("every stage always runs, the
-final exit code is always 0") must be preserved, a missing sibling-script
-tree degrades EACH of the four script-dependent stages to an immediate
-``"shctx: <name> refresh failed (continuing)"`` stderr line (no subprocess
-is even attempted) while ``telemetry`` — which never needs the sibling
-scripts at all — still runs normally; the overall exit code is still
-always 0. This is a deliberate, disclosed platform-level decision, not a
-parity gap: the OBSERVABLE shape (a "failed (continuing)" message per
-zone, all zones attempted, exit 0) is identical to what bash produces when
-an individual sibling script is missing/non-executable (``bash
-missing-file`` exits 127, caught by the same ``|| echo ...`` guard).
+failing scan aborts ``refresh_shapes()`` (and thus the whole script, via
+``set -e``) BEFORE that echo ever runs, so :func:`_run_shapes` only echoes
+``"ok"`` on a zero return code, matching exactly.
 
 **Unknown ``--scope=<value>``** (bash: the case statement's catch-all
 ``*) echo "ERROR: unknown --scope: $scope" >&2; exit 1 ;;``) and unknown
@@ -159,14 +144,14 @@ import datetime
 import glob
 import json
 import os
-import subprocess
 from collections.abc import Callable
 
 import typer
 from tortoise import Tortoise
 
-from shepherd_cli import db
-from shepherd_cli.resolution import find_bash_shctx, resolve_db_path, resolve_workdir
+from shepherd_cli import db, refresh_impl
+from shepherd_cli.commands import dups as dups_cmd
+from shepherd_cli.resolution import resolve_db_path, resolve_workdir
 
 app = typer.Typer(
     no_args_is_help=False,
@@ -259,76 +244,10 @@ def _parse_args(argv: list[str]) -> str:
 
 
 # --------------------------------------------------------------------------
-# Sibling-script location (same shape as shepherd_cli.commands.sync's own
-# helper, kept self-contained here per hard rule #9).
+# shapes — in-process dispatch into the dups module (bash: the
+# refresh_shapes() helper shelling to ``cmd_dups.sh scan --update --quiet``).
 # --------------------------------------------------------------------------
-def _find_scripts_dir() -> str | None:
-    """Locate the directory containing the sibling ``refresh-*.sh``/``cmd_dups.sh`` scripts.
-
-    Mirrors ``cmd_refresh.sh``'s own ``HERE="$(cd "$(dirname "$0")" && pwd)"``
-    — the directory holding ``cmd_refresh.sh`` itself is the same
-    directory that holds ``refresh-symbols.sh``, ``refresh-github.sh``,
-    ``refresh-artifacts.sh``, and ``cmd_dups.sh``. Located via
-    :func:`shepherd_cli.resolution.find_bash_shctx` (the ``shctx``
-    dispatcher lives in that same ``scripts/`` directory), unlike bash
-    which always knows this trivially.
-
-    Returns:
-        The absolute path to ``skills/context/scripts``, or None if the
-        bash ``shctx`` tooling cannot be located at all.
-    """
-    shctx_path = find_bash_shctx()
-    if shctx_path is None:
-        return None
-    return os.path.dirname(shctx_path)
-
-
-def _require_scripts_dir() -> str:
-    """Locate the sibling-scripts directory, or hard-fail — the single-scope path's gate.
-
-    Returns:
-        The absolute path to ``skills/context/scripts``.
-
-    Raises:
-        typer.Exit: code 1, with a stderr message, if the bash ``shctx``
-            tooling cannot be located at all — used by every single-scope
-            branch (``symbols``/``shapes``/``github``/``artifacts``) that
-            has no other way to run its one, essential zone.
-    """
-    scripts_dir = _find_scripts_dir()
-    if scripts_dir is None:
-        typer.echo("ERROR: bash shctx tooling not found (skills/context/scripts/)", err=True)
-        raise typer.Exit(code=1)
-    return scripts_dir
-
-
-def _run_sibling(scripts_dir: str, filename: str, extra_args: list[str] | None = None) -> int:
-    """Run one sibling ``bash <scripts_dir>/<filename> [extra_args...]`` with output inherited.
-
-    Bash parity: ``symbols)``/``github)``/``artifacts)`` each invoke their
-    sibling script directly (``bash "$HERE/refresh-symbols.sh"``), with NO
-    output redirection at all — stdout/stderr flow straight through,
-    exactly like a plain subprocess call with no ``capture_output``.
-
-    Args:
-        scripts_dir: The directory holding the sibling script (from
-            :func:`_require_scripts_dir`/:func:`_find_scripts_dir`).
-        filename: The sibling script's bare filename, e.g.
-            ``"refresh-symbols.sh"``.
-        extra_args: Additional argv tokens appended after the script path
-            (used by :func:`_run_shapes` for ``cmd_dups.sh``'s
-            ``scan --update --quiet``); omitted (bare script, no args) for
-            ``symbols``/``github``/``artifacts``.
-
-    Returns:
-        The child process's exit code, unmodified.
-    """
-    argv = ["bash", os.path.join(scripts_dir, filename), *(extra_args or [])]
-    result = subprocess.run(argv, check=False)
-    return result.returncode
-
-
-def _run_shapes(scripts_dir: str) -> int:
+def _run_shapes() -> int:
     """Run the ``shapes`` zone, mirroring bash's ``refresh_shapes()`` helper.
 
     Bash::
@@ -338,21 +257,27 @@ def _run_shapes(scripts_dir: str) -> int:
           echo "shctx refresh shapes: ok"
         }
 
-    ``"shctx refresh shapes: ok"`` is printed ONLY when ``cmd_dups.sh``
-    succeeds — under ``set -e``, a non-zero exit from that command aborts
-    the (bash) function before its own ``echo`` ever runs, so this port
-    checks the return code FIRST and only echoes ``"ok"`` on success,
-    exactly matching that ordering.
+    The scan itself is now the :mod:`shepherd_cli.commands.dups` module,
+    invoked IN-PROCESS via its own bash-parity dispatcher with the exact
+    argv bash passed (``scan --update --quiet``) — no ``bash`` subprocess.
+    A ``typer.Exit`` escaping that dispatch (e.g. dups' own tooling-lookup
+    failure) is converted to its ``exit_code``, exactly like a child
+    process's return code was before.
 
-    Args:
-        scripts_dir: The directory holding ``cmd_dups.sh``.
+    ``"shctx refresh shapes: ok"`` is printed ONLY on success — under
+    ``set -e``, a non-zero scan aborted the (bash) function before its own
+    ``echo`` ever ran, so this port checks the return code FIRST and only
+    echoes ``"ok"`` on success, exactly matching that ordering.
 
     Returns:
-        0 with ``"shctx refresh shapes: ok"`` printed to stdout, if
-        ``cmd_dups.sh scan --update --quiet`` succeeded; otherwise that
-        command's own non-zero exit code, with nothing additional printed.
+        0 with ``"shctx refresh shapes: ok"`` printed to stdout, if the
+        scan succeeded; otherwise the scan's own non-zero exit code, with
+        nothing additional printed.
     """
-    rc = _run_sibling(scripts_dir, "cmd_dups.sh", ["scan", "--update", "--quiet"])
+    try:
+        rc = dups_cmd._dispatch(["scan", "--update", "--quiet"])
+    except typer.Exit as exc:
+        rc = exc.exit_code
     if rc != 0:
         return rc
     typer.echo("shctx refresh shapes: ok")
@@ -645,31 +570,26 @@ def _run_all_scopes() -> None:
     Every one of the five zones always runs, regardless of any earlier
     zone's result — a non-zero result prints
     ``"shctx: <name> refresh failed (continuing)"`` to stderr and moves
-    on. When the sibling-scripts directory cannot be located at all (see
-    the module docstring's dedicated section), the four script-dependent
-    zones are immediately treated as failed (no subprocess attempted);
-    ``telemetry`` — which never depends on it — still runs normally
-    either way.
+    on. An exception escaping a zone (including a ``typer.Exit`` from the
+    in-process ``shapes`` dispatch's own internals) is treated as that
+    zone failing, exactly like a crashing child process was before the
+    native port.
     """
-    scripts_dir = _find_scripts_dir()
 
     def run_or_warn(label: str, fn: Callable[[], int]) -> None:
         try:
             rc = fn()
+        except typer.Exit as exc:
+            rc = exc.exit_code
         except Exception:
             rc = 1
         if rc != 0:
             typer.echo(f"shctx: {label} refresh failed (continuing)", err=True)
 
-    if scripts_dir is not None:
-        run_or_warn("symbols", lambda: _run_sibling(scripts_dir, "refresh-symbols.sh"))
-        run_or_warn("shapes", lambda: _run_shapes(scripts_dir))
-        run_or_warn("github", lambda: _run_sibling(scripts_dir, "refresh-github.sh"))
-        run_or_warn("artifacts", lambda: _run_sibling(scripts_dir, "refresh-artifacts.sh"))
-    else:
-        for label in ("symbols", "shapes", "github", "artifacts"):
-            typer.echo(f"shctx: {label} refresh failed (continuing)", err=True)
-
+    run_or_warn("symbols", refresh_impl.refresh_symbols)
+    run_or_warn("shapes", _run_shapes)
+    run_or_warn("github", refresh_impl.refresh_github)
+    run_or_warn("artifacts", refresh_impl.refresh_artifacts)
     run_or_warn("telemetry", _run_telemetry)
 
 
@@ -692,17 +612,13 @@ def _refresh_impl(scope: str) -> None:
             else.
     """
     if scope == "symbols":
-        scripts_dir = _require_scripts_dir()
-        raise typer.Exit(code=_run_sibling(scripts_dir, "refresh-symbols.sh"))
+        raise typer.Exit(code=refresh_impl.refresh_symbols())
     if scope == "shapes":
-        scripts_dir = _require_scripts_dir()
-        raise typer.Exit(code=_run_shapes(scripts_dir))
+        raise typer.Exit(code=_run_shapes())
     if scope == "github":
-        scripts_dir = _require_scripts_dir()
-        raise typer.Exit(code=_run_sibling(scripts_dir, "refresh-github.sh"))
+        raise typer.Exit(code=refresh_impl.refresh_github())
     if scope == "artifacts":
-        scripts_dir = _require_scripts_dir()
-        raise typer.Exit(code=_run_sibling(scripts_dir, "refresh-artifacts.sh"))
+        raise typer.Exit(code=refresh_impl.refresh_artifacts())
     if scope == "telemetry":
         raise typer.Exit(code=_run_telemetry())
     if scope == "all":

@@ -19,6 +19,18 @@ READ-ONLY health check across six sections, in this exact order —
 6. **Config** — whether ``shepherd.toml`` is locatable at any of three
    standard paths.
 
+Two POST-PARITY sections follow (v6.4.1 — not in ``cmd_doctor.sh``; both
+emit rows only CONDITIONALLY, so gate-less / version-matched fixtures still
+render byte-identically to the legacy script):
+
+7. **Gates ledger** (#59) — whether ``[gates].check``/``lint`` and each
+   ``[gates.extra]`` entry has a recorded invocation this session, read from
+   the newest ``<workdir>/tmp/gates-ran-<session>.jsonl`` that
+   ``hooks/scripts/bash_post.sh`` appends to. No configured gates → no rows.
+8. **Binary version** (#235) — WARN when the running CLI ``__version__``
+   differs from the ``plugin.json`` version at ``CLAUDE_PLUGIN_ROOT``.
+   Match / unset env / unreadable file → no row.
+
 Every ``add()`` call in ``cmd_doctor.sh`` becomes one :class:`Result`
 appended, in the SAME order, to the SAME five-tuple shape (status,
 category, name, message, fix) — :func:`_collect_results` is a literal,
@@ -820,6 +832,231 @@ def _check_config(repo: str) -> Result:
 
 
 # --------------------------------------------------------------------------
+# Section 7 -- gates-invocation ledger (v6.4.1 #59; NOT in cmd_doctor.sh).
+# --------------------------------------------------------------------------
+# The first post-parity sections: `cmd_doctor.sh` never had them, and both are
+# CONDITIONAL rows (emitted only when their subject exists -- gates configured /
+# a version mismatch detected), following the namespace-conflict WARN's own
+# conditional-`add()` precedent, so every bash-parity fixture without a
+# `[gates]` config or a mismatched plugin.json renders byte-identically to the
+# legacy script.
+
+#: Mirrors `_lib.sh`'s toml-line parsing contract (cfg_section_get /
+#: cfg_section_keys): section headers normalized by stripping whitespace,
+#: `key = value` with a trailing ` # inline comment` and surrounding
+#: double-quotes stripped, LAST match wins within a file, first FILE with the
+#: key wins across the local -> project -> XDG precedence.
+_TOML_HEADER_RE = re.compile(r"^\s*\[(.+?)\]")
+_TOML_KEY_RE = re.compile(r"^\s*([A-Za-z0-9_-]+)\s*=\s*(.*)$")
+
+
+def _cfg_files(repo: str) -> tuple[str, ...]:
+    """The three shepherd-config candidates, in cfg_get's VALUE precedence order."""
+    xdg_home = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.environ.get("HOME", ""), ".config")
+    return (
+        os.path.join(repo, ".claude", "shepherd.local.toml"),
+        os.path.join(repo, ".claude", "shepherd.toml"),
+        os.path.join(xdg_home, "shepherd.toml"),
+    )
+
+
+def _toml_section_items(path: str, section: str) -> dict[str, str]:
+    """Naive `[section]` key/value scan of one file (bash-parity, not a TOML parser).
+
+    Args:
+        path: The config file (need not exist).
+        section: The normalized section name (e.g. ``"gates"``, ``"gates.extra"``).
+
+    Returns:
+        Ordered key -> value for the section, last assignment winning,
+        values stripped of a trailing inline comment and surrounding
+        double-quotes -- exactly `_lib.sh`'s awk contract. Empty on any
+        read failure.
+    """
+    items: dict[str, str] = {}
+    current = ""
+    try:
+        with open(path, encoding="utf-8") as fh:
+            lines = fh.readlines()
+    except OSError:
+        return items
+    for line in lines:
+        header = _TOML_HEADER_RE.match(line)
+        if header:
+            current = re.sub(r"\s", "", header.group(1))
+            continue
+        if current != section:
+            continue
+        key_match = _TOML_KEY_RE.match(line)
+        if not key_match:
+            continue
+        value = re.sub(r"\s+#.*$", "", key_match.group(2)).strip()
+        if value.startswith('"') and value.endswith('"') and len(value) >= 2:
+            value = value[1:-1]
+        items[key_match.group(1)] = value
+    return items
+
+
+def _cfg_section_get(repo: str, section: str, key: str) -> str:
+    """`cfg_section_get` parity: first file (local -> project -> XDG) with the key wins."""
+    for path in _cfg_files(repo):
+        items = _toml_section_items(path, section)
+        if items.get(key):
+            return items[key]
+    return ""
+
+
+def _cfg_section_keys(repo: str, section: str) -> list[str]:
+    """`cfg_section_keys` parity: key union across files, first-seen order."""
+    seen: list[str] = []
+    for path in _cfg_files(repo):
+        for key in _toml_section_items(path, section):
+            if key not in seen:
+                seen.append(key)
+    return seen
+
+
+def _newest_gates_ledger(workdir: str) -> str | None:
+    """The most recently modified `<workdir>/tmp/gates-ran-*.jsonl`, or None.
+
+    The ledger is per-session (`gates-ran-<session>.jsonl`, appended by
+    `hooks/scripts/bash_post.sh`); `doctor` runs without a session id of its
+    own, so "this session" is read as the newest ledger by mtime -- the
+    session most recently running gate commands in this workdir.
+    """
+    tmp_dir = os.path.join(workdir, "tmp")
+    try:
+        names = os.listdir(tmp_dir)
+    except OSError:
+        return None
+    candidates = [
+        os.path.join(tmp_dir, name)
+        for name in names
+        if name.startswith("gates-ran-") and name.endswith(".jsonl")
+    ]
+    best: str | None = None
+    best_mtime = -1.0
+    for path in candidates:
+        try:
+            mtime = os.path.getmtime(path)
+        except OSError:
+            continue
+        if mtime > best_mtime:
+            best, best_mtime = path, mtime
+    return best
+
+
+def _ledger_counts(ledger_path: str | None) -> dict[str, int]:
+    """Per-gate invocation counts from one ledger file (tolerant of bad lines)."""
+    counts: dict[str, int] = {}
+    if ledger_path is None:
+        return counts
+    try:
+        with open(ledger_path, encoding="utf-8") as fh:
+            lines = fh.readlines()
+    except OSError:
+        return counts
+    for line in lines:
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(row, dict):
+            gate = row.get("gate")
+            if isinstance(gate, str) and gate:
+                counts[gate] = counts.get(gate, 0) + 1
+    return counts
+
+
+def _check_gates(repo: str, workdir: str) -> list[Result]:
+    """Section 7: has each configured gate a recorded invocation this session? (#59)
+
+    Args:
+        repo: The resolved repo root (config source).
+        workdir: The resolved work directory (ledger home) -- resolved
+            QUIETLY by the caller so this new section never disturbs the
+            bash-parity stderr-warning call count.
+
+    Returns:
+        One `Result` per configured gate -- `[gates].check`, `[gates].lint`,
+        then each `[gates.extra]` entry as ``extra:<key>``, config order --
+        `ok "ran Nx this session"` when the ledger records it, `warn "no
+        recorded invocation this session"` otherwise. EMPTY when no gate is
+        configured at all (no `[gates]` config -> no section, preserving
+        bash-parity output on gate-less fixtures).
+    """
+    gates: list[str] = []
+    for key in ("check", "lint"):
+        if _cfg_section_get(repo, "gates", key):
+            gates.append(key)
+    for key in _cfg_section_keys(repo, "gates.extra"):
+        if _cfg_section_get(repo, "gates.extra", key):
+            gates.append(f"extra:{key}")
+    if not gates:
+        return []
+
+    ledger = _newest_gates_ledger(workdir)
+    counts = _ledger_counts(ledger)
+    results: list[Result] = []
+    for gate in gates:
+        ran = counts.get(gate, 0)
+        if ran > 0:
+            results.append(Result("ok", "gates", gate, f"ran {ran}x this session", ""))
+        else:
+            results.append(
+                Result(
+                    "warn",
+                    "gates",
+                    gate,
+                    "no recorded invocation this session",
+                    "run the configured gate command (bash_post.sh records it — #59)",
+                )
+            )
+    return results
+
+
+# --------------------------------------------------------------------------
+# Section 8 -- CLI/plugin binary-version match (v6.4.1 #235; NOT in cmd_doctor.sh).
+# --------------------------------------------------------------------------
+def _check_version_match() -> list[Result]:
+    """Section 8: WARN when the running CLI `__version__` differs from plugin.json.
+
+    Conditional row (namespace-conflict precedent): silent when
+    `CLAUDE_PLUGIN_ROOT` is unset, its `.claude-plugin/plugin.json` is
+    unreadable/versionless, or the versions MATCH -- a healthy install adds
+    no output and no exit-code change. A mismatch is the #235 stale-venv /
+    stale-plugin condition: the plugin's hooks and doctrine cite one contract
+    while the installed CLI implements another.
+    """
+    plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
+    if not plugin_root:
+        return []
+    plugin_json = os.path.join(plugin_root, ".claude-plugin", "plugin.json")
+    try:
+        with open(plugin_json, encoding="utf-8") as fh:
+            raw = json.load(fh)
+    except (OSError, json.JSONDecodeError):
+        return []
+    plugin_version = raw.get("version") if isinstance(raw, dict) else None
+    if not isinstance(plugin_version, str) or not plugin_version:
+        return []
+
+    from shepherd_cli import __version__
+
+    if plugin_version == __version__:
+        return []
+    return [
+        Result(
+            "warn",
+            "version",
+            "cli/plugin",
+            f"running CLI {__version__} != plugin {plugin_version} at CLAUDE_PLUGIN_ROOT",
+            "rebuild the plugin venv (hooks/scripts/session_venv.sh) or update the plugin (#235)",
+        )
+    ]
+
+
+# --------------------------------------------------------------------------
 # Collection + rendering.
 # --------------------------------------------------------------------------
 def _collect_results() -> list[Result]:
@@ -861,6 +1098,12 @@ def _collect_results() -> list[Result]:
         results.extend(_check_refresh_zones(db_path))
 
     results.append(_check_config(repo))
+
+    # v6.4.1 post-parity sections (both conditional -- see their docstrings).
+    # The workdir is re-resolved QUIETLY so these additions never change the
+    # module's carefully-reproduced split-brain stderr-warning call count.
+    results.extend(_check_gates(repo, _quiet_resolve_workdir()))
+    results.extend(_check_version_match())
     return results
 
 

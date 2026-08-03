@@ -21,6 +21,12 @@
 #  14. Sprint branch + tagged @coder dispatch + Edit → PASS (not the conductor's turn).
 #  15. Teammate session (non-sprint branch) + Edit → DENY (leg 2 via teammates row).
 #  16. Retired teammate, non-sprint branch + Edit → PASS.
+#  17-21. v6.4.1 lane-plan custody exemption (seed decision 6): a teammate-
+#      conductor whose session-tier marker (stamped by user_prompt_submit.sh
+#      from the boot prompt's `Lane plan (YOURS):` path) names a lane may
+#      Edit/Write inside ITS OWN runs/{run}/lanes/{lane}/ dir — relative or
+#      absolute target shapes. A sibling lane's dir, the master runs plan, and
+#      a marker-less (solo) conductor keep the full deny.
 
 set -eu -o pipefail
 cd "$(dirname "$0")"
@@ -38,6 +44,7 @@ has_code() { printf '%s' "$1" | grep -q "$2"; }
 run_hook() { printf '%s' "$1" | bash "$SCRIPT" 2>/dev/null; return 0; }
 
 P_EDIT()  { printf '{"session_id":"%s","tool_use_id":"%s","tool_name":"Edit","tool_input":{"file_path":"docs/foo.md","old_string":"a","new_string":"b"}}' "$1" "${2:-}"; }
+P_EDIT_AT() { printf '{"session_id":"%s","tool_use_id":"%s","tool_name":"Edit","tool_input":{"file_path":"%s","old_string":"a","new_string":"b"}}' "$1" "${2:-}" "$3"; }
 P_WRITE() { printf '{"session_id":"%s","tool_use_id":"%s","tool_name":"Write","tool_input":{"file_path":"docs/foo.md","content":"x"}}' "$1" "${2:-}"; }
 P_BASH()  { printf '{"session_id":"%s","tool_use_id":"%s","tool_name":"Bash","tool_input":{"command":"%s"}}' "$1" "${2:-}" "$3"; }
 
@@ -250,6 +257,66 @@ if ! is_deny "$out"; then
   pass "retired teammate + Edit (non-sprint-branch cwd): PASS"
 else
   fail "retired teammate + Edit (non-sprint-branch cwd): PASS" "unexpected deny: ${out:0:150}"
+fi
+
+# ---------------------------------------------------------------------------
+# 17-20. v6.4.1 lane-plan custody exemption. Stamp the teammate's session-tier
+# marker through the REAL stamper (user_prompt_submit.sh over a rendered boot
+# prompt carrying `Lane plan (YOURS):`), then drive the guard.
+# ---------------------------------------------------------------------------
+LANE_PLAN_REL=".shepherd/runs/v100-dev0/lanes/lane-a/plan.md"
+BOOT='You are a spawned teammate-conductor.\n  Lane plan (YOURS):    .shepherd/runs/v100-dev0/lanes/lane-a/plan.md\nROOT-SESSION-NAME: shepherd-root @ abc\nINVOCATION-CONTEXT:\n  dispatcher: teammate-conductor\n'
+printf '{"session_id":"%s","hook_event_name":"UserPromptSubmit","prompt":"%s"}' "$TM_SESSION" "$BOOT" \
+  | bash "$HOOKS_DIR/user_prompt_submit.sh" >/dev/null 2>&1 || true
+
+# 17. Own lane plan, repo-relative target → PASS.
+total=$((total+1))
+out=$(run_hook "$(P_EDIT_AT "$TM_SESSION" tu-17 "$LANE_PLAN_REL")")
+if ! is_deny "$out"; then
+  pass "teammate + marker + own lane plan (relative): PASS (lane custody)"
+else
+  fail "teammate + marker + own lane plan (relative): PASS" "unexpected deny: ${out:0:150}"
+fi
+
+# 18. Another file in the SAME lane dir, absolute target → PASS.
+total=$((total+1))
+out=$(run_hook "$(P_EDIT_AT "$TM_SESSION" tu-18 "$tmp/.shepherd/runs/v100-dev0/lanes/lane-a/notes.md")")
+if ! is_deny "$out"; then
+  pass "teammate + marker + own lane dir file (absolute): PASS (lane custody)"
+else
+  fail "teammate + marker + own lane dir file (absolute): PASS" "unexpected deny: ${out:0:150}"
+fi
+
+# 19. A SIBLING lane's plan → DENY (custody is scoped to the OWN lane only).
+total=$((total+1))
+out=$(run_hook "$(P_EDIT_AT "$TM_SESSION" tu-19 ".shepherd/runs/v100-dev0/lanes/lane-b/plan.md")")
+if is_deny "$out" && has_code "$out" "CONDUCTOR-WRITE-DENIED"; then
+  pass "teammate + marker + sibling lane plan: DENY"
+else
+  fail "teammate + marker + sibling lane plan: DENY" "out=${out:0:150}"
+fi
+
+# 20. The run's MASTER plan.md → DENY (root/engineer territory, not lane custody).
+total=$((total+1))
+out=$(run_hook "$(P_EDIT_AT "$TM_SESSION" tu-20 ".shepherd/runs/v100-dev0/plan.md")")
+if is_deny "$out" && has_code "$out" "CONDUCTOR-WRITE-DENIED"; then
+  pass "teammate + marker + master runs plan.md: DENY"
+else
+  fail "teammate + marker + master runs plan.md: DENY" "out=${out:0:150}"
+fi
+
+# ---------------------------------------------------------------------------
+# 21. SOLO conductor (sprint branch, NO marker) editing a lane path → DENY —
+#     the exemption requires the boot-stamped marker; root materializes lane
+#     plans via dispatch/CLI, never Edit/Write.
+# ---------------------------------------------------------------------------
+git checkout -q v1.0.0-dev.0
+total=$((total+1))
+out=$(run_hook "$(P_EDIT_AT sess-solo tu-21 "$LANE_PLAN_REL")")
+if is_deny "$out" && has_code "$out" "CONDUCTOR-WRITE-DENIED"; then
+  pass "solo conductor (no marker) + lane path: DENY"
+else
+  fail "solo conductor (no marker) + lane path: DENY" "out=${out:0:150}"
 fi
 
 echo "—— $((total-fails))/$total passed ——"

@@ -21,7 +21,17 @@ fi
 
 CLI_DIR="$ROOT/services/cli"
 
+# `poetry -C <dir> run` executes the command with its OWN cwd set to <dir>,
+# so every relative path argument would resolve against services/cli/ instead
+# of the caller's directory (`shepherd seed verify my.seed.md` from a repo
+# became "no such file"). Resolve the venv interpreter and exec it directly,
+# preserving the caller's cwd. Falls back to `poetry run` only when the venv
+# path cannot be resolved.
 if command -v poetry >/dev/null 2>&1; then
+  VENV_PY="$(poetry -C "$CLI_DIR" env info --executable 2>/dev/null || true)"
+  if [ -n "$VENV_PY" ] && [ -x "$VENV_PY" ]; then
+    exec env PYTHONPATH="$CLI_DIR${PYTHONPATH:+:$PYTHONPATH}" "$VENV_PY" -m shepherd_cli "$@"
+  fi
   exec poetry -C "$CLI_DIR" run shepherd "$@"
 fi
 

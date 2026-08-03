@@ -27,30 +27,96 @@ _SCHEMA_BASE_RELPATH = os.path.join("skills", "context", "schema", "0001_init.sq
 _BASH_SHCTX_RELPATH = os.path.join("skills", "context", "scripts", "shctx")
 
 
-def resolve_repo_root() -> str:
-    """Resolve the repository root.
-
-    Mirrors ``_lib.sh``'s ``shctx_repo_root``: ``git rev-parse
-    --show-toplevel``, falling back to the current working directory when
-    git is unavailable, not installed, or the cwd is not inside a repo.
+def _git_rev_parse(flag: str) -> str | None:
+    """Run ``git rev-parse <flag>`` and return its stripped stdout, or None.
 
     Returns:
-        The absolute repo root path, or ``os.getcwd()`` as a fallback.
+        The command's first-line output when git exits 0 with non-empty
+        output; None when git is unavailable, errors, or prints nothing.
     """
     try:
         result = subprocess.run(
-            ["git", "rev-parse", "--show-toplevel"],
+            ["git", "rev-parse", flag],
             capture_output=True,
             text=True,
             check=False,
         )
     except (OSError, subprocess.SubprocessError):
-        return os.getcwd()
+        return None
     if result.returncode == 0:
-        top = result.stdout.strip()
-        if top:
-            return top
+        out = result.stdout.strip()
+        if out:
+            return out
+    return None
+
+
+def resolve_repo_root() -> str:
+    """Resolve the repository root shared by every worktree.
+
+    Mirrors ``_lib.sh``'s ``shctx_repo_root`` (#221/#231): the shepherd
+    registry (SQLite DB) and config are shared per-repo across ALL
+    worktrees, but ``git rev-parse --show-toplevel`` returns the CURRENT
+    worktree's root — from a linked worktree (every concurrent conductor
+    lane) that scaffolds a divorced, empty per-worktree DB. Resolve to the
+    MAIN worktree via ``--git-common-dir`` (which points at the shared
+    ``.git`` even from a linked worktree); its parent is the main worktree
+    root. Fall back to ``--show-toplevel``, then ``os.getcwd()``, when git
+    is unavailable or the cwd is not inside a repo.
+
+    Returns:
+        The absolute main-worktree root path, or ``os.getcwd()`` fallback.
+    """
+    common = _git_rev_parse("--git-common-dir")
+    if common:
+        if not os.path.isabs(common):
+            common = os.path.join(os.getcwd(), common)
+        main = os.path.dirname(os.path.normpath(common))
+        if main and os.path.isdir(main):
+            return main
+    top = _git_rev_parse("--show-toplevel")
+    if top:
+        return top
     return os.getcwd()
+
+
+def in_subworktree() -> bool:
+    """True when the cwd is inside a LINKED worktree (not the primary).
+
+    Mirrors ``_lib.sh``'s ``shctx_in_subworktree`` (#221): the shared
+    registry still resolves to the main worktree via
+    :func:`resolve_repo_root`; this is the signal ``doctor`` uses to
+    surface that scoping to the operator.
+
+    Returns:
+        True when ``--git-dir`` and ``--git-common-dir`` disagree; False
+        outside a repo or in the primary worktree.
+    """
+    git_dir = _git_rev_parse("--git-dir")
+    git_common = _git_rev_parse("--git-common-dir")
+    if not git_dir or not git_common:
+        return False
+    # git may print one path relative and the other absolute for the same
+    # directory (e.g. "../.git" vs "/repo/.git" from a subdir of the primary
+    # checkout) — compare canonical paths, not raw strings.
+    return os.path.realpath(git_dir) != os.path.realpath(git_common)
+
+
+def resolve_user_home() -> str:
+    """Resolve the user-level shepherd home directory (``~/.shepherd``).
+
+    The user-level home holds cross-project state: the global DB
+    (issue #239) and user-scoped profiles
+    (``~/.shepherd/profiles/<profile>/style.md``) that project-level
+    ``.shepherd/profiles/`` entries override. ``SHEPHERD_HOME`` overrides
+    the default for tests and relocated installs.
+
+    Returns:
+        The resolved user-level shepherd home path (need not exist).
+    """
+    env_home = os.environ.get("SHEPHERD_HOME", "")
+    if env_home:
+        return env_home
+    return os.path.join(os.path.expanduser("~"), ".shepherd")
 
 
 def resolve_workdir() -> str:
@@ -218,6 +284,8 @@ def resolve_session_id() -> str | None:
 
 __all__ = [
     "resolve_repo_root",
+    "in_subworktree",
+    "resolve_user_home",
     "resolve_workdir",
     "resolve_db_path",
     "find_migrations_dir",

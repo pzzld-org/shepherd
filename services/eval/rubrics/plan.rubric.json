@@ -1,0 +1,13 @@
+{
+  "kind": "plan",
+  "subject": "A sprint PLAN — the engineer's waves-by-steps decomposition of an approved seed, written for an implementer with zero repo context; the conductor copies steps verbatim into briefs.",
+  "scale": 5,
+  "threshold": 70,
+  "dimensions": [
+    { "key": "seed_coverage",     "weight": 2, "desc": "Every seed deliverable maps to a named step; nothing invented beyond the seed's scope (YAGNI both directions)." },
+    { "key": "buildability",      "weight": 2, "desc": "An implementer could follow each step without getting stuck: exact file paths, runnable acceptance predicates, actions sized 2-5 minutes." },
+    { "key": "interface_contracts", "weight": 2, "desc": "Steps declare Consumes/Produces with exact names and signatures; no step references a symbol no earlier step defines; names are consistent across steps." },
+    { "key": "no_placeholders",   "weight": 1, "desc": "Zero plan failures: TBD/TODO, 'add appropriate error handling', 'write tests for the above' without content, 'similar to step N'." }
+  ],
+  "guidance": "Grade as the wave-review auditor would: the bar is that a coder accepts a pasted step without a BRIEF INVALID rejection. Penalize prose acceptance criteria, steps whose file lists overlap inside one wave, and interface drift between producer and consumer steps."
+}

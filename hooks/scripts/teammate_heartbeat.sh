@@ -49,11 +49,13 @@ DB="$(hook_db_path "$NS")"
 
 esc="${SESSION//\'/\'\'}"
 # Is this session a live (non-terminal) teammate? If the teammates table does not
-# exist yet, sqlite3 errors → empty → exit 0 (fail-open). Most recent row wins.
-TID="$(sqlite3 "$DB" \
-  "SELECT id FROM teammates WHERE session_id='$esc' AND status NOT IN ('retired','crashed') ORDER BY spawned_at DESC LIMIT 1;" \
+# exist yet, sqlite3 errors → empty → exit 0 (fail-open). Most recent row wins:
+# its team_name defines this session's CURRENT team.
+TEAM="$(sqlite3 "$DB" \
+  "SELECT team_name FROM teammates WHERE session_id='$esc' AND status NOT IN ('retired','crashed') ORDER BY spawned_at DESC LIMIT 1;" \
   2>/dev/null || true)"
-[[ -n "$TID" ]] || exit 0
+[[ -n "$TEAM" ]] || exit 0
+tesc="${TEAM//\'/\'\'}"
 
 TS=$(( $(date +%s) * 1000 ))
 # Self-heal the tmux pane id from $TMUX_PANE when unset (a teammate's tool call runs
@@ -62,9 +64,17 @@ TS=$(( $(date +%s) * 1000 ))
 PANE_SET=""
 [[ -n "${TMUX_PANE:-}" ]] && PANE_SET=", tmux_pane_id = COALESCE(tmux_pane_id, '${TMUX_PANE//\'/\'\'}')"
 
-# Advance last_seen_at + revive booting → active. Best-effort; never surface an error.
+# Advance last_seen_at + revive booting → active. #229 liveness scoping: the
+# stamp is CONSTRAINED to rows matching this session_id AND this session's
+# registered (newest) team. The per-repo DB can hold rows from PRIOR teams
+# carrying the same session_id (a resumed session keeps its id; a lead that
+# passed its own --session to every register call spreads it further) — a
+# stamp landing on another team's row keeps a dead lane "alive" in that
+# team's liveness and drive counts forever. Rows outside the current team are
+# REFUSED (left untouched) and age out via the #229 reboot stale-sweep.
+# Best-effort; never surface an error.
 sqlite3 "$DB" \
-  "UPDATE teammates SET last_seen_at=$TS, status=CASE WHEN status='booting' THEN 'active' ELSE status END${PANE_SET} WHERE id='$TID';" \
+  "UPDATE teammates SET last_seen_at=$TS, status=CASE WHEN status='booting' THEN 'active' ELSE status END${PANE_SET} WHERE session_id='$esc' AND team_name='$tesc' AND status NOT IN ('retired','crashed');" \
   2>/dev/null || true
 
 exit 0

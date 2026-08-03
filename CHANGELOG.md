@@ -4,6 +4,32 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v6.4.1 — 2026-08-03
+
+**The robustness release: the canonical Python CLI completes (all seven remaining bash commands ported), one Jinja2 template engine, one standard `.shepherd/runs/{run}/` artifact layout, and a planning contract refined with internalized planning discipline.** This is the release `d0c9462` bumped the version for and #239 scoped; the bump shipped ahead of the work, and this entry documents what landed under it. Board triage closed 19 stale shipped-but-open issues before a line changed; the sprint plan lives at `.shepherd/runs/v641-dev0/plan.md` (the first artifact in the new layout).
+
+### New
+
+- **`shepherd render` — the ONE template engine (#244/#243/#181).** Jinja2 (`StrictUndefined`, `trim_blocks`, `lstrip_blocks`, sorted-key `tojson`) behind `shepherd_cli/render.py`, replacing five placeholder dialects (awk `gsub`, Python `str.replace`, bash interpolation, two latent `{curly}` conventions). Template resolution: project `.shepherd/templates/` → user `~/.shepherd/templates/` → bundled package data. `--out --manifest` writes a timestamp-free lineage sidecar (template/vars/output sha256), mirroring the graph-compile manifest precedent. Bundled templates: `handoff.md.j2`, `boot-prompt.md.j2` (stable blocks FIRST, per-lane vars LAST — the #243 prefix-cache fix), `lane-plan.md.j2`, `seed.md.j2`, `plan.md.j2`.
+- **`shepherd run` — CLI-owned run state.** `.shepherd/runs/{run}/run.json` is schema-validated (pydantic) and atomically written (tempfile → fsync → replace), never latent-space-authored. `run init|show|list|set|lane add|lane set` plus the **#242 boundary-merge ledger**: `run wave accept <lane> --commit <sha>` / `run wave merged <lane>` / `run wave pending` (exit 6 while accepted-but-unmerged lanes remain — the mechanical wave-gate stop).
+- **Run-scoped artifact layout.** Every run-scoped artifact lives under `.shepherd/runs/{run}/`: `seed.md`, `mesh.md`, `plan.md`, `phase0.md`, `close.md`, `handoff.md`, conductor-owned `lanes/{lane}/plan.md`, ephemeral `graph/ dispatch/ reports/ audits/`. Durable knowledge is git-tracked; run state is gitignored (the codex-shepherd split). `shepherd migrate --layout v3` relocates legacy `docs/plans/*.{seed,plan}.md` and `styles/*.md` (idempotent, `git mv`-aware, collision-safe) — this repo migrated itself with it.
+- **Profiles (operator directive).** `.shepherd/styles/<lang>.md` becomes `.shepherd/profiles/<profile>/style.md` — a directory per profile so user-specific instructions live alongside the language standard. Four-tier resolution: project profiles → legacy styles → user `~/.shepherd/profiles/` → bundled. `~/.shepherd` is the user-level home (`SHEPHERD_HOME` override), the future site of the #239 global DB.
+- **The last 7 bash commands ported** (#239): `adapt`, `inject`, `plan`, `graph`, `loop`, `panes`, `release` land as native Typer modules with migrated test suites; `skills/context/scripts/` retires behind `bin/shepherd` (`shctx` stays as a thin exec alias). All SQL parameterized (#234 class eliminated); `graph next` cursor regression pinned (#225); `teammate register-lead` ported with the #241 UNIQUE retrofit.
+
+### Fixed
+
+- **Worktree root resolution in the Python CLI (#221/#231).** `resolution.resolve_repo_root()` now resolves via `git rev-parse --git-common-dir` (mirroring the bash fix), so a conductor lane in a linked worktree binds the MAIN checkout's registry instead of scaffolding a divorced per-worktree DB; `in_subworktree()` feeds doctor. Regression tests build a real repo + worktree.
+- **Test-suite portability.** `services/cli/tests/conftest.py` hardcoded the author's absolute repo path (`/home/user/shepherd`) — the whole suite failed to collect from any other clone. Now derived from `__file__`.
+- **`eval list` flag-parity test de-flaked.** The byte-compare straddled a second boundary on the rendered `Ns ago` age; ages are normalized before comparison.
+- **Identity-gated Stop hooks (#232/#228) + liveness scoping (#229).** The coordinate-drive guard fires on positive session identity (registered lead, no teammate marker) instead of registry inference; heartbeats no longer stamp other sessions' rows; reboot-stale ghosts drop out of the live set.
+- **Gate-skipping enforcement (#59).** `doctor` reports gate-invocation coverage (including `[gates.extra]`) from a deterministic per-session ledger; `close_finalize_check.sh` surfaces unrun extra gates at close.
+
+### Changed
+
+- **Planning contract refined (no new skills, nothing forced).** The engineer's plan discipline is internalized (superpowers skills load only IF INSTALLED, never a grade-cap): per-step `Interfaces: Consumes/Produces` contracts, a banned-placeholder law, a pre-critic self-review walk (seed coverage / placeholder scan / symbol consistency). Lane plans materialize as files — root renders `runs/{run}/lanes/{lane}/plan.md` from the lane projection; the **conductor owns its lane plan** (checkbox tracking, append-only `## Deviations`, acceptance results) as its ONE write exemption. Boot prompts are rendered (`shepherd render boot-prompt.md.j2`) with the lane-plan PATH instead of a pasted brief slice, and carry a structured `git_custody: root|lane` field the profile must obey (#230). Spawn preflight Check 1 verifies the Agent-Teams substrate instead of advising (#220).
+- **`.shepherd/` is the only project-visible namespace.** This repo's own dogfood config and artifacts migrated off `.artifacts/` (resolvers still honor legacy trees). `skills/context/references/naming-conventions.md` is the canonical artifact schema: exact-path table, ownership table, identifier grammar, git split.
+- **Eval rubrics.** `seed.rubric.json` gains a `no_placeholders` dimension; new `plan.rubric.json` grades seed coverage, buildability, interface contracts, and placeholders at the wave-review bar.
+
 ## v6.4.0 — 2026-07-21
 
 **Hardening + the CLI consolidates onto a single canonical Python surface.** The command-line interface moves onto the `shepherd` Python CLI (`services/cli`), retiring the loose `shctx` shell layer behind one entrypoint so future buildouts get consistency, real libraries, and community tooling. A user-wide `~/.shepherd` home, self-containment fixes, teammate engagement loops, and the dev.5–7 issue batch land alongside. (Sprint in progress; sections appended as work lands.)

@@ -102,6 +102,12 @@ from tortoise import Tortoise
 from shepherd_cli import db
 from shepherd_cli.models import Project
 from shepherd_cli.models_style import Style
+from shepherd_cli.profiles import (
+    canonical_style_path,
+    legacy_style_path,
+    list_profiles,
+    resolve_style_path,
+)
 from shepherd_cli.resolution import resolve_repo_root, resolve_workdir
 
 app = typer.Typer(
@@ -362,13 +368,23 @@ async def _init_one(lang: str, project_id: str, now: int, src_dir: str, dst_dir:
             $lang" >&2; return 1; }``.
     """
     src = os.path.join(src_dir, f"{lang}.md")
-    dst = os.path.join(dst_dir, f"{lang}.md")
+    # v6.4.1 profiles layout: new writes target the project canonical
+    # profiles/<lang>/style.md (shepherd_cli.profiles). An EXISTING file in
+    # either project tier — canonical or the pre-v6.4.1 flat legacy
+    # styles/<lang>.md — is preserved in place (never overwritten, never
+    # relocated; `shepherd migrate --layout v3` owns relocation).
+    dst = canonical_style_path(lang)
+    legacy = legacy_style_path(lang)
     if not os.path.isfile(src):
         typer.echo(f"ERROR: no bundled style for {lang}", err=True)
         raise typer.Exit(code=1)
     if os.path.isfile(dst):
         typer.echo(f"shctx style: {dst} already exists (preserving)")
+    elif os.path.isfile(legacy):
+        dst = legacy
+        typer.echo(f"shctx style: {dst} already exists (preserving)")
     else:
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
         shutil.copyfile(src, dst)
         typer.echo(f"shctx style: wrote {dst}")
     await _upsert_row(lang, dst, project_id, now)
@@ -434,7 +450,14 @@ async def _run_show(rest: list[str], dst_dir: str, json_out: bool) -> None:
     if not arg:
         typer.echo("ERROR: usage: shctx style show <lang>", err=True)
         raise typer.Exit(code=1)
-    path = os.path.join(dst_dir, f"{arg}.md")
+    # v6.4.1: resolve through the four-tier chain (project profiles ->
+    # legacy styles/ -> user profiles -> bundled) instead of one flat path.
+    hit = resolve_style_path(arg, bundled_dir=_resolve_bundled_styles_dir())
+    if hit is None:
+        missing = canonical_style_path(arg)
+        typer.echo(f"cat: {missing}: No such file or directory", err=True)
+        raise typer.Exit(code=1)
+    path, source = hit
     try:
         with open(path, encoding="utf-8") as fh:
             content = fh.read()
@@ -442,7 +465,12 @@ async def _run_show(rest: list[str], dst_dir: str, json_out: bool) -> None:
         typer.echo(f"cat: {path}: No such file or directory", err=True)
         raise typer.Exit(code=1) from exc
     if json_out:
-        typer.echo(json.dumps({"language": arg, "source_path": path, "content": content}, indent=2))
+        typer.echo(
+            json.dumps(
+                {"language": arg, "source_path": path, "source": source, "content": content},
+                indent=2,
+            )
+        )
         return
     typer.echo(content, nl=False)
 
@@ -473,9 +501,12 @@ async def _run_list(project_id: str, dst_dir: str, json_out: bool) -> None:
         views = [StyleRow.model_validate(row) for row in rows]
         typer.echo(json.dumps([view.model_dump(mode="json") for view in views], indent=2))
         return
-    if os.path.isdir(dst_dir):
-        for name in sorted(os.listdir(dst_dir)):
-            typer.echo(name)
+    # v6.4.1: enumerate profiles across all four tiers, annotated with the
+    # winning source, instead of a flat ls of one directory.
+    profiles = list_profiles(bundled_dir=_resolve_bundled_styles_dir())
+    if profiles:
+        for name, source in profiles:
+            typer.echo(f"{name}\t{source}")
     else:
         typer.echo("(no styles initialized)")
 
@@ -515,9 +546,16 @@ async def _run_edit(rest: list[str], project_id: str, now: int, src_dir: str, ds
     if not arg:
         typer.echo("ERROR: usage: shctx style edit <lang>", err=True)
         raise typer.Exit(code=1)
-    dst = os.path.join(dst_dir, f"{arg}.md")
+    # Edit the existing project-tier file in place (canonical first, then
+    # the legacy flat path); seed the canonical path from the bundle only
+    # when NEITHER exists. Relocation stays `migrate --layout v3`'s job.
+    dst = canonical_style_path(arg)
     if not os.path.isfile(dst):
-        await _init_one(arg, project_id, now, src_dir, dst_dir)
+        legacy = legacy_style_path(arg)
+        if os.path.isfile(legacy):
+            dst = legacy
+        else:
+            await _init_one(arg, project_id, now, src_dir, dst_dir)
     editor = os.environ.get("EDITOR") or "vi"
     result = subprocess.run([editor, dst], check=False)  # noqa: S603 - EDITOR is an operator-controlled env var, bash-parity invocation.
     if result.returncode != 0:

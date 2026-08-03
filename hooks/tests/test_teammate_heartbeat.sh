@@ -8,7 +8,10 @@
 #
 # Covers: registered teammate advances + revives; non-teammate session is a no-op;
 # terminal (retired/crashed) teammate untouched; missing DB fails open; [hooks].
-# teammate_heartbeat=off disables it; an 'active' teammate keeps status active.
+# teammate_heartbeat=off disables it; an 'active' teammate keeps status active;
+# v6.4.1 #229 liveness scoping — the stamp is refused for rows whose team is
+# not the CURRENT session's (newest-registration) team, so a prior team's row
+# carrying the same session_id can never be kept artificially "alive".
 # Conventions mirror hooks/tests/test_coordinate_drive_guard.sh.
 
 set -eu -o pipefail
@@ -81,9 +84,27 @@ printf '[hooks]\nteammate_heartbeat = off\n' > .claude/shepherd.toml
 fire S1
 if [[ "$(seen)" == "$OLD" && "$(status)" == "booting" ]]; then pass "[hooks].teammate_heartbeat=off: no-op"
 else fail "toggle off: no-op" "seen=$(seen) status=$(status)"; fi
-touch .claude/shepherd.toml  # restore (empty toml still flags a shepherd project)
+printf '' > .claude/shepherd.toml  # restore: CLEAR the off-toggle (touch alone left it set — empty toml still flags a shepherd project)
 
-# 6. Missing DB → fail open (exit 0, no crash).
+# 6. (#229) Same session_id registered in TWO teams: only the row in the
+#    session's CURRENT team (the newest registration) is stamped; the prior
+#    team's row is REFUSED — left frozen so that team's liveness/drive counts
+#    never read a dead lane as alive. (It ages out via the #229 reboot sweep.)
+total=$((total+1))
+sqlite3 "$DB" "DELETE FROM teammates;
+  INSERT INTO teammates (id,team_name,teammate_name,agent_type,session_id,spawned_at,last_seen_at,status)
+  VALUES ('t-old','team-old','eng-1','engineer','S1',$OLD,$OLD,'active'),
+         ('t-new','team-new','eng-1','engineer','S1',$(( OLD + 1000 )),$OLD,'active');" >/dev/null 2>&1
+fire S1
+SEEN_OLD=$(sqlite3 "$DB" "SELECT last_seen_at FROM teammates WHERE id='t-old';" 2>/dev/null || echo 0)
+SEEN_NEW=$(sqlite3 "$DB" "SELECT last_seen_at FROM teammates WHERE id='t-new';" 2>/dev/null || echo 0)
+if [[ "$SEEN_NEW" -gt "$OLD" && "$SEEN_OLD" == "$OLD" ]]; then
+  pass "#229 team scoping: current team stamped, prior team's row refused"
+else
+  fail "#229 team scoping" "old=$SEEN_OLD new=$SEEN_NEW OLD=$OLD"
+fi
+
+# 7. Missing DB → fail open (exit 0, no crash).
 total=$((total+1)); rm -f "$DB"
 if fire S1; then pass "missing DB: fail-open exit 0"; else fail "missing DB: fail-open" "non-zero"; fi
 

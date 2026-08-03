@@ -6,7 +6,7 @@
 set -eu -o pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 HOOK="$ROOT/hooks/scripts/session_open.sh"
-EXPECT_PATH="$ROOT/skills/context/scripts/shctx"
+EXPECT_PATH="$ROOT/bin/shepherd"  # v6.4.1: bin/shepherd is the canonical CLI the orientation announces
 
 tmp=$(mktemp -d -t shep-locator.XXXXXX)
 trap 'rm -rf "$tmp"' EXIT

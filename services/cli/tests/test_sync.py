@@ -1,106 +1,130 @@
 """Subprocess parity tests for ``shepherd sync`` (refresh -> lint -> status pipeline).
 
-Bash parity target: ``skills/context/scripts/cmd_sync.sh``. Every test
-drives the real CLI as a subprocess (``${PY} -m shepherd_cli sync ...``),
+Bash parity target: ``skills/context/scripts/cmd_sync.sh`` (retired). Every
+test drives the real CLI as a subprocess (``${PY} -m shepherd_cli sync ...``),
 exactly like ``test_sprint.py`` — never by importing ``shepherd_cli`` into
 the pytest process.
 
-``cmd_sync.sh`` is an ORCHESTRATION script with NO subcommands and NO
-database access of its own: it shells out to three sibling scripts
-(``cmd_refresh.sh``, ``cmd_lint.sh``, ``cmd_status.sh``), each of which may
-touch the network (``gh``) or the database on its own terms, but
-``cmd_sync.sh`` itself only times them and aggregates exit codes. Driving
-the REAL sibling scripts from a gate test would violate the
+``shepherd sync`` is an ORCHESTRATION command with NO subcommands and NO
+database access of its own: it re-invokes three ported sibling subcommands
+(``refresh``, ``lint``, ``status``) as child processes of the same
+interpreter (``[sys.executable, "-m", "shepherd_cli", "<stage>", ...]``),
+each of which may touch the network (``gh``) or the database on its own
+terms, but ``shepherd sync`` itself only times them and aggregates exit
+codes. Driving the REAL sibling stages from a gate test would violate the
 "deterministic, local, free, <2s, never flaky" gate-test contract
 (CLAUDE.md). Per that same contract's latent-vs-deterministic split, this
-suite builds a throwaway "fake plugin root" (see :func:`fake_plugin_root`)
-containing tiny, fully-scripted stand-ins for all three sibling scripts —
-each one logs its invocation to ``$CALL_LOG`` and exits with a
-caller-controlled code (via ``FAKE_RC_*`` env vars) — and points
-``CLAUDE_PLUGIN_ROOT`` at it. This gives full, fast, deterministic control
-over every stage's exit code and stdout/stderr, letting the tests below
-pin down ``shepherd sync``'s OWN contract exactly: which argv it invokes
-each stage with, in what order, in what shape (``run_stage``'s
-verbose-vs-suppressed output handling), how it resolves ``--scope``/
-``--all``/``--verbose``/``-v``/``-h``/``--help``/unknown-arg, and how it
-aggregates per-stage exit codes into its own final exit code and summary
-text — all bash-parity concerns that belong to ``cmd_sync.sh``, not to any
-of the three scripts it calls.
+suite builds a throwaway FAKE ``shepherd_cli`` package (see
+:func:`fake_cli_root`) and runs the CLI with that directory as the
+subprocess cwd: ``python -m`` puts the cwd FIRST on ``sys.path`` (ahead of
+``PYTHONPATH``), so both the parent invocation and every stage
+re-invocation resolve the fake package. The fake's ``__main__`` handles the
+three STAGE subcommands itself — logging each invocation to ``$CALL_LOG``,
+printing deterministic stdout/stderr markers, and exiting with a
+caller-controlled code (via ``FAKE_RC_*`` env vars) — and DELEGATES every
+other subcommand (``sync``, the command under test) to the real package by
+stripping itself off ``sys.path``. This gives full, fast, deterministic
+control over every stage's exit code and stdout/stderr while exercising the
+REAL production mechanism end to end (the actual ``-m shepherd_cli``
+re-invocation), letting the tests below pin down ``shepherd sync``'s OWN
+contract exactly: which argv it invokes each stage with, in what order, in
+what shape (``run_stage``'s verbose-vs-suppressed output handling), how it
+resolves ``--scope``/``--all``/``--verbose``/``-v``/``-h``/``--help``/
+unknown-arg, and how it aggregates per-stage exit codes into its own final
+exit code and summary text — all bash-parity concerns that belong to
+``shepherd sync``, not to any of the three stages it calls.
 
 No fixture database is built anywhere in this suite: ``shepherd sync``
 never opens a Tortoise connection, never calls
 :func:`shepherd_cli.resolution.resolve_db_path`, and the fixture DB
 helpers in ``conftest.py`` (``build_full_schema_db`` etc.) are therefore
 never needed here — the only shared helpers reused are ``cli_env`` (for
-the sync-tooling-not-found test's stripped baseline environment),
-``run_cli``, and ``PY``.
+its stripped baseline environment) and ``PY``.
 """
 
 from __future__ import annotations
 
-import stat
 import subprocess
 from pathlib import Path
 
 import pytest
-from conftest import PY, cli_env, run_cli
+from conftest import PY, cli_env
 
 # --------------------------------------------------------------------------
-# Fake sibling scripts — deterministic stand-ins for cmd_refresh.sh,
-# cmd_lint.sh, cmd_status.sh.
+# Fake shepherd_cli package — deterministic stand-ins for the refresh /
+# lint / status stage re-invocations, delegating every other subcommand to
+# the real package.
 # --------------------------------------------------------------------------
 
-_STUB_PREAMBLE = '#!/usr/bin/env bash\necho "{name} $*" >> "$CALL_LOG"\n'
+_FAKE_MAIN = '''\
+"""Test stand-in for ``python -m shepherd_cli`` (see test_sync.py docstring).
 
-_FAKE_SCRIPTS: dict[str, str] = {
-    "cmd_refresh.sh": _STUB_PREAMBLE.format(name="cmd_refresh.sh")
-    + (
-        'echo "stdout:cmd_refresh.sh:$*"\n'
-        'echo "stderr:cmd_refresh.sh:$*" >&2\n'
-        'exit "${FAKE_RC_REFRESH:-0}"\n'
-    ),
-    "cmd_lint.sh": _STUB_PREAMBLE.format(name="cmd_lint.sh")
-    + ('echo "stdout:cmd_lint.sh"\necho "stderr:cmd_lint.sh" >&2\nexit "${FAKE_RC_LINT:-0}"\n'),
-    "cmd_status.sh": _STUB_PREAMBLE.format(name="cmd_status.sh")
-    + ('echo "stdout:cmd_status.sh"\necho "stderr:cmd_status.sh" >&2\nexit "${FAKE_RC_STATUS:-0}"\n'),
-}
+Stage subcommands (refresh/lint/status) are faked: log argv to $CALL_LOG,
+print deterministic markers, exit with $FAKE_RC_<STAGE>. Everything else
+(the ``sync`` command under test) delegates to the REAL package.
+"""
+import os
+import sys
+
+_STAGES = {"refresh", "lint", "status"}
 
 
-def _make_fake_plugin_root(tmp_path: Path) -> Path:
-    """Build a throwaway ``CLAUDE_PLUGIN_ROOT`` tree with fully-scripted sibling commands.
+def _fake_stage(cmd, args):
+    log_path = os.environ.get("CALL_LOG", "")
+    if log_path:
+        with open(log_path, "a", encoding="utf-8") as fh:
+            fh.write((cmd + " " + " ".join(args)).rstrip() + "\\n")
+    suffix = ":" + " ".join(args) if args else ""
+    print(f"stdout:{cmd}{suffix}")
+    print(f"stderr:{cmd}{suffix}", file=sys.stderr)
+    raise SystemExit(int(os.environ.get("FAKE_RC_" + cmd.upper(), "0")))
 
-    Layout mirrors the real plugin just enough for
-    :func:`shepherd_cli.resolution.find_bash_shctx` to resolve it:
-    ``skills/context/scripts/{shctx, cmd_refresh.sh, cmd_lint.sh,
-    cmd_status.sh}``. ``shctx`` itself only needs to exist as a file (its
-    dirname is all ``shepherd sync`` ever uses via ``_scripts_dir()``);
-    the three ``cmd_*.sh`` stand-ins are real, executable, deterministic
-    bash scripts (see ``_FAKE_SCRIPTS``).
+
+_cmd = sys.argv[1] if len(sys.argv) > 1 else ""
+if _cmd in _STAGES:
+    _fake_stage(_cmd, sys.argv[2:])
+
+# Delegate to the real shepherd_cli: drop this fake package's directory off
+# sys.path, forget the fake modules, and re-import the real entry point
+# (resolved via PYTHONPATH, which conftest points at services/cli).
+_here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path[:] = [p for p in sys.path if os.path.abspath(p or os.getcwd()) != _here]
+for _name in [n for n in list(sys.modules) if n == "shepherd_cli" or n.startswith("shepherd_cli.")]:
+    del sys.modules[_name]
+
+from shepherd_cli.__main__ import main  # noqa: E402
+
+main()
+'''
+
+
+def _make_fake_cli_root(tmp_path: Path) -> Path:
+    """Build a throwaway directory whose ``shepherd_cli`` package fakes the stages.
+
+    The returned directory is used as the subprocess CWD: ``python -m``
+    resolves packages from the cwd before ``PYTHONPATH``, so both the
+    parent ``sync`` invocation and every ``[sys.executable, "-m",
+    "shepherd_cli", "<stage>"]`` stage re-invocation import this fake
+    package first. The fake handles stage subcommands deterministically
+    (see ``_FAKE_MAIN``) and delegates ``sync`` itself to the real
+    package.
 
     Args:
         tmp_path: The pytest-provided per-test temp directory.
 
     Returns:
-        The fake plugin root directory (the ``CLAUDE_PLUGIN_ROOT`` value),
-        three levels above ``skills/context/scripts``.
+        The directory containing the fake ``shepherd_cli`` package (the
+        cwd to run the CLI from).
     """
-    scripts_dir = tmp_path / "fake-plugin-root" / "skills" / "context" / "scripts"
-    scripts_dir.mkdir(parents=True)
-
-    shctx_path = scripts_dir / "shctx"
-    shctx_path.write_text("#!/usr/bin/env bash\nexit 0\n")
-    shctx_path.chmod(shctx_path.stat().st_mode | stat.S_IEXEC)
-
-    for name, content in _FAKE_SCRIPTS.items():
-        script_path = scripts_dir / name
-        script_path.write_text(content)
-        script_path.chmod(script_path.stat().st_mode | stat.S_IEXEC)
-
-    return scripts_dir.parent.parent.parent
+    fake_root = tmp_path / "fake-cli-root"
+    pkg_dir = fake_root / "shepherd_cli"
+    pkg_dir.mkdir(parents=True)
+    (pkg_dir / "__init__.py").write_text("")
+    (pkg_dir / "__main__.py").write_text(_FAKE_MAIN)
+    return fake_root
 
 
 def sync_env(
-    fake_plugin_root: Path,
     call_log: Path,
     *,
     rc: dict[str, str] | None = None,
@@ -108,41 +132,53 @@ def sync_env(
     """Build the subprocess environment for a ``shepherd sync`` test.
 
     Args:
-        fake_plugin_root: The fake plugin root from
-            :func:`_make_fake_plugin_root`, wired in as
-            ``CLAUDE_PLUGIN_ROOT`` so ``find_bash_shctx()`` (and therefore
-            ``_scripts_dir()``) resolves to the fake sibling scripts
-            instead of the real, network-dependent ones.
-        call_log: Path the fake sibling scripts append one line to per
+        call_log: Path the fake stage stand-ins append one line to per
             invocation (``$CALL_LOG``) — read back to assert which stages
             actually ran, in what order, with what argv.
         rc: ``FAKE_RC_*`` overrides, e.g. ``{"FAKE_RC_REFRESH": "1"}``.
 
     Returns:
-        A full subprocess environment ready for :func:`conftest.run_cli`.
-        Deliberately does NOT set ``SHCTX_DB``/``SHEPHERD_WORKDIR`` —
-        ``shepherd sync`` never resolves either (no database, and
-        ``cmd_sync.sh`` never reads ``project.json``), so a bare
+        A full subprocess environment ready for :func:`run_sync`.
+        Deliberately does NOT set ``SHCTX_DB``/``SHEPHERD_WORKDIR`` to
+        anything real — ``shepherd sync`` never resolves either (no
+        database, no ``project.json`` read), so a bare
         stripped-then-rebuilt environment (``clean_env_dict()``, reached
         via ``cli_env`` with a throwaway db path never actually opened) is
         sufficient and keeps every test's environment minimal.
     """
-    env = cli_env(fake_plugin_root / "unused.db")
-    env["CLAUDE_PLUGIN_ROOT"] = str(fake_plugin_root)
+    env = cli_env(call_log.parent / "unused.db")
     env["CALL_LOG"] = str(call_log)
     for key, value in (rc or {}).items():
         env[key] = value
     return env
 
 
-def read_calls(call_log: Path) -> list[str]:
-    """Read back every logged stage invocation, in call order.
+def run_sync(
+    args: list[str],
+    env: dict[str, str],
+    fake_cli_root: Path,
+    *,
+    timeout: float = 60.0,
+) -> subprocess.CompletedProcess[str]:
+    """Run ``${PY} -m shepherd_cli sync ...`` with the fake package as cwd.
 
-    Each line is right-stripped: ``cmd_lint.sh``/``cmd_status.sh`` are
-    invoked with no arguments, which would otherwise leave a trailing
-    space in the stub's ``"name $*"`` format when ``$*`` expands to
-    nothing — cosmetic, not a signal worth asserting on.
+    ``conftest.run_cli`` pins ``cwd=CLI_ROOT`` (the real package), so this
+    suite uses its own runner: the fake-cli-root cwd is exactly what makes
+    the stage re-invocations resolve the fake stand-ins (see the module
+    docstring).
     """
+    return subprocess.run(
+        [PY, "-m", "shepherd_cli", "sync", *args],
+        env=env,
+        cwd=str(fake_cli_root),
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+    )
+
+
+def read_calls(call_log: Path) -> list[str]:
+    """Read back every logged stage invocation, in call order."""
     if not call_log.is_file():
         return []
     return [line.rstrip() for line in call_log.read_text().splitlines() if line.strip()]
@@ -154,13 +190,13 @@ def read_calls(call_log: Path) -> list[str]:
 
 
 @pytest.fixture
-def fake_plugin_root(tmp_path: Path) -> Path:
-    return _make_fake_plugin_root(tmp_path)
+def fake_cli_root(tmp_path: Path) -> Path:
+    return _make_fake_cli_root(tmp_path)
 
 
 @pytest.fixture
 def call_log(tmp_path: Path) -> Path:
-    """Path the fake sibling scripts append their invocations to."""
+    """Path the fake stage stand-ins append their invocations to."""
     return tmp_path / "calls.log"
 
 
@@ -171,10 +207,10 @@ def call_log(tmp_path: Path) -> Path:
 
 
 def test_bare_invocation_runs_full_pipeline_with_scope_all(
-    fake_plugin_root: Path, call_log: Path
+    fake_cli_root: Path, call_log: Path
 ) -> None:
-    env = sync_env(fake_plugin_root, call_log)
-    proc = run_cli(["sync"], env)
+    env = sync_env(call_log)
+    proc = run_sync([], env, fake_cli_root)
 
     assert proc.returncode == 0, proc.stderr
     assert "shctx sync: scope=all  elapsed=" in proc.stdout
@@ -184,21 +220,21 @@ def test_bare_invocation_runs_full_pipeline_with_scope_all(
 
     calls = read_calls(call_log)
     assert calls == [
-        "cmd_refresh.sh --scope=all",
-        "cmd_lint.sh",
-        "cmd_status.sh",
+        "refresh --scope=all",
+        "lint",
+        "status",
     ]
 
 
 def test_bare_invocation_non_verbose_suppresses_stage_output(
-    fake_plugin_root: Path, call_log: Path
+    fake_cli_root: Path, call_log: Path
 ) -> None:
-    env = sync_env(fake_plugin_root, call_log)
-    proc = run_cli(["sync"], env)
+    env = sync_env(call_log)
+    proc = run_sync([], env, fake_cli_root)
 
     assert proc.returncode == 0, proc.stderr
-    assert "stdout:cmd_refresh.sh" not in proc.stdout
-    assert "stderr:cmd_refresh.sh" not in proc.stderr
+    assert "stdout:refresh" not in proc.stdout
+    assert "stderr:refresh" not in proc.stderr
     assert "───" not in proc.stdout  # no "─── name ───" headers
 
 
@@ -207,63 +243,63 @@ def test_bare_invocation_non_verbose_suppresses_stage_output(
 # --------------------------------------------------------------------------
 
 
-def test_scope_flag_forwarded_verbatim_to_refresh(fake_plugin_root: Path, call_log: Path) -> None:
-    env = sync_env(fake_plugin_root, call_log)
-    proc = run_cli(["sync", "--scope=github"], env)
+def test_scope_flag_forwarded_verbatim_to_refresh(fake_cli_root: Path, call_log: Path) -> None:
+    env = sync_env(call_log)
+    proc = run_sync(["--scope=github"], env, fake_cli_root)
 
     assert proc.returncode == 0, proc.stderr
     assert "shctx sync: scope=github  elapsed=" in proc.stdout
 
     calls = read_calls(call_log)
-    assert calls[0] == "cmd_refresh.sh --scope=github"
+    assert calls[0] == "refresh --scope=github"
 
 
-def test_all_flag_is_alias_for_scope_all(fake_plugin_root: Path, call_log: Path) -> None:
-    env = sync_env(fake_plugin_root, call_log)
-    proc = run_cli(["sync", "--all"], env)
+def test_all_flag_is_alias_for_scope_all(fake_cli_root: Path, call_log: Path) -> None:
+    env = sync_env(call_log)
+    proc = run_sync(["--all"], env, fake_cli_root)
 
     assert proc.returncode == 0, proc.stderr
     assert "shctx sync: scope=all  elapsed=" in proc.stdout
-    assert read_calls(call_log)[0] == "cmd_refresh.sh --scope=all"
+    assert read_calls(call_log)[0] == "refresh --scope=all"
 
 
 def test_last_of_scope_and_all_wins_scope_then_all(
-    fake_plugin_root: Path, call_log: Path
+    fake_cli_root: Path, call_log: Path
 ) -> None:
     """Bash parity: plain variable reassignment in the ``for arg`` loop —
     ``--scope=github --all`` resolves to ``scope="all"`` (the later token
     wins)."""
-    env = sync_env(fake_plugin_root, call_log)
-    proc = run_cli(["sync", "--scope=github", "--all"], env)
+    env = sync_env(call_log)
+    proc = run_sync(["--scope=github", "--all"], env, fake_cli_root)
 
     assert proc.returncode == 0, proc.stderr
     assert "shctx sync: scope=all  elapsed=" in proc.stdout
-    assert read_calls(call_log)[0] == "cmd_refresh.sh --scope=all"
+    assert read_calls(call_log)[0] == "refresh --scope=all"
 
 
 def test_last_of_scope_and_all_wins_all_then_scope(
-    fake_plugin_root: Path, call_log: Path
+    fake_cli_root: Path, call_log: Path
 ) -> None:
     """Bash parity, opposite order: ``--all --scope=github`` resolves to
     ``scope="github"`` — the later token still wins."""
-    env = sync_env(fake_plugin_root, call_log)
-    proc = run_cli(["sync", "--all", "--scope=github"], env)
+    env = sync_env(call_log)
+    proc = run_sync(["--all", "--scope=github"], env, fake_cli_root)
 
     assert proc.returncode == 0, proc.stderr
     assert "shctx sync: scope=github  elapsed=" in proc.stdout
-    assert read_calls(call_log)[0] == "cmd_refresh.sh --scope=github"
+    assert read_calls(call_log)[0] == "refresh --scope=github"
 
 
-def test_scope_value_is_never_validated(fake_plugin_root: Path, call_log: Path) -> None:
+def test_scope_value_is_never_validated(fake_cli_root: Path, call_log: Path) -> None:
     """Bash parity: cmd_sync.sh's ``--scope=*`` case arm accepts ANY
-    value with no allow-list check — validation (if any) is
-    cmd_refresh.sh's problem, not cmd_sync.sh's."""
-    env = sync_env(fake_plugin_root, call_log)
-    proc = run_cli(["sync", "--scope=bogus-scope"], env)
+    value with no allow-list check — validation (if any) is the refresh
+    stage's problem, not ``shepherd sync``'s."""
+    env = sync_env(call_log)
+    proc = run_sync(["--scope=bogus-scope"], env, fake_cli_root)
 
     assert proc.returncode == 0, proc.stderr
     assert "shctx sync: scope=bogus-scope  elapsed=" in proc.stdout
-    assert read_calls(call_log)[0] == "cmd_refresh.sh --scope=bogus-scope"
+    assert read_calls(call_log)[0] == "refresh --scope=bogus-scope"
 
 
 # --------------------------------------------------------------------------
@@ -272,28 +308,28 @@ def test_scope_value_is_never_validated(fake_plugin_root: Path, call_log: Path) 
 
 
 def test_verbose_streams_stage_output_with_headers(
-    fake_plugin_root: Path, call_log: Path
+    fake_cli_root: Path, call_log: Path
 ) -> None:
-    env = sync_env(fake_plugin_root, call_log)
-    proc = run_cli(["sync", "--verbose"], env)
+    env = sync_env(call_log)
+    proc = run_sync(["--verbose"], env, fake_cli_root)
 
     assert proc.returncode == 0, proc.stderr
     assert "─── refresh ───" in proc.stdout
     assert "─── lint ───" in proc.stdout
     assert "─── status ───" in proc.stdout
-    assert "stdout:cmd_refresh.sh:--scope=all" in proc.stdout
-    assert "stderr:cmd_refresh.sh:--scope=all" in proc.stderr
+    assert "stdout:refresh:--scope=all" in proc.stdout
+    assert "stderr:refresh:--scope=all" in proc.stderr
     # The final bash-parity summary still prints after the streamed stages.
     assert "shctx sync: scope=all  elapsed=" in proc.stdout
 
 
-def test_verbose_short_flag_is_equivalent(fake_plugin_root: Path, call_log: Path) -> None:
-    env = sync_env(fake_plugin_root, call_log)
-    proc = run_cli(["sync", "-v"], env)
+def test_verbose_short_flag_is_equivalent(fake_cli_root: Path, call_log: Path) -> None:
+    env = sync_env(call_log)
+    proc = run_sync(["-v"], env, fake_cli_root)
 
     assert proc.returncode == 0, proc.stderr
     assert "─── refresh ───" in proc.stdout
-    assert "stdout:cmd_refresh.sh:--scope=all" in proc.stdout
+    assert "stdout:refresh:--scope=all" in proc.stdout
 
 
 # --------------------------------------------------------------------------
@@ -302,13 +338,13 @@ def test_verbose_short_flag_is_equivalent(fake_plugin_root: Path, call_log: Path
 
 
 def test_stage_failure_still_runs_every_later_stage_and_exits_1(
-    fake_plugin_root: Path, call_log: Path
+    fake_cli_root: Path, call_log: Path
 ) -> None:
     """Bash parity: each rc_* is captured independently via ``run_stage
     ... || rc_*=$?`` — a failed early stage does NOT short-circuit later
     stages (no set -e-style abort)."""
-    env = sync_env(fake_plugin_root, call_log, rc={"FAKE_RC_REFRESH": "1", "FAKE_RC_STATUS": "3"})
-    proc = run_cli(["sync"], env)
+    env = sync_env(call_log, rc={"FAKE_RC_REFRESH": "1", "FAKE_RC_STATUS": "3"})
+    proc = run_sync([], env, fake_cli_root)
 
     assert proc.returncode == 1
     assert "  refresh: fail (rc=1)" in proc.stdout
@@ -319,16 +355,16 @@ def test_stage_failure_still_runs_every_later_stage_and_exits_1(
     assert len(read_calls(call_log)) == 3
 
 
-def test_all_stages_succeed_exits_0(fake_plugin_root: Path, call_log: Path) -> None:
-    env = sync_env(fake_plugin_root, call_log)
-    proc = run_cli(["sync"], env)
+def test_all_stages_succeed_exits_0(fake_cli_root: Path, call_log: Path) -> None:
+    env = sync_env(call_log)
+    proc = run_sync([], env, fake_cli_root)
 
     assert proc.returncode == 0, proc.stderr
 
 
-def test_lint_only_failure_exits_1(fake_plugin_root: Path, call_log: Path) -> None:
-    env = sync_env(fake_plugin_root, call_log, rc={"FAKE_RC_LINT": "5"})
-    proc = run_cli(["sync"], env)
+def test_lint_only_failure_exits_1(fake_cli_root: Path, call_log: Path) -> None:
+    env = sync_env(call_log, rc={"FAKE_RC_LINT": "5"})
+    proc = run_sync([], env, fake_cli_root)
 
     assert proc.returncode == 1
     assert "  refresh: ok" in proc.stdout
@@ -341,9 +377,9 @@ def test_lint_only_failure_exits_1(fake_plugin_root: Path, call_log: Path) -> No
 # --------------------------------------------------------------------------
 
 
-def test_help_long_flag_prints_usage_and_exits_0(fake_plugin_root: Path, call_log: Path) -> None:
-    env = sync_env(fake_plugin_root, call_log)
-    proc = run_cli(["sync", "--help"], env)
+def test_help_long_flag_prints_usage_and_exits_0(fake_cli_root: Path, call_log: Path) -> None:
+    env = sync_env(call_log)
+    proc = run_sync(["--help"], env, fake_cli_root)
 
     assert proc.returncode == 0, proc.stderr
     assert "shctx sync [--scope=symbols|github|artifacts|all] [--all] [--verbose]" in proc.stdout
@@ -353,9 +389,9 @@ def test_help_long_flag_prints_usage_and_exits_0(fake_plugin_root: Path, call_lo
     assert read_calls(call_log) == []
 
 
-def test_help_short_flag_prints_usage_and_exits_0(fake_plugin_root: Path, call_log: Path) -> None:
-    env = sync_env(fake_plugin_root, call_log)
-    proc = run_cli(["sync", "-h"], env)
+def test_help_short_flag_prints_usage_and_exits_0(fake_cli_root: Path, call_log: Path) -> None:
+    env = sync_env(call_log)
+    proc = run_sync(["-h"], env, fake_cli_root)
 
     assert proc.returncode == 0, proc.stderr
     assert "shctx sync [--scope=symbols|github|artifacts|all]" in proc.stdout
@@ -363,14 +399,14 @@ def test_help_short_flag_prints_usage_and_exits_0(fake_plugin_root: Path, call_l
 
 
 def test_help_flag_short_circuits_even_after_other_flags(
-    fake_plugin_root: Path, call_log: Path
+    fake_cli_root: Path, call_log: Path
 ) -> None:
     """Bash parity: the ``for arg`` loop reaches ``-h``/``--help`` and
     exits immediately, regardless of what earlier flags already set —
-    ``cmd_sync.sh`` never reaches the pipeline stages once ``-h``/
+    ``shepherd sync`` never reaches the pipeline stages once ``-h``/
     ``--help`` is seen, from any position."""
-    env = sync_env(fake_plugin_root, call_log)
-    proc = run_cli(["sync", "--scope=github", "--verbose", "-h"], env)
+    env = sync_env(call_log)
+    proc = run_sync(["--scope=github", "--verbose", "-h"], env, fake_cli_root)
 
     assert proc.returncode == 0, proc.stderr
     assert "shctx sync [--scope=symbols|github|artifacts|all]" in proc.stdout
@@ -382,9 +418,9 @@ def test_help_flag_short_circuits_even_after_other_flags(
 # --------------------------------------------------------------------------
 
 
-def test_unknown_arg_exits_1_with_error(fake_plugin_root: Path, call_log: Path) -> None:
-    env = sync_env(fake_plugin_root, call_log)
-    proc = run_cli(["sync", "--bogus"], env)
+def test_unknown_arg_exits_1_with_error(fake_cli_root: Path, call_log: Path) -> None:
+    env = sync_env(call_log)
+    proc = run_sync(["--bogus"], env, fake_cli_root)
 
     assert proc.returncode == 1
     assert proc.stdout == ""
@@ -393,23 +429,23 @@ def test_unknown_arg_exits_1_with_error(fake_plugin_root: Path, call_log: Path) 
 
 
 def test_bare_scope_without_equals_is_unknown_arg(
-    fake_plugin_root: Path, call_log: Path
+    fake_cli_root: Path, call_log: Path
 ) -> None:
     """``--scope`` (no ``=value``) does not match bash's ``--scope=*``
     case pattern and falls through to the catch-all ``*)`` arm."""
-    env = sync_env(fake_plugin_root, call_log)
-    proc = run_cli(["sync", "--scope"], env)
+    env = sync_env(call_log)
+    proc = run_sync(["--scope"], env, fake_cli_root)
 
     assert proc.returncode == 1
     assert "ERROR: unknown arg: --scope" in proc.stderr
     assert read_calls(call_log) == []
 
 
-def test_positional_token_is_unknown_arg(fake_plugin_root: Path, call_log: Path) -> None:
-    """``cmd_sync.sh`` takes no positional arguments — any bare token is
+def test_positional_token_is_unknown_arg(fake_cli_root: Path, call_log: Path) -> None:
+    """``shepherd sync`` takes no positional arguments — any bare token is
     an unknown arg, exit 1."""
-    env = sync_env(fake_plugin_root, call_log)
-    proc = run_cli(["sync", "symbols"], env)
+    env = sync_env(call_log)
+    proc = run_sync(["symbols"], env, fake_cli_root)
 
     assert proc.returncode == 1
     assert "ERROR: unknown arg: symbols" in proc.stderr
@@ -417,13 +453,13 @@ def test_positional_token_is_unknown_arg(fake_plugin_root: Path, call_log: Path)
 
 
 def test_unknown_arg_short_circuits_before_later_tokens_are_seen(
-    fake_plugin_root: Path, call_log: Path
+    fake_cli_root: Path, call_log: Path
 ) -> None:
     """Bash parity: the loop hits the bad token and ``exit 1``s
     immediately — a later, otherwise-valid ``--verbose`` never gets a
     chance to matter."""
-    env = sync_env(fake_plugin_root, call_log)
-    proc = run_cli(["sync", "--bogus", "--verbose"], env)
+    env = sync_env(call_log)
+    proc = run_sync(["--bogus", "--verbose"], env, fake_cli_root)
 
     assert proc.returncode == 1
     assert "ERROR: unknown arg: --bogus" in proc.stderr
@@ -431,25 +467,28 @@ def test_unknown_arg_short_circuits_before_later_tokens_are_seen(
 
 
 # --------------------------------------------------------------------------
-# _scripts_dir() failure mode.
+# _run_stage() launch-failure mode.
 # --------------------------------------------------------------------------
 
+_RUN_STAGE_SNIPPET = (
+    "import sys\n"
+    "from shepherd_cli.commands.sync import _run_stage\n"
+    "print(_run_stage('probe', [sys.argv[1]], sys.argv[2] == 'verbose'))\n"
+)
 
-def test_missing_bash_shctx_tooling_exits_1(tmp_path: Path) -> None:
-    """When the bash shctx tooling cannot be located at all (no
-    CLAUDE_PLUGIN_ROOT match and no skills/context/scripts/shctx found by
-    walking up from the repo root), the pipeline is unusable — exit 1
-    with a clear stderr message rather than a stack trace."""
+
+@pytest.mark.parametrize("mode", ["quiet", "verbose"])
+def test_unlaunchable_stage_counts_as_rc_127(tmp_path: Path, mode: str) -> None:
+    """A stage that cannot be launched at all (OSError from process
+    creation — the moral equivalent of bash's missing/unexecutable
+    ``cmd_*.sh``) maps to rc 127, the shell's own command-not-found code,
+    instead of crashing the pipeline. Driven via a ``-c`` snippet in a
+    fresh subprocess (the test_panes.py private-helper pattern) since a
+    real ``sys.executable`` can't be made to vanish from inside a
+    subprocess-driven test."""
     env = cli_env(tmp_path / "unused.db")
-    # Point CLAUDE_PLUGIN_ROOT somewhere with no skills/context/scripts/shctx,
-    # and run from an empty cwd outside any git repo so the walk-up fallback
-    # in find_bash_shctx() also fails to find the real tree.
-    empty_root = tmp_path / "no-plugin-here"
-    empty_root.mkdir()
-    env["CLAUDE_PLUGIN_ROOT"] = str(empty_root)
-
     proc = subprocess.run(
-        [PY, "-m", "shepherd_cli", "sync"],
+        [PY, "-c", _RUN_STAGE_SNIPPET, str(tmp_path / "no-such-interpreter"), mode],
         env=env,
         cwd=str(tmp_path),
         capture_output=True,
@@ -457,5 +496,5 @@ def test_missing_bash_shctx_tooling_exits_1(tmp_path: Path) -> None:
         timeout=15,
     )
 
-    assert proc.returncode == 1
-    assert "ERROR: bash shctx tooling not found" in proc.stderr
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.splitlines()[-1] == "127"

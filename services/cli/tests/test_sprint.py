@@ -1,30 +1,33 @@
 """Subprocess parity tests for ``shepherd sprint`` (open/wave/close pipelines).
 
-Bash parity target: ``skills/context/scripts/cmd_sprint.sh``. Every test
-drives the real CLI as a subprocess (``${PY} -m shepherd_cli sprint
-...``), exactly like ``test_deliverable.py`` — never by importing
-``shepherd_cli`` into the pytest process.
+Bash parity target: the retired ``cmd_sprint.sh``. Every test drives the
+real CLI as a subprocess (``${PY} -m shepherd_cli sprint ...``), exactly
+like ``test_deliverable.py`` — never by importing ``shepherd_cli`` into
+the pytest process.
 
-``cmd_sprint.sh`` is an ORCHESTRATION script: every stage of every
-pipeline shells out to a sibling ``cmd_*.sh`` (``cmd_lock.sh``,
-``cmd_refresh.sh``, ``cmd_lint.sh``, ``cmd_status.sh``, ``cmd_handoff.sh``,
-``cmd_worktree.sh``, ``cmd_close-lane.sh``) — none of which are network-
-free or fast (``cmd_refresh.sh`` hits ``gh``/GitHub; ``cmd_worktree.sh``
-runs real ``git`` plumbing). Driving the REAL versions of those scripts
+``sprint`` is an ORCHESTRATION command: every stage of every pipeline
+runs a sibling native subcommand of this same CLI (``lock``, ``refresh``,
+``lint``, ``status``, ``handoff``, ``worktree``, ``close-lane``) as a
+child process of the invoking interpreter — the bash ``cmd_*.sh`` layer
+is gone from the call path entirely. None of those real stages are
+network-free or fast (``refresh --scope=github`` hits ``gh``/GitHub;
+``worktree gc`` runs real ``git`` plumbing), so driving them for real
 from a gate test would violate the "deterministic, local, free, <2s,
 never flaky" gate-test contract (CLAUDE.md). Per that same contract's
-latent-vs-deterministic split, this suite instead builds a throwaway
-"fake plugin root" (see :func:`fake_plugin_root`) containing tiny,
-fully-scripted stand-ins for all seven sibling scripts — each one logs its
-invocation to ``$CALL_LOG`` and exits with a caller-controlled code (via
-``FAKE_RC_*`` env vars) — and points ``CLAUDE_PLUGIN_ROOT`` at it. This
-gives full, fast, deterministic control over every stage's exit code and
-stdout/stderr, letting the tests below pin down ``shepherd sprint``'s OWN
-contract exactly: which argv it invokes each stage with, in what order, in
-what shape (``run_stage``'s verbose-vs-suppressed output handling), and
-how it aggregates per-stage exit codes into its own final exit code and
-summary text — all bash-parity concerns that belong to
-``cmd_sprint.sh``, not to any of the seven scripts it calls.
+latent-vs-deterministic split, this suite instead substitutes ONE tiny,
+fully-deterministic stand-in stage CLI (see ``_FAKE_STAGE_CLI`` /
+:func:`stage_cli`) via ``sprint``'s documented dependency-injection seam,
+the ``SHEPHERD_SPRINT_STAGE_CMD`` environment variable (the successor to
+the old trick of pointing ``CLAUDE_PLUGIN_ROOT`` at fake ``cmd_*.sh``
+scripts). The stand-in logs every invocation to ``$CALL_LOG`` and exits
+with a caller-controlled code (``FAKE_RC_*`` env vars), giving full, fast,
+deterministic control over every stage's exit code and stdout/stderr.
+That lets the tests below pin down ``shepherd sprint``'s OWN contract
+exactly: which argv it invokes each stage with, in what order, in what
+shape (``run_stage``'s verbose-vs-suppressed output handling), and how it
+aggregates per-stage exit codes into its own final exit code and summary
+text — orchestration concerns that belong to ``sprint`` itself, not to
+any of the seven subcommands it dispatches.
 
 The one piece of ``close`` that touches the database directly (finding
 ``lane_closures`` rows tied to the closing sprint branch) is exercised
@@ -35,14 +38,15 @@ style (``conftest.insert_teammate``, ``test_deliverable.insert_deliverable``).
 
 from __future__ import annotations
 
+import json
+import shlex
 import sqlite3
-import stat
 import subprocess
 import time
 from pathlib import Path
 
 import pytest
-from conftest import PY, build_full_schema_db, cli_env, insert_project, run_cli
+from conftest import PY, build_full_schema_db, clean_env_dict, cli_env, insert_project, run_cli
 
 # --------------------------------------------------------------------------
 # Fixture DB.
@@ -112,82 +116,107 @@ def insert_lane_closure(
 
 
 # --------------------------------------------------------------------------
-# Fake sibling scripts — deterministic stand-ins for cmd_lock.sh,
-# cmd_refresh.sh, cmd_lint.sh, cmd_status.sh, cmd_handoff.sh,
-# cmd_worktree.sh, cmd_close-lane.sh.
+# Fake stage CLI — one deterministic Python stand-in for every sibling
+# subcommand a sprint pipeline dispatches (lock, refresh, lint, status,
+# handoff, worktree, close-lane), wired in via the documented
+# SHEPHERD_SPRINT_STAGE_CMD dependency-injection seam.
 # --------------------------------------------------------------------------
 
-_STUB_PREAMBLE = '#!/usr/bin/env bash\necho "{name} $*" >> "$CALL_LOG"\n'
+_FAKE_STAGE_CLI = '''\
+"""Deterministic stand-in stage CLI for shepherd sprint gate tests.
 
-_FAKE_SCRIPTS: dict[str, str] = {
-    "cmd_lock.sh": _STUB_PREAMBLE.format(name="cmd_lock.sh")
-    + (
-        'sub="${1:-}"\n'
-        'case "$sub" in\n'
-        '  acquire) rc="${FAKE_RC_LOCK_ACQUIRE:-${FAKE_RC_LOCK:-0}}" ;;\n'
-        '  release) rc="${FAKE_RC_LOCK_RELEASE:-${FAKE_RC_LOCK:-0}}" ;;\n'
-        '  *)       rc="${FAKE_RC_LOCK:-0}" ;;\n'
-        "esac\n"
-        'echo "stdout:cmd_lock.sh:$sub"\n'
-        'echo "stderr:cmd_lock.sh:$sub" >&2\n'
-        'exit "$rc"\n'
-    ),
-    "cmd_refresh.sh": _STUB_PREAMBLE.format(name="cmd_refresh.sh")
-    + (
-        'scope=""\n'
-        'for a in "$@"; do case "$a" in --scope=*) scope="${a#*=}";; esac; done\n'
-        'case "$scope" in\n'
-        '  all)       rc="${FAKE_RC_REFRESH_ALL:-${FAKE_RC_REFRESH:-0}}" ;;\n'
-        '  github)    rc="${FAKE_RC_REFRESH_GITHUB:-${FAKE_RC_REFRESH:-0}}" ;;\n'
-        '  artifacts) rc="${FAKE_RC_REFRESH_ARTIFACTS:-${FAKE_RC_REFRESH:-0}}" ;;\n'
-        '  *)         rc="${FAKE_RC_REFRESH:-0}" ;;\n'
-        "esac\n"
-        'echo "stdout:cmd_refresh.sh:$scope"\n'
-        'echo "stderr:cmd_refresh.sh:$scope" >&2\n'
-        'exit "$rc"\n'
-    ),
-    "cmd_lint.sh": _STUB_PREAMBLE.format(name="cmd_lint.sh")
-    + ('echo "stdout:cmd_lint.sh"\necho "stderr:cmd_lint.sh" >&2\nexit "${FAKE_RC_LINT:-0}"\n'),
-    "cmd_status.sh": _STUB_PREAMBLE.format(name="cmd_status.sh")
-    + ('echo "stdout:cmd_status.sh"\necho "stderr:cmd_status.sh" >&2\nexit "${FAKE_RC_STATUS:-0}"\n'),
-    "cmd_handoff.sh": _STUB_PREAMBLE.format(name="cmd_handoff.sh")
-    + ('echo "stdout:cmd_handoff.sh"\necho "stderr:cmd_handoff.sh" >&2\nexit "${FAKE_RC_HANDOFF:-0}"\n'),
-    "cmd_worktree.sh": _STUB_PREAMBLE.format(name="cmd_worktree.sh")
-    + ('echo "stdout:cmd_worktree.sh"\necho "stderr:cmd_worktree.sh" >&2\nexit "${FAKE_RC_WORKTREE:-0}"\n'),
-    "cmd_close-lane.sh": _STUB_PREAMBLE.format(name="cmd_close-lane.sh")
-    + ('echo "stdout:cmd_close-lane.sh"\necho "stderr:cmd_close-lane.sh" >&2\nexit "${FAKE_RC_CLOSE_LANE:-0}"\n'),
-}
+Invoked exactly like the real runner ([sys.executable, "-m",
+"shepherd_cli"] replaced by [PY, this_file]): argv after the runner prefix
+is the stage's own subcommand tokens, e.g. ["lock", "acquire",
+"--mode=sprint"]. Appends that argv (space-joined) as one line to
+$CALL_LOG, prints one marker line to stdout and one to stderr (so
+run_stage's verbose-vs-suppressed handling is observable), and exits with
+a caller-controlled FAKE_RC_* code — the same control surface the old
+fake cmd_*.sh scripts offered, minus the bash.
+"""
+import os
+import sys
+
+args = sys.argv[1:]
+with open(os.environ["CALL_LOG"], "a", encoding="utf-8") as fh:
+    fh.write(" ".join(args) + "\\n")
+
+sub = args[0] if args else ""
+
+
+def env_rc(*names):
+    for name in names:
+        if name is None:
+            continue
+        value = os.environ.get(name)
+        if value:
+            return int(value)
+    return 0
+
+
+if sub == "lock":
+    action = args[1] if len(args) > 1 else ""
+    marker = "lock:" + action
+    if action == "acquire":
+        rc = env_rc("FAKE_RC_LOCK_ACQUIRE", "FAKE_RC_LOCK")
+    elif action == "release":
+        rc = env_rc("FAKE_RC_LOCK_RELEASE", "FAKE_RC_LOCK")
+    else:
+        rc = env_rc("FAKE_RC_LOCK")
+elif sub == "refresh":
+    scope = ""
+    for arg in args[1:]:
+        if arg.startswith("--scope="):
+            scope = arg[len("--scope="):]
+    marker = "refresh:" + scope
+    scoped = {
+        "all": "FAKE_RC_REFRESH_ALL",
+        "github": "FAKE_RC_REFRESH_GITHUB",
+        "artifacts": "FAKE_RC_REFRESH_ARTIFACTS",
+    }.get(scope)
+    rc = env_rc(scoped, "FAKE_RC_REFRESH")
+elif sub == "lint":
+    marker = "lint"
+    rc = env_rc("FAKE_RC_LINT")
+elif sub == "status":
+    marker = "status"
+    rc = env_rc("FAKE_RC_STATUS")
+elif sub == "handoff":
+    marker = "handoff:" + (args[1] if len(args) > 1 else "")
+    rc = env_rc("FAKE_RC_HANDOFF")
+elif sub == "worktree":
+    marker = "worktree:" + (args[1] if len(args) > 1 else "")
+    rc = env_rc("FAKE_RC_WORKTREE")
+elif sub == "close-lane":
+    marker = "close-lane"
+    rc = env_rc("FAKE_RC_CLOSE_LANE")
+else:
+    marker = sub or "?"
+    rc = 0
+
+print("stdout:" + marker)
+print("stderr:" + marker, file=sys.stderr)
+sys.exit(rc)
+'''
 
 
 @pytest.fixture
-def fake_plugin_root(tmp_path: Path) -> Path:
-    """A throwaway ``CLAUDE_PLUGIN_ROOT`` tree with fully-scripted sibling commands.
+def stage_cli(tmp_path: Path) -> Path:
+    """A throwaway deterministic stand-in stage CLI (see ``_FAKE_STAGE_CLI``).
 
-    Layout mirrors the real plugin just enough for
-    :func:`shepherd_cli.resolution.find_bash_shctx` to resolve it:
-    ``skills/context/scripts/{shctx, cmd_lock.sh, cmd_refresh.sh, ...}``.
-    ``shctx`` itself only needs to exist as a file (its dirname is all
-    ``shepherd sprint`` ever uses); the seven ``cmd_*.sh`` stand-ins are
-    real, executable, deterministic bash scripts (see ``_FAKE_SCRIPTS``).
+    Plain Python, no executable bit needed — ``sprint_env`` wires it in as
+    ``SHEPHERD_SPRINT_STAGE_CMD="${PY} <this file>"``, so every stage a
+    pipeline dispatches runs this file instead of the real
+    ``[sys.executable, "-m", "shepherd_cli"]`` subcommands.
     """
-    scripts_dir = tmp_path / "fake-plugin-root" / "skills" / "context" / "scripts"
-    scripts_dir.mkdir(parents=True)
-
-    shctx_path = scripts_dir / "shctx"
-    shctx_path.write_text("#!/usr/bin/env bash\nexit 0\n")
-    shctx_path.chmod(shctx_path.stat().st_mode | stat.S_IEXEC)
-
-    for name, content in _FAKE_SCRIPTS.items():
-        script_path = scripts_dir / name
-        script_path.write_text(content)
-        script_path.chmod(script_path.stat().st_mode | stat.S_IEXEC)
-
-    return scripts_dir.parent.parent.parent
+    path = tmp_path / "fake_stage_cli.py"
+    path.write_text(_FAKE_STAGE_CLI)
+    return path
 
 
 def sprint_env(
     db_path: Path,
-    fake_plugin_root: Path,
+    stage_cli: Path,
     workdir: Path,
     call_log: Path,
     *,
@@ -197,23 +226,24 @@ def sprint_env(
 
     Args:
         db_path: The fixture DB (SHCTX_DB).
-        fake_plugin_root: The fake plugin root from :func:`fake_plugin_root`,
-            wired in as CLAUDE_PLUGIN_ROOT so ``find_bash_shctx()`` (and
-            therefore ``_scripts_dir()``) resolves to the fake sibling
-            scripts instead of the real, network-dependent ones.
+        stage_cli: The stand-in stage CLI from :func:`stage_cli`, wired in
+            via ``SHEPHERD_SPRINT_STAGE_CMD`` (``_stage_base_argv()``'s
+            documented dependency-injection seam) so every pipeline stage
+            runs the deterministic stand-in instead of the real,
+            network/git-dependent native subcommands.
         workdir: An absolute directory ``SHEPHERD_WORKDIR`` points at —
             gives each test a private, empty-by-default ``project.json``
             location (``_read_project_id()``'s target).
-        call_log: Path the fake sibling scripts append one line to per
-            invocation (``$CALL_LOG``) — read back to assert which stages
-            actually ran, in what order, with what argv.
+        call_log: Path the stand-in appends one line to per invocation
+            (``$CALL_LOG``) — read back to assert which stages actually
+            ran, in what order, with what argv.
         rc: ``FAKE_RC_*`` overrides, e.g. ``{"FAKE_RC_LOCK_ACQUIRE": "1"}``.
 
     Returns:
         A full subprocess environment ready for :func:`conftest.run_cli`.
     """
     env = cli_env(db_path)
-    env["CLAUDE_PLUGIN_ROOT"] = str(fake_plugin_root)
+    env["SHEPHERD_SPRINT_STAGE_CMD"] = " ".join(shlex.quote(part) for part in (PY, str(stage_cli)))
     env["SHEPHERD_WORKDIR"] = str(workdir)
     env["CALL_LOG"] = str(call_log)
     for key, value in (rc or {}).items():
@@ -238,11 +268,10 @@ def call_log(tmp_path: Path) -> Path:
 def read_calls(call_log: Path) -> list[str]:
     """Read back every logged stage invocation, in call order.
 
-    Each line is right-stripped: a no-argument stage (``cmd_lint.sh``,
-    ``cmd_status.sh``, ``cmd_worktree.sh gc`` has args but ``cmd_lint.sh``
-    doesn't) still leaves a trailing space in the stub's ``"name $*"``
-    format when ``$*`` expands to nothing — cosmetic, not a signal worth
-    asserting on.
+    Each line is the stage's full subcommand argv, space-joined by the
+    stand-in — e.g. ``"lock acquire --mode=sprint"`` or ``"lint"``
+    (right-stripped defensively; the stand-in's ``" ".join(args)`` format
+    emits no trailing whitespace of its own).
     """
     if not call_log.is_file():
         return []
@@ -303,9 +332,9 @@ def test_open_missing_or_empty_branch_exits_1_with_usage(
 
 
 def test_open_all_stages_succeed_prints_summary_and_exits_0(
-    db_path: Path, project_id: str, fake_plugin_root: Path, workdir: Path, call_log: Path
+    db_path: Path, project_id: str, stage_cli: Path, workdir: Path, call_log: Path
 ) -> None:
-    env = sprint_env(db_path, fake_plugin_root, workdir, call_log)
+    env = sprint_env(db_path, stage_cli, workdir, call_log)
     proc = run_cli(["sprint", "open", "feature-x"], env)
 
     assert proc.returncode == 0, proc.stderr
@@ -317,20 +346,20 @@ def test_open_all_stages_succeed_prints_summary_and_exits_0(
 
     calls = read_calls(call_log)
     assert len(calls) == 4
-    assert calls[0] == "cmd_lock.sh acquire --mode=sprint"
-    assert calls[1] == "cmd_refresh.sh --scope=all"
-    assert calls[2] == "cmd_lint.sh"
-    assert calls[3] == "cmd_status.sh"
+    assert calls[0] == "lock acquire --mode=sprint"
+    assert calls[1] == "refresh --scope=all"
+    assert calls[2] == "lint"
+    assert calls[3] == "status"
 
 
 def test_open_stage_failure_still_runs_every_later_stage_and_exits_1(
-    db_path: Path, project_id: str, fake_plugin_root: Path, workdir: Path, call_log: Path
+    db_path: Path, project_id: str, stage_cli: Path, workdir: Path, call_log: Path
 ) -> None:
     """Bash parity: each rc_* is captured independently — a failed early
     stage does NOT short-circuit later stages (no ``set -e``-style abort
     inside the ``open`` branch)."""
     env = sprint_env(
-        db_path, fake_plugin_root, workdir, call_log,
+        db_path, stage_cli, workdir, call_log,
         rc={"FAKE_RC_LOCK_ACQUIRE": "1", "FAKE_RC_STATUS": "3"},
     )
     proc = run_cli(["sprint", "open", "feature-x"], env)
@@ -346,51 +375,51 @@ def test_open_stage_failure_still_runs_every_later_stage_and_exits_1(
 
 
 def test_open_non_verbose_suppresses_stage_stdout_and_stderr(
-    db_path: Path, project_id: str, fake_plugin_root: Path, workdir: Path, call_log: Path
+    db_path: Path, project_id: str, stage_cli: Path, workdir: Path, call_log: Path
 ) -> None:
-    env = sprint_env(db_path, fake_plugin_root, workdir, call_log)
+    env = sprint_env(db_path, stage_cli, workdir, call_log)
     proc = run_cli(["sprint", "open", "feature-x"], env)
 
     assert proc.returncode == 0, proc.stderr
-    assert "stdout:cmd_lock.sh" not in proc.stdout
-    assert "stderr:cmd_lock.sh" not in proc.stderr
+    assert "stdout:lock" not in proc.stdout
+    assert "stderr:lock" not in proc.stderr
     assert "───" not in proc.stdout  # no "─── name ───" headers
 
 
 def test_open_verbose_streams_stage_output_with_headers(
-    db_path: Path, project_id: str, fake_plugin_root: Path, workdir: Path, call_log: Path
+    db_path: Path, project_id: str, stage_cli: Path, workdir: Path, call_log: Path
 ) -> None:
-    env = sprint_env(db_path, fake_plugin_root, workdir, call_log)
+    env = sprint_env(db_path, stage_cli, workdir, call_log)
     proc = run_cli(["sprint", "open", "feature-x", "--verbose"], env)
 
     assert proc.returncode == 0, proc.stderr
     assert "─── lock acquire ───" in proc.stdout
     assert "─── refresh --all ───" in proc.stdout
-    assert "stdout:cmd_lock.sh:acquire" in proc.stdout
-    assert "stderr:cmd_lock.sh:acquire" in proc.stderr
+    assert "stdout:lock:acquire" in proc.stdout
+    assert "stderr:lock:acquire" in proc.stderr
     # The final bash-parity summary still prints after the streamed stages.
     assert "shctx sprint open feature-x: elapsed=" in proc.stdout
 
 
 def test_open_verbose_short_flag_is_equivalent(
-    db_path: Path, project_id: str, fake_plugin_root: Path, workdir: Path, call_log: Path
+    db_path: Path, project_id: str, stage_cli: Path, workdir: Path, call_log: Path
 ) -> None:
-    env = sprint_env(db_path, fake_plugin_root, workdir, call_log)
+    env = sprint_env(db_path, stage_cli, workdir, call_log)
     proc = run_cli(["sprint", "open", "feature-x", "-v"], env)
 
     assert proc.returncode == 0, proc.stderr
-    assert "stdout:cmd_lock.sh:acquire" in proc.stdout
+    assert "stdout:lock:acquire" in proc.stdout
 
 
 def test_open_flag_before_positional_still_resolves_branch(
-    db_path: Path, project_id: str, fake_plugin_root: Path, workdir: Path, call_log: Path
+    db_path: Path, project_id: str, stage_cli: Path, workdir: Path, call_log: Path
 ) -> None:
     """Intentional divergence from bash (documented in sprint.py): bash's
     naive ``branch="${1:-}"`` would treat a leading ``--verbose`` AS the
     branch name if it preceded the positional. Typer parses options
     independent of position, so this resolves ``branch`` correctly either
     way — a strict improvement, not a parity break."""
-    env = sprint_env(db_path, fake_plugin_root, workdir, call_log)
+    env = sprint_env(db_path, stage_cli, workdir, call_log)
     proc = run_cli(["sprint", "open", "--verbose", "feature-x"], env)
 
     assert proc.returncode == 0, proc.stderr
@@ -415,9 +444,9 @@ def test_wave_missing_or_empty_wave_id_exits_1_with_usage(
 
 
 def test_wave_default_scope_runs_github_then_artifacts(
-    db_path: Path, project_id: str, fake_plugin_root: Path, workdir: Path, call_log: Path
+    db_path: Path, project_id: str, stage_cli: Path, workdir: Path, call_log: Path
 ) -> None:
-    env = sprint_env(db_path, fake_plugin_root, workdir, call_log)
+    env = sprint_env(db_path, stage_cli, workdir, call_log)
     proc = run_cli(["sprint", "wave", "w1"], env)
 
     assert proc.returncode == 0, proc.stderr
@@ -427,30 +456,30 @@ def test_wave_default_scope_runs_github_then_artifacts(
 
     calls = read_calls(call_log)
     assert calls == [
-        "cmd_refresh.sh --scope=github",
-        "cmd_refresh.sh --scope=artifacts",
-        "cmd_lint.sh",
+        "refresh --scope=github",
+        "refresh --scope=artifacts",
+        "lint",
     ]
 
 
 def test_wave_all_flag_forwards_scope_all_as_single_stage(
-    db_path: Path, project_id: str, fake_plugin_root: Path, workdir: Path, call_log: Path
+    db_path: Path, project_id: str, stage_cli: Path, workdir: Path, call_log: Path
 ) -> None:
-    env = sprint_env(db_path, fake_plugin_root, workdir, call_log)
+    env = sprint_env(db_path, stage_cli, workdir, call_log)
     proc = run_cli(["sprint", "wave", "w1", "--all"], env)
 
     assert proc.returncode == 0, proc.stderr
     assert "shctx sprint wave w1: scope=all elapsed=" in proc.stdout
 
     calls = read_calls(call_log)
-    assert calls == ["cmd_refresh.sh --scope=all", "cmd_lint.sh"]
+    assert calls == ["refresh --scope=all", "lint"]
 
 
 def test_wave_partial_refresh_failure_formats_g_and_a_rcs(
-    db_path: Path, project_id: str, fake_plugin_root: Path, workdir: Path, call_log: Path
+    db_path: Path, project_id: str, stage_cli: Path, workdir: Path, call_log: Path
 ) -> None:
     env = sprint_env(
-        db_path, fake_plugin_root, workdir, call_log,
+        db_path, stage_cli, workdir, call_log,
         rc={"FAKE_RC_REFRESH_GITHUB": "1", "FAKE_RC_REFRESH_ARTIFACTS": "0"},
     )
     proc = run_cli(["sprint", "wave", "w1"], env)
@@ -463,9 +492,9 @@ def test_wave_partial_refresh_failure_formats_g_and_a_rcs(
 
 
 def test_wave_lint_failure_exits_1(
-    db_path: Path, project_id: str, fake_plugin_root: Path, workdir: Path, call_log: Path
+    db_path: Path, project_id: str, stage_cli: Path, workdir: Path, call_log: Path
 ) -> None:
-    env = sprint_env(db_path, fake_plugin_root, workdir, call_log, rc={"FAKE_RC_LINT": "5"})
+    env = sprint_env(db_path, stage_cli, workdir, call_log, rc={"FAKE_RC_LINT": "5"})
     proc = run_cli(["sprint", "wave", "w1"], env)
 
     assert proc.returncode == 1
@@ -491,9 +520,9 @@ def test_close_missing_or_empty_branch_exits_1_with_usage(
 
 
 def test_close_all_stages_succeed_prints_summary_and_exits_0(
-    db_path: Path, project_id: str, fake_plugin_root: Path, workdir: Path, call_log: Path
+    db_path: Path, project_id: str, stage_cli: Path, workdir: Path, call_log: Path
 ) -> None:
-    env = sprint_env(db_path, fake_plugin_root, workdir, call_log)
+    env = sprint_env(db_path, stage_cli, workdir, call_log)
     proc = run_cli(["sprint", "close", "feature-x"], env)
 
     assert proc.returncode == 0, proc.stderr
@@ -505,17 +534,17 @@ def test_close_all_stages_succeed_prints_summary_and_exits_0(
 
     calls = read_calls(call_log)
     assert calls == [
-        "cmd_handoff.sh create --branch=feature-x",
-        "cmd_worktree.sh gc",
-        "cmd_lock.sh release",
+        "handoff create --branch=feature-x",
+        "worktree gc",
+        "lock release",
     ]
 
 
 def test_close_stage_failure_still_runs_every_later_stage_and_exits_1(
-    db_path: Path, project_id: str, fake_plugin_root: Path, workdir: Path, call_log: Path
+    db_path: Path, project_id: str, stage_cli: Path, workdir: Path, call_log: Path
 ) -> None:
     env = sprint_env(
-        db_path, fake_plugin_root, workdir, call_log,
+        db_path, stage_cli, workdir, call_log,
         rc={"FAKE_RC_HANDOFF": "1", "FAKE_RC_LOCK_RELEASE": "2"},
     )
     proc = run_cli(["sprint", "close", "feature-x"], env)
@@ -528,14 +557,14 @@ def test_close_stage_failure_still_runs_every_later_stage_and_exits_1(
 
 
 def test_close_no_project_json_skips_lane_step_without_error(
-    db_path: Path, project_id: str, fake_plugin_root: Path, workdir: Path, call_log: Path
+    db_path: Path, project_id: str, stage_cli: Path, workdir: Path, call_log: Path
 ) -> None:
     """Bash parity: ``shctx_project_id`` errors when project.json is
     missing; the ``2>/dev/null || echo ""`` wrapper in cmd_sprint.sh's
     close branch swallows that, leaving project_id empty and the whole
     lane-closing step skipped (``[[ -n "$project_id" ]]`` guard)."""
     assert not (workdir / "project.json").exists()
-    env = sprint_env(db_path, fake_plugin_root, workdir, call_log)
+    env = sprint_env(db_path, stage_cli, workdir, call_log)
     proc = run_cli(["sprint", "close", "feature-x"], env)
 
     assert proc.returncode == 0, proc.stderr
@@ -543,7 +572,7 @@ def test_close_no_project_json_skips_lane_step_without_error(
 
 
 def test_close_lane_closures_table_missing_skips_lane_step_without_error(
-    tmp_path: Path, project_id: str, fake_plugin_root: Path, workdir: Path, call_log: Path
+    tmp_path: Path, project_id: str, stage_cli: Path, workdir: Path, call_log: Path
 ) -> None:
     """Bash parity: cmd_sprint.sh's sqlite_master introspection guards the
     lane-closing step against a DB that predates migration 0003 — here
@@ -554,7 +583,7 @@ def test_close_lane_closures_table_missing_skips_lane_step_without_error(
     fresh_db = tmp_path / "not-yet-created.db"
     assert not fresh_db.exists()
 
-    env = sprint_env(fresh_db, fake_plugin_root, workdir, call_log)
+    env = sprint_env(fresh_db, stage_cli, workdir, call_log)
     proc = run_cli(["sprint", "close", "feature-x"], env)
 
     assert proc.returncode == 0, proc.stderr
@@ -562,7 +591,7 @@ def test_close_lane_closures_table_missing_skips_lane_step_without_error(
 
 
 def test_close_seeded_lane_row_never_counted_due_to_not_null_constraint(
-    db_path: Path, project_id: str, fake_plugin_root: Path, workdir: Path, call_log: Path
+    db_path: Path, project_id: str, stage_cli: Path, workdir: Path, call_log: Path
 ) -> None:
     """The schema declares lane_closures.closed_at NOT NULL, and
     cmd_close-lane.sh (the table's sole writer) always sets it to
@@ -577,56 +606,107 @@ def test_close_seeded_lane_row_never_counted_due_to_not_null_constraint(
         lane_id="lane-1", closed_at=int(time.time()),
     )
 
-    env = sprint_env(db_path, fake_plugin_root, workdir, call_log)
+    env = sprint_env(db_path, stage_cli, workdir, call_log)
     proc = run_cli(["sprint", "close", "feature-x"], env)
 
     assert proc.returncode == 0, proc.stderr
     assert "  lanes:   closed=0 failed=0" in proc.stdout
-    # cmd_close-lane.sh was never invoked (no CALL_LOG line for it).
-    assert all("cmd_close-lane.sh" not in call for call in read_calls(call_log))
+    # The close-lane subcommand was never invoked (no CALL_LOG line for it).
+    assert all("close-lane" not in call for call in read_calls(call_log))
 
 
 def test_close_verbose_streams_handoff_gc_lock_output(
-    db_path: Path, project_id: str, fake_plugin_root: Path, workdir: Path, call_log: Path
+    db_path: Path, project_id: str, stage_cli: Path, workdir: Path, call_log: Path
 ) -> None:
-    env = sprint_env(db_path, fake_plugin_root, workdir, call_log)
+    env = sprint_env(db_path, stage_cli, workdir, call_log)
     proc = run_cli(["sprint", "close", "feature-x", "--verbose"], env)
 
     assert proc.returncode == 0, proc.stderr
     assert "─── handoff ───" in proc.stdout
     assert "─── worktree gc ───" in proc.stdout
     assert "─── lock release ───" in proc.stdout
-    assert "stdout:cmd_handoff.sh" in proc.stdout
-    assert "stderr:cmd_handoff.sh" in proc.stderr
+    assert "stdout:handoff:create" in proc.stdout
+    assert "stderr:handoff:create" in proc.stderr
 
 
 # --------------------------------------------------------------------------
-# _scripts_dir() failure mode.
+# _stage_base_argv() resolution (the no-bash guarantee + the test seam).
 # --------------------------------------------------------------------------
 
 
-def test_missing_bash_shctx_tooling_exits_1(db_path: Path, project_id: str, tmp_path: Path) -> None:
-    """When the bash shctx tooling cannot be located at all (no
-    CLAUDE_PLUGIN_ROOT match and no skills/context/scripts/shctx found by
-    walking up from the repo root), every pipeline is unusable — exit 1
-    with a clear stderr message rather than a stack trace."""
-    env = cli_env(db_path)
-    # Point CLAUDE_PLUGIN_ROOT somewhere with no skills/context/scripts/shctx,
-    # and run from an empty cwd outside any git repo so the walk-up fallback
-    # in find_bash_shctx() also fails to find the real tree.
-    empty_root = tmp_path / "no-plugin-here"
-    empty_root.mkdir()
-    env["CLAUDE_PLUGIN_ROOT"] = str(empty_root)
-    env["SHEPHERD_WORKDIR"] = str(tmp_path / "workdir")
+def _resolve_stage_base_argv(env: dict[str, str]) -> dict[str, object]:
+    """Resolve ``sprint._stage_base_argv()`` in a fresh ``${PY}`` subprocess.
 
+    Mirrors ``conftest.resolve_fields``'s pattern (a ``-c`` snippet, never
+    an import into the pytest process) so the environment the function
+    reads — ``SHEPHERD_SPRINT_STAGE_CMD`` present or absent — is exactly
+    what the test built, with no pytest bleed-through.
+    """
+    code = (
+        "import json, sys\n"
+        "from shepherd_cli.commands import sprint\n"
+        "print(json.dumps({'argv': sprint._stage_base_argv(), 'exe': sys.executable}))\n"
+    )
     proc = subprocess.run(
-        [PY, "-m", "shepherd_cli", "sprint", "open", "feature-x"],
+        [PY, "-c", code],
         env=env,
-        cwd=str(tmp_path),
         capture_output=True,
         text=True,
         timeout=15,
     )
+    assert proc.returncode == 0, proc.stderr
+    return json.loads(proc.stdout)
+
+
+def test_default_stage_argv_is_this_interpreter_never_bash() -> None:
+    """With no SHEPHERD_SPRINT_STAGE_CMD set, every stage is spawned as
+    ``[sys.executable, "-m", "shepherd_cli"]`` — a child of the invoking
+    interpreter running this same CLI's native subcommands. There is no
+    bash, no cmd_*.sh, and no plugin-root lookup left in the call path
+    (the old ``_scripts_dir()``/``find_bash_shctx`` failure mode is
+    structurally gone, which is why this file no longer has a
+    missing-tooling exit-1 test)."""
+    env = clean_env_dict()
+    env.pop("SHEPHERD_SPRINT_STAGE_CMD", None)
+
+    data = _resolve_stage_base_argv(env)
+
+    assert data["argv"] == [data["exe"], "-m", "shepherd_cli"]
+
+
+def test_unspawnable_stage_cmd_degrades_to_rc_127_per_stage(
+    db_path: Path, project_id: str, workdir: Path, call_log: Path, tmp_path: Path
+) -> None:
+    """A stage argv that cannot be spawned at all (here: an override
+    pointing at a nonexistent binary) must degrade to the shell's
+    command-not-found convention — every stage reports ``fail (rc=127)``
+    in the summary and the pipeline exits 1 — never a Python traceback.
+    Bash produced exactly this shape when a ``cmd_*.sh`` was missing
+    (``"$@"`` -> rc 127 per stage). The default runner is immune
+    (``sys.executable`` always resolves); only the seam can hit this."""
+    env = cli_env(db_path)
+    env["SHEPHERD_SPRINT_STAGE_CMD"] = str(tmp_path / "no-such-binary")
+    env["SHEPHERD_WORKDIR"] = str(workdir)
+    env["CALL_LOG"] = str(call_log)
+
+    proc = run_cli(["sprint", "open", "feature-x"], env)
 
     assert proc.returncode == 1
-    assert "ERROR: bash shctx tooling not found" in proc.stderr
+    assert "Traceback" not in proc.stderr
+    assert "  lock:    fail (rc=127)" in proc.stdout
+    assert "  refresh: fail (rc=127)" in proc.stdout
+    assert "  lint:    fail (rc=127)" in proc.stdout
+    assert "  status:  fail (rc=127)" in proc.stdout
+    assert read_calls(call_log) == []
+
+
+def test_stage_cmd_override_is_shlex_split() -> None:
+    """SHEPHERD_SPRINT_STAGE_CMD replaces the default prefix wholesale and
+    is parsed with shlex (quoted segments with spaces survive intact) —
+    the contract sprint_env()'s quoting relies on."""
+    env = clean_env_dict()
+    env["SHEPHERD_SPRINT_STAGE_CMD"] = "/opt/py '/tmp/some dir/stub.py'"
+
+    data = _resolve_stage_base_argv(env)
+
+    assert data["argv"] == ["/opt/py", "/tmp/some dir/stub.py"]

@@ -8,9 +8,12 @@ sibling modules) already reads:
 
 * ``SPRINT``/``FOCUS`` -- ``schema_versions`` + the ``focus`` table (0013 /
   0017).
-* ``GRAPH`` -- ``<workdir>/graph/state.json``, rendered by SHELLING OUT to
-  the sibling bash script ``cmd_graph.sh status`` (the Stage-Graph walker
-  is not ported to this CLI; this module never reimplements it).
+* ``GRAPH`` -- ``graph/state.json`` (run-shim aware), rendered by calling
+  the sibling NATIVE Stage-Graph walker :mod:`shepherd_cli.commands.graph`
+  IN-PROCESS — the same ``status`` implementation a real ``shepherd graph
+  status`` runs, stdout captured and re-indented, no subprocess and no
+  bash anywhere (``cmd_graph.sh`` is retired; this module still never
+  reimplements the walker itself).
 * ``TEAMMATES`` -- ``teammates`` (0007), filtered/computed the same way
   the ``v_teammates_live`` VIEW is, via the already-ported
   :class:`shepherd_cli.models.Teammate` model.
@@ -90,6 +93,8 @@ one exists (per the collision rule) and the two new ones declared in
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import io
 import json
 import os
 import subprocess
@@ -99,13 +104,14 @@ import typer
 from tortoise import Tortoise
 
 from shepherd_cli import db
+from shepherd_cli.commands import graph as graph_cmd
+from shepherd_cli.commands.models_graph import resolve_graph_dir, resolve_run, state_path
 from shepherd_cli.models import SchemaVersion, Teammate
 from shepherd_cli.models_dash import Focus, LoopActive
 from shepherd_cli.models_mem import MemEntry
 from shepherd_cli.models_report import EscalationOpen
 from shepherd_cli.models_status import IndexIssue, IndexPR
 from shepherd_cli.resolution import (
-    find_bash_shctx,
     resolve_db_path,
     resolve_repo_root,
     resolve_workdir,
@@ -129,7 +135,6 @@ app = typer.Typer(
 
 _LOCK_FILENAME = "shepherd.lock"
 _PROJECT_JSON_FILENAME = "project.json"
-_GRAPH_STATE_RELPATH = os.path.join("graph", "state.json")
 
 #: jq -r's raw-output rendering of JSON `null` -- the literal three-char
 #: string bash observes when project.json's "id" key is present-but-null
@@ -342,8 +347,8 @@ async def _focus_objective(branch: str) -> str:
     return row.objective.replace("\n", " ").replace("\r", " ")[:76]
 
 
-def _render_graph_section(workdir: str) -> None:
-    """Print the ``GRAPH`` section, delegating to the bash ``cmd_graph.sh status`` sibling.
+def _render_graph_section() -> None:
+    """Print the ``GRAPH`` section via the NATIVE ``graph status`` implementation.
 
     Bash::
 
@@ -355,57 +360,58 @@ def _render_graph_section(workdir: str) -> None:
           echo "GRAPH       (no stage-graph state — solo / pre-extract)"
         fi
 
-    The pipeline's ``|| echo ...`` fires on the PIPELINE's exit status
-    (``set -o pipefail``), which is ``cmd_graph.sh status``'s own exit
-    code whenever it is non-zero (``sed`` essentially never fails). That
-    exit status is independent of whether ``cmd_graph.sh`` had already
-    written partial output to stdout before failing -- any such partial
-    output was already piped through ``sed`` (indented, printed) BEFORE
-    the ``||`` branch additionally fires, so a failing ``cmd_graph.sh``
-    that still printed something can legitimately produce BOTH the
-    indented partial output AND the ``"  (graph status error)"`` line.
-    This function reproduces that: print every stdout line (2-space
-    indented, including blank lines -- ``sed 's/^/  /'`` indents an
-    empty line into two bare spaces too, not nothing) unconditionally
-    when present, THEN separately check the exit code for the error
-    line.
+    The Stage-Graph walker is natively ported now
+    (:mod:`shepherd_cli.commands.graph`), so instead of shelling out to
+    the retired ``cmd_graph.sh``, this section invokes that module's own
+    ``status`` implementation (:func:`shepherd_cli.commands.graph.
+    _cmd_status`) IN-PROCESS with its stdout captured -- the exact code
+    path a real ``shepherd graph status`` runs, minus the process
+    boundary (``_cmd_status`` is pure sync, touches no DB, and returns an
+    exit code instead of raising ``typer.Exit``, which is what makes the
+    in-process call safe here). Each piece of the bash pipeline maps to
+    one piece of this function:
 
-    Args:
-        workdir: The resolved shepherd work directory -- used to locate
-            ``graph/state.json`` (bash: ``shctx_artifacts_root()`` /
-            ``resolve_workdir()``, the exact same resolution this port's
-            own ``resolve_workdir()`` performs, so this is passed in
-            rather than re-resolved).
+    * The ``[[ -f "$gstate" ]]`` gate uses the SAME run-shim-aware
+      resolution ``graph status`` itself uses
+      (:func:`~shepherd_cli.commands.models_graph.resolve_graph_dir`), so
+      the gate and the renderer can never disagree about WHICH
+      ``state.json`` is meant. With no identifiable run this is exactly
+      bash's legacy ``<workdir>/graph/state.json`` check; with one, both
+      resolve to ``<workdir>/runs/<run>/graph/`` together (the
+      documented additive run-scoped deviation shared with
+      :mod:`shepherd_cli.commands.graph`).
+    * ``sed 's/^/  /'``: every captured stdout line prints 2-space
+      indented, blank lines included (``sed`` indents an empty line into
+      two bare spaces too, not nothing).
+    * ``2>/dev/null``: anything the implementation writes to stderr is
+      captured and discarded.
+    * ``|| echo "  (graph status error)"`` (under ``set -o pipefail``):
+      a nonzero return -- or any exception, the in-process analogue of a
+      crashed ``cmd_graph.sh`` (e.g. unparseable ``state.json``) --
+      prints the error line AFTER whatever partial output was already
+      captured, so a failing renderer can legitimately produce BOTH the
+      indented partial output AND the ``"  (graph status error)"`` line,
+      exactly as the bash pipeline could.
     """
-    gstate = os.path.join(workdir, _GRAPH_STATE_RELPATH)
-    if not os.path.isfile(gstate):
+    graph_dir = resolve_graph_dir(resolve_run(None))
+    if not os.path.isfile(state_path(graph_dir)):
         typer.echo("GRAPH       (no stage-graph state — solo / pre-extract)")
         return
 
     typer.echo("GRAPH")
-    shctx_path = find_bash_shctx()
-    if shctx_path is None:
-        # The bash shctx tooling itself cannot be located -- equivalent to
-        # cmd_graph.sh failing to even start; degrade the same way bash's
-        # own pipeline failure branch would.
-        typer.echo("  (graph status error)")
-        return
-    graph_script = os.path.join(os.path.dirname(shctx_path), "cmd_graph.sh")
+    stdout_buf = io.StringIO()
+    stderr_buf = io.StringIO()  # captured only to discard -- bash: 2>/dev/null
     try:
-        result = subprocess.run(
-            ["bash", graph_script, "status"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-    except OSError:
-        typer.echo("  (graph status error)")
-        return
+        with contextlib.redirect_stdout(stdout_buf), contextlib.redirect_stderr(stderr_buf):
+            rc = graph_cmd._cmd_status([])
+    except Exception:  # noqa: BLE001 -- bash-parity degrade: any walker failure -> error line, never a dash crash
+        rc = 1
 
-    if result.stdout:
-        for line in result.stdout.splitlines():
+    captured = stdout_buf.getvalue()
+    if captured:
+        for line in captured.splitlines():
             typer.echo(f"  {line}")
-    if result.returncode != 0:
+    if rc != 0:
         typer.echo("  (graph status error)")
 
 
@@ -716,7 +722,7 @@ async def _dash_async() -> None:
         if obj:
             typer.echo(f"FOCUS       {obj}…")
 
-        _render_graph_section(workdir)
+        _render_graph_section()
 
         await _render_teammates_section(now_ms)
         await _render_signals_section()

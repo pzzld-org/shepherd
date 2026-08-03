@@ -1,5 +1,13 @@
 # Profiles — behavior-overlay schema
 
+**Two things are named "profile" — this file covers only the second.**
+Style profiles are DIRECTORIES: `profiles/{profile}/style.md` (usually
+per-language) resolving project → legacy `styles/` → `~/.shepherd` →
+bundled; that schema lives in `references/naming-conventions.md §Profiles
+and styles`. TOML behavior overlays — `profiles/<name>.toml` files, the
+subject of this file — coexist beside the style-profile directories under
+`<ns>/profiles/`.
+
 Profiles let a consumer project adjust flock behavior without forking the
 plugin. Per-role dispatch configuration (which model a role runs with) is
 declared in the `[models]` table and resolved via `shctx models resolve

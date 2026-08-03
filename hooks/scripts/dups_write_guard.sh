@@ -57,7 +57,7 @@ fi
 
 # Locate shctx relative to the plugin root (hooks/scripts/ → ../../skills/...).
 plugin_root="${CLAUDE_PLUGIN_ROOT:-$(cd "$HERE/../.." && pwd)}"
-shctx="$plugin_root/skills/context/scripts/shctx"
+shctx="$plugin_root/bin/shepherd"
 [[ -x "$shctx" || -f "$shctx" ]] || pass_silent "dups_write_guard" "$tool" "$role" "$session"
 command -v python3 >/dev/null 2>&1 || pass_silent "dups_write_guard" "$tool" "$role" "$session"
 

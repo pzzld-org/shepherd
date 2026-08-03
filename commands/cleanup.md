@@ -18,7 +18,7 @@ prune retired teammate entries.
 ### Step 1: Show current teammate liveness
 
 ```bash
-bash skills/context/scripts/shctx teammate liveness --stale-mins=5
+bin/shepherd teammate liveness --stale-mins=5
 ```
 
 Identify rows with `verdict=presumed-crashed` or `status=retired`.
@@ -32,24 +32,25 @@ Surface the to-be-pruned list. If 0 rows, exit with "nothing to prune."
 For each confirmed entry:
 
 ```bash
-bash skills/context/scripts/shctx teammate prune --confirm --name=<name>
+bin/shepherd teammate prune --confirm --name=<name>
 ```
 
 OR bulk:
 
 ```bash
-bash skills/context/scripts/shctx teammate prune --confirm --crashed
+bin/shepherd teammate prune --confirm --crashed
 ```
 
 ### Step 4: Materialize cleanup report
 
 ```bash
-bash skills/context/scripts/shctx report teammates --stale-mins=5 \
-  > .artifacts/cache/teammate-cleanup-$(date +%Y%m%d-%H%M%S).md
+bin/shepherd report teammates --stale-mins=5 \
+  > .shepherd/cache/teammate-cleanup-<run>.md
 ```
 
-The cache file is gitignored; the canonical state is in
-`teammates` table.
+`<run>` is the run slug (e.g. `v641-dev0`) — deterministic; a re-run for the
+same run overwrites the same file. The cache file is gitignored; the canonical
+state is in the `teammates` table.
 
 ### Step 5: PAUSE
 

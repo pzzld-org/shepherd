@@ -133,3 +133,85 @@ def test_db_path_defaults_to_shepherd_db_when_neither_file_exists(tmp_path: Path
     result = resolve_fields(("resolve_db_path",), clean_env_dict(), cwd=tmp_path)
 
     assert result["resolve_db_path"] == str(workdir / "shepherd.db")
+
+
+# --------------------------------------------------------------------------
+# Worktree resolution (#221/#231) + user-level home.
+# --------------------------------------------------------------------------
+def _init_repo_with_worktree(tmp_path: Path) -> tuple[Path, Path]:
+    """Create a real git repo with one linked worktree.
+
+    Returns:
+        (main_root, worktree_root) — the primary checkout and a linked
+        worktree at a sibling path, with one commit so worktree add works.
+    """
+    import subprocess as sp
+
+    main = tmp_path / "main"
+    main.mkdir()
+    env = clean_env_dict()
+    env.update({"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"})
+    for args in (
+        ["git", "init", "-q", "-b", "main"],
+        ["git", "commit", "-q", "--allow-empty", "-m", "init"],
+    ):
+        sp.run(args, cwd=main, env=env, check=True, capture_output=True)
+    wt = tmp_path / "lane-wt"
+    sp.run(
+        ["git", "worktree", "add", "-q", str(wt), "-b", "lane-1", "main"],
+        cwd=main, env=env, check=True, capture_output=True,
+    )
+    return main, wt
+
+
+def test_repo_root_from_linked_worktree_resolves_main_checkout(tmp_path: Path) -> None:
+    """#221/#231: from a linked worktree, resolve_repo_root() returns the MAIN
+    worktree root (via --git-common-dir), never the worktree's own path — the
+    divorced per-worktree shepherd.db class of bug."""
+    main, wt = _init_repo_with_worktree(tmp_path)
+
+    result = resolve_fields(("resolve_repo_root", "in_subworktree"), clean_env_dict(), cwd=wt)
+
+    assert result["resolve_repo_root"] == str(main.resolve())
+    assert result["in_subworktree"] is True
+
+
+def test_repo_root_from_primary_worktree_unchanged(tmp_path: Path) -> None:
+    """From the primary checkout (including a subdir), resolution is the repo root."""
+    main, _wt = _init_repo_with_worktree(tmp_path)
+    sub = main / "src"
+    sub.mkdir()
+
+    at_root = resolve_fields(("resolve_repo_root", "in_subworktree"), clean_env_dict(), cwd=main)
+    at_sub = resolve_fields(("resolve_repo_root", "in_subworktree"), clean_env_dict(), cwd=sub)
+
+    assert at_root["resolve_repo_root"] == str(main.resolve())
+    assert at_root["in_subworktree"] is False
+    assert at_sub["resolve_repo_root"] == str(main.resolve())
+    assert at_sub["in_subworktree"] is False
+
+
+def test_workdir_from_linked_worktree_binds_main_namespace(tmp_path: Path) -> None:
+    """The full #231 scenario: a git-tracked .shepherd/ exists in both checkouts;
+    resolve_workdir() from the worktree must bind the MAIN checkout's namespace."""
+    main, wt = _init_repo_with_worktree(tmp_path)
+    (main / ".shepherd").mkdir()
+    (wt / ".shepherd").mkdir()  # tracked subtree exists in the worktree checkout too
+
+    result = resolve_fields(("resolve_workdir",), clean_env_dict(), cwd=wt)
+
+    assert result["resolve_workdir"] == str((main / ".shepherd").resolve())
+
+
+def test_user_home_defaults_and_env_override(tmp_path: Path) -> None:
+    """resolve_user_home(): SHEPHERD_HOME overrides; default is ~/.shepherd."""
+    env = clean_env_dict()
+    env["SHEPHERD_HOME"] = str(tmp_path / "custom-home")
+    overridden = resolve_fields(("resolve_user_home",), env, cwd=tmp_path)
+    assert overridden["resolve_user_home"] == str(tmp_path / "custom-home")
+
+    env2 = clean_env_dict()
+    env2.pop("SHEPHERD_HOME", None)
+    env2["HOME"] = str(tmp_path / "fake-user")
+    default = resolve_fields(("resolve_user_home",), env2, cwd=tmp_path)
+    assert default["resolve_user_home"] == str(tmp_path / "fake-user" / ".shepherd")

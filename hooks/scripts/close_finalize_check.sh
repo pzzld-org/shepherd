@@ -14,6 +14,11 @@
 #             (e.g. .artifacts/reports/2026-04-16-v034-dev9-close.md)
 #   Signal B: the sprint branch still exists on origin
 #
+# SIDE CHANNEL (v6.4.1 #59, after Signal A, never a block): warns ONCE per
+# session on stderr when a [gates.extra] entry has no recorded invocation in
+# this session's gates ledger (<NS>/tmp/gates-ran-<session>.jsonl, written by
+# bash_post.sh; `shepherd doctor` reports the same).
+#
 # FAST-PATHS (all exit 0 silently — fail-open on uncertainty):
 #   • HEAD not a sprint branch (*-dev.[0-9]+)
 #   • Inside a subworktree (toplevel != pwd) — worktree checkouts refresh mtimes
@@ -71,6 +76,36 @@ NS="$(resolve_namespace 2>/dev/null || echo .artifacts)"
 SIG_A="$(git log --oneline --diff-filter=A HEAD \
   -- "${NS}/reports/*-v${SLUG}-close.md" 2>/dev/null | head -1 || true)"
 [[ -n "$SIG_A" ]] || exit 0   # No sprint-scoped close report → still in progress
+
+# ── 4b. #59: [gates.extra] recorded-invocation warn (NEVER blocks) ───────────
+# A committed close report means this session is at/past CLOSE — every
+# [gates.extra] entry should have a recorded invocation in this session's
+# gates ledger (<NS>/tmp/gates-ran-<session>.jsonl, appended by bash_post.sh
+# whenever a configured gate command runs). Missing entries get ONE stderr
+# warning per session (marker-bounded, mirroring the runaway-cap stderr
+# idiom above), never a block: extras are a close obligation, not a Stop
+# gate. `shepherd doctor` carries the same report as its `gates` section.
+GF_SESSION="$(json_field "$PAYLOAD" '.session_id' 2>/dev/null || true)"; [[ -n "$GF_SESSION" ]] || GF_SESSION="nosession"
+GF_SAFE="${GF_SESSION//[^A-Za-z0-9_.-]/_}"
+GF_WARNED="$NS/tmp/gates-extra-warned.${GF_SAFE}"
+if [[ ! -f "$GF_WARNED" ]]; then
+  GF_LEDGER="$NS/tmp/gates-ran-${GF_SAFE}.jsonl"
+  GF_MISSING=""
+  while IFS= read -r gf_key; do
+    [[ -n "$gf_key" ]] || continue
+    gf_val="$(cfg_section_get gates.extra "$gf_key" 2>/dev/null || true)"
+    [[ -n "$gf_val" ]] || continue
+    grep -qE "\"gate\":[[:space:]]*\"extra:${gf_key}\"" "$GF_LEDGER" 2>/dev/null \
+      || GF_MISSING="${GF_MISSING:+$GF_MISSING, }$gf_key"
+  done < <(cfg_section_keys gates.extra 2>/dev/null || true)
+  if [[ -n "$GF_MISSING" ]]; then
+    mkdir -p "$NS/tmp" 2>/dev/null || true
+    touch "$GF_WARNED" 2>/dev/null || true
+    echo "[shctx] close-finalize: [gates.extra] entries with NO recorded invocation this session: ${GF_MISSING} — run them before finalizing (bash_post.sh records each run; 'shepherd doctor' shows the same ledger) (#59)." >&2
+    log_event "close_finalize_check" "warn" "Stop" "shepherd" "$GF_SESSION" \
+      "$(emit_json_obj missing_gates "$GF_MISSING" slug "$SLUG")" 2>/dev/null || true
+  fi
+fi
 
 # ── 5. Signal B: sprint branch still exists on origin ────────────────────────
 SIG_B="$(git ls-remote --heads origin "$BRANCH" 2>/dev/null | head -1 || true)"

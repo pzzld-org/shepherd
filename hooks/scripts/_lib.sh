@@ -32,7 +32,7 @@ is_shepherd_project() {
 #   4. existing .artifacts/ (legacy auto-pickup fallback)
 #   5. default .shepherd/   (matches `shctx init` for new projects)
 # Contract source of truth: docs/configuration.md §SHEPHERD_WORKDIR and
-# skills/context/scripts/_lib.sh resolve_workdir. These MUST agree or hooks
+# services/cli/shepherd_cli/resolution.py resolve_workdir. These MUST agree or hooks
 # write event logs / dispatch tags / locks into a different namespace than the
 # shctx runtime reads (split-brain — GH #121).
 resolve_namespace() {
@@ -59,7 +59,7 @@ resolve_namespace() {
 }
 
 # Registry DB path inside a namespace. Mirrors the skills-side shctx_db_path()
-# (skills/context/scripts/_lib.sh): prefer shepherd.db (the v6.1.2+ standard
+# (services/cli/shepherd_cli/resolution.py): prefer shepherd.db (the v6.1.2+ standard
 # `shctx init` creates), fall back to an EXISTING root.db (legacy projects,
 # untouched), else default to shepherd.db. Pass the already-resolved namespace
 # to preserve each caller's exact resolve_namespace fallback; omit to resolve
@@ -82,7 +82,7 @@ hook_db_path() {
 # Echoes "" if the key is unset everywhere. bash-3.2-safe (no TOML parser) and
 # never returns non-zero, so it is safe to call under `set -e`/pipefail.
 # Contract source of truth: docs/configuration.md §config-resolution. MUST agree
-# with the skills-side cfg_get (skills/context/scripts/_lib.sh) — they read the
+# with the CLI-side config resolution (services/cli/shepherd_cli/commands/config.py) — they read the
 # same files in the same order or config diverges between hooks and runtime.
 cfg_get() {
   local key="$1" repo f v
@@ -104,7 +104,7 @@ cfg_get() {
 # surrounding double-quotes and a trailing " # inline comment". Echoes "" if
 # unset; never returns non-zero. bash-3.2-safe (awk parses the section — no
 # associative arrays / mapfile). MUST mirror the skills-side cfg_section_get
-# (skills/context/scripts/_lib.sh) — same files, same order, same parse — or
+# (services/cli/shepherd_cli/commands/config.py) — same files, same order, same parse — or
 # config diverges between hooks and the shctx runtime. Contract source of truth:
 # docs/configuration.md §config-resolution.
 cfg_section_get() {
@@ -124,6 +124,82 @@ cfg_section_get() {
   done
   printf '%s' ""
   return 0
+}
+
+# List the KEYS of a `[section]` block across the shepherd config precedence
+# (local → project → XDG), one per line, union'ed with first-seen wins — the
+# enumeration companion to cfg_section_get (which needs a known key). Used by
+# the #59 gates ledger to walk `[gates.extra]` entries whose names are
+# project-defined. bash-3.2-safe; never returns non-zero.
+cfg_section_keys() {
+  local section="$1" repo f out="" k
+  repo="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+  for f in "$repo/.claude/shepherd.local.toml" "$repo/.claude/shepherd.toml" "${XDG_CONFIG_HOME:-$HOME/.config}/shepherd.toml"; do
+    [[ -f "$f" ]] || continue
+    while IFS= read -r k; do
+      [[ -n "$k" ]] || continue
+      case $'\n'"$out" in *$'\n'"$k"$'\n'*) ;; *) out+="$k"$'\n' ;; esac
+    done < <(awk -v sect="$section" '
+      /^[ \t]*\[/ { h=$0; sub(/^[ \t]*\[/,"",h); sub(/\].*$/,"",h); gsub(/[ \t]/,"",h); cur=h; next }
+      cur==sect && /^[ \t]*[A-Za-z0-9_-]+[ \t]*=/ {
+        key=$0; sub(/^[ \t]*/,"",key); sub(/[ \t]*=.*$/,"",key); print key
+      }
+    ' "$f" 2>/dev/null || true)
+  done
+  printf '%s' "$out"
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# Run-scoped artifact layout (v6.4.1 — .shepherd/runs/{run}/)
+# ---------------------------------------------------------------------------
+
+# The [paths]-aware runs root: `[paths].runs` from config (repo-relative unless
+# absolute), else `<namespace>/runs` — the same default the Python CLI's
+# models_run.runs_root() uses, so hooks and `shepherd run` read the same tree.
+runs_root_dir() {
+  local repo cfg
+  repo="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+  cfg="$(cfg_section_get paths runs 2>/dev/null || true)"
+  if [[ -n "$cfg" ]]; then
+    case "$cfg" in /*) printf '%s' "$cfg" ;; *) printf '%s' "$repo/$cfg" ;; esac
+  else
+    printf '%s' "$(resolve_namespace)/runs"
+  fi
+  return 0
+}
+
+# Echo the DIRECTORY of the active run — the newest runs/*/run.json whose
+# status is "executing" (run.json is CLI-written via `shepherd run`, so the
+# grep against its canonical rendering is deterministic). Echoes "" when no
+# run is active; never returns non-zero.
+active_run_dir() {
+  local root f
+  root="$(runs_root_dir 2>/dev/null || true)"
+  [[ -d "$root" ]] || return 0
+  while IFS= read -r f; do
+    [[ -f "$f" ]] || continue
+    if grep -q '"status"[[:space:]]*:[[:space:]]*"executing"' "$f" 2>/dev/null; then
+      printf '%s' "$(dirname "$f")"
+      return 0
+    fi
+  done < <(ls -1t "$root"/*/run.json 2>/dev/null || true)
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# Session-tier marker (#232/#228 — positive teammate identity)
+# ---------------------------------------------------------------------------
+
+# Echo the marker path for a session: <ns>/tmp/session-tier-<session>. STAMPED
+# by user_prompt_submit.sh when a session boots as a TEAMMATE (the rendered
+# boot prompt's INVOCATION-CONTEXT dispatcher field is the signal). READ by
+# coordinate_drive_guard.sh (a marked session is NEVER nudged — fail-closed
+# for teammates) and conductor_write_guard.sh (the marker's lane_plan field
+# scopes the lane-plan custody exemption).
+session_tier_marker() {
+  local ns="${1:-$(resolve_namespace 2>/dev/null || echo .shepherd)}" session="${2:-nosession}"
+  printf '%s/tmp/session-tier-%s' "$ns" "${session//[^A-Za-z0-9_.-]/_}"
 }
 
 # ---------------------------------------------------------------------------

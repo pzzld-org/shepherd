@@ -1,42 +1,28 @@
-"""Subprocess parity tests for ``shepherd dash`` — native port of ``cmd_dash.sh``.
+"""Subprocess regression tests for ``shepherd dash`` — native port of ``cmd_dash.sh``.
 
-Bash parity target: ``skills/context/scripts/cmd_dash.sh`` (v6.1.5 #13),
-which shells out to ``cmd_graph.sh status`` for its ``GRAPH`` section.
-Every test drives the real CLI as a subprocess (``${PY} -m shepherd_cli
-dash``), exactly like ``test_status.py`` and ``test_report.py`` — never by
-importing ``shepherd_cli`` into the pytest process — and seeds every table
-via raw ``sqlite3`` (schema-tolerant via ``PRAGMA table_info``, mirroring
-``conftest.insert_teammate``/``test_report.py``'s local helpers).
+Bash parity target: the retired ``skills/context/scripts/cmd_dash.sh``
+(v6.1.5 #13). Every test drives the real CLI as a subprocess (``${PY} -m
+shepherd_cli dash``), exactly like ``test_status.py`` and
+``test_report.py`` — never by importing ``shepherd_cli`` into the pytest
+process — and seeds every table via raw ``sqlite3`` (schema-tolerant via
+``PRAGMA table_info``, mirroring ``conftest.insert_teammate``/
+``test_report.py``'s local helpers).
 
-The real regression gates are the byte-for-byte STDOUT-parity assertions
-against the legacy ``cmd_dash.sh`` run on the IDENTICAL sqlite file and
-workdir state (mirroring ``test_status.py``'s
-``test_seeded_tables_and_staleness_bash_parity`` pattern) — with one
-necessary adjustment: ``cmd_dash.sh``'s header line embeds a live
-``HH:MM:SS`` wall-clock timestamp (``date '+%H:%M:%S'``) that the Python
-and bash subprocesses cannot be guaranteed to render identically (a test
-could straddle a second boundary between the two invocations), so every
-bash-parity comparison here strips that one token via :func:`_mask_ts`
-before comparing -- everything else in the header (the project basename,
-the ``@<branch>`` git branch, both resolved identically by
-``git rev-parse`` in either tool) and every line below it is compared
-verbatim.
-
-NOTE: this module is written against the ``dash`` Typer sub-app before the
-orchestrator wires it into ``shepherd_cli/app.py`` / ``shepherd_cli/
-__main__.py``'s ``PORTED`` set. Until that lands, ``${PY} -m shepherd_cli
-dash`` transparently shims to the bash ``cmd_dash.sh`` via
-``__main__.py``'s passthrough (so these tests would currently just be
-comparing bash against itself, uselessly "passing"). Per the port
-contract, this file is syntax-checked (``python -m py_compile``) but not
-run via pytest in this session; the orchestrator's integration pass is
-what turns these into a green (or red, informatively) suite.
+This suite originally double-ran every scenario through the legacy
+``cmd_dash.sh`` and asserted byte-for-byte stdout parity. That bash layer
+is retired (and its ``GRAPH`` delegation target, ``cmd_graph.sh``, with
+it — ``dash`` now renders that section by calling the native
+:mod:`shepherd_cli.commands.graph` ``status`` implementation in-process),
+so the regression gates here are DIRECT expected-output assertions: the
+exact section lines, orderings, truncations, and degrade branches the
+bash-parity runs pinned down while both implementations coexisted. The
+one nondeterministic token — the header's live ``HH:MM:SS`` wall clock —
+is simply never asserted on.
 """
 
 from __future__ import annotations
 
 import json
-import re
 import sqlite3
 import subprocess
 import time
@@ -51,39 +37,16 @@ from conftest import (
     run_cli,
 )
 
-CMD_DASH_SH = REPO_ROOT / "skills" / "context" / "scripts" / "cmd_dash.sh"
-
-#: Matches the header line's trailing HH:MM:SS wall-clock token, e.g.
-#: ``"═══ SHEPHERD DASH ═══  shepherd  @main  14:03:07"`` ->
-#: ``"...@main  <TS>"``. See the module docstring for why this is masked
-#: before any bash-vs-python stdout comparison.
-_TS_RE = re.compile(r"(═══ SHEPHERD DASH ═══  \S+  @\S+)  \d{2}:\d{2}:\d{2}")
-
-
-def _mask_ts(text: str) -> str:
-    """Replace the dashboard header's live ``HH:MM:SS`` token with a fixed placeholder.
-
-    Args:
-        text: Full stdout from either ``shepherd dash`` or ``cmd_dash.sh``.
-
-    Returns:
-        ``text`` with the header line's timestamp replaced by ``<TS>``,
-        leaving the project basename, ``@<branch>``, and every other line
-        untouched.
-    """
-    return _TS_RE.sub(r"\1  <TS>", text)
-
 
 def _current_branch() -> str:
     """The git branch this test process's checkout is currently on.
 
-    ``cmd_dash.sh``'s ``current_sprint()`` and ``shepherd dash``'s
-    ``_current_branch()`` both resolve this via ``git rev-parse
-    --abbrev-ref HEAD`` from the invoking process's cwd -- since
-    ``run_cli``/``_run_bash_dash`` both run with ``cwd=CLI_ROOT`` (inside
-    this same repo checkout), both resolve to the SAME real branch name
-    this helper reads directly, letting FOCUS-line tests seed a ``focus``
-    row that will actually match.
+    ``shepherd dash``'s ``_current_branch()`` resolves this via ``git
+    rev-parse --abbrev-ref HEAD`` from the invoking process's cwd — since
+    ``run_cli`` runs with ``cwd=CLI_ROOT`` (inside this same repo
+    checkout), it resolves to the SAME real branch name this helper reads
+    directly, letting FOCUS/GRAPH tests seed rows and state files that
+    will actually match.
     """
     result = subprocess.run(
         ["git", "rev-parse", "--abbrev-ref", "HEAD"],
@@ -96,13 +59,16 @@ def _current_branch() -> str:
 
 
 def _dash_env(db_path: Path, workdir: Path) -> dict[str, str]:
-    """Environment for ``shepherd dash`` (and ``cmd_dash.sh``), isolated to ``workdir``.
+    """Environment for ``shepherd dash``, isolated to ``workdir``.
 
-    Mirrors ``test_status.py``'s ``_status_env``: sets ``SHCTX_DB`` (both
-    tools read/write the exact fixture DB) AND ``SHEPHERD_WORKDIR`` (so
-    the lock file, ``project.json``, and ``graph/state.json`` lookups --
-    all independent of ``SHCTX_DB`` -- resolve inside ``workdir``, never
+    Mirrors ``test_status.py``'s ``_status_env``: sets ``SHCTX_DB`` (the
+    CLI reads/writes the exact fixture DB) AND ``SHEPHERD_WORKDIR`` (so
+    the lock file, ``project.json``, and ``graph/state.json`` lookups —
+    all independent of ``SHCTX_DB`` — resolve inside ``workdir``, never
     this real repo's own ``.shepherd``/``.artifacts``).
+    ``CLAUDE_PLUGIN_ROOT`` still points at the repo root so
+    ``find_migrations_dir()`` (the ``db.lifespan``/self-heal path)
+    resolves against the real ``skills/context/schema`` tree.
 
     Args:
         db_path: The fixture sqlite file.
@@ -110,26 +76,13 @@ def _dash_env(db_path: Path, workdir: Path) -> dict[str, str]:
             ``project.json``/``graph/`` are read from; need not exist yet.
 
     Returns:
-        A stripped-then-rebuilt environment safe for ``run_cli`` or a raw
-        ``subprocess.run`` against ``cmd_dash.sh`` directly.
+        A stripped-then-rebuilt environment safe for ``run_cli``.
     """
     env = clean_env_dict()
     env["SHCTX_DB"] = str(db_path)
     env["SHEPHERD_WORKDIR"] = str(workdir)
     env["CLAUDE_PLUGIN_ROOT"] = str(REPO_ROOT)
     return env
-
-
-def _run_bash_dash(env: dict[str, str]) -> subprocess.CompletedProcess[str]:
-    """Run the legacy ``cmd_dash.sh`` directly (bash-parity twin of ``run_cli``)."""
-    return subprocess.run(
-        ["bash", str(CMD_DASH_SH)],
-        env=env,
-        cwd=str(REPO_ROOT / "services" / "cli"),
-        capture_output=True,
-        text=True,
-        timeout=15,
-    )
 
 
 def _insert_row(db_path: Path, table: str, **columns: object) -> None:
@@ -142,7 +95,7 @@ def _insert_row(db_path: Path, table: str, **columns: object) -> None:
 
     Args:
         db_path: The fixture DB to write into.
-        table: The table name (from a fixed set of call sites below --
+        table: The table name (from a fixed set of call sites below —
             never user input).
         **columns: Column name -> value pairs for one row.
     """
@@ -174,16 +127,19 @@ def _write_project_json(workdir: Path, project_id: str | None) -> None:
     (workdir / "project.json").write_text(json.dumps({"id": project_id}))
 
 
-def _write_graph_state(workdir: Path, sprint: str, nodes: dict[str, str]) -> None:
-    """Write ``<workdir>/graph/state.json`` in the shape ``cmd_graph.sh status`` reads.
+def _write_graph_state(workdir: Path, sprint: str, nodes: dict[str, str], *, run: str | None = None) -> None:
+    """Write a ``graph/state.json`` in the shape ``graph status`` reads.
 
     Args:
         workdir: The dashboard's resolved work directory.
-        sprint: The ``state["sprint"]`` value ``cmd_graph.sh status`` echoes.
-        nodes: ``{node_id: state}`` -- ``state`` one of ``ready``,
+        sprint: The ``state["sprint"]`` value ``graph status`` echoes.
+        nodes: ``{node_id: state}`` — ``state`` one of ``ready``,
             ``in_flight``, ``pending``, ``done``, ``skipped``.
+        run: When given, write the run-scoped shim location
+            (``<workdir>/runs/<run>/graph/state.json``) instead of the
+            legacy ``<workdir>/graph/state.json``.
     """
-    graph_dir = workdir / "graph"
+    graph_dir = (workdir / "runs" / run / "graph") if run else (workdir / "graph")
     graph_dir.mkdir(parents=True, exist_ok=True)
     state = {"sprint": sprint, "nodes": {nid: {"state": s} for nid, s in nodes.items()}}
     (graph_dir / "state.json").write_text(json.dumps(state))
@@ -214,10 +170,10 @@ def _now_s() -> int:
 
 
 # --------------------------------------------------------------------------
-# Missing-DB branch: bash-parity exit 0 (NOT 1 -- unlike every other ported
+# Missing-DB branch: bash-parity exit 0 (NOT 1 — unlike every other ported
 # command's missing-DB branch), header + one degraded-state line only.
 # --------------------------------------------------------------------------
-def test_missing_db_exits_0_with_bash_parity_message(tmp_path: Path) -> None:
+def test_missing_db_exits_0_with_degraded_message(tmp_path: Path) -> None:
     db_path_ = tmp_path / "shepherd.db"  # never created
     workdir_ = tmp_path / "work"
     env = _dash_env(db_path_, workdir_)
@@ -231,33 +187,17 @@ def test_missing_db_exits_0_with_bash_parity_message(tmp_path: Path) -> None:
     assert lines[1] == "  (no registry DB — run 'shctx init'; dashboard limited to git state)"
 
 
-def test_missing_db_bash_parity(tmp_path: Path) -> None:
-    db_path_ = tmp_path / "shepherd.db"
-    workdir_ = tmp_path / "work"
-    env = _dash_env(db_path_, workdir_)
-
-    python_proc = run_cli(["dash"], env)
-    bash_proc = _run_bash_dash(env)
-
-    assert python_proc.returncode == bash_proc.returncode == 0
-    assert _mask_ts(python_proc.stdout) == _mask_ts(bash_proc.stdout)
-
-
 # --------------------------------------------------------------------------
-# Empty DB (no seeded rows, no project.json, no lock, no graph state) --
+# Empty DB (no seeded rows, no project.json, no lock, no graph state) —
 # every section's "none"/"free"/"never" branch at once.
 # --------------------------------------------------------------------------
-def test_empty_schema_db_bash_parity(db_path: Path, workdir: Path) -> None:
+def test_empty_schema_db_renders_every_degraded_branch(db_path: Path, workdir: Path) -> None:
     env = _dash_env(db_path, workdir)
 
-    python_proc = run_cli(["dash"], env)
-    bash_proc = _run_bash_dash(env)
+    proc = run_cli(["dash"], env)
 
-    assert python_proc.returncode == 0, python_proc.stderr
-    assert bash_proc.returncode == 0, bash_proc.stderr
-    assert _mask_ts(python_proc.stdout) == _mask_ts(bash_proc.stdout)
-
-    stdout = python_proc.stdout
+    assert proc.returncode == 0, proc.stderr
+    stdout = proc.stdout
     assert "SPRINT      schema=v" in stdout
     assert "lock=free" in stdout
     assert "FOCUS" not in stdout
@@ -280,12 +220,10 @@ def test_lock_held_renders_held(db_path: Path, workdir: Path) -> None:
     _write_lock_file(workdir)
     env = _dash_env(db_path, workdir)
 
-    python_proc = run_cli(["dash"], env)
-    bash_proc = _run_bash_dash(env)
+    proc = run_cli(["dash"], env)
 
-    assert python_proc.returncode == bash_proc.returncode == 0
-    assert _mask_ts(python_proc.stdout) == _mask_ts(bash_proc.stdout)
-    assert "lock=HELD" in python_proc.stdout
+    assert proc.returncode == 0, proc.stderr
+    assert "lock=HELD" in proc.stdout
 
 
 # --------------------------------------------------------------------------
@@ -298,13 +236,10 @@ def test_focus_line_present_truncated_and_ellipsized(db_path: Path, workdir: Pat
     _insert_row(db_path, "focus", sprint=branch, lane="", objective=long_obj, updated_at=now_s)
     env = _dash_env(db_path, workdir)
 
-    python_proc = run_cli(["dash"], env)
-    bash_proc = _run_bash_dash(env)
+    proc = run_cli(["dash"], env)
 
-    assert python_proc.returncode == bash_proc.returncode == 0
-    assert _mask_ts(python_proc.stdout) == _mask_ts(bash_proc.stdout)
-
-    focus_lines = [ln for ln in python_proc.stdout.splitlines() if ln.startswith("FOCUS")]
+    assert proc.returncode == 0, proc.stderr
+    focus_lines = [ln for ln in proc.stdout.splitlines() if ln.startswith("FOCUS")]
     assert len(focus_lines) == 1
     rendered = focus_lines[0][len("FOCUS       ") :]
     assert rendered.endswith("…")
@@ -317,12 +252,10 @@ def test_focus_line_absent_when_no_matching_sprint(db_path: Path, workdir: Path)
     _insert_row(db_path, "focus", sprint="some-other-branch", lane="", objective="unrelated", updated_at=_now_s())
     env = _dash_env(db_path, workdir)
 
-    python_proc = run_cli(["dash"], env)
-    bash_proc = _run_bash_dash(env)
+    proc = run_cli(["dash"], env)
 
-    assert python_proc.returncode == bash_proc.returncode == 0
-    assert _mask_ts(python_proc.stdout) == _mask_ts(bash_proc.stdout)
-    assert "FOCUS" not in python_proc.stdout
+    assert proc.returncode == 0, proc.stderr
+    assert "FOCUS" not in proc.stdout
 
 
 def test_focus_line_absent_when_objective_null(db_path: Path, workdir: Path) -> None:
@@ -330,45 +263,79 @@ def test_focus_line_absent_when_objective_null(db_path: Path, workdir: Path) -> 
     _insert_row(db_path, "focus", sprint=branch, lane="", objective=None, updated_at=_now_s())
     env = _dash_env(db_path, workdir)
 
-    python_proc = run_cli(["dash"], env)
-    bash_proc = _run_bash_dash(env)
+    proc = run_cli(["dash"], env)
 
-    assert python_proc.returncode == bash_proc.returncode == 0
-    assert _mask_ts(python_proc.stdout) == _mask_ts(bash_proc.stdout)
-    assert "FOCUS" not in python_proc.stdout
+    assert proc.returncode == 0, proc.stderr
+    assert "FOCUS" not in proc.stdout
 
 
 # --------------------------------------------------------------------------
-# GRAPH.
+# GRAPH (rendered in-process by the native graph-status implementation).
 # --------------------------------------------------------------------------
 def test_graph_section_no_state_file(db_path: Path, workdir: Path) -> None:
     env = _dash_env(db_path, workdir)
 
-    python_proc = run_cli(["dash"], env)
-    bash_proc = _run_bash_dash(env)
+    proc = run_cli(["dash"], env)
 
-    assert python_proc.returncode == bash_proc.returncode == 0
-    assert _mask_ts(python_proc.stdout) == _mask_ts(bash_proc.stdout)
-    assert "GRAPH       (no stage-graph state — solo / pre-extract)" in python_proc.stdout
+    assert proc.returncode == 0, proc.stderr
+    assert "GRAPH       (no stage-graph state — solo / pre-extract)" in proc.stdout
 
 
-def test_graph_section_delegates_to_cmd_graph_status(db_path: Path, workdir: Path) -> None:
+def test_graph_section_renders_native_graph_status(db_path: Path, workdir: Path) -> None:
     branch = _current_branch()
     _write_graph_state(workdir, branch, {"n1": "done", "n2": "ready", "n3": "in_flight"})
     env = _dash_env(db_path, workdir)
 
-    python_proc = run_cli(["dash"], env)
-    bash_proc = _run_bash_dash(env)
+    proc = run_cli(["dash"], env)
 
-    assert python_proc.returncode == bash_proc.returncode == 0
-    assert _mask_ts(python_proc.stdout) == _mask_ts(bash_proc.stdout)
-
-    stdout = python_proc.stdout
+    assert proc.returncode == 0, proc.stderr
+    stdout = proc.stdout
     assert "GRAPH\n" in stdout
     assert f"  Graph status — sprint: {branch}" in stdout
     assert "    completion: 1/3 (33%)" in stdout
     assert "    Ready now:  n2" in stdout
     assert "    In flight:  n3" in stdout
+
+
+def test_graph_section_honors_run_scoped_state(db_path: Path, workdir: Path) -> None:
+    """The run-shim deviation shared with ``shepherd graph``: with a run
+    identifiable (SHEPHERD_RUN) and a run-scoped state.json present, the
+    GRAPH gate and the renderer BOTH resolve to
+    ``<workdir>/runs/<run>/graph/`` — no legacy ``<workdir>/graph/``
+    state file needed, and no gate/renderer disagreement possible."""
+    branch = _current_branch()
+    _write_graph_state(workdir, branch, {"n1": "ready"}, run="r1")
+    assert not (workdir / "graph" / "state.json").exists()
+    env = _dash_env(db_path, workdir)
+    env["SHEPHERD_RUN"] = "r1"
+
+    proc = run_cli(["dash"], env)
+
+    assert proc.returncode == 0, proc.stderr
+    assert "GRAPH\n" in proc.stdout
+    assert f"  Graph status — sprint: {branch}" in proc.stdout
+    assert "(no stage-graph state" not in proc.stdout
+
+
+def test_graph_section_error_degradation_on_corrupt_state(db_path: Path, workdir: Path) -> None:
+    """An unparseable state.json — the in-process analogue of a crashed
+    ``graph status`` child — degrades to the bash pipeline's
+    ``"  (graph status error)"`` line, and the dashboard keeps rendering
+    every later section instead of aborting (exit stays 0)."""
+    graph_dir = workdir / "graph"
+    graph_dir.mkdir(parents=True, exist_ok=True)
+    (graph_dir / "state.json").write_text("{not json")
+    env = _dash_env(db_path, workdir)
+
+    proc = run_cli(["dash"], env)
+
+    assert proc.returncode == 0, proc.stderr
+    stdout = proc.stdout
+    assert "GRAPH\n" in stdout
+    assert "  (graph status error)" in stdout
+    # Later sections still render — the failure stayed contained.
+    assert "TEAMMATES" in stdout
+    assert "STALE" in stdout
 
 
 # --------------------------------------------------------------------------
@@ -400,13 +367,10 @@ def test_teammates_roster_excludes_crashed_and_retired_orders_by_name(
         )
     env = _dash_env(db_path, workdir)
 
-    python_proc = run_cli(["dash"], env)
-    bash_proc = _run_bash_dash(env)
+    proc = run_cli(["dash"], env)
 
-    assert python_proc.returncode == bash_proc.returncode == 0
-    assert _mask_ts(python_proc.stdout) == _mask_ts(bash_proc.stdout)
-
-    stdout = python_proc.stdout
+    assert proc.returncode == 0, proc.stderr
+    stdout = proc.stdout
     assert "TEAMMATES   2 live" in stdout
     assert "ghost" not in stdout
     assert "relic" not in stdout
@@ -418,12 +382,10 @@ def test_teammates_roster_excludes_crashed_and_retired_orders_by_name(
 def test_teammates_none_live(db_path: Path, workdir: Path) -> None:
     env = _dash_env(db_path, workdir)
 
-    python_proc = run_cli(["dash"], env)
-    bash_proc = _run_bash_dash(env)
+    proc = run_cli(["dash"], env)
 
-    assert python_proc.returncode == bash_proc.returncode == 0
-    assert _mask_ts(python_proc.stdout) == _mask_ts(bash_proc.stdout)
-    assert "TEAMMATES   none live" in python_proc.stdout
+    assert proc.returncode == 0, proc.stderr
+    assert "TEAMMATES   none live" in proc.stdout
 
 
 # --------------------------------------------------------------------------
@@ -456,32 +418,27 @@ def test_signals_pending_grouped_by_recipient(db_path: Path, project_id: str, wo
     )
     env = _dash_env(db_path, workdir)
 
-    python_proc = run_cli(["dash"], env)
-    bash_proc = _run_bash_dash(env)
+    proc = run_cli(["dash"], env)
 
-    assert python_proc.returncode == bash_proc.returncode == 0
-    # The genuine byte-for-byte bash-parity assertion: whatever order/text
-    # SQLite's GROUP BY + ORDER BY COUNT(*) DESC produces, both tools must
-    # produce the SAME thing (see the module docstring's raw-SQL notes on
-    # why this section deliberately does not hardcode an assumed order).
-    assert _mask_ts(python_proc.stdout) == _mask_ts(bash_proc.stdout)
-
-    stdout = python_proc.stdout
+    assert proc.returncode == 0, proc.stderr
+    stdout = proc.stdout
     assert "SIGNALS     pending" in stdout
     assert "spawn-a: 3" in stdout
     assert "spawn-b: 1" in stdout
     assert "spawn-c" not in stdout
+    # ORDER BY COUNT(*) DESC with distinct counts (3 > 1) is fully
+    # deterministic — no tie for SQLite's planner to break arbitrarily —
+    # so the higher-count recipient must render first.
+    assert stdout.index("spawn-a: 3") < stdout.index("spawn-b: 1")
 
 
 def test_signals_none_pending(db_path: Path, workdir: Path) -> None:
     env = _dash_env(db_path, workdir)
 
-    python_proc = run_cli(["dash"], env)
-    bash_proc = _run_bash_dash(env)
+    proc = run_cli(["dash"], env)
 
-    assert python_proc.returncode == bash_proc.returncode == 0
-    assert _mask_ts(python_proc.stdout) == _mask_ts(bash_proc.stdout)
-    assert "SIGNALS     none pending" in python_proc.stdout
+    assert proc.returncode == 0, proc.stderr
+    assert "SIGNALS     none pending" in proc.stdout
 
 
 # --------------------------------------------------------------------------
@@ -503,23 +460,19 @@ def test_escalation_open_count_and_oldest_age(db_path: Path, project_id: str, wo
     )
     env = _dash_env(db_path, workdir)
 
-    python_proc = run_cli(["dash"], env)
-    bash_proc = _run_bash_dash(env)
+    proc = run_cli(["dash"], env)
 
-    assert python_proc.returncode == bash_proc.returncode == 0
-    assert _mask_ts(python_proc.stdout) == _mask_ts(bash_proc.stdout)
-    assert "ESCALATION  2 open (oldest 6m)" in python_proc.stdout
+    assert proc.returncode == 0, proc.stderr
+    assert "ESCALATION  2 open (oldest 6m)" in proc.stdout
 
 
 def test_escalation_none_open(db_path: Path, workdir: Path) -> None:
     env = _dash_env(db_path, workdir)
 
-    python_proc = run_cli(["dash"], env)
-    bash_proc = _run_bash_dash(env)
+    proc = run_cli(["dash"], env)
 
-    assert python_proc.returncode == bash_proc.returncode == 0
-    assert _mask_ts(python_proc.stdout) == _mask_ts(bash_proc.stdout)
-    assert "ESCALATION  none open" in python_proc.stdout
+    assert proc.returncode == 0, proc.stderr
+    assert "ESCALATION  none open" in proc.stdout
 
 
 # --------------------------------------------------------------------------
@@ -545,13 +498,10 @@ def test_loops_active_ordered_by_created_at(db_path: Path, project_id: str, work
     _insert_row(db_path, "loop_iterations", loop_id="loop-2", iteration=1, new_findings=1, recorded_at=now_s - 8)
     env = _dash_env(db_path, workdir)
 
-    python_proc = run_cli(["dash"], env)
-    bash_proc = _run_bash_dash(env)
+    proc = run_cli(["dash"], env)
 
-    assert python_proc.returncode == bash_proc.returncode == 0
-    assert _mask_ts(python_proc.stdout) == _mask_ts(bash_proc.stdout)
-
-    stdout = python_proc.stdout
+    assert proc.returncode == 0, proc.stderr
+    stdout = proc.stdout
     assert "LOOPS       active" in stdout
     assert "focus 2/5 (find=1)" in stdout
     assert "convergence 1/3 (find=1)" in stdout
@@ -564,12 +514,10 @@ def test_loops_active_ordered_by_created_at(db_path: Path, project_id: str, work
 def test_loops_none_active(db_path: Path, workdir: Path) -> None:
     env = _dash_env(db_path, workdir)
 
-    python_proc = run_cli(["dash"], env)
-    bash_proc = _run_bash_dash(env)
+    proc = run_cli(["dash"], env)
 
-    assert python_proc.returncode == bash_proc.returncode == 0
-    assert _mask_ts(python_proc.stdout) == _mask_ts(bash_proc.stdout)
-    assert "LOOPS       none active" in python_proc.stdout
+    assert proc.returncode == 0, proc.stderr
+    assert "LOOPS       none active" in proc.stdout
 
 
 # --------------------------------------------------------------------------
@@ -582,13 +530,11 @@ def test_adapt_omitted_without_project_json(db_path: Path, project_id: str, work
     )
     env = _dash_env(db_path, workdir)  # no project.json written
 
-    python_proc = run_cli(["dash"], env)
-    bash_proc = _run_bash_dash(env)
+    proc = run_cli(["dash"], env)
 
-    assert python_proc.returncode == bash_proc.returncode == 0
-    assert _mask_ts(python_proc.stdout) == _mask_ts(bash_proc.stdout)
-    assert "ADAPT" not in python_proc.stdout
-    assert "EVAL" not in python_proc.stdout
+    assert proc.returncode == 0, proc.stderr
+    assert "ADAPT" not in proc.stdout
+    assert "EVAL" not in proc.stdout
 
 
 def test_adapt_with_metrics_priors_and_latest_lesson(db_path: Path, project_id: str, workdir: Path) -> None:
@@ -612,14 +558,11 @@ def test_adapt_with_metrics_priors_and_latest_lesson(db_path: Path, project_id: 
     )
     env = _dash_env(db_path, workdir)
 
-    python_proc = run_cli(["dash"], env)
-    bash_proc = _run_bash_dash(env)
+    proc = run_cli(["dash"], env)
 
-    assert python_proc.returncode == bash_proc.returncode == 0
-    assert _mask_ts(python_proc.stdout) == _mask_ts(bash_proc.stdout)
-
-    stdout = python_proc.stdout
-    # avg(lane_count) = 3, avg(wall_minutes) = 45 -- exact, no rounding ambiguity.
+    assert proc.returncode == 0, proc.stderr
+    stdout = proc.stdout
+    # avg(lane_count) = 3, avg(wall_minutes) = 45 — exact, no rounding ambiguity.
     assert "ADAPT       2 sprint(s)  lanes~3  wall~45m  priors=2" in stdout
     assert "              latest: newest lesson learned" in stdout
 
@@ -632,41 +575,35 @@ def test_adapt_priors_only_no_sprint_metrics_yet(db_path: Path, project_id: str,
     )
     env = _dash_env(db_path, workdir)
 
-    python_proc = run_cli(["dash"], env)
-    bash_proc = _run_bash_dash(env)
+    proc = run_cli(["dash"], env)
 
-    assert python_proc.returncode == bash_proc.returncode == 0
-    assert _mask_ts(python_proc.stdout) == _mask_ts(bash_proc.stdout)
-    assert "ADAPT       priors=1 (no sprint metrics yet)" in python_proc.stdout
+    assert proc.returncode == 0, proc.stderr
+    assert "ADAPT       priors=1 (no sprint metrics yet)" in proc.stdout
 
 
 def test_adapt_no_history_yet_with_project_json_present(db_path: Path, project_id: str, workdir: Path) -> None:
     _write_project_json(workdir, project_id)
     env = _dash_env(db_path, workdir)
 
-    python_proc = run_cli(["dash"], env)
-    bash_proc = _run_bash_dash(env)
+    proc = run_cli(["dash"], env)
 
-    assert python_proc.returncode == bash_proc.returncode == 0
-    assert _mask_ts(python_proc.stdout) == _mask_ts(bash_proc.stdout)
-    assert "ADAPT       no history yet (first cycle lands at close)" in python_proc.stdout
+    assert proc.returncode == 0, proc.stderr
+    assert "ADAPT       no history yet (first cycle lands at close)" in proc.stdout
 
 
 def test_adapt_project_json_present_but_id_null(db_path: Path, workdir: Path) -> None:
     """``project.json`` exists and is valid JSON, but its ``id`` key is JSON
-    ``null`` -- jq -r's raw-output rendering is the literal string
+    ``null`` — jq -r's raw-output rendering is the literal string
     ``"null"`` (non-empty), so ADAPT still runs (scoped to a project_id
     that matches nothing), landing on the "no history yet" branch rather
     than being omitted like the missing-file case."""
     _write_project_json(workdir, None)
     env = _dash_env(db_path, workdir)
 
-    python_proc = run_cli(["dash"], env)
-    bash_proc = _run_bash_dash(env)
+    proc = run_cli(["dash"], env)
 
-    assert python_proc.returncode == bash_proc.returncode == 0
-    assert _mask_ts(python_proc.stdout) == _mask_ts(bash_proc.stdout)
-    assert "ADAPT       no history yet (first cycle lands at close)" in python_proc.stdout
+    assert proc.returncode == 0, proc.stderr
+    assert "ADAPT       no history yet (first cycle lands at close)" in proc.stdout
 
 
 # --------------------------------------------------------------------------
@@ -676,12 +613,10 @@ def test_eval_omitted_when_no_runs_recorded_for_project(db_path: Path, project_i
     _write_project_json(workdir, project_id)
     env = _dash_env(db_path, workdir)
 
-    python_proc = run_cli(["dash"], env)
-    bash_proc = _run_bash_dash(env)
+    proc = run_cli(["dash"], env)
 
-    assert python_proc.returncode == bash_proc.returncode == 0
-    assert _mask_ts(python_proc.stdout) == _mask_ts(bash_proc.stdout)
-    assert "EVAL" not in python_proc.stdout
+    assert proc.returncode == 0, proc.stderr
+    assert "EVAL" not in proc.stdout
 
 
 def test_eval_latest_run_renders_pass_and_middle_dot_subject(db_path: Path, project_id: str, workdir: Path) -> None:
@@ -693,12 +628,10 @@ def test_eval_latest_run_renders_pass_and_middle_dot_subject(db_path: Path, proj
     )
     env = _dash_env(db_path, workdir)
 
-    python_proc = run_cli(["dash"], env)
-    bash_proc = _run_bash_dash(env)
+    proc = run_cli(["dash"], env)
 
-    assert python_proc.returncode == bash_proc.returncode == 0
-    assert _mask_ts(python_proc.stdout) == _mask_ts(bash_proc.stdout)
-    assert "EVAL        latest: reflection · 91/80 PASS  (1 scored)" in python_proc.stdout
+    assert proc.returncode == 0, proc.stderr
+    assert "EVAL        latest: reflection · 91/80 PASS  (1 scored)" in proc.stdout
 
 
 def test_eval_failed_run_renders_fail_and_subject_ref(db_path: Path, project_id: str, workdir: Path) -> None:
@@ -710,12 +643,10 @@ def test_eval_failed_run_renders_fail_and_subject_ref(db_path: Path, project_id:
     )
     env = _dash_env(db_path, workdir)
 
-    python_proc = run_cli(["dash"], env)
-    bash_proc = _run_bash_dash(env)
+    proc = run_cli(["dash"], env)
 
-    assert python_proc.returncode == bash_proc.returncode == 0
-    assert _mask_ts(python_proc.stdout) == _mask_ts(bash_proc.stdout)
-    assert "EVAL        latest: discovery mem-42 55/80 FAIL  (1 scored)" in python_proc.stdout
+    assert proc.returncode == 0, proc.stderr
+    assert "EVAL        latest: discovery mem-42 55/80 FAIL  (1 scored)" in proc.stdout
 
 
 # --------------------------------------------------------------------------
@@ -731,16 +662,14 @@ def test_stale_freshness_and_never(db_path: Path, project_id: str, workdir: Path
     # index_prs deliberately left empty -> "never" ("-").
     env = _dash_env(db_path, workdir)
 
-    python_proc = run_cli(["dash"], env)
-    bash_proc = _run_bash_dash(env)
+    proc = run_cli(["dash"], env)
 
-    assert python_proc.returncode == bash_proc.returncode == 0
-    assert _mask_ts(python_proc.stdout) == _mask_ts(bash_proc.stdout)
-    assert "STALE       issues=3m  prs=-" in python_proc.stdout
+    assert proc.returncode == 0, proc.stderr
+    assert "STALE       issues=3m  prs=-" in proc.stdout
 
 
 # --------------------------------------------------------------------------
-# No-subcommand / args-ignored behavior (cmd_dash.sh never reads its own $@).
+# No-subcommand / args-ignored behavior (cmd_dash.sh never read its own $@).
 # --------------------------------------------------------------------------
 @pytest.mark.parametrize("extra_args", [[], ["-h"], ["--help"], ["--json"], ["garbage", "--unknown-flag"]])
 def test_every_argument_shape_is_ignored_and_still_renders(
@@ -748,27 +677,21 @@ def test_every_argument_shape_is_ignored_and_still_renders(
 ) -> None:
     env = _dash_env(db_path, workdir)
 
-    python_proc = run_cli(["dash", *extra_args], env)
-    bash_proc = subprocess.run(
-        ["bash", str(CMD_DASH_SH), *extra_args],
-        env=env,
-        cwd=str(REPO_ROOT / "services" / "cli"),
-        capture_output=True,
-        text=True,
-        timeout=15,
-    )
+    proc = run_cli(["dash", *extra_args], env)
 
-    assert python_proc.returncode == bash_proc.returncode == 0
-    assert _mask_ts(python_proc.stdout) == _mask_ts(bash_proc.stdout)
-    assert "SPRINT" in python_proc.stdout
+    assert proc.returncode == 0, proc.stderr
+    assert "SPRINT" in proc.stdout
+    assert "STALE" in proc.stdout
+    # No Click help text leaked through (--help/-h are swallowed, not handled).
+    assert "Usage:" not in proc.stdout
 
 
 # --------------------------------------------------------------------------
-# Full end-to-end: every section populated at once, one comprehensive
-# bash-parity gate (mirrors test_status.py's
-# test_seeded_tables_and_staleness_bash_parity).
+# Full end-to-end: every section populated at once, in cmd_dash.sh's exact
+# top-to-bottom section order (mirrors test_status.py's comprehensive
+# seeded-tables gate, minus the retired bash twin).
 # --------------------------------------------------------------------------
-def test_full_dashboard_bash_parity_every_section_populated(db_path: Path, project_id: str, workdir: Path) -> None:
+def test_full_dashboard_every_section_populated_in_order(db_path: Path, project_id: str, workdir: Path) -> None:
     branch = _current_branch()
     now_s = _now_s()
     now_ms = now_s * 1000
@@ -793,7 +716,7 @@ def test_full_dashboard_bash_parity_every_section_populated(db_path: Path, proje
     # 400s (not 60s) deliberately: keeps the rendered age comfortably inside
     # the "minutes" bucket (400//60 == 6) even with a few seconds of real
     # subprocess-spawn jitter between `now_s` and the moment the dashboard
-    # actually renders -- a 60s offset risks crossing _age()'s `< 90` ->
+    # actually renders — a 60s offset risks crossing _age()'s `< 90` ->
     # seconds/minutes boundary and flaking.
     _insert_row(db_path, "escalations", project_id=project_id, role="engineer", question="q1", raised_at=now_s - 400)
 
@@ -832,17 +755,12 @@ def test_full_dashboard_bash_parity_every_section_populated(db_path: Path, proje
 
     env = _dash_env(db_path, workdir)
 
-    python_proc = run_cli(["dash"], env)
-    bash_proc = _run_bash_dash(env)
+    proc = run_cli(["dash"], env)
 
-    assert python_proc.returncode == 0, python_proc.stderr
-    assert bash_proc.returncode == 0, bash_proc.stderr
-    assert _mask_ts(python_proc.stdout) == _mask_ts(bash_proc.stdout), (
-        f"python:\n{python_proc.stdout}\n---\nbash:\n{bash_proc.stdout}"
-    )
-
-    stdout = python_proc.stdout
-    for expected in (
+    assert proc.returncode == 0, proc.stderr
+    stdout = proc.stdout
+    expected_in_order = (
+        "═══ SHEPHERD DASH ═══",
         "lock=HELD",
         "FOCUS       Ship it.…",
         "GRAPH",
@@ -857,5 +775,10 @@ def test_full_dashboard_bash_parity_every_section_populated(db_path: Path, proje
         "latest: batch the writes",
         "EVAL        latest: reflection · 95/80 PASS  (1 scored)",
         "STALE       issues=6m  prs=1h",
-    ):
-        assert expected in stdout, f"missing {expected!r} in:\n{stdout}"
+    )
+    last_idx = -1
+    for expected in expected_in_order:
+        idx = stdout.find(expected)
+        assert idx != -1, f"missing {expected!r} in:\n{stdout}"
+        assert idx > last_idx, f"{expected!r} out of order in:\n{stdout}"
+        last_idx = idx

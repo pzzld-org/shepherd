@@ -7,7 +7,7 @@ allowed-tools: Bash, Edit, Glob, Grep, Read, Skill, Write, ToolSearch
 
 # /shepherd:focus — Sprint Focus Loop
 
-Start or refresh the **FOCUS-LOOP** — the orchestrator's own orientation loop, re-anchored by the **FOCUS-HEARTBEAT** on long stretches. Durable in `root.db`, survives `/compact`. Wraps `shctx loop init --kind=focus` + `focus upsert`; generic pacing → `/shepherd:loop` (`commands/loop.md`).
+Start or refresh the **FOCUS-LOOP** — the orchestrator's own orientation loop, re-anchored by the **FOCUS-HEARTBEAT** on long stretches. Durable in `.shepherd/shepherd.db`, survives `/compact`. Wraps `shctx loop init --kind=focus` + `focus upsert`; generic pacing → `/shepherd:loop` (`commands/loop.md`).
 
 ## Flags
 

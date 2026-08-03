@@ -95,10 +95,11 @@ echo "== cwd_changed.sh (v5.1.8) =="
 run_case "no-payload"          cwd_changed.sh ''
 run_case "cwd-event"           cwd_changed.sh '{"session_id":"s1","hook_event_name":"CwdChanged","cwd":"/tmp"}'
 
-echo "== user_prompt_submit.sh (v5.1.8) =="
+echo "== user_prompt_submit.sh (v5.1.8; v6.4.1 session-tier stamp) =="
 run_case "no-payload"          user_prompt_submit.sh ''
 run_case "plain-prompt"        user_prompt_submit.sh '{"session_id":"s1","hook_event_name":"UserPromptSubmit","prompt":"hello"}'
 run_case "shepherd-prompt"     user_prompt_submit.sh '{"session_id":"s1","hook_event_name":"UserPromptSubmit","prompt":"/shepherd:status"}'
+run_case "boot-prompt-stamp"   user_prompt_submit.sh '{"session_id":"tm1","hook_event_name":"UserPromptSubmit","prompt":"ROOT-SESSION-NAME: x\nINVOCATION-CONTEXT:\n  dispatcher: teammate-conductor\n"}'
 
 echo "== worktree_lifecycle.sh (v5.1.8) =="
 run_case "no-payload"          worktree_lifecycle.sh ''
@@ -330,6 +331,32 @@ if adapt_out=$(bash "$TESTS_DIR/test_session_adaptation.sh" 2>&1); then
 else
   printf '  FAIL  %-50s\n' "session-adaptation"
   printf '%s\n' "$adapt_out" | sed 's/^/        /'
+  fails=$((fails+1))
+fi
+
+# v6.4.1 #59 gates-ran ledger: bash_post.sh appends configured-gate invocations
+# to <ns>/tmp/gates-ran-<session>.jsonl; close_finalize_check.sh warns once per
+# session (never blocks) on [gates.extra] entries with no recorded invocation.
+echo "== test_gates_ledger.sh (v6.4.1 — #59 gates-ran ledger + close warn) =="
+total=$((total+1))
+if gl_out=$(bash "$TESTS_DIR/test_gates_ledger.sh" 2>&1); then
+  printf '  PASS  %s\n' "gates-ledger-records-and-warns"
+else
+  printf '  FAIL  %-50s\n' "gates-ledger"
+  printf '%s\n' "$gl_out" | sed 's/^/        /'
+  fails=$((fails+1))
+fi
+
+# v6.4.1 [paths]-aware session_open plan validity: [paths].plans honored, the
+# run-scoped runs/{slug}/plan.md satisfies the check, multi-plan reconciliation
+# reads the configured dir (fixes the pre-existing hardcoded-plans/ bug).
+echo "== test_session_open_paths.sh (v6.4.1 — [paths]-aware plan validity) =="
+total=$((total+1))
+if sop_out=$(bash "$TESTS_DIR/test_session_open_paths.sh" 2>&1); then
+  printf '  PASS  %s\n' "session-open-paths-aware"
+else
+  printf '  FAIL  %-50s\n' "session-open-paths"
+  printf '%s\n' "$sop_out" | sed 's/^/        /'
   fails=$((fails+1))
 fi
 

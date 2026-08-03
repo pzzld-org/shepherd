@@ -9,24 +9,33 @@ subverb added v5.1.7): a three-stage read-only validation pipeline —
 that appends one structured row to ``audit_findings``.
 
 **Pipeline (bare ``shepherd audit`` / ``shepherd audit --verbose``).**
-``cmd_audit.sh`` never inlines lint/doctor/status logic — it SHELLS OUT to
+``cmd_audit.sh`` never inlines lint/doctor/status logic — it SHELLED OUT to
 its three sibling scripts (``cmd_lint.sh``, ``cmd_doctor.sh``,
 ``cmd_status.sh``) via ``bash "$HERE/cmd_*.sh"``, exactly like
 :mod:`shepherd_cli.commands.sync`'s ``refresh -> lint -> status`` pipeline
-(this module reuses that same ``_scripts_dir()``/``_run_stage()`` shape,
+(this module reuses that same ``_stage_argv()``/``_run_stage()`` shape,
 duplicated here per hard rule #9's self-contained-module requirement rather
-than imported cross-module). This port does the SAME: it locates the real
-``cmd_lint.sh``/``cmd_doctor.sh``/``cmd_status.sh`` via
-:func:`shepherd_cli.resolution.find_bash_shctx` and subprocess-invokes them,
-rather than re-implementing any of their (considerable — ``doctor`` alone
-has six diagnostic sections) logic natively. This is a deliberate port
-choice, not a shortcut: ``doctor`` has NO Python port yet in this wave
-(it is absent from ``shepherd_cli.__main__.PORTED``), and re-deriving its
-binary/schema/lock/refresh-staleness checks here would (a) duplicate work
-squarely owned by a future ``doctor`` port and (b) risk drifting from the
-bash source of truth ``cmd_audit.sh`` itself defers to. Shelling out is
-exactly what bash's own ``cmd_audit.sh`` does for all three stages, so this
-is the highest-fidelity parity choice available, not merely the easiest.
+than imported cross-module). Every one of those scripts now has a native
+port in this package (:mod:`shepherd_cli.commands.lint`,
+:mod:`shepherd_cli.commands.doctor`, :mod:`shepherd_cli.commands.status`),
+so this module re-invokes THIS interpreter's own CLI per stage —
+``[sys.executable, "-m", "shepherd_cli", "<stage>", ...]``, see
+:func:`_stage_argv` — and never execs bash or the retired
+``skills/context/scripts/`` tree. The sibling modules expose only Typer
+apps (no public functions), and each stage deliberately stays a separate
+OS process rather than an in-process :class:`typer.testing.CliRunner` call
+(the :mod:`shepherd_cli.commands.inject` idiom) because ``run_stage``'s
+semantics are FD-level: suppressing or streaming a stage's output must
+apply transitively to everything the stage itself spawns (``doctor``'s
+``git``/``gh`` probes), a stage's crash must not take down the pipeline,
+and each stage opens/closes its own DB lifespan exactly as each bash child
+process did. ``CliRunner`` swaps only the Python-level
+``sys.stdout``/``sys.stderr`` objects, so grandchild subprocess output
+would leak past it — a subprocess of this interpreter is the only faithful
+swap. A stage that cannot be launched at all (an :class:`OSError` from
+process creation — the moral equivalent of bash's missing/unexecutable
+``cmd_*.sh``) counts as rc 127, the shell's own command-not-found code,
+captured per stage like any other failure.
 
 Bash's own stage-running shape, verbatim::
 
@@ -234,7 +243,7 @@ from tortoise import Tortoise
 from tortoise.exceptions import IntegrityError
 
 from shepherd_cli import db
-from shepherd_cli.resolution import find_bash_shctx, resolve_db_path
+from shepherd_cli.resolution import resolve_db_path
 
 app = typer.Typer(
     no_args_is_help=False,
@@ -280,32 +289,30 @@ _INSERT_FLAGS = (
 
 
 # --------------------------------------------------------------------------
-# Sibling-script location + stage runner (same shape as
+# Stage argv construction + stage runner (same shape as
 # shepherd_cli.commands.sync's own helpers, kept self-contained here per
 # hard rule #9 — each ported module owns its own copy rather than
 # cross-importing a sibling command module).
 # --------------------------------------------------------------------------
-def _scripts_dir() -> str:
-    """Resolve the directory containing the sibling ``cmd_*.sh`` scripts.
+def _stage_argv(*stage_args: str) -> list[str]:
+    """Build the argv for one pipeline stage: this interpreter's own CLI.
 
-    Mirrors ``cmd_audit.sh``'s own ``HERE="$(cd "$(dirname "$0")" && pwd)"``
-    — the directory holding ``cmd_audit.sh`` itself is the same directory
-    that holds ``cmd_lint.sh``, ``cmd_doctor.sh``, and ``cmd_status.sh``.
+    Replaces bash's ``bash "$HERE/cmd_<stage>.sh"`` — every stage of this
+    pipeline is a ported sibling subcommand of this same package, so the
+    stage runs as ``[sys.executable, "-m", "shepherd_cli", <stage>]``: a
+    child process of THIS interpreter, deterministic, with no bash and no
+    dependency on the retired ``skills/context/scripts/`` tree. The child
+    inherits this process's environment (``SHCTX_DB``,
+    ``SHEPHERD_WORKDIR``, ...) exactly as bash's child scripts did.
+
+    Args:
+        stage_args: The subcommand name followed by its arguments, e.g.
+            ``("lint",)`` or ``("doctor",)``.
 
     Returns:
-        The absolute path to ``skills/context/scripts``.
-
-    Raises:
-        typer.Exit: code 1, with a stderr message, if the bash ``shctx``
-            tooling cannot be located at all — every stage of the audit
-            pipeline shells out to it, so there is nothing useful this
-            command can do without it.
+        The full argv ready for :func:`_run_stage`/``subprocess.run``.
     """
-    shctx_path = find_bash_shctx()
-    if shctx_path is None:
-        typer.echo("ERROR: bash shctx tooling not found (skills/context/scripts/)", err=True)
-        raise typer.Exit(code=1)
-    return os.path.dirname(shctx_path)
+    return [sys.executable, "-m", "shepherd_cli", *stage_args]
 
 
 def _run_stage(name: str, argv: list[str], verbose: bool) -> int:
@@ -324,20 +331,27 @@ def _run_stage(name: str, argv: list[str], verbose: bool) -> int:
         name: Human label for the stage header, printed only when
             ``verbose`` (bash: the ``echo "─── $name ───"`` line).
         argv: The full argv to execute, e.g.
-            ``["bash", "<scripts>/cmd_lint.sh"]``.
+            ``[sys.executable, "-m", "shepherd_cli", "lint"]`` (see
+            :func:`_stage_argv`).
         verbose: When True, print the stage header and let the child
             process inherit this process's stdout/stderr. When False,
             discard the child's stdout AND stderr entirely — only the
             exit code is observed either way.
 
     Returns:
-        The child process's exit code (0 on success).
+        The child process's exit code (0 on success). A stage that cannot
+        be launched at all (``OSError`` from process creation) returns
+        127, the shell's own command-not-found code for a missing
+        ``cmd_*.sh``.
     """
-    if verbose:
-        typer.echo(f"─── {name} ───")
-        result = subprocess.run(argv, check=False)
-    else:
-        result = subprocess.run(argv, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        if verbose:
+            typer.echo(f"─── {name} ───")
+            result = subprocess.run(argv, check=False)
+        else:
+            result = subprocess.run(argv, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except OSError:
+        return 127
     return result.returncode
 
 
@@ -415,22 +429,27 @@ def _audit_pipeline(verbose: bool) -> None:
             hard-failed (exit 1, NOT exit 2); else code 2 if ``doctor``
             warned only (exit 2); else code 0.
     """
-    scripts_dir = _scripts_dir()
-    doctor_argv = ["bash", os.path.join(scripts_dir, "cmd_doctor.sh")]
+    doctor_argv = _stage_argv("doctor")
 
-    rc_lint = _run_stage("lint", ["bash", os.path.join(scripts_dir, "cmd_lint.sh")], verbose)
+    rc_lint = _run_stage("lint", _stage_argv("lint"), verbose)
     # doctor's rc-capturing call is ALWAYS silent, regardless of --verbose,
     # and never goes through _run_stage (no "─── doctor ───" header ever).
-    rc_doctor = subprocess.run(
-        doctor_argv, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-    ).returncode
-    rc_status = _run_stage("status", ["bash", os.path.join(scripts_dir, "cmd_status.sh")], verbose)
+    try:
+        rc_doctor = subprocess.run(
+            doctor_argv, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        ).returncode
+    except OSError:
+        rc_doctor = 127
+    rc_status = _run_stage("status", _stage_argv("status"), verbose)
 
     # Always print doctor's own output at the end (it's the user-relevant
     # signal) — a SEPARATE invocation from the rc-capturing one above, with
     # output fully inherited (unredirected), whose own exit code is
     # discarded (rc_doctor was already captured from the FIRST call).
-    subprocess.run(doctor_argv, check=False)
+    try:
+        subprocess.run(doctor_argv, check=False)
+    except OSError:
+        pass
 
     typer.echo("")
     typer.echo("shctx audit:")

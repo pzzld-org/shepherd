@@ -198,7 +198,7 @@ def test_unrecognized_layout_value_is_rejected_from_any_position(tmp_path: Path)
     proc = run_cli(["migrate", "somethingelse", "--layout=bogus"], env)
 
     assert proc.returncode == 1
-    assert proc.stderr.rstrip("\n") == "ERROR: unknown --layout value (only 'v2' supported)"
+    assert proc.stderr.rstrip("\n") == "ERROR: unknown --layout value (only 'v2' and 'v3' supported)"
     assert proc.stdout == ""
 
 
@@ -432,3 +432,96 @@ def test_unrecognized_extra_tokens_are_silently_ignored(tmp_path: Path) -> None:
 
     assert proc.returncode == 0
     assert proc.stdout.rstrip("\n") == f"shctx migrate: no migrations pending (at version {_SHIPPED_HEAD_VERSION})"
+
+
+# --------------------------------------------------------------------------
+# --layout v3 (v6.4.1 run-scoped artifacts + profiles) — NEW, no bash twin.
+# --------------------------------------------------------------------------
+def _run_migrate(args: list[str], env: dict[str, str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
+    """Drive ``shepherd migrate <args>`` as a subprocess (general form)."""
+    return subprocess.run(
+        [PY, "-m", "shepherd_cli", "migrate", *args],
+        env=env,
+        cwd=str(cwd),
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+
+
+@pytest.mark.parametrize("one_token", [False, True])
+def test_layout_v3_moves_seeds_plans_and_styles(tmp_path: Path, one_token: bool) -> None:
+    """docs/plans seeds+plans land in runs/<slug>/; styles land in profiles/."""
+    workdir = tmp_path / "ws" / ".shepherd"
+    plans = workdir / "docs" / "plans"
+    plans.mkdir(parents=True)
+    (plans / "v641-dev0.seed.md").write_text("seed body")
+    (plans / "v641-dev0.plan.md").write_text("plan body")
+    (plans / "v641.seed.md").write_text("arc seed")
+    styles = workdir / "styles"
+    styles.mkdir()
+    (styles / "python.md").write_text("py style")
+
+    env = clean_env_dict()
+    env["SHEPHERD_WORKDIR"] = str(workdir)
+    args = ["--layout=v3"] if one_token else ["--layout", "v3"]
+    proc = _run_migrate(args, env, cwd=tmp_path)
+
+    assert proc.returncode == 0, proc.stderr
+    assert (workdir / "runs" / "v641-dev0" / "seed.md").read_text() == "seed body"
+    assert (workdir / "runs" / "v641-dev0" / "plan.md").read_text() == "plan body"
+    assert (workdir / "runs" / "v641" / "seed.md").read_text() == "arc seed"
+    assert (workdir / "profiles" / "python" / "style.md").read_text() == "py style"
+    assert not (plans / "v641-dev0.seed.md").exists()
+    assert not (styles / "python.md").exists()
+    assert "moved=4" in proc.stdout
+
+
+def test_layout_v3_skips_bad_slugs_and_existing_destinations(tmp_path: Path) -> None:
+    """A slug outside the run-id grammar stays put; collisions are SKIPs."""
+    workdir = tmp_path / "ws" / ".shepherd"
+    plans = workdir / "docs" / "plans"
+    plans.mkdir(parents=True)
+    (plans / "2026-05-20-v517-Canonical_State.plan.md").write_text("dated spec-style")
+    (plans / "v641-dev0.seed.md").write_text("incoming")
+    existing_run = workdir / "runs" / "v641-dev0"
+    existing_run.mkdir(parents=True)
+    (existing_run / "seed.md").write_text("already here")
+
+    env = clean_env_dict()
+    env["SHEPHERD_WORKDIR"] = str(workdir)
+    proc = _run_migrate(["--layout", "v3"], env, cwd=tmp_path)
+
+    assert proc.returncode == 0, proc.stderr
+    assert (plans / "2026-05-20-v517-Canonical_State.plan.md").exists()  # never moved
+    assert (plans / "v641-dev0.seed.md").exists()  # collision -> SKIP, source kept
+    assert (existing_run / "seed.md").read_text() == "already here"  # never clobbered
+    assert "SKIP" in proc.stdout
+
+
+def test_layout_v3_is_idempotent_on_second_run(tmp_path: Path) -> None:
+    workdir = tmp_path / "ws" / ".shepherd"
+    plans = workdir / "docs" / "plans"
+    plans.mkdir(parents=True)
+    (plans / "v641-dev0.seed.md").write_text("seed body")
+
+    env = clean_env_dict()
+    env["SHEPHERD_WORKDIR"] = str(workdir)
+    first = _run_migrate(["--layout", "v3"], env, cwd=tmp_path)
+    second = _run_migrate(["--layout", "v3"], env, cwd=tmp_path)
+
+    assert first.returncode == 0 and second.returncode == 0
+    assert "moved=1" in first.stdout
+    assert "moved=0" in second.stdout
+    assert (workdir / "runs" / "v641-dev0" / "seed.md").read_text() == "seed body"
+
+
+def test_layout_bogus_value_names_both_supported_layouts(tmp_path: Path) -> None:
+    db_path = tmp_path / "shepherd.db"
+    build_full_schema_db(db_path)
+    env = cli_env(db_path)
+
+    proc = _run_migrate(["--layout=v9"], env, cwd=tmp_path)
+
+    assert proc.returncode == 1
+    assert "only 'v2' and 'v3' supported" in proc.stderr

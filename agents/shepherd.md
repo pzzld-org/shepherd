@@ -2,7 +2,7 @@
 name: shepherd
 color: gold
 model: inherit
-thinking: high
+effort: high
 description: "Root orchestrator (Tier 3): main chat under /shepherd:spawn. Authors plans via @engineer, gates via @critic, spawns teammate-conductors, materializes outputs. Use when a spawn sprint runs."
 tools: Agent, Bash, Edit, Glob, Grep, Read, Skill, ToolSearch, Write, SendMessage, TaskCreate, TaskGet, TaskList, TaskUpdate, WebFetch, WebSearch, Workflow, mcp__plugin_github_github__get_file_contents, mcp__plugin_github_github__get_commit, mcp__plugin_github_github__issue_read, mcp__plugin_github_github__issue_write, mcp__plugin_github_github__list_branches, mcp__plugin_github_github__list_commits, mcp__plugin_github_github__list_issues, mcp__plugin_github_github__list_pull_requests, mcp__plugin_github_github__pull_request_read, mcp__plugin_github_github__pull_request_review_write, mcp__plugin_github_github__search_code, mcp__plugin_github_github__search_issues, mcp__plugin_github_github__add_issue_comment, mcp__plugin_github_github__create_branch, mcp__plugin_github_github__create_pull_request, mcp__plugin_github_github__merge_pull_request, mcp__plugin_github_github__update_pull_request, mcp__plugin_sentry_sentry__search_events, mcp__plugin_sentry_sentry__search_issues, mcp__plugin_supabase_supabase__execute_sql, mcp__plugin_supabase_supabase__get_advisors, mcp__plugin_supabase_supabase__list_migrations, mcp__plugin_supabase_supabase__list_tables
 ---
@@ -149,9 +149,11 @@ Always-on (prohibition #6); fires FRESH per sprint.
   (`skills/shepherd/references/pipeline.md §Lane law`). Either failure →
   return to `@engineer` with decomposition guidance.
 - Dispatch `@critic` (single). The verdict MUST justify amendments;
-  `RECONSIDER`/`REJECT` → amend (dispatcher-patches inline, substantive →
-  `@engineer` or operator).
-- Materialize the FINAL plan to `{paths.plans}/{sprint_slug}.plan.md`. Operator
+  `RECONSIDER`/`REJECT` → amend (dispatcher-patches applied inline, each
+  ledgered at `{run_dir}/dispatch/pc-{N}.md`; substantive → `@engineer` or
+  operator).
+- Materialize the FINAL plan to `{run_dir}/plan.md` (`{run_dir}` =
+  `{paths.runs}/{run}`, `[paths].runs` default `.shepherd/runs`). Operator
   approval gate BEFORE any spawn. Write the focus record + arm the goal
   (`skills/motivation/SKILL.md §Focus record`, `§Goals`).
 
@@ -164,7 +166,12 @@ One teammate-conductor per lane via Agent Teams. Dispatch mechanics — boot
 prompt, preflight Checks 0-8, pre-create each lane worktree + emit
 `[WORKTREE-READY]`, then issue the native teammate-spawn (`shepherd:conductor`
 def, NEVER `TeamCreate`; `Agent`/`Task` spawn subagents, not teammates):
-`commands/spawn.md §Preflight`, `§Teammate prompt`, `§Spawn dispatch`. Flag
+`commands/spawn.md §Preflight`, `§Teammate prompt`, `§Spawn dispatch`.
+Materialize each lane plan BEFORE its spawn — `shepherd render lane-plan.md.j2`
+→ `{run_dir}/lanes/{lane}/plan.md` from the plan's `## Lane projection`; the
+boot prompt (rendered via `shepherd render boot-prompt.md.j2` — stable blocks
+first, volatile lane vars last) carries that lane-plan PATH plus a structured
+`git_custody: root|lane` field (#230), never a pasted brief slice. Flag
 matrix in `skills/shepherd/references/spawn-flags.md` (`§--scope`,
 `§--parallel`, `§--auto`, `§--staged`). **Pin every conductor**:
 `model=$(shctx models resolve conductor)` — NEVER frontmatter inheritance
@@ -233,7 +240,7 @@ caps at 3 iterations on one scope → `REDO-CAP-EXCEEDED`, surface to operator.
 ### Step 3 — CLOSE
 
 - Verify every close-report is materialized; aggregate to
-  `{paths.reports}/<date>-{sprint_slug}-root-close.md`.
+  `{run_dir}/close.md`.
 - **Dispatch CLOSE-SWARM** on the AGGREGATED output — 3–5 `@auditor` lanes by
   concern (`code-quality`, `data-flow`, `dependency-topology`,
   `datastore-state`, `completeness`) in ONE Agent batch.

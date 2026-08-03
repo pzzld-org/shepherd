@@ -1,0 +1,92 @@
+name: claude-review
+
+# Automated Claude review for shepherd-topology pull requests. Every change to
+# this plugin has outsized impact on sprint outcomes, lane behavior, and
+# doctrine consistency, so PRs get one focused review pass without duplicating
+# operator effort.
+#
+# Scope: head branches only —
+#   v*.*.*        patch branches (root-managed)
+#   v*.*.*-dev.*  sprint branches (root's own worktree, un-prefixed)
+#   claude/*      lane branches (branched to/from the working dev branch)
+# GitHub's `on.pull_request.branches` filters by BASE branch, so the head
+# filter is a job-level `if` on github.head_ref. Draft PRs are skipped until
+# marked ready.
+
+# DISABLED (2026-08-03, operator decision). The automatic pull_request
+# triggers are commented out below because `anthropic_api_key` bills against
+# the Anthropic API separately from a Claude subscription. Left in-tree,
+# manual-only, so nothing fires and nothing is billed.
+#
+# To re-enable: uncomment the pull_request block. Before doing so, check
+# whether the action's subscription-backed auth input (an OAuth token rather
+# than `anthropic_api_key`) covers this use — that is the path that would
+# avoid separate API billing, and it should be verified against the current
+# claude-code-action docs rather than assumed.
+on:
+  workflow_dispatch:
+  # pull_request:
+  #   types: [opened, synchronize, ready_for_review]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    if: >-
+      github.event.pull_request.draft == false &&
+      (startsWith(github.head_ref, 'claude/') ||
+       startsWith(github.head_ref, 'v'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            You are reviewing a change to the shepherd Claude Code plugin —
+            a multi-agent sprint orchestration framework. Changes here alter
+            live agent behavior, so review for OPERATIONAL impact, not just
+            code quality:
+
+            1. Contract coherence — agents/, commands/, and skills/ must
+               agree: a path, halt code, payload field, or tier rule stated
+               in one file may not contradict another. Flag any drift the
+               diff introduces between doctrine files.
+            2. Artifact-schema discipline — every artifact path must follow
+               skills/context/references/naming-conventions.md (the
+               canonical schema: .shepherd/runs/{run}/ layout, ownership
+               table, id grammar). Flag hardcoded paths that bypass it.
+            3. Determinism boundary — same-input-same-output work belongs in
+               services/cli (tested Python), never in latent prose. Flag new
+               prose procedures that should be CLI commands, and any
+               timestamp/UUID injected into rendered artifact bodies.
+            4. Tests in the same diff — a behavior change without a test
+               (services/cli/tests, hooks/tests) is a finding. Gate tests
+               must stay deterministic and offline.
+            5. Lane/tier safety — dispatch-law changes (who may spawn, who
+               may write, git custody) get extra scrutiny: name the failure
+               a violated invariant would cause mid-sprint.
+            6. SUBTRACT — net-positive LOC on production source without a
+               declared authorization is a finding.
+
+            The PR branch is checked out in the working directory.
+            Use `gh pr comment` for the summary verdict.
+            Use `mcp__github_inline_comment__create_inline_comment` (with
+            `confirmed: true`) for line-anchored findings.
+            Only post GitHub comments — never submit review text as
+            plain messages. Be concise; only comment where a finding is
+            actionable.
+          claude_args: |
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(jq:*),Bash(git log:*),Bash(git diff:*)"

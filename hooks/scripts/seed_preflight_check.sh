@@ -34,8 +34,13 @@ tool=$(json_field "$input" '.tool_name')
 
 file_path=$(json_field "$input" '.tool_input.file_path')
 [[ -z "$file_path" ]] && file_path=$(json_field "$input" '.tool_input.path')
+# Two naming shapes are gated (v6.4.1 — the rename hazard, res_12 §3): the
+# legacy `{slug}.seed.md` suffix AND the run-scoped `runs/{run}/seed.md`
+# (path-segment match on `runs/<run>/` + basename `seed.md`, so moving the
+# seed into the run dir cannot silently disable this gate).
 case "$file_path" in
   *.seed.md) ;;
+  */runs/*/seed.md|runs/*/seed.md) ;;
   *) exit 0 ;;
 esac
 
@@ -48,7 +53,7 @@ content=$(json_field "$input" '.tool_input.content')
 session=$(json_field "$input" '.session_id')
 
 plugin_root="${CLAUDE_PLUGIN_ROOT:-$(cd "$HERE/../.." && pwd)}"
-shctx="$plugin_root/skills/context/scripts/shctx"
+shctx="$plugin_root/bin/shepherd"
 [[ -f "$shctx" ]] || exit 0
 
 tmp="$(mktemp -t shep-seed.XXXXXX 2>/dev/null)" || exit 0
@@ -65,7 +70,7 @@ msg+="$report"$'\n\n'
 msg+="Fix the HARD item(s) above, then re-write the seed."$'\n'
 msg+="  - a path that will exist at Phase 0: mark it with a trailing (NEW)"$'\n'
 msg+="  - lane numbering / sequencing: drop it — that is engineer territory (#67)"$'\n'
-msg+="The gate is the single source of truth (skills/context/scripts/cmd_seed.sh; see seed-template.md §Verification)."
+msg+="The gate is the single source of truth (services/cli/shepherd_cli/commands/seed.py; see seed-template.md §Verification)."
 
 if [[ "$mode" == "warn" ]]; then
   emit_context "$msg" "seed_preflight_check" "$tool" "planter" "$session"

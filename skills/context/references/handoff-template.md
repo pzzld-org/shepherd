@@ -1,3 +1,4 @@
+<!-- Mirrored as the bundled Jinja template services/cli/shepherd_cli/templates/handoff.md.j2 (rendered via `shepherd render handoff.md.j2`); project overrides live in .shepherd/templates/. -->
 # Sprint handoff — {{BRANCH}}
 
 | Field | Value |
