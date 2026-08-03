@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "shepherd-cli"
-version = "6.4.1"
+version = "6.4.2"
 description = "The canonical Python CLI for shepherd: the single command surface over the per-project SQLite registry, replacing the legacy bash shctx shell layer."
 authors = ["Shepherd"]
 readme = "README.md"
@@ -17,6 +17,7 @@ pyyaml = "^6.0"
 [tool.poetry.group.dev.dependencies]
 pytest = "^9.1"
 pytest-asyncio = "^1.4"
+pytest-xdist = "^3.8"
 
 [tool.poetry.scripts]
 shepherd = "shepherd_cli.__main__:main"

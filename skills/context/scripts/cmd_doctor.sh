@@ -189,15 +189,32 @@ if [[ -f "$db" ]]; then
 fi
 
 # --- 6. shepherd.toml ---
+# v6.4.2: probes the full 5-tier precedence chain via shctx_config_files
+# (namespace tiers first, then the legacy .claude/ tiers, then XDG) instead of
+# its own historical 3-path tuple. Before this, a project bootstrapped by
+# v6.4.2 `shepherd init` -- which scaffolds the canonical
+# <namespace>/shepherd.toml -- got `WARN config shepherd.toml not found at
+# standard paths` telling the operator to create a file that already existed,
+# at the LEGACY path, while the bootstrap section reported the same file
+# present. Two checks contradicting each other about one fact is the
+# confidently-wrong-answer failure this release is removing, so both the
+# bash and python probes move together and the parity tests keep them honest.
+# NOTE the ordering: project-before-local WITHIN each tier group, which
+# deliberately differs from cfg_get's local -> project VALUE precedence. Do not
+# swap this for shctx_config_files -- that helper is local-first and would
+# change which path this row reports.
 repo="$(shctx_repo_root)"
+ns_dir="$(SHCTX_QUIET=1 resolve_workdir)"
 toml=""
-for cand in "$repo/.claude/shepherd.toml" "$repo/.claude/shepherd.local.toml" "${XDG_CONFIG_HOME:-$HOME/.config}/shepherd.toml"; do
+for cand in "$ns_dir/shepherd.toml" "$ns_dir/shepherd.local.toml" \
+            "$repo/.claude/shepherd.toml" "$repo/.claude/shepherd.local.toml" \
+            "${XDG_CONFIG_HOME:-$HOME/.config}/shepherd.toml"; do
   if [[ -f "$cand" ]]; then toml="$cand"; break; fi
 done
 if [[ -n "$toml" ]]; then
   add ok config "shepherd.toml" "$toml" ""
 else
-  add warn config "shepherd.toml" "not found at standard paths" "create .claude/shepherd.toml — see docs/configuration.md"
+  add warn config "shepherd.toml" "not found at standard paths" "run 'shctx config init' — see docs/configuration.md"
 fi
 
 # --- emit ---

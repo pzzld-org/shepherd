@@ -317,6 +317,98 @@ def test_graph_section_honors_run_scoped_state(db_path: Path, workdir: Path) -> 
     assert "(no stage-graph state" not in proc.stdout
 
 
+def test_graph_section_stale_sprint_shows_banner_not_numbers(db_path: Path, workdir: Path) -> None:
+    """GH #248: a ``state.json`` whose ``sprint`` differs from the active
+    branch is for a closed/different sprint -- the section must print a
+    loud STALE banner instead of the (wrong) completion numbers, never
+    call the walker at all."""
+    _write_graph_state(workdir, "v0.3.8-dev.8", {"n1": "done", "n2": "ready"})
+    env = _dash_env(db_path, workdir)
+
+    proc = run_cli(["dash"], env)
+
+    assert proc.returncode == 0, proc.stderr
+    stdout = proc.stdout
+    active_branch = _current_branch()
+    assert (
+        f"GRAPH       STALE — state.json is for sprint 'v0.3.8-dev.8', "
+        f"active is '{active_branch}' (graph/state.json, "
+    ) in stdout
+    # No completion numbers, no walker output, no "GRAPH" header line on
+    # its own -- the banner replaces the whole normal render.
+    assert "completion:" not in stdout
+    assert "Ready now:" not in stdout
+    assert "GRAPH\n" not in stdout
+    # Later sections still render.
+    assert "TEAMMATES" in stdout
+    assert "STALE       issues=" in stdout
+
+
+def test_graph_section_matching_sprint_renders_normally(db_path: Path, workdir: Path) -> None:
+    """GH #248 regression guard: a state.json whose ``sprint`` MATCHES the
+    active branch must render exactly as before -- no banner, real numbers."""
+    branch = _current_branch()
+    _write_graph_state(workdir, branch, {"n1": "done", "n2": "ready"})
+    env = _dash_env(db_path, workdir)
+
+    proc = run_cli(["dash"], env)
+
+    assert proc.returncode == 0, proc.stderr
+    stdout = proc.stdout
+    assert "STALE —" not in stdout
+    assert "GRAPH\n" in stdout
+    assert "    completion: 1/2 (50%)" in stdout
+
+
+def test_graph_section_missing_sprint_key_takes_normal_path_no_banner(db_path: Path, workdir: Path) -> None:
+    """GH #248: absence of the ``sprint`` field is NOT staleness (an older
+    state.json may predate it) -- the staleness gate must NOT intervene,
+    falling through to the normal (non-banner) render path exactly like
+    before this fix.
+
+    The walker itself (:mod:`shepherd_cli.commands.graph`, out of this
+    lane's scope) separately requires ``state['sprint']`` for its own
+    text rendering and degrades to the pre-existing
+    ``"  (graph status error)"`` line without it -- that degrade is
+    unrelated to and unaffected by the staleness gate added here, and is
+    the SAME line :func:`test_graph_section_error_degradation_on_corrupt_state`
+    already pins for a differently-broken state.json.
+    """
+    graph_dir = workdir / "graph"
+    graph_dir.mkdir(parents=True, exist_ok=True)
+    state = {"nodes": {"n1": {"state": "done"}, "n2": {"state": "ready"}}}  # no "sprint" key at all
+    (graph_dir / "state.json").write_text(json.dumps(state))
+    env = _dash_env(db_path, workdir)
+
+    proc = run_cli(["dash"], env)
+
+    assert proc.returncode == 0, proc.stderr
+    stdout = proc.stdout
+    assert "STALE —" not in stdout
+    assert "GRAPH\n" in stdout
+    assert "  (graph status error)" in stdout
+
+
+def test_graph_section_run_active_but_state_not_run_scoped_notes_it(db_path: Path, workdir: Path) -> None:
+    """GH #248: an active, identifiable run whose graph state is still only
+    at the legacy (non-run-scoped) path gets a one-line note -- graph state
+    is not being written run-scoped for this run. Sprint matches here, so
+    this is purely the run-scoping note, not the staleness banner."""
+    branch = _current_branch()
+    _write_graph_state(workdir, branch, {"n1": "ready"})  # legacy path only, no runs/r1/graph/
+    env = _dash_env(db_path, workdir)
+    env["SHEPHERD_RUN"] = "r1"
+
+    proc = run_cli(["dash"], env)
+
+    assert proc.returncode == 0, proc.stderr
+    stdout = proc.stdout
+    assert "GRAPH\n" in stdout
+    assert "STALE —" not in stdout
+    assert "run 'r1' is active but graph state is not run-scoped" in stdout
+    assert "naming-conventions.md" in stdout
+
+
 def test_graph_section_error_degradation_on_corrupt_state(db_path: Path, workdir: Path) -> None:
     """An unparseable state.json — the in-process analogue of a crashed
     ``graph status`` child — degrades to the bash pipeline's
@@ -669,9 +761,10 @@ def test_stale_freshness_and_never(db_path: Path, project_id: str, workdir: Path
 
 
 # --------------------------------------------------------------------------
-# No-subcommand / args-ignored behavior (cmd_dash.sh never read its own $@).
+# No-subcommand / args-ignored behavior (cmd_dash.sh never read its own $@),
+# EXCEPT -h/--help -- GH #249's additive deviation, see test_help_flag_below.
 # --------------------------------------------------------------------------
-@pytest.mark.parametrize("extra_args", [[], ["-h"], ["--help"], ["--json"], ["garbage", "--unknown-flag"]])
+@pytest.mark.parametrize("extra_args", [[], ["--json"], ["garbage", "--unknown-flag"]])
 def test_every_argument_shape_is_ignored_and_still_renders(
     db_path: Path, workdir: Path, extra_args: list[str]
 ) -> None:
@@ -682,8 +775,35 @@ def test_every_argument_shape_is_ignored_and_still_renders(
     assert proc.returncode == 0, proc.stderr
     assert "SPRINT" in proc.stdout
     assert "STALE" in proc.stdout
-    # No Click help text leaked through (--help/-h are swallowed, not handled).
+    # No Click help text leaked through (Click's own --help is disabled).
     assert "Usage:" not in proc.stdout
+
+
+# --------------------------------------------------------------------------
+# -h/--help (GH #249): must short-circuit to usage, exit 0, and touch
+# NEITHER the registry DB (missing here on purpose) NOR the filesystem --
+# never render the dashboard.
+# --------------------------------------------------------------------------
+@pytest.mark.parametrize("help_flag", ["-h", "--help"])
+def test_help_flag_prints_usage_and_never_renders_dashboard(tmp_path: Path, help_flag: str) -> None:
+    db_path_ = tmp_path / "shepherd.db"  # never created
+    workdir_ = tmp_path / "work"  # never created
+    env = _dash_env(db_path_, workdir_)
+
+    proc = run_cli(["dash", help_flag], env)
+
+    assert proc.returncode == 0, proc.stderr
+    assert "shepherd dash" in proc.stdout
+    assert "-h, --help" in proc.stdout
+    # The dashboard itself never rendered -- its header line (and the
+    # per-section "SPRINT      schema=..." line, distinct from the usage
+    # text's prose mention of "SPRINT") are both absent.
+    assert "═══ SHEPHERD DASH ═══" not in proc.stdout
+    assert "SPRINT      schema=" not in proc.stdout
+    assert proc.stderr == ""
+    # Neither the (nonexistent) DB nor the (nonexistent) workdir was touched.
+    assert not db_path_.exists()
+    assert not workdir_.exists()
 
 
 # --------------------------------------------------------------------------

@@ -3,8 +3,9 @@
 #
 # Sourced by every hook script. Exports:
 #
-#   is_shepherd_project              — returns 0 if .claude/shepherd.toml exists
+#   is_shepherd_project              — returns 0 if <namespace>/shepherd.toml OR .claude/shepherd.toml exists
 #   resolve_namespace                — echoes $SHEPHERD_WORKDIR, else existing .shepherd/.artifacts, else default .shepherd
+#   shctx_config_files                — echoes the 5-tier config precedence list, one path per line (v6.4.2)
 #   emit_context "<msg>"             — emit {"additionalContext":"<msg>"} and exit 0
 #   emit_deny "<msg>"                — emit {"permissionDecision":"deny","message":"<msg>"} and exit 0
 #   log_event hook decision tool role session fields_json
@@ -16,11 +17,82 @@
 #
 # This library does NOT set `set -euo pipefail` — sourcing scripts decide.
 
+# The active harness id, or "" when none can be determined. SHEPHERD_HARNESS
+# is explicit and always wins; otherwise Claude Code's own markers, then
+# CODEX_HOME. Only the ACTIVE harness's config file is read -- reading every
+# harness file would let a codex knob take effect under Claude Code, which is
+# the opposite of what a per-harness layer is for.
+# MUST mirror shepherd_cli/commands/config.py::resolve_harness.
+shctx_harness() {
+  if [[ -n "${SHEPHERD_HARNESS:-}" ]]; then printf '%s' "$SHEPHERD_HARNESS"; return 0; fi
+  if [[ -n "${CLAUDECODE:-}" || -n "${CLAUDE_PLUGIN_ROOT:-}" ]]; then printf '%s' "claude"; return 0; fi
+  if [[ -n "${CODEX_HOME:-}" ]]; then printf '%s' "codex"; return 0; fi
+  printf '%s' ""
+  return 0
+}
+
+# Echo the shepherd config precedence chain, one absolute path per line,
+# HIGHEST precedence first (v6.4.2 layering contract).
+#
+#   project  <ns>/shepherd.local.toml          <- ultimate override
+#            <ns>/shepherd.<harness>.toml
+#            <ns>/shepherd.toml                <- the project binding
+#   legacy   .claude/shepherd.local.toml       <- pre-v6.4.2, honored forever
+#            .claude/shepherd.toml
+#   user     ~/.shepherd/shepherd.local.toml   <- cross-project DEFAULTS
+#            ~/.shepherd/shepherd.<harness>.toml
+#            ~/.shepherd/shepherd.toml
+#            $XDG_CONFIG_HOME/shepherd.toml    <- pre-v6.4.2 global
+#
+# Within a layer: local > harness > base. Across layers: project > user.
+# The legacy .claude/ tiers are PROJECT files, so they outrank the whole user
+# layer -- otherwise creating ~/.shepherd/shepherd.toml would silently
+# override every existing project still bound through .claude/.
+# *.local.toml is gitignored (one machine); shepherd.<harness>.toml is TRACKED.
+#
+# Single source of truth for this lib. MUST stay byte-identical to the other
+# _lib.sh's shctx_config_files and to
+# shepherd_cli/commands/config.py::_config_search_paths.
+# Contract: docs/configuration.md §config-resolution.
+shctx_config_files() {
+  local repo ns userhome harness
+  repo="$(shctx_repo_root 2>/dev/null || pwd)"
+  # resolve_namespace is THIS lib's namespace resolver (the skills-side lib
+  # calls its equivalent resolve_workdir). Using the wrong name here silently
+  # falls through to the .shepherd fallback and ignores an .artifacts project.
+  ns="$(SHCTX_QUIET=1 resolve_namespace 2>/dev/null || printf '%s/.shepherd' "$repo")"
+  userhome="${SHEPHERD_HOME:-$HOME/.shepherd}"
+  harness="$(shctx_harness)"
+
+  # project layer (highest): local -> harness -> base
+  printf '%s\n' "$ns/shepherd.local.toml"
+  if [[ -n "$harness" ]]; then printf '%s\n' "$ns/shepherd.$harness.toml"; fi
+  printf '%s\n' "$ns/shepherd.toml"
+  # legacy project layer -- pre-v6.4.2, honored indefinitely
+  printf '%s\n' "$repo/.claude/shepherd.local.toml"
+  printf '%s\n' "$repo/.claude/shepherd.toml"
+  # user layer (defaults): local -> harness -> base
+  printf '%s\n' "$userhome/shepherd.local.toml"
+  if [[ -n "$harness" ]]; then printf '%s\n' "$userhome/shepherd.$harness.toml"; fi
+  printf '%s\n' "$userhome/shepherd.toml"
+  # legacy user global
+  printf '%s\n' "${XDG_CONFIG_HOME:-$HOME/.config}/shepherd.toml"
+  return 0
+}
+
 # ---------------------------------------------------------------------------
 # Predicates
 # ---------------------------------------------------------------------------
 
+# True if either the NEW canonical <namespace>/shepherd.toml (tier 2) or the
+# legacy .claude/shepherd.toml (tier 4) exists — a project is "shepherd" if
+# EITHER binding is present, so a codex-shepherd-authored .shepherd/shepherd.toml
+# is recognized without ever requiring a .claude/ file, and an existing
+# .claude/-only project keeps working unchanged.
 is_shepherd_project() {
+  local ns
+  ns="$(resolve_namespace 2>/dev/null || true)"
+  [[ -n "$ns" && -f "$ns/shepherd.toml" ]] && return 0
   [[ -f ".claude/shepherd.toml" ]]
 }
 
@@ -75,43 +147,44 @@ hook_db_path() {
 }
 
 # Echo the value of a top-level `key = value` from shepherd config, resolved by
-# precedence: .claude/shepherd.local.toml (per-key local override, gitignored —
-# mirrors Claude Code's settings.local.json) → .claude/shepherd.toml (project) →
-# $XDG_CONFIG_HOME/shepherd.toml (user global). Section-agnostic, last-match-wins
-# within a file; strips surrounding double-quotes and trailing " # inline comments".
-# Echoes "" if the key is unset everywhere. bash-3.2-safe (no TOML parser) and
-# never returns non-zero, so it is safe to call under `set -e`/pipefail.
+# the shctx_config_files precedence (v6.4.2): <namespace>/shepherd.local.toml →
+# <namespace>/shepherd.toml → .claude/shepherd.local.toml (per-key local
+# override, gitignored — mirrors Claude Code's settings.local.json) →
+# .claude/shepherd.toml (project) → $XDG_CONFIG_HOME/shepherd.toml (user
+# global). Section-agnostic, last-match-wins within a file; strips surrounding
+# double-quotes and trailing " # inline comments". Echoes "" if the key is
+# unset everywhere. bash-3.2-safe (no TOML parser) and never returns non-zero,
+# so it is safe to call under `set -e`/pipefail.
 # Contract source of truth: docs/configuration.md §config-resolution. MUST agree
 # with the CLI-side config resolution (services/cli/shepherd_cli/commands/config.py) — they read the
 # same files in the same order or config diverges between hooks and runtime.
 cfg_get() {
-  local key="$1" repo f v
-  repo="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-  for f in "$repo/.claude/shepherd.local.toml" "$repo/.claude/shepherd.toml" "${XDG_CONFIG_HOME:-$HOME/.config}/shepherd.toml"; do
-    [[ -f "$f" ]] || continue
+  local key="$1" f v
+  while IFS= read -r f; do
+    [[ -n "$f" && -f "$f" ]] || continue
     v="$(grep -E "^[[:space:]]*${key}[[:space:]]*=" "$f" 2>/dev/null | tail -1 \
           | sed -E 's/^[^=]*=[[:space:]]*//; s/[[:space:]]+#.*$//; s/^"//; s/"$//' 2>/dev/null || true)"
     if [[ -n "$v" ]]; then printf '%s' "$v"; return 0; fi
-  done
+  done < <(shctx_config_files)
   printf '%s' ""
   return 0
 }
 
 # Section-aware companion to cfg_get: echo `key = value` under a specific
-# `[section]` from shepherd config, resolved by the SAME precedence (local →
-# project → XDG). For TOML blocks whose bare keys would collide across sections
-# (e.g. [models] role keys). Last-match-wins within the section; strips
-# surrounding double-quotes and a trailing " # inline comment". Echoes "" if
-# unset; never returns non-zero. bash-3.2-safe (awk parses the section — no
-# associative arrays / mapfile). MUST mirror the skills-side cfg_section_get
+# `[section]` from shepherd config, resolved by the SAME precedence
+# (shctx_config_files, v6.4.2: namespace-local → namespace → .claude-local →
+# .claude → XDG). For TOML blocks whose bare keys would collide across
+# sections (e.g. [models] role keys). Last-match-wins within the section;
+# strips surrounding double-quotes and a trailing " # inline comment". Echoes
+# "" if unset; never returns non-zero. bash-3.2-safe (awk parses the section —
+# no associative arrays / mapfile). MUST mirror the skills-side cfg_section_get
 # (services/cli/shepherd_cli/commands/config.py) — same files, same order, same parse — or
 # config diverges between hooks and the shctx runtime. Contract source of truth:
 # docs/configuration.md §config-resolution.
 cfg_section_get() {
-  local section="$1" key="$2" repo f v
-  repo="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-  for f in "$repo/.claude/shepherd.local.toml" "$repo/.claude/shepherd.toml" "${XDG_CONFIG_HOME:-$HOME/.config}/shepherd.toml"; do
-    [[ -f "$f" ]] || continue
+  local section="$1" key="$2" f v
+  while IFS= read -r f; do
+    [[ -n "$f" && -f "$f" ]] || continue
     v="$(awk -v sect="$section" -v k="$key" '
       /^[ \t]*\[/ { h=$0; sub(/^[ \t]*\[/,"",h); sub(/\].*$/,"",h); gsub(/[ \t]/,"",h); cur=h; next }
       cur==sect && $0 ~ ("^[ \t]*" k "[ \t]*=") {
@@ -121,21 +194,20 @@ cfg_section_get() {
       END { if (result!="") printf "%s", result }
     ' "$f" 2>/dev/null || true)"
     if [[ -n "$v" ]]; then printf '%s' "$v"; return 0; fi
-  done
+  done < <(shctx_config_files)
   printf '%s' ""
   return 0
 }
 
 # List the KEYS of a `[section]` block across the shepherd config precedence
-# (local → project → XDG), one per line, union'ed with first-seen wins — the
-# enumeration companion to cfg_section_get (which needs a known key). Used by
-# the #59 gates ledger to walk `[gates.extra]` entries whose names are
+# (shctx_config_files, v6.4.2), one per line, union'ed with first-seen wins —
+# the enumeration companion to cfg_section_get (which needs a known key).
+# Used by the #59 gates ledger to walk `[gates.extra]` entries whose names are
 # project-defined. bash-3.2-safe; never returns non-zero.
 cfg_section_keys() {
-  local section="$1" repo f out="" k
-  repo="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-  for f in "$repo/.claude/shepherd.local.toml" "$repo/.claude/shepherd.toml" "${XDG_CONFIG_HOME:-$HOME/.config}/shepherd.toml"; do
-    [[ -f "$f" ]] || continue
+  local section="$1" f out="" k
+  while IFS= read -r f; do
+    [[ -n "$f" && -f "$f" ]] || continue
     while IFS= read -r k; do
       [[ -n "$k" ]] || continue
       case $'\n'"$out" in *$'\n'"$k"$'\n'*) ;; *) out+="$k"$'\n' ;; esac
@@ -145,7 +217,7 @@ cfg_section_keys() {
         key=$0; sub(/^[ \t]*/,"",key); sub(/[ \t]*=.*$/,"",key); print key
       }
     ' "$f" 2>/dev/null || true)
-  done
+  done < <(shctx_config_files)
   printf '%s' "$out"
   return 0
 }

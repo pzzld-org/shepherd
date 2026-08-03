@@ -30,12 +30,36 @@ render byte-identically to the legacy script):
 8. **Binary version** (#235) — WARN when the running CLI ``__version__``
    differs from the ``plugin.json`` version at ``CLAUDE_PLUGIN_ROOT``.
    Match / unset env / unreadable file → no row.
+9. **User-level tier** (#254) — whether ``~/.shepherd`` exists (INFO, not
+   a failure, when absent — the tier is optional and ``shepherd home
+   init`` is the fix), plus which tier each PROJECT-declared profile
+   (a real file, never a bundled default) resolves from. Unlike sections
+   7/8, the ``~/.shepherd`` row is NOT purely conditional — it always
+   prints, since the whole point is surfacing a tier nothing else ever
+   creates.
+10. **Bootstrap completeness** (v6.4.2 — the ``shepherd init`` seamless-
+    bootstrap sprint) — a terse, five-row rollup of exactly what
+    ``shepherd init`` now builds: namespace, db (present + at HEAD),
+    project registration, ``shepherd.toml`` (naming which tier it
+    resolved from), and ``~/.shepherd`` (INFO only, section 9's own
+    semantics, not re-derived). Every row reuses an EXISTING section's
+    own underlying check rather than re-deriving a second definition —
+    see :func:`_check_bootstrap`'s own block comment for the one
+    deliberate exception (the ``shepherd.toml`` tier label imports lane
+    P1's own candidate list instead of a fifth hardcoded copy of it).
+    Also NOT in ``cmd_doctor.sh``; always prints, like section 9.
 
 Every ``add()`` call in ``cmd_doctor.sh`` becomes one :class:`Result`
 appended, in the SAME order, to the SAME five-tuple shape (status,
 category, name, message, fix) — :func:`_collect_results` is a literal,
 section-by-section transliteration of the bash script, not a
 restructuring.
+
+**Reused by** :mod:`shepherd_cli.commands.init` (v6.4.2): the closing
+``shepherd init`` doctor pass calls this module's own :func:`run`
+in-process — imported, never reimplemented — so its report is always
+this exact module's own output, sections 1-10 included, never a second,
+potentially-drifting copy.
 
 ARCHITECTURE DEVIATION FROM THE PORT'S OWN HARD RULE 7 (fully synchronous,
 NO ``db.lifespan()``/Tortoise/asyncio) — READ THIS FIRST
@@ -165,6 +189,7 @@ Timestamps: epoch SECONDS throughout (``shctx_now`` / ``date +%s`` —
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
@@ -176,7 +201,14 @@ from dataclasses import dataclass
 
 import typer
 
-from shepherd_cli.resolution import find_migrations_dir, resolve_db_path, resolve_repo_root, resolve_workdir
+from shepherd_cli.profiles import list_profiles
+from shepherd_cli.resolution import (
+    find_migrations_dir,
+    resolve_db_path,
+    resolve_repo_root,
+    resolve_user_home,
+    resolve_workdir,
+)
 
 app = typer.Typer(
     add_completion=False,
@@ -254,7 +286,7 @@ _INT_LITERAL_RE = re.compile(r"[+-]?\d+")
 #: `cmd_doctor.sh` (`"OK   "`/`"WARN "`/`"FAIL "`), THEN padded to 6 by
 #: the format spec itself. Stored pre-padded here so `_render_md`'s
 #: `f"{icon:<6}"` reproduces the two-stage padding exactly.
-_ICON: dict[str, str] = {"ok": "OK   ", "warn": "WARN ", "fail": "FAIL "}
+_ICON: dict[str, str] = {"ok": "OK   ", "warn": "WARN ", "fail": "FAIL ", "info": "INFO "}
 
 
 @dataclass(frozen=True, slots=True)
@@ -262,7 +294,12 @@ class Result:
     """One diagnostic finding -- the five-tuple `cmd_doctor.sh`'s `add()` builds.
 
     Attributes:
-        status: One of ``"ok"``, ``"warn"``, ``"fail"``.
+        status: One of ``"ok"``, ``"warn"``, ``"fail"`` -- the three bash
+            `cmd_doctor.sh` itself uses -- plus ``"info"``, a v6.4.1
+            post-parity addition (#254, section 9) for purely informational
+            rows that must never affect the exit code or the `N ok` tally
+            (see `_render_md`'s `ok_count`, which counts `"ok"` explicitly
+            rather than by subtraction, for exactly this reason).
         category: One of ``"bin"``, ``"ns"``, ``"db"``, ``"lock"``,
             ``"refresh"``, ``"config"`` -- matches bash's `add()` call
             sites' second argument verbatim.
@@ -345,6 +382,31 @@ def _check_binaries() -> list[Result]:
 # --------------------------------------------------------------------------
 # Section 2 -- namespace dir + project.json.
 # --------------------------------------------------------------------------
+@contextlib.contextmanager
+def _quiet_env():
+    """Scope `SHCTX_QUIET=1` to exactly the enclosed block, restoring after.
+
+    The general form of the subshell-scoped `SHCTX_QUIET=1` override
+    `cmd_doctor.sh` uses (`root="$(SHCTX_QUIET=1 shctx_artifacts_root)"`)
+    -- extracted (v6.4.2) so any call that must not disturb this module's
+    carefully-reproduced split-brain stderr-warning count can wrap itself
+    in it, not only `resolve_workdir()` via :func:`_quiet_resolve_workdir`.
+    Section 10's :func:`_bootstrap_config_row` is the first other user:
+    `shepherd_cli.commands.config._config_search_paths` calls
+    `resolve_workdir()` internally, with no quiet parameter of its own to
+    pass through.
+    """
+    previous = os.environ.get("SHCTX_QUIET")
+    os.environ["SHCTX_QUIET"] = "1"
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop("SHCTX_QUIET", None)
+        else:
+            os.environ["SHCTX_QUIET"] = previous
+
+
 def _quiet_resolve_workdir() -> str:
     """`resolve_workdir()` with `SHCTX_QUIET=1` scoped to just this one call.
 
@@ -360,15 +422,8 @@ def _quiet_resolve_workdir() -> str:
     Returns:
         The resolved work directory path (need not exist on disk).
     """
-    previous = os.environ.get("SHCTX_QUIET")
-    os.environ["SHCTX_QUIET"] = "1"
-    try:
+    with _quiet_env():
         return resolve_workdir()
-    finally:
-        if previous is None:
-            os.environ.pop("SHCTX_QUIET", None)
-        else:
-            os.environ["SHCTX_QUIET"] = previous
 
 
 def _jq_r(data: dict[str, object], key: str) -> str:
@@ -799,12 +854,31 @@ def _check_refresh_zones(db_path: str) -> list[Result]:
 # Section 6 -- shepherd.toml locatable.
 # --------------------------------------------------------------------------
 def _check_config(repo: str) -> Result:
-    """Section 6: is `shepherd.toml` locatable at any of three standard paths?
+    """Section 6: is `shepherd.toml` locatable on the precedence chain?
 
-    Bash parity with `cmd_doctor.sh`'s candidate ORDER (project -> local
-    -> XDG -- see the module docstring for why this deliberately differs
-    from `cfg_get`'s own local -> project -> XDG value-resolution
-    precedence).
+    v6.4.2: the candidate list gains the two namespace tiers
+    (`<workdir>/shepherd.toml`, `<workdir>/shepherd.local.toml`) ahead of
+    the legacy `.claude/` pair. `cmd_doctor.sh` gains them in the same
+    change, so bash parity is preserved by both sides moving -- not by
+    freezing this one.
+
+    NOTE the ordering: this probe keeps its documented project-before-local
+    order WITHIN each tier group, which deliberately differs from
+    `cfg_get`'s local -> project VALUE-resolution precedence (see the module
+    docstring). Reusing `config._config_search_paths` here would have been
+    tidier but silently flips that order, changing which path this row
+    reports; the tier list is therefore spelled out rather than shared.
+
+    Why it had to move: a project bootstrapped by v6.4.2 `shepherd init`
+    scaffolds the canonical `<workdir>/shepherd.toml`, which the old tuple
+    could not see. `doctor` then printed `WARN config shepherd.toml not
+    found at standard paths`, telling the operator to create a file that
+    already existed -- and naming the LEGACY path -- while section 10's
+    bootstrap row reported that very file present. Two checks
+    contradicting each other about one fact is precisely the
+    confidently-wrong-answer failure this release removes (cf. #248's
+    stale GRAPH numbers), and a frozen probe is not worth an operator
+    being told to undo their own correct setup.
 
     Args:
         repo: The resolved repo root.
@@ -813,8 +887,18 @@ def _check_config(repo: str) -> Result:
         `ok` with the first existing candidate's path, or `warn "not
         found at standard paths"` if none exist.
     """
+    # `_quiet_env()` because `resolve_workdir()` has no quiet parameter of its
+    # own and this module reproduces bash's exact split-brain stderr-warning
+    # COUNT -- unquieted, this row would add another and break
+    # `test_dual_namespace_conflict_warns_and_triplicates_stderr_warning`'s
+    # exact-3-times assertion.
+    with _quiet_env():
+        workdir = resolve_workdir()
+
     xdg_home = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.environ.get("HOME", ""), ".config")
     candidates = (
+        os.path.join(workdir, "shepherd.toml"),
+        os.path.join(workdir, "shepherd.local.toml"),
         os.path.join(repo, ".claude", "shepherd.toml"),
         os.path.join(repo, ".claude", "shepherd.local.toml"),
         os.path.join(xdg_home, "shepherd.toml"),
@@ -827,7 +911,7 @@ def _check_config(repo: str) -> Result:
         "config",
         "shepherd.toml",
         "not found at standard paths",
-        "create .claude/shepherd.toml — see docs/configuration.md",
+        "run 'shctx config init' — see docs/configuration.md",
     )
 
 
@@ -1057,6 +1141,203 @@ def _check_version_match() -> list[Result]:
 
 
 # --------------------------------------------------------------------------
+# Section 9 -- user-level tier, `~/.shepherd` (v6.4.1 #254; NOT in cmd_doctor.sh).
+# --------------------------------------------------------------------------
+# Unlike sections 7/8, this one is NOT purely conditional: `shepherd home
+# init` exists precisely because nothing else ever creates `~/.shepherd` (the
+# gap #254 reports), so a doctor section that stays silent whenever the tier
+# is absent would never surface that gap either -- the whole point is to
+# nudge an operator who has never run `shepherd home init` toward doing so.
+# The user-home row therefore ALWAYS prints, `info` (never `warn`/`fail`)
+# when absent, since the tier is entirely optional and its absence is not a
+# health problem. Per-profile rows stay conditional in the sections-7/8
+# spirit: they cover only profiles the PROJECT ITSELF declares -- a real
+# file under the project canonical/legacy tier or `~/.shepherd/profiles/`,
+# via `shepherd_cli.profiles.list_profiles(bundled_dir=None)`, which
+# deliberately EXCLUDES the bundled tier so a project with zero declared
+# profiles (every fixture in this port's own test suite) emits zero profile
+# rows, not one row per bundled language.
+def _check_user_tier(workdir: str) -> list[Result]:
+    """Section 9: whether `~/.shepherd` exists, + which tier each declared profile resolves from.
+
+    Args:
+        workdir: The resolved work directory (the project profiles root
+            `shepherd_cli.profiles.list_profiles` scans) -- resolved
+            QUIETLY by the caller so this section never disturbs the
+            bash-parity dual-namespace stderr-warning call count (see the
+            module docstring's note on sections 7/8, which follow the
+            same convention).
+
+    Returns:
+        One `Result` for `~/.shepherd` itself (`ok` present / `info`
+        absent), PLUS one `ok` `Result` per project-declared profile
+        naming the tier (`project`/`legacy`/`user`) it resolves from.
+    """
+    results: list[Result] = []
+    user_home = resolve_user_home()
+    if os.path.isdir(user_home):
+        results.append(Result("ok", "user", "~/.shepherd", user_home, ""))
+    else:
+        results.append(
+            Result(
+                "info",
+                "user",
+                "~/.shepherd",
+                f"not created at {user_home} (optional -- cross-project profiles/templates, #254)",
+                "shepherd home init",
+            )
+        )
+    for name, source in list_profiles(workdir=workdir):
+        results.append(Result("ok", "user", f"profile:{name}", f"resolves from {source}", ""))
+    return results
+
+
+# --------------------------------------------------------------------------
+# Section 10 -- bootstrap completeness (v6.4.2; NOT in cmd_doctor.sh; post-parity).
+# --------------------------------------------------------------------------
+# `shepherd init` (v6.4.2, this sprint) became the one-command bootstrap --
+# namespace + db + project registration + shepherd.toml + (optional)
+# ~/.shepherd -- see `shepherd_cli.commands.init`'s own module docstring.
+# This section is the terse, at-a-glance rollup of exactly those five
+# things, each row naming the ONE command that fixes it. Every one of the
+# five is ALREADY covered in more depth elsewhere in this report (namespace:
+# section 2; db + pending migrations: section 3; project.json: section 2b;
+# shepherd.toml: section 6; ~/.shepherd: section 9's `_check_user_tier`) --
+# this section reuses those same underlying signals (namespace dir
+# existence, `_count_pending_migrations`, `project.json`'s `.id`,
+# `resolve_user_home()`) rather than re-deriving a second, potentially
+# diverging, definition of any of them.
+#
+# ONE explicit exception: the `shepherd.toml` row's TIER label. Unlike
+# section 6's `_check_config` (a bash-parity, deliberately self-contained
+# existence probe over a hardcoded 3-path tuple -- see the module
+# docstring's own candidate-order note) and section 7's `_cfg_files` (same
+# self-contained-duplication convention), this NEW row imports lane P1's
+# own `_config_search_paths` from `shepherd_cli.commands.config` rather than
+# hardcoding a fourth copy of that candidate list. P1 is concurrently moving
+# the canonical `shepherd.toml` write target to `<workdir>/shepherd.toml`;
+# importing keeps this row's tier labels correct automatically the moment
+# that lands, the same "IMPORT IT, do not hardcode the path" discipline
+# `shepherd_cli.commands.init._maybe_scaffold_config` applies to the WRITE
+# side of the exact same file.
+#
+# NOT a duplicate of section 9: the `~/.shepherd` row here is ONE terse
+# ok/info line (existence only, INFO-not-failure semantics preserved
+# verbatim from `_check_user_tier`) -- it does not re-enumerate the
+# per-profile `resolves from <tier>` rows section 9 already owns.
+#
+# Section 6 and this section now agree: v6.4.2 moved `_check_config` onto the
+# same 5-tier precedence chain (and `cmd_doctor.sh` with it), so a project
+# bootstrapped at the canonical `<workdir>/shepherd.toml` no longer gets a
+# section-6 WARN contradicting this section's OK for the same file.
+def _bootstrap_namespace_row(root: str) -> Result:
+    """Bootstrap row 1: the namespace directory (reuses section 2's own check)."""
+    if os.path.isdir(root):
+        return Result("ok", "bootstrap", "namespace", root, "")
+    return Result("fail", "bootstrap", "namespace", "missing", "shepherd init")
+
+
+def _bootstrap_db_row(db_path: str) -> Result:
+    """Bootstrap row 2: the DB file + whether it is at shipped HEAD (reuses section 3's own checks)."""
+    if not os.path.isfile(db_path):
+        return Result("fail", "bootstrap", "db", "missing", "shepherd init")
+    pending = _count_pending_migrations(db_path)
+    if pending > 0:
+        return Result("warn", "bootstrap", "db", f"present, {pending} pending migration(s)", "shepherd init")
+    return Result("ok", "bootstrap", "db", "present, at HEAD", "")
+
+
+def _bootstrap_project_row(pjson_path: str) -> Result:
+    """Bootstrap row 3: project registration (reuses section 2b's own `.id` check)."""
+    if not os.path.isfile(pjson_path):
+        return Result("fail", "bootstrap", "project", "not registered", "shepherd init")
+    try:
+        with open(pjson_path, encoding="utf-8") as fh:
+            raw = json.load(fh)
+    except (OSError, json.JSONDecodeError):
+        return Result("fail", "bootstrap", "project", "not registered (malformed project.json)", "shepherd init")
+    pid = _jq_r(raw, "id") if isinstance(raw, dict) else "null"
+    if pid and pid != "null":
+        return Result("ok", "bootstrap", "project", f"registered (id={pid})", "")
+    return Result("fail", "bootstrap", "project", "not registered", "shepherd init")
+
+
+#: `shepherd_cli.commands.config._config_search_paths`'s current (v6.4.2)
+#: tier labels, in its own precedence order -- see that function's own
+#: docstring ("THE v6.4.2 HARNESS-NEUTRAL PRECEDENCE CONTRACT"). Matched by
+#: POSITION, not by re-deriving the paths: if lane P1 changes the tuple's
+#: arity again, :func:`_bootstrap_config_row` falls back to a generic
+#: ``"tier N"`` label for any extra position rather than mislabeling or
+#: crashing -- see that function's own docstring.
+
+
+def _bootstrap_config_row(repo: str) -> Result:
+    """Bootstrap row 4: `shepherd.toml` presence, naming which tier it resolved from.
+
+    See this section's own block comment above for why the candidate list
+    is IMPORTED from `shepherd_cli.commands.config._config_search_paths`
+    rather than a locally-duplicated tuple, unlike section 6/7's own
+    self-contained candidate lists. The call is wrapped in
+    :func:`_quiet_env` because `_config_search_paths` resolves
+    `resolve_workdir()` INTERNALLY, with no quiet parameter of its own --
+    left unquieted, this row would add a FOURTH un-quieted
+    `resolve_workdir()` call and break this module's carefully-reproduced
+    split-brain stderr-warning count (see `_collect_results`'s own note
+    and `test_doctor.py::test_dual_namespace_conflict_warns_and_
+    triplicates_stderr_warning`'s exact-3-times assertion).
+    """
+    from shepherd_cli.commands.config import _config_search_paths
+
+    from shepherd_cli.commands.config import _config_tiers
+
+    # Tiers carry their own LABEL, so this can never mislabel as the chain
+    # grows -- the previous positional `_CONFIG_TIER_LABELS` tuple silently
+    # reported `<workdir>/shepherd.toml` as the "legacy-local" tier the
+    # moment the v6.4.2 layering added the harness and user tiers.
+    with _quiet_env():
+        tiers = _config_tiers(repo)
+
+    for tier in tiers:
+        if os.path.isfile(tier.path):
+            return Result(
+                "ok", "bootstrap", "shepherd.toml", f"present ({tier.label} tier) at {tier.path}", ""
+            )
+    return Result("warn", "bootstrap", "shepherd.toml", "not present", "shepherd init")
+
+
+def _bootstrap_user_tier_row() -> Result:
+    """Bootstrap row 5: `~/.shepherd` presence only -- INFO, not a failure (section 9's own semantics)."""
+    user_home = resolve_user_home()
+    if os.path.isdir(user_home):
+        return Result("ok", "bootstrap", "user tier", user_home, "")
+    return Result("info", "bootstrap", "user tier", "not created (optional)", "shepherd home init")
+
+
+def _check_bootstrap(root: str, repo: str, db_path: str, pjson_path: str) -> list[Result]:
+    """Section 10: the five-row bootstrap-completeness rollup, in `shepherd init`'s own step order.
+
+    Args:
+        root: The resolved namespace directory (reused from the caller's
+            own already-resolved value -- see :func:`_collect_results`,
+            which never issues an extra `resolve_workdir()` call for this).
+        repo: The resolved repo root.
+        db_path: The resolved database file path.
+        pjson_path: The resolved `project.json` path.
+
+    Returns:
+        Exactly five `Result`s, in order: namespace, db, project,
+        shepherd.toml, user tier.
+    """
+    return [
+        _bootstrap_namespace_row(root),
+        _bootstrap_db_row(db_path),
+        _bootstrap_project_row(pjson_path),
+        _bootstrap_config_row(repo),
+        _bootstrap_user_tier_row(),
+    ]
+
+
+# --------------------------------------------------------------------------
 # Collection + rendering.
 # --------------------------------------------------------------------------
 def _collect_results() -> list[Result]:
@@ -1104,6 +1385,13 @@ def _collect_results() -> list[Result]:
     # module's carefully-reproduced split-brain stderr-warning call count.
     results.extend(_check_gates(repo, _quiet_resolve_workdir()))
     results.extend(_check_version_match())
+    results.extend(_check_user_tier(_quiet_resolve_workdir()))
+
+    # v6.4.2 post-parity section 10 (bootstrap completeness) -- reuses
+    # `root`/`db_path`/`pjson_path`, already resolved above, rather than
+    # issuing any further `resolve_workdir()` calls (same "don't disturb
+    # the stderr-warning call count" discipline sections 7-9 follow).
+    results.extend(_check_bootstrap(root, repo, db_path, pjson_path))
     return results
 
 
@@ -1200,7 +1488,10 @@ def _render_md(results: list[Result], fail_count: int, warn_count: int) -> str:
         if result.fix:
             lines.append(f"       {'':<9} {'':<22}   → fix: {result.fix}")
     lines.append("")
-    ok_count = len(results) - fail_count - warn_count
+    # Counted explicitly (not `len(results) - fail_count - warn_count`) so a
+    # post-parity `"info"` row (section 9, #254) never inflates this tally --
+    # `info` rows are neither `ok` nor `warn`/`fail`.
+    ok_count = sum(1 for r in results if r.status == "ok")
     lines.append(f"shctx doctor: {fail_count} fail, {warn_count} warn, {ok_count} ok")
     return "\n".join(lines)
 
@@ -1240,6 +1531,39 @@ def _parse_args(tokens: list[str]) -> str:
     return fmt
 
 
+def run(fmt: str = "md") -> tuple[str, int]:
+    """Run every diagnostic section and render the report, WITHOUT exiting.
+
+    The single non-exiting entrypoint both this module's own `doctor()`
+    CLI callback and `shepherd init`'s closing doctor pass (v6.4.2,
+    :func:`shepherd_cli.commands.init._maybe_run_doctor`) call — the ONE
+    place that owns the "collect -> render -> derive exit code" pipeline,
+    so `init` reuses this module's own report exactly (imported, never
+    reimplemented) instead of growing a second copy of `_collect_results`/
+    `_render_md`'s call shape. Every other public behavior of `doctor()`
+    (arg parsing, `-h`/`--help`, `typer.Exit`) stays in the callback below,
+    which is now a thin wrapper around this function.
+
+    Args:
+        fmt: `"md"` (default) or `"json"` -- selects :func:`_render_md` or
+            :func:`_render_json`.
+
+    Returns:
+        `(report_text, exit_code)`. `report_text` has no trailing newline
+        (matching `_render_md`/`_render_json` themselves -- the caller's
+        own `typer.echo` supplies exactly one). `exit_code` is this
+        module's usual contract: 1 if any check `fail`s, else 2 if any
+        `warn`s, else 0.
+    """
+    results = _collect_results()
+    fail_count = sum(1 for r in results if r.status == "fail")
+    warn_count = sum(1 for r in results if r.status == "warn")
+
+    text = _render_json(results, fail_count, warn_count) if fmt == "json" else _render_md(results, fail_count, warn_count)
+    exit_code = 1 if fail_count > 0 else (2 if warn_count > 0 else 0)
+    return text, exit_code
+
+
 @app.callback(invoke_without_command=True)
 def doctor(
     ctx: typer.Context,
@@ -1273,19 +1597,11 @@ def doctor(
     del ctx
     fmt = _parse_args(raw or [])
 
-    results = _collect_results()
-    fail_count = sum(1 for r in results if r.status == "fail")
-    warn_count = sum(1 for r in results if r.status == "warn")
+    text, exit_code = run(fmt)
+    typer.echo(text)
 
-    if fmt == "json":
-        typer.echo(_render_json(results, fail_count, warn_count))
-    else:
-        typer.echo(_render_md(results, fail_count, warn_count))
-
-    if fail_count > 0:
-        raise typer.Exit(code=1)
-    if warn_count > 0:
-        raise typer.Exit(code=2)
+    if exit_code:
+        raise typer.Exit(code=exit_code)
 
 
-__all__ = ["app", "Result"]
+__all__ = ["app", "Result", "run"]

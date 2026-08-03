@@ -59,6 +59,21 @@ class TemplateVarError(Exception):
     """Raised when a template references a variable the context lacks."""
 
 
+#: Tier labels for :func:`template_search_paths`'s three roots, in order —
+#: the same vocabulary :mod:`shepherd_cli.profiles`'s ``SOURCE_PROJECT``/
+#: ``SOURCE_USER``/``SOURCE_BUNDLED`` use (string-literal, not imported —
+#: self-contained-module convention), so ``shepherd home which``'s two
+#: chain renderers (style profile / template) read consistently.
+TIER_PROJECT = "project"
+TIER_USER = "user"
+TIER_BUNDLED = "bundled"
+
+
+def user_templates_dir() -> str:
+    """The user-level templates root: ``~/.shepherd/templates`` (``SHEPHERD_HOME`` honored)."""
+    return os.path.join(resolve_user_home(), "templates")
+
+
 def template_search_paths() -> list[str]:
     """The ordered template search roots (project, user, bundled).
 
@@ -69,9 +84,46 @@ def template_search_paths() -> list[str]:
     """
     return [
         os.path.join(resolve_workdir(), "templates"),
-        os.path.join(resolve_user_home(), "templates"),
+        user_templates_dir(),
         BUNDLED_TEMPLATES_DIR,
     ]
+
+
+def template_search_chain(name: str, *, search_paths: list[str] | None = None) -> list[tuple[str, str, bool]]:
+    """Every search root's resolved candidate for one template name, as data.
+
+    Mirrors :func:`render_template`'s own two-step name resolution (the
+    bare template name, then that name with ``.j2`` appended) independently
+    per root, so ``exists`` here means EXACTLY what :func:`render_template`
+    would find at that root — the single source of truth ``shepherd home
+    which --template`` renders from (issue #254).
+
+    Args:
+        name: The template name to resolve, e.g. ``handoff.md`` or
+            ``handoff.md.j2``.
+        search_paths: Override the search roots (tests); None uses
+            :func:`template_search_paths`.
+
+    Returns:
+        ``(tier_label, path, exists)`` for project/user/bundled, in that
+        fixed precedence order. ``path`` is the first candidate name that
+        exists at that root (bare name, else ``<name>.j2``), or the bare
+        name's candidate path when neither exists at that root.
+    """
+    roots = search_paths if search_paths is not None else template_search_paths()
+    labels = (TIER_PROJECT, TIER_USER, TIER_BUNDLED)
+    chain: list[tuple[str, str, bool]] = []
+    for label, root in zip(labels, roots):
+        resolved_path = os.path.join(root, name)
+        exists = False
+        for candidate_name in (name, f"{name}.j2"):
+            candidate_path = os.path.join(root, candidate_name)
+            if os.path.isfile(candidate_path):
+                resolved_path = candidate_path
+                exists = True
+                break
+        chain.append((label, resolved_path, exists))
+    return chain
 
 
 def _sorted_tojson(value: object) -> str:
@@ -225,11 +277,16 @@ def list_templates(search_paths: list[str] | None = None) -> list[tuple[str, str
 
 __all__ = [
     "BUNDLED_TEMPLATES_DIR",
+    "TIER_BUNDLED",
+    "TIER_PROJECT",
+    "TIER_USER",
     "RenderResult",
     "TemplateMissingError",
     "TemplateVarError",
     "build_env",
     "list_templates",
     "render_template",
+    "template_search_chain",
     "template_search_paths",
+    "user_templates_dir",
 ]

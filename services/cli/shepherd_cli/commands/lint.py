@@ -61,6 +61,20 @@ Every other behavior is exact:
   every violation line followed by ``lint: FAIL (1 violation(s))`` on
   stdout when one or more violations were found. Bash never writes lint
   output to stderr, so neither does this module.
+
+**#P4 EXTENSION — NOT a bash-parity check, a new one.** ``cmd_lint.sh`` has
+no notion of ``runs/`` at all; :func:`_check_runs` is a Python-only addition
+(2026-08-03 operator directive) that WARNs — never fails — on a run
+directory whose id doesn't match the configured
+``sprint_slug_pattern``/``patch_slug_pattern`` shape (see
+:mod:`shepherd_cli.models_run`'s "CANONICAL RUN IDS" section for why: a
+harness-suffixed run id like FL03/axiom's live ``v039-dev0-codex-01`` breaks
+the bridge contract's shared-run custody). WARN, not FAIL, deliberately:
+axiom has exactly this non-canonical run live mid-sprint, and lint must not
+block it — :func:`_lint` keeps these lines in a SEPARATE list from the
+bash-parity ``messages`` that drive ``fail``/the violation count, so a
+non-canonical run directory never flips the exit code or the "(N
+violation(s))" summary away from what pure bash parity would have printed.
 """
 
 from __future__ import annotations
@@ -70,6 +84,7 @@ from pathlib import Path
 
 import typer
 
+from shepherd_cli.models_run import is_canonical_run_id, list_runs, run_dir, suggest_canonical_id
 from shepherd_cli.resolution import resolve_workdir
 
 app = typer.Typer(
@@ -267,6 +282,48 @@ def _check_logs(root: Path) -> list[str]:
 
 
 # --------------------------------------------------------------------------
+# #P4 — runs/ canonical-id check. See the module docstring's "#P4 EXTENSION"
+# note: this is a WARN, deliberately kept out of the bash-parity fail/count
+# path below.
+# --------------------------------------------------------------------------
+def _check_runs(root: Path) -> list[str]:
+    """WARN (never fail) on every non-canonical run directory under ``runs/``.
+
+    Args:
+        root: The resolved artifacts root (``resolve_workdir()``) — also
+            the ``workdir`` every run-directory helper below resolves
+            against, passed explicitly so this check never triggers its
+            own (second) ``resolve_workdir()`` call.
+
+    Returns:
+        One ``lint: WARN <run_dir> ...`` line per non-canonical run,
+        naming the canonical form (when one can be derived) and the
+        ``shepherd run canonicalize``/``run rename`` command that fixes
+        it — empty when every run is already canonical or ``runs/``
+        doesn't exist (:func:`shepherd_cli.models_run.list_runs`'s own
+        no-such-directory-is-not-an-error behavior).
+    """
+    workdir = str(root)
+    messages: list[str] = []
+    for run_id in list_runs(workdir):
+        if is_canonical_run_id(run_id, workdir):
+            continue
+        path = run_dir(run_id, workdir)
+        suggestion = suggest_canonical_id(run_id, workdir=workdir)
+        if suggestion and suggestion != run_id:
+            messages.append(
+                f"lint: WARN {path} is a non-canonical run id -- canonical form: {suggestion} "
+                f"-- fix: shepherd run canonicalize {run_id}"
+            )
+        else:
+            messages.append(
+                f"lint: WARN {path} is a non-canonical run id -- no canonical form could be "
+                f"derived automatically -- fix: shepherd run rename {run_id} <canonical-id>"
+            )
+    return messages
+
+
+# --------------------------------------------------------------------------
 # Whole-run driver + Typer wiring.
 # --------------------------------------------------------------------------
 def _lint(root: Path) -> int:
@@ -282,7 +339,9 @@ def _lint(root: Path) -> int:
         ``journal`` then ``logs`` — followed by ``lint: FAIL (1
         violation(s))``; see the module docstring for why the count is
         always 1 rather than a real tally, matching bash's own ``fail=1``
-        (never incremented) exactly).
+        (never incremented) exactly). A non-canonical ``runs/`` entry
+        (:func:`_check_runs`) NEVER changes this return value — see the
+        module docstring's "#P4 EXTENSION" note.
     """
     messages: list[str] = []
     messages.extend(_check_plans(root))
@@ -290,9 +349,13 @@ def _lint(root: Path) -> int:
     messages.extend(_check_journal(root))
     messages.extend(_check_logs(root))
 
+    warnings = _check_runs(root)
+
     fail = 1 if messages else 0
     for message in messages:
         typer.echo(message)
+    for warning in warnings:
+        typer.echo(warning)
 
     if fail == 0:
         typer.echo("lint: ok")

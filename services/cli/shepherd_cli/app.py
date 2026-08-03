@@ -1,106 +1,202 @@
 """Typer root app for the shepherd CLI.
 
-Registers the ``teammate`` sub-app (the only Typer-ported surface as of
-issue #198) and exposes a ``--version``/``-V`` flag on the root callback.
-Every other subcommand is handled by the bash ``shctx`` shim in
-``shepherd_cli.__main__`` — this module owns only the Typer app object
-itself, not the passthrough decision.
+Owns the root app object, the ``--version``/``-V`` flag, and the LAZY
+subcommand table below. It does NOT own the passthrough decision — that is
+:mod:`shepherd_cli.__main__`, which derives its ported-command set from this
+module's registrations.
+
+LAZY SUBCOMMAND DISPATCH (v6.4.2)
+=============================================================================
+This module used to eagerly ``from shepherd_cli.commands import (adapt,
+audit, ..., worktree)`` — all 42 command modules — at import time. Because
+nearly every command module pulls in :mod:`shepherd_cli.db` and its Tortoise
+models, that made ``import shepherd_cli.app`` cost ~540 ms, and EVERY
+invocation paid for all 42 modules to run one of them.
+
+That cost is not academic. The test suite is subprocess-per-test by the #198
+contract (1492 tests, one interpreter start each), and more importantly the
+hooks shell out constantly: ``dups_write_guard.sh`` and
+``conductor_write_guard.sh`` fire on every Write/Edit and make 4-5 CLI calls
+apiece, so the eager import was pure added latency on every file the flock
+touched.
+
+Commands are now resolved on demand by :class:`_LazyGroup`: the root app
+imports :mod:`typer` alone (~75 ms), and dispatching ``shepherd teammate
+liveness`` imports exactly ``shepherd_cli.commands.teammate``. Measured
+``import shepherd_cli.app``: ~540 ms -> ~75 ms; a full DB-touching command
+invocation: ~540 ms -> ~350 ms (the residue is that command's own module
+chain, which it genuinely needs).
+
+Deliberately NOT done: deferring ``from tortoise import Tortoise`` inside
+:mod:`shepherd_cli.db`. It looks like another ~150 ms, but command modules
+import :mod:`shepherd_cli.models` directly at module scope (e.g.
+``commands/teammate.py`` imports ``Teammate``), so Tortoise arrives through
+the models chain regardless and the change would buy nothing while adding an
+import-order trap.
+
+The one accepted cost: ``shepherd --help`` renders a short help line per
+command, which Click can only obtain by resolving each one — so the root
+help listing imports every module and stays at roughly the old cost. That is
+the rare interactive path, not the hot one.
 """
 
 from __future__ import annotations
 
+import importlib
+
 import typer
+import typer.main
+from typer.core import TyperGroup
 
 from shepherd_cli import __version__
-from shepherd_cli.commands import (
-    adapt,
-    audit,
-    close_lane,
-    config,
-    dash,
-    deliverable,
-    discovery,
-    doctor,
-    dups,
-    eval,
-    export,
-    graph,
-    handoff,
-    init,
-    inject,
-    insights,
-    issues,
-    lint,
-    lock,
-    loop,
-    mem,
-    migrate,
-    models,
-    panes,
-    plan,
-    prune,
-    query,
-    ready,
-    refresh,
-    release,
-    render,
-    report,
-    run,
-    search,
-    seed,
-    signal,
-    sprint,
-    status,
-    style,
-    sync,
-    teammate,
-    worktree,
-)
 
-app = typer.Typer(no_args_is_help=True, add_completion=False)
-app.add_typer(teammate.app, name="teammate")
-app.add_typer(signal.app, name="signal")
-app.add_typer(deliverable.app, name="deliverable")
-app.add_typer(mem.app, name="mem")
-app.add_typer(status.app, name="status")
-app.add_typer(lock.app, name="lock")
-app.add_typer(sprint.app, name="sprint")
-app.add_typer(models.app, name="models")
-app.add_typer(query.app, name="query")
-app.add_typer(style.app, name="style")
-app.add_typer(report.app, name="report")
-app.add_typer(search.app, name="search")
-app.add_typer(export.app, name="export")
-app.add_typer(lint.app, name="lint")
-app.add_typer(seed.app, name="seed")
-app.add_typer(config.app, name="config")
-app.add_typer(sync.app, name="sync")
-app.add_typer(dash.app, name="dash")
-app.add_typer(insights.app, name="insights")
-app.add_typer(dups.app, name="dups")
-app.add_typer(handoff.app, name="handoff")
-app.add_typer(ready.app, name="ready")
-app.add_typer(discovery.app, name="discovery")
-app.add_typer(audit.app, name="audit")
-app.add_typer(eval.app, name="eval")
-app.add_typer(doctor.app, name="doctor")
-app.add_typer(migrate.app, name="migrate")
-app.add_typer(init.app, name="init")
-app.add_typer(close_lane.app, name="close-lane")
-app.add_typer(issues.app, name="issues")
-app.add_typer(worktree.app, name="worktree")
-app.add_typer(refresh.app, name="refresh")
-app.add_typer(prune.app, name="prune")
-app.add_typer(run.app, name="run")
-app.add_typer(adapt.app, name="adapt")
-app.add_typer(inject.app, name="inject")
-app.add_typer(plan.app, name="plan")
-app.add_typer(graph.app, name="graph")
-app.add_typer(loop.app, name="loop")
-app.add_typer(panes.app, name="panes")
-app.add_typer(release.app, name="release")
-app.command("render", help="Render a shepherd template deterministically (project -> user -> bundled).")(
-    render.render_command
+#: Sub-app command name -> module under ``shepherd_cli.commands``.
+#: The name is what the operator types; the module is what gets imported to
+#: serve it. Keys differ from module names only where the CLI spelling uses a
+#: hyphen (``close-lane`` -> ``close_lane``). Adding a command here is the
+#: single act that registers it — :mod:`shepherd_cli.__main__` derives its
+#: passthrough set from this table, so there is no second list to update.
+LAZY_GROUPS: dict[str, str] = {
+    "adapt": "adapt",
+    "audit": "audit",
+    "close-lane": "close_lane",
+    "config": "config",
+    "dash": "dash",
+    "deliverable": "deliverable",
+    "discovery": "discovery",
+    "doctor": "doctor",
+    "dups": "dups",
+    "eval": "eval",
+    "export": "export",
+    "graph": "graph",
+    "handoff": "handoff",
+    "home": "home",
+    "init": "init",
+    "inject": "inject",
+    "insights": "insights",
+    "issues": "issues",
+    "lint": "lint",
+    "lock": "lock",
+    "loop": "loop",
+    "mem": "mem",
+    "migrate": "migrate",
+    "models": "models",
+    "panes": "panes",
+    "plan": "plan",
+    "prune": "prune",
+    "query": "query",
+    "ready": "ready",
+    "refresh": "refresh",
+    "release": "release",
+    "report": "report",
+    "run": "run",
+    "search": "search",
+    "seed": "seed",
+    "signal": "signal",
+    "sprint": "sprint",
+    "status": "status",
+    "style": "style",
+    "sync": "sync",
+    "teammate": "teammate",
+    "worktree": "worktree",
+}
+
+#: Root-level single commands (not sub-apps): name -> (module, attribute, help).
+#: ``render`` is a bare command rather than a group, so it is built from its
+#: callback instead of an ``app`` attribute.
+LAZY_COMMANDS: dict[str, tuple[str, str, str]] = {
+    "render": (
+        "render",
+        "render_command",
+        "Render a shepherd template deterministically (project -> user -> bundled).",
+    ),
+}
+
+
+def command_names() -> frozenset[str]:
+    """Every top-level command name this app serves.
+
+    Returns:
+        The union of the lazy sub-app names and the lazy root-command names.
+        Callers use this instead of introspecting Typer's ``registered_*``
+        lists, which are empty under lazy dispatch.
+    """
+    return frozenset(LAZY_GROUPS) | frozenset(LAZY_COMMANDS)
+
+
+class _LazyGroup(TyperGroup):
+    """Root group that imports a command module only when it is invoked.
+
+    Click resolves a subcommand through :meth:`get_command`, so deferring the
+    import to that call is transparent to the rest of Typer/Click: parsing,
+    ``--help``, error messages, and exit codes are unchanged. Anything
+    registered eagerly on the app still takes precedence, which keeps this
+    additive.
+    """
+
+    def list_commands(self, ctx: object) -> list[str]:
+        """All command names, eager and lazy, sorted.
+
+        Args:
+            ctx: The Click context (unused beyond the base call).
+
+        Returns:
+            Sorted command names — what ``shepherd --help`` enumerates.
+        """
+        eager = set(super().list_commands(ctx))  # type: ignore[arg-type]
+        return sorted(eager | command_names())
+
+    def get_command(self, ctx: object, name: str) -> object | None:
+        """Resolve one command, importing its module on first use.
+
+        Args:
+            ctx: The Click context.
+            name: The command name the operator typed.
+
+        Returns:
+            The Click command, or None when the name is unknown (Click then
+            renders its own "No such command" error, unchanged).
+        """
+        eager = super().get_command(ctx, name)  # type: ignore[arg-type]
+        if eager is not None:
+            return eager
+
+        if name in LAZY_GROUPS:
+            module = importlib.import_module(f"shepherd_cli.commands.{LAZY_GROUPS[name]}")
+            command = typer.main.get_command(module.app)
+            command.name = name
+            return command
+
+        if name in LAZY_COMMANDS:
+            module_name, attribute, help_text = LAZY_COMMANDS[name]
+            module = importlib.import_module(f"shepherd_cli.commands.{module_name}")
+            holder = typer.Typer()
+            holder.command(name, help=help_text)(getattr(module, attribute))
+            command = typer.main.get_command(holder)
+            command.name = name
+            return command
+
+        return None
+
+
+# ``-h`` as a first-class alias for ``--help``, set ONCE on the root context
+# (v6.4.2, GH #249 follow-on). Click's default ``help_option_names`` is
+# ``["--help"]`` alone, so before this the CLI had two classes of command:
+# the bash-parity modules that hand-roll their own ``-h``/``--help`` branch
+# accepted both, while every Click-managed group rejected ``-h`` outright
+# ("No such option: -h", exit 2) and the catch-all-argv modules swallowed it
+# as positional data and tried to run -- ``shepherd lint -h`` silently ran
+# the real lint check to completion, the same class of bug #249 filed against
+# ``dash``/``migrate``. ``help_option_names`` is inherited down the Context
+# chain, so setting it here reaches every sub-app that does not deliberately
+# override it; the modules that set ``help_option_names=[]`` for byte-exact
+# bash parity keep their own handling and are unaffected. Pinned for all 43
+# commands by ``tests/test_help_parity.py``.
+app = typer.Typer(
+    no_args_is_help=True,
+    add_completion=False,
+    cls=_LazyGroup,
+    context_settings={"help_option_names": ["-h", "--help"]},
 )
 
 
@@ -138,6 +234,3 @@ def main(
             :func:`_version_callback` before any subcommand runs.
     """
     return None
-
-
-__all__ = ["app"]

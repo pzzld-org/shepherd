@@ -215,23 +215,36 @@ def test_layout_alone_without_v2_falls_through_to_default_migrate(tmp_path: Path
 
 
 @pytest.mark.parametrize("help_flag", ["-h", "--help"])
-def test_help_flag_falls_through_to_default_migrate(tmp_path: Path, help_flag: str) -> None:
-    """`-h`/`--help` are unrecognized tokens to cmd_migrate.sh -- it never special-cases them.
+def test_help_flag_prints_usage_and_never_applies_migrations(tmp_path: Path, help_flag: str) -> None:
+    """`-h`/`--help` short-circuit to usage (GH #249) -- an additive deviation
+    from ``cmd_migrate.sh``, which never special-cased them at all (see the
+    module docstring's GH #249 note). Proves the eager callback wins over
+    BOTH the default gap-fill branch and Click's own auto-generated --help
+    text (still disabled via help_option_names=[], so :data:`_USAGE`'s exact
+    text is what prints, not Click's).
 
-    Proves Click's own auto-generated --help text (which would NOT be
-    bash parity) is disabled via help_option_names=[] and the flag is
-    just ignored, falling through to a real migration run.
+    Critically: it must fire before the sqlite connection ever opens, so a
+    partial-schema DB (which the default branch WOULD gap-fill) is left
+    completely untouched by `--help`/`-h`.
     """
     db_path = tmp_path / "shepherd.db"
-    build_full_schema_db(db_path)
+    build_partial_schema_db(db_path)
+    versions_before = _schema_versions(db_path)
+    mtime_before = db_path.stat().st_mtime_ns
     env = cli_env(db_path)
 
     proc = run_cli(["migrate", help_flag], env)
 
-    assert proc.returncode == 0
-    assert proc.stdout.rstrip("\n") == f"shctx migrate: no migrations pending (at version {_SHIPPED_HEAD_VERSION})"
-    assert "Usage:" not in proc.stdout
-    assert "--help" not in proc.stdout
+    assert proc.returncode == 0, proc.stderr
+    assert "shepherd migrate" in proc.stdout
+    assert "-h, --help" in proc.stdout
+    assert "no migrations pending" not in proc.stdout
+    assert "applied" not in proc.stdout
+    assert proc.stderr == ""
+    # The default branch's sqlite connection never opened -- schema_versions
+    # (and the file's own mtime) are byte-identical to before the call.
+    assert _schema_versions(db_path) == versions_before
+    assert db_path.stat().st_mtime_ns == mtime_before
 
 
 # --------------------------------------------------------------------------

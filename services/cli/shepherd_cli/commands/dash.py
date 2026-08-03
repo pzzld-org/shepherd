@@ -13,7 +13,13 @@ sibling modules) already reads:
   IN-PROCESS — the same ``status`` implementation a real ``shepherd graph
   status`` runs, stdout captured and re-indented, no subprocess and no
   bash anywhere (``cmd_graph.sh`` is retired; this module still never
-  reimplements the walker itself).
+  reimplements the walker itself). GH #248: before rendering those
+  numbers, the resolved ``state.json``'s ``sprint`` field is compared
+  against the SAME branch resolution ``FOCUS`` already uses
+  (:func:`_current_branch`) — a mismatch means the resolved state file is
+  for a closed or different sprint, and the section renders a ``STALE``
+  banner instead of a confidently-wrong completion count. See
+  :func:`_render_graph_section`.
 * ``TEAMMATES`` -- ``teammates`` (0007), filtered/computed the same way
   the ``v_teammates_live`` VIEW is, via the already-ported
   :class:`shepherd_cli.models.Teammate` model.
@@ -37,16 +43,30 @@ non-zero exit branch in ``cmd_dash.sh`` at all: every guard in this module
 mirrors a bash branch that prints a degraded line and moves on, or (the
 missing-DB case) prints one line and exits 0).
 
-**No subcommands, no flags, no ``-h``/``--help`` handling.** ``cmd_dash.sh``
-never inspects ``$@`` at all -- not even to look for ``-h``/``--help`` --
-so ANY arguments given to ``shctx dash`` (including ``-h``, ``--help``,
-``--json``, or pure garbage) are silently ignored and the full dashboard
-still renders, exit 0. This module mirrors that exactly via
+**No subcommands, no flags.** ``cmd_dash.sh`` never inspects ``$@`` at
+all, so ANY argument given to ``shctx dash`` other than ``-h``/``--help``
+(``--json``, pure garbage, anything) is silently ignored and the full
+dashboard still renders, exit 0. This module mirrors that exactly via
 ``context_settings={"allow_extra_args": True, "ignore_unknown_options":
 True, "help_option_names": []}`` (disabling Click's own ``--help``
 interception, matching ``commands/search.py``/``commands/sync.py``) plus a
 hidden catch-all ``args`` parameter whose value is never read anywhere in
 this module's body.
+
+**``-h``/``--help`` ARE special-cased -- a documented, additive DEVIATION
+from bash (GH #249).** ``cmd_dash.sh`` had no ``-h``/``--help`` branch to
+port, so pre-#249 this module reproduced that by doing nothing special
+either -- which meant ``shepherd dash --help`` silently ran the full
+dashboard (DB open, graph walk, and all) instead of printing help. That is
+a real bug independent of bash parity: every OTHER ported command treats
+``-h``/``--help`` as a request for usage text, not as a no-op, and a
+dashboard is the first command an operator reaches for on resume, so a
+silent full run on ``--help`` is surprising and wasteful. Fixed the same
+way :mod:`shepherd_cli.commands.panes` handles it: an eager ``-h``/
+``--help`` Click option (:func:`_help_callback`) short-circuits BEFORE the
+DB is ever opened or the graph walker ever runs, printing :data:`_USAGE`
+and exiting 0. Every other argument shape keeps the bash-parity
+silently-ignored behavior above.
 
 Raw-SQL notes (hard rule #8), read before touching this module:
 
@@ -135,6 +155,28 @@ app = typer.Typer(
 
 _LOCK_FILENAME = "shepherd.lock"
 _PROJECT_JSON_FILENAME = "project.json"
+
+#: Usage text for ``-h``/``--help`` (GH #249 -- additive, no bash
+#: ``usage()`` counterpart to mirror; ``cmd_dash.sh`` never had one).
+#: Printed to stdout and exits 0 BEFORE the registry DB is opened or the
+#: graph walker runs -- see :func:`_help_callback`.
+_USAGE = (
+    "shepherd dash\n"
+    "\n"
+    "One-glance, read-only sprint dashboard. Takes no arguments -- any token\n"
+    "other than -h/--help (flags included) is silently ignored and the full\n"
+    "dashboard still renders, matching cmd_dash.sh (retired bash).\n"
+    "\n"
+    "Prints, in order: SPRINT (schema version + lock state), FOCUS (current\n"
+    "sprint objective, if any), GRAPH (Stage-Graph completion + ready/in-\n"
+    "flight nodes), TEAMMATES (live roster), SIGNALS (pending cross-session\n"
+    "nudges), ESCALATION (open count + oldest age), LOOPS (active loop\n"
+    "progress), ADAPT (measured sprint-metrics averages + priors),\n"
+    "EVAL (latest recorded quality verdict, omit-if-empty), and STALE\n"
+    "(GitHub issue/PR cache freshness).\n"
+    "\n"
+    "  -h, --help    Show this usage text and exit.\n"
+)
 
 #: jq -r's raw-output rendering of JSON `null` -- the literal three-char
 #: string bash observes when project.json's "id" key is present-but-null
@@ -347,7 +389,14 @@ async def _focus_objective(branch: str) -> str:
     return row.objective.replace("\n", " ").replace("\r", " ")[:76]
 
 
-def _render_graph_section() -> None:
+#: Sub-line indent shared by every section's continuation lines (the
+#: TEAMMATES roster, ADAPT's "latest:" lesson, ...): a 12-char section
+#: label field plus 2 more spaces. The GRAPH run-scoping note below
+#: reuses it so it lines up under either rendering branch.
+_SUBLINE_INDENT = "              "
+
+
+def _render_graph_section(branch: str) -> None:
     """Print the ``GRAPH`` section via the NATIVE ``graph status`` implementation.
 
     Bash::
@@ -392,10 +441,87 @@ def _render_graph_section() -> None:
       captured, so a failing renderer can legitimately produce BOTH the
       indented partial output AND the ``"  (graph status error)"`` line,
       exactly as the bash pipeline could.
+
+    GH #248 -- staleness gate, additive on top of the bash-parity render
+    above (no bash counterpart; ``cmd_graph.sh`` never compared sprints).
+    Before rendering the completion numbers, the resolved ``state.json``
+    is peeked at (a plain, un-validated ``json.load`` -- same
+    "readers use plain dicts" contract as
+    :func:`shepherd_cli.commands.models_graph.load_state`) for its
+    ``sprint`` field:
+
+    * Missing/non-string/empty ``sprint``: NOT staleness (an older
+      ``state.json`` may predate that field) -- falls straight through to
+      the normal render below, no warning.
+    * ``sprint`` present and equal to ``branch``: also falls through to
+      the normal render -- the common, healthy case.
+    * ``sprint`` present and DIFFERENT from ``branch``: the state file is
+      for a closed or different sprint. Prints a ``STALE`` banner naming
+      both sprints and the file's mtime date INSTEAD of the numbers --
+      never calls the walker at all, since any completion count it would
+      print is for the wrong sprint -- and returns early.
+    * Unreadable/unparseable ``state.json`` (``OSError``/
+      ``json.JSONDecodeError``): the peek is caught and swallowed, same
+      as "no sprint field" -- falls through to the normal render, whose
+      OWN try/except around the walker call produces the existing
+      ``"  (graph status error)"`` degrade path. The staleness peek must
+      never be the thing that turns a corrupt file into a crash.
+
+    Independently of staleness, when an active run IS identifiable
+    (:func:`~shepherd_cli.commands.models_graph.resolve_run`) but the
+    gate above still resolved to the LEGACY (non-run-scoped)
+    ``<workdir>/graph/`` directory, a one-line note is appended after
+    whichever rendering ran: graph state is not being written run-scoped
+    for this run, which ``skills/context/references/naming-conventions.md``
+    says it should be. This is a symptom flag, not a hard error -- the
+    section still renders (or still shows the staleness banner) either
+    way.
+
+    Args:
+        branch: The active sprint/branch name, from the SAME resolution
+            the ``FOCUS`` section already uses
+            (:func:`_current_branch`) -- reusing it, rather than a second
+            branch lookup, is what guarantees the staleness comparison
+            and ``FOCUS`` can never disagree about "the active sprint".
     """
-    graph_dir = resolve_graph_dir(resolve_run(None))
-    if not os.path.isfile(state_path(graph_dir)):
+    run = resolve_run(None)
+    graph_dir = resolve_graph_dir(run)
+    full_state_path = state_path(graph_dir)
+    if not os.path.isfile(full_state_path):
         typer.echo("GRAPH       (no stage-graph state — solo / pre-extract)")
+        return
+
+    workdir = resolve_workdir()
+    # bool(run): resolve_graph_dir() only ever falls back to the legacy
+    # dir for a truthy `run` when the run-scoped state.json is absent --
+    # see its own docstring's "ALWAYS fall back to reading legacy paths"
+    # rule -- so this exact-string comparison is enough to detect that
+    # fallback without re-deriving the run-scoped candidate path here.
+    run_not_scoped = bool(run) and graph_dir == f"{workdir}/graph"
+
+    state_sprint: str | None = None
+    try:
+        with open(full_state_path, encoding="utf-8") as fh:
+            data = json.load(fh)
+        if isinstance(data, dict):
+            candidate = data.get("sprint")
+            if isinstance(candidate, str) and candidate:
+                state_sprint = candidate
+    except (OSError, json.JSONDecodeError):
+        state_sprint = None  # peek failed -- fall through, let the walker's own degrade path handle it
+
+    if state_sprint is not None and state_sprint != branch:
+        rel_path = os.path.relpath(full_state_path, workdir)
+        mtime_str = time.strftime("%Y-%m-%d", time.localtime(os.path.getmtime(full_state_path)))
+        typer.echo(
+            f"GRAPH       STALE — state.json is for sprint '{state_sprint}', "
+            f"active is '{branch}' ({rel_path}, {mtime_str})"
+        )
+        if run_not_scoped:
+            typer.echo(
+                f"{_SUBLINE_INDENT}(note: run '{run}' is active but graph state is not run-scoped -- "
+                f"reading legacy {rel_path}; see skills/context/references/naming-conventions.md)"
+            )
         return
 
     typer.echo("GRAPH")
@@ -413,6 +539,13 @@ def _render_graph_section() -> None:
             typer.echo(f"  {line}")
     if rc != 0:
         typer.echo("  (graph status error)")
+
+    if run_not_scoped:
+        rel_path = os.path.relpath(full_state_path, workdir)
+        typer.echo(
+            f"{_SUBLINE_INDENT}(note: run '{run}' is active but graph state is not run-scoped -- "
+            f"reading legacy {rel_path}; see skills/context/references/naming-conventions.md)"
+        )
 
 
 async def _render_teammates_section(now_ms: int) -> None:
@@ -722,7 +855,7 @@ async def _dash_async() -> None:
         if obj:
             typer.echo(f"FOCUS       {obj}…")
 
-        _render_graph_section()
+        _render_graph_section(branch)
 
         await _render_teammates_section(now_ms)
         await _render_signals_section()
@@ -736,8 +869,40 @@ async def _dash_async() -> None:
         await _render_stale_section(now_s)
 
 
+def _help_callback(value: bool) -> None:
+    """Eager ``-h``/``--help`` handler: usage, exit 0 -- BEFORE any dashboard work.
+
+    GH #249: unlike every other bash-parity argument (silently ignored,
+    see the module docstring), ``-h``/``--help`` must short-circuit
+    before the registry DB is opened, before the graph walker runs, and
+    before any other section renderer executes -- mirroring the eager-
+    callback idiom :mod:`shepherd_cli.commands.panes`'s ``_help_callback``
+    uses (registered as ``is_eager=True`` on the option below, so Click
+    processes it before the command body -- and before this module's own
+    ``args`` catch-all -- ever runs).
+
+    Args:
+        value: True when ``-h``/``--help`` was passed.
+
+    Raises:
+        typer.Exit: Code 0, after printing :data:`_USAGE`.
+    """
+    if value:
+        typer.echo(_USAGE)
+        raise typer.Exit(code=0)
+
+
 @app.callback(invoke_without_command=True)
 def dash(
+    help_: bool = typer.Option(
+        False,
+        "-h",
+        "--help",
+        callback=_help_callback,
+        is_eager=True,
+        expose_value=False,
+        help="Show usage and exit.",
+    ),
     args: list[str] = typer.Argument(
         None,
         hidden=True,
@@ -747,15 +912,19 @@ def dash(
     """One-glance sprint dashboard: sprint/focus, graph, teammates, signals, escalations, loops, adapt, eval, stale.
 
     Native port of ``shctx dash`` (``cmd_dash.sh``). Every argument given
-    (flags included -- ``-h``, ``--help``, anything) is silently ignored,
-    matching bash's script, which never reads ``$@`` at all; the full
-    dashboard always renders.
+    other than ``-h``/``--help`` is silently ignored, matching bash's
+    script, which never reads ``$@`` at all; the full dashboard always
+    renders. ``-h``/``--help`` are the one additive deviation (GH #249):
+    :func:`_help_callback` short-circuits them to a usage block before
+    this body ever runs.
 
     Args:
-        args: Every token given after ``dash`` on the command line, or
-            None/empty for a bare ``shepherd dash``. Never read -- kept
-            only so Click has somewhere to put stray tokens instead of
-            rejecting them.
+        help_: Unused directly; the eager callback handles ``-h``/
+            ``--help`` and exits before this body runs.
+        args: Every other token given after ``dash`` on the command line,
+            or None/empty for a bare ``shepherd dash``. Never read --
+            kept only so Click has somewhere to put stray tokens instead
+            of rejecting them.
     """
     asyncio.run(_dash_async())
 

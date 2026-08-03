@@ -341,6 +341,98 @@ def test_multiple_violations_count_stays_capped_at_one(workdir: Path) -> None:
 
 
 # --------------------------------------------------------------------------
+# runs/ — #P4 canonical run-id WARN (Python-only extension, NOT bash parity —
+# see lint.py's module docstring "#P4 EXTENSION" note). A non-canonical run
+# directory is reported but NEVER fails the run or changes the violation
+# count, since axiom has exactly this live mid-sprint and lint must not
+# block it.
+# --------------------------------------------------------------------------
+def test_no_runs_directory_is_ok(workdir: Path) -> None:
+    """``runs/`` never created at all -> no WARN, ``lint: ok``."""
+    result = run_cli(["lint"], lint_env(workdir))
+    assert result.returncode == 0
+    assert result.stdout.rstrip("\n") == "lint: ok"
+
+
+def test_canonical_run_is_not_warned(workdir: Path) -> None:
+    init = run_cli(["run", "init", "v641-dev0"], lint_env(workdir))
+    assert init.returncode == 0, init.stderr
+
+    result = run_cli(["lint"], lint_env(workdir))
+    assert result.returncode == 0
+    assert result.stdout.rstrip("\n") == "lint: ok"
+    assert "WARN" not in result.stdout
+
+
+def test_noncanonical_run_warns_but_does_not_fail(workdir: Path) -> None:
+    """The exact axiom live-run shape (harness name + ordinal welded onto
+    the slug) is WARNed, never fails the run -- exit 0, stderr empty."""
+    init = run_cli(["run", "init", "v039-dev0-codex-01", "--force"], lint_env(workdir))
+    assert init.returncode == 0, init.stderr
+
+    result = run_cli(["lint"], lint_env(workdir))
+    assert result.returncode == 0
+    assert result.stderr == ""
+    lines = result.stdout.rstrip("\n").splitlines()
+    run_dir = workdir / "runs" / "v039-dev0-codex-01"
+    assert lines == [
+        f"lint: WARN {run_dir} is a non-canonical run id -- canonical form: v039-dev0 "
+        "-- fix: shepherd run canonicalize v039-dev0-codex-01",
+        "lint: ok",
+    ]
+
+
+def test_noncanonical_run_with_no_derivable_canonical_form_names_rename(workdir: Path) -> None:
+    """When no canonical prefix can be derived at all, the WARN falls back to
+    naming ``run rename`` (with a human-chosen destination) instead of
+    ``run canonicalize``."""
+    init = run_cli(["run", "init", "totally-invented", "--force"], lint_env(workdir))
+    assert init.returncode == 0, init.stderr
+
+    result = run_cli(["lint"], lint_env(workdir))
+    assert result.returncode == 0
+    run_dir = workdir / "runs" / "totally-invented"
+    assert (
+        f"lint: WARN {run_dir} is a non-canonical run id -- no canonical form could be "
+        "derived automatically -- fix: shepherd run rename totally-invented <canonical-id>"
+        in result.stdout
+    )
+
+
+def test_noncanonical_run_warn_never_changes_the_violation_count(workdir: Path) -> None:
+    """A real violation (``plans/``) plus a non-canonical run -> the WARN
+    line is printed, but ``fail`` and the "(N violation(s))" count are
+    driven ONLY by the real violation -- exactly what pure bash parity
+    would have printed, plus the WARN line before the summary."""
+    bad = workdir / "plans" / "notes.md"
+    touch(bad)
+    init = run_cli(["run", "init", "v039-dev0-codex-01", "--force"], lint_env(workdir))
+    assert init.returncode == 0, init.stderr
+
+    result = run_cli(["lint"], lint_env(workdir))
+    assert result.returncode == 1
+    lines = result.stdout.rstrip("\n").splitlines()
+    run_dir = workdir / "runs" / "v039-dev0-codex-01"
+    assert lines == [
+        f"lint: {bad} does not match *.seed.md or *.plan.md",
+        f"lint: WARN {run_dir} is a non-canonical run id -- canonical form: v039-dev0 "
+        "-- fix: shepherd run canonicalize v039-dev0-codex-01",
+        "lint: FAIL (1 violation(s))",
+    ]
+
+
+def test_multiple_noncanonical_runs_each_get_their_own_warn_line(workdir: Path) -> None:
+    run_cli(["run", "init", "v039-dev0-codex-01", "--force"], lint_env(workdir))
+    run_cli(["run", "init", "v100-dev2-codex-05", "--force"], lint_env(workdir))
+
+    result = run_cli(["lint"], lint_env(workdir))
+    assert result.returncode == 0
+    assert result.stdout.count("lint: WARN") == 2
+    assert "v039-dev0-codex-01" in result.stdout
+    assert "v100-dev2-codex-05" in result.stdout
+
+
+# --------------------------------------------------------------------------
 # No-subcommand / argument-ignoring behavior.
 # --------------------------------------------------------------------------
 def test_no_arguments_runs_the_lint(workdir: Path) -> None:

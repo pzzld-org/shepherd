@@ -112,9 +112,69 @@ shctx_skill_root() {
   fi
 }
 
+# The active harness id, or "" when none can be determined. SHEPHERD_HARNESS
+# is explicit and always wins; otherwise Claude Code's own markers, then
+# CODEX_HOME. Only the ACTIVE harness's config file is read -- reading every
+# harness file would let a codex knob take effect under Claude Code, which is
+# the opposite of what a per-harness layer is for.
+# MUST mirror shepherd_cli/commands/config.py::resolve_harness.
+shctx_harness() {
+  if [[ -n "${SHEPHERD_HARNESS:-}" ]]; then printf '%s' "$SHEPHERD_HARNESS"; return 0; fi
+  if [[ -n "${CLAUDECODE:-}" || -n "${CLAUDE_PLUGIN_ROOT:-}" ]]; then printf '%s' "claude"; return 0; fi
+  if [[ -n "${CODEX_HOME:-}" ]]; then printf '%s' "codex"; return 0; fi
+  printf '%s' ""
+  return 0
+}
+
+# Echo the shepherd config precedence chain, one absolute path per line,
+# HIGHEST precedence first (v6.4.2 layering contract).
+#
+#   project  <ns>/shepherd.local.toml          <- ultimate override
+#            <ns>/shepherd.<harness>.toml
+#            <ns>/shepherd.toml                <- the project binding
+#   legacy   .claude/shepherd.local.toml       <- pre-v6.4.2, honored forever
+#            .claude/shepherd.toml
+#   user     ~/.shepherd/shepherd.local.toml   <- cross-project DEFAULTS
+#            ~/.shepherd/shepherd.<harness>.toml
+#            ~/.shepherd/shepherd.toml
+#            $XDG_CONFIG_HOME/shepherd.toml    <- pre-v6.4.2 global
+#
+# Within a layer: local > harness > base. Across layers: project > user.
+# The legacy .claude/ tiers are PROJECT files, so they outrank the whole user
+# layer -- otherwise creating ~/.shepherd/shepherd.toml would silently
+# override every existing project still bound through .claude/.
+# *.local.toml is gitignored (one machine); shepherd.<harness>.toml is TRACKED.
+#
+# Single source of truth for this lib. MUST stay byte-identical to the other
+# _lib.sh's shctx_config_files and to
+# shepherd_cli/commands/config.py::_config_search_paths.
+# Contract: docs/configuration.md §config-resolution.
+shctx_config_files() {
+  local repo ns userhome harness
+  repo="$(shctx_repo_root 2>/dev/null || pwd)"
+  ns="$(SHCTX_QUIET=1 resolve_workdir 2>/dev/null || printf '%s/.shepherd' "$repo")"
+  userhome="${SHEPHERD_HOME:-$HOME/.shepherd}"
+  harness="$(shctx_harness)"
+
+  # project layer (highest): local -> harness -> base
+  printf '%s\n' "$ns/shepherd.local.toml"
+  if [[ -n "$harness" ]]; then printf '%s\n' "$ns/shepherd.$harness.toml"; fi
+  printf '%s\n' "$ns/shepherd.toml"
+  # legacy project layer -- pre-v6.4.2, honored indefinitely
+  printf '%s\n' "$repo/.claude/shepherd.local.toml"
+  printf '%s\n' "$repo/.claude/shepherd.toml"
+  # user layer (defaults): local -> harness -> base
+  printf '%s\n' "$userhome/shepherd.local.toml"
+  if [[ -n "$harness" ]]; then printf '%s\n' "$userhome/shepherd.$harness.toml"; fi
+  printf '%s\n' "$userhome/shepherd.toml"
+  # legacy user global
+  printf '%s\n' "${XDG_CONFIG_HOME:-$HOME/.config}/shepherd.toml"
+  return 0
+}
+
 # Echo the value of a top-level `key = value` from shepherd config, resolved by
-# precedence: .claude/shepherd.local.toml (per-key local override) →
-# .claude/shepherd.toml (project) → $XDG_CONFIG_HOME/shepherd.toml (user global).
+# precedence: the shctx_config_files chain above (namespace local/project →
+# legacy .claude local/project → XDG user global).
 # Section-agnostic, last-match-wins within a file; strips surrounding double-quotes
 # and trailing " # inline comments". Echoes "" if unset; never returns non-zero
 # (safe under this lib's `set -eu -o pipefail`). MUST mirror the hooks-side cfg_get
@@ -123,12 +183,12 @@ shctx_skill_root() {
 cfg_get() {
   local key="$1" repo f v
   repo="$(shctx_repo_root 2>/dev/null || pwd)"
-  for f in "$repo/.claude/shepherd.local.toml" "$repo/.claude/shepherd.toml" "${XDG_CONFIG_HOME:-$HOME/.config}/shepherd.toml"; do
+  while IFS= read -r f; do
     [[ -f "$f" ]] || continue
     v="$(grep -E "^[[:space:]]*${key}[[:space:]]*=" "$f" 2>/dev/null | tail -1 \
           | sed -E 's/^[^=]*=[[:space:]]*//; s/[[:space:]]+#.*$//; s/^"//; s/"$//' 2>/dev/null || true)"
     if [[ -n "$v" ]]; then printf '%s' "$v"; return 0; fi
-  done
+  done < <(shctx_config_files)
   printf '%s' ""
   return 0
 }
@@ -146,7 +206,7 @@ cfg_get() {
 cfg_section_get() {
   local section="$1" key="$2" repo f v
   repo="$(shctx_repo_root 2>/dev/null || pwd)"
-  for f in "$repo/.claude/shepherd.local.toml" "$repo/.claude/shepherd.toml" "${XDG_CONFIG_HOME:-$HOME/.config}/shepherd.toml"; do
+  while IFS= read -r f; do
     [[ -f "$f" ]] || continue
     v="$(awk -v sect="$section" -v k="$key" '
       /^[ \t]*\[/ { h=$0; sub(/^[ \t]*\[/,"",h); sub(/\].*$/,"",h); gsub(/[ \t]/,"",h); cur=h; next }
@@ -157,7 +217,7 @@ cfg_section_get() {
       END { if (result!="") printf "%s", result }
     ' "$f" 2>/dev/null || true)"
     if [[ -n "$v" ]]; then printf '%s' "$v"; return 0; fi
-  done
+  done < <(shctx_config_files)
   printf '%s' ""
   return 0
 }

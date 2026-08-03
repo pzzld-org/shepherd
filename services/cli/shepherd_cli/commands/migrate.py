@@ -6,9 +6,9 @@ argv tokens (everything else is silently ignored — bash parity, not a
 simplification, see :func:`_is_layout_v2` and :func:`_validate_layout_tokens`):
 
 * Bare ``shepherd migrate`` (or any argv that doesn't literally start with
-  ``--layout v2`` / ``--layout=v2``, including ``-h``/``--help``, which
-  ``cmd_migrate.sh`` never special-cases): the DEFAULT schema-migration
-  gap-fill path. Applies every migration file under
+  ``--layout v2`` / ``--layout=v2``, and is not ``-h``/``--help`` -- see
+  the GH #249 note below): the DEFAULT schema-migration gap-fill path.
+  Applies every migration file under
   ``skills/context/schema/migrations`` whose 4-digit version is ABSENT
   from ``schema_versions`` (not merely "greater than MAX(version)" — a
   genuine gap a middle migration left behind is caught too), in filename
@@ -19,6 +19,22 @@ simplification, see :func:`_is_layout_v2` and :func:`_validate_layout_tokens`):
   ``docs/plans/``/``docs/reports/``/``shepherd.db*`` layout, plus
   scaffolding any missing standard directories). No database access at
   all in this branch.
+
+**``-h``/``--help`` ARE special-cased -- a documented, additive DEVIATION
+from bash (GH #249).** ``cmd_migrate.sh`` never special-cased ``-h``/
+``--help`` at all -- they were just unrecognized tokens that fell through
+to the default schema-migration branch, same as any other garbage token.
+Pre-#249 this module reproduced that literally, which meant ``shepherd
+migrate --help`` silently ran (and could actually APPLY) pending schema
+migrations instead of printing help -- a real bug independent of bash
+parity: every other ported command treats ``-h``/``--help`` as a request
+for usage text, not as a trigger for a write. Fixed the same way
+:mod:`shepherd_cli.commands.panes` handles it: an eager ``-h``/``--help``
+Click option (:func:`_help_callback`) short-circuits BEFORE
+:func:`_validate_layout_tokens` runs, before any sqlite connection opens,
+and before the filesystem-layout branches touch anything, printing
+:data:`_USAGE` and exiting 0. Every other unrecognized token keeps the
+bash-parity silent-fallthrough behavior described above.
 
 **WHY THIS COMMAND DOES NOT USE ``db.lifespan()``.** ``shepherd_cli.db``'s
 ``lifespan()`` already runs :func:`shepherd_cli.db.ensure_migrated` as a
@@ -101,18 +117,43 @@ from shepherd_cli.resolution import find_migrations_dir, resolve_db_path, resolv
 app = typer.Typer(
     add_completion=False,
     no_args_is_help=False,
-    # Bash parity: cmd_migrate.sh has no usage/help output at all -- -h and
-    # --help are just unrecognized tokens that fall through to the default
-    # schema-migration branch (see the module docstring). help_option_names=[]
-    # stops Click from intercepting --help and printing ITS OWN generated
-    # help instead, which would NOT be bash parity -- mirrors
+    # cmd_migrate.sh has no usage/help output at all -- bash never
+    # special-cased -h/--help (see the module docstring's GH #249 note,
+    # which this module's OWN eager -h/--help option below now
+    # contradicts on purpose). help_option_names=[] stops Click from
+    # intercepting --help and printing ITS OWN generated help instead,
+    # which would not match :data:`_USAGE` -- mirrors
     # shepherd_cli.commands.search / sync / models' identical technique.
     context_settings={
         "help_option_names": [],
         "allow_extra_args": True,
         "ignore_unknown_options": True,
     },
-    help="Apply pending schema migrations, or run the opt-in --layout v2 filesystem migration (bash: cmd_migrate.sh).",
+    help="Apply pending schema migrations, or run the opt-in --layout v2/v3 filesystem migration (bash: cmd_migrate.sh).",
+)
+
+#: Verbatim-in-spirit usage text for ``-h``/``--help`` (GH #249 -- additive,
+#: no bash ``usage()`` counterpart to mirror; ``cmd_migrate.sh`` never had
+#: one). Printed to stdout and exits 0 BEFORE token validation, the sqlite
+#: connection, or either filesystem-layout branch runs -- see
+#: :func:`_help_callback`.
+_USAGE = (
+    "shepherd migrate [--layout v2 | --layout v3]\n"
+    "\n"
+    "With no arguments, applies pending schema migrations: every\n"
+    "skills/context/schema/migrations/NNNN_*.sql file whose version is\n"
+    "absent from schema_versions, in filename order, then prints a\n"
+    "one-line summary.\n"
+    "\n"
+    "  --layout v2   Opt-in filesystem-layout migration: legacy top-level\n"
+    "                plans/, reports/, root.db* -> docs/plans/,\n"
+    "                docs/reports/, shepherd.db* (the v6.1.0 layout).\n"
+    "                No database access.\n"
+    "  --layout v3   Opt-in run-scoped-artifacts migration: docs/plans/\n"
+    "                <slug>.seed.md and <slug>.plan.md -> runs/<slug>/;\n"
+    "                styles/<profile>.md -> profiles/<profile>/style.md.\n"
+    "                No database access.\n"
+    "  -h, --help    Show this usage text and exit.\n"
 )
 
 #: Matches a shipped migration filename, capturing its 4-digit version --
@@ -668,43 +709,82 @@ def _layout_v3_migrate() -> int:
     return 0
 
 
+def _help_callback(value: bool) -> None:
+    """Eager ``-h``/``--help`` handler: usage, exit 0 -- BEFORE any migrate work.
+
+    GH #249: unlike every other unrecognized token (silently ignored,
+    falling through to the default schema-migration branch -- see the
+    module docstring), ``-h``/``--help`` must short-circuit before
+    :func:`_validate_layout_tokens` runs, before any sqlite connection
+    opens, and before either filesystem-layout branch touches anything --
+    mirroring the eager-callback idiom
+    :mod:`shepherd_cli.commands.panes`'s ``_help_callback`` uses
+    (registered as ``is_eager=True`` on the option below, so Click
+    processes it before :func:`migrate`'s own body -- and before its
+    ``args`` catch-all -- ever runs).
+
+    Args:
+        value: True when ``-h``/``--help`` was passed.
+
+    Raises:
+        typer.Exit: Code 0, after printing :data:`_USAGE`.
+    """
+    if value:
+        typer.echo(_USAGE)
+        raise typer.Exit(code=0)
+
+
 @app.callback(invoke_without_command=True)
 def migrate(
     ctx: typer.Context,
+    help_: bool = typer.Option(
+        False,
+        "-h",
+        "--help",
+        callback=_help_callback,
+        is_eager=True,
+        expose_value=False,
+        help="Show usage and exit.",
+    ),
     args: list[str] = typer.Argument(
         None,
         metavar="[--layout v2 | --layout=v2]",
         help=(
             "With no arguments, applies pending schema migrations "
             "(schema_versions gap-fill). --layout v2 (or --layout=v2) instead "
-            "runs the opt-in filesystem layout migration. -h/--help and any "
-            "other token are silently ignored, falling through to the default "
-            "schema-migration branch, exactly like cmd_migrate.sh."
+            "runs the opt-in filesystem layout migration. Any other token is "
+            "silently ignored, falling through to the default schema-migration "
+            "branch, exactly like cmd_migrate.sh. -h/--help are the one "
+            "additive exception (GH #249): they short-circuit to usage instead."
         ),
     ),
 ) -> None:
-    """Apply pending schema migrations, or run the ``--layout v2`` filesystem migration.
+    """Apply pending schema migrations, or run the ``--layout v2``/``v3`` filesystem migration.
 
     Native port of ``shctx migrate`` (``cmd_migrate.sh``). See the module
     docstring for the full bash-parity contract, including why this
     command drives its own synchronous sqlite3 connection instead of
-    ``db.lifespan()``.
+    ``db.lifespan()``, and the GH #249 note on why ``-h``/``--help`` are
+    the one deliberate deviation from "unrecognized tokens fall through
+    silently".
 
     Args:
         ctx: The Typer/Click context (unused directly; required so
             ``invoke_without_command`` dispatch works, matching every
             other single-verb command in this package, e.g.
             :mod:`shepherd_cli.commands.search`).
-        args: Every token given after ``migrate``, in order.
+        help_: Unused directly; the eager callback handles ``-h``/
+            ``--help`` and exits before this body runs.
+        args: Every other token given after ``migrate``, in order.
 
     Raises:
         typer.Exit: Code 0 on success (``no migrations dir``, ``no
             migrations pending``, ``applied N migration(s)``, or the
-            ``--layout v2`` summary line). Code 1 on an unsupported
+            ``--layout v2``/``v3`` summary line). Code 1 on an unsupported
             ``--layout=<value>`` or a hard migration-apply failure (the
             underlying sqlite error has already been printed to stderr).
-            A non-zero ``git mv`` failure inside the ``--layout v2``
-            branch propagates git's own exit code via :func:`_mv_file`.
+            A non-zero ``git mv`` failure inside a ``--layout`` branch
+            propagates git's own exit code via :func:`_mv_file`.
     """
     del ctx  # required by invoke_without_command dispatch; unused otherwise.
     tokens = list(args or [])

@@ -15,10 +15,39 @@ this suite can never leak into a "no config" assertion.
 Several tests additionally run the legacy `cmd_config.sh` directly, under the
 identical `cwd`/env, asserting byte-for-byte stdout/file parity — the same
 pattern `test_status.py`/`test_models.py`/`test_lock.py` established.
+
+v6.4.2 PRECEDENCE CONTRACT — what this file additionally covers
+===================================================================
+`config.py` moved from a 3-tier chain (`.claude/shepherd.local.toml` ->
+`.claude/shepherd.toml` -> `$XDG_CONFIG_HOME/shepherd.toml`) to a 5-tier one
+that adds two NEW tiers ahead of it, resolved through the project's active
+namespace (`.shepherd/` by default, `.artifacts/` for a legacy project) rather
+than a hardcoded `.shepherd`:
+
+    1. <workdir>/shepherd.local.toml   NEW
+    2. <workdir>/shepherd.toml         NEW canonical (write target)
+    3. .claude/shepherd.local.toml     unchanged
+    4. .claude/shepherd.toml           unchanged
+    5. $XDG_CONFIG_HOME/shepherd.toml  unchanged
+
+The `test_get_*`/`test_path_*`/`test_show_*` groups below are extended (not
+just amended) to prove: tiers 1-2 win over 3-5; tiers 3-5 keep working
+FOREVER — a project with only `.claude/shepherd.toml` sees ZERO behavior
+change (the explicit, loud backward-compat guarantee); the legacy
+`.artifacts/` namespace resolves tiers 1-2 correctly, never a hardcoded
+`.shepherd` path; and `is_shepherd_project()` reflects either canonical
+location. Several `*_bash_parity` tests below now compare against a NEWER
+`cmd_config.sh` contract than the one checked into this branch at any given
+moment — `skills/context/scripts/cmd_config.sh`/`_lib.sh` are being ported to
+the SAME 5-tier contract in a concurrent, separately-landed change; once both
+land these tests hold, and until then a `path`/`init`/`show`-no-config parity
+failure here reflects that landing order, not a defect in either side (see
+each such test's docstring for exactly which ones are affected).
 """
 
 from __future__ import annotations
 
+import json
 import subprocess
 import tomllib
 from pathlib import Path
@@ -113,6 +142,38 @@ def _write_toml(path: Path, table: str, entries: dict[str, str]) -> None:
     path.write_text("\n".join(lines) + "\n")
 
 
+def _canonical_dst(work_dir: Path) -> Path:
+    """Tier 2: `<work_dir>/.shepherd/shepherd.toml` — the DEFAULT active namespace.
+
+    Valid whenever the test hasn't set up a `.artifacts/` namespace itself
+    (a bare `work_dir` with neither `.shepherd/` nor `.artifacts/` on disk
+    resolves to `.shepherd/` — `resolve_workdir()`'s final fallback).
+    """
+    return work_dir / ".shepherd" / "shepherd.toml"
+
+
+def _legacy_dst(work_dir: Path) -> Path:
+    """Tier 4: `<work_dir>/.claude/shepherd.toml` — the pre-v6.4.2 canonical location."""
+    return work_dir / ".claude" / "shepherd.toml"
+
+
+def _is_shepherd_project(work_dir: Path, env: dict[str, str]) -> bool:
+    """Call `shepherd_cli.commands.config.is_shepherd_project()` in a fresh subprocess.
+
+    Mirrors `conftest.resolve_fields`'s "never import shepherd_cli into the
+    pytest process" convention, scoped to this one function since it lives
+    outside `shepherd_cli.resolution`.
+    """
+    code = (
+        "import json\n"
+        "from shepherd_cli.commands.config import is_shepherd_project\n"
+        "print(json.dumps(is_shepherd_project()))\n"
+    )
+    proc = subprocess.run([PY, "-c", code], cwd=str(work_dir), env=env, capture_output=True, text=True, timeout=10)
+    assert proc.returncode == 0, f"is_shepherd_project() snippet failed: stdout={proc.stdout!r} stderr={proc.stderr!r}"
+    return json.loads(proc.stdout)
+
+
 # --------------------------------------------------------------------------
 # No-subcommand / help / unknown subcommand.
 # --------------------------------------------------------------------------
@@ -124,6 +185,16 @@ def test_bare_invocation_prints_usage_and_exits_0(work_dir: Path, xdg_dir: Path)
     assert proc.stdout.startswith(_USAGE_MARKER)
     assert "shctx config init [--force]" in proc.stdout
     assert "shctx config get <key> [def]" in proc.stdout
+
+
+def test_help_lists_the_v642_python_only_additions(work_dir: Path, xdg_dir: Path) -> None:
+    """`migrate`/`validate` (no bash counterpart) are still documented in `help`."""
+    env = _config_env(xdg_dir)
+    proc = run_config(["help"], work_dir, env)
+
+    assert proc.returncode == 0, proc.stderr
+    assert "shctx config migrate [--dry-run]" in proc.stdout
+    assert "shctx config validate [--json]" in proc.stdout
 
 
 @pytest.mark.parametrize("args", [["help"], ["-h"], ["--help"]])
@@ -156,15 +227,17 @@ def test_unknown_subcommand_exits_1_with_bash_message(work_dir: Path, xdg_dir: P
 # --------------------------------------------------------------------------
 # path.
 # --------------------------------------------------------------------------
-def test_path_prints_canonical_location_regardless_of_existence(work_dir: Path, xdg_dir: Path) -> None:
+def test_path_prints_new_canonical_location_regardless_of_existence(work_dir: Path, xdg_dir: Path) -> None:
+    """v6.4.2: `path` now echoes `<workdir>/shepherd.toml` (tier 2), not `.claude/shepherd.toml`."""
     env = _config_env(xdg_dir)
     proc = run_config(["path"], work_dir, env)
 
     assert proc.returncode == 0, proc.stderr
-    assert proc.stdout == f"{work_dir}/.claude/shepherd.toml\n"
+    assert proc.stdout == f"{_canonical_dst(work_dir)}\n"
 
 
 def test_path_bash_parity(work_dir: Path, xdg_dir: Path) -> None:
+    """Holds once `cmd_config.sh`'s concurrent v6.4.2 port lands (see module docstring)."""
     env = _config_env(xdg_dir)
     python_proc = run_config(["path"], work_dir, env)
     bash_proc = run_bash_config(["path"], work_dir, env)
@@ -173,52 +246,93 @@ def test_path_bash_parity(work_dir: Path, xdg_dir: Path) -> None:
     assert python_proc.stdout == bash_proc.stdout
 
 
+def test_path_uses_active_artifacts_namespace_when_present(work_dir: Path, xdg_dir: Path) -> None:
+    """Tier 2 resolves through `resolve_workdir()` — never a hardcoded `.shepherd`.
+
+    A project that pre-existing `.artifacts/` (the legacy namespace, e.g.
+    `shctx init --artifacts`) gets tier 2 at `.artifacts/shepherd.toml`.
+    """
+    (work_dir / ".artifacts").mkdir()
+    env = _config_env(xdg_dir)
+    proc = run_config(["path"], work_dir, env)
+
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout == f"{work_dir / '.artifacts' / 'shepherd.toml'}\n"
+
+
+def test_path_respects_shepherd_workdir_env_override(work_dir: Path, xdg_dir: Path) -> None:
+    """`$SHEPHERD_WORKDIR` (public, first-class) still wins ahead of namespace auto-detect."""
+    env = _config_env(xdg_dir)
+    env["SHEPHERD_WORKDIR"] = "custom-ns"
+    proc = run_config(["path"], work_dir, env)
+
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout == f"{work_dir / 'custom-ns' / 'shepherd.toml'}\n"
+
+
 # --------------------------------------------------------------------------
 # show.
 # --------------------------------------------------------------------------
-def test_show_no_config_prints_notice(work_dir: Path, xdg_dir: Path) -> None:
+def test_show_no_config_prints_notice_naming_new_canonical_target(work_dir: Path, xdg_dir: Path) -> None:
     env = _config_env(xdg_dir)
     proc = run_config(["show"], work_dir, env)
 
     assert proc.returncode == 0, proc.stderr
-    assert proc.stdout == "(no .claude/shepherd.toml — run 'shctx config init')\n"
+    assert proc.stdout == f"(no {_canonical_dst(work_dir)} — run 'shctx config init')\n"
 
 
-def test_show_only_project_config(work_dir: Path, xdg_dir: Path) -> None:
-    _write_toml(work_dir / ".claude" / "shepherd.toml", "project", {"name": "demo"})
+def test_show_only_project_config_backward_compat_claude_only(work_dir: Path, xdg_dir: Path) -> None:
+    """BACKWARD-COMPAT GUARANTEE: a project with ONLY `.claude/shepherd.toml` (no
+    `.shepherd/` tier at all) sees `show` behave EXACTLY as it did pre-v6.4.2 —
+    same path, same content, same framing. Zero behavior change."""
+    _write_toml(_legacy_dst(work_dir), "project", {"name": "demo"})
     env = _config_env(xdg_dir)
     proc = run_config(["show"], work_dir, env)
 
     assert proc.returncode == 0, proc.stderr
-    dst = work_dir / ".claude" / "shepherd.toml"
-    assert proc.stdout == f"# {dst}\n[project]\nname = \"demo\"\n\n"
+    assert proc.stdout == f"# {_legacy_dst(work_dir)}\n[project]\nname = \"demo\"\n\n"
 
 
 def test_show_local_and_project_both_shown_local_first(work_dir: Path, xdg_dir: Path) -> None:
-    _write_toml(work_dir / ".claude" / "shepherd.toml", "project", {"name": "proj"})
+    _write_toml(_legacy_dst(work_dir), "project", {"name": "proj"})
     _write_toml(work_dir / ".claude" / "shepherd.local.toml", "project", {"name": "local"})
     env = _config_env(xdg_dir)
     proc = run_config(["show"], work_dir, env)
 
     assert proc.returncode == 0, proc.stderr
     local_path = work_dir / ".claude" / "shepherd.local.toml"
-    project_path = work_dir / ".claude" / "shepherd.toml"
+    project_path = _legacy_dst(work_dir)
     local_idx = proc.stdout.index(f"# {local_path}")
     project_idx = proc.stdout.index(f"# {project_path}")
     assert local_idx < project_idx
 
 
+def test_show_includes_all_four_non_xdg_tiers_new_beats_legacy(work_dir: Path, xdg_dir: Path) -> None:
+    """v6.4.2: `show` now walks all 4 non-XDG tiers, new (`.shepherd/`) before legacy (`.claude/`)."""
+    _write_toml(_canonical_dst(work_dir), "project", {"name": "new-canonical"})
+    _write_toml(_legacy_dst(work_dir), "project", {"name": "legacy"})
+    env = _config_env(xdg_dir)
+    proc = run_config(["show"], work_dir, env)
+
+    assert proc.returncode == 0, proc.stderr
+    new_idx = proc.stdout.index(f"# {_canonical_dst(work_dir)}")
+    legacy_idx = proc.stdout.index(f"# {_legacy_dst(work_dir)}")
+    assert new_idx < legacy_idx
+
+
 def test_show_never_reads_xdg_global(work_dir: Path, xdg_dir: Path) -> None:
-    """`show` checks only `.claude/{shepherd,shepherd.local}.toml` — never XDG."""
+    """`show` checks only the 4 non-XDG tiers — never tier 5 (XDG)."""
     _write_toml(xdg_dir / "shepherd.toml", "project", {"name": "global"})
     env = _config_env(xdg_dir)
     proc = run_config(["show"], work_dir, env)
 
     assert proc.returncode == 0, proc.stderr
-    assert proc.stdout == "(no .claude/shepherd.toml — run 'shctx config init')\n"
+    assert proc.stdout == f"(no {_canonical_dst(work_dir)} — run 'shctx config init')\n"
 
 
 def test_show_no_config_bash_parity(work_dir: Path, xdg_dir: Path) -> None:
+    """Diverges from bash until its concurrent v6.4.2 port lands — see module docstring
+    (the "no config" message now names the new canonical target)."""
     env = _config_env(xdg_dir)
     python_proc = run_config(["show"], work_dir, env)
     bash_proc = run_bash_config(["show"], work_dir, env)
@@ -228,7 +342,10 @@ def test_show_no_config_bash_parity(work_dir: Path, xdg_dir: Path) -> None:
 
 
 def test_show_bash_parity_with_both_files(work_dir: Path, xdg_dir: Path) -> None:
-    _write_toml(work_dir / ".claude" / "shepherd.toml", "project", {"name": "proj"})
+    """Only tiers 3-4 (`.claude/`) are populated here, which bash's unmodified `show`
+    already understands byte-for-byte — this scenario holds regardless of the
+    concurrent bash port's landing order, unlike the no-config case above."""
+    _write_toml(_legacy_dst(work_dir), "project", {"name": "proj"})
     _write_toml(work_dir / ".claude" / "shepherd.local.toml", "project", {"name": "local"})
     env = _config_env(xdg_dir)
     python_proc = run_config(["show"], work_dir, env)
@@ -239,7 +356,7 @@ def test_show_bash_parity_with_both_files(work_dir: Path, xdg_dir: Path) -> None
 
 
 # --------------------------------------------------------------------------
-# get.
+# get — precedence.
 # --------------------------------------------------------------------------
 def test_get_missing_key_exits_1(work_dir: Path, xdg_dir: Path) -> None:
     env = _config_env(xdg_dir)
@@ -266,8 +383,11 @@ def test_get_unset_key_prints_supplied_default(work_dir: Path, xdg_dir: Path) ->
     assert proc.stdout == "fallback\n"
 
 
-def test_get_project_config_value(work_dir: Path, xdg_dir: Path) -> None:
-    _write_toml(work_dir / ".claude" / "shepherd.toml", "spawn", {"max_parallel": "6"})
+def test_get_project_config_value_backward_compat_claude_only(work_dir: Path, xdg_dir: Path) -> None:
+    """BACKWARD-COMPAT GUARANTEE (loud, explicit): a project with ONLY
+    `.claude/shepherd.toml` — no `.shepherd/` tier anywhere — resolves exactly as
+    it did pre-v6.4.2. Nothing about `get`'s behavior changes for it."""
+    _write_toml(_legacy_dst(work_dir), "spawn", {"max_parallel": "6"})
     env = _config_env(xdg_dir)
     proc = run_config(["get", "max_parallel"], work_dir, env)
 
@@ -275,8 +395,8 @@ def test_get_project_config_value(work_dir: Path, xdg_dir: Path) -> None:
     assert proc.stdout == "6\n"
 
 
-def test_get_local_overrides_project(work_dir: Path, xdg_dir: Path) -> None:
-    _write_toml(work_dir / ".claude" / "shepherd.toml", "spawn", {"max_parallel": "6"})
+def test_get_local_overrides_project_backward_compat_claude_only(work_dir: Path, xdg_dir: Path) -> None:
+    _write_toml(_legacy_dst(work_dir), "spawn", {"max_parallel": "6"})
     _write_toml(work_dir / ".claude" / "shepherd.local.toml", "spawn", {"max_parallel": "2"})
     env = _config_env(xdg_dir)
     proc = run_config(["get", "max_parallel"], work_dir, env)
@@ -285,8 +405,8 @@ def test_get_local_overrides_project(work_dir: Path, xdg_dir: Path) -> None:
     assert proc.stdout == "2\n"
 
 
-def test_get_project_overrides_xdg(work_dir: Path, xdg_dir: Path) -> None:
-    _write_toml(work_dir / ".claude" / "shepherd.toml", "spawn", {"max_parallel": "6"})
+def test_get_project_overrides_xdg_backward_compat_claude_only(work_dir: Path, xdg_dir: Path) -> None:
+    _write_toml(_legacy_dst(work_dir), "spawn", {"max_parallel": "6"})
     _write_toml(xdg_dir / "shepherd.toml", "spawn", {"max_parallel": "9"})
     env = _config_env(xdg_dir)
     proc = run_config(["get", "max_parallel"], work_dir, env)
@@ -306,7 +426,7 @@ def test_get_xdg_used_when_no_local_or_project(work_dir: Path, xdg_dir: Path) ->
 
 def test_get_empty_value_falls_through_to_next_file(work_dir: Path, xdg_dir: Path) -> None:
     """An empty-string value in a higher-precedence file is treated as unset."""
-    _write_toml(work_dir / ".claude" / "shepherd.toml", "spawn", {"max_parallel": "6"})
+    _write_toml(_legacy_dst(work_dir), "spawn", {"max_parallel": "6"})
     _write_toml(work_dir / ".claude" / "shepherd.local.toml", "spawn", {"max_parallel": ""})
     env = _config_env(xdg_dir)
     proc = run_config(["get", "max_parallel"], work_dir, env)
@@ -316,7 +436,7 @@ def test_get_empty_value_falls_through_to_next_file(work_dir: Path, xdg_dir: Pat
 
 
 def test_get_strips_inline_comment_and_quotes(work_dir: Path, xdg_dir: Path) -> None:
-    toml_path = work_dir / ".claude" / "shepherd.toml"
+    toml_path = _legacy_dst(work_dir)
     toml_path.parent.mkdir(parents=True)
     toml_path.write_text('[spawn]\ndashboard_cadence = "3m"  # default interval\n')
     env = _config_env(xdg_dir)
@@ -324,6 +444,77 @@ def test_get_strips_inline_comment_and_quotes(work_dir: Path, xdg_dir: Path) -> 
 
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout == "3m\n"
+
+
+def test_get_workdir_local_beats_everything(work_dir: Path, xdg_dir: Path) -> None:
+    """Tier 1 (`<workdir>/shepherd.local.toml`) outranks all 4 lower tiers."""
+    _write_toml(_canonical_dst(work_dir), "spawn", {"max_parallel": "3"})
+    _write_toml(_legacy_dst(work_dir), "spawn", {"max_parallel": "6"})
+    _write_toml(work_dir / ".claude" / "shepherd.local.toml", "spawn", {"max_parallel": "2"})
+    _write_toml(xdg_dir / "shepherd.toml", "spawn", {"max_parallel": "9"})
+    _write_toml(work_dir / ".shepherd" / "shepherd.local.toml", "spawn", {"max_parallel": "1"})
+    env = _config_env(xdg_dir)
+    proc = run_config(["get", "max_parallel"], work_dir, env)
+
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout == "1\n"
+
+
+def test_get_workdir_project_beats_claude_tiers(work_dir: Path, xdg_dir: Path) -> None:
+    """Tier 2 (`<workdir>/shepherd.toml`) outranks tiers 3-5 — `.shepherd/` beats `.claude/`."""
+    _write_toml(_canonical_dst(work_dir), "spawn", {"max_parallel": "3"})
+    _write_toml(_legacy_dst(work_dir), "spawn", {"max_parallel": "6"})
+    env = _config_env(xdg_dir)
+    proc = run_config(["get", "max_parallel"], work_dir, env)
+
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout == "3\n"
+
+
+def test_get_precedence_across_all_five_tiers(work_dir: Path, xdg_dir: Path) -> None:
+    """Each of the 5 tiers sets a DISTINCT key; `get` resolves each to its own
+    tier's value, proving the full chain — not just adjacent pairs — is wired
+    in the right order end to end."""
+    _write_toml(work_dir / ".shepherd" / "shepherd.local.toml", "spawn", {"tier1_only": "one"})
+    _write_toml(_canonical_dst(work_dir), "spawn", {"tier2_only": "two"})
+    _write_toml(work_dir / ".claude" / "shepherd.local.toml", "spawn", {"tier3_only": "three"})
+    _write_toml(_legacy_dst(work_dir), "spawn", {"tier4_only": "four"})
+    _write_toml(xdg_dir / "shepherd.toml", "spawn", {"tier5_only": "five"})
+    env = _config_env(xdg_dir)
+
+    for key, expected in (
+        ("tier1_only", "one"),
+        ("tier2_only", "two"),
+        ("tier3_only", "three"),
+        ("tier4_only", "four"),
+        ("tier5_only", "five"),
+        ("unset_anywhere", "DEF"),
+    ):
+        proc = run_config(["get", key, "DEF"], work_dir, env)
+        assert proc.returncode == 0, proc.stderr
+        assert proc.stdout == f"{expected}\n", key
+
+
+def test_get_legacy_artifacts_namespace_resolves_tiers_1_and_2(work_dir: Path, xdg_dir: Path) -> None:
+    """A project using the legacy `.artifacts/` namespace (and NO `.shepherd/`
+    directory at all — the split-brain-free case) gets tiers 1-2 at
+    `.artifacts/shepherd{.local,}.toml` via `resolve_workdir()`'s real
+    auto-detect, never a hardcoded `.shepherd/` path that would silently miss
+    it. (Once BOTH `.shepherd/` and `.artifacts/` exist on disk,
+    `resolve_workdir()`'s own documented split-brain precedence takes over and
+    prefers `.shepherd/` — that is `resolve_workdir()`'s contract, exercised
+    in `test_resolution.py`, not something this module re-decides.)"""
+    (work_dir / ".artifacts").mkdir()
+    _write_toml(work_dir / ".artifacts" / "shepherd.toml", "spawn", {"max_parallel": "4"})
+    env = _config_env(xdg_dir)
+    proc = run_config(["get", "max_parallel"], work_dir, env)
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout == "4\n"
+
+    _write_toml(work_dir / ".artifacts" / "shepherd.local.toml", "spawn", {"max_parallel": "1"})
+    proc = run_config(["get", "max_parallel"], work_dir, env)
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout == "1\n"
 
 
 def test_get_bash_parity_missing_key(work_dir: Path, xdg_dir: Path) -> None:
@@ -337,7 +528,9 @@ def test_get_bash_parity_missing_key(work_dir: Path, xdg_dir: Path) -> None:
 
 
 def test_get_bash_parity_with_precedence_chain(work_dir: Path, xdg_dir: Path) -> None:
-    _write_toml(work_dir / ".claude" / "shepherd.toml", "spawn", {"max_parallel": "6", "dashboard_cadence": "3m"})
+    """Only tiers 3-5 populated here — the pre-v6.4.2 chain bash already understands
+    — so this holds regardless of the concurrent bash port's landing order."""
+    _write_toml(_legacy_dst(work_dir), "spawn", {"max_parallel": "6", "dashboard_cadence": "3m"})
     _write_toml(work_dir / ".claude" / "shepherd.local.toml", "spawn", {"max_parallel": "2"})
     _write_toml(xdg_dir / "shepherd.toml", "spawn", {"lead_effort": "ultracode"})
     env = _config_env(xdg_dir)
@@ -350,13 +543,44 @@ def test_get_bash_parity_with_precedence_chain(work_dir: Path, xdg_dir: Path) ->
 
 
 # --------------------------------------------------------------------------
+# is_shepherd_project().
+# --------------------------------------------------------------------------
+def test_is_shepherd_project_false_when_neither_location_exists(work_dir: Path, xdg_dir: Path) -> None:
+    env = _config_env(xdg_dir)
+    assert _is_shepherd_project(work_dir, env) is False
+
+
+def test_is_shepherd_project_true_via_new_canonical_location(work_dir: Path, xdg_dir: Path) -> None:
+    _write_toml(_canonical_dst(work_dir), "project", {"name": "x"})
+    env = _config_env(xdg_dir)
+    assert _is_shepherd_project(work_dir, env) is True
+
+
+def test_is_shepherd_project_true_via_legacy_location_backward_compat(work_dir: Path, xdg_dir: Path) -> None:
+    """BACKWARD-COMPAT GUARANTEE: an un-migrated project (`.claude/shepherd.toml`
+    only) still reads as a shepherd project."""
+    _write_toml(_legacy_dst(work_dir), "project", {"name": "x"})
+    env = _config_env(xdg_dir)
+    assert _is_shepherd_project(work_dir, env) is True
+
+
+def test_is_shepherd_project_ignores_local_override_only(work_dir: Path, xdg_dir: Path) -> None:
+    """A `.local.toml` alone (tier 1/3), with no canonical file at tier 2/4, does
+    NOT count — `is_shepherd_project` checks the canonical locations, not every
+    tier `cfg_get` reads."""
+    _write_toml(work_dir / ".shepherd" / "shepherd.local.toml", "project", {"name": "x"})
+    env = _config_env(xdg_dir)
+    assert _is_shepherd_project(work_dir, env) is False
+
+
+# --------------------------------------------------------------------------
 # init.
 # --------------------------------------------------------------------------
-def test_init_happy_path_creates_scaffold(work_dir: Path, xdg_dir: Path) -> None:
+def test_init_happy_path_creates_scaffold_at_new_canonical_location(work_dir: Path, xdg_dir: Path) -> None:
     env = _config_env(xdg_dir)
     proc = run_config(["init"], work_dir, env)
 
-    dst = work_dir / ".claude" / "shepherd.toml"
+    dst = _canonical_dst(work_dir)
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout == (
         f"shctx config: scaffolded {dst}\n"
@@ -365,6 +589,7 @@ def test_init_happy_path_creates_scaffold(work_dir: Path, xdg_dir: Path) -> None
         "  Review [branching] + [gates] before your first sprint.\n"
     )
     assert dst.is_file()
+    assert not _legacy_dst(work_dir).exists()
     with open(dst, "rb") as fh:
         parsed = tomllib.load(fh)
     assert parsed["project"]["name"] == "work"
@@ -375,7 +600,7 @@ def test_init_happy_path_creates_scaffold(work_dir: Path, xdg_dir: Path) -> None
 
 def test_init_idempotent_preserves_existing(work_dir: Path, xdg_dir: Path) -> None:
     env = _config_env(xdg_dir)
-    dst = work_dir / ".claude" / "shepherd.toml"
+    dst = _canonical_dst(work_dir)
     dst.parent.mkdir(parents=True)
     dst.write_text("# hand-edited\n[project]\nname = \"custom\"\n")
     before = dst.read_text()
@@ -389,7 +614,7 @@ def test_init_idempotent_preserves_existing(work_dir: Path, xdg_dir: Path) -> No
 
 def test_init_force_overwrites_existing(work_dir: Path, xdg_dir: Path) -> None:
     env = _config_env(xdg_dir)
-    dst = work_dir / ".claude" / "shepherd.toml"
+    dst = _canonical_dst(work_dir)
     dst.parent.mkdir(parents=True)
     dst.write_text("# hand-edited\n[project]\nname = \"custom\"\n")
 
@@ -399,6 +624,37 @@ def test_init_force_overwrites_existing(work_dir: Path, xdg_dir: Path) -> None:
     with open(dst, "rb") as fh:
         parsed = tomllib.load(fh)
     assert parsed["project"]["name"] == "work"
+
+
+def test_init_preserves_when_legacy_claude_shepherd_toml_present(work_dir: Path, xdg_dir: Path) -> None:
+    """NEW v6.4.2 guard: an un-migrated project (`.claude/shepherd.toml` only, no
+    `<workdir>/shepherd.toml` yet) preserves rather than silently scaffolding a
+    SECOND, shadowing binding at the new canonical location — the operator is
+    pointed at `shctx config migrate` instead."""
+    legacy = _legacy_dst(work_dir)
+    legacy.parent.mkdir(parents=True)
+    legacy.write_text("[project]\nname = \"legacy\"\n")
+
+    proc = run_config(["init"], work_dir, env=_config_env(xdg_dir))
+
+    assert proc.returncode == 0, proc.stderr
+    assert str(legacy) in proc.stdout
+    assert "shctx config migrate" in proc.stdout
+    assert not _canonical_dst(work_dir).exists()
+
+
+def test_init_preserves_when_workdir_local_toml_present(work_dir: Path, xdg_dir: Path) -> None:
+    """NEW v6.4.2 guard: a tier-1 local override (`<workdir>/shepherd.local.toml`)
+    also counts as "a local-override config is present"."""
+    local = work_dir / ".shepherd" / "shepherd.local.toml"
+    local.parent.mkdir(parents=True)
+    local.write_text("[project]\nname = \"local-only\"\n")
+
+    proc = run_config(["init"], work_dir, env=_config_env(xdg_dir))
+
+    assert proc.returncode == 0, proc.stderr
+    assert "a local-override config is present" in proc.stdout
+    assert not _canonical_dst(work_dir).exists()
 
 
 def test_init_preserves_when_claude_local_toml_present(work_dir: Path, xdg_dir: Path) -> None:
@@ -411,7 +667,7 @@ def test_init_preserves_when_claude_local_toml_present(work_dir: Path, xdg_dir: 
 
     assert proc.returncode == 0, proc.stderr
     assert "a local-override config is present" in proc.stdout
-    assert not (work_dir / ".claude" / "shepherd.toml").exists()
+    assert not _canonical_dst(work_dir).exists()
 
 
 def test_init_preserves_when_top_level_local_toml_present(work_dir: Path, xdg_dir: Path) -> None:
@@ -422,7 +678,7 @@ def test_init_preserves_when_top_level_local_toml_present(work_dir: Path, xdg_di
 
     assert proc.returncode == 0, proc.stderr
     assert "a local-override config is present" in proc.stdout
-    assert not (work_dir / ".claude" / "shepherd.toml").exists()
+    assert not _canonical_dst(work_dir).exists()
 
 
 def test_init_derives_name_from_git_remote(work_dir: Path, xdg_dir: Path) -> None:
@@ -432,8 +688,7 @@ def test_init_derives_name_from_git_remote(work_dir: Path, xdg_dir: Path) -> Non
     proc = run_config(["init"], work_dir, env)
 
     assert proc.returncode == 0, proc.stderr
-    dst = work_dir / ".claude" / "shepherd.toml"
-    with open(dst, "rb") as fh:
+    with open(_canonical_dst(work_dir), "rb") as fh:
         parsed = tomllib.load(fh)
     assert parsed["project"]["name"] == "widget-factory"
 
@@ -457,7 +712,7 @@ def test_init_gate_detection_by_manifest(
     proc = run_config(["init"], work_dir, env)
 
     assert proc.returncode == 0, proc.stderr
-    with open(work_dir / ".claude" / "shepherd.toml", "rb") as fh:
+    with open(_canonical_dst(work_dir), "rb") as fh:
         parsed = tomllib.load(fh)
     assert parsed["project"]["language"] == expected_language
     assert parsed["gates"]["check"] == expected_check
@@ -468,30 +723,135 @@ def test_init_no_manifest_falls_back_to_rust(work_dir: Path, xdg_dir: Path) -> N
     proc = run_config(["init"], work_dir, env)
 
     assert proc.returncode == 0, proc.stderr
-    with open(work_dir / ".claude" / "shepherd.toml", "rb") as fh:
+    with open(_canonical_dst(work_dir), "rb") as fh:
         parsed = tomllib.load(fh)
     assert parsed["project"]["language"] == "rust"
 
 
-def test_init_bash_parity_content(work_dir: Path, xdg_dir: Path, tmp_path: Path) -> None:
-    """Same directory, sequential runs: bash first, then python, comparing
-    the generated file content byte-for-byte (paths are identical since
-    both tools scaffold into the SAME `work_dir`)."""
+def test_init_content_matches_bash_derivation(work_dir: Path, xdg_dir: Path) -> None:
+    """Full bash-vs-python parity for ``config init`` under the v6.4.2 contract.
+
+    Both implementations now scaffold to the SAME canonical destination
+    (``<workdir>/shepherd.toml`` — precedence tier 2), so this asserts full
+    stdout equality AND byte-identical file content, which is strictly
+    stronger than the content-only comparison this test ran while
+    ``cmd_config.sh``'s port was still in flight. Full-stdout equality is
+    what catches the two sides naming different destination paths, which is
+    exactly the drift the parity suite exists to prevent.
+    """
     _init_git_repo(work_dir, remote_url="https://example.com/org/parity-repo.git")
     env = _config_env(xdg_dir)
-    dst = work_dir / ".claude" / "shepherd.toml"
 
     bash_proc = run_bash_config(["init"], work_dir, env)
     assert bash_proc.returncode == 0, bash_proc.stderr
-    bash_content = dst.read_text()
-    dst.unlink()
+    bash_content = _canonical_dst(work_dir).read_text()
+    _canonical_dst(work_dir).unlink()
 
     python_proc = run_config(["init"], work_dir, env)
     assert python_proc.returncode == 0, python_proc.stderr
-    python_content = dst.read_text()
+    python_content = _canonical_dst(work_dir).read_text()
 
     assert python_content == bash_content
     assert python_proc.stdout == bash_proc.stdout
+
+    derived_line = "  name=parity-repo  language=rust  namespace=.shepherd"
+    assert derived_line in bash_proc.stdout
+
+
+# --------------------------------------------------------------------------
+# migrate (v6.4.2, Python-only — no bash counterpart).
+# --------------------------------------------------------------------------
+def test_migrate_nothing_to_migrate_when_no_legacy_file(work_dir: Path, xdg_dir: Path) -> None:
+    env = _config_env(xdg_dir)
+    proc = run_config(["migrate"], work_dir, env)
+
+    assert proc.returncode == 0, proc.stderr
+    assert "nothing to migrate" in proc.stdout
+    assert str(_legacy_dst(work_dir)) in proc.stdout
+
+
+def test_migrate_moves_legacy_file_to_canonical_location(work_dir: Path, xdg_dir: Path) -> None:
+    legacy = _legacy_dst(work_dir)
+    legacy.parent.mkdir(parents=True)
+    legacy.write_text("[project]\nname = \"legacy\"\n")
+    env = _config_env(xdg_dir)
+
+    proc = run_config(["migrate"], work_dir, env)
+
+    dst = _canonical_dst(work_dir)
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout == f"shctx config migrate: moved {legacy} -> {dst}\n"
+    assert not legacy.exists()
+    assert dst.is_file()
+    assert dst.read_text() == "[project]\nname = \"legacy\"\n"
+
+
+def test_migrate_is_idempotent(work_dir: Path, xdg_dir: Path) -> None:
+    legacy = _legacy_dst(work_dir)
+    legacy.parent.mkdir(parents=True)
+    legacy.write_text("[project]\nname = \"legacy\"\n")
+    env = _config_env(xdg_dir)
+
+    first = run_config(["migrate"], work_dir, env)
+    assert first.returncode == 0, first.stderr
+
+    second = run_config(["migrate"], work_dir, env)
+    assert second.returncode == 0, second.stderr
+    assert "nothing to migrate" in second.stdout
+    # The first migration's result is untouched by the second, no-op run.
+    assert _canonical_dst(work_dir).read_text() == "[project]\nname = \"legacy\"\n"
+
+
+def test_migrate_never_clobbers_existing_destination(work_dir: Path, xdg_dir: Path) -> None:
+    legacy = _legacy_dst(work_dir)
+    legacy.parent.mkdir(parents=True)
+    legacy.write_text("[project]\nname = \"legacy\"\n")
+    dst = _canonical_dst(work_dir)
+    dst.parent.mkdir(parents=True)
+    dst.write_text("[project]\nname = \"already-here\"\n")
+    env = _config_env(xdg_dir)
+
+    proc = run_config(["migrate"], work_dir, env)
+
+    assert proc.returncode == 1
+    assert "already exists" in proc.stdout
+    assert "refusing to overwrite" in proc.stdout
+    # Neither file is touched — the conflict is reported, not resolved.
+    assert legacy.read_text() == "[project]\nname = \"legacy\"\n"
+    assert dst.read_text() == "[project]\nname = \"already-here\"\n"
+
+
+def test_migrate_dry_run_prints_plan_without_moving(work_dir: Path, xdg_dir: Path) -> None:
+    legacy = _legacy_dst(work_dir)
+    legacy.parent.mkdir(parents=True)
+    legacy.write_text("[project]\nname = \"legacy\"\n")
+    env = _config_env(xdg_dir)
+
+    proc = run_config(["migrate", "--dry-run"], work_dir, env)
+
+    dst = _canonical_dst(work_dir)
+    assert proc.returncode == 0, proc.stderr
+    assert "dry run, nothing written" in proc.stdout
+    assert str(legacy) in proc.stdout
+    assert str(dst) in proc.stdout
+    assert legacy.is_file()
+    assert not dst.exists()
+
+
+def test_migrate_dry_run_flag_is_positional_only(work_dir: Path, xdg_dir: Path) -> None:
+    """Matches `init`/`claude-md`'s literal-first-token `--force` check (module
+    docstring, deviation #3 pattern): a `--dry-run` token anywhere BUT first is
+    silently ignored, same as bash's own single-token check."""
+    legacy = _legacy_dst(work_dir)
+    legacy.parent.mkdir(parents=True)
+    legacy.write_text("[project]\nname = \"legacy\"\n")
+    env = _config_env(xdg_dir)
+
+    proc = run_config(["migrate", "foo", "--dry-run"], work_dir, env)
+
+    assert proc.returncode == 0, proc.stderr
+    assert "moved" in proc.stdout
+    assert not legacy.exists()
 
 
 # --------------------------------------------------------------------------
@@ -597,3 +957,129 @@ def test_claude_md_bash_parity_preserve_message(work_dir: Path, xdg_dir: Path) -
 
     assert python_proc.returncode == bash_proc.returncode == 0
     assert python_proc.stdout == bash_proc.stdout
+
+
+# --------------------------------------------------------------------------
+# v6.4.2 layering contract (operator directive, 2026-08-03)
+# --------------------------------------------------------------------------
+# Three layers -- project / legacy / user -- with `local` > `<harness>` > base
+# WITHIN each, and project > user ACROSS them. `~/.shepherd` holds defaults; a
+# project overrides them simply by setting the key; `<workdir>/
+# shepherd.local.toml` is the ultimate override.
+
+
+def _layered_env(xdg_dir: Path, user_home: Path, *, harness: str = "claude") -> dict[str, str]:
+    """A `_config_env` with the user tier and harness pinned explicitly."""
+    env = _config_env(xdg_dir)
+    env["SHEPHERD_HOME"] = str(user_home)
+    env["SHEPHERD_HARNESS"] = harness
+    return env
+
+
+def _write_parallel(path: Path, value: int) -> None:
+    """Write a minimal config setting `[spawn].max_parallel` to `value`.
+
+    Distinct from this module's `_write_parallel(path, table, entries)` helper
+    above -- same file, different signature, so it must not shadow it.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f"[spawn]\nmax_parallel = {value}\n")
+
+
+def test_layering_each_tier_overrides_the_one_below(
+    work_dir: Path, xdg_dir: Path, tmp_path: Path
+) -> None:
+    """Adding each higher tier in turn moves the resolved value monotonically.
+
+    This is the whole contract in one test: six writes, six reads, each one
+    strictly overriding the last, from the user base default up to the
+    project-local ultimate override.
+    """
+    user_home = tmp_path / "userhome"
+    env = _layered_env(xdg_dir, user_home)
+    ns = work_dir / ".shepherd"
+    ns.mkdir(parents=True, exist_ok=True)
+
+    steps = [
+        (user_home / "shepherd.toml", 1),
+        (user_home / "shepherd.claude.toml", 2),
+        (user_home / "shepherd.local.toml", 3),
+        (ns / "shepherd.toml", 4),
+        (ns / "shepherd.claude.toml", 5),
+        (ns / "shepherd.local.toml", 6),
+    ]
+    for path, value in steps:
+        _write_parallel(path, value)
+        proc = run_config(["get", "max_parallel", "0"], work_dir, env)
+        assert proc.returncode == 0, proc.stderr
+        assert proc.stdout.strip() == str(value), (
+            f"after writing {path.name} in {path.parent.name}, expected {value}"
+        )
+
+
+def test_layering_user_tier_is_the_cross_project_default(
+    work_dir: Path, xdg_dir: Path, tmp_path: Path
+) -> None:
+    """A project with NO config of its own inherits `~/.shepherd` defaults."""
+    user_home = tmp_path / "userhome"
+    env = _layered_env(xdg_dir, user_home)
+    _write_parallel(user_home / "shepherd.toml", 11)
+
+    proc = run_config(["get", "max_parallel", "0"], work_dir, env)
+    assert proc.stdout.strip() == "11"
+
+
+def test_layering_legacy_claude_project_outranks_user_tier(
+    work_dir: Path, xdg_dir: Path, tmp_path: Path
+) -> None:
+    """A legacy `.claude/` PROJECT binding beats the whole user layer.
+
+    The deliberate ordering call: `.claude/shepherd.toml` is a project-level
+    file, so it outranks `~/.shepherd/*`. Ordering the user layer higher
+    would mean that merely creating `~/.shepherd/shepherd.toml` silently
+    overrode every existing project still bound through `.claude/` -- a
+    regression for every current install. Pinned so it cannot drift.
+    """
+    user_home = tmp_path / "userhome"
+    env = _layered_env(xdg_dir, user_home)
+    _write_parallel(user_home / "shepherd.local.toml", 21)  # highest USER tier
+    _write_parallel(work_dir / ".claude" / "shepherd.toml", 22)  # lowest PROJECT tier
+
+    proc = run_config(["get", "max_parallel", "0"], work_dir, env)
+    assert proc.stdout.strip() == "22"
+
+
+def test_layering_only_the_active_harness_file_is_read(
+    work_dir: Path, xdg_dir: Path, tmp_path: Path
+) -> None:
+    """A codex knob must not take effect under claude, and vice versa."""
+    user_home = tmp_path / "userhome"
+    ns = work_dir / ".shepherd"
+    _write_parallel(ns / "shepherd.toml", 30)
+    _write_parallel(ns / "shepherd.codex.toml", 31)
+
+    under_claude = run_config(
+        ["get", "max_parallel", "0"], work_dir, _layered_env(xdg_dir, user_home, harness="claude")
+    )
+    assert under_claude.stdout.strip() == "30", "codex knob leaked into a claude session"
+
+    under_codex = run_config(
+        ["get", "max_parallel", "0"], work_dir, _layered_env(xdg_dir, user_home, harness="codex")
+    )
+    assert under_codex.stdout.strip() == "31"
+
+
+def test_layering_no_harness_detected_omits_the_harness_tier(
+    work_dir: Path, xdg_dir: Path, tmp_path: Path
+) -> None:
+    """With no harness, the harness tier is absent -- not guessed at."""
+    user_home = tmp_path / "userhome"
+    env = _layered_env(xdg_dir, user_home, harness="")
+    for marker in ("SHEPHERD_HARNESS", "CLAUDE_PLUGIN_ROOT", "CLAUDECODE", "CODEX_HOME"):
+        env.pop(marker, None)
+    ns = work_dir / ".shepherd"
+    _write_parallel(ns / "shepherd.toml", 40)
+    _write_parallel(ns / "shepherd.claude.toml", 41)
+
+    proc = run_config(["get", "max_parallel", "0"], work_dir, env)
+    assert proc.stdout.strip() == "40"

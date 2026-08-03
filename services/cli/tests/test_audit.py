@@ -5,27 +5,27 @@ Every test drives the real CLI as a subprocess (``${PY} -m shepherd_cli
 audit ...``), exactly like ``test_sync.py`` — never by importing
 ``shepherd_cli`` into the pytest process.
 
-Two independent halves, tested separately:
+Three independent halves, tested separately:
 
 1. **The pipeline** (bare ``shepherd audit`` / ``shepherd audit
    --verbose``) re-invokes three ported sibling subcommands (``lint``,
    ``doctor``, ``status``) as child processes of the same interpreter
-   (``[sys.executable, "-m", "shepherd_cli", "<stage>"]``) and touches no
-   database of its own. Driving the REAL sibling stages from a gate test
-   would violate the "deterministic, local, free, <2s, never flaky"
-   gate-test contract (CLAUDE.md) — ``doctor`` in particular resolves its
-   namespace/project.json checks against the AMBIENT repo state (not
-   ``SHCTX_DB``-scoped), so it is neither hermetic nor fast. Exactly like
-   ``test_sync.py``, this suite builds a throwaway FAKE ``shepherd_cli``
-   package (:func:`fake_cli_root`) and runs the CLI with that directory as
-   the subprocess cwd: ``python -m`` puts the cwd FIRST on ``sys.path``
-   (ahead of ``PYTHONPATH``), so both the parent invocation and every
-   stage re-invocation resolve the fake package. The fake's ``__main__``
-   handles the three STAGE subcommands itself — logging each invocation
-   to ``$CALL_LOG``, printing deterministic stdout/stderr markers, and
-   exiting with a caller-controlled code (via ``FAKE_RC_*`` env vars) —
-   and DELEGATES every other subcommand (``audit``, the command under
-   test) to the real package by stripping itself off ``sys.path``.
+   (``[sys.executable, "-m", "shepherd_cli", "<stage>"]``). Driving the
+   REAL sibling stages from a gate test would violate the "deterministic,
+   local, free, <2s, never flaky" gate-test contract (CLAUDE.md) —
+   ``doctor`` in particular resolves its namespace/project.json checks
+   against the AMBIENT repo state (not ``SHCTX_DB``-scoped), so it is
+   neither hermetic nor fast. Exactly like ``test_sync.py``, this suite
+   builds a throwaway FAKE ``shepherd_cli`` package (:func:`fake_cli_root`)
+   and runs the CLI with that directory as the subprocess cwd: ``python
+   -m`` puts the cwd FIRST on ``sys.path`` (ahead of ``PYTHONPATH``), so
+   both the parent invocation and every stage re-invocation resolve the
+   fake package. The fake's ``__main__`` handles the three STAGE
+   subcommands itself — logging each invocation to ``$CALL_LOG``, printing
+   deterministic stdout/stderr markers, and exiting with a
+   caller-controlled code (via ``FAKE_RC_*`` env vars) — and DELEGATES
+   every other subcommand (``audit``, the command under test) to the real
+   package by stripping itself off ``sys.path``.
 2. **``insert``** DOES touch a real fixture database (built the same way
    every other DB-backed suite in this package builds one —
    ``conftest.build_full_schema_db`` + ``conftest.insert_project``) and is
@@ -33,10 +33,20 @@ Two independent halves, tested separately:
    call (``conftest.run_cli`` has no ``input=`` passthrough, since no
    other ported command reads stdin yet). No fake package is involved:
    ``insert`` never runs a stage.
+3. **The pipeline's #250 schema-currency pre-check** — added alongside
+   the ``status``/``style`` half of the same fix (see
+   ``shepherd_cli/commands/audit.py``'s own module docstring's
+   WRITE-SAFETY section and ``tests/test_db_readonly.py`` for the full
+   library-level suite) — DOES read one real fixture database directly
+   with a raw ``sqlite3.connect()`` (never Tortoise) before any stage
+   would otherwise spawn. No fake package involved here either: a behind
+   schema must short-circuit BEFORE any stage runs, so there is nothing
+   for a fake stage to fake.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 import subprocess
@@ -44,7 +54,7 @@ import time
 from pathlib import Path
 
 import pytest
-from conftest import CLI_ROOT, PY, build_full_schema_db, cli_env, insert_project
+from conftest import CLI_ROOT, PY, SCHEMA_BASE_SQL, build_full_schema_db, cli_env, insert_project
 
 # --------------------------------------------------------------------------
 # Fake shepherd_cli package — deterministic stand-ins for the lint /
@@ -768,3 +778,67 @@ def test_insert_with_no_project_registered_fails_on_foreign_key_not_orphaned_row
     finally:
         conn.close()
     assert count == 0
+
+
+# ==========================================================================
+# #250 schema-currency pre-check — a REAL fixture DB (no fake package: the
+# check must fire BEFORE any stage would otherwise spawn, so there is
+# nothing for a fake stage to intercept). See tests/test_db_readonly.py
+# for the full library-level lifespan(migrate=False)/schema_is_current()
+# suite this pre-check is built on.
+# ==========================================================================
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def test_bare_audit_refuses_on_behind_schema_before_any_stage(tmp_path: Path) -> None:
+    db_path = tmp_path / "shepherd.db"
+    conn = sqlite3.connect(str(db_path))
+    try:
+        conn.executescript(SCHEMA_BASE_SQL.read_text())  # ONLY 0001_init.sql — no migrations applied
+        conn.commit()
+    finally:
+        conn.close()
+    env = cli_env(db_path)
+    env["SHEPHERD_WORKDIR"] = str(tmp_path / "work")
+    before_hash = _sha256(db_path)
+
+    proc = subprocess.run(
+        [PY, "-m", "shepherd_cli", "audit"],
+        env=env,
+        cwd=str(CLI_ROOT),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert proc.returncode == 1
+    assert proc.stdout == ""
+    assert proc.stderr.strip() == "schema is behind the shipped migrations; run: shepherd migrate"
+    assert _sha256(db_path) == before_hash
+
+
+def test_audit_on_current_schema_db_is_unaffected_by_the_precheck(tmp_path: Path) -> None:
+    """Pins that a healthy, fully-migrated DB never trips the new #250
+    pre-check — the pipeline still runs (and, against a real ``lint``/
+    ``doctor``/``status``, may fail for unrelated reasons in this ambient
+    dev checkout, so this only asserts the schema-behind refusal text is
+    absent, not a specific exit code)."""
+    db_path = tmp_path / "shepherd.db"
+    build_full_schema_db(db_path)
+    insert_project(db_path)
+    env = cli_env(db_path)
+    env["SHEPHERD_WORKDIR"] = str(tmp_path / "work")
+
+    proc = subprocess.run(
+        [PY, "-m", "shepherd_cli", "audit"],
+        env=env,
+        cwd=str(CLI_ROOT),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert "schema is behind the shipped migrations" not in proc.stderr

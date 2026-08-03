@@ -47,7 +47,6 @@ INHERITED CONTEXT
   Carry-forward issues: {{ carry_forward_issues }}
   Worktree path:        {{ worktree_path }}
   [BASE-COMMIT-EXPECTED]: {{ base_commit }}
-  git_custody:          {{ git_custody }}
 {% if toml_snapshot %}
   shepherd.toml snapshot:
 {{ toml_snapshot }}
@@ -62,6 +61,7 @@ INVOCATION-CONTEXT:
   fanout_mode: {{ fanout_mode }}
   lane_index: {{ lane_index }}
   wave_index: {{ wave_index }}
+  git_custody: {{ git_custody }}
 {% if parallel_index is not none %}
   parallel_index: {{ parallel_index }}
 {% endif %}

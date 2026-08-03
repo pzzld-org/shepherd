@@ -3,8 +3,9 @@
 The canonical map of WHERE every shepherd artifact lives and WHO writes it.
 Doctrine cites paths in the `{run_dir}/…` forms defined here — restating a
 path elsewhere is a drift bug. `shctx lint` enforces the filename and
-directory patterns; overrides live in `[context.naming]` of
-`.claude/shepherd.toml`.
+directory patterns; overrides live in `[context.naming]` of `shepherd.toml`
+(canonically `<workdir>/shepherd.toml` as of v6.4.2; `.claude/shepherd.toml`
+still resolves — see `docs/configuration.md §Resolution`).
 
 ## Namespace selection
 
@@ -49,6 +50,45 @@ hoc. Run and lane identifiers sanitize to `[a-z0-9][a-z0-9-]*`: lowercase,
 starts alphanumeric, no `..`, no path separators, no absolute paths. A
 directory is a run iff it contains `run.json` (written by `shepherd run
 init`) — runs are indexed by `run.json` presence, NEVER by mtime scans.
+
+**Canonical means exactly the pattern's output — nothing appended, nothing
+substituted (v6.4.2).** A run id carries NO harness name, NO implementation
+name, and NO ordinal suffix. It is exactly the string
+`[branching].sprint_slug_pattern` (or `patch_slug_pattern`) produces for the
+version/dev-number in scope — not that string plus `-codex`, `-01`,
+`-claude`, or any other operator- or agent-chosen decoration. Observed in the
+wild: a live run in `FL03/axiom` is directoried as `v039-dev0-codex-01` —
+three unauthorized tokens (`codex`, the ordinal `01`, and their separators)
+appended to the canonical `v039-dev0` the pattern actually derives.
+
+**Why this is a hard rule, not a style preference.** The bridge contract
+(`skills/bridge/SKILL.md`) has multiple shepherd implementations sharing ONE
+run and arbitrating write access by custody through `run.json` — not by
+each implementation keeping its own directory. A harness- or ordinal-
+suffixed run directory silently FORKS the run: instead of two
+implementations coordinating over one `{run_dir}`, each computes a
+different path and works in parallel isolation, unaware the other exists —
+exactly the split the bridge contract exists to prevent. The whole
+mechanism depends on one property: two shepherds deriving the slug from the
+same version MUST land on the same directory, with no implementation-
+specific input anywhere in that derivation. A suffix that identifies which
+harness or which parallel attempt created a run breaks that property by
+definition, no matter how useful it looks locally.
+
+**It is now mechanized, not just documented (v6.4.2):**
+- Derivation is ALWAYS from `[branching].sprint_slug_pattern`/
+  `patch_slug_pattern` — never hand-typed, never harness-decorated.
+- `shepherd run init` REFUSES to create a run directory whose name isn't
+  the canonical slug for the version in scope; a caller passing a
+  harness-suffixed or ordinal-suffixed id gets a rejection naming the
+  canonical id it should have used instead.
+- `shepherd run canonicalize` migrates an existing non-canonical run
+  directory (and its `run.json`) onto the canonical path — the fix for a
+  run like `FL03/axiom`'s `v039-dev0-codex-01` above, without hand-editing
+  paths or losing run history.
+- `shctx lint` WARNs on every existing non-canonical run directory it
+  finds under `{paths.runs}`, so a violation predating this rule surfaces
+  on the next lint pass instead of staying silently forked forever.
 
 ## Run layout — `{run_dir}` = `{paths.runs}/{run}`
 
