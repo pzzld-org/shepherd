@@ -4,38 +4,48 @@ Bash parity target: ``skills/context/scripts/cmd_refresh.sh``. Every test
 drives the real CLI as a subprocess (``${PY} -m shepherd_cli refresh ...``),
 exactly like ``test_sync.py``/``test_audit.py``.
 
-Two independent concerns are under test here, exactly mirroring the module
-under test's own split:
+The pipeline is fully NATIVE now — ``symbols``/``github``/``artifacts``
+run :mod:`shepherd_cli.refresh_impl`'s in-process ports of the former
+``refresh-*.sh`` scripts, and ``shapes`` dispatches into the
+:mod:`shepherd_cli.commands.dups` module in-process (which itself runs the
+package-resident engine as ``[sys.executable, "-m",
+"shepherd_cli.dups_core", ...]`` — a child of THIS interpreter, not bash).
+This suite therefore pins down three concerns:
 
-1. **The four SUBPROCESS-ORCHESTRATION zones** (``symbols``/``shapes``/
-   ``github``/``artifacts``) — driven with a throwaway "fake plugin root"
-   (see :func:`_make_fake_plugin_root`, copied from ``test_sync.py``'s own
-   helper of the same shape) containing tiny, fully-scripted stand-ins for
-   ``refresh-symbols.sh``/``refresh-github.sh``/``refresh-artifacts.sh``/
-   ``cmd_dups.sh`` — each logs its invocation to ``$CALL_LOG`` and exits
-   with a caller-controlled code (via ``FAKE_RC_*`` env vars). This lets
-   the tests pin down ``shepherd refresh``'s OWN contract (which argv it
-   invokes, in what order, with what output-suppression shape, and how it
-   maps a stage's exit code to its own) without ever touching a real
-   ``cargo``/``gh`` toolchain.
-
-2. **The NATIVE ``telemetry`` zone** — driven against a REAL full-schema
+1. **The dispatcher's own contract** — flag parsing, the two distinct
+   error paths (unknown arg vs unknown ``--scope``), single-scope
+   exit-code propagation, and ``--scope=all``'s fixed order + always-0
+   exit + per-stage failure isolation.
+2. **That no bash sibling script is EVER executed.** A fake plugin root
+   containing canary ``refresh-*.sh``/``cmd_dups.sh`` scripts (each logs
+   to ``$CALL_LOG`` if run) is wired in; the tests assert the log stays
+   empty — nothing in the pipeline touches the retired bash layer.
+3. **The NATIVE ``telemetry`` zone** — driven against a REAL full-schema
    fixture DB (``build_full_schema_db`` + ``insert_project``, exactly like
    ``test_query.py``) with a real ``<workdir>/logs/events-*.jsonl`` file on
    disk, asserting on both the printed row count AND the actual
-   ``index_cache_usage`` rows written (raw ``sqlite3`` readback, PRAGMA
-   table_info tolerant per the port contract).
+   ``index_cache_usage`` rows written.
 
-Like ``test_query.py``, ``shctx refresh``'s ``telemetry`` zone resolves its
-project id from a ``<workdir>/project.json`` FILE (``_lib.sh``'s
-``shctx_project_id``) — a DIFFERENT location than the fixture DB whenever
-``SHCTX_DB`` points at a specific file. Every telemetry test therefore sets
-``SHEPHERD_WORKDIR`` to an isolated tmp directory via :func:`_telemetry_env`.
+Stage BEHAVIOR (which rows the symbols/github/artifacts zones write, the
+gh retry loop, graceful tool absence with real fixture data) lives in
+``test_refresh_impl.py`` — this file only needs each zone's cheapest
+deterministic success/failure lever: a stub ``cargo``/``gh`` on ``PATH``,
+the presence/absence of ``<workdir>/project.json``, and (for ``shapes``)
+a poisoned ``[dups]`` config value that makes the real engine's own
+``argparse`` reject its argv (exit 2) — the engine itself is exercised
+end-to-end in :func:`test_scope_shapes_runs_the_real_engine_end_to_end`.
+
+Like ``test_query.py``, ``shctx refresh`` resolves its project id from a
+``<workdir>/project.json`` FILE (``_lib.sh``'s ``shctx_project_id``) — a
+DIFFERENT location than the fixture DB whenever ``SHCTX_DB`` points at a
+specific file. Every stateful test therefore sets ``SHEPHERD_WORKDIR`` to
+an isolated tmp directory.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import stat
 import subprocess
@@ -45,50 +55,46 @@ import pytest
 from conftest import PY, build_full_schema_db, cli_env, insert_project, run_cli
 
 # --------------------------------------------------------------------------
-# Fake sibling scripts — deterministic stand-ins for refresh-symbols.sh,
-# refresh-github.sh, refresh-artifacts.sh, cmd_dups.sh.
+# Stub external binaries (cargo / gh) + the fake plugin root with bash
+# CANARIES and a scripted dups-core.py.
 # --------------------------------------------------------------------------
 
-_STUB_PREAMBLE = '#!/usr/bin/env bash\necho "{name} $*" >> "$CALL_LOG"\n'
+#: Canary bash scripts — the pipeline must NEVER execute these. Each one
+#: would log a plainly-identifiable line to ``$CALL_LOG`` if it ever ran.
+_BASH_CANARY_NAMES = ("refresh-symbols.sh", "refresh-github.sh", "refresh-artifacts.sh", "cmd_dups.sh")
 
-_FAKE_SCRIPTS: dict[str, str] = {
-    "refresh-symbols.sh": _STUB_PREAMBLE.format(name="refresh-symbols.sh")
-    + (
-        'echo "stdout:refresh-symbols.sh:$*"\n'
-        'echo "stderr:refresh-symbols.sh:$*" >&2\n'
-        'exit "${FAKE_RC_SYMBOLS:-0}"\n'
-    ),
-    "refresh-github.sh": _STUB_PREAMBLE.format(name="refresh-github.sh")
-    + (
-        'echo "stdout:refresh-github.sh:$*"\n'
-        'echo "stderr:refresh-github.sh:$*" >&2\n'
-        'exit "${FAKE_RC_GITHUB:-0}"\n'
-    ),
-    "refresh-artifacts.sh": _STUB_PREAMBLE.format(name="refresh-artifacts.sh")
-    + (
-        'echo "stdout:refresh-artifacts.sh:$*"\n'
-        'echo "stderr:refresh-artifacts.sh:$*" >&2\n'
-        'exit "${FAKE_RC_ARTIFACTS:-0}"\n'
-    ),
-    "cmd_dups.sh": _STUB_PREAMBLE.format(name="cmd_dups.sh")
-    + (
-        'echo "stdout:cmd_dups.sh:$*"\n'
-        'echo "stderr:cmd_dups.sh:$*" >&2\n'
-        'exit "${FAKE_RC_SHAPES:-0}"\n'
-    ),
-}
+#: cargo stub whose ``metadata`` output contains zero packages — the
+#: symbols zone's cheapest deterministic SUCCESS ("no rust packages found").
+_CARGO_EMPTY_STUB = '#!/usr/bin/env bash\nprintf \'{"packages":[]}\\n\'\n'
+
+#: gh stub serving empty listings for every stage — the github zone's
+#: cheapest deterministic SUCCESS. ``FAKE_RC_GITHUB`` flips it to a
+#: non-transient failure (stderr text carries no transient marker).
+_GH_EMPTY_STUB = (
+    "#!/usr/bin/env bash\n"
+    'if [ "${FAKE_RC_GITHUB:-0}" != "0" ]; then echo "stub gh: hard failure" >&2; exit "$FAKE_RC_GITHUB"; fi\n'
+    'case "$1" in\n'
+    '  repo) echo "stub-owner/stub-repo" ;;\n'
+    '  issue|pr|release|api) echo "[]" ;;\n'
+    "esac\n"
+    "exit 0\n"
+)
+
+
+def _write_executable(path: Path, content: str) -> None:
+    path.write_text(content)
+    path.chmod(path.stat().st_mode | stat.S_IEXEC)
 
 
 def _make_fake_plugin_root(tmp_path: Path) -> Path:
-    """Build a throwaway ``CLAUDE_PLUGIN_ROOT`` tree with fully-scripted sibling commands.
+    """Build a throwaway ``CLAUDE_PLUGIN_ROOT`` tree of bash CANARIES.
 
     Layout mirrors the real plugin just enough for
     :func:`shepherd_cli.resolution.find_bash_shctx` to resolve it:
-    ``skills/context/scripts/{shctx, refresh-symbols.sh, refresh-github.sh,
-    refresh-artifacts.sh, cmd_dups.sh}``. ``shctx`` itself only needs to
-    exist as a file (its dirname is all ``shepherd refresh`` ever uses via
-    ``_find_scripts_dir()``); the four stand-ins are real, executable,
-    deterministic bash scripts (see ``_FAKE_SCRIPTS``).
+    ``skills/context/scripts/{shctx, <bash canaries>}`` — every script the
+    OLD subprocess-orchestration code would have located and executed sits
+    exactly where it used to look, ready to scream into ``$CALL_LOG`` if
+    anything ever runs it.
 
     Args:
         tmp_path: The pytest-provided per-test temp directory.
@@ -100,62 +106,86 @@ def _make_fake_plugin_root(tmp_path: Path) -> Path:
     scripts_dir = tmp_path / "fake-plugin-root" / "skills" / "context" / "scripts"
     scripts_dir.mkdir(parents=True)
 
-    shctx_path = scripts_dir / "shctx"
-    shctx_path.write_text("#!/usr/bin/env bash\nexit 0\n")
-    shctx_path.chmod(shctx_path.stat().st_mode | stat.S_IEXEC)
-
-    for name, content in _FAKE_SCRIPTS.items():
-        script_path = scripts_dir / name
-        script_path.write_text(content)
-        script_path.chmod(script_path.stat().st_mode | stat.S_IEXEC)
-
+    _write_executable(scripts_dir / "shctx", "#!/usr/bin/env bash\nexit 0\n")
+    for name in _BASH_CANARY_NAMES:
+        _write_executable(
+            scripts_dir / name,
+            f'#!/usr/bin/env bash\necho "BASH-CANARY {name} $*" >> "$CALL_LOG"\nexit 0\n',
+        )
     return scripts_dir.parent.parent.parent
+
+
+def _make_stub_bin(tmp_path: Path, *, cargo: bool = False, gh: bool = False) -> Path:
+    """A PATH-prefix directory holding stub ``cargo``/``gh`` executables."""
+    bin_dir = tmp_path / "stub-bin"
+    bin_dir.mkdir(exist_ok=True)
+    if cargo:
+        _write_executable(bin_dir / "cargo", _CARGO_EMPTY_STUB)
+    if gh:
+        _write_executable(bin_dir / "gh", _GH_EMPTY_STUB)
+    return bin_dir
 
 
 def _pipeline_env(
     fake_plugin_root: Path,
     call_log: Path,
     *,
-    rc: dict[str, str] | None = None,
+    bin_dir: Path | None = None,
+    bare_path: bool = False,
     workdir: Path | None = None,
+    project_id: str | None = None,
+    db: Path | None = None,
+    extra: dict[str, str] | None = None,
 ) -> dict[str, str]:
-    """Build the subprocess environment for a script-dependent ``shepherd refresh`` test.
+    """Build the subprocess environment for a ``shepherd refresh`` test.
 
     Args:
-        fake_plugin_root: The fake plugin root from
-            :func:`_make_fake_plugin_root`, wired in as
-            ``CLAUDE_PLUGIN_ROOT`` so ``find_bash_shctx()`` resolves to the
-            fake sibling scripts instead of the real, toolchain-dependent
-            ones.
-        call_log: Path the fake sibling scripts append one line to per
-            invocation (``$CALL_LOG``).
-        rc: ``FAKE_RC_*`` overrides, e.g. ``{"FAKE_RC_SYMBOLS": "1"}``.
-        workdir: When given, sets ``SHEPHERD_WORKDIR`` too (needed for
-            ``--scope=all``, whose telemetry stage reads
-            ``<workdir>/project.json`` / ``<workdir>/logs``) — a workdir
-            with no ``project.json`` written drives telemetry's own
-            "project not initialized" failure branch, which is fine for
-            these pipeline-shaped tests (they only assert on the four
-            script-dependent stages' own behavior).
+        fake_plugin_root: Wired in as ``CLAUDE_PLUGIN_ROOT`` so the dups
+            module resolves the fake ``dups-core.py`` (and the bash
+            canaries sit where the old subprocess code would have looked).
+        call_log: Path the canaries/dups-core stub append to.
+        bin_dir: When given, prepended to ``PATH`` (stub cargo/gh).
+        bare_path: When True, ``PATH`` is REPLACED by ``bin_dir`` (or an
+            empty dir) — drives the which()-based graceful-absence
+            branches deterministically.
+        workdir: When given, sets ``SHEPHERD_WORKDIR``.
+        project_id: When given (and ``workdir`` is set), writes
+            ``<workdir>/project.json`` with this id.
+        db: The ``SHCTX_DB`` fixture DB; defaults to a nonexistent path.
+        extra: Additional env vars (e.g. ``FAKE_RC_SHAPES``).
 
     Returns:
         A full subprocess environment ready for :func:`conftest.run_cli`.
     """
-    env = cli_env(fake_plugin_root / "unused.db")
+    env = cli_env(db if db is not None else fake_plugin_root / "unused.db")
     env["CLAUDE_PLUGIN_ROOT"] = str(fake_plugin_root)
     env["CALL_LOG"] = str(call_log)
+    if bin_dir is not None:
+        env["PATH"] = f"{bin_dir}{os.pathsep}{env['PATH']}" if not bare_path else str(bin_dir)
+    elif bare_path:
+        empty = fake_plugin_root / "empty-bin"
+        empty.mkdir(exist_ok=True)
+        env["PATH"] = str(empty)
     if workdir is not None:
+        workdir.mkdir(parents=True, exist_ok=True)
         env["SHEPHERD_WORKDIR"] = str(workdir)
-    for key, value in (rc or {}).items():
+        if project_id is not None:
+            (workdir / "project.json").write_text(json.dumps({"id": project_id}))
+    for key, value in (extra or {}).items():
         env[key] = value
     return env
 
 
 def _read_calls(call_log: Path) -> list[str]:
-    """Read back every logged stage invocation, in call order."""
+    """Read back every logged invocation, in call order."""
     if not call_log.is_file():
         return []
     return [line.rstrip() for line in call_log.read_text().splitlines() if line.strip()]
+
+
+def _assert_no_bash_canary(call_log: Path) -> None:
+    """The load-bearing native-port assertion: no bash sibling script ever ran."""
+    assert [line for line in _read_calls(call_log) if line.startswith("BASH-CANARY")] == []
 
 
 @pytest.fixture
@@ -165,7 +195,7 @@ def fake_plugin_root(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def call_log(tmp_path: Path) -> Path:
-    """Path the fake sibling scripts append their invocations to."""
+    """Path the canaries and the dups-core stub append their invocations to."""
     return tmp_path / "calls.log"
 
 
@@ -273,156 +303,252 @@ def test_unknown_scope_value_exits_1_at_dispatch_not_parse(
 
 
 # --------------------------------------------------------------------------
-# Single-scope: symbols / github / artifacts — runs ONLY that stage,
-# output fully inherited (no suppression), exit code propagated verbatim.
+# Single-scope: symbols — native zone, graceful cargo absence, project.json
+# gate, exit-code propagation. (Row-level behavior: test_refresh_impl.py.)
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    ("scope", "script"),
-    [
-        ("symbols", "refresh-symbols.sh"),
-        ("github", "refresh-github.sh"),
-        ("artifacts", "refresh-artifacts.sh"),
-    ],
-)
-def test_single_scope_runs_only_that_stage(
-    fake_plugin_root: Path, call_log: Path, scope: str, script: str
+def test_scope_symbols_without_cargo_skips_and_exits_0(
+    fake_plugin_root: Path, call_log: Path, tmp_path: Path
 ) -> None:
-    env = _pipeline_env(fake_plugin_root, call_log)
-    proc = run_cli(["refresh", f"--scope={scope}"], env)
+    env = _pipeline_env(fake_plugin_root, call_log, bare_path=True)
+    proc = run_cli(["refresh", "--scope=symbols"], env)
 
     assert proc.returncode == 0, proc.stderr
-    assert _read_calls(call_log) == [script]
-    assert f"stdout:{script}:" in proc.stdout
-    assert f"stderr:{script}:" in proc.stderr
+    assert proc.stdout.rstrip("\n") == "shctx: cargo not installed; skipping rust symbols"
+    _assert_no_bash_canary(call_log)
 
 
-@pytest.mark.parametrize(
-    ("scope", "rc_var"),
-    [
-        ("symbols", "FAKE_RC_SYMBOLS"),
-        ("github", "FAKE_RC_GITHUB"),
-        ("artifacts", "FAKE_RC_ARTIFACTS"),
-    ],
-)
-def test_single_scope_propagates_nonzero_exit_code(
-    fake_plugin_root: Path, call_log: Path, scope: str, rc_var: str
+def test_scope_symbols_missing_project_json_exits_1(
+    fake_plugin_root: Path, call_log: Path, tmp_path: Path
 ) -> None:
-    env = _pipeline_env(fake_plugin_root, call_log, rc={rc_var: "7"})
-    proc = run_cli(["refresh", f"--scope={scope}"], env)
+    workdir = tmp_path / "wd"
+    env = _pipeline_env(
+        fake_plugin_root, call_log, bin_dir=_make_stub_bin(tmp_path, cargo=True), workdir=workdir
+    )
+    proc = run_cli(["refresh", "--scope=symbols"], env)
 
-    assert proc.returncode == 7
+    assert proc.returncode == 1
+    pjson = workdir / "project.json"
+    assert proc.stderr.rstrip("\n") == f"ERROR: {pjson} missing — run 'shctx init' first"
+    _assert_no_bash_canary(call_log)
 
 
-def test_all_flag_is_alias_for_scope_all_before_symbols_dispatch(
+def test_scope_symbols_no_rust_packages_exits_0(
+    fake_plugin_root: Path, call_log: Path, tmp_path: Path
+) -> None:
+    env = _pipeline_env(
+        fake_plugin_root,
+        call_log,
+        bin_dir=_make_stub_bin(tmp_path, cargo=True),
+        workdir=tmp_path / "wd",
+        project_id="proj-a",
+    )
+    proc = run_cli(["refresh", "--scope=symbols"], env)
+
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.rstrip("\n") == "shctx: no rust packages found"
+    _assert_no_bash_canary(call_log)
+
+
+# --------------------------------------------------------------------------
+# Single-scope: github — native zone, graceful gh absence, project.json
+# gate. (Row-level behavior + retry loop: test_refresh_impl.py.)
+# --------------------------------------------------------------------------
+
+
+def test_scope_github_without_gh_skips_and_exits_0(
     fake_plugin_root: Path, call_log: Path
 ) -> None:
-    """``--all --scope=symbols`` — the LAST token wins (plain reassignment)."""
-    env = _pipeline_env(fake_plugin_root, call_log)
-    proc = run_cli(["refresh", "--all", "--scope=symbols"], env)
+    env = _pipeline_env(fake_plugin_root, call_log, bare_path=True)
+    proc = run_cli(["refresh", "--scope=github"], env)
 
     assert proc.returncode == 0, proc.stderr
-    assert _read_calls(call_log) == ["refresh-symbols.sh"]
+    assert proc.stdout.rstrip("\n") == "shctx: gh CLI not installed; skipping github refresh"
+    _assert_no_bash_canary(call_log)
 
 
-def test_scope_symbols_then_all_resolves_to_all(fake_plugin_root: Path, call_log: Path) -> None:
-    env = _pipeline_env(fake_plugin_root, call_log)
-    proc = run_cli(["refresh", "--scope=symbols", "--all"], env)
+def test_scope_github_missing_project_json_exits_1(
+    fake_plugin_root: Path, call_log: Path, tmp_path: Path
+) -> None:
+    workdir = tmp_path / "wd"
+    env = _pipeline_env(
+        fake_plugin_root, call_log, bin_dir=_make_stub_bin(tmp_path, gh=True), workdir=workdir
+    )
+    proc = run_cli(["refresh", "--scope=github"], env)
+
+    assert proc.returncode == 1
+    pjson = workdir / "project.json"
+    assert proc.stderr.rstrip("\n") == f"ERROR: {pjson} missing — run 'shctx init' first"
+    _assert_no_bash_canary(call_log)
+
+
+def test_scope_github_success_with_stub_gh(
+    fake_plugin_root: Path, call_log: Path, tmp_path: Path
+) -> None:
+    db_path = tmp_path / "shepherd.db"
+    build_full_schema_db(db_path)
+    insert_project(db_path, project_id="proj-a")
+    env = _pipeline_env(
+        fake_plugin_root,
+        call_log,
+        bin_dir=_make_stub_bin(tmp_path, gh=True),
+        workdir=tmp_path / "wd",
+        project_id="proj-a",
+        db=db_path,
+    )
+    proc = run_cli(["refresh", "--scope=github"], env)
 
     assert proc.returncode == 0, proc.stderr
-    calls = _read_calls(call_log)
-    assert "refresh-symbols.sh" in calls
-    assert "refresh-github.sh" in calls
-    assert "refresh-artifacts.sh" in calls
+    assert proc.stdout.rstrip("\n") == "shctx refresh github: ok"
+    _assert_no_bash_canary(call_log)
+
+
+def test_scope_github_propagates_nonzero_exit_code(
+    fake_plugin_root: Path, call_log: Path, tmp_path: Path
+) -> None:
+    env = _pipeline_env(
+        fake_plugin_root,
+        call_log,
+        bin_dir=_make_stub_bin(tmp_path, gh=True),
+        workdir=tmp_path / "wd",
+        project_id="proj-a",
+        extra={"FAKE_RC_GITHUB": "7"},
+    )
+    proc = run_cli(["refresh", "--scope=github"], env)
+
+    assert proc.returncode == 7
+    assert "stub gh: hard failure" in proc.stderr
+    _assert_no_bash_canary(call_log)
 
 
 # --------------------------------------------------------------------------
-# Single-scope: shapes — bash's refresh_shapes() helper (extra "ok" line
-# semantics).
+# Single-scope: artifacts — native zone. (Row-level behavior:
+# test_refresh_impl.py.)
 # --------------------------------------------------------------------------
 
 
-def test_scope_shapes_success_prints_ok_line(fake_plugin_root: Path, call_log: Path) -> None:
-    env = _pipeline_env(fake_plugin_root, call_log)
+def test_scope_artifacts_missing_project_json_exits_1(
+    fake_plugin_root: Path, call_log: Path, tmp_path: Path
+) -> None:
+    workdir = tmp_path / "wd"
+    env = _pipeline_env(fake_plugin_root, call_log, workdir=workdir)
+    proc = run_cli(["refresh", "--scope=artifacts"], env)
+
+    assert proc.returncode == 1
+    pjson = workdir / "project.json"
+    assert proc.stderr.rstrip("\n") == f"ERROR: {pjson} missing — run 'shctx init' first"
+    _assert_no_bash_canary(call_log)
+
+
+def test_scope_artifacts_indexes_markdown_natively(
+    fake_plugin_root: Path, call_log: Path, tmp_path: Path
+) -> None:
+    db_path = tmp_path / "shepherd.db"
+    build_full_schema_db(db_path)
+    insert_project(db_path, project_id="proj-a")
+    workdir = tmp_path / "wd"
+    plans = workdir / "docs" / "plans"
+    plans.mkdir(parents=True)
+    (plans / "foo.plan.md").write_text("# Hello Plan\n")
+    env = _pipeline_env(fake_plugin_root, call_log, workdir=workdir, project_id="proj-a", db=db_path)
+
+    proc = run_cli(["refresh", "--scope=artifacts"], env)
+
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.rstrip("\n") == "shctx refresh artifacts: ok"
+    conn = sqlite3.connect(str(db_path))
+    try:
+        rows = conn.execute("SELECT kind, title FROM artifacts;").fetchall()
+    finally:
+        conn.close()
+    assert rows == [("plan", "Hello Plan")]
+    _assert_no_bash_canary(call_log)
+
+
+# --------------------------------------------------------------------------
+# Single-scope: shapes — in-process dups dispatch running the REAL
+# shepherd_cli.dups_core engine (bash's refresh_shapes() helper semantics:
+# the "ok" line only on success).
+# --------------------------------------------------------------------------
+
+
+def _run_refresh_at(args: list[str], env: dict[str, str], cwd: Path) -> subprocess.CompletedProcess[str]:
+    """``run_cli`` with a caller-chosen cwd — needed when a test must control
+    ``resolve_repo_root()``'s non-git getcwd() fallback (the dups scan reads
+    its ``[dups]`` config from the REPO root, not the workdir)."""
+    return subprocess.run(
+        [PY, "-m", "shepherd_cli", "refresh", *args],
+        env=env,
+        cwd=str(cwd),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+
+def test_scope_shapes_success_prints_ok_line(
+    fake_plugin_root: Path, call_log: Path, tmp_path: Path
+) -> None:
+    db_path = tmp_path / "shepherd.db"
+    build_full_schema_db(db_path)
+    insert_project(db_path, project_id="proj-a")
+    env = _pipeline_env(fake_plugin_root, call_log, workdir=tmp_path / "wd", project_id="proj-a", db=db_path)
     proc = run_cli(["refresh", "--scope=shapes"], env)
 
     assert proc.returncode == 0, proc.stderr
-    assert _read_calls(call_log) == ["cmd_dups.sh scan --update --quiet"]
     assert "shctx refresh shapes: ok" in proc.stdout
+    _assert_no_bash_canary(call_log)
+
+
+def test_scope_shapes_runs_the_real_engine_end_to_end(
+    fake_plugin_root: Path, call_log: Path, tmp_path: Path
+) -> None:
+    """``--scope=shapes`` drives the real ``shepherd_cli.dups_core`` engine
+    (``scan --update --quiet``): rust struct shapes in the repo land in
+    ``index_struct_shapes`` — proof the whole in-process chain (refresh ->
+    dups dispatch -> engine subprocess of THIS interpreter) works."""
+    repo = tmp_path / "fakerepo"
+    repo.mkdir()
+    (repo / "shapes.rs").write_text(
+        "pub struct Alpha { pub id: u64, pub name: String, pub created_at: i64 }\n"
+        "pub struct Beta { pub id: u64, pub name: String, pub updated_at: i64 }\n"
+    )
+    db_path = tmp_path / "shepherd.db"
+    build_full_schema_db(db_path)
+    insert_project(db_path, project_id="proj-a")
+    env = _pipeline_env(fake_plugin_root, call_log, workdir=tmp_path / "wd", project_id="proj-a", db=db_path)
+
+    proc = _run_refresh_at(["--scope=shapes"], env, repo)
+
+    assert proc.returncode == 0, proc.stderr
+    assert "shctx refresh shapes: ok" in proc.stdout
+    conn = sqlite3.connect(str(db_path))
+    try:
+        names = {row[0] for row in conn.execute("SELECT name FROM index_struct_shapes")}
+    finally:
+        conn.close()
+    assert {"Alpha", "Beta"} <= names
+    _assert_no_bash_canary(call_log)
 
 
 def test_scope_shapes_failure_suppresses_ok_line_and_propagates_rc(
-    fake_plugin_root: Path, call_log: Path
+    fake_plugin_root: Path, call_log: Path, tmp_path: Path
 ) -> None:
-    env = _pipeline_env(fake_plugin_root, call_log, rc={"FAKE_RC_SHAPES": "5"})
-    proc = run_cli(["refresh", "--scope=shapes"], env)
+    """A poisoned ``dups_threshold`` config value makes the engine's own
+    ``argparse`` reject ``--threshold`` (exit 2) — the shapes zone
+    propagates that code and never prints the "ok" line (bash: ``set -e``
+    aborting ``refresh_shapes()`` before its echo)."""
+    repo = tmp_path / "fakerepo"
+    (repo / ".claude").mkdir(parents=True)
+    (repo / ".claude" / "shepherd.toml").write_text('dups_threshold = "not-a-number"\n')
+    env = _pipeline_env(fake_plugin_root, call_log, workdir=tmp_path / "wd", project_id="proj-a")
 
-    assert proc.returncode == 5
+    proc = _run_refresh_at(["--scope=shapes"], env, repo)
+
+    assert proc.returncode == 2
     assert "shctx refresh shapes: ok" not in proc.stdout
-    assert _read_calls(call_log) == ["cmd_dups.sh scan --update --quiet"]
-
-
-# --------------------------------------------------------------------------
-# _find_scripts_dir() failure mode — single scope hard-fails; --scope=all
-# gracefully degrades and still exits 0.
-# --------------------------------------------------------------------------
-
-
-def test_missing_bash_shctx_tooling_single_scope_exits_1(tmp_path: Path) -> None:
-    """``find_bash_shctx()`` falls back to walking up from the repo root when
-    ``CLAUDE_PLUGIN_ROOT`` doesn't contain it — which would find THIS repo's
-    own real ``skills/context/scripts/shctx`` if the subprocess ran with its
-    cwd anywhere inside this checkout (``conftest.run_cli`` always uses
-    ``cwd=CLI_ROOT``, which IS inside this checkout). So — exactly like
-    ``test_sync.py``'s identically-named test — this one bypasses
-    ``run_cli()`` and runs the subprocess directly with ``cwd=tmp_path``
-    (outside any git repo), so both the ``CLAUDE_PLUGIN_ROOT`` candidate AND
-    the walk-up fallback genuinely fail to find any ``shctx``."""
-    env = cli_env(tmp_path / "unused.db")
-    empty_root = tmp_path / "no-plugin-here"
-    empty_root.mkdir()
-    env["CLAUDE_PLUGIN_ROOT"] = str(empty_root)
-
-    proc = subprocess.run(
-        [PY, "-m", "shepherd_cli", "refresh", "--scope=symbols"],
-        env=env,
-        cwd=str(tmp_path),
-        capture_output=True,
-        text=True,
-        timeout=15,
-    )
-
-    assert proc.returncode == 1
-    assert "ERROR: bash shctx tooling not found" in proc.stderr
-
-
-def test_missing_bash_shctx_tooling_all_scope_degrades_gracefully_exits_0(
-    tmp_path: Path,
-) -> None:
-    """See :func:`test_missing_bash_shctx_tooling_single_scope_exits_1`'s
-    docstring for why this bypasses ``run_cli()`` too."""
-    workdir = tmp_path / "wd"
-    workdir.mkdir()
-    empty_root = tmp_path / "no-plugin-here"
-    empty_root.mkdir()
-
-    env = cli_env(tmp_path / "unused.db")
-    env["CLAUDE_PLUGIN_ROOT"] = str(empty_root)
-    env["SHEPHERD_WORKDIR"] = str(workdir)  # no project.json -> telemetry also "fails"
-
-    proc = subprocess.run(
-        [PY, "-m", "shepherd_cli", "refresh"],
-        env=env,
-        cwd=str(tmp_path),
-        capture_output=True,
-        text=True,
-        timeout=15,
-    )
-
-    assert proc.returncode == 0, proc.stderr
-    for label in ("symbols", "shapes", "github", "artifacts", "telemetry"):
-        assert f"shctx: {label} refresh failed (continuing)" in proc.stderr
+    _assert_no_bash_canary(call_log)
 
 
 # --------------------------------------------------------------------------
@@ -430,80 +556,108 @@ def test_missing_bash_shctx_tooling_all_scope_degrades_gracefully_exits_0(
 # --------------------------------------------------------------------------
 
 
-def test_bare_invocation_defaults_to_scope_all(
+def _all_happy_env(fake_plugin_root: Path, call_log: Path, tmp_path: Path) -> dict[str, str]:
+    """An environment where every one of the five zones succeeds."""
+    db_path = tmp_path / "shepherd.db"
+    build_full_schema_db(db_path)
+    insert_project(db_path, project_id="proj-a")
+    return _pipeline_env(
+        fake_plugin_root,
+        call_log,
+        bin_dir=_make_stub_bin(tmp_path, cargo=True, gh=True),
+        workdir=tmp_path / "wd",  # project.json present, no logs/ dir -> telemetry skip line
+        project_id="proj-a",
+        db=db_path,
+    )
+
+
+def test_bare_invocation_defaults_to_scope_all_in_fixed_order(
     fake_plugin_root: Path, call_log: Path, tmp_path: Path
 ) -> None:
-    # Isolated, empty workdir (no project.json) -> telemetry's own
-    # "project not initialized" failure branch -- deterministic and never
-    # touches this repo's real .shepherd/ namespace.
-    workdir = tmp_path / "wd"
-    workdir.mkdir()
-    env = _pipeline_env(fake_plugin_root, call_log, workdir=workdir)
+    env = _all_happy_env(fake_plugin_root, call_log, tmp_path)
     proc = run_cli(["refresh"], env)
 
     assert proc.returncode == 0, proc.stderr
-    assert _read_calls(call_log) == [
-        "refresh-symbols.sh",
-        "cmd_dups.sh scan --update --quiet",
-        "refresh-github.sh",
-        "refresh-artifacts.sh",
+    # Every zone succeeded, in bash's fixed order.
+    markers = [
+        "shctx: no rust packages found",  # symbols (empty-metadata cargo stub)
+        "shctx refresh shapes: ok",
+        "shctx refresh github: ok",
+        "shctx refresh artifacts: ok",
+        "shctx refresh telemetry: no log dir at",
     ]
-    assert "shctx refresh shapes: ok" in proc.stdout
-    # telemetry ran too, failed (no project.json), and was caught by the
-    # "|| echo ... failed (continuing)" guard -- the overall exit code is
-    # still 0.
-    assert "shctx: telemetry refresh failed (continuing)" in proc.stderr
+    positions = [proc.stdout.index(marker) for marker in markers]
+    assert positions == sorted(positions)
+    assert "refresh failed (continuing)" not in proc.stderr
+    _assert_no_bash_canary(call_log)
 
 
 def test_scope_all_continues_after_every_stage_fails_and_exits_0(
     fake_plugin_root: Path, call_log: Path, tmp_path: Path
 ) -> None:
-    workdir = tmp_path / "wd"
-    workdir.mkdir()  # no project.json -> telemetry "fails" too
+    # No project.json -> symbols/github/artifacts/telemetry each fail at
+    # their own project-id gate; a poisoned dups_threshold config in the
+    # (non-git, cwd-resolved) repo root fails the shapes engine's argparse.
+    repo = tmp_path / "fakerepo"
+    (repo / ".claude").mkdir(parents=True)
+    (repo / ".claude" / "shepherd.toml").write_text('dups_threshold = "not-a-number"\n')
     env = _pipeline_env(
         fake_plugin_root,
         call_log,
-        rc={
-            "FAKE_RC_SYMBOLS": "1",
-            "FAKE_RC_SHAPES": "1",
-            "FAKE_RC_GITHUB": "1",
-            "FAKE_RC_ARTIFACTS": "1",
-        },
-        workdir=workdir,
+        bin_dir=_make_stub_bin(tmp_path, cargo=True, gh=True),
+        workdir=tmp_path / "wd",
     )
-    proc = run_cli(["refresh", "--scope=all"], env)
+    proc = _run_refresh_at(["--scope=all"], env, repo)
 
     assert proc.returncode == 0, proc.stderr
-    # Every stage still ran despite each one failing.
-    assert len(_read_calls(call_log)) == 4
-    assert "shctx: symbols refresh failed (continuing)" in proc.stderr
-    assert "shctx: shapes refresh failed (continuing)" in proc.stderr
-    assert "shctx: github refresh failed (continuing)" in proc.stderr
-    assert "shctx: artifacts refresh failed (continuing)" in proc.stderr
-    assert "shctx: telemetry refresh failed (continuing)" in proc.stderr
+    for label in ("symbols", "shapes", "github", "artifacts", "telemetry"):
+        assert f"shctx: {label} refresh failed (continuing)" in proc.stderr
     assert "shctx refresh shapes: ok" not in proc.stdout
+    _assert_no_bash_canary(call_log)
 
 
-def test_scope_all_runs_stages_in_fixed_order_even_with_mixed_results(
+def test_scope_all_isolates_a_single_failing_stage(
     fake_plugin_root: Path, call_log: Path, tmp_path: Path
 ) -> None:
-    workdir = tmp_path / "wd"
-    workdir.mkdir()
-    env = _pipeline_env(
-        fake_plugin_root, call_log, rc={"FAKE_RC_GITHUB": "3"}, workdir=workdir
-    )
+    env = _all_happy_env(fake_plugin_root, call_log, tmp_path)
+    env["FAKE_RC_GITHUB"] = "3"
     proc = run_cli(["refresh", "--scope=all"], env)
 
     assert proc.returncode == 0, proc.stderr
-    assert _read_calls(call_log) == [
-        "refresh-symbols.sh",
-        "cmd_dups.sh scan --update --quiet",
-        "refresh-github.sh",
-        "refresh-artifacts.sh",
-    ]
     assert "shctx: github refresh failed (continuing)" in proc.stderr
     assert "shctx: symbols refresh failed (continuing)" not in proc.stderr
+    assert "shctx: shapes refresh failed (continuing)" not in proc.stderr
     assert "shctx: artifacts refresh failed (continuing)" not in proc.stderr
+    assert "shctx: telemetry refresh failed (continuing)" not in proc.stderr
+    # The stages after github still ran.
+    assert "shctx refresh artifacts: ok" in proc.stdout
+    assert "shctx refresh telemetry: no log dir at" in proc.stdout
+    _assert_no_bash_canary(call_log)
+
+
+def test_all_flag_then_scope_symbols_dispatches_symbols_only(
+    fake_plugin_root: Path, call_log: Path
+) -> None:
+    """``--all --scope=symbols`` — the LAST token wins (plain reassignment)."""
+    env = _pipeline_env(fake_plugin_root, call_log, bare_path=True)  # no cargo -> skip line
+    proc = run_cli(["refresh", "--all", "--scope=symbols"], env)
+
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.rstrip("\n") == "shctx: cargo not installed; skipping rust symbols"
+    assert "shapes" not in proc.stdout
+
+
+def test_scope_symbols_then_all_resolves_to_all(
+    fake_plugin_root: Path, call_log: Path, tmp_path: Path
+) -> None:
+    env = _all_happy_env(fake_plugin_root, call_log, tmp_path)
+    proc = run_cli(["refresh", "--scope=symbols", "--all"], env)
+
+    assert proc.returncode == 0, proc.stderr
+    assert "shctx refresh shapes: ok" in proc.stdout
+    assert "shctx refresh github: ok" in proc.stdout
+    assert "shctx refresh artifacts: ok" in proc.stdout
+    _assert_no_bash_canary(call_log)
 
 
 # --------------------------------------------------------------------------

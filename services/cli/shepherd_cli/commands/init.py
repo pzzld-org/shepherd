@@ -18,8 +18,9 @@ subcommands) that:
 3. Registers the host project (a ``projects`` row + ``project.json``) the
    first time ``init`` runs for this namespace — idempotent on every
    later run.
-4. Auto-triggers ``refresh-artifacts.sh`` (a real subprocess call to the
-   sibling bash script, per hard rule 9 — NOT reimplemented here) when
+4. Auto-triggers the artifacts refresh — an IN-PROCESS call to
+   :func:`shepherd_cli.refresh_impl.refresh_artifacts`, the native port of
+   the ``refresh-artifacts.sh`` script bash shelled out to here — when
    pre-existing markdown content is detected under the freshly-scaffolded
    namespace, so a namespace re-pointed at an already-populated repo gets
    indexed without a separate ``refresh --scope=artifacts`` call.
@@ -34,9 +35,9 @@ VERY FIRST call to ``resolve_workdir()`` (bash: ``shctx_artifacts_root``).
 ``os.environ["SHCTX_ROOT_OVERRIDE"]`` directly (not a local variable)
 BEFORE :func:`_init_impl` calls
 :func:`shepherd_cli.resolution.resolve_workdir` for the first time, so
-every downstream resolution call (including the trailing
-``refresh-artifacts.sh`` subprocess, which inherits this process's
-environment) sees the same override a real ``export`` would have set.
+every downstream resolution call (including the trailing in-process
+artifacts refresh, which resolves through this same environment) sees
+the same override a real ``export`` would have set.
 
 ARCHITECTURE DEVIATION FROM HARD RULE 7 (fully synchronous, no
 ``db.lifespan()``/Tortoise/asyncio, and a LOCAL migration-apply loop
@@ -133,14 +134,15 @@ BASH-PARITY NOTES (all preserved deliberately)
   docs/plans docs/reports docs`` loop sums every zone independently with
   no de-duplication; this is preserved exactly (it only affects the
   human-readable "detected N pre-existing markdown file(s)" count, not
-  which files ``refresh-artifacts.sh`` itself indexes).
-* The trailing ``bash "$HERE/refresh-artifacts.sh"`` call is
+  which files the artifacts refresh itself indexes).
+* The trailing artifacts refresh (bash: ``bash "$HERE/refresh-artifacts.sh"``,
+  now :func:`shepherd_cli.refresh_impl.refresh_artifacts` in-process) is
   UNCONDITIONALLY the last statement bash's ``set -e`` script executes
   when it fires at all — a nonzero exit there aborts the whole script
   with that same exit code. :func:`_maybe_auto_refresh` mirrors this by
-  propagating the subprocess's exit code as this command's own
-  ``typer.Exit`` code, rather than swallowing it (per hard rule 9: mirror
-  the exact same argv/exit-code contract bash drives).
+  propagating the refresh's returned exit code as this command's own
+  ``typer.Exit`` code, rather than swallowing it — the exact same
+  exit-code contract the former subprocess call had.
 """
 
 from __future__ import annotations
@@ -151,13 +153,12 @@ import os
 import re
 import shutil
 import sqlite3
-import subprocess
 import time
 
 import typer
 
+from shepherd_cli import refresh_impl
 from shepherd_cli.resolution import (
-    find_bash_shctx,
     find_migrations_dir,
     find_schema_base,
     resolve_db_path,
@@ -893,28 +894,29 @@ def _count_preexisting_markdown(root: str) -> int:
 
 
 def _maybe_auto_refresh(root: str) -> None:
-    """Trigger ``refresh-artifacts.sh`` when pre-existing markdown content is found.
+    """Trigger the artifacts refresh when pre-existing markdown content is found.
 
-    Bash parity with ``cmd_init.sh``'s trailing block: a real subprocess
-    call to the sibling bash script (hard rule 9 — NOT reimplemented
-    here), located the same way :mod:`shepherd_cli.commands.sync`/
-    ``sprint`` locate their own sibling ``cmd_*.sh`` scripts (via
-    :func:`shepherd_cli.resolution.find_bash_shctx`). Output is inherited
-    (unredirected), matching bash's own unredirected ``bash
-    "$HERE/refresh-artifacts.sh"`` call.
+    Bash parity with ``cmd_init.sh``'s trailing block, which shelled out
+    to the sibling ``refresh-artifacts.sh``. That script is now ported
+    natively as :func:`shepherd_cli.refresh_impl.refresh_artifacts` — the
+    SAME function ``shepherd refresh --scope=artifacts`` runs — so this
+    step is an IN-PROCESS call, no ``bash`` subprocess. The function
+    prints exactly what the script printed (unredirected, matching bash's
+    own unredirected call) and returns a process-style exit code; it
+    resolves the namespace/DB through the same environment
+    (``SHCTX_ROOT_OVERRIDE`` et al.) the subprocess used to inherit,
+    since :func:`_apply_flags` exports the override into ``os.environ``
+    before this runs.
 
     Args:
         root: The resolved (already-scaffolded) namespace directory.
 
     Raises:
-        typer.Exit: Code 1, with a stderr message, if pre-existing
-            markdown was detected but the bash ``shctx`` tooling cannot
-            be located at all (nothing to shell out to). Otherwise, the
-            subprocess's own exit code, if nonzero — bash parity with
-            ``set -e`` aborting the whole script on this (unconditionally
-            last) statement's failure. No exception (implicit success) if
-            no pre-existing markdown was found, or the subprocess
-            succeeded.
+        typer.Exit: The refresh's own exit code, if nonzero — bash parity
+            with ``set -e`` aborting the whole script on this
+            (unconditionally last) statement's failure. No exception
+            (implicit success) if no pre-existing markdown was found, or
+            the refresh succeeded.
     """
     count = _count_preexisting_markdown(root)
     if count <= 0:
@@ -922,20 +924,9 @@ def _maybe_auto_refresh(root: str) -> None:
 
     typer.echo(f"shctx: detected {count} pre-existing markdown file(s); auto-indexing")
 
-    shctx_path = find_bash_shctx()
-    if shctx_path is None:
-        typer.echo("ERROR: bash shctx tooling not found (skills/context/scripts/)", err=True)
-        raise typer.Exit(code=1)
-    refresh_script = os.path.join(os.path.dirname(shctx_path), "refresh-artifacts.sh")
-
-    try:
-        result = subprocess.run(["bash", refresh_script], check=False)
-    except OSError as exc:
-        typer.echo(f"ERROR: failed to run refresh-artifacts.sh: {exc}", err=True)
-        raise typer.Exit(code=1) from exc
-
-    if result.returncode != 0:
-        raise typer.Exit(code=result.returncode)
+    rc = refresh_impl.refresh_artifacts()
+    if rc != 0:
+        raise typer.Exit(code=rc)
 
 
 # --------------------------------------------------------------------------
