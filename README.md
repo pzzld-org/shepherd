@@ -141,7 +141,7 @@ From zero to your first audited sprint in about five minutes.
 
 ```bash
 # 1. Configure shepherd for this repo.
-cp /path/to/shepherd/examples/minimal/shepherd.toml .claude/shepherd.toml
+cp /path/to/shepherd/examples/minimal/shepherd.toml ./shepherd.toml
 
 # 2. Initialize the per-project context registry.
 /shepherd:ctx    # or: shctx init && shctx refresh --scope=all && shctx status
@@ -228,7 +228,7 @@ sql), tracked in git, injected into every matching coder brief.
 
 ## Configure
 
-Create `.claude/shepherd.toml` at the repo root. Shepherd warns at every invocation until one exists.
+Create `shepherd.toml` at the repo root (canonical since v6.4.2; the legacy `.claude/shepherd.toml` keeps resolving forever). Shepherd warns at every invocation until one exists.
 
 ```toml
 [project]
@@ -270,7 +270,7 @@ See [`docs/integration.md`](docs/integration.md) for the full model.
 
 | Question | Answer |
 | :--- | :--- |
-| `shepherd.toml` is missing | Create `.claude/shepherd.toml` (see [Configure](#configure)). |
+| `shepherd.toml` is missing | Create `shepherd.toml` at the repo root, or run `shepherd init` (see [Configure](#configure)). |
 | `shctx: command not found` | Ships at `skills/context/scripts/`; invoke via `/shepherd:ctx` if symlinked manually. |
 | Do I have to use Agent Teams? | Yes — `/shepherd:spawn` always runs through a teammate-conductor, even for one lane; there's no separate solo mode. It is experimental and off by default: set `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` (see [Install](#install)). |
 | `/shepherd:spawn` does nothing / no teammate appears | `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` is unset. Set it to `1` in `settings.json` and restart the session. |
@@ -303,7 +303,7 @@ See [`docs/integration.md`](docs/integration.md) for the full model.
 
 ## Versioning
 
-Semver: **major** = closed-flock contract change; **minor** = new commands/config keys; **patch** = dispatch/brief-template fixes. Current version: **6.4.2**. See [`CHANGELOG.md`](CHANGELOG.md).
+Semver: **major** = closed-flock contract change; **minor** = new commands/config keys; **patch** = dispatch/brief-template fixes. Current version: **6.4.3**. See [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Contributing
 

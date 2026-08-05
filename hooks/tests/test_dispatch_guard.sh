@@ -148,6 +148,71 @@ echo "== bash_guard.sh — #91 cargo gate sequential-execution BLOCKED =="
 expect_pass  "cargo gate foreground &&-chain"            bash_guard.sh "$(B 'cargo fmt --all && cargo check && cargo clippy')"
 expect_block "cargo gate run_in_background:true (#91)"   bash_guard.sh "$(B 'cargo test --workspace --features full' ',"run_in_background":true')"
 
+echo "== dispatch_guard.sh — Check 6 hand-rolled fan-out reminder (#263 default-ON) =="
+# #263 flips Check 6 from opt-in (default off, avoided per-step noise) to
+# default ON (the behavior it flags — a teammate hand-rolling an in-context
+# fan-out instead of compiling a Dynamic Workflow — is now a real doctrine
+# finding, not noise). The config knob survives so an operator can still
+# silence it. This is an emit_context (additionalContext) reminder, never a
+# deny — a per-call hook cannot see the whole batch, so it must never block.
+is_context() { printf '%s' "$1" | grep -q '"additionalContext"'; }
+has()        { printf '%s' "$1" | grep -q -- "$2"; }
+
+expect_context() {  # name script payload [env...]
+  local name="$1" script="$2" payload="$3"; shift 3
+  local out; out=$(run_guard "$script" "$payload" "$@")
+  if is_context "$out"; then printf '  PASS  CONTEXT %s\n' "$name"
+  else printf '  FAIL  CONTEXT %s (expected additionalContext, got: %s)\n' "$name" "${out:0:80}"; fails=$((fails+1)); fi
+}
+expect_silent() {  # name script payload [env...]
+  local name="$1" script="$2" payload="$3"; shift 3
+  local out; out=$(run_guard "$script" "$payload" "$@")
+  if [[ -z "$out" ]]; then printf '  PASS  SILENT  %s\n' "$name"
+  else printf '  FAIL  SILENT  %s (expected empty output, got: %s)\n' "$name" "${out:0:80}"; fails=$((fails+1)); fi
+}
+
+CHECK6_PAYLOAD=$(printf '{"session_id":"s1","cwd":"%s/.worktrees/lane-a","tool_name":"Agent","tool_input":{"subagent_type":"shepherd:coder","prompt":"do work"}}' "$tmp")
+
+# No [hooks] config at all → the reminder now fires BY DEFAULT (#263).
+: > .claude/shepherd.toml
+expect_context "no config: reminder fires by default (#263)" dispatch_guard.sh "$CHECK6_PAYLOAD"
+FANOUT_DEFAULT_OUT=$(run_guard dispatch_guard.sh "$CHECK6_PAYLOAD")
+if has "$FANOUT_DEFAULT_OUT" '#263' && has "$FANOUT_DEFAULT_OUT" 'FANOUT-VEHICLE-DOWNGRADE' \
+   && has "$FANOUT_DEFAULT_OUT" 'WORKFLOW-VEHICLE-PROBE'; then
+  printf '  PASS  CONTENT default reminder names the probe/downgrade contract (#263)\n'
+else
+  printf '  FAIL  CONTENT default reminder missing probe/downgrade contract: %s\n' "${FANOUT_DEFAULT_OUT:0:200}"
+  fails=$((fails+1))
+fi
+if has "$FANOUT_DEFAULT_OUT" 'dispatch-cascade'; then
+  printf '  FAIL  CONTENT default reminder still cites the retired dispatch-cascade.md doc path\n'
+  fails=$((fails+1))
+else
+  printf '  PASS  CONTENT default reminder no longer cites the retired dispatch-cascade.md doc path\n'
+fi
+if has "$FANOUT_DEFAULT_OUT" 'pipeline.md §Lane law' && has "$FANOUT_DEFAULT_OUT" 'SKILL.md §Dispatch law'; then
+  printf '  PASS  CONTENT default reminder cites the live doctrine surfaces\n'
+else
+  printf '  FAIL  CONTENT default reminder does not cite the live doctrine surfaces: %s\n' "${FANOUT_DEFAULT_OUT:0:200}"
+  fails=$((fails+1))
+fi
+
+# Operator can still silence it explicitly (the config knob survives #263).
+printf '[hooks]\nflag_handrolled_fanout = false\n' > .claude/shepherd.toml
+expect_silent "flag_handrolled_fanout = false: operator silences the reminder" dispatch_guard.sh "$CHECK6_PAYLOAD"
+
+# Explicit true still fires (back-compat with the pre-#263 opt-in spelling).
+printf '[hooks]\nflag_handrolled_fanout = true\n' > .claude/shepherd.toml
+expect_context "flag_handrolled_fanout = true: reminder still fires" dispatch_guard.sh "$CHECK6_PAYLOAD"
+
+# Root (non-teammate) dispatching the same role is NEVER Check 6's concern,
+# regardless of the default flip.
+: > .claude/shepherd.toml
+expect_silent "root (non-teammate) coder dispatch: Check 6 never fires" dispatch_guard.sh "$(P '{"subagent_type":"shepherd:coder"}')"
+
+# Restore the shared empty config for anything appended after this block.
+: > .claude/shepherd.toml
+
 if [[ "$fails" -gt 0 ]]; then
   printf 'test_dispatch_guard: %d expectation(s) failed\n' "$fails"; exit 1
 fi

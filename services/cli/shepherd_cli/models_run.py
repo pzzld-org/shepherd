@@ -83,6 +83,36 @@ RUN_STATUSES: tuple[str, ...] = ("planted", "planned", "executing", "closing", "
 #: Closed lane state vocabulary (mirrors teammate declared_state semantics).
 LANE_STATES: tuple[str, ...] = ("pending", "in-progress", "complete", "error")
 
+#: The canonical per-run subdirectories, in the order
+#: ``skills/context/references/naming-conventions.md §Run layout`` lists them.
+#: Every run gets ALL of these at ``run init`` so a run's shape is identical
+#: from creation, whoever creates it and whatever the sprint does or skips.
+#:
+#: Before v6.4.3 only ``lanes/`` was scaffolded and the rest appeared if and
+#: when something happened to write into them — so "does this run have a
+#: reports/ dir" answered "did this sprint dispatch a read-only role", not
+#: "is this a run". A layout that materializes as a side effect of activity
+#: cannot be relied on by anything that reads it.
+#:
+#: All four beyond ``lanes/`` hold DISPOSABLE run state and are gitignored
+#: (the durable/disposable split in that same section): the directories exist
+#: on disk for predictability, and git carries only the durable artifacts.
+RUN_SUBDIRS: tuple[str, ...] = ("lanes", "graph", "dispatch", "reports", "audits")
+
+#: The durable, git-TRACKED run-scoped artifacts, keyed to their writer
+#: (``naming-conventions.md §Ownership``). Fixed names — the directory
+#: carries the run identity, so these take no slug prefix. Presence is NOT
+#: required (a run has no ``close.md`` until it closes); this tuple is the
+#: closed vocabulary of what may legitimately sit at a run's top level.
+RUN_TRACKED_FILES: tuple[str, ...] = (
+    "seed.md",      # planter
+    "mesh.md",      # planter
+    "plan.md",      # engineer (materialized by root)
+    "phase0.md",    # engineer (materialized by root)
+    "close.md",     # root
+    "handoff.md",   # root
+)
+
 
 class RunIdError(ValueError):
     """Raised for an identifier outside the closed ``[a-z0-9-]`` grammar."""
@@ -532,6 +562,49 @@ def run_dir(run: str, workdir: str | None = None) -> str:
 def lane_dir(run: str, lane: str, workdir: str | None = None) -> str:
     """One lane's directory: ``<workdir>/runs/<run>/lanes/<lane>``."""
     return os.path.join(run_dir(run, workdir), "lanes", validate_id(lane, what="lane"))
+
+
+def scaffold_run_layout(run: str, workdir: str | None = None) -> list[str]:
+    """Create every canonical subdirectory of a run, idempotently.
+
+    The single writer of :data:`RUN_SUBDIRS`, so ``run init`` and any repair
+    path cannot drift on which directories a run is supposed to have.
+
+    Args:
+        run: The run identifier (validated by :func:`run_dir`).
+        workdir: Optional workdir override (tests).
+
+    Returns:
+        The subdirectory names that did NOT exist and were created, in
+        :data:`RUN_SUBDIRS` order — empty when the layout was already
+        complete, which is what makes this safe to call on an existing run.
+    """
+    base = run_dir(run, workdir)
+    created: list[str] = []
+    for name in RUN_SUBDIRS:
+        target = os.path.join(base, name)
+        if not os.path.isdir(target):
+            created.append(name)
+        os.makedirs(target, exist_ok=True)
+    return created
+
+
+def missing_run_subdirs(run: str, workdir: str | None = None) -> list[str]:
+    """The canonical subdirectories a run is missing, in canonical order.
+
+    The read-only half of :func:`scaffold_run_layout` — used by the
+    ``run layout`` verb to report drift without repairing it, so an operator
+    can see what a ``--repair`` would do before running it.
+
+    Args:
+        run: The run identifier.
+        workdir: Optional workdir override (tests).
+
+    Returns:
+        Missing subdirectory names; empty when the layout is complete.
+    """
+    base = run_dir(run, workdir)
+    return [n for n in RUN_SUBDIRS if not os.path.isdir(os.path.join(base, n))]
 
 
 def run_state_path(run: str, workdir: str | None = None) -> str:

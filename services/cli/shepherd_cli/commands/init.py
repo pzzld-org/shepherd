@@ -8,7 +8,10 @@ subcommands) that:
    ``.artifacts/`` with ``--artifacts``, or whichever already exists —
    see :mod:`shepherd_cli.resolution`'s ``resolve_workdir``) and scaffolds
    its directory tree, ``.gitignore``, and ``CONVENTIONS.md`` (bash:
-   ``scaffold.sh``).
+   ``scaffold.sh``), then (v6.4.3, #261 — NEW, no bash counterpart)
+   idempotently appends the audit-ledger ``.gitattributes`` union-merge
+   entry at the repo root (:func:`_scaffold_gitattributes`), keyed off
+   THIS namespace's resolved basename, never a hardcoded ``.shepherd``.
 2. Seeds ``shepherd.db`` from ``schema/0001_init.sql`` if it does not yet
    exist, then gap-fills every pending migration up to HEAD, NARRATING
    each one to stderr (bash: ``shctx_apply_pending_migrations`` — the
@@ -222,6 +225,7 @@ from shepherd_cli.resolution import (
     resolve_user_home,
     resolve_workdir,
 )
+from shepherd_cli.verdicts import LEDGER_FILENAME as _LEDGER_FILENAME
 
 app = typer.Typer(
     add_completion=False,
@@ -612,6 +616,85 @@ def _scaffold(root: str, repo: str) -> None:
             fh.write(_GITIGNORE_CONTENT)
 
     _copy_conventions(root)
+
+
+# --------------------------------------------------------------------------
+# .gitattributes ledger union-merge scaffold (v6.4.3, #261 — NEW, no bash
+# counterpart: ``scaffold.sh`` never wrote a ``.gitattributes`` at all).
+# --------------------------------------------------------------------------
+#: The comment block ``services/cli/shepherd_cli/verdicts.py``'s module
+#: docstring (spec section 1.3) mandates ABOVE the pattern line, verbatim.
+_GITATTRIBUTES_LEDGER_COMMENT = (
+    "# Append-only audit ledger: union-merge so a lane branch merge can never\n"
+    "# drop a sibling lane's verdict rows (#261).\n"
+)
+
+
+def _gitattributes_ledger_pattern(root: str) -> str:
+    """The exact ``.gitattributes`` pattern line for this project's namespace (spec 1.3).
+
+    Uses the RESOLVED workdir basename (``root``'s own basename — e.g.
+    ``.shepherd`` by default, ``.artifacts`` for a legacy/``--artifacts``
+    project), never a hardcoded ``.shepherd``, so the scaffolded rule
+    matches whichever namespace this ``init`` invocation actually
+    scaffolded.
+
+    Args:
+        root: The resolved (already-scaffolded) namespace directory.
+
+    Returns:
+        The single ``<namespace>/runs/*/auditor-verdicts.txt merge=union``
+        line, with NO trailing newline.
+    """
+    return f"{os.path.basename(root)}/runs/*/{_LEDGER_FILENAME} merge=union"
+
+
+def _scaffold_gitattributes(root: str, repo: str) -> None:
+    """Idempotently append the #261 ledger union-merge entry to ``<repo>/.gitattributes``.
+
+    ``merge=union`` is a git BUILT-IN merge driver — no ``.gitconfig``
+    setup needed, unlike a custom ``merge.<name>.driver`` — so this is the
+    ONLY file this scaffold ever needs to touch. ``.gitattributes`` lives
+    at the REPO root (``repo``, not ``root`` — a git attributes pattern is
+    always resolved relative to the directory the ``.gitattributes`` file
+    itself lives in), since the pattern names a namespace-relative path
+    (e.g. ``.shepherd/runs/*/...``).
+
+    Idempotent: if the exact pattern line
+    (:func:`_gitattributes_ledger_pattern`) already appears anywhere in an
+    existing ``.gitattributes``, nothing is written at all — never
+    duplicated, and every OTHER line in that file is left byte-for-byte
+    untouched (this function only ever APPENDS its own comment+pattern
+    block; it never rewrites, reorders, or removes anything already
+    there).
+
+    Args:
+        root: The resolved (already-scaffolded) namespace directory —
+            supplies the pattern's namespace segment.
+        repo: The resolved repo root — where ``.gitattributes`` lives.
+    """
+    pattern = _gitattributes_ledger_pattern(root)
+    path = os.path.join(repo, ".gitattributes")
+
+    existing = ""
+    if os.path.isfile(path):
+        with open(path, "r", encoding="utf-8") as fh:
+            existing = fh.read()
+        if pattern in existing.splitlines():
+            return  # already scaffolded -- never duplicate the line.
+
+    block = _GITATTRIBUTES_LEDGER_COMMENT + pattern + "\n"
+    if not existing:
+        new_text = block
+    else:
+        # Append-only: preserve every existing byte verbatim, just make
+        # sure the new block starts on its own line (a trailing-newline-less
+        # existing file must not get the new block glued onto its last line).
+        separator = "" if existing.endswith("\n") else "\n"
+        new_text = existing + separator + "\n" + block
+
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(new_text)
 
 
 # --------------------------------------------------------------------------
@@ -1265,6 +1348,7 @@ def _init_impl(flags: _Flags) -> None:
     repo = resolve_repo_root()
     namespace_existed = os.path.isdir(root)
     _scaffold(root, repo)
+    _scaffold_gitattributes(root, repo)
 
     db_path = resolve_db_path()
     db_existed = os.path.isfile(db_path)

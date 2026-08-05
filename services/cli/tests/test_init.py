@@ -925,3 +925,116 @@ def test_doctor_pass_matches_a_standalone_doctor_run(work_dir: Path) -> None:
     assert inline_report.count("WARN ") == doctor_proc.stdout.count("WARN ")
     assert inline_report.count("FAIL ") == doctor_proc.stdout.count("FAIL ")
     assert inline_report.splitlines()[-1] == doctor_proc.stdout.splitlines()[-1]
+
+
+# --------------------------------------------------------------------------
+# v6.4.3 (#261) — the .gitattributes audit-ledger union-merge scaffold.
+# Idempotency only, per this file's assigned scope; the merge-driver
+# SEMANTICS (row-level divergence comparison) are covered in
+# test_verdicts.py / test_run_ledger.py, not here.
+# --------------------------------------------------------------------------
+_LEDGER_GITATTRIBUTES_COMMENT_LINE_1 = (
+    "# Append-only audit ledger: union-merge so a lane branch merge can never"
+)
+_LEDGER_GITATTRIBUTES_COMMENT_LINE_2 = "# drop a sibling lane's verdict rows (#261)."
+
+
+def test_gitattributes_scaffolds_ledger_union_merge_entry(work_dir: Path) -> None:
+    """A bare ``shepherd init`` writes ``<repo>/.gitattributes`` (repo root,
+    NOT inside ``.shepherd/``) with the #261 union-merge pattern, keyed off
+    the RESOLVED namespace basename."""
+    env = _init_env()
+    proc = run_init([], work_dir, env)
+    assert proc.returncode == 0, proc.stderr
+
+    gitattributes = work_dir / ".gitattributes"
+    assert gitattributes.is_file()
+    assert not (work_dir / ".shepherd" / ".gitattributes").exists()
+
+    text = gitattributes.read_text()
+    assert _LEDGER_GITATTRIBUTES_COMMENT_LINE_1 in text
+    assert _LEDGER_GITATTRIBUTES_COMMENT_LINE_2 in text
+    assert ".shepherd/runs/*/auditor-verdicts.txt merge=union" in text.splitlines()
+
+
+def test_gitattributes_scaffold_uses_resolved_namespace_basename_not_hardcoded_shepherd(
+    work_dir: Path,
+) -> None:
+    """``--artifacts`` scaffolds the pattern for ``.artifacts/``, never a
+    hardcoded ``.shepherd/`` — the exact "resolved basename" requirement."""
+    env = _init_env()
+    proc = run_init(["--artifacts"], work_dir, env)
+    assert proc.returncode == 0, proc.stderr
+
+    text = (work_dir / ".gitattributes").read_text()
+    assert ".artifacts/runs/*/auditor-verdicts.txt merge=union" in text.splitlines()
+    assert ".shepherd/runs/*/auditor-verdicts.txt merge=union" not in text.splitlines()
+
+
+def test_gitattributes_scaffold_is_idempotent_on_second_run(work_dir: Path) -> None:
+    """Running ``shepherd init`` twice never duplicates the pattern line."""
+    env = _init_env()
+    first = run_init([], work_dir, env)
+    assert first.returncode == 0, first.stderr
+    first_text = (work_dir / ".gitattributes").read_text()
+
+    second = run_init([], work_dir, env)
+    assert second.returncode == 0, second.stderr
+    second_text = (work_dir / ".gitattributes").read_text()
+
+    assert second_text == first_text
+    assert second_text.count(".shepherd/runs/*/auditor-verdicts.txt merge=union") == 1
+    assert second_text.count("Append-only audit ledger") == 1
+
+
+def test_gitattributes_scaffold_appends_to_existing_file_without_rewriting(work_dir: Path) -> None:
+    """A pre-existing, hand-authored ``.gitattributes`` keeps every one of
+    its own lines byte-for-byte, with the #261 block appended after them —
+    never rewritten, reordered, or removed."""
+    custom_content = "*.bin binary\n*.png binary\n"
+    (work_dir / ".gitattributes").write_text(custom_content)
+    env = _init_env()
+
+    proc = run_init([], work_dir, env)
+
+    assert proc.returncode == 0, proc.stderr
+    text = (work_dir / ".gitattributes").read_text()
+    assert text.startswith(custom_content)
+    assert ".shepherd/runs/*/auditor-verdicts.txt merge=union" in text.splitlines()
+    assert _LEDGER_GITATTRIBUTES_COMMENT_LINE_1 in text
+
+
+def test_gitattributes_scaffold_idempotent_against_a_preexisting_pattern_line(work_dir: Path) -> None:
+    """A repo that ALREADY carries the exact pattern line (e.g. hand-added,
+    or committed by a teammate before ``shepherd init`` ever ran here) is
+    left untouched -- never duplicated."""
+    preexisting = (
+        "*.bin binary\n"
+        "# Append-only audit ledger: union-merge so a lane branch merge can never\n"
+        "# drop a sibling lane's verdict rows (#261).\n"
+        ".shepherd/runs/*/auditor-verdicts.txt merge=union\n"
+    )
+    (work_dir / ".gitattributes").write_text(preexisting)
+    env = _init_env()
+
+    proc = run_init([], work_dir, env)
+
+    assert proc.returncode == 0, proc.stderr
+    text = (work_dir / ".gitattributes").read_text()
+    assert text == preexisting
+    assert text.count(".shepherd/runs/*/auditor-verdicts.txt merge=union") == 1
+
+
+def test_gitattributes_scaffold_handles_no_trailing_newline_on_existing_file(work_dir: Path) -> None:
+    """An existing ``.gitattributes`` with NO trailing newline still gets a
+    clean, separate append -- the new block never glues onto the last
+    existing line."""
+    (work_dir / ".gitattributes").write_text("*.bin binary")  # deliberately no trailing \n
+    env = _init_env()
+
+    proc = run_init([], work_dir, env)
+
+    assert proc.returncode == 0, proc.stderr
+    lines = (work_dir / ".gitattributes").read_text().splitlines()
+    assert lines[0] == "*.bin binary"
+    assert ".shepherd/runs/*/auditor-verdicts.txt merge=union" in lines

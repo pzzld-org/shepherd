@@ -30,7 +30,7 @@ Refuse these combinations on sight (canonical definitions: `skills/shepherd/SKIL
 | Teammate-conductor sets `team_name` (any value) | `TEAMMATE-NESTING-ATTEMPT` |
 | Teammate-conductor dispatches @engineer / @critic | `WRONG-TIER-DISPATCH` |
 
-**Cascade — the plan IS the program.** The conductor walks the extracted `## Stage Graph` mechanically (`shctx graph next`/`mark`) — no fresh sequencing mid-sprint; `parallel_with` nodes fire in ONE Agent message. Gate-free agent-fanout segments compile to a Dynamic Workflow run out-of-context; the conductor NEVER hand-rolls in-context fan-out where a compiled workflow is required (`skills/shepherd/references/pipeline.md §Dispatch patterns`).
+**Cascade — the plan IS the program.** The conductor walks the extracted `## Stage Graph` mechanically (`shctx graph next`/`mark`) — no fresh sequencing mid-sprint; `parallel_with` nodes fire in ONE Agent message. Gate-free agent-fanout segments compile to a Dynamic Workflow run out-of-context; the conductor NEVER hand-rolls in-context fan-out where a compiled workflow is required — re-affirmed, not missed, by the #263 fan-out-vehicle inversion (`skills/shepherd/references/pipeline.md §Dispatch patterns`, `skills/shepherd/references/wave-routine.md §Per-wave compile`).
 
 **Generosity — only @engineer is count-capped** (once per sprint). @critic per gate, @coder per step, @auditor (intro + close swarm 3–5 + mid-body waves), @worker per bounded task, @discovery across all six patterns — all freely repeatable; the 3–5 close swarm and intro waves are FLOORS, NEVER ceilings. Extra dispatch is context-cheap (gate-free fan-out runs out-of-context); inlining a flock-shaped task to "save context" is a self-handicap. Reach for the lane, the swarm, the loop.
 

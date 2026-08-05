@@ -14,11 +14,14 @@ post-sprint merge; teammates execute lanes and report up.
 
 Each spawned `@conductor` executes its lane by running the wave routine
 (`skills/shepherd/references/wave-routine.md`) ABBREVIATED — no planning phase, just
-waves of file-disjoint `@coder`+`@auditor` in-context `Agent()` batches driven to the lane's
-acceptance (`agents/conductor.md §Lane walk`). It is the SAME routine root runs
-directly under `/shepherd:start` (the fallback when this teammate substrate is
-unavailable), differing only in scope (one lane vs the sprint) and git-integration
-authority (root-only).
+waves of file-disjoint `@coder`+`@auditor` compiled into a Dynamic Workflow per wave, probed
+once per session before the first fan-out (`WORKFLOW-VEHICLE-PROBE`) and driven to the lane's
+acceptance (`agents/conductor.md §Lane walk`, #263); in-context `Agent()` is the DOWNGRADE path,
+taken only on a confirmed absence and recorded with a `fanout_downgrade_reason`, never the
+default. It is the SAME routine root runs directly under `/shepherd:start` (the fallback when
+this teammate substrate is unavailable), differing only in scope (one lane vs the sprint) and
+git-integration authority (root-only) — the dispatch vehicle itself no longer differs between
+the two drivers (#263).
 
 Escalation contract (paths, cadence, halt-code map, heartbeat, triage):
 `skills/shepherd/references/escalation.md §Escalation payload`. Dispatch tier law:
@@ -70,9 +73,13 @@ Verify the Agent Teams substrate BEFORE the spawn instruction fires:
 1. **Env check:** `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` set in the lead session's
    environment. Unset → the teammate substrate is absent.
 2. **Probe note:** a "teammate" spawned without the substrate is silently an Agent-tool
-   SUBAGENT — `Workflow`-denied, notifications misrouted (`TeammateIdle`/`TaskCompleted`
-   never fire for it, liveness rows never match). The failure is invisible at spawn time
-   and surfaces only as a stalled sprint — WHY this is a verification, not an advisory.
+   SUBAGENT — notifications misrouted (`TeammateIdle`/`TaskCompleted` never fire for it,
+   liveness rows never match). `Workflow` itself is NOT what's lost: the grant lives in
+   `shepherd:conductor`'s own `tools:` frontmatter and stays live on a bare subagent dispatch
+   too (#263) — the 6.3.9-era "Workflow-denied" reading of this failure mode is RETIRED. What's
+   actually lost is everything Agent-Teams-specific: no team registration, no liveness row, no
+   idle/complete signal. The failure is invisible at spawn time and surfaces only as a stalled
+   sprint — WHY this is a verification, not an advisory.
 3. **Permission-mode inheritance:** teammates inherit the lead session's permission mode.
    For unattended lanes, launch root in `acceptEdits`/auto mode — a default-mode lead
    strands every teammate at its first edit prompt with nobody watching.
@@ -107,6 +114,15 @@ template, not here: stable blocks (boot instruction, hard prohibitions — ident
 every lane; full contract `agents/conductor.md §Hard prohibitions`) render FIRST so N
 teammate prompts share the longest byte prefix; volatile lane vars render LAST (#243).
 Never hand-reorder the rendered output.
+
+**The stable boot-instruction block carries the vehicle-probe directive (#263).** Every
+conductor's boot instruction MUST tell it to run `WORKFLOW-VEHICLE-PROBE` before its FIRST
+fan-out: read its own visible tool list for the literal token `Workflow`, once per session —
+present → compile and dispatch a Dynamic Workflow, the default at this tier; genuinely absent →
+downgrade to in-context `Agent()` and record `fanout_downgrade_reason` in the WAVE-COMPLETE
+payload (`skills/shepherd/SKILL.md §Dispatch law`, `agents/conductor.md §Lane walk`). This line
+renders from the template's stable block like the hard-prohibitions text above it, never
+authored per-lane.
 
 The vars — every inherited fact, so the teammate never re-asks main chat:
 
@@ -274,9 +290,13 @@ Every LEAD teammate — `@conductor` and the self-contained `@engineer` — is s
 `[spawn].lead_effort` (default `ultracode`). Root pins it in the boot brief (`Lead effort:`
 line); the lead sets its session effort on turn one (`/effort ultracode`). Leads own fan-out
 — the engineer's intro wave, the conductor's per-lane steps — so the effort level itself makes
-Dynamic-Workflow orchestration the default, no brief-context spent nagging for it
-(`agents/engineer.md`, `agents/conductor.md`). Subagents/workers are unaffected; `"off"` leaves
-the lead session's effort unchanged.
+Dynamic-Workflow orchestration the default, no brief-context spent nagging for it. This is now
+literally true at the conductor tier, not aspirational language carried over from the engineer's
+intro wave: `Workflow` ships live in `@conductor`'s own `tools:` frontmatter exactly as it does
+in `@engineer`'s (#263), so a spawned conductor's per-lane waves compile to a Dynamic Workflow by
+the SAME default, probed once per session before its first fan-out (`WORKFLOW-VEHICLE-PROBE` —
+`skills/shepherd/SKILL.md §Dispatch law`) (`agents/engineer.md`, `agents/conductor.md`).
+Subagents/workers are unaffected; `"off"` leaves the lead session's effort unchanged.
 
 ### Self-contained engineer
 

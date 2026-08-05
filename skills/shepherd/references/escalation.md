@@ -129,7 +129,9 @@ the bare name.
 - `PARALLEL-COLLISION`: two sprints claim one path
 - `GATES-BROKEN`: merge leaves a gate red
 - `TEAMMATE-STALL`: idled with no preceding WAVE-COMPLETE
-- `WORKFLOW-SELFCHECK-TOOLSEARCH`: ToolSearches for `Workflow` vs checking
+- `WORKFLOW-VEHICLE-PROBE`: a lead fanned out without ever probing its visible tool list for `Workflow` — required once per session, before the first fan-out, on either substrate; the probe confirms SUBSTRATE (teammate vs subagent), never a dormant grant (#263)
+- `WORKFLOW-SELFCHECK-TOOLSEARCH`: a lead used `ToolSearch` to test for `Workflow` — wrong index by construction: `Workflow` is a native top-level primitive, never a deferred `ToolSearch` target, so a null result is a false negative that establishes NOTHING, neither presence nor absence; probe the visible tool list instead (#263)
+- `FANOUT-VEHICLE-DOWNGRADE`: an in-context `Agent()` fan-out on a LIVE Agent-Teams teammate substrate, with no `fanout_downgrade_reason` recorded — a wave-review finding, not a certified-correct outcome; the identical vehicle on an Agent-tool subagent substrate is correct and never this finding (#263)
 - `TEAMMATE-BOOT-MISSING`: `INVOCATION-CONTEXT` boot block wholly absent — not spawned by `/shepherd:spawn`
 - `TEAMMATE-BOOT-MALFORMED`: boot block present but fails a Boot verification check (a lead-authored non-canonical brief carrying `BOOT-FORMAT: lead-attested` substance-checks the required facts instead of the header shape — `agents/conductor.md §Boot verification`)
 - `TEAMMATE-ARTIFACT-WRITE`: writes a plan/report/handoff

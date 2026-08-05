@@ -1,8 +1,8 @@
 ---
 name: start
-description: Root drives waves of Dynamic Workflows in-context to execute an already-planned sprint or a direct task — abbreviated execution-only, and the fallback when Agent Teams / teammate-conductors are unavailable.
+description: Root drives waves of Dynamic Workflows to execute an already-planned sprint or a direct task — execution-only, and the fallback when Agent Teams / teammate-conductors are unavailable.
 argument-hint: "[ sprint_slug | task ] [ --from=<base_ref> ]"
-allowed-tools: Agent, Bash, Edit, Glob, Grep, Read, Skill, Write, ToolSearch, Workflow, TaskCreate, TaskGet, TaskList, TaskUpdate, SendMessage, WebFetch, WebSearch, mcp__plugin_github_github__get_file_contents, mcp__plugin_github_github__get_commit, mcp__plugin_github_github__issue_read, mcp__plugin_github_github__issue_write, mcp__plugin_github_github__list_branches, mcp__plugin_github_github__list_commits, mcp__plugin_github_github__list_issues, mcp__plugin_github_github__list_pull_requests, mcp__plugin_github_github__pull_request_read, mcp__plugin_github_github__pull_request_review_write, mcp__plugin_github_github__search_code, mcp__plugin_github_github__search_issues, mcp__plugin_github_github__add_issue_comment, mcp__plugin_github_github__create_branch, mcp__plugin_github_github__create_pull_request, mcp__plugin_github_github__merge_pull_request, mcp__plugin_github_github__update_pull_request
+allowed-tools: Agent, Bash, Edit, Glob, Grep, Read, Skill, Write, ToolSearch, Workflow, TaskCreate, TaskGet, TaskList, TaskUpdate, SendMessage, WebFetch, WebSearch
 ---
 
 # /shepherd:start — root-drives-workflows execution
@@ -23,7 +23,8 @@ teammate-conductor per lane under Agent Teams. `/shepherd:start` is the abbrevia
 single-dispatcher counterpart — no fanout, no planning, just execution of a plan that already
 cleared `@critic` — and it is the documented FALLBACK when Agent Teams / teammate-conductors
 are unavailable or failing. Both drivers run the exact SAME per-wave routine
-(`skills/shepherd/references/wave-routine.md`); only the driver (one root vs. one
+(`skills/shepherd/references/wave-routine.md`) via the exact SAME dispatch vehicle — a
+compiled Dynamic Workflow, at both tiers (#263); only the driver (one root vs. one
 teammate-conductor per lane) and the scope (sprint vs. one lane) differ.
 
 ## Preflight

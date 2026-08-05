@@ -325,7 +325,7 @@ open-issue space at every sprint open.
 | `on_engineer_only` | list | `["workflow"]` | engineer-only |
 | `on_planter_only` | list | `[]` | planter-only |
 | `quiet_warnings` | bool | `false` | suppress informational `additionalContext` (still logged) |
-| `flag_handrolled_fanout` | bool | `false` | `dispatch_guard.sh` Check 6 — warn when a teammate hand-rolls a flock fan-out instead of compiling it |
+| `flag_handrolled_fanout` | bool | `true` | `dispatch_guard.sh` Check 6 — warn when a role on a live Agent-Teams substrate hand-rolls a flock fan-out instead of compiling it to a Dynamic Workflow (default ON as of v6.4.3, #263; set `false` to silence) |
 | `workflow_model_guard` | enum | `"block"` | `block\|warn\|off` — `workflow_model_guard.sh` PreToolUse(Workflow) dispatch-model-pin gate (#178) |
 | `teammate_heartbeat` | enum | `"on"` | `on\|off` — `teammate_heartbeat.sh` PreToolUse auto-stamp of the current teammate's `last_seen_at` so `shctx teammate liveness` needs no self-report (#193) |
 

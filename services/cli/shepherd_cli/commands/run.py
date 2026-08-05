@@ -46,24 +46,63 @@ lock file, latent prose). Subcommands:
   with no output when the pending set is empty; exit 6 listing
   ``lane<TAB>sha`` rows when accepted-but-unmerged lanes remain. Root
   MUST run this before declaring any wave gate green.
+- ``run ledger path [<run>] [--check]`` — v6.4.3 (#261): print the run's
+  audit ledger's ABSOLUTE, PRIMARY-checkout path
+  (:func:`shepherd_cli.verdicts.ledger_path`) — the ONE verb every agent
+  should use instead of hand-composing a
+  ``.shepherd/runs/<run>/auditor-verdicts.txt``-shaped relative path, which
+  resolves to a divorced physical copy from inside a linked worktree.
+  ``<run>`` may be omitted to use the ACTIVE run (the mtime-newest
+  ``run.json`` whose ``status`` is ``"executing"`` — mirrors
+  ``hooks/scripts/_lib.sh``'s ``active_run_dir``). ``--check`` additionally
+  exits 3 when the caller's cwd is inside a linked worktree AND a local,
+  worktree-relative copy of the ledger also exists there — a divergence
+  RISK signal, cheaper than (and independent of) ``ledger check`` below.
+- ``run ledger check [<run>] [--json]`` — v6.4.3 (#261): the mechanical
+  worktree-ledger divergence check
+  (:func:`shepherd_cli.verdicts.compare_worktree_ledgers`). FAILS (exit 7)
+  on any row a linked worktree's local ledger copy holds that the primary
+  lacks — the destructive case: merging that worktree could silently drop
+  a sibling lane's verdict row. A worktree merely BEHIND the primary
+  (every lane's normal state between merges) is NEVER flagged. Exit 5 when
+  the run has no ledger yet.
+- ``run wave verify <run> [--wave N] [--json]`` — v6.4.3 (#262): the
+  step/verdict join (:func:`shepherd_cli.verdicts.join`) nothing else
+  performs: enumerates every ``W-L-S`` step id from
+  ``{run_dir}/lanes/*/plan.md`` and joins it against the parsed ledger,
+  surfacing ``NO-VERDICT`` / ``UNRESOLVED-VERDICT`` / ``ORPHAN-VERDICT`` /
+  ``MALFORMED-ROW`` findings that reading the ledger top-to-bottom cannot
+  show. Exit 6 (the mechanical stop, matching ``wave pending``'s exit-6
+  idiom) when any finding is present; exit 5 when the run or its
+  lane-plan directory is missing.
 
 Exit codes: 0 ok; 2 usage/validation (includes a non-canonical explicit
-``run init`` id, without ``--force``); 5 run exists (init) or missing
-(everything else, including ``rename``'s source/destination checks); 6
-pending merges remain (``wave pending``).
+``run init`` id, without ``--force``, and ``ledger path``/``ledger
+check`` given no ``<run>`` and no resolvable active run — see the module
+docstring's ``ledger path`` entry); 3 a divergent local ledger copy was
+detected (``ledger path --check``); 5 run exists (init) or missing
+(everything else, including ``rename``'s source/destination checks,
+``ledger check`` when the run's ledger is absent, and ``wave verify``
+when the run or its lane-plan directory is absent); 6 pending merges
+remain (``wave pending``) or step/verdict join findings are present
+(``wave verify``); 7 worktree ledger divergence (``ledger check``).
 """
 
 from __future__ import annotations
 
 import json
 import os
+import subprocess
 
 import typer
 from pydantic import ValidationError
 
+from shepherd_cli import verdicts
 from shepherd_cli.models_run import (
     LANE_STATES,
     RUN_STATUSES,
+    RUN_SUBDIRS,
+    RUN_TRACKED_FILES,
     LaneState,
     RunIdDerivationError,
     RunIdError,
@@ -74,13 +113,16 @@ from shepherd_cli.models_run import (
     list_runs,
     load_run,
     load_run_with_migrations,
+    missing_run_subdirs,
     run_dir,
     run_state_path,
+    runs_root,
     save_run,
+    scaffold_run_layout,
     suggest_canonical_id,
     validate_id,
 )
-from shepherd_cli.resolution import resolve_workdir
+from shepherd_cli.resolution import in_subworktree, resolve_workdir
 
 app = typer.Typer(
     no_args_is_help=True,
@@ -90,8 +132,12 @@ app = typer.Typer(
 
 lane_app = typer.Typer(no_args_is_help=True, add_completion=False, help="Lane registration + state.")
 wave_app = typer.Typer(no_args_is_help=True, add_completion=False, help="#242 boundary-merge ledger.")
+ledger_app = typer.Typer(
+    no_args_is_help=True, add_completion=False, help="#261 audit-ledger custody (auditor-verdicts.txt)."
+)
 app.add_typer(lane_app, name="lane")
 app.add_typer(wave_app, name="wave")
+app.add_typer(ledger_app, name="ledger")
 
 
 def _fail(message: str, code: int) -> None:
@@ -215,7 +261,11 @@ def init_cmd(
 
     if os.path.isfile(run_state_path(run)):
         _fail(f"run already exists: {run}", 5)
-    os.makedirs(os.path.join(run_dir(run), "lanes"), exist_ok=True)
+    # Scaffold the FULL canonical layout, not just lanes/ (v6.4.3): a run's
+    # shape must be identical from creation, whoever creates it -- the planter
+    # via `plant`, root, or a sibling implementation -- and whatever the sprint
+    # later happens to use or skip.
+    scaffold_run_layout(run)
     path = save_run(RunState(run=run, kind=kind, branch=branch, base=base))
     typer.echo(path)
 
@@ -569,4 +619,400 @@ def wave_pending_cmd(
         raise typer.Exit(6)
 
 
+# --------------------------------------------------------------------------
+# #261/#262 — audit-ledger custody + step/verdict join (v6.4.3).
+#
+# Every rule (grammar, last-wins resolution, the join, the divergence
+# compare) lives in :mod:`shepherd_cli.verdicts` — a pure-function module
+# with no typer/subprocess/sys.exit of its own (see its own module
+# docstring). Everything below is a THIN wrapper: enumerate
+# ``git worktree list --porcelain`` (verdicts.py deliberately never touches
+# git), read the plain files verdicts.py is handed as text, and translate
+# its return values into stdout/stderr/exit codes — matching every other
+# command in this module's own ``_fail()``/exit-code idiom exactly.
+# --------------------------------------------------------------------------
+def _find_active_run(workdir: str | None = None) -> str | None:
+    """The ACTIVE run: the mtime-newest ``runs/*/run.json`` with ``status: "executing"``.
+
+    Mirrors ``hooks/scripts/_lib.sh``'s ``active_run_dir()`` exactly (same
+    "most-recently-modified run.json, first one whose status is executing
+    wins" resolution) so ``shepherd run ledger path``/``ledger check``
+    resolve the SAME "current run" a session's own precompact snapshot
+    already infers, when ``<run>`` is omitted (spec section 1.1/1.2's
+    ``[<run>]`` bracket notation).
+
+    Args:
+        workdir: Optional workdir override (tests).
+
+    Returns:
+        The run id, or None when ``runs/`` doesn't exist, is empty, or no
+        run.json parses with ``status == "executing"``.
+    """
+    root = runs_root(workdir)
+    if not os.path.isdir(root):
+        return None
+    candidates: list[tuple[float, str, str]] = []
+    for name in os.listdir(root):
+        path = os.path.join(root, name, "run.json")
+        if os.path.isfile(path):
+            candidates.append((os.path.getmtime(path), name, path))
+    candidates.sort(key=lambda row: row[0], reverse=True)
+    for _mtime, name, path in candidates:
+        try:
+            with open(path, "r", encoding="utf-8") as handle:
+                doc = json.load(handle)
+        except (OSError, json.JSONDecodeError):
+            continue
+        if isinstance(doc, dict) and doc.get("status") == "executing":
+            return name
+    return None
+
+
+def _resolve_run_arg(run: str | None) -> str:
+    """Resolve an OPTIONAL ``<run>`` CLI argument to a concrete run id.
+
+    Args:
+        run: The literal CLI argument, or None when omitted.
+
+    Returns:
+        ``run`` unchanged when given.
+
+    Raises:
+        typer.Exit: Code 2 (usage — "which run?" is unresolvable, the same
+            class of error as ``run migrate``'s "pass exactly one of <run>
+            or --all") when ``run`` is None and :func:`_find_active_run`
+            finds no active run either.
+    """
+    if run is not None:
+        return run
+    active = _find_active_run()
+    if active is None:
+        _fail(
+            "no <run> given and no active run found (a runs/*/run.json with "
+            'status: "executing") -- pass <run> explicitly',
+            2,
+        )
+        raise AssertionError("unreachable")  # _fail always raises
+    return active
+
+
+def _list_worktrees() -> list[str]:
+    """Every worktree path from ``git worktree list --porcelain``, primary first.
+
+    Spec section 1.2: "the first entry is the primary" — trusted verbatim
+    from git's own listing order, never re-derived. Runs from the CLI
+    process's own cwd; git worktree metadata is shared via the common
+    ``.git`` dir, so this returns the SAME full list regardless of which
+    worktree (primary or linked) that cwd happens to be inside.
+
+    Returns:
+        Worktree paths in git's own listing order (primary first). Empty
+        if ``git`` is unavailable, the cwd is not inside a repo, or the
+        command otherwise fails.
+    """
+    try:
+        proc = subprocess.run(
+            ["git", "worktree", "list", "--porcelain"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return []
+    if proc.returncode != 0:
+        return []
+    return [line[len("worktree ") :] for line in proc.stdout.splitlines() if line.startswith("worktree ")]
+
+
+def _current_worktree_root() -> str | None:
+    """The CURRENT worktree's own root (``git rev-parse --show-toplevel``).
+
+    Deliberately NOT :func:`shepherd_cli.resolution.resolve_repo_root`,
+    which always resolves to the PRIMARY worktree even from inside a
+    linked one (#221/#231) — this function exists precisely to get the
+    OTHER answer, the linked worktree's own checkout root, so
+    :func:`_worktree_local_ledger_candidate` can compute where a
+    hand-composed relative ledger path would actually land.
+
+    Returns:
+        The absolute worktree root, or None outside a git repo / on any
+        git failure.
+    """
+    try:
+        proc = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0:
+        return None
+    out = proc.stdout.strip()
+    return out or None
+
+
+def _worktree_local_ledger_candidate(run: str) -> str | None:
+    """Where a NAIVE, hand-composed relative ledger path would land from here.
+
+    Spec section 1: the exact wrong path an agent might compose by
+    mistake, ``<current-worktree-root>/<namespace-basename>/runs/<run>/
+    auditor-verdicts.txt`` — the ``ledger path --check`` divergence-risk
+    signal, never an actual read/write target. Uses the RESOLVED
+    namespace basename (``os.path.basename(resolve_workdir())``), never a
+    hardcoded ``.shepherd``, so a project scaffolded with ``--artifacts``
+    (or any other workdir override) still gets the right candidate.
+
+    Args:
+        run: The run id (already validated by the caller).
+
+    Returns:
+        None when the cwd is not inside a linked worktree at all (nothing
+        to warn about); otherwise the candidate path (need not exist —
+        the caller checks that).
+    """
+    if not in_subworktree():
+        return None
+    current_root = _current_worktree_root()
+    if current_root is None:
+        return None
+    basename = os.path.basename(resolve_workdir())
+    return os.path.join(current_root, basename, "runs", run, verdicts.LEDGER_FILENAME)
+
+
+@ledger_app.command("path")
+def ledger_path_cmd(
+    run: str | None = typer.Argument(None, help="Run id. Omit to resolve the active (status=executing) run."),
+    check: bool = typer.Option(
+        False,
+        "--check",
+        help="Exit 3 if cwd is inside a linked worktree AND a local, worktree-relative ledger copy also exists there.",
+    ),
+) -> None:
+    """Print the run's audit ledger's ABSOLUTE, PRIMARY-checkout path (spec section 1.1).
+
+    THE verb every agent should use instead of hand-composing a
+    ``.shepherd/runs/<run>/auditor-verdicts.txt``-shaped relative path,
+    which resolves to a divorced physical copy from inside a linked
+    worktree (#261). Delegates entirely to
+    :func:`shepherd_cli.verdicts.ledger_path` — never re-composes the path
+    itself.
+    """
+    resolved_run = _resolve_run_arg(run)
+    try:
+        path = verdicts.ledger_path(resolved_run)
+    except RunIdError as exc:
+        _fail(str(exc), 2)
+        return
+    typer.echo(path)
+
+    if check:
+        candidate = _worktree_local_ledger_candidate(resolved_run)
+        if candidate is not None and os.path.isfile(candidate):
+            typer.echo(
+                f"ERROR: divergent local ledger copy at {candidate} -- this is NOT the "
+                f"canonical ledger; use the absolute path above ({path}) instead (#261)",
+                err=True,
+            )
+            raise typer.Exit(3)
+
+
+@ledger_app.command("check")
+def ledger_check_cmd(
+    run: str | None = typer.Argument(None, help="Run id. Omit to resolve the active (status=executing) run."),
+    json_flag: bool = typer.Option(False, "--json"),
+) -> None:
+    """The #261 mechanical worktree-ledger divergence check (spec section 1.2).
+
+    FAILS (exit 7) on any row a linked worktree's local ledger copy holds
+    that the PRIMARY lacks -- the destructive case: a lane wrote a verdict
+    only its own copy carries, and boundary-merging it could silently drop
+    a sibling lane's row. A worktree merely BEHIND the primary (every
+    lane's normal state between merges) is NEVER flagged -- a hard
+    requirement, enforced entirely by
+    :func:`shepherd_cli.verdicts.compare_worktree_ledgers`, which this
+    command never re-derives.
+    """
+    resolved_run = _resolve_run_arg(run)
+    try:
+        primary_path = verdicts.ledger_path(resolved_run)
+    except RunIdError as exc:
+        _fail(str(exc), 2)
+        return
+    if not os.path.isfile(primary_path):
+        _fail(f"no ledger for run {resolved_run} (expected {primary_path})", 5)
+        return
+
+    with open(primary_path, "r", encoding="utf-8") as handle:
+        primary_text = handle.read()
+
+    basename = os.path.basename(resolve_workdir())
+    worktrees: dict[str, str | None] = {}
+    for wt_path in _list_worktrees()[1:]:  # [0] is the primary -- never compared against itself.
+        candidate = os.path.join(wt_path, basename, "runs", resolved_run, verdicts.LEDGER_FILENAME)
+        if os.path.isfile(candidate):
+            with open(candidate, "r", encoding="utf-8") as handle:
+                worktrees[wt_path] = handle.read()
+        else:
+            worktrees[wt_path] = None  # absent copy is fine, not a finding.
+
+    divergences = verdicts.compare_worktree_ledgers(primary_text, worktrees)
+
+    if json_flag:
+        typer.echo(
+            json.dumps(
+                {
+                    "run": resolved_run,
+                    "divergences": [d.model_dump(mode="json") for d in divergences],
+                    "ok": not divergences,
+                }
+            )
+        )
+    else:
+        for divergence in divergences:
+            typer.echo(f"{divergence.worktree}\t{divergence.row}")
+
+    if divergences:
+        raise typer.Exit(7)
+
+
+@wave_app.command("verify")
+def wave_verify_cmd(
+    run: str = typer.Argument(...),
+    wave: int | None = typer.Option(None, "--wave", help="Filter to one wave number."),
+    json_flag: bool = typer.Option(False, "--json"),
+) -> None:
+    """The #262 step/verdict join (spec section 4) -- what the ledger alone cannot show.
+
+    Enumerates every ``W-L-S`` step id from ``{run_dir}/lanes/*/plan.md``
+    and joins it against the parsed ledger
+    (:func:`shepherd_cli.verdicts.join`), surfacing ``NO-VERDICT`` /
+    ``UNRESOLVED-VERDICT`` / ``ORPHAN-VERDICT`` / ``MALFORMED-ROW``
+    findings. Prints the per-step table, then any findings; exit 6 (the
+    mechanical stop, matching ``wave pending``'s exit-6 idiom) when any
+    finding is present.
+    """
+    try:
+        run_directory = run_dir(run)
+    except RunIdError as exc:
+        _fail(str(exc), 2)
+        return
+
+    try:
+        steps = verdicts.enumerate_plan_steps(run_directory)
+    except FileNotFoundError as exc:
+        _fail(str(exc), 5)
+        return
+
+    if wave is not None:
+        steps = [step for step in steps if step.wave == wave]
+
+    ledger_file = verdicts.ledger_path(run)
+    ledger_text = ""
+    if os.path.isfile(ledger_file):
+        with open(ledger_file, "r", encoding="utf-8") as handle:
+            ledger_text = handle.read()
+    rows, malformed = verdicts.parse_ledger(ledger_text)
+    if wave is not None:
+        rows = [row for row in rows if row.wave == wave]
+
+    result = verdicts.join(steps, rows, malformed=malformed)
+
+    if json_flag:
+        typer.echo(
+            json.dumps(
+                {
+                    "run": run,
+                    "wave": wave,
+                    "steps": [step.model_dump(mode="json") for step in result.steps],
+                    "findings": [finding.model_dump(mode="json") for finding in result.findings],
+                    "ok": result.ok,
+                }
+            )
+        )
+    else:
+        for step_result in result.steps:
+            typer.echo(f"{step_result.step}\t{step_result.verdict or '-'}\t{step_result.raw or '-'}")
+        if result.findings:
+            typer.echo("")
+            typer.echo("FINDINGS:")
+            for finding in result.findings:
+                typer.echo(f"{finding.kind}\t{finding.detail}")
+
+    if not result.ok:
+        raise typer.Exit(6)
+
+
 __all__ = ["app"]
+
+
+@app.command("layout")
+def layout_cmd(
+    run: str = typer.Argument(..., help="Run id."),
+    repair: bool = typer.Option(False, "--repair", help="Create any missing canonical subdirectory."),
+    as_json: bool = typer.Option(False, "--json", help="Emit JSON."),
+) -> None:
+    """Verify (and optionally repair) a run's canonical directory layout.
+
+    ``skills/context/references/naming-conventions.md §Run layout`` fixes what
+    a run directory contains. Before v6.4.3 only ``lanes/`` was scaffolded and
+    the rest materialized as a side effect of activity, so "does this run have
+    a ``reports/``" answered "did this sprint dispatch a read-only role", not
+    "is this a run" — a layout nothing could rely on.
+
+    Read-only by default so it is safe to run against a live sprint;
+    ``--repair`` creates what is missing and creates nothing else. Repair is
+    idempotent and never touches files, only directories.
+
+    Exit codes: 0 layout complete (or repaired); 5 run missing; 6 layout
+    incomplete and ``--repair`` not given — the mechanical stop, matching
+    ``wave pending``/``wave verify``.
+    """
+    try:
+        validate_id(run, what="run")
+    except RunIdError as exc:
+        _fail(str(exc), 2)
+    if not os.path.isfile(run_state_path(run)):
+        _fail(f"no such run: {run} (expected {run_state_path(run)})", 5)
+
+    missing = missing_run_subdirs(run)
+    created: list[str] = []
+    if repair and missing:
+        created = scaffold_run_layout(run)
+        missing = missing_run_subdirs(run)
+
+    if as_json:
+        typer.echo(
+            json.dumps(
+                {
+                    "run": run,
+                    "run_dir": run_dir(run),
+                    "subdirs": list(RUN_SUBDIRS),
+                    "missing": missing,
+                    "created": created,
+                    "tracked_files_present": [
+                        f for f in RUN_TRACKED_FILES if os.path.isfile(os.path.join(run_dir(run), f))
+                    ],
+                    "ok": not missing,
+                },
+                indent=2,
+            )
+        )
+    else:
+        base = run_dir(run)
+        for name in RUN_SUBDIRS:
+            mark = "missing" if name in missing else ("created" if name in created else "ok")
+            typer.echo(f"{name + '/':<12}{mark}")
+        present = [f for f in RUN_TRACKED_FILES if os.path.isfile(os.path.join(base, f))]
+        typer.echo(f"tracked artifacts: {', '.join(present) if present else '(none yet)'}")
+        if created:
+            typer.echo(f"repaired: {', '.join(created)}", err=True)
+
+    if missing:
+        if not repair:
+            typer.echo(
+                f"ERROR: layout incomplete ({', '.join(missing)}) — re-run with --repair",
+                err=True,
+            )
+        raise typer.Exit(6)

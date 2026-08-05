@@ -37,8 +37,18 @@ have agents/conductor.md 'check 2 \(.dispatcher: teammate-conductor.\) is NEVER 
 have commands/spawn.md    'BOOT-FORMAT: lead-attested'         "#184 spawn.md documents the marker for leads"
 have skills/shepherd/references/escalation.md 'lead-attested' "#184 escalation.md TEAMMATE-BOOT-MALFORMED notes the escape"
 
-echo "== #185 worker GH MCP write + CLI fallback =="
-have agents/worker.md 'mcp__plugin_github_github__add_issue_comment' "#185 worker grants add_issue_comment"
+echo "== #185 worker GH write capability + CLI fallback =="
+# SUPERSEDED by v6.4.3 (#110 enforcement). This leg pinned the literal token
+# `mcp__plugin_github_github__add_issue_comment` in worker.md's frontmatter.
+# That token named ONE server's ONE naming scheme, which shepherd cannot
+# guarantee exists — the same capability is `mcp__github__*` natively and
+# `mcp__MCP_DOCKER__*` behind a Docker MCP gateway. All 129 provider tokens
+# were dropped from agent frontmatter; the capability is now DISCOVERED via
+# ToolSearch, and lint_agent_capabilities.sh fails on any re-added token.
+# What #185 actually cared about — that the worker can write to GitHub and
+# degrades to the sanctioned CLI when it cannot — is pinned by the two legs
+# below, which were always the load-bearing half.
+have agents/worker.md 'ToolSearch' "#185→#110 worker can DISCOVER the GH write capability at runtime"
 have agents/worker.md 'SANCTIONED write fallback'                    "#185 worker.md sanctions CLI fallback when MCP unavailable"
 have skills/shepherd/SKILL.md 'SANCTIONED write fallback'            "#185 SKILL.md §MCP-over-CLI sanctions CLI fallback"
 
@@ -79,7 +89,7 @@ have skills/context/scripts/cmd_graph.sh '"model_pin"'                          
 have skills/context/scripts/cmd_graph.sh '_graph_role_model'                                             "#180 model resolved from [models] via cfg_section_get"
 missing skills/context/scripts/cmd_graph.sh 'subagent_type: .shepherd:.\{s'                              "#180 legacy subagent_type emission removed"
 have skills/harness/references/workflow-templates.md 'Pinned.* \(#180\)'                                 "#180 workflow-templates §Compile-down adds the Pinned invariant"
-have docs/specs/v630-dispatch-pin-dsl-decision.md 'Decision: do NOT build the broad DSL now'             "#181 explore/decision doc records the DSL decision"
+have .shepherd/docs/specs/v630-dispatch-pin-dsl-decision.md 'Decision: do NOT build the broad DSL now'             "#181 explore/decision doc records the DSL decision"
 have hooks/scripts/bash_guard.sh 'subagent_type\|agentType'                                              "#180 bash_guard Check 0-bis matches the renamed agentType key"
 
 if [[ "$fails" -eq 0 ]]; then echo "—— v6.3.0 wiring: OK ——"; else echo "—— v6.3.0 wiring: $fails FAIL ——"; fi

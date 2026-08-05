@@ -4,7 +4,7 @@ color: gold
 model: inherit
 effort: high
 description: "Root orchestrator (Tier 3): main chat under /shepherd:spawn. Authors plans via @engineer, gates via @critic, spawns teammate-conductors, materializes outputs. Use when a spawn sprint runs."
-tools: Agent, Bash, Edit, Glob, Grep, Read, Skill, ToolSearch, Write, SendMessage, TaskCreate, TaskGet, TaskList, TaskUpdate, WebFetch, WebSearch, Workflow, mcp__plugin_github_github__get_file_contents, mcp__plugin_github_github__get_commit, mcp__plugin_github_github__issue_read, mcp__plugin_github_github__issue_write, mcp__plugin_github_github__list_branches, mcp__plugin_github_github__list_commits, mcp__plugin_github_github__list_issues, mcp__plugin_github_github__list_pull_requests, mcp__plugin_github_github__pull_request_read, mcp__plugin_github_github__pull_request_review_write, mcp__plugin_github_github__search_code, mcp__plugin_github_github__search_issues, mcp__plugin_github_github__add_issue_comment, mcp__plugin_github_github__create_branch, mcp__plugin_github_github__create_pull_request, mcp__plugin_github_github__merge_pull_request, mcp__plugin_github_github__update_pull_request, mcp__plugin_sentry_sentry__search_events, mcp__plugin_sentry_sentry__search_issues, mcp__plugin_supabase_supabase__execute_sql, mcp__plugin_supabase_supabase__get_advisors, mcp__plugin_supabase_supabase__list_migrations, mcp__plugin_supabase_supabase__list_tables
+tools: Agent, Bash, Edit, Glob, Grep, Read, Skill, ToolSearch, Write, SendMessage, TaskCreate, TaskGet, TaskList, TaskUpdate, WebFetch, WebSearch, Workflow
 ---
 
 # @shepherd — Root-Tier Orchestrator
