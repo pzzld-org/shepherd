@@ -339,6 +339,52 @@ def test_gc_all_flag_prunes_regardless_of_age(repo: Path) -> None:
     assert not wt.exists()
 
 
+def test_gc_all_prunes_worktree_committed_this_very_second(repo: Path) -> None:
+    """v6.4.3 regression: `--all` must not lose a same-second worktree.
+
+    `--all` used to be encoded as `older=0`, which leaves `threshold == now`
+    while the prune test is `ts < threshold` (STRICTLY older) — so a worktree
+    whose last commit lands in the SAME wall-clock second as the `gc` call
+    was silently skipped. That is exactly the shape of a worktree a lane
+    teardown just finished with, i.e. what `--all` is for. Pinned explicitly
+    with the commit timestamp forced to `now` so the race cannot decide the
+    outcome: the old encoding fails this 100% of the time, where the
+    incidental sibling test only failed when the clock did not tick.
+    """
+    toplevel = _toplevel(repo)
+    _run(["create-batch", "sameinstant"], repo)
+    wt = Path(toplevel) / ".claude" / "worktrees" / "agent-sameinstant"
+    _commit_with_timestamp(wt, int(time.time()), "same-second")
+
+    proc = _run(["gc", "--all"], repo)
+    assert proc.returncode == 0, proc.stderr
+    assert f"pruning {wt} (branch=agent-sameinstant, age=" in proc.stdout
+    assert "shctx worktree gc: pruned 1 (threshold 0h)" in proc.stdout
+    assert not wt.exists()
+
+
+def test_gc_older_than_zero_matches_all_flag(repo: Path) -> None:
+    """`--older-than=0` resolves identically to `--all` (v6.4.3).
+
+    Both spell "no age floor". Left as arithmetic, `0` puts `threshold ==
+    now` against a strict `ts < threshold` test, so a worktree committed in
+    the current second survived or not depending on whether the clock ticked
+    between the commit and the call — a coin flip, and the same defect
+    `--all` carried. Two spellings of the same intent behaving differently
+    would be its own trap, so they are pinned equal.
+    """
+    toplevel = _toplevel(repo)
+    _run(["create-batch", "sameinstant"], repo)
+    wt = Path(toplevel) / ".claude" / "worktrees" / "agent-sameinstant"
+    _commit_with_timestamp(wt, int(time.time()), "same-second")
+
+    proc = _run(["gc", "--older-than=0"], repo)
+    assert proc.returncode == 0, proc.stderr
+    assert f"pruning {wt} (branch=agent-sameinstant, age=" in proc.stdout
+    assert "shctx worktree gc: pruned 1 (threshold 0h)" in proc.stdout
+    assert not wt.exists()
+
+
 def test_gc_older_than_flag_overrides_default(repo: Path) -> None:
     toplevel = _toplevel(repo)
     _run(["create-batch", "midage"], repo)

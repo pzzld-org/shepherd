@@ -2,16 +2,17 @@
 title: wave-routine
 description: |
   The deterministic per-wave loop a single dispatcher runs to drive
-  file-disjoint implementation steps to acceptance — root compiles to a
-  Dynamic Workflow, a teammate-conductor dispatches the identical shape
-  in-context via Agent() (Workflow is denied inside any spawned role, #220).
+  file-disjoint implementation steps to acceptance — every driver holding
+  the Workflow grant (root, a teammate-conductor, a self-contained
+  engineer) compiles the SAME Dynamic Workflow shape; in-context Agent()
+  fan-out is the downgrade path, taken only on a confirmed absence (#263).
   Use when a root shepherd or a conductor drives a wave of coder+auditor
   steps outside a full agent-team fanout.
 ---
 
 # Wave routine — one dispatcher, waves of dynamic workflows
 
-The deterministic per-wave loop a single dispatcher runs to drive file-disjoint implementation steps to their acceptance outcomes — the wave's own coder/auditor steps are always SUBAGENTS, never nested Agent-Teams teammates. Two drivers, one routine, two DIFFERENT dispatch mechanics (§Per-wave compile): root compiles the loop to a Dynamic Workflow — standard, **and** the CONTINGENT fallback (in-context, root-tier) when Agent Teams itself is unavailable, root stays root either way; a `@conductor` runs it ABBREVIATED (§Abbreviated conductor) scoped to one lane, ALWAYS via in-context `Agent()` dispatch — `Workflow` is unconditionally denied inside any spawned role (#220, CC 2.1.212, `skills/harness/SKILL.md §Workflow tool`), so this is the conductor's PERMANENT mode, never a degraded one. This is the execution substrate for `/shepherd:start` (root) and the conductor's §Lane walk.
+The deterministic per-wave loop a single dispatcher runs to drive file-disjoint implementation steps to their acceptance outcomes — the wave's own coder/auditor steps are always SUBAGENTS, never nested Agent-Teams teammates. One routine, one vehicle, two scopes (§Per-wave compile, #263): root compiles the loop to a Dynamic Workflow over the sprint's lanes — standard, **and** the CONTINGENT fallback (in-context, root-tier) when Agent Teams itself is unavailable, root stays root either way; a `@conductor` runs it ABBREVIATED (§Abbreviated conductor) scoped to one lane, compiling the IDENTICAL Dynamic Workflow shape — `Workflow` ships in `@conductor`'s `tools:` frontmatter (#233) and that grant is LIVE (#263, CC 2.1.212, `skills/harness/SKILL.md §Workflow tool`), so this is the conductor's default mode, not a fallback. In-context `Agent()` dispatch is the DOWNGRADE path, taken only on a confirmed `WORKFLOW-VEHICLE-PROBE` absence and recorded with a `fanout_downgrade_reason`. This is the execution substrate for `/shepherd:start` (root) and the conductor's §Lane walk.
 
 ## Canonical scripts
 
@@ -25,19 +26,25 @@ This routine's determinism rests on three scripts. Every other file that cites t
 
 ## Per-wave compile
 
-Root compiles ONE Dynamic Workflow script per wave. A teammate-conductor produces the IDENTICAL pipeline SHAPE via in-context `Agent()` dispatch instead — `Workflow` is unconditionally denied inside a teammate context (#220, CC 2.1.212), so the conductor never compiles a script; it fires the same `parallel_with` clique in ONE `Agent()` message, awaits, then dispatches the next clique. Same shape, same steps, same pairing, different runtime:
+EVERY driver compiles ONE Dynamic Workflow script per wave — root and a teammate-conductor alike (#263): `Workflow` ships in `@conductor`'s `tools:` frontmatter (#233) and that grant is LIVE, so the conductor compiles the identical script root does, scoped to its own lane instead of the sprint. Same shape, same steps, same pairing, SAME runtime:
 
-- `pipeline()` over FILE-DISJOINT steps (root) / the equivalent sequenced `Agent()` clique (teammate-conductor). Each step = one `shepherd:coder` (model-pinned via `shctx models resolve coder`; schema-forced structured report: `files_changed`, `loc_delta_rust`, `acceptance_outputs` with VERBATIM command output, `deviations`, `staged_gh_commands`, `notes`) PAIRED with one adversarial `shepherd:auditor` (independent hypothesis+falsification, re-executes EVERY acceptance predicate, returns PASS/REDO).
+- `pipeline()` over FILE-DISJOINT steps, authored identically by whichever driver holds the grant — root over the sprint's lanes, a teammate-conductor over its own lane. Each step = one `shepherd:coder` (**both pins literal on the `agent()` call — `model:` + `agentType: "shepherd:coder"`, #255**; the Workflow runtime does NOT consult `shepherd.toml [models]` / `shctx models resolve coder` the way `Agent()` dispatch does, so that map is never read here; schema-forced structured report: `files_changed`, `loc_delta_rust`, `acceptance_outputs` with VERBATIM command output, `deviations`, `staged_gh_commands`, `notes`) PAIRED with one adversarial `shepherd:auditor` (same both-pins rule; independent hypothesis+falsification, re-executes EVERY acceptance predicate, returns PASS/REDO). Author every call through the `flockAgent()` wrapper (`skills/shepherd/SKILL.md §Dispatch law`); `workflow_model_guard.sh` refuses the script otherwise (`DISPATCH-MODEL-UNPINNED`, `DISPATCH-MISSING-SUBAGENT-TYPE`, `WORKFLOW-OFF-FLOCK`).
 - REDO cap 3; `prescribed_fixes` threaded VERBATIM into the redo prompt — never a blanket re-run (`skills/shepherd/references/pipeline.md` §Wave review + REDO).
 - Steps are FILE-DISJOINT: two steps never touch the same file (enforced by a root-gate check below).
 
-Shape (schematic — the real JS API is `skills/harness/SKILL.md` §Workflow tool, not reproduced here; a teammate-conductor's in-context dispatch fires the same `step_N_brief`/`step_N_review` pairs as one `Agent()` batch per parallel clique instead of a compiled script):
+Shape (schematic — the real JS API is `skills/harness/SKILL.md` §Workflow tool, not reproduced here; EVERY driver compiles this SAME script, root over the sprint's lanes and a teammate-conductor over its own lane; both #255 pins shown on every `agent()` call):
 
 ```
 pipeline([
   parallel([
-    pipeline([ agent(coder, step_1_brief), agent(auditor, step_1_review) ]),
-    pipeline([ agent(coder, step_2_brief), agent(auditor, step_2_review) ]),
+    pipeline([
+      agent({ agentType: "shepherd:coder", model: "sonnet", prompt: step_1_brief }),
+      agent({ agentType: "shepherd:auditor", model: "sonnet", prompt: step_1_review }),
+    ]),
+    pipeline([
+      agent({ agentType: "shepherd:coder", model: "sonnet", prompt: step_2_brief }),
+      agent({ agentType: "shepherd:auditor", model: "sonnet", prompt: step_2_review }),
+    ]),
     // ... one inner pipeline() per file-disjoint step, one outer parallel()
   ]),
 ])
@@ -66,11 +73,11 @@ A failure at any of 1–4 blocks 5: no ledger entry, no wave commit, redo or hal
 
 ## Abbreviated conductor
 
-A `@conductor` driving this routine runs it ABBREVIATED: NO planning phase (root/engineer already authored the critic-gated plan; the lane brief IS the instruction) — execution only. It walks the lane's Stage-Graph ready-sets, dispatching each gate-free segment in-context via `Agent()` (never compiled — `Workflow` is unconditionally denied inside a teammate, #220). The conductor's §Lane walk (`agents/conductor.md`) IS this routine scoped to one lane; the only differences from the root driver: (a) scope = one lane, not the sprint; (b) integration (rebase/merge/push) defers to root (`TEAMMATE-GIT-WRITE`); (c) dispatch mechanics — in-context `Agent()`, never a compiled Workflow script. The pipeline SHAPE, hard-rule preamble, and root gate are IDENTICAL — which is WHY the routine is defined once, here.
+A `@conductor` driving this routine runs it ABBREVIATED: NO planning phase (root/engineer already authored the critic-gated plan; the lane brief IS the instruction) — execution only. It walks the lane's Stage-Graph ready-sets, dispatching each gate-free segment as a compiled Dynamic Workflow, same as root (#263; `Workflow` ships in `@conductor`'s `tools:` frontmatter, #233, and that grant is LIVE — the 6.3.9-era "unconditionally denied inside a teammate" reading, #220, is RETIRED as the standing instruction). The conductor's §Lane walk (`agents/conductor.md`) IS this routine scoped to one lane; the only differences from the root driver: (a) scope = one lane, not the sprint; (b) integration (rebase/merge/push) defers to root (`TEAMMATE-GIT-WRITE`). Dispatch mechanics are no longer a difference — both drivers compile the identical Workflow script (§Per-wave compile); a conductor hand-rolling in-context `Agent()` instead is the DOWNGRADE path, legitimate only after a `WORKFLOW-VEHICLE-PROBE` finds `Workflow` genuinely absent from the visible tool list and the conductor records a `fanout_downgrade_reason`. The pipeline SHAPE, hard-rule preamble, and root gate are IDENTICAL — which is WHY the routine is defined once, here.
 
 ## Fallback semantics
 
-Agent Teams unavailable / teammate-conductors failing → root runs THIS routine directly over the sprint's lanes, absorbing every lane itself, with ZERO semantic drift from the spawned path. This is root's CONTINGENT fallback — it fires ONLY when Agent Teams itself is unavailable, and root's own per-wave dispatch still follows §Per-wave compile as written: root compiles each wave to a Dynamic Workflow exactly as it would with live teammate-conductors, because `Workflow` availability is independent of Agent Teams availability (`skills/harness/SKILL.md §Workflow tool`). Do not conflate this with a teammate-conductor's dispatch mode (§Abbreviated conductor): that in-context `Agent()` dispatch is PERMANENT — it holds always, whether or not Agent Teams is available, because `Workflow` is unconditionally denied inside any spawned role (#220). Root's fallback is not a degraded mode; it is the same machine with a different driver (`/shepherd:start`, `commands/start.md`). Whichever driver is live, the three sections above bind identically in CONTENT — the same pipeline shape, the same hard rules verbatim, the same five root-gate checks; only the scope (sprint vs one lane), the dispatch primitive (§Per-wave compile: compiled Workflow at root vs in-context `Agent()` at the teammate tier), and the git-integration authority (root-only vs deferred) differ.
+Agent Teams unavailable / teammate-conductors failing → root runs THIS routine directly over the sprint's lanes, absorbing every lane itself, with ZERO semantic drift from the spawned path. This is root's CONTINGENT fallback — it fires ONLY when Agent Teams itself is unavailable, and root's own per-wave dispatch still follows §Per-wave compile as written: root compiles each wave to a Dynamic Workflow exactly as it would with live teammate-conductors, because `Workflow` availability is independent of Agent Teams availability (`skills/harness/SKILL.md §Workflow tool`). This fallback is a DIFFERENT and still-valid concept from a teammate-conductor's own dispatch mode (§Abbreviated conductor) — but under the #263 inversion there is no longer a teammate restriction to contrast it against: a live teammate-conductor ALSO compiles a Dynamic Workflow as its default (same vehicle as root's), so the two sections differ only in WHEN each fires (Agent Teams absent vs a live teammate lane), never in what vehicle either one drives. Root's fallback is not a degraded mode; it is the same machine with a different driver (`/shepherd:start`, `commands/start.md`). Whichever driver is live, the three sections above bind identically in CONTENT — the same pipeline shape, the same hard rules verbatim, the same five root-gate checks, and now the same dispatch primitive (§Per-wave compile: a compiled Workflow at every tier, #263); only the scope (sprint vs one lane) and the git-integration authority (root-only vs deferred) differ.
 
 ---
 

@@ -1112,6 +1112,84 @@ def test_version_unset_env_emits_no_row(work_dir: Path, xdg_dir: Path) -> None:
 
 
 # --------------------------------------------------------------------------
+# Section 8b — a NEWER plugin installed under another publisher (v6.4.3 #235,
+# second half). Section 8 compares the CLI against the plugin at
+# CLAUDE_PLUGIN_ROOT; this one compares that plugin against every OTHER
+# publisher's installs, which is the discrepancy the reported incident had
+# and nothing surfaced.
+# --------------------------------------------------------------------------
+def _cache_tree(tmp_path: Path, installs: dict[str, str]) -> Path:
+    """Build `.../cache/<publisher>/shepherd/<version>/` for each pair given."""
+    cache = tmp_path / "cache"
+    for publisher, version in installs.items():
+        target = cache / publisher / "shepherd" / version / ".claude-plugin"
+        target.mkdir(parents=True, exist_ok=True)
+        (target / "plugin.json").write_text(json.dumps({"name": "shepherd", "version": version}))
+    return cache
+
+
+def _version_rows(work_dir: Path, env: dict[str, str], name: str) -> list[dict]:
+    proc = run_doctor(["--json"], work_dir, env)
+    payload = json.loads(proc.stdout)
+    return [c for c in payload["checks"] if c["category"] == "version" and c["name"] == name]
+
+
+def test_newer_plugin_under_another_publisher_warns(work_dir: Path, xdg_dir: Path, tmp_path: Path) -> None:
+    """The #235 incident, verbatim: fl03/6.3.3 in use, pzzld/6.3.9 installed.
+
+    A launcher globbing one publisher pinned the whole fleet — root, six lane
+    conductors, and the hooks — to the dead 6.3.3 for days. Doctor could not
+    see it, because the only version check compared the CLI against the very
+    plugin root that was already wrong.
+    """
+    cache = _cache_tree(tmp_path, {"fl03": "6.3.3", "pzzld": "6.3.9"})
+    env = _doctor_env(xdg_dir, workdir=work_dir)
+    env["CLAUDE_PLUGIN_ROOT"] = str(cache / "fl03" / "shepherd" / "6.3.3")
+
+    rows = _version_rows(work_dir, env, "plugin/installed")
+    assert len(rows) == 1
+    assert rows[0]["status"] == "warn"
+    assert "running plugin 6.3.3" in rows[0]["message"]
+    assert "6.3.9 is installed under another publisher dir" in rows[0]["message"]
+    assert "install-shctx-launcher.sh" in rows[0]["fix"]
+
+
+def test_newest_plugin_in_use_emits_no_row(work_dir: Path, xdg_dir: Path, tmp_path: Path) -> None:
+    """Already on the highest install → silent, whichever publisher ships it."""
+    cache = _cache_tree(tmp_path, {"fl03": "6.3.3", "pzzld": "6.3.9"})
+    env = _doctor_env(xdg_dir, workdir=work_dir)
+    env["CLAUDE_PLUGIN_ROOT"] = str(cache / "pzzld" / "shepherd" / "6.3.9")
+
+    assert _version_rows(work_dir, env, "plugin/installed") == []
+
+
+def test_newer_plugin_compares_segments_numerically(work_dir: Path, xdg_dir: Path, tmp_path: Path) -> None:
+    """6.4.10 beats 6.4.9 — a string sort gets this backwards.
+
+    The launcher fix and this check must agree on ordering, and both must be
+    genuinely numeric rather than accidentally right while patch numbers
+    stay single-digit.
+    """
+    cache = _cache_tree(tmp_path, {"fl03": "6.4.10", "pzzld": "6.4.9"})
+    env = _doctor_env(xdg_dir, workdir=work_dir)
+    env["CLAUDE_PLUGIN_ROOT"] = str(cache / "pzzld" / "shepherd" / "6.4.9")
+
+    rows = _version_rows(work_dir, env, "plugin/installed")
+    assert len(rows) == 1
+    assert "6.4.10 is installed" in rows[0]["message"]
+
+
+def test_non_cache_plugin_root_emits_no_row(work_dir: Path, xdg_dir: Path, tmp_path: Path) -> None:
+    """A repo clone run in place is not the cache layout — stay silent, never guess."""
+    plugin_root = tmp_path / "checkout" / "claude-shepherd"
+    _write_plugin_json(plugin_root, "6.4.3")
+    env = _doctor_env(xdg_dir, workdir=work_dir)
+    env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
+
+    assert _version_rows(work_dir, env, "plugin/installed") == []
+
+
+# --------------------------------------------------------------------------
 # Section 9 — user-level tier, `~/.shepherd` (v6.4.1 #254; post-parity, NOT
 # purely conditional — see `_check_user_tier`'s own docstring). Every test
 # below pops `CLAUDE_PLUGIN_ROOT` (`test_version_unset_env_emits_no_row`'s
