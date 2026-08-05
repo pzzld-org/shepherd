@@ -53,7 +53,7 @@
 #   4b.subagent_type = engineer AND brief mode: self-contained  → ENGINEER-TOPOLOGY-MISMATCH      (deny)  [#172; self-contained must be a teammate, not a subagent]
 #   4c.brief dispatcher: engineer-self-contained AND type ∉ {discovery,auditor,critic} → ENGINEER-SUBFLOCK-VIOLATION (deny) [#172; sub-flock is read-only, no code]
 #   5. subagent_type = shepherd:<x>, x ∉ closed-flock+conductor → DISPATCH-OFF-FLOCK              (deny)  [mechanical]
-#   6. teammate-session AND a flock fan-out role, no compile    → PRIMITIVE-INVERSION (handrolled) (flag) [#89 inversion 2]
+#   6. teammate-session AND a flock fan-out role, no compile    → PRIMITIVE-INVERSION (handrolled) (flag) [#89 inversion 2; #263 default-ON]
 #
 # Binding (skills/shepherd/references/pipeline.md §Lane law): a LANE = one teammate-conductor
 # spawned via the native teammate-spawn (Agent Teams; no TeamCreate tool); a STEP =
@@ -247,22 +247,48 @@ fi
 
 # ---------------------------------------------------------------------------
 # Check 6 — hand-rolled fan-out where a compiled workflow is required (FLAG)
-# #89 inversion 2: a teammate's gate-free step fan-out should compile to a
-# Dynamic Workflow (shctx graph compile), not be hand-rolled in-context. A
-# per-call hook cannot see the whole batch, so this is a non-blocking reminder
-# when a teammate fires a flock fan-out role. The hard block is the compiler
-# guard (#85, Wave 2); the PRIMARY-path doctrine is dispatch-cascade §IV-bis.
-# Opt-in: only when [hooks].flag_handrolled_fanout = true (default off — avoids
-# per-step noise; the reminder is most useful during teammate bring-up).
+# #263 (fan-out vehicle inversion): a teammate's gate-free step fan-out MUST
+# compile to a Dynamic Workflow. PRIMARY-path doctrine is now
+# skills/shepherd/references/pipeline.md §Lane law + skills/shepherd/SKILL.md
+# §Dispatch law (= $DOC, below) — the old "dispatch-cascade.md §IV-bis"
+# citation named a doc path that no longer exists anywhere in this repo;
+# repointed here to the live doctrine surfaces (#263). In-context Agent()
+# dispatch at a grant-holding tier (root, a teammate-@conductor, a
+# self-contained @engineer) is the DOWNGRADE path ONLY — legitimate exactly
+# when the dispatcher ran WORKFLOW-VEHICLE-PROBE (read its own visible tool
+# list for the literal token `Workflow`) FIRST, found the grant genuinely
+# absent, and recorded a `fanout_downgrade_reason` alongside
+# `fanout: "in-context"` in its WAVE-COMPLETE. A downgrade with no recorded
+# reason at a grant-holding tier is FANOUT-VEHICLE-DOWNGRADE — a wave-review
+# finding, never a certified-correct outcome. This check CANNOT distinguish a
+# probed-and-recorded downgrade from a silent one, or a compiled Workflow's
+# OWN internal agent() calls (never routed through THIS hook) from a
+# genuinely hand-rolled batch — it is a single per-call PreToolUse invocation
+# with no view of the whole batch — so it stays a non-blocking REMINDER,
+# never a deny; a hard block, if one exists, is a batch-aware
+# compiler/registry guard, not this hook.
+# Default: ON (#263 — the behavior this flags is now a real finding, not
+# per-step noise to be suppressed by default). Set
+# [hooks].flag_handrolled_fanout = false to silence it per-operator; unset,
+# or any value other than the literal string "false", keeps it ON.
 # ---------------------------------------------------------------------------
 if [[ "$teammate_mode" -eq 1 ]] \
    && [[ "$st_lc" =~ ^shepherd:(coder|auditor)$ ]] \
-   && [[ "$(cfg_get flag_handrolled_fanout)" == "true" ]]; then
-  warn="[shepherd] PRIMITIVE-INVERSION (flag) — hand-rolled fan-out?"$'\n'
-  warn+="A teammate's gate-free step fan-out (${st_lc}) should compile to a Dynamic"$'\n'
-  warn+="Workflow: shctx graph compile --segment=<entry> --verify → run <seg>.workflow.js"$'\n'
-  warn+="(dispatch-cascade.md §IV-bis is the PRIMARY path). Hand-rolled in-context"$'\n'
-  warn+="dispatch is the fallback only on runtime failure. See $DOC."
+   && [[ "$(cfg_get flag_handrolled_fanout)" != "false" ]]; then
+  warn="[shepherd] PRIMITIVE-INVERSION (flag) — hand-rolled fan-out where a"$'\n'
+  warn+="compiled Dynamic Workflow is required (#263)."$'\n'
+  warn+="A teammate's gate-free step fan-out (${st_lc}) MUST compile to a Dynamic"$'\n'
+  warn+="Workflow: shctx graph compile --segment=<entry> --verify → run <seg>.workflow.js."$'\n'
+  warn+="In-context Agent() dispatch is the DOWNGRADE path ONLY — legitimate if-and-"$'\n'
+  warn+="only-if you ran WORKFLOW-VEHICLE-PROBE (read your visible tool list for the"$'\n'
+  warn+="literal token \`Workflow\`) FIRST, found it genuinely absent, and recorded"$'\n'
+  warn+="fanout_downgrade_reason (e.g. \"workflow-absent-from-tool-list\") alongside"$'\n'
+  warn+="fanout: \"in-context\" in your WAVE-COMPLETE. A downgrade with no recorded"$'\n'
+  warn+="reason is FANOUT-VEHICLE-DOWNGRADE — a wave-review finding, not a certified-"$'\n'
+  warn+="correct outcome. If you have not probed yet, probe now before your next"$'\n'
+  warn+="dispatch. NEVER ToolSearch for \`Workflow\` to answer the probe"$'\n'
+  warn+="(WORKFLOW-PROBE-WRONG-INDEX — it is a native primitive, not a deferred tool)."$'\n'
+  warn+="Silence this reminder with [hooks].flag_handrolled_fanout = false. See $DOC."
   emit_context "$warn" "dispatch_guard" "$tool" "conductor-teammate" "$session"
 fi
 

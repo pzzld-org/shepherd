@@ -99,6 +99,21 @@ have agents/conductor.md \
   'the visible tool list is the only valid oracle' \
   "#263 conductor names the visible tool list as the oracle"
 
+# The rendered boot prompt is where a spawned conductor actually READS its
+# contract — doctrine that never reaches the brief is doctrine the teammate
+# never sees. commands/spawn.md promises this line renders from the stable
+# block; this leg is what makes that promise checkable.
+echo "== #263 the probe directive reaches the rendered boot brief =="
+have services/cli/shepherd_cli/templates/boot-prompt.md.j2 \
+  'WORKFLOW-VEHICLE-PROBE' \
+  "#263 boot prompt instructs the conductor to probe before its first fan-out"
+have services/cli/shepherd_cli/templates/boot-prompt.md.j2 \
+  'fanout_downgrade_reason' \
+  "#263 boot prompt names the downgrade record"
+have commands/spawn.md \
+  'WORKFLOW-VEHICLE-PROBE' \
+  "#263 spawn.md describes the probe directive the template renders"
+
 echo "== #263 a downgrade is legitimate only when RECORDED =="
 have agents/conductor.md \
   'fanout_downgrade_reason' \
