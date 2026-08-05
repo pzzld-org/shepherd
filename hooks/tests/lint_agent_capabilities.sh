@@ -274,9 +274,54 @@ for tool in $CLAIM_CHECK_TOOLS; do
   done
 done
 
+# ---------------------------------------------------------------------------
+# NO PROVIDER TOKENS IN FRONTMATTER (v6.4.3) — the categorical rule that
+# replaces the per-verb allowlist above.
+#
+# Every `mcp__<server>__<tool>` token in a `tools:` line named ONE server's
+# ONE naming scheme. Shepherd cannot guarantee any of them exist: the same
+# GitHub capability is `mcp__github__*` natively, `mcp__MCP_DOCKER__*` behind
+# a Docker MCP gateway (the operator's own routing), something else again via
+# Composio. A token that names a server that is not connected is dead weight
+# at best; taken as a dependency it binds the plugin to a toolset the
+# installing user may simply not have.
+#
+# `skills/shepherd/SKILL.md §Provider-agnostic discovery` (#110) already said
+# the tokens were "the default-provider OFFER, not a hard dependency" — but
+# the frontmatter kept shipping them, so the doctrine and the manifest
+# disagreed. They no longer do: the frontmatter carries NO provider tokens,
+# every role that touches a service grants `ToolSearch`, and the capability is
+# DISCOVERED at runtime by what is actually connected.
+#
+# This subsumes the GH #74/#84 destructive-verb sweeps above for MCP verbs
+# specifically: a role that carries no MCP token cannot carry a destructive
+# one. Those checks stay for the non-MCP verbs (Edit/Write/execute_sql) and
+# as belt-and-braces if a token is ever re-added.
+# ---------------------------------------------------------------------------
+for role in $ALL_ROLES; do
+  f="$AGENTS_DIR/$role.md"
+  [[ -f "$f" ]] || continue
+  provider_toks="$(tools_line "$f" | tr ',' '\n' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' \
+                    | grep '^mcp__' || true)"
+  if [[ -n "$provider_toks" ]]; then
+    note "FAIL $role: frontmatter names provider-specific MCP token(s) — shepherd cannot guarantee any server's naming scheme exists (v6.4.3); drop them and discover via ToolSearch (skills/shepherd/SKILL.md §Provider-agnostic discovery, #110):"
+    printf '%s\n' "$provider_toks" | sed 's/^/        /'
+    fails=$((fails+1))
+  fi
+  # A role stripped of provider tokens still needs the discovery verb, or it
+  # has no way to reach a service at all.
+  if grep -qE '^(tools|allowed-tools):' "$f" && ! tools_line "$f" | grep -q 'ToolSearch'; then
+    case "$role" in
+      critic) : ;;  # touches no external service; genuinely needs no discovery
+      *) note "FAIL $role: no provider tokens (correct) but also no ToolSearch — cannot discover any service at runtime"
+         fails=$((fails+1)) ;;
+    esac
+  fi
+done
+
 if [[ "$fails" -gt 0 ]]; then
-  printf 'lint_agent_capabilities: %d violation(s) — read-only mutation-free (GH #74); no destructive verb (GH #84); all three leads (shepherd/engineer/conductor) grant Workflow (#233); read-only shctx-runners grant Bash (#207-class); no ungranted-tool claim (v6.2.1)\n' "$fails"
+  printf 'lint_agent_capabilities: %d violation(s) — read-only mutation-free (GH #74); no destructive verb (GH #84); all three leads (shepherd/engineer/conductor) grant Workflow (#233); read-only shctx-runners grant Bash (#207-class); no ungranted-tool claim (v6.2.1); no provider-specific MCP token in any frontmatter (v6.4.3)\n' "$fails"
   exit 1
 fi
-printf 'lint_agent_capabilities: OK — read-only trio mutation-free (GH #74); all nine carry no destructive MCP verb (GH #84); all three leads (shepherd/engineer/conductor) grant Workflow in-tree (#233; inert in a teammate at runtime, honest in the bodies); read-only shctx-runners grant Bash; no profile claims an ungranted tool (v6.2.1)\n'
+printf 'lint_agent_capabilities: OK — read-only trio mutation-free (GH #74); all nine carry no destructive MCP verb (GH #84); all three leads (shepherd/engineer/conductor) grant Workflow in-tree (#233, live on an Agent-Teams teammate substrate — #263); read-only shctx-runners grant Bash; no profile claims an ungranted tool (v6.2.1); NO frontmatter names a provider-specific MCP token — capabilities are discovered via ToolSearch (v6.4.3, #110)\n'
 exit 0

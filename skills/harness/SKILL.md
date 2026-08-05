@@ -100,34 +100,63 @@ script (`DISPATCH-MODEL-UNPINNED`, `DISPATCH-MISSING-SUBAGENT-TYPE`,
 The Workflow tool is top-level, NOT deferred and NOT an MCP tool — see
 `## ToolSearch` for why it is never a `ToolSearch` target.
 
-**Fan-out vehicle: the Dynamic Workflow, at every tier holding the grant
-(#263).** `Workflow` ships in the `tools:` frontmatter of `@conductor` and
-`@engineer` (#233) and that grant is LIVE: the 6.3.9-era reading of
-`Workflow` as a TOP-LEVEL-SESSION-only primitive — "hard-denied inside a
-subagent," REGARDLESS of `tools:` frontmatter — is RETIRED as the standing
-instruction (#263). A team lead — root, a teammate-`@conductor`, or a
-self-contained `@engineer` — drives its OWN fan-out, and the vehicle is a
-compiled Dynamic Workflow, never a hand-rolled batch of individual
-`Agent()` calls, at any tier whose probe (`## Tool presence`, below) finds
-the literal token `Workflow` present in its own visible tool list. Agent
-Teams docs §Limitations: a teammate cannot spawn its own TEAM and teams/
-workflows do not nest — re-scoped per #263, that limitation is about the
-TEAM primitive (a teammate spawning a nested TEAM), NOT about calling the
-`Workflow` tool, and it stands unchanged; the main session is the fixed
-lead (never reassigned, no lead handoff) — unchanged. Teammates CAN spawn
-nested subagents via the `Agent` tool (up to 5 levels) — unchanged — and,
-separately, CAN now compile their own Dynamic Workflow once their own probe
-confirms the grant is live. CONSEQUENCE (#263): every lead tier holding the
-grant compiles its own fan-out — root drives root-tier/cross-lane
-Dynamic-Workflow fan-out (`/shepherd:start`, `agents/shepherd.md`); a
-teammate-conductor or self-contained engineer compiles its OWN lane's
-Dynamic Workflow the same way. In-context `Agent()` fan-out — the whole
-`parallel_with` clique fired in ONE `Agent` message (bounded-concurrent),
-the same batch shape `shctx graph compile` would emit — is now the
-DOWNGRADE path: taken only on a confirmed genuine absence (`## Tool
-presence`, below) and always recorded with a `fanout_downgrade_reason`,
-never the default first-class teammate-tier mode it was read as under the
-pre-#263 doctrine.
+**Fan-out vehicle is SUBSTRATE-conditional, never tier-conditional (#263,
+corrected).** `commands/spawn.md:73` (Check 1, substrate verification)
+states the discriminator and is now canonical for the whole tree; this
+section derives from it, not the reverse. The axis is the substrate a role
+is actually running on when it fans out, never its tier:
+
+- **Agent-Teams teammate** — `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` set
+  in the lead's environment, spawned via native teammate-spawn (the normal
+  condition for `@conductor` and `@engineer` under `/shepherd:spawn`):
+  `Workflow` WORKS. Fan out via a compiled Dynamic Workflow — the same
+  vehicle root uses, never a hand-rolled batch of individual `Agent()`
+  calls.
+- **Agent-tool subagent** — dispatched via `Agent(...)`, INCLUDING a
+  "teammate" spawned when the Agent-Teams substrate was absent at spawn
+  time, which is silently just a subagent wearing a teammate's brief:
+  `Workflow` is genuinely denied. In-context `Agent()` fan-out — the whole
+  `parallel_with` clique fired in ONE `Agent` message (bounded-concurrent)
+  — is correct here and is the ONLY option this substrate has. This is NOT
+  a downgrade to apologize for; it is the right answer for a subagent.
+
+**Measured, not quoted (#263).** Two genuine teammate sessions in the
+`FL03/axiom` corpus (`79a8e11a`, `cfeec725`, identified by a rendered
+`<teammate-message>` boot brief), on CC **2.1.210** — two patches BELOW the
+2.1.212 our prior doctrine cited as the version that denies them — made 3
+`Workflow` calls total, all three returning `Workflow launched in
+background` with their own `subagents/workflows/wf_*` transcript dirs.
+Zero denials anywhere in the corpus; the only `is_error` on any `Workflow`
+call is an unrelated JavaScript parse error. The platform message
+`"Workflow is not available inside subagents"` (originally logged at #220,
+CC 2.1.212) is TRUE and STAYS TRUE — it is a fact about Agent-tool
+subagents. Our error was generalizing it to "any spawned role," which
+silently folded the teammate branch into the subagent branch and every
+downstream doc inherited it. The denial and the measured working calls are
+NOT in tension: they describe two different constructs, not one construct
+in two states.
+
+Agent Teams docs §Limitations: a teammate cannot spawn its own TEAM and
+teams/workflows do not nest — that limitation is about the TEAM primitive
+(a teammate spawning a nested TEAM), NOT about calling the `Workflow` tool,
+and it stands unchanged; the main session is the fixed lead (never
+reassigned, no lead handoff) — unchanged. Teammates CAN spawn nested
+subagents via the `Agent` tool (up to 5 levels) — unchanged — and, on a
+live Agent-Teams substrate, CAN compile their own Dynamic Workflow
+directly, confirmed by their own probe (`## Tool presence`, below).
+**CONSEQUENCE (#263):** root — always the top-level session, never a
+subagent, so its substrate is never in question — a teammate-`@conductor`
+on a live substrate, and a self-contained `@engineer` on a live substrate
+each compile their OWN fan-out as a Dynamic Workflow (root drives
+root-tier/cross-lane fan-out via `/shepherd:start`, `agents/shepherd.md`;
+a teammate-conductor or self-contained engineer compiles its OWN lane's
+Dynamic Workflow the same way). A role actually running as an Agent-tool
+subagent — substrate absent at spawn, whatever its brief calls it —
+dispatches in-context via `Agent()` instead; that is the correct,
+first-class, ONLY vehicle available on that substrate, taken on a
+confirmed genuine absence (`## Tool presence`, below) and recorded via
+`fanout_downgrade_reason` for traceability — never a shortcut, and, on
+this substrate, never a finding.
 
 Doc: `https://code.claude.com/docs/en/workflows`
 
@@ -191,45 +220,59 @@ confusion on the platform. The `Workflow` tool is enabled across every
 entrypoint (CLI, web, remote, cloud-container) as of the v2.1.154 floor.
 Genuine absence exists ONLY on an explicit disable
 (`disableWorkflows` / `CLAUDE_CODE_DISABLE_WORKFLOWS`) or a build below that
-floor — no entrypoint omits it by default.
+floor — no entrypoint omits it by default. That floor governs whether the
+platform ships the tool at all; it does NOT settle which of the two
+substrates below a given session is running on.
 
-**The probe is the oracle, at every tier (`WORKFLOW-VEHICLE-PROBE`, #263).**
-A subagent's or teammate's `tools:` frontmatter listing `Workflow` controls
-what the platform OFFERS that role at dispatch; whether the role may
-actually invoke it at runtime is answered by ONE platform-level test, run
-by the role itself, once per session, before its FIRST fan-out: is the
-literal token `Workflow` present in YOUR OWN visible tool list? That
-question — not the 6.3.9-era standing assumption that a spawned role is
-hard-denied regardless of frontmatter — is the oracle, at root, at a
-teammate-`@conductor`, and at a self-contained `@engineer` alike (#263).
-The agent itself, not any hook, is the authoritative check, for
-`TaskCreate`/`SendMessage` anywhere and for `Workflow` at every tier:
+**The probe is the oracle — it confirms SUBSTRATE, never a dormant grant
+(`WORKFLOW-VEHICLE-PROBE`, #263).** A subagent's or teammate's `tools:`
+frontmatter listing `Workflow` controls what that role's DEFINITION is
+offered at dispatch; whether the running session can actually invoke it is
+a fact about which construct it is, and that is answered by ONE
+platform-level test, run by the role itself, once per session, before its
+FIRST fan-out: is the literal token `Workflow` present in YOUR OWN visible
+tool list? Present means you are on a live Agent-Teams teammate substrate.
+Genuinely absent means you are an Agent-tool subagent, whatever your brief
+calls you. This is not "is my dormant grant live" — that framing belonged
+to the retired tier axis and implied a probabilistic gap no platform
+version actually has — it is "which of the two constructs am I," asked and
+answered fresh by root, by a teammate-`@conductor`, and by a
+self-contained `@engineer` alike (#263). The agent itself, not any hook,
+is the authoritative check, for `TaskCreate`/`SendMessage` anywhere and for
+`Workflow` on either substrate:
 
-- **Present** → the grant is live; compile and dispatch a Dynamic Workflow.
-  This is the default and the expected outcome at every lead tier holding
-  the grant.
-- **Genuinely absent** (the token is not in the visible tool list) → fan
-  out in-context via `Agent(...)` instead — the whole `parallel_with`
-  clique in ONE message — and record the downgrade with a reason
-  (`fanout_downgrade_reason`); a SILENT downgrade at a grant-holding tier
-  is a wave-review finding (`FANOUT-VEHICLE-DOWNGRADE`).
+- **Present** → you are a teammate on a live Agent-Teams substrate; compile
+  and dispatch a Dynamic Workflow. This is the default and the expected
+  outcome for `@conductor`/`@engineer` under `/shepherd:spawn`.
+- **Genuinely absent** (the token is not in the visible tool list) → you
+  are an Agent-tool subagent; fan out in-context via `Agent(...)` instead —
+  the whole `parallel_with` clique in ONE message — and record the
+  substrate via `fanout_downgrade_reason`. On THIS substrate that is the
+  correct, only-available vehicle and not a finding. `FANOUT-VEHICLE-
+  DOWNGRADE` fires only for the other case: a role confirmed on a LIVE
+  teammate substrate that hand-rolls in-context fan-out anyway, silently or
+  not.
 
-**Never `ToolSearch` for the answer** (`WORKFLOW-PROBE-WRONG-INDEX`; agrees
-exactly with `## ToolSearch`, above). `ToolSearch` resolves DEFERRED tools
-only; `Workflow` is a native top-level primitive, so a `ToolSearch`
-nothing-result on it means the wrong index was queried, NEVER that the
-tool is absent. The visible tool list is the only valid oracle, at any
-tier — this code REPLACES `WORKFLOW-SELFCHECK-TOOLSEARCH`: what was and
-remains forbidden is the WRONG PROBE, never the act of probing.
+**Never `ToolSearch` for the answer (`WORKFLOW-SELFCHECK-TOOLSEARCH`; agrees
+exactly with `## ToolSearch`, above).** `ToolSearch` resolves DEFERRED tools
+only; `Workflow` is a native top-level primitive and never a `ToolSearch`
+target by construction, so a `ToolSearch select:Workflow` null result is a
+FALSE NEGATIVE BY CONSTRUCTION — it comes back null whether or not the tool
+is actually callable, so it establishes NOTHING, neither presence nor
+absence, and is not evidence the tool is "discovery-invisible." The visible
+tool list is the only valid oracle, on either substrate. Past failure this
+code exists to prevent: a session `ToolSearch`'d "workflow," found nothing,
+and wrongly concluded the tool was absent.
 
-Note on #251 (open, NOT resolved by #263): whether an unavailable
-`Workflow` would present as "denied at invocation" or "invisible to
-discovery" is still an unsettled measurement dispute. The probe above is
-deliberately agnostic to that answer — it tests the visible tool list,
-which is correct under either reading — and the downgrade path handles the
-negative case with a recorded reason regardless of which failure mode is
-eventually confirmed. Do not assert either reading as settled fact anywhere
-in this file.
+**#251 resolved by #263, not open.** #251's "invisible to discovery"
+measurement was taken with `ToolSearch` against a native tool (a guaranteed
+null regardless of true state — see `WORKFLOW-SELFCHECK-TOOLSEARCH` just
+above) AND from a generic workflow-spawned Agent-tool subagent — the one
+construct where the denial IS genuinely real. Both halves of that
+measurement are invalid when read onto a teammate. There is no unresolved
+discovery-vs-invocation ambiguity to chase: the axis is SUBSTRATE, not
+tier, and the visible-tool-list probe answers it directly regardless of
+which failure mode a `Workflow` denial would otherwise present as.
 
 ## Lazy-load economics
 

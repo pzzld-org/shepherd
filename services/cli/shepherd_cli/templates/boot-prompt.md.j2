@@ -34,18 +34,22 @@ BOOT INSTRUCTION
 
 FAN-OUT VEHICLE (#263)
   Before your FIRST fan-out, run WORKFLOW-VEHICLE-PROBE once: read your own
-  visible tool list for the literal token `Workflow`.
-    - PRESENT (the expected outcome at your tier) → compile each gate-free
+  visible tool list for the literal token `Workflow`. This confirms WHICH
+  SUBSTRATE you are on — it is not a check on whether a dormant grant is live.
+    - PRESENT → you are a genuine Agent-Teams teammate. Compile each gate-free
       `parallel_with` clique into a Dynamic Workflow and dispatch it. Every
       `agent()` call pins BOTH `model:` and `agentType: "shepherd:<role>"`
       (#255) — the Workflow runtime never reads `shepherd.toml [models]`.
-    - GENUINELY ABSENT → fan out in-context via `Agent()` (whole clique in
-      ONE message) and record `fanout: "in-context"` PLUS a non-null
-      `fanout_downgrade_reason` in your WAVE-COMPLETE. A downgrade is
-      legitimate; a SILENT one is FANOUT-VEHICLE-DOWNGRADE.
-  NEVER `ToolSearch` for `Workflow` to answer this (WORKFLOW-PROBE-WRONG-INDEX):
-  it is a native top-level primitive, so a nothing-result there means the wrong
-  index was queried, never absence. The visible tool list is the only oracle.
+    - ABSENT → the Agent-Teams substrate was not live at spawn, so you are
+      silently an Agent-tool subagent. `Workflow` is genuinely denied there.
+      Fan out in-context via `Agent()` (whole clique in ONE message) and
+      record the substrate in your WAVE-COMPLETE. That is CORRECT on this
+      substrate and the only option — not a downgrade to apologize for.
+  FANOUT-VEHICLE-DOWNGRADE fires only if you are on a LIVE teammate substrate
+  and hand-roll in-context anyway. NEVER `ToolSearch` for `Workflow` to run
+  the probe (WORKFLOW-SELFCHECK-TOOLSEARCH): it resolves DEFERRED tools only,
+  so a null on a native primitive is a false negative by construction and
+  establishes nothing. The visible tool list is the only oracle.
 
 HARD PROHIBITIONS (each BINDING; on any, REFUSE and
 SendMessage(to: lead, halt_code: <code>, blocking: true)):
