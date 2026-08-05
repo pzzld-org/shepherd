@@ -1,14 +1,24 @@
 #!/usr/bin/env bash
 # test_lead_workflow_tool.sh — regression pin for the #233 Workflow-tool GRANT
-# (v6.4.0, supersedes the v6.3.9/#220 tier partition).
+# (v6.4.0, supersedes the v6.3.9/#220 tier partition; the grant went LIVE at
+# every tier under #263, v6.4.3).
 #
 # Per operator decision, `Workflow` ships in-tree in the `tools:` frontmatter of
 # ALL THREE leads: ROOT (shepherd) AND both teammate leads (engineer, conductor).
-# Root drives Dynamic Workflows directly; the teammate grants are INERT at
-# runtime today (Workflow is denied inside a subagent, CC 2.1.212 — the agent
-# bodies keep that honest), but they ship in-tree so a release never again
-# clobbers the operator's manual patch (#233), and go live automatically if the
-# platform ever lifts the denial.
+# #263 makes the grant LIVE wherever it is held: root drives Dynamic Workflows
+# directly, AND a teammate-@conductor / self-contained @engineer now compiles
+# its OWN Dynamic Workflow for its gate-free fan-out too, once a
+# `WORKFLOW-VEHICLE-PROBE` (skills/shepherd/references/pipeline.md §Lane law)
+# confirms `Workflow` is present in its own visible tool list. The v6.3.9-era
+# "Workflow is denied inside a subagent" reading is RETIRED as the standing
+# instruction (#263) — shipping the grant in-tree stops the release pipeline
+# from clobbering the operator's manual patch (#233's concrete pain), and is
+# now the reachable, exercised path at every lead tier, not a dormant one.
+# Whether an unavailable grant would read as "denied at invocation" or
+# "invisible to discovery" is #251, deliberately left OPEN by the probe
+# contract (skills/harness/SKILL.md §Tool presence) — this test does not
+# assert either as settled fact, only that the grant is PRESENT and stripping
+# it from any lead FAILS the lint.
 #
 # This test pins the mandate against lint_agent_capabilities.sh via its
 # SHEPHERD_LINT_AGENTS_DIR override (the tracked tree is never mutated):

@@ -189,15 +189,24 @@ done
 # v6.4.0 / #233 Workflow-tool GRANT — all three leads carry it (reverses the
 # v6.3.9/#220 tier partition per operator decision). The `Workflow` tool ships
 # in the `tools:` frontmatter of ROOT (`shepherd`) AND both teammate leads
-# (`@engineer`, `@conductor`). Root drives Dynamic Workflows directly
-# (/shepherd:start). The platform still hard-denies Workflow AT RUNTIME inside a
-# subagent ("Workflow is not available inside subagents", CC 2.1.212), so a
-# teammate lead's grant is INERT today — its executing fan-out remains in-context
-# `Agent()` — but shipping it in-tree (a) stops the release pipeline from
-# clobbering the operator's manual patch (#233's concrete pain), and (b) goes
-# live automatically if the platform ever lifts the denial. The runtime reality
-# is kept HONEST in agents/{conductor,engineer}.md + skills/harness/SKILL.md;
-# this lint only pins that the grant is present and never silently dropped again.
+# (`@engineer`, `@conductor`). #263 (v6.4.3, the fan-out vehicle inversion)
+# makes the grant LIVE at every tier that holds it: root drives Dynamic
+# Workflows directly (/shepherd:start), AND a teammate-`@conductor` / a
+# self-contained `@engineer` now compiles its OWN Dynamic Workflow for its
+# gate-free fan-out too, once a `WORKFLOW-VEHICLE-PROBE` confirms `Workflow`
+# is present in ITS OWN visible tool list
+# (skills/shepherd/references/pipeline.md §Lane law). The v6.3.9-era
+# "Workflow is denied inside a subagent" reading is RETIRED as the standing
+# instruction (#263) — shipping the grant in-tree (a) stops the release
+# pipeline from clobbering the operator's manual patch (#233's concrete
+# pain), and (b) is now the reachable, exercised path at every lead tier,
+# not a dormant one. Whether an unavailable grant would read as "denied at
+# invocation" or "invisible to discovery" is #251, deliberately left OPEN by
+# the probe contract (skills/harness/SKILL.md §Tool presence) — this lint does
+# not assert either as settled fact, only that the grant is PRESENT and never
+# silently dropped again. The runtime reality is kept HONEST in
+# agents/{conductor,engineer}.md + skills/harness/SKILL.md; this lint only
+# pins presence.
 # ---------------------------------------------------------------------------
 LEAD_MANDATED_WORKFLOW="shepherd engineer conductor"
 for role in $LEAD_MANDATED_WORKFLOW; do
