@@ -580,6 +580,16 @@ else
   fails=$((fails+1))
 fi
 
+echo "== test_description_budget.sh (v6.4.3 — frontmatter lazy-load budget) =="
+total=$((total+1))
+if desc_out=$(bash "$TESTS_DIR/test_description_budget.sh" 2>&1); then
+  printf '  PASS  %s\n' "description-budget"
+else
+  printf '  FAIL  %-50s\n' "description-budget"
+  printf '%s\n' "$desc_out" | sed 's/^/        /'
+  fails=$((fails+1))
+fi
+
 echo "== test_v643_wiring.sh (v6.4.3 — #263 fan-out-vehicle inversion wiring) =="
 total=$((total+1))
 if v643_out=$(bash "$TESTS_DIR/test_v643_wiring.sh" 2>&1); then

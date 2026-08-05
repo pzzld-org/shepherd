@@ -8,6 +8,7 @@ sorted-key JSON on disk), and the boundary-merge pending-set gate.
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 from conftest import clean_env_dict, run_cli
@@ -369,3 +370,77 @@ def test_show_schema_shaped_failure_suggests_migrate(tmp_path: Path) -> None:
     assert "run.json for no-run-field could not be read:" in proc.stderr
     assert "corrupt" not in proc.stderr.lower()
     assert "try: shepherd run migrate no-run-field" in proc.stderr
+
+
+# --------------------------------------------------------------------------
+# v6.4.3 — canonical run layout (`run init` scaffold + `run layout` verb).
+#
+# Before v6.4.3 `run init` created only `lanes/`; `graph/`, `dispatch/`,
+# `reports/`, and `audits/` appeared only if something happened to write into
+# them. So a run's shape encoded what the sprint had DONE, not what a run IS,
+# and nothing reading the layout could rely on it.
+# --------------------------------------------------------------------------
+CANONICAL_SUBDIRS = ("lanes", "graph", "dispatch", "reports", "audits")
+
+
+def _run_base(tmp_path: Path, run: str = "v641-dev0") -> Path:
+    return tmp_path / ".shepherd" / "runs" / run
+
+
+def test_init_scaffolds_every_canonical_subdir(tmp_path: Path) -> None:
+    env = _env(tmp_path)
+    assert run_cli(["run", "init", "v641-dev0"], env).returncode == 0
+    base = _run_base(tmp_path)
+    for name in CANONICAL_SUBDIRS:
+        assert (base / name).is_dir(), f"{name}/ not scaffolded by run init"
+
+
+def test_layout_reports_ok_on_a_fresh_run(tmp_path: Path) -> None:
+    env = _env(tmp_path)
+    run_cli(["run", "init", "v641-dev0"], env)
+    proc = run_cli(["run", "layout", "v641-dev0"], env)
+    assert proc.returncode == 0, proc.stderr
+    assert "missing" not in proc.stdout
+
+
+def test_layout_exits_6_on_drift_and_does_not_repair(tmp_path: Path) -> None:
+    """Read-only by default so it is safe against a live sprint; exit 6 is the
+    mechanical stop, matching `wave pending` / `wave verify`."""
+    env = _env(tmp_path)
+    run_cli(["run", "init", "v641-dev0"], env)
+    base = _run_base(tmp_path)
+    shutil.rmtree(base / "graph")
+    proc = run_cli(["run", "layout", "v641-dev0"], env)
+    assert proc.returncode == 6, proc.stdout
+    assert "graph" in proc.stdout
+    assert not (base / "graph").exists(), "read-only default must not repair"
+
+
+def test_layout_repair_is_idempotent(tmp_path: Path) -> None:
+    env = _env(tmp_path)
+    run_cli(["run", "init", "v641-dev0"], env)
+    base = _run_base(tmp_path)
+    shutil.rmtree(base / "audits")
+    first = run_cli(["run", "layout", "v641-dev0", "--repair"], env)
+    assert first.returncode == 0, first.stderr
+    assert (base / "audits").is_dir()
+    second = run_cli(["run", "layout", "v641-dev0", "--repair"], env)
+    assert second.returncode == 0
+    assert "created" not in second.stdout
+
+
+def test_layout_json_lists_present_tracked_artifacts(tmp_path: Path) -> None:
+    env = _env(tmp_path)
+    run_cli(["run", "init", "v641-dev0"], env)
+    (_run_base(tmp_path) / "seed.md").write_text("# seed\n")
+    proc = run_cli(["run", "layout", "v641-dev0", "--json"], env)
+    assert proc.returncode == 0, proc.stderr
+    payload = json.loads(proc.stdout)
+    assert payload["ok"] is True
+    assert payload["missing"] == []
+    assert payload["tracked_files_present"] == ["seed.md"]
+
+
+def test_layout_missing_run_exits_5(tmp_path: Path) -> None:
+    proc = run_cli(["run", "layout", "v641-dev0"], _env(tmp_path))
+    assert proc.returncode == 5, proc.stdout

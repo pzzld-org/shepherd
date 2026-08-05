@@ -101,6 +101,8 @@ from shepherd_cli import verdicts
 from shepherd_cli.models_run import (
     LANE_STATES,
     RUN_STATUSES,
+    RUN_SUBDIRS,
+    RUN_TRACKED_FILES,
     LaneState,
     RunIdDerivationError,
     RunIdError,
@@ -111,10 +113,12 @@ from shepherd_cli.models_run import (
     list_runs,
     load_run,
     load_run_with_migrations,
+    missing_run_subdirs,
     run_dir,
     run_state_path,
     runs_root,
     save_run,
+    scaffold_run_layout,
     suggest_canonical_id,
     validate_id,
 )
@@ -257,7 +261,11 @@ def init_cmd(
 
     if os.path.isfile(run_state_path(run)):
         _fail(f"run already exists: {run}", 5)
-    os.makedirs(os.path.join(run_dir(run), "lanes"), exist_ok=True)
+    # Scaffold the FULL canonical layout, not just lanes/ (v6.4.3): a run's
+    # shape must be identical from creation, whoever creates it -- the planter
+    # via `plant`, root, or a sibling implementation -- and whatever the sprint
+    # later happens to use or skip.
+    scaffold_run_layout(run)
     path = save_run(RunState(run=run, kind=kind, branch=branch, base=base))
     typer.echo(path)
 
@@ -937,3 +945,74 @@ def wave_verify_cmd(
 
 
 __all__ = ["app"]
+
+
+@app.command("layout")
+def layout_cmd(
+    run: str = typer.Argument(..., help="Run id."),
+    repair: bool = typer.Option(False, "--repair", help="Create any missing canonical subdirectory."),
+    as_json: bool = typer.Option(False, "--json", help="Emit JSON."),
+) -> None:
+    """Verify (and optionally repair) a run's canonical directory layout.
+
+    ``skills/context/references/naming-conventions.md §Run layout`` fixes what
+    a run directory contains. Before v6.4.3 only ``lanes/`` was scaffolded and
+    the rest materialized as a side effect of activity, so "does this run have
+    a ``reports/``" answered "did this sprint dispatch a read-only role", not
+    "is this a run" — a layout nothing could rely on.
+
+    Read-only by default so it is safe to run against a live sprint;
+    ``--repair`` creates what is missing and creates nothing else. Repair is
+    idempotent and never touches files, only directories.
+
+    Exit codes: 0 layout complete (or repaired); 5 run missing; 6 layout
+    incomplete and ``--repair`` not given — the mechanical stop, matching
+    ``wave pending``/``wave verify``.
+    """
+    try:
+        validate_id(run, what="run")
+    except RunIdError as exc:
+        _fail(str(exc), 2)
+    if not os.path.isfile(run_state_path(run)):
+        _fail(f"no such run: {run} (expected {run_state_path(run)})", 5)
+
+    missing = missing_run_subdirs(run)
+    created: list[str] = []
+    if repair and missing:
+        created = scaffold_run_layout(run)
+        missing = missing_run_subdirs(run)
+
+    if as_json:
+        typer.echo(
+            json.dumps(
+                {
+                    "run": run,
+                    "run_dir": run_dir(run),
+                    "subdirs": list(RUN_SUBDIRS),
+                    "missing": missing,
+                    "created": created,
+                    "tracked_files_present": [
+                        f for f in RUN_TRACKED_FILES if os.path.isfile(os.path.join(run_dir(run), f))
+                    ],
+                    "ok": not missing,
+                },
+                indent=2,
+            )
+        )
+    else:
+        base = run_dir(run)
+        for name in RUN_SUBDIRS:
+            mark = "missing" if name in missing else ("created" if name in created else "ok")
+            typer.echo(f"{name + '/':<12}{mark}")
+        present = [f for f in RUN_TRACKED_FILES if os.path.isfile(os.path.join(base, f))]
+        typer.echo(f"tracked artifacts: {', '.join(present) if present else '(none yet)'}")
+        if created:
+            typer.echo(f"repaired: {', '.join(created)}", err=True)
+
+    if missing:
+        if not repair:
+            typer.echo(
+                f"ERROR: layout incomplete ({', '.join(missing)}) — re-run with --repair",
+                err=True,
+            )
+        raise typer.Exit(6)

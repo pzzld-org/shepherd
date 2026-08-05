@@ -1,6 +1,6 @@
 ---
 name: start
-description: Root drives waves of Dynamic Workflows in-context to execute an already-planned sprint or a direct task — abbreviated execution-only, and the fallback when Agent Teams / teammate-conductors are unavailable.
+description: Root drives waves of Dynamic Workflows to execute an already-planned sprint or a direct task — execution-only, and the fallback when Agent Teams / teammate-conductors are unavailable.
 argument-hint: "[ sprint_slug | task ] [ --from=<base_ref> ]"
 allowed-tools: Agent, Bash, Edit, Glob, Grep, Read, Skill, Write, ToolSearch, Workflow, TaskCreate, TaskGet, TaskList, TaskUpdate, SendMessage, WebFetch, WebSearch
 ---

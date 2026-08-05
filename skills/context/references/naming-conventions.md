@@ -115,7 +115,30 @@ The tracked/ignored split is the durable/disposable split: durable knowledge
 (seed/mesh/plan/phase0/close/handoff + lane plans) compounds in git; run
 state (`run.json`, `graph/`, `dispatch/`, `reports/`, `audits/`) is
 disposable. The root `.gitignore` implements it as `.shepherd/runs/**` plus
-per-file negations for exactly the tracked set.
+per-file negations for exactly the tracked set. **`runs/` is deliberately NOT
+ignored wholesale** — a run's seed, plan, and lane plans ARE the project's
+plans and belong in history; only the disposable state around them is not.
+
+**The layout is SCAFFOLDED, never emergent (v6.4.3).** `shepherd run init`
+creates every directory in the table above — `lanes/`, `graph/`, `dispatch/`,
+`reports/`, `audits/` — so a run has the identical shape from the moment it
+exists, whoever created it. Until v6.4.3 only `lanes/` was scaffolded and the
+rest materialized as a side effect of activity, so "does this run have a
+`reports/`" answered *did this sprint dispatch a read-only role*, not *is this
+a run* — a layout that appears only when used is a layout nothing downstream
+can rely on. `shepherd run layout <run>` verifies a run against the table
+(read-only, exit 6 on drift); `--repair` creates what is missing.
+`RUN_SUBDIRS`/`RUN_TRACKED_FILES` in `shepherd_cli.models_run` are the single
+source of truth both the scaffold and the check read, so the code and this
+table cannot drift apart.
+
+**The run directory is created FIRST, by the planter.** `/shepherd:plant`
+runs `shepherd run init {run}` before writing anything, so `{run_dir}` exists
+with its full layout and the seed lands into it rather than the directory
+appearing underneath the seed. The run dir then carries forward untouched
+into the `/shepherd:spawn` session — same `{run}`, same paths, no
+re-derivation and no second directory (`commands/plant.md §Artifacts`,
+`agents/planter.md §Plant mode`).
 
 ## Ownership
 

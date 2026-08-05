@@ -2,7 +2,7 @@
 name: bridge
 slug: bridge
 version: 6.4.2
-description: "Cross-shepherd coordination contract: how a claude-shepherd and a codex-shepherd (or any future harness implementation) share runs, lanes, and custody through the filesystem artifact schema — never through harness internals. Use when two shepherd implementations touch the same repository or hand work across."
+description: "Cross-shepherd coordination contract: how claude-shepherd and codex-shepherd share runs, lanes, and custody through the filesystem artifact schema, not harness internals. Use when two touch one repo."
 metadata:
   triggers:
     - "cross-shepherd"
