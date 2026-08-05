@@ -491,7 +491,10 @@ class HooksConfig(BaseModel):
         quiet_warnings: Suppress informational ``additionalContext``
             (still logged).
         flag_handrolled_fanout: ``dispatch_guard.sh`` Check 6 — warn on a
-            hand-rolled flock fan-out.
+            hand-rolled flock fan-out. Default ON as of v6.4.3 (#263): the
+            behavior it flags is a real finding on a live Agent-Teams
+            substrate, where the fan-out vehicle is a compiled Dynamic
+            Workflow. Set ``false`` to silence it.
         workflow_model_guard: ``block|warn|off`` — dispatch-model-pin
             gate.
         teammate_heartbeat: ``on|off`` — PreToolUse auto-stamp of
@@ -505,7 +508,7 @@ class HooksConfig(BaseModel):
     on_engineer_only: list[str] = Field(default_factory=lambda: ["workflow"])
     on_planter_only: list[str] = Field(default_factory=list)
     quiet_warnings: bool = False
-    flag_handrolled_fanout: bool = False
+    flag_handrolled_fanout: bool = True  # v6.4.3 #263 — was False; see the docstring.
     workflow_model_guard: Literal["block", "warn", "off"] = "block"
     teammate_heartbeat: Literal["on", "off"] = "on"
 

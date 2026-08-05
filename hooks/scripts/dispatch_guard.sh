@@ -287,7 +287,8 @@ if [[ "$teammate_mode" -eq 1 ]] \
   warn+="reason is FANOUT-VEHICLE-DOWNGRADE — a wave-review finding, not a certified-"$'\n'
   warn+="correct outcome. If you have not probed yet, probe now before your next"$'\n'
   warn+="dispatch. NEVER ToolSearch for \`Workflow\` to answer the probe"$'\n'
-  warn+="(WORKFLOW-PROBE-WRONG-INDEX — it is a native primitive, not a deferred tool)."$'\n'
+  warn+="(WORKFLOW-SELFCHECK-TOOLSEARCH — ToolSearch resolves DEFERRED tools only, so a null"$'\n'
+  warn+="on a native primitive is a false negative by construction and establishes nothing)."$'\n'
   warn+="Silence this reminder with [hooks].flag_handrolled_fanout = false. See $DOC."
   emit_context "$warn" "dispatch_guard" "$tool" "conductor-teammate" "$session"
 fi

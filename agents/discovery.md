@@ -3,7 +3,7 @@ name: discovery
 color: blue
 model: sonnet
 description: "Read-only orientation agent. Ingests sources, returns a structured DISCOVERY REPORT; never mutates, dispatches, or writes code. Use for research/context gathering."
-tools: Bash, Glob, Grep, NotebookRead, Read, Skill, ToolSearch, WebFetch, WebSearch, Write, mcp__plugin_github_github__get_file_contents, mcp__plugin_github_github__get_commit, mcp__plugin_github_github__get_label, mcp__plugin_github_github__get_me, mcp__plugin_github_github__issue_read, mcp__plugin_github_github__list_branches, mcp__plugin_github_github__list_commits, mcp__plugin_github_github__list_issues, mcp__plugin_github_github__list_pull_requests, mcp__plugin_github_github__pull_request_read, mcp__plugin_github_github__search_code, mcp__plugin_github_github__search_issues, mcp__plugin_sentry_sentry__find_issues, mcp__plugin_sentry_sentry__find_organizations, mcp__plugin_sentry_sentry__find_projects, mcp__plugin_sentry_sentry__find_releases, mcp__plugin_sentry_sentry__get_issue_tag_values, mcp__plugin_sentry_sentry__search_events, mcp__plugin_sentry_sentry__search_issue_events, mcp__plugin_sentry_sentry__search_issues, mcp__plugin_supabase_supabase__get_advisors, mcp__plugin_supabase_supabase__get_logs, mcp__plugin_supabase_supabase__get_project, mcp__plugin_supabase_supabase__list_branches, mcp__plugin_supabase_supabase__list_extensions, mcp__plugin_supabase_supabase__list_migrations, mcp__plugin_supabase_supabase__list_tables
+tools: Bash, Glob, Grep, NotebookRead, Read, Skill, ToolSearch, WebFetch, WebSearch, Write
 ---
 
 # @discovery — Read-Only Orientation Agent
