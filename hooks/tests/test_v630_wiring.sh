@@ -89,7 +89,7 @@ have skills/context/scripts/cmd_graph.sh '"model_pin"'                          
 have skills/context/scripts/cmd_graph.sh '_graph_role_model'                                             "#180 model resolved from [models] via cfg_section_get"
 missing skills/context/scripts/cmd_graph.sh 'subagent_type: .shepherd:.\{s'                              "#180 legacy subagent_type emission removed"
 have skills/harness/references/workflow-templates.md 'Pinned.* \(#180\)'                                 "#180 workflow-templates §Compile-down adds the Pinned invariant"
-have docs/specs/v630-dispatch-pin-dsl-decision.md 'Decision: do NOT build the broad DSL now'             "#181 explore/decision doc records the DSL decision"
+have .shepherd/docs/specs/v630-dispatch-pin-dsl-decision.md 'Decision: do NOT build the broad DSL now'             "#181 explore/decision doc records the DSL decision"
 have hooks/scripts/bash_guard.sh 'subagent_type\|agentType'                                              "#180 bash_guard Check 0-bis matches the renamed agentType key"
 
 if [[ "$fails" -eq 0 ]]; then echo "—— v6.3.0 wiring: OK ——"; else echo "—— v6.3.0 wiring: $fails FAIL ——"; fi
