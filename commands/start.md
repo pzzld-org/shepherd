@@ -23,7 +23,8 @@ teammate-conductor per lane under Agent Teams. `/shepherd:start` is the abbrevia
 single-dispatcher counterpart — no fanout, no planning, just execution of a plan that already
 cleared `@critic` — and it is the documented FALLBACK when Agent Teams / teammate-conductors
 are unavailable or failing. Both drivers run the exact SAME per-wave routine
-(`skills/shepherd/references/wave-routine.md`); only the driver (one root vs. one
+(`skills/shepherd/references/wave-routine.md`) via the exact SAME dispatch vehicle — a
+compiled Dynamic Workflow, at both tiers (#263); only the driver (one root vs. one
 teammate-conductor per lane) and the scope (sprint vs. one lane) differ.
 
 ## Preflight

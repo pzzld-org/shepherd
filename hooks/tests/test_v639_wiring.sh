@@ -30,13 +30,23 @@ missing() { # missing <file> <regex> <label> — asserts the pattern is ABSENT
   fi
 }
 
-echo "== #220 Workflow denied in subagents → in-context Agent() is first-class =="
-have skills/harness/SKILL.md          'not available inside subagents'   "#220 harness SKILL owns the Workflow platform fact"
-have skills/harness/SKILL.md          'presence controls the OFFER'      "#220 harness SKILL: grant is offer, not runtime permission"
-have skills/shepherd/references/wave-routine.md 'PERMANENT mode'         "#220 wave-routine: conductor in-context is permanent, not a fallback"
-have skills/shepherd/references/pipeline.md     'DRIVER-CONDITIONAL'     "#220 pipeline lane law is driver-conditional"
-have agents/conductor.md              'DISPATCH MODE'                    "#220 conductor §DISPATCH MODE supersedes the Workflow self-check"
-have agents/engineer.md               'denied to you'                    "#220 engineer fans out in-context (Workflow denied)"
+# == #220 Workflow denied in subagents → in-context Agent() is first-class ==
+# SUPERSEDED by #263 (v6.4.3). This block string-pinned six legs of the
+# "Workflow is denied one tier down, so a teammate lead fans out in-context"
+# doctrine. #233 then shipped the grant in both team-lead frontmatters and the
+# operator's design made the Dynamic Workflow the vehicle at every lead tier —
+# at which point these assertions were defending a law the project had already
+# moved off, and a live sprint burned an hour on the resulting contradiction
+# between frontmatter, bodies, and tests.
+#
+# The legs are NOT deleted-and-forgotten: their successors live in
+# test_v643_wiring.sh, which pins the inverted law over the same files plus
+# the surfaces #220 never covered (auditor grading, the downgrade record, the
+# widened #255 pin reach). The one leg here that was a genuine platform fact
+# rather than a shepherd policy — ToolSearch is the wrong index for a native
+# primitive — survives there too, re-pinned rather than dropped.
+have agents/conductor.md 'WORKFLOW-VEHICLE-PROBE' \
+  "#220→#263 conductor's vehicle doctrine now lives behind the probe (see test_v643_wiring.sh)"
 
 echo "== #221 shctx registry resolves to the shared main worktree =="
 have skills/context/scripts/_lib.sh       'git rev-parse --git-common-dir' "#221 shctx_repo_root resolves via git-common-dir"

@@ -190,6 +190,7 @@ Timestamps: epoch SECONDS throughout (``shctx_now`` / ``date +%s`` —
 from __future__ import annotations
 
 import contextlib
+import glob
 import json
 import os
 import re
@@ -1140,6 +1141,90 @@ def _check_version_match() -> list[Result]:
     ]
 
 
+#: A plugin cache path segment, ``.../cache/<publisher>/shepherd/<version>/``.
+#: The publisher segment is deliberately unanchored: #235's whole failure was
+#: a launcher that hardcoded ONE publisher (`fl03`) and so never saw the
+#: newer install under another (`pzzld`).
+_CACHE_PLUGIN_GLOB = os.path.join("cache", "*", "shepherd", "*")
+
+
+def _version_sort_key(version: str) -> tuple[int, ...]:
+    """Numeric-segment sort key for a plugin version directory name.
+
+    Compares SEGMENT BY SEGMENT as integers, so ``6.4.10`` sorts above
+    ``6.4.9`` -- a plain string sort gets that backwards, and the #235
+    launcher fix depends on the ordering being genuinely numeric rather
+    than incidentally correct for one-digit patch numbers.
+
+    Args:
+        version: A version directory name (e.g. ``"6.4.10"``). Non-numeric
+            segments contribute 0 rather than raising, so a junk directory
+            sorts low instead of crashing the scan.
+
+    Returns:
+        A tuple of ints suitable as a ``sorted()`` key.
+    """
+    parts: list[int] = []
+    for segment in version.split("."):
+        digits = "".join(ch for ch in segment if ch.isdigit())
+        parts.append(int(digits) if digits else 0)
+    return tuple(parts)
+
+
+def _check_newer_plugin_installed() -> list[Result]:
+    """Section 8b: WARN when a NEWER shepherd plugin is installed elsewhere.
+
+    #235, second half. Section 8 above compares the running CLI against the
+    plugin at ``CLAUDE_PLUGIN_ROOT`` -- but the reported incident was that
+    ``CLAUDE_PLUGIN_ROOT`` itself pointed at a dead 6.3.3 under one
+    publisher directory while the actively-loaded 6.3.9 sat under another,
+    and NOTHING reported the discrepancy. Every ``shctx`` call fleet-wide
+    (root, six lane conductors, and the hooks) routed to the stale binary
+    for days; the resulting "unknown subcommand" errors and stray
+    per-worktree DBs were misdiagnosed across two separate sprints because
+    the version actually executing was never surfaced anywhere.
+
+    So: walk up from ``CLAUDE_PLUGIN_ROOT`` to the ``cache/`` root, glob
+    EVERY publisher's shepherd installs, and warn when any of them is
+    newer than the one in use. Conditional like section 8 -- silent when
+    the env is unset, the cache layout is not recognizable, or the running
+    install is already the highest.
+    """
+    plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
+    if not plugin_root:
+        return []
+
+    # `.../cache/<publisher>/shepherd/<version>` -> `.../cache`. Anything
+    # else (a repo clone run in place, a relocated install) is not the
+    # cache layout this check reasons about; stay silent rather than guess.
+    normalized = os.path.normpath(plugin_root)
+    running_version = os.path.basename(normalized)
+    cache_root = os.path.dirname(os.path.dirname(os.path.dirname(normalized)))
+    if os.path.basename(cache_root) != "cache":
+        return []
+
+    candidates: list[str] = []
+    for path in glob.glob(os.path.join(cache_root, "*", "shepherd", "*")):
+        if os.path.isdir(path):
+            candidates.append(os.path.basename(path))
+    if not candidates:
+        return []
+
+    highest = max(candidates, key=_version_sort_key)
+    if _version_sort_key(highest) <= _version_sort_key(running_version):
+        return []
+
+    return [
+        Result(
+            "warn",
+            "version",
+            "plugin/installed",
+            f"running plugin {running_version} but {highest} is installed under another publisher dir",
+            "the PATH launcher may be pinned to a stale publisher — run scripts/install-shctx-launcher.sh (#235)",
+        )
+    ]
+
+
 # --------------------------------------------------------------------------
 # Section 9 -- user-level tier, `~/.shepherd` (v6.4.1 #254; NOT in cmd_doctor.sh).
 # --------------------------------------------------------------------------
@@ -1385,6 +1470,7 @@ def _collect_results() -> list[Result]:
     # module's carefully-reproduced split-brain stderr-warning call count.
     results.extend(_check_gates(repo, _quiet_resolve_workdir()))
     results.extend(_check_version_match())
+    results.extend(_check_newer_plugin_installed())
     results.extend(_check_user_tier(_quiet_resolve_workdir()))
 
     # v6.4.2 post-parity section 10 (bootstrap completeness) -- reuses

@@ -580,6 +580,16 @@ else
   fails=$((fails+1))
 fi
 
+echo "== test_v643_wiring.sh (v6.4.3 — #263 fan-out-vehicle inversion wiring) =="
+total=$((total+1))
+if v643_out=$(bash "$TESTS_DIR/test_v643_wiring.sh" 2>&1); then
+  printf '  PASS  %s\n' "v643-doctrine-wiring"
+else
+  printf '  FAIL  %-50s\n' "v643-wiring"
+  printf '%s\n' "$v643_out" | sed 's/^/        /'
+  fails=$((fails+1))
+fi
+
 echo "== test_config_precedence.sh (v6.4.2 — .shepherd/.artifacts config precedence, bash side) =="
 total=$((total+1))
 if cfgp_out=$(bash "$TESTS_DIR/test_config_precedence.sh" 2>&1); then

@@ -30,7 +30,11 @@ Subcommands (bash-parity, in ``cmd_worktree.sh``'s own doc-comment order)::
     gc [--older-than=<hours>] [--dry-run] [--all]
         Prune ``.claude/worktrees/agent-*`` entries whose last-commit
         timestamp is older than ``--older-than`` (default 24h). ``--all``
-        is an alias for ``--older-than=0``.
+        is an alias for ``--older-than=0``, and both mean NO age floor —
+        every matching worktree, including one committed this very second
+        (v6.4.3; as plain arithmetic a zero-hour threshold raced the clock
+        and skipped exactly the freshly-torn-down lane worktrees it was
+        asked to collect).
 
     merge <agent-id> [--strategy=theirs|prompt] [--no-cleanup]
         Cherry-pick the worktree's HEAD onto the current branch, then
@@ -533,7 +537,7 @@ def _cmd_create_batch(repo: str, argv: list[str]) -> None:
 # --------------------------------------------------------------------------
 # `gc`
 # --------------------------------------------------------------------------
-def _parse_gc_args(argv: list[str]) -> tuple[str, bool]:
+def _parse_gc_args(argv: list[str]) -> tuple[str, bool, bool]:
     """Parse ``gc``'s flags, mirroring bash's ``for arg in "$@"`` loop.
 
     Bash::
@@ -549,6 +553,19 @@ def _parse_gc_args(argv: list[str]) -> tuple[str, bool]:
             *) echo "ERROR: unknown flag: $arg" >&2; exit 1 ;;
           esac
         done
+
+    DELIBERATE DIVERGENCE FROM BASH (v6.4.3) — ``--all`` returns its own
+    boolean rather than being encoded as ``older=0``. Bash's encoding is an
+    off-by-one: ``older=0`` makes ``threshold == now``, and :func:`_cmd_gc`
+    prunes on ``ts < threshold`` (STRICTLY older), so a worktree whose last
+    commit lands in the same wall-clock second as the ``gc`` call is NOT
+    pruned. ``--all`` is documented as pruning "regardless of age", and the
+    worktrees an operator most wants gone — the ones a lane teardown just
+    finished with — are exactly the sub-second-old ones the encoding skips.
+    The failure is a clock race, so it reproduces only sometimes, which is
+    worse than a consistent one. The summary line still echoes
+    ``threshold 0h`` for ``--all``, so the observable output is unchanged on
+    every path except the one that was wrong.
 
     Note the catch-all arm is a bare ``*)`` (NOT ``--*)`` as in
     ``create-batch``/``merge``) — ``gc`` accepts no positional arguments
@@ -567,8 +584,11 @@ def _parse_gc_args(argv: list[str]) -> tuple[str, bool]:
         argv: Every token given after ``gc`` on the command line.
 
     Returns:
-        ``(older, dry)`` — ``older`` as the raw string form (default
-        ``"24"``), ``dry`` True if ``--dry-run`` was given.
+        ``(older, dry, prune_all)`` — ``older`` as the raw string form
+        (default ``"24"``; ``"0"`` for ``--all``, preserving the summary
+        line's verbatim echo), ``dry`` True if ``--dry-run`` was given, and
+        ``prune_all`` True if ``--all`` was given, which drops the age
+        filter entirely rather than setting a zero-hour threshold.
 
     Raises:
         typer.Exit: code 0, after printing :data:`_GC_HELP` to stderr, on
@@ -577,11 +597,14 @@ def _parse_gc_args(argv: list[str]) -> tuple[str, bool]:
     """
     older = "24"
     dry = False
+    prune_all = False
     for arg in argv:
         if arg.startswith("--older-than="):
             older = arg[len("--older-than=") :]
+            prune_all = False
         elif arg == "--all":
             older = "0"
+            prune_all = True
         elif arg == "--dry-run":
             dry = True
         elif arg in ("-h", "--help"):
@@ -590,7 +613,7 @@ def _parse_gc_args(argv: list[str]) -> tuple[str, bool]:
         else:
             typer.echo(f"ERROR: unknown flag: {arg}", err=True)
             raise typer.Exit(code=1)
-    return older, dry
+    return older, dry, prune_all
 
 
 def _cmd_gc(repo: str, argv: list[str]) -> None:
@@ -621,7 +644,7 @@ def _cmd_gc(repo: str, argv: list[str]) -> None:
             the same input (see the module docstring's deviations list).
             See :func:`_parse_gc_args` for flag-parsing exits.
     """
-    older, dry = _parse_gc_args(argv)
+    older, dry, prune_all = _parse_gc_args(argv)
     try:
         older_int = int(older)
     except ValueError:
@@ -635,7 +658,16 @@ def _cmd_gc(repo: str, argv: list[str]) -> None:
             continue
         if "/.claude/worktrees/agent-" not in wt:
             continue
-        if not (ts < threshold):
+        # A zero-hour threshold means regardless of age — no comparison at
+        # all. Left as arithmetic it puts `threshold == now` against a
+        # STRICT `ts < threshold` test, so whether a worktree committed in
+        # the current second survives depends on whether the clock happened
+        # to tick between the commit and the `gc` call. Those sub-second
+        # worktrees are precisely what a lane teardown leaves behind, i.e.
+        # what `--all` exists to collect (see _parse_gc_args). `--all` and
+        # `--older-than=0` resolve identically here — two spellings of "no
+        # age floor" that behaved differently would be a trap of its own.
+        if not (prune_all or older_int <= 0) and not (ts < threshold):
             continue
 
         if dry:
