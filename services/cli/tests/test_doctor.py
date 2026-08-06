@@ -1525,3 +1525,74 @@ def test_bootstrap_row_count_never_disturbs_dual_namespace_stderr_warning_count(
     proc = run_doctor([], work_dir, env)
 
     assert proc.stderr.count("shctx WARNING: both .shepherd/ and .artifacts/ exist") == 3
+
+
+# --------------------------------------------------------------------------
+# Section 8a — CLI venv provisioned (#266).
+# --------------------------------------------------------------------------
+def test_unprovisioned_cli_venv_fails(work_dir: Path, xdg_dir: Path, tmp_path: Path) -> None:
+    """A venv DIRECTORY with no installed distributions is the #266 state.
+
+    `poetry env info --executable` creates the venv as a side effect, so this is
+    exactly what a fresh upgrade left behind: present, empty, and fatal to every
+    `shepherd` command with a traceback naming `typer` rather than the venv.
+    """
+    plugin_root = tmp_path / "plugin"
+    _write_plugin_json(plugin_root, "0.0.1")
+    (plugin_root / "services" / "cli" / ".venv" / "bin").mkdir(parents=True)
+    env = _doctor_env(xdg_dir, workdir=work_dir)
+    env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
+
+    proc = run_doctor(["--json"], work_dir, env)
+    payload = json.loads(proc.stdout)
+    rows = [c for c in payload["checks"] if c["name"] == "cli/venv"]
+
+    assert len(rows) == 1
+    assert rows[0]["status"] == "fail"
+    assert "no installed dependencies" in rows[0]["message"]
+    assert "poetry install" in rows[0]["fix"]
+
+
+def test_provisioned_cli_venv_emits_no_row(work_dir: Path, xdg_dir: Path, tmp_path: Path) -> None:
+    """The console script `poetry install` writes is sufficient evidence."""
+    plugin_root = tmp_path / "plugin"
+    _write_plugin_json(plugin_root, "0.0.1")
+    bindir = plugin_root / "services" / "cli" / ".venv" / "bin"
+    bindir.mkdir(parents=True)
+    (bindir / "shepherd").write_text("#!/bin/sh\n")
+    env = _doctor_env(xdg_dir, workdir=work_dir)
+    env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
+
+    proc = run_doctor(["--json"], work_dir, env)
+    payload = json.loads(proc.stdout)
+    assert [c for c in payload["checks"] if c["name"] == "cli/venv"] == []
+
+
+def test_no_root_install_cli_venv_emits_no_row(work_dir: Path, xdg_dir: Path, tmp_path: Path) -> None:
+    """A `--no-root` install has deps but no console script — still healthy."""
+    plugin_root = tmp_path / "plugin"
+    _write_plugin_json(plugin_root, "0.0.1")
+    site = plugin_root / "services" / "cli" / ".venv" / "lib" / "python3.11" / "site-packages"
+    (site / "typer").mkdir(parents=True)
+    env = _doctor_env(xdg_dir, workdir=work_dir)
+    env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
+
+    proc = run_doctor(["--json"], work_dir, env)
+    payload = json.loads(proc.stdout)
+    assert [c for c in payload["checks"] if c["name"] == "cli/venv"] == []
+
+
+def test_absent_cli_venv_emits_no_row(work_dir: Path, xdg_dir: Path, tmp_path: Path) -> None:
+    """No venv at all is normal (PYTHONPATH / system install) — never flagged.
+
+    Reporting this would fire on every healthy non-poetry setup; the broken
+    state is specifically present-but-empty.
+    """
+    plugin_root = tmp_path / "plugin"
+    _write_plugin_json(plugin_root, "0.0.1")
+    env = _doctor_env(xdg_dir, workdir=work_dir)
+    env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
+
+    proc = run_doctor(["--json"], work_dir, env)
+    payload = json.loads(proc.stdout)
+    assert [c for c in payload["checks"] if c["name"] == "cli/venv"] == []
