@@ -1141,6 +1141,60 @@ def _check_version_match() -> list[Result]:
     ]
 
 
+def _check_cli_venv() -> list[Result]:
+    """Section 8a: FAIL when the CLI venv exists but holds no dependencies.
+
+    #266: ``poetry env info --executable`` CREATES a venv when none exists, so
+    ``bin/shepherd`` could build an empty one and immediately exec into it --
+    every command dying with ``ModuleNotFoundError: No module named 'typer'``,
+    a traceback naming a dependency rather than the actual cause. It surfaced
+    mid-``/shepherd:spawn``, where the boot prompt is a MANDATED render, and the
+    natural workaround (hand-assembling it) is the cache-hostile shape #243
+    exists to prevent. This check moves the discovery BEFORE a spawn.
+
+    Deliberately reports only the "present but empty" state. A venv that does
+    not exist at all is normal on a machine driving the CLI another way
+    (``python3 -m shepherd_cli`` on ``PYTHONPATH``, a system install, a distro
+    package) -- flagging that would fire on healthy setups. The broken state is
+    specifically a venv DIRECTORY with no installed distributions, which is
+    never something a working install produces.
+
+    Probes the filesystem, never the running interpreter: ``doctor`` may itself
+    be running from a different environment than the venv it is inspecting, so
+    ``import typer`` here would answer the wrong question.
+
+    Returns:
+        One FAIL row when the venv is present but unprovisioned; ``[]``
+        otherwise (absent venv, or a healthy one).
+    """
+    plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
+    if not plugin_root:
+        return []
+    venv_dir = os.path.join(plugin_root, "services", "cli", ".venv")
+    if not os.path.isdir(venv_dir):
+        return []
+    # Same two signals bin/shepherd's `venv_provisioned` uses -- they must
+    # agree, or doctor will pass a venv the wrapper refuses to start.
+    if os.path.exists(os.path.join(venv_dir, "bin", "shepherd")):
+        return []
+    for pattern in (
+        os.path.join(venv_dir, "lib", "python*", "site-packages", "typer"),
+        os.path.join(venv_dir, "Lib", "site-packages", "typer"),
+    ):
+        if glob.glob(pattern):
+            return []
+    cli_dir = os.path.join(plugin_root, "services", "cli")
+    return [
+        Result(
+            "fail",
+            "version",
+            "cli/venv",
+            f"CLI venv at {venv_dir} exists but has no installed dependencies",
+            f"cd {cli_dir} && poetry install (or run bin/shepherd-venv-ensure) -- #266",
+        )
+    ]
+
+
 #: A plugin cache path segment, ``.../cache/<publisher>/shepherd/<version>/``.
 #: The publisher segment is deliberately unanchored: #235's whole failure was
 #: a launcher that hardcoded ONE publisher (`fl03`) and so never saw the
@@ -1470,6 +1524,7 @@ def _collect_results() -> list[Result]:
     # module's carefully-reproduced split-brain stderr-warning call count.
     results.extend(_check_gates(repo, _quiet_resolve_workdir()))
     results.extend(_check_version_match())
+    results.extend(_check_cli_venv())
     results.extend(_check_newer_plugin_installed())
     results.extend(_check_user_tier(_quiet_resolve_workdir()))
 

@@ -6,8 +6,18 @@
 # services/cli/pyproject.toml against a stamp from the previous run and only
 # re-installs when it actually changed, so repeated calls (the SessionStart
 # hook calls this every session) are cheap and safe to run by hand. Also
-# re-installs when the venv itself is missing (e.g. the plugin dir was purged
-# on update), so a stale stamp never leaves the wrapper with no interpreter.
+# re-installs when the venv is missing OR UNPROVISIONED (e.g. the plugin dir was
+# purged on update, or bin/shepherd's `poetry env info` created an empty one),
+# so a stale stamp never leaves the wrapper with no usable interpreter.
+#
+# #266: the previous test was `[ -d "$VENV_DIR" ]` -- venv EXISTS, not venv
+# WORKS. `poetry env info --executable` (which bin/shepherd calls to locate the
+# interpreter) creates an empty venv as a side effect, so on a fresh upgrade the
+# directory appeared before anything was installed into it. With the stamp
+# living under ${CLAUDE_PLUGIN_DATA} it survives plugin updates, so an unchanged
+# pyproject.toml + an empty-but-present .venv passed BOTH conditions and this
+# script reported "up to date" forever while every `shepherd` command died with
+# ModuleNotFoundError. Probing importability instead of existence closes that.
 set -eu -o pipefail
 
 if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ]; then
@@ -34,7 +44,17 @@ fi
 
 mkdir -p "$STAMP_DIR"
 
-if [ -d "$VENV_DIR" ] && [ -f "$STAMP_FILE" ] && cmp -s "$PYPROJECT" "$STAMP_FILE"; then
+# Is the venv actually usable, not merely present? Mirrors bin/shepherd's
+# `venv_provisioned` -- the two MUST agree, or one will skip the install the
+# other then needs. Filesystem-only, no interpreter start.
+venv_provisioned() {
+  [ -x "$VENV_DIR/bin/shepherd" ] && return 0
+  compgen -G "$VENV_DIR/lib/python*/site-packages/typer" >/dev/null 2>&1 && return 0
+  compgen -G "$VENV_DIR/Lib/site-packages/typer" >/dev/null 2>&1 && return 0
+  return 1
+}
+
+if venv_provisioned && [ -f "$STAMP_FILE" ] && cmp -s "$PYPROJECT" "$STAMP_FILE"; then
   echo "shepherd-venv-ensure: cli venv up to date (pyproject.toml unchanged)"
   exit 0
 fi
@@ -48,6 +68,7 @@ if poetry -C "$CLI_DIR" install >&2; then
   cp "$PYPROJECT" "$STAMP_FILE"
   echo "shepherd-venv-ensure: cli venv installed/refreshed"
 else
-  echo "shepherd-venv-ensure: poetry install failed -- the wrapper falls back to 'python3 -m shepherd_cli'" >&2
+  echo "shepherd-venv-ensure: poetry install FAILED -- run 'cd $CLI_DIR && poetry install' by hand;" >&2
+  echo "                      until then every 'shepherd' command will refuse to start (GH #266)." >&2
   exit 0
 fi
