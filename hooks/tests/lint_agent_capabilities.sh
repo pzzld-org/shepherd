@@ -20,7 +20,8 @@
 #
 # CONDITIONAL:
 #   Write — allowed ONLY because lock_guard.sh path-scopes it to the
-#           {paths.reports} report-file pattern (GH #74 "Option B"). The lint
+#           run-scoped report-file pattern — {run_dir}/reports/ for discovery,
+#           {run_dir}/audits/ for auditor (GH #74 "Option B"). The lint
 #           asserts lock_guard.sh exists AND is registered under a
 #           PreToolUse(Write) matcher whenever a read-only role keeps Write.
 #

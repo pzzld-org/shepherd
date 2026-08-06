@@ -7,11 +7,21 @@
 # 2. sprint lock WARN            — different session holds .shepherd/shepherd.lock
 # 3. otherwise pass
 #
-# Role-write-path policy:
-#   @discovery — Write only to {paths.reports}/<date>-discovery-*.md
-#   @auditor   — Write only to {paths.reports}/<date>-{intro-,}audit-*.md
+# Role-write-path policy (v6.4.4 — RUN-SCOPED, see
+# skills/context/references/naming-conventions.md §Run layout):
+#   @discovery — Write only to {run_dir}/reports/discovery-*.md
+#   @auditor   — Write only to {run_dir}/audits/{intro-,}audit-*.md
 #   @coder     — Write only inside [WORKTREE].Path (recorded at dispatch by agent_invocation_tagger)
 #   others     — passthrough (no constraint enforced at hook layer)
+#
+# Both read-only roles used to be pinned to {paths.reports} = .shepherd/docs/
+# reports/ with a <date>- prefix, which contradicted the artifact schema: that
+# table has said {run_dir}/reports/ and {run_dir}/audits/ since v6.4.1, and
+# `run init` scaffolds both. The result was a run's own audits and discovery
+# reports being ledgered into the cross-run docs/ tree — 1548 files deep in
+# FL03/axiom — while the run-scoped directories stayed empty. The date prefix
+# goes with them: the run directory carries the identity, so a dated filename
+# inside it is redundant (and `shctx lint` flags it as misplaced).
 #
 # Input  (stdin): PreToolUse JSON { tool_name, tool_input, tool_use_id, session_id, ... }
 # Output (stdout):
@@ -43,21 +53,32 @@ file_path=$(json_field "$input" '.tool_input.file_path')
 # ---------------------------------------------------------------------------
 case "$role" in
   discovery)
-    # Allow only {paths.reports}/<date>-discovery-*.md
-    if ! printf '%s' "$file_path" | grep -qE '/reports/[0-9]{4}-[0-9]{2}-[0-9]{2}-discovery-.+\.md$'; then
-      msg="[shepherd] DISCOVERY-WRITE-PATH BLOCKED — @discovery may only Write to {paths.reports}/<date>-discovery-<id>.md"$'\n'
+    # Allow only {run_dir}/reports/discovery-<id>.md — anchored on `runs/`, so
+    # the legacy docs/reports/ target is denied rather than silently accepted.
+    if ! printf '%s' "$file_path" | grep -qE '/runs/[^/]+/reports/discovery-.+\.md$'; then
+      msg="[shepherd] DISCOVERY-WRITE-PATH BLOCKED — @discovery may only Write to {run_dir}/reports/discovery-<id>.md"$'\n'
       msg+="  Attempted:  $file_path"$'\n'
       msg+="  Role:       discovery (from dispatch tag $tool_use_id)"$'\n'
+      if printf '%s' "$file_path" | grep -qE '/docs/reports/'; then
+        msg+="  NOTE:       docs/reports/ is the CROSS-RUN tree. A discovery report is run-scoped"$'\n'
+        msg+="              — write it to {run_dir}/reports/ instead (no date prefix; the run"$'\n'
+        msg+="              directory already carries the identity)."$'\n'
+      fi
       msg+="See skills/shepherd/references/flock.md §@discovery."
       emit_deny "$msg" "lock_guard" "$tool" "$role" "$session"
     fi
     ;;
   auditor)
-    # Allow {paths.reports}/<date>-{audit,intro-audit}-<concern>.md
-    if ! printf '%s' "$file_path" | grep -qE '/reports/[0-9]{4}-[0-9]{2}-[0-9]{2}-(intro-)?audit-.+\.md$'; then
-      msg="[shepherd] AUDITOR-WRITE-PATH BLOCKED — @auditor may only Write to {paths.reports}/<date>-(intro-)audit-<concern>.md"$'\n'
+    # Allow {run_dir}/audits/{audit,intro-audit}-<concern>.md
+    if ! printf '%s' "$file_path" | grep -qE '/runs/[^/]+/audits/(intro-)?audit-.+\.md$'; then
+      msg="[shepherd] AUDITOR-WRITE-PATH BLOCKED — @auditor may only Write to {run_dir}/audits/(intro-)audit-<concern>.md"$'\n'
       msg+="  Attempted:  $file_path"$'\n'
       msg+="  Role:       auditor (from dispatch tag $tool_use_id)"$'\n'
+      if printf '%s' "$file_path" | grep -qE '/docs/reports/'; then
+        msg+="  NOTE:       docs/reports/ is the CROSS-RUN tree. An audit is run-scoped — write"$'\n'
+        msg+="              it to {run_dir}/audits/ instead (no date prefix; the run directory"$'\n'
+        msg+="              already carries the identity)."$'\n'
+      fi
       msg+="See skills/shepherd/references/flock.md §@auditor."
       emit_deny "$msg" "lock_guard" "$tool" "$role" "$session"
     fi

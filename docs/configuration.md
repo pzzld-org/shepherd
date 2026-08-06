@@ -211,20 +211,28 @@ entry; exempt twins via `shctx dups registry allow A B`.
 
 ### `[paths]` — artifact locations
 
-| Key | Default |
-|---|---|
-| `plans` | `.shepherd/docs/plans` |
-| `reports` | `.shepherd/docs/reports` |
-| `docs` | `.shepherd/docs` |
-| `ctx` | `.shepherd/ctx` |
-| `runs` | `.shepherd/runs` |
+| Key | Default | Status |
+|---|---|---|
+| `runs` | `.shepherd/runs` | Run-scoped artifact root |
+| `docs` | `.shepherd/docs` | Cross-run docs (specs, diagrams, journal, ledgers) |
+| `ctx` | `.shepherd/ctx` | The one cross-run knowledge silo |
+| `plans` | `.shepherd/docs/plans` | **LEGACY** — pre-layout-v3; not a write target |
+| `reports` | `.shepherd/docs/reports` | **LEGACY** — pre-v6.4.4; not a write target |
 
 Relative to the repo root, auto-created on write. `{run_dir}` = `{paths.runs}/{run}` — the per-run
 artifact directory (`{run}` == sprint/patch slug); run-scoped artifacts live there under FIXED
-names, `plans`/`reports` remain for legacy trees and genuinely cross-run docs. `shctx init`
-scaffolds the standard tree; `shepherd migrate --layout v2` moves a legacy project onto the docs/
-layout, `--layout v3` onto `runs/` + `profiles/`. Layout, ownership, and the tracked/ignored split:
-`skills/context/references/naming-conventions.md`.
+names.
+
+**`plans` and `reports` are read-only legacy keys.** Layout v3 moved seeds and plans into
+`runs/{run}/`; v6.4.4 moved audits into `runs/{run}/audits/` and read-only-role reports into
+`runs/{run}/reports/`. Neither key names a destination anything writes to any more — they stay so
+`lint`/`refresh` still find pre-migration files. Do not aim a new writer at them: a run-scoped
+artifact goes in `{run_dir}`, a cross-run one in `docs`/`ctx`. Which is which:
+`naming-conventions.md §The docs/ vs {run_dir} boundary`.
+
+`shctx init` scaffolds the standard tree; `shepherd migrate --layout v2` moves a legacy project onto
+the docs/ layout, `--layout v3` onto `runs/` + `profiles/`, `--layout v4` retires `memory/`. Layout,
+ownership, and the tracked/ignored split: `skills/context/references/naming-conventions.md`.
 
 Two CLI commands own this layer: `shepherd run <init|show|list|set|lane|wave>` maintains
 `{run_dir}/run.json` (schema-validated, the #242 boundary-merge ledger — `run wave pending` exits 6
@@ -286,7 +294,7 @@ tool from the engineer's brief.
 | `phase_0_full_ledger` | bool | `true` — `0` disables |
 | `classify_into` | list | `["blocking-this-sprint","labeled-non-issue","tracking-future","drift-risk"]` |
 | `non_issue_labels` | list | `["wontfix","tracking-future","design-question","rfc"]` |
-| `carry_forward_file` | string | `"{paths.plans}/v{X}.{Y}.{Z}-carry-forwards.md"` |
+| `carry_forward_file` | string | `"{paths.docs}/v{X}.{Y}.{Z}-carry-forwards.md"` |
 | `chronic_threshold_patches` | int | `2` |
 
 `phase_0_full_ledger=true` requires enumerating + classifying the full (not just current-milestone)

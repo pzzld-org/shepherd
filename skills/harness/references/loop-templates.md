@@ -88,7 +88,7 @@ read-only throughout (`skills/shepherd/references/flock.md §@discovery`).
   avenues and finding none — NEVER merely because time or tokens ran out.
 - **Default `--max`: 4.** >4 requires justification; >10 requires critic sign-off.
 - **Anti-patterns**: a wide/ambiguous question instead of a tight one; writing outside
-  `{paths.reports}`; re-reading sources already in `[DISCOVERY-CONTEXT]`; skipping
+  `{run_dir}/reports/`; re-reading sources already in `[DISCOVERY-CONTEXT]`; skipping
   `shctx discovery search --question="<paraphrase>"` first — a fresh discovery (< 2 sprints
   old) covering the question is reusable, no loop needed; using this for ongoing monitoring
   (that's WORKER-WATCH).
