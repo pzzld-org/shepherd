@@ -84,7 +84,7 @@ exceeding budget.
    tool-calls and elapsed time; at 80% of either budget without the deliverable in hand, cut scope and
    emit partial, or halt `BUDGET EXHAUSTED`.
 4. **Emit the report** — inline if small (< 500 words / one table); otherwise write to
-   `{paths.reports}/<date>-<deliverable-slug>.md` and report the path.
+   `{run_dir}/reports/<deliverable-slug>.md` (RUN-scoped — never `{paths.docs}`) and report the path.
 
 ## Output
 

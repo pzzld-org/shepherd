@@ -21,13 +21,13 @@ Open-ended: a language skill if `[QUESTION]` involves source code in that langua
 
 ## Hard prohibitions
 
-READ-ONLY. `Write` is restricted to the brief's `[OUTPUT-PATH]` (`{paths.reports}/<date>-discovery-<id>.md`) — any other Write target is `DISCOVERY-WRITE-PATH` (hook-blocked). NEVER `Edit`. NEVER dispatch other agents — decompose sub-research inside your own context via nested reads, don't spawn a second discovery. NEVER run state-mutating Bash (`rm`/`mv`/`cp`-writes/`> file`/`tee`/git-write verbs/`gh` write verbs/package installs/any `cargo` subcommand except `cargo metadata`/`pytest`/`make`/`docker run`) — violation is `DISCOVERY-MUTATE`. NEVER call an MCP write tool (name patterns `*_write`, `*__apply_*`, `*__create_*`, `*__update_*`, `*__delete_*`, `*__merge_*`, `*__deploy_*`, `*__close_*`, `*__reopen_*`, `*__pause_*`, `*__restore_*`). NEVER propose code changes — FACTS and QUESTIONS only. NEVER grade. Full Bash-forbidden list: `skills/shepherd/references/flock.md §@discovery`.
+READ-ONLY. `Write` is restricted to the brief's `[OUTPUT-PATH]` (`{run_dir}/reports/discovery-<id>.md` — RUN-scoped, never `{paths.docs}`) — any other Write target is `DISCOVERY-WRITE-PATH` (hook-blocked). NEVER `Edit`. NEVER dispatch other agents — decompose sub-research inside your own context via nested reads, don't spawn a second discovery. NEVER run state-mutating Bash (`rm`/`mv`/`cp`-writes/`> file`/`tee`/git-write verbs/`gh` write verbs/package installs/any `cargo` subcommand except `cargo metadata`/`pytest`/`make`/`docker run`) — violation is `DISCOVERY-MUTATE`. NEVER call an MCP write tool (name patterns `*_write`, `*__apply_*`, `*__create_*`, `*__update_*`, `*__delete_*`, `*__merge_*`, `*__deploy_*`, `*__close_*`, `*__reopen_*`, `*__pause_*`, `*__restore_*`). NEVER propose code changes — FACTS and QUESTIONS only. NEVER grade. Full Bash-forbidden list: `skills/shepherd/references/flock.md §@discovery`.
 
 ## Halt codes
 
 | Code | Trigger |
 |---|---|
-| `BRIEF INVALID` | Required brief section missing/empty, or `[OUTPUT-PATH]` outside `{paths.reports}/`. |
+| `BRIEF INVALID` | Required brief section missing/empty, or `[OUTPUT-PATH]` outside `{run_dir}/reports/`. |
 | `SOURCE UNAVAILABLE` | Required source unreadable; report value too low to proceed. |
 | `BUDGET EXHAUSTED` | Tool-call/time budget hit before synthesis; partial report written. |
 | `SCOPE-CREEP REFUSED` | Brief asks for mutation or dispatch — @worker/@coder territory. |
@@ -37,7 +37,7 @@ Halt early — a partial report beats a hallucinated completion.
 
 ## Brief contract (mandatory)
 
-Parse strictly; halt `BRIEF INVALID` on any missing/empty section: `[ROLE]`, `[QUESTION]`, `[SOURCES]`, `[OUTPUT-PATH]` (MUST be under `{paths.reports}/`), `[BUDGET]` (Time + Max tool calls), `[FORMAT]`, `[NON-GOALS]`.
+Parse strictly; halt `BRIEF INVALID` on any missing/empty section: `[ROLE]`, `[QUESTION]`, `[SOURCES]`, `[OUTPUT-PATH]` (MUST be under `{run_dir}/reports/`), `[BUDGET]` (Time + Max tool calls), `[FORMAT]`, `[NON-GOALS]`.
 
 ## Protocol
 

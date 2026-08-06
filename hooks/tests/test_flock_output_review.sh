@@ -59,11 +59,18 @@ need agents/auditor.md   "wave-review"               "auditor wave-review mode"
 need agents/auditor.md   "WAVE-REVIEW VERDICT"       "auditor verdict block"
 need agents/auditor.md   "Wave review + REDO"         "auditor cites review contract"
 
-# 4-bis. The wave-review report path MUST keep the `audit-` prefix so it stays
-# inside lock_guard.sh's @auditor write-allow regex (/<date>-(intro-)?audit-.+\.md$).
-# A rename that drops `audit-` would hard-block the wave-review auditor's Write.
-if ! grep -qF -- '{paths.reports}/<date>-audit-wave-review-' agents/auditor.md; then
-  printf '  FAIL  wave-review report path lacks the audit- prefix — lock_guard.sh would block it\n'
+# 4-bis. The wave-review report path MUST stay inside lock_guard.sh's @auditor
+# write-allow regex (/runs/[^/]+/audits/(intro-)?audit-.+\.md$): both the
+# `audits/` directory AND the `audit-` filename prefix are load-bearing. A
+# rename dropping either would hard-block the wave-review auditor's Write.
+# v6.4.4 moved this from {paths.reports}/<date>-... to the run-scoped path.
+if ! grep -qF -- '{run_dir}/audits/audit-wave-review-' agents/auditor.md; then
+  printf '  FAIL  wave-review path is not {run_dir}/audits/audit-wave-review-* — lock_guard.sh would block it\n'
+  fails=$((fails+1))
+fi
+# And the legacy cross-run target must not creep back into the auditor body.
+if grep -qF -- '{paths.reports}' agents/auditor.md; then
+  printf '  FAIL  agents/auditor.md still cites {paths.reports} — audits are run-scoped (v6.4.4)\n'
   fails=$((fails+1))
 fi
 
