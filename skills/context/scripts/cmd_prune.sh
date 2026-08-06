@@ -38,7 +38,11 @@ for a in "$@"; do
     --logs-days=*)      logs_days="${a#--logs-days=}" ;;
     --dispatch-days=*)  dispatch_days="${a#--dispatch-days=}" ;;
     --snapshots-keep=*) snapshots_keep="${a#--snapshots-keep=}" ;;
-    -h|--help) sed -n '2,22p' "$0"; exit 0 ;;
+    # 2,23p (was 2,22p): the v6.4.4 snapshot-dir note is two lines, which
+    # pushed the closing DB-row line out of the old window and silently
+    # truncated the usage text. The range tracks the header block's length —
+    # extend it whenever a line is added above.
+    -h|--help) sed -n '2,23p' "$0"; exit 0 ;;
     *) echo "ERROR: unknown arg: $a" >&2; exit 2 ;;
   esac
 done

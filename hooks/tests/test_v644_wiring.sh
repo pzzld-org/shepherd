@@ -73,7 +73,14 @@ need agents/discovery.md "{run_dir}/reports/"            "discovery writes run-s
 need agents/worker.md "{run_dir}/reports/"               "worker writes run-scoped reports"
 need hooks/scripts/lock_guard.sh "/runs/[^/]+/audits/"   "lock_guard enforces the run-scoped audit path"
 need hooks/scripts/lock_guard.sh "/runs/[^/]+/reports/"  "lock_guard enforces the run-scoped report path"
-deny services/cli/shepherd_cli/commands/prune.py '"memory", "snapshots"[^)]*$' "prune no longer treats memory/ as canonical"
+# NOT a `deny` on the retired path: prune deliberately still SWEEPS
+# memory/snapshots (an un-migrated project's snapshots must stay under
+# retention), so its absence would be wrong. The property that matters is that
+# cache/ is the CANONICAL entry and comes first — retention is applied over the
+# union in that order.
+need services/cli/shepherd_cli/commands/prune.py '("cache", "snapshots"),   # canonical' "prune's canonical snapshot dir is cache/"
+need services/cli/shepherd_cli/commands/prune.py '("memory", "snapshots"),  # retired'   "prune still sweeps the retired memory/ dir"
+need skills/context/scripts/cmd_prune.sh 'wd/cache/snapshots'                             "bash prune sweeps cache/snapshots first"
 
 if [[ "$fails" -eq 0 ]]; then
   printf '  PASS  v6.4.4 wiring — #268 amend, #269 lane-drift + script paths, #270 defensive poll, layout\n'
