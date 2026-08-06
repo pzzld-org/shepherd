@@ -21,9 +21,9 @@ This routine's determinism rests on three scripts. Every other file that cites t
 
 | Script | Signature | Role in the wave | Issue |
 |---|---|---|---|
-| `scripts/df-guard.sh` | `[--min=<GiB>] [path]` | disk-pressure precheck, hard-rule preamble | #214 |
-| `scripts/loc-count.py` | `<base_ref> [repo_path]` | net production Rust LOC assert, root gate #2 | #216 |
-| `scripts/journal-status.sh` | `<journal.jsonl>` | wave-return TRUTH, root gate #1 | #213 |
+| `${CLAUDE_PLUGIN_ROOT}/scripts/df-guard.sh` | `[--min=<GiB>] [path]` | disk-pressure precheck, hard-rule preamble | #214 |
+| `${CLAUDE_PLUGIN_ROOT}/scripts/loc-count.py` | `<base_ref> [repo_path]` | net production Rust LOC assert, root gate #2 | #216 |
+| `${CLAUDE_PLUGIN_ROOT}/scripts/journal-status.sh` | `<journal.jsonl>` | wave-return TRUTH, root gate #1 | #213 |
 
 ## Per-wave compile
 
@@ -56,16 +56,23 @@ pipeline([
 - No git commit/push, no `gh` writes — STAGE the text and PRINT the command (`staged_gh_commands`); commit custody is the dispatcher's.
 - Secrets are NEVER echoed.
 - GitHub Actions lifecycle is operator-owned.
-- `scripts/df-guard.sh --min=12` MUST pass before ANY cargo invocation (#214).
+- `${CLAUDE_PLUGIN_ROOT}/scripts/df-guard.sh --min=12` MUST pass before ANY cargo invocation (#214).
+  Cite it with the `${CLAUDE_PLUGIN_ROOT}` prefix, ALWAYS — a bare `scripts/df-guard.sh`
+  resolves against the CONSUMER project, where the file does not exist, so the guard
+  silently measures nothing while the step reads as if it passed (#269, measured 5/5 lanes).
+- `shepherd plan lane-drift {run}` MUST exit 0 at every wave boundary (#269). A lane's
+  brief renders from `lanes/{lane}/vars.json` while the conductor owns `lanes/{lane}/plan.md`;
+  a correction that reached only one of them means the next dispatch briefs from the stale
+  copy. Exit 1 lists each divergence — mirror it and re-run, never wave past it.
 - The lane's `CARGO_TARGET_DIR` is SHARED coder→auditor (warm cache, one tree) and DELETED on the wave's final PASS (#214).
-- The LOC budget is stated per step; production LOC is measured by `scripts/loc-count.py` (#216), never counted in latent space.
+- The LOC budget is stated per step; production LOC is measured by `${CLAUDE_PLUGIN_ROOT}/scripts/loc-count.py` (#216), never counted in latent space.
 
 ## Root gate (serial, after the workflow returns; a failure blocks the wave commit)
 
 Five checks, in order — the dispatcher runs them itself, never delegates them into the workflow:
 
-1. `scripts/journal-status.sh <run-journal.jsonl>` — the wave-return TRUTH (#213; the harness task registry is best-effort, never trusted for return detection).
-2. Deterministic LOC assert: `scripts/loc-count.py <base_ref>` vs the wave's stated budget (#216).
+1. `${CLAUDE_PLUGIN_ROOT}/scripts/journal-status.sh <run-journal.jsonl>` — the wave-return TRUTH (#213; the harness task registry is best-effort, never trusted for return detection).
+2. Deterministic LOC assert: `${CLAUDE_PLUGIN_ROOT}/scripts/loc-count.py <base_ref>` vs the wave's stated budget (#216).
 3. Cross-step file-disjointness check — no two steps touched the same path.
 4. The canonical workspace test gate (`{gates}`; `skills/shepherd/references/pipeline.md` §Gates) — NEVER run concurrently with lane cargo builds (#214).
 5. Append-only MSD (multi-step-dispatch) ledger entry in the plan: verdicts, LOC, deviations, run id + journal path (#213 — survives `/compact`). THEN the wave commit (`git commit -m "chore(dev.N/wave-K): ..."`); one commit per wave boundary is the one-wave loss horizon.

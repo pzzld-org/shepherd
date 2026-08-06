@@ -111,6 +111,7 @@ from shepherd_cli.commands.models_graph import (
     resolve_run,
     state_path,
 )
+from shepherd_cli.models_run import RunIdError, run_dir
 from shepherd_cli.resolution import resolve_repo_root
 
 app = typer.Typer(
@@ -120,7 +121,7 @@ app = typer.Typer(
 )
 
 #: Verbatim ``usage()`` heredoc from ``cmd_plan.sh``.
-_USAGE = """shctx plan <extract|topology|validate|hash|record-critique|verify> [args]
+_USAGE = """shctx plan <extract|topology|validate|hash|record-critique|verify|amend|lane-drift> [args]
 
   extract <plan.md> [--sprint=BRANCH] [--force]
       Parse the Stage Graph YAML from plan.md and store
@@ -140,6 +141,18 @@ _USAGE = """shctx plan <extract|topology|validate|hash|record-critique|verify> [
       Write the critic-proof alongside the plan. Computes the post-critic hash
       from the current plan bytes; edited = (pre != post). Emitted by the
       engineer teammate after the in-session @critic pass + revision.
+
+  amend --plan <path> --reason <text>
+      Root's sanctioned mid-sprint correction (#268). Re-ties an EXISTING
+      critic-proof to the plan's current bytes and appends an append-only
+      amendments[] record (reason, from/to hash, when). Use after root
+      legitimately edits an approved plan; refuses when the plan is unchanged.
+
+  lane-drift <run> [--lane <lane>]
+      Diff each lane's plan.md against its vars.json — step ids, titles,
+      actions, acceptance (#269). Exit 1 on any divergence. The brief renders
+      from vars.json, so a correction that reached only plan.md is invisible
+      to the next dispatch.
 
   verify [--plan <path>] [--quiet]
       Root's thin acceptance gate (mirrors `shctx seed verify`): the plan was
@@ -731,6 +744,364 @@ def _cmd_verify(rest: list[str]) -> int:
     return 0
 
 
+
+# --------------------------------------------------------------------------
+# amend (#268) — root's sanctioned mid-sprint plan correction.
+# --------------------------------------------------------------------------
+def _cmd_amend(rest: list[str]) -> int:
+    """``plan amend --plan P --reason R`` — re-gate a plan root legitimately edited.
+
+    #268. ``plan verify`` proves the plan was critiqued AND edited, and ties
+    ``post_critic_hash`` to the plan's CURRENT bytes so a stale proof cannot
+    pass. That is correct and it works. But it left no sanctioned path for the
+    case that actually arises: **root must legitimately edit an approved plan
+    mid-sprint.**
+
+    ``agents/shepherd.md`` gives root adjudication authority over lanes, and
+    lanes route plan defects TO root by design (`PLAN-AMENDMENT REQUEST` /
+    `PLAN-AUTHORSHIP-REQUEST`). So the system routes corrections to root and
+    then had no way for root to re-establish the proof after making one. Every
+    remaining option was bad: forge the proof (fabricating a gate result),
+    leave the gate red (it stops discriminating and every later run is noise),
+    revert the correction (the gate then enforces a known-wrong plan), or
+    re-run ``record-critique``, which is documented as the ENGINEER's verb —
+    emitted after the in-session @critic pass — and by then the engineer
+    teammate is long gone, with no defined ``--pre``.
+
+    This verb records the amendment instead of hiding it. The proof keeps its
+    original critic block and gains an append-only ``amendments[]`` entry
+    carrying the reason, the hash before and after, and when. The ledger then
+    reads *plan was critiqued, then amended by root at <time> for <reason>* —
+    which is the audit value. Pretending the plan never changed is not.
+
+    Refuses when the plan bytes are UNCHANGED: an amendment that amends
+    nothing would launder a stale proof into a fresh one, which is precisely
+    the forgery the gate exists to prevent.
+
+    Args:
+        rest: Every token after ``amend``.
+
+    Returns:
+        0 on success; 2 on a usage error or a missing proof.
+    """
+    values, early = _parse_two_token_flags(rest, {"--plan": "plan", "--reason": "reason"})
+    if early is not None:
+        return early
+    plan = values.get("plan", "")
+    reason = values.get("reason", "")
+
+    if not plan or not os.path.isfile(plan):
+        typer.echo("ERROR: --plan <path> required and must exist", err=True)
+        return 2
+    if not reason:
+        typer.echo(
+            "ERROR: --reason <text> required -- the amendment record IS the audit value; "
+            "an unexplained re-gate is indistinguishable from a forged one",
+            err=True,
+        )
+        return 2
+
+    proof = _proof_path(plan)
+    if not os.path.isfile(proof):
+        typer.echo(
+            f"CRITIC-PROOF-MISSING: {proof} -- amend re-gates an EXISTING proof. "
+            "A plan that was never critiqued needs the engineer's "
+            "'shctx plan record-critique', not an amendment.",
+            err=True,
+        )
+        return 2
+    try:
+        with open(proof, encoding="utf-8") as fh:
+            doc = json.load(fh)
+    except Exception as exc:  # noqa: BLE001 - parity with _cmd_verify's bare catch
+        typer.echo(f"CRITIC-PROOF-MISSING: unparseable proof {proof} ({exc})", err=True)
+        return 2
+
+    prior = str(doc.get("post_critic_hash", ""))
+    current = _sha256_file(plan)
+    if prior == current:
+        typer.echo(
+            "ERROR: plan bytes are unchanged (post_critic_hash already matches) -- nothing to amend. "
+            "Edit the plan first; amending an unchanged plan would launder a stale proof.",
+            err=True,
+        )
+        return 2
+
+    amendments = doc.get("amendments")
+    if not isinstance(amendments, list):
+        amendments = []
+    amendments.append(
+        {
+            "reason": reason,
+            "from_hash": prior,
+            "to_hash": current,
+            "sprint": current_sprint(),
+            "amended_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        }
+    )
+    doc["amendments"] = amendments
+    # Re-tie the proof to the plan's current bytes. `edited` stays true: the
+    # plan WAS revised after the critic pass, and an amendment is one more
+    # revision, not a reset of that fact.
+    doc["post_critic_hash"] = current
+    doc["edited"] = True
+    with open(proof, "w", encoding="utf-8") as fh:
+        json.dump(doc, fh, indent=2)
+        fh.write("\n")
+
+    typer.echo(f"plan amended: {plan}")
+    typer.echo(f"  amendment #{len(amendments)}: {reason}")
+    typer.echo(f"  {prior} -> {current}")
+    typer.echo("  'shctx plan verify' now passes; the proof records the amendment.")
+    return 0
+
+
+# --------------------------------------------------------------------------
+# lane-drift (#269) — lanes/{lane}/plan.md vs lanes/{lane}/vars.json.
+# --------------------------------------------------------------------------
+#: `- [ ] action` / `- [x] action`, with the checkbox state normalized away:
+#: a conductor ticking a box off as it walks is progress, not drift.
+_LANE_ACTION_RE = re.compile(r"^-\s*\[[ xX]\]\s*(?P<text>.+?)\s*$")
+
+#: `### S1: Title` — a step heading in a rendered lane plan.
+_LANE_STEP_RE = re.compile(r"^###\s+(?P<id>[^:]+):\s*(?P<title>.+?)\s*$")
+
+#: `- **Acceptance:** <predicate>`
+_LANE_ACCEPT_RE = re.compile(r"^-\s*\*\*Acceptance:\*\*\s*(?P<text>.+?)\s*$")
+
+
+def _parse_lane_plan(path: str) -> dict[str, object]:
+    """Parse a rendered lane plan back into the fields ``vars.json`` carries.
+
+    Reads only what ``lane-plan.md.j2`` renders from ``steps[]`` and
+    ``acceptance[]``, so the comparison stays inside the generated shape.
+    ``## Deviations`` is deliberately NOT parsed: it is append-only conductor
+    prose with no counterpart in ``vars.json``, and reading it would report
+    drift on every correctly-ledgered lane.
+
+    Args:
+        path: The lane ``plan.md``.
+
+    Returns:
+        ``{"steps": [{"id", "title", "actions", "acceptance"}], "acceptance": [...]}``.
+    """
+    steps: list[dict[str, object]] = []
+    acceptance: list[str] = []
+    section = ""
+    current: dict[str, object] | None = None
+
+    with open(path, encoding="utf-8") as fh:
+        for raw in fh:
+            line = raw.rstrip("\n")
+            if line.startswith("## "):
+                section = line[3:].strip().lower()
+                continue
+            if section == "steps":
+                m = _LANE_STEP_RE.match(line)
+                if m:
+                    current = {
+                        "id": m.group("id").strip(),
+                        "title": m.group("title").strip(),
+                        "actions": [],
+                        "acceptance": "",
+                    }
+                    steps.append(current)
+                    continue
+                if current is None:
+                    continue
+                m = _LANE_ACCEPT_RE.match(line)
+                if m:
+                    current["acceptance"] = m.group("text")
+                    continue
+                m = _LANE_ACTION_RE.match(line)
+                if m:
+                    # The acceptance line also starts with `- `, but it is
+                    # matched above and never reaches here.
+                    actions = current["actions"]
+                    assert isinstance(actions, list)
+                    actions.append(m.group("text"))
+            elif section == "lane acceptance":
+                m = _LANE_ACTION_RE.match(line)
+                if m:
+                    acceptance.append(m.group("text"))
+    return {"steps": steps, "acceptance": acceptance}
+
+
+def _lane_drift(lane_dir: str) -> list[str]:
+    """Compare one lane's ``plan.md`` against its ``vars.json``.
+
+    Args:
+        lane_dir: ``{run_dir}/lanes/{lane}``.
+
+    Returns:
+        One human-readable line per divergence; empty when they agree.
+        A lane missing either file yields a single explanatory line rather
+        than an exception — a half-materialized lane is a real state, and
+        crashing the wave gate on it helps nobody.
+    """
+    plan_path = os.path.join(lane_dir, "plan.md")
+    vars_path = os.path.join(lane_dir, "vars.json")
+    lane = os.path.basename(lane_dir.rstrip(os.sep))
+
+    if not os.path.isfile(plan_path) or not os.path.isfile(vars_path):
+        missing = "plan.md" if not os.path.isfile(plan_path) else "vars.json"
+        return [f"{lane}: {missing} missing -- cannot compare (expected both under {lane_dir})"]
+    try:
+        with open(vars_path, encoding="utf-8") as fh:
+            variables = json.load(fh)
+    except Exception as exc:  # noqa: BLE001
+        return [f"{lane}: vars.json unparseable ({exc})"]
+
+    rendered = _parse_lane_plan(plan_path)
+    findings: list[str] = []
+
+    plan_steps = rendered["steps"]
+    assert isinstance(plan_steps, list)
+    var_steps = variables.get("steps") or []
+    if not isinstance(var_steps, list):
+        var_steps = []
+
+    if len(plan_steps) != len(var_steps):
+        findings.append(
+            f"{lane}: step COUNT differs -- plan.md has {len(plan_steps)}, vars.json has {len(var_steps)}"
+        )
+
+    for index, plan_step in enumerate(plan_steps):
+        if index >= len(var_steps):
+            findings.append(f"{lane}: step {plan_step.get('id')!r} exists in plan.md but not in vars.json")
+            continue
+        var_step = var_steps[index] if isinstance(var_steps[index], dict) else {}
+        for field in ("id", "title", "acceptance"):
+            want = str(var_step.get(field, "") or "").strip()
+            got = str(plan_step.get(field, "") or "").strip()
+            if want != got:
+                findings.append(
+                    f"{lane}: step[{index}].{field} DRIFT\n"
+                    f"    plan.md  : {got}\n"
+                    f"    vars.json: {want}"
+                )
+        want_actions = [str(a).strip() for a in (var_step.get("actions") or [])]
+        got_actions_raw = plan_step.get("actions")
+        got_actions = [str(a).strip() for a in got_actions_raw] if isinstance(got_actions_raw, list) else []
+        if want_actions != got_actions:
+            findings.append(
+                f"{lane}: step[{index}].actions DRIFT\n"
+                f"    plan.md  : {got_actions}\n"
+                f"    vars.json: {want_actions}"
+            )
+
+    for index in range(len(plan_steps), len(var_steps)):
+        var_step = var_steps[index] if isinstance(var_steps[index], dict) else {}
+        findings.append(f"{lane}: step {var_step.get('id')!r} exists in vars.json but not in plan.md")
+
+    want_acc = [str(a).strip() for a in (variables.get("acceptance") or [])]
+    got_acc_raw = rendered["acceptance"]
+    got_acc = [str(a).strip() for a in got_acc_raw] if isinstance(got_acc_raw, list) else []
+    if want_acc != got_acc:
+        findings.append(
+            f"{lane}: lane acceptance DRIFT\n"
+            f"    plan.md  : {got_acc}\n"
+            f"    vars.json: {want_acc}"
+        )
+    return findings
+
+
+def _cmd_lane_drift(rest: list[str]) -> int:
+    """``plan lane-drift <run> [--lane L]`` — the #269 two-sources-of-truth gate.
+
+    A lane's brief is RENDERED from ``{run_dir}/lanes/{lane}/vars.json``, but
+    the conductor reads, owns and edits ``{run_dir}/lanes/{lane}/plan.md``
+    (``agents/conductor.md §Lane-plan custody``). The two carry the same
+    content -- step titles, action lists, acceptance predicates -- with no link
+    between them, so **every correction made to the prose silently fails to
+    reach the machine artifact**, and the stale copy is the one a future
+    dispatch renders from.
+
+    Measured twice in one sprint. An inverted step title: root and the
+    conductor independently corrected ``plan.md``; ``vars.json`` kept the wrong
+    asset, so a coder briefed from it would instrument the wrong thing. And a
+    precondition that measured nothing, in all five lanes at once: three of
+    five conductors independently found and fixed it in their own ``plan.md``,
+    ZERO of five fixed ``vars.json``, and all five machine artifacts still
+    carried the broken form until root swept them by script.
+
+    That second one is why this is systemic rather than operator error. The
+    conductor is told ``plan.md`` is "the single source of truth for your lane",
+    so correcting only ``plan.md`` is CORRECT behavior per its own contract.
+    ``vars.json`` is root-materialized and nothing tells the conductor it
+    exists, let alone that it shadows the file it was just told is
+    authoritative. Three independent agents did the right thing and the defect
+    survived in the artifact that actually feeds dispatch.
+
+    Args:
+        rest: Every token after ``lane-drift``. First positional is the run id;
+            ``--lane <id>`` narrows to one lane.
+
+    Returns:
+        0 when every compared lane agrees; 1 on any divergence (each printed);
+        2 on a usage error or an unreadable run.
+    """
+    run = ""
+    lane_filter = ""
+    index = 0
+    while index < len(rest):
+        token = rest[index]
+        if token in ("-h", "--help"):
+            typer.echo(_USAGE)
+            return 0
+        if token == "--lane":
+            index += 1
+            lane_filter = rest[index] if index < len(rest) else ""
+        elif token.startswith("--lane="):
+            lane_filter = token[len("--lane=") :]
+        elif token.startswith("-"):
+            typer.echo(f"ERROR: unknown arg: {token}", err=True)
+            return 2
+        elif not run:
+            run = token
+        else:
+            typer.echo(f"ERROR: unexpected argument: {token}", err=True)
+            return 2
+        index += 1
+
+    if not run:
+        typer.echo("ERROR: usage: shctx plan lane-drift <run> [--lane <lane>]", err=True)
+        return 2
+
+    try:
+        lanes_root = os.path.join(run_dir(run), "lanes")
+    except RunIdError as exc:
+        typer.echo(f"ERROR: {exc}", err=True)
+        return 2
+    if not os.path.isdir(lanes_root):
+        typer.echo(f"ERROR: no lanes directory for run {run!r} (expected {lanes_root})", err=True)
+        return 2
+
+    lanes = sorted(
+        name for name in os.listdir(lanes_root) if os.path.isdir(os.path.join(lanes_root, name))
+    )
+    if lane_filter:
+        lanes = [name for name in lanes if name == lane_filter]
+        if not lanes:
+            typer.echo(f"ERROR: no such lane {lane_filter!r} under {lanes_root}", err=True)
+            return 2
+
+    findings: list[str] = []
+    for lane in lanes:
+        findings.extend(_lane_drift(os.path.join(lanes_root, lane)))
+
+    if not findings:
+        typer.echo(f"lane-drift: ok — {len(lanes)} lane(s) agree (plan.md == vars.json)")
+        return 0
+    for finding in findings:
+        typer.echo(f"lane-drift: {finding}")
+    typer.echo(
+        f"lane-drift: FAIL ({len(findings)} divergence(s)) — a correction reached one copy only. "
+        "Mirror it into the OTHER file before dispatching; vars.json is what the brief renders from."
+    )
+    return 1
+
+
 # --------------------------------------------------------------------------
 # dispatch
 # --------------------------------------------------------------------------
@@ -758,6 +1129,10 @@ def _dispatch(argv: list[str]) -> int:
         return _cmd_hash(rest)
     if sub == "record-critique":
         return _cmd_record_critique(rest)
+    if sub == "amend":
+        return _cmd_amend(argv[1:])
+    if sub == "lane-drift":
+        return _cmd_lane_drift(argv[1:])
     if sub == "verify":
         return _cmd_verify(rest)
     typer.echo(f"ERROR: unknown subcommand: {sub}", err=True)

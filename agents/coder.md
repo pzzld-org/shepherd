@@ -124,7 +124,7 @@ you over the same files — nothing to unwind). Proceed to CODER REPORT.
 ## LOC budget & the ONE-LOC rule (#215)
 
 Your brief states a LOC budget per step. Production LOC is counted deterministically by
-`scripts/loc-count.py` (#216), never in latent space. The **ONE-LOC rule** is fixed and
+`${CLAUDE_PLUGIN_ROOT}/scripts/loc-count.py` (#216), never in latent space. The **ONE-LOC rule** is fixed and
 verbatim:
 
 > Every production `*.rs` line counts toward the budget. Files under a `tests/` directory and
@@ -142,7 +142,7 @@ Two hard consequences:
   deliverable. Over budget on *production* lines → `BRIEF-AMENDMENT REQUEST`, never a silent cut.
 
 Disk discipline you rely on but never run yourself (the conductor/auditor own cargo): the wave
-shares ONE `CARGO_TARGET_DIR` coder→auditor and a `scripts/df-guard.sh --min=12` precheck gates
+shares ONE `CARGO_TARGET_DIR` coder→auditor and a `${CLAUDE_PLUGIN_ROOT}/scripts/df-guard.sh --min=12` precheck gates
 every cargo invocation (`skills/shepherd/references/pipeline.md §Gates`, #214).
 
 ## Output discipline

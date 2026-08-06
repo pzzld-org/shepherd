@@ -40,6 +40,26 @@ Your lane plan lives at `{run_dir}/lanes/{lane}/plan.md` (`{run_dir}` = `{paths.
 
 **First act after boot verification: READ it critically, end-to-end.** It is your ENTIRE instruction set AND your first review target — a stale symbol, an undefined interface, an impossible step, or a scope conflict goes to root as `SEED-DRIFT-DETECTED` / `BRIEF-AMENDMENT` BEFORE the first dispatch; stop and escalate rather than guess. A concern is never silently absorbed.
 
+**`vars.json` SHADOWS your plan (#269 — read this before you correct anything).**
+Beside your `plan.md` sits `{run_dir}/lanes/{lane}/vars.json`, root-materialized. Your
+brief — and every future dispatch's brief — RENDERS FROM `vars.json`, not from `plan.md`.
+The two carry the same step titles, action lists, and acceptance predicates, and nothing
+links them. So a correction you make to `plan.md` alone is invisible to the next dispatch:
+the coder gets the stale copy. Measured, twice in one sprint — an inverted step title
+survived two independent corrections, and a precondition that measured nothing survived in
+all five lanes' `vars.json` after three of five conductors fixed their own `plan.md`.
+
+**Therefore: every correction to a step title, action, or acceptance predicate goes into
+BOTH files, in the same edit.** Then prove it:
+
+```bash
+shepherd plan lane-drift {run} --lane {lane}   # exit 0 clean · 1 divergence
+```
+
+Run it after any such correction and before any dispatch that renders a brief. It is also
+a wave-gate check, so drift cannot survive a wave boundary — but by then the wrong brief
+has already gone out, so catching it here is the point.
+
 **It is your OWNED file — the ONE write exemption to prohibition #1** (`conductor_write_guard.sh` allows writes under your OWN `{run_dir}/lanes/{lane}/`, nowhere else). Keep it live as you walk:
 
 - check off each step (`- [x]`) as it completes;
@@ -66,7 +86,7 @@ NEVER `ToolSearch` for `Workflow` to run the probe (`WORKFLOW-SELFCHECK-TOOLSEAR
 
 **Resource counterweight (#256) still binds.** More tiers compiling Workflows means more concurrent fan-out; file-disjointness authorizes concurrent WRITES, not concurrent BUILDS (`skills/shepherd/SKILL.md` §Fan-out counterweight) — fan out fixes, verify once centrally, and the `[coder].max_parallel_lanes` cap plus the platform's ~16 concurrent-agent cap both still bind inside a Workflow. (v6.4.0/#233 shipped `Workflow` in your `tools:` frontmatter for forward-compatibility so a release never clobbers it; #263 is what identified the grant as substrate-conditional rather than universally dormant — live for you as an Agent-Teams teammate, genuinely denied only on an Agent-tool subagent substrate — see §Lane walk's vehicle law above.)
 
-**Defensive poll (a sub-dispatch notification may misroute — #224).** Under a compiled Dynamic Workflow (the default vehicle on your live substrate now, #263) the canonical wave-return signal is the JOURNAL POLL, not a task notification: `scripts/journal-status.sh` over the run's `journal.jsonl` (#213) — STRONGER than the notification this section was originally written against, since it reads the workflow's own append-only event log instead of waiting on a completion message that can misroute. Record the workflow `runId` + the absolute journal path at dispatch time (alongside `dispatched_at` on every WAVE-IMPL / FLOCK-OUTPUT-REVIEW dispatch), then poll `journal-status.sh` against that path as the ground truth for wave return; once the wait exceeds the step's expected runtime (prior-wave median for that role, else 10 min), poll on the SAME tick rather than waiting passively.
+**Defensive poll (a sub-dispatch notification may misroute — #224).** Under a compiled Dynamic Workflow (the default vehicle on your live substrate now, #263) the canonical wave-return signal is the JOURNAL POLL, not a task notification: `${CLAUDE_PLUGIN_ROOT}/scripts/journal-status.sh` over the run's `journal.jsonl` (#213) — STRONGER than the notification this section was originally written against, since it reads the workflow's own append-only event log instead of waiting on a completion message that can misroute. Record the workflow `runId` + the absolute journal path at dispatch time (alongside `dispatched_at` on every WAVE-IMPL / FLOCK-OUTPUT-REVIEW dispatch), then poll `journal-status.sh` against that path as the ground truth for wave return; once the wait exceeds the step's expected runtime (prior-wave median for that role, else 10 min), poll on the SAME tick rather than waiting passively.
 
 The in-context `Agent()` downgrade path (§Lane walk's `WORKFLOW-VEHICLE-PROBE` negative branch) keeps the ORIGINAL defensive poll verbatim: in-context `Agent()` sub-dispatch is nested-Agent behavior — a subagent you dispatch can report completion to the session that owns the whole task tree (root), not to you — so an unarrived completion notification is NOT proof the work is unstarted (field: a REDO coder's full CODER REPORT sat unseen 2h+ while a conductor held WAVE-COMPLETE on "no notification yet"). Record `dispatched_at` on every WAVE-IMPL / FLOCK-OUTPUT-REVIEW dispatch under this path too. Once the wait exceeds the step's expected runtime (prior-wave median for that role, else 10 min), STOP waiting passively and poll on the SAME tick: `TaskGet`/`TaskList` the dispatched agent, then read its output directly (`git -C <worktree> status`/`diff` for a coder; the auditor's verdict artifact named in its brief). A poll that finds the work done is not an anomaly — fold it into the normal PASS/REDO flow; do not also wait for the notification to separately arrive. Re-poll on a 2× backoff, capped at 4 attempts; still nothing → `SendMessage(to: root)` naming the dispatched agent + elapsed time, never poll forever.
 
