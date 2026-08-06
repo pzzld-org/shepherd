@@ -154,7 +154,8 @@ _USAGE = (
     "# On-disk sweeps EXECUTE now (with --confirm):\n"
     "#   - dispatch/<sprint>/ dirs where sprint != current branch, older than dispatch_days\n"
     "#   - logs/events-*.jsonl + logs/hooks/*.jsonl older than logs_days\n"
-    "#   - memory/snapshots/precompact-*.json beyond snapshots_keep (newest-first)\n"
+    "#   - cache/snapshots/precompact-*.json beyond snapshots_keep (newest-first);\n"
+    "#     retired memory/snapshots/ + snapshots/ are swept too, under one budget\n"
     "# DB-row sweeps are PREVIEW-ONLY in v6.2.5 (eligible counts printed, nothing"
 )
 
