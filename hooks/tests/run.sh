@@ -399,6 +399,18 @@ else
   fails=$((fails+1))
 fi
 
+# GH #267: spawn Check 3 must not refuse on the session's own lead-only team,
+# and cleanup must never prune the harness's team files.
+echo "== test_team_preflight.sh (#267 — spawn Check 3 active-team predicate) =="
+total=$((total+1))
+if tpf_out=$(bash "$TESTS_DIR/test_team_preflight.sh" 2>&1); then
+  printf '  PASS  %s\n' "team-preflight"
+else
+  printf '  FAIL  %-50s\n' "team-preflight"
+  printf '%s\n' "$tpf_out" | sed 's/^/        /'
+  fails=$((fails+1))
+fi
+
 # GH #266: bin/shepherd must never exec into an unprovisioned venv, and both
 # it and bin/shepherd-venv-ensure must agree on what "provisioned" means.
 echo "== test_cli_venv_selfheal.sh (#266 — unprovisioned CLI venv) =="

@@ -50,7 +50,7 @@ Check 0 runs FIRST.
 | 0 | Operator-only invocation | HARD. Refuse if invoked from a teammate session (detail below). |
 | 1 | Substrate verification | VERIFY (#220). `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` env check + probe note (detail below). Failed verification DOWNGRADES to `/shepherd:start` — never a blind spawn. |
 | 2 | Claude Code version | ADVISORY. NEVER hard-refuse on version; act on the real runtime signal. |
-| 3 | No active team | HARD. `ls ~/.claude/teams/` non-empty with a `config.json` carrying `members[]` → refuse. One team per lead. |
+| 3 | No active team | HARD, but computed — `${CLAUDE_PLUGIN_ROOT}/scripts/team-preflight.sh` (exit 1 → refuse). One team per lead; a lead-only roster is THIS session's own team and blocks nothing (detail below, #267). |
 | 4 | shepherd.toml | Scaffold-then-proceed: `shctx config init` if missing, emit `[CONFIG] scaffolded`, PROCEED. Non-blocking. |
 | 5 | Flag preflight | `--parallel`/`--auto`/`--scope` gates — `skills/shepherd/references/spawn-flags.md`. |
 | 6 | Scope enumeration | Enumerate the concrete sprint list. A multi-sprint scope with a missing seed REFUSES (route to `/shepherd:plant`). A single `--scope sprint` plants inline. |
@@ -65,6 +65,46 @@ creating a team (no nested teams; one team per lead), so a nested spawn cannot o
 Secondary signals (ANY positive → refuse): current cwd under a `.worktrees/` path; the
 session's system-prompt addendum carries `INVOCATION-CONTEXT.dispatcher: teammate-conductor`. On refuse, route plan-amendment requests to `SendMessage(to: lead,
 halt_code: PLAN-AUTHORSHIP-REQUEST)`. A refused nested spawn raises `TEAMMATE-NESTING-ATTEMPT`.
+
+### Check 3 — no active team (#267)
+
+Run the script, act on the exit code. Do NOT eyeball `ls ~/.claude/teams/`:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/team-preflight.sh"   # 0 clear · 1 refuse · 2 usage
+```
+
+**The gate's question is "is another lead's team running?", not "is the teams
+directory non-empty?"** Those differ on the normal case. The harness
+initializes a team file for the CURRENT session at startup carrying a single
+`team-lead` member:
+
+```json
+{ "members": [ { "name": "team-lead", "agentType": "team-lead", "backendType": "in-process" } ] }
+```
+
+That is non-empty and has `members[]`, so the old predicate refused on a
+perfectly clean session. A **lead-only roster is not an active team** — it is
+the startup state every session has, including this one.
+
+**The team directory id is NOT the session/conversation id, and there is no
+string relationship between them.** A session `37a86c89-…` gets a team dir
+named `session-376146fb`. You cannot identify your own team by matching an id
+you already know, and a single-`team-lead` directory with a recent mtime is
+indistinguishable by inspection from an abandoned husk. That is what made the
+old gate costly rather than merely annoying: the documented remedy
+(`/shepherd:cleanup`) prunes what looks like a husk, and every subsequent spawn
+then dies with
+
+```
+Internal error: team file for "session-376146fb" not found.
+The session team should have been initialized at startup.
+```
+
+which is unrecoverable without knowing to restore the directory. In the
+reported incident five conductor spawns failed simultaneously. **Never delete a
+team directory to satisfy this check** — if the script says clear, spawn; if it
+says blocked, it names the offending team.
 
 ### Check 1 — substrate verification (#220)
 
