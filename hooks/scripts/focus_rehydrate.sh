@@ -57,22 +57,30 @@ FLAG_FILE="$NS/tmp/rehydrate-pending.${SESSION_SAFE}"
 [[ -f "$FLAG_FILE" ]] || exit 0
 
 # --- find the newest matching snapshot for this session ------------------
-# v6.1.3: snapshots live under memory/snapshots/ (written by precompact_snapshot.sh).
-# Fall back to the legacy ./snapshots location so a snapshot taken just before an
-# upgrade still rehydrates.
-SNAP_DIR="$NS/memory/snapshots"
-[[ -d "$SNAP_DIR" ]] || SNAP_DIR="$NS/snapshots"
+# v6.4.4: snapshots live under cache/snapshots/ (written by
+# precompact_snapshot.sh). The two retired locations — v6.1.3's
+# memory/snapshots/ and the pre-v6.1.3 top-level snapshots/ — are still read
+# so a snapshot taken just before an upgrade still rehydrates.
+#
+# Search ALL THREE, then pick the newest by filename, rather than picking the
+# first directory that happens to exist: the old first-existing-dir rule made
+# a stale snapshot in a leftover memory/snapshots/ shadow a fresh one in
+# cache/snapshots/, rehydrating pre-upgrade state forever.
+SNAP_DIRS=("$NS/cache/snapshots" "$NS/memory/snapshots" "$NS/snapshots")
 SNAP_FILE=""
-if [[ -d "$SNAP_DIR" ]]; then
-  # Snapshots are named precompact-<session_safe>-<epoch>.json; sort by epoch (name).
-  SNAP_FILE="$(ls -1 "$SNAP_DIR"/precompact-"${SESSION_SAFE}"-*.json 2>/dev/null \
-               | sort | tail -1 || true)"
-  # Fallback: newest precompact-*.json regardless of session (e.g., nosession).
-  if [[ -z "$SNAP_FILE" ]]; then
-    SNAP_FILE="$(ls -1 "$SNAP_DIR"/precompact-*.json 2>/dev/null \
-                 | sort | tail -1 || true)"
-  fi
-fi
+# Snapshots are named precompact-<session_safe>-<epoch>.json. Sort by BASENAME
+# (field 2 of the "<basename>\t<path>" pairs) so epoch ordering holds across
+# directories — a plain full-path sort would order by directory name instead.
+_newest_snapshot() {
+  local pattern="$1" dir
+  for dir in "${SNAP_DIRS[@]}"; do
+    [[ -d "$dir" ]] || continue
+    ls -1 "$dir"/$pattern 2>/dev/null || true
+  done | awk -F/ '{print $NF "\t" $0}' | sort | tail -1 | cut -f2-
+}
+SNAP_FILE="$(_newest_snapshot "precompact-${SESSION_SAFE}-*.json")"
+# Fallback: newest precompact-*.json regardless of session (e.g., nosession).
+[[ -n "$SNAP_FILE" ]] || SNAP_FILE="$(_newest_snapshot "precompact-*.json")"
 
 # No snapshot file available — drain the flag silently and exit.
 if [[ -z "$SNAP_FILE" || ! -f "$SNAP_FILE" ]]; then

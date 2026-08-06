@@ -30,8 +30,46 @@ default to `shepherd.db`. `shepherd migrate --layout v2` moves `plans/*` →
 `docs/plans/`, `reports/*` → `docs/reports/`, renames `root.db*` →
 `shepherd.db*`; `--layout v3` moves `docs/plans/{slug}.seed.md` →
 `runs/{slug}/seed.md` (plan/phase0/close/handoff likewise) and
-`styles/<lang>.md` → `profiles/<lang>/style.md` — idempotent, never clobbers
-existing destination files.
+`styles/<lang>.md` → `profiles/<lang>/style.md`; `--layout v4` moves
+`memory/snapshots/*` → `cache/snapshots/` and `memory/*.md` → `ctx/` — every
+layout migration is idempotent and never clobbers existing destination files.
+
+## One knowledge silo
+
+**`ctx/` is the ONLY knowledge silo. `cache/` is the ONLY disposable-machine-
+state directory. `memory/` is RETIRED (v6.4.4) and `shepherd lint` FAILs if it
+exists.**
+
+Until v6.4.4 the namespace carried two directories that read as the same
+thing. `ctx/` was documented as the cross-run knowledge silo and is tracked.
+`memory/` was created by `precompact_snapshot.sh` for one narrow purpose —
+`memory/snapshots/precompact-*.json`, disposable rehydration state — and was
+gitignored to keep that churn out of `git status`. It appeared in no `[paths]`
+key and in no table in this document.
+
+Two directories, one obvious meaning between them, and the wrong one is
+ignored. The predictable thing happened: `FL03/axiom`'s `.shepherd/memory/`
+holds three hand-authored markdown files (`project_v023_dev5_carryforwards.md`
+and two `feedback_*.md`), none of them tracked. Carry-forwards and feedback are
+`ctx/` content by definition — `ctx/` in that same repo holds
+`failure-patterns-ledger.md`, `dedup-ledger.md`, `wiring-ledger.md`. An
+operator wrote durable knowledge into the directory named "memory", which is
+the correct instinct and the wrong directory, and git dropped all of it. The
+defect is not that someone filed a note wrong; it is that the layout offered
+two plausible destinations and silently punished the wrong choice.
+
+The split is by LIFETIME, and it is the same split the run layout already
+uses (durable tracked / disposable ignored):
+
+| Directory | Holds | Lifetime | Git |
+|---|---|---|---|
+| `ctx/` | Cross-run knowledge: ledgers, carry-forwards, audits, type maps | Durable — compounds across runs | tracked |
+| `cache/` | Machine state: precompact snapshots, resolver caches | Disposable — safe to delete any time | ignored |
+
+Neither `.gitignore` carries a `memory/` rule any more. That is deliberate:
+ignoring it is what made it a silent sink, so a stray `memory/` now shows up in
+`git status` and fails `shepherd lint` instead of swallowing files. The fix is
+one idempotent command — `shepherd migrate --layout v4`.
 
 ## User home — `~/.shepherd`
 
@@ -181,6 +219,16 @@ Run-scoped docs NEVER land there — they belong in `{run_dir}`.
 
 `shepherd.db(+wal/shm/journal)`, `shepherd.lock`, `project.json`, `cache/`,
 `logs/`, `tmp/`, and the ignored `runs/` internals — gitignored.
+
+`cache/snapshots/precompact-<session>-<epoch>.json` holds the PreCompact
+snapshots `precompact_snapshot.sh` writes and `focus_rehydrate.sh` reads back
+after a compaction; `[compaction].snapshot_retention` bounds the directory and
+`shepherd prune` enforces it. They lived under `memory/snapshots/` from v6.1.3
+to v6.4.3 — see §One knowledge silo. Both retired locations (`memory/snapshots/`
+and pre-v6.1.3 top-level `snapshots/`) are still READ, so a snapshot taken
+immediately before an upgrade still rehydrates; the reader picks the newest
+snapshot across all three rather than the first directory that exists, so a
+leftover retired directory can never shadow a fresh snapshot.
 
 Hook-owned `tmp/` files (per-session, machine-generated, never tracked):
 `tmp/session-tier-<session>` (positive session-tier marker the identity-gated

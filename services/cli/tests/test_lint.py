@@ -463,3 +463,40 @@ def test_stderr_is_always_empty(workdir: Path) -> None:
     result = run_cli(["lint"], lint_env(workdir))
     assert result.returncode == 1
     assert result.stderr == ""
+
+
+# --------------------------------------------------------------------------
+# v6.4.4 — retired-directory check (`memory/`).
+# --------------------------------------------------------------------------
+def test_retired_memory_dir_fails_lint(workdir: Path) -> None:
+    """A `memory/` directory is a FAIL, naming the migration that drains it.
+
+    Unlike the #P4 non-canonical-run check (a WARN, because a live run cannot
+    be renamed mid-sprint), this fails: `migrate --layout v4` is idempotent and
+    safe at any point, so there is never a reason to leave `memory/` standing.
+    """
+    (workdir / "memory").mkdir()
+    result = run_cli(["lint"], lint_env(workdir))
+    assert result.returncode == 1
+    assert "is a RETIRED directory" in result.stdout
+    assert "shepherd migrate --layout v4" in result.stdout
+    assert result.stderr == ""
+
+
+def test_retired_memory_dir_fails_even_when_empty(workdir: Path) -> None:
+    """An EMPTY `memory/` still reports — it is a trap the next write falls into."""
+    (workdir / "memory").mkdir()
+    assert not any((workdir / "memory").iterdir())
+    result = run_cli(["lint"], lint_env(workdir))
+    assert result.returncode == 1
+    assert "is a RETIRED directory" in result.stdout
+
+
+def test_no_memory_dir_is_clean(workdir: Path) -> None:
+    """The canonical layout — `ctx/` + `cache/`, no `memory/` — lints clean."""
+    (workdir / "ctx").mkdir()
+    (workdir / "cache" / "snapshots").mkdir(parents=True)
+    (workdir / "cache" / "snapshots" / "precompact-s-1.json").write_text("{}")
+    result = run_cli(["lint"], lint_env(workdir))
+    assert result.returncode == 0
+    assert result.stdout.rstrip("\n") == "lint: ok"

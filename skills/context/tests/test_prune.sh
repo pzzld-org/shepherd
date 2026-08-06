@@ -23,10 +23,10 @@ mkdir -p .claude; printf '[project]\nname="t"\n' > .claude/shepherd.toml
 branch="$(git rev-parse --abbrev-ref HEAD)"
 
 wd="$tmp/.shepherd"
-mkdir -p "$wd/dispatch/oldsprint" "$wd/dispatch/$branch" "$wd/logs/hooks" "$wd/memory/snapshots"
+mkdir -p "$wd/dispatch/oldsprint" "$wd/dispatch/$branch" "$wd/logs/hooks" "$wd/cache/snapshots"
 touch "$wd/dispatch/oldsprint/a.json" "$wd/dispatch/$branch/b.json"
 touch "$wd/logs/events-old.jsonl" "$wd/logs/hooks/2020-01-01.jsonl"
-touch "$wd/memory/snapshots/precompact-s1-1.json" "$wd/memory/snapshots/precompact-s2-2.json"
+touch "$wd/cache/snapshots/precompact-s1-1.json" "$wd/cache/snapshots/precompact-s2-2.json"
 # Backdate the transient state so the age floors match (find -mtime +N).
 touch -t 202001010000 "$wd/dispatch/oldsprint" "$wd/dispatch/oldsprint/a.json" \
       "$wd/dispatch/$branch" "$wd/dispatch/$branch/b.json" \
@@ -45,7 +45,7 @@ run_dir="$(printf '%s\n' "$conf_out" | sed -n 's/^plan CSV: //p' | sed 's#/plan.
 [[ ! -d "$wd/dispatch/oldsprint" ]] && ok "confirm moved non-current dispatch dir" || bad "confirm moved non-current dispatch dir"
 [[ -d "$wd/dispatch/$branch" ]] && ok "confirm KEPT current-branch dispatch dir (fence)" || bad "confirm KEPT current-branch dispatch dir (fence)"
 [[ ! -f "$wd/logs/events-old.jsonl" ]] && ok "confirm moved aged event log" || bad "confirm moved aged event log"
-[[ ! -f "$wd/memory/snapshots/precompact-s1-1.json" || ! -f "$wd/memory/snapshots/precompact-s2-2.json" ]] \
+[[ ! -f "$wd/cache/snapshots/precompact-s1-1.json" || ! -f "$wd/cache/snapshots/precompact-s2-2.json" ]] \
   && ok "confirm moved over-retention snapshot(s)" || bad "confirm moved over-retention snapshot(s)"
 # Reversibility: the snapshot MIRRORS the workdir tree — logs/hooks/ keeps its subpath
 # (regression guard for the flatten-into-$cat/ data-loss bug).

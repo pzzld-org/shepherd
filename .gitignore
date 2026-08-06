@@ -27,7 +27,13 @@
 .artifacts/insights/
 .artifacts/pauses/
 .artifacts/runs/
-.artifacts/memory/
+# NOTE: no `.artifacts/memory/` rule. `memory/` is RETIRED (v6.4.4) — see
+# `skills/context/references/naming-conventions.md §One knowledge silo`.
+# Ignoring it is what made it a knowledge black hole: operators put durable
+# notes in a directory named "memory" and git silently dropped them.
+# `shepherd migrate --layout v4` drains it; `shepherd lint` FAILs if it
+# reappears. Leaving it un-ignored means a stray `memory/` shows up in
+# `git status` instead of vanishing.
 
 # shepherd context registry + hook runtime state (.shepherd/ namespace — default)
 .shepherd/shepherd.db
@@ -46,7 +52,7 @@
 .shepherd/discoveries/
 .shepherd/insights/
 .shepherd/pauses/
-.shepherd/memory/
+# NOTE: no `.shepherd/memory/` rule — see the `.artifacts/memory/` note above.
 # runs/ split (v6.4.1 artifact schema): durable run artifacts tracked,
 # run state (run.json, graph/, dispatch/, reports/, audits/) ignored
 .shepherd/runs/**

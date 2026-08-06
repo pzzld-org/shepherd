@@ -351,7 +351,7 @@ def test_non_matching_log_file_is_ignored(repo: Path, workdir: Path) -> None:
 # --------------------------------------------------------------------------
 def test_snapshots_keeps_newest_n_sweeps_the_rest(repo: Path, workdir: Path) -> None:
     now = time.time()
-    snapdir = workdir / "memory" / "snapshots"
+    snapdir = workdir / "cache" / "snapshots"
     snapdir.mkdir(parents=True)
     # 5 snapshots, oldest to newest, 100s apart.
     paths = [snapdir / f"precompact-run-{i}.json" for i in range(5)]
@@ -369,12 +369,50 @@ def test_snapshots_keeps_newest_n_sweeps_the_rest(repo: Path, workdir: Path) -> 
 
 
 def test_snapshots_keep_zero_sweeps_all(repo: Path, workdir: Path) -> None:
-    snapdir = workdir / "memory" / "snapshots"
+    snapdir = workdir / "cache" / "snapshots"
     p = snapdir / "precompact-only.json"
     _touch(p)
     proc = _run(["--confirm", "--snapshots-keep=0"], repo, _env(workdir))
     assert proc.returncode == 0, proc.stderr
     assert not p.exists()
+
+
+def test_snapshots_sweeps_retired_memory_and_toplevel_dirs(repo: Path, workdir: Path) -> None:
+    """v6.4.4: retired snapshot dirs stay under retention, not un-pruned forever.
+
+    `memory/snapshots/` (v6.1.3) and top-level `snapshots/` (pre-v6.1.3) are no
+    longer written to, but an un-migrated project still has files there. If
+    prune only looked at `cache/`, those would accumulate without bound.
+    """
+    legacy_mem = workdir / "memory" / "snapshots" / "precompact-old.json"
+    legacy_top = workdir / "snapshots" / "precompact-older.json"
+    _touch(legacy_mem)
+    _touch(legacy_top)
+    proc = _run(["--confirm", "--snapshots-keep=0"], repo, _env(workdir))
+    assert proc.returncode == 0, proc.stderr
+    assert not legacy_mem.exists()
+    assert not legacy_top.exists()
+
+
+def test_snapshots_retention_is_one_budget_across_all_dirs(repo: Path, workdir: Path) -> None:
+    """`snapshots_keep` keeps N snapshots TOTAL, not N per directory.
+
+    Applying retention per-directory during the v6.4.4 transition would retain
+    up to 3N snapshots, which is not what the setting means.
+    """
+    now = time.time()
+    canonical = workdir / "cache" / "snapshots" / "precompact-new.json"
+    legacy = workdir / "memory" / "snapshots" / "precompact-old.json"
+    _touch(canonical, mtime=now - 100)   # newest
+    _touch(legacy, mtime=now - 500)      # oldest
+
+    proc = _run(["--confirm", "--snapshots-keep=1", "--json"], repo, _env(workdir))
+    assert proc.returncode == 0, proc.stderr
+    payload = json.loads(proc.stdout)
+    # One kept (the newest, wherever it lives), one swept — NOT one per dir.
+    assert payload["on_disk"]["snapshots"] == 1
+    assert canonical.is_file()
+    assert not legacy.exists()
 
 
 # --------------------------------------------------------------------------
