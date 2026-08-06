@@ -13,6 +13,12 @@ allowed-tools:
 its team-config entry is polluting status displays, OR after a sprint to
 prune retired teammate entries.
 
+**Scope**: rows in the `teammates` table, via `bin/shepherd teammate prune`.
+NOT the harness's `~/.claude/teams/` files — see Hard prohibitions 4 and 5.
+If `/shepherd:spawn` Check 3 refused, this command is NOT the remedy: run
+`${CLAUDE_PLUGIN_ROOT}/scripts/team-preflight.sh` and read `commands/spawn.md
+§Check 3` (#267).
+
 ## Mandatory protocol
 
 ### Step 1: Show current teammate liveness
@@ -61,7 +67,21 @@ Report to operator: number pruned, final liveness state.
 1. NEVER prune without `--confirm`.
 2. NEVER prune `status='active'` rows without operator override.
 3. NEVER auto-respawn without operator confirmation.
+4. **NEVER touch `~/.claude/teams/` — not a directory, not a `config.json`,
+   not by `rm`, `mv`, or archive (#267).** This command prunes rows in the
+   `teammates` TABLE. The harness's team files are not its business, and
+   deleting the current session's own team file is unrecoverable by
+   inspection: the next spawn dies with `team file for "session-XXXX" not
+   found`, and the directory id has no string relationship to the session id,
+   so nothing on disk tells you what to restore or what it was called.
+5. **A lead-only team directory is NOT a husk.** A `config.json` whose
+   `members[]` holds only `team-lead` is the harness's normal startup state
+   for the CURRENT session. It looks abandoned — one member, no activity —
+   and it is not. `${CLAUDE_PLUGIN_ROOT}/scripts/team-preflight.sh` is the
+   only sanctioned way to judge whether a team is active; a recent mtime and
+   a lone member are not evidence of anything.
 
 ## Closes
 
 #51 — /shepherd:cleanup command to prune stale/crashed teammate entries
+#267 — cleanup must never prune the session's own harness team file
