@@ -322,7 +322,7 @@ const wave = parallel([
 
 Dispatch this script via `Workflow`; record the returned `runId` + the
 run's `journal.jsonl` absolute path at dispatch time, then poll
-`scripts/journal-status.sh <journal.jsonl>` as the canonical wave-return
+`${CLAUDE_PLUGIN_ROOT}/scripts/journal-status.sh <journal.jsonl>` as the canonical wave-return
 signal (#213) — never a task notification, which can misroute to root
 instead of the dispatching lane (`agents/conductor.md §Defensive poll`,
 #224). On PASS, the lane's `WAVE-COMPLETE` carries `workflow_tool:

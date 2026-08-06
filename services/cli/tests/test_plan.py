@@ -456,7 +456,9 @@ def test_validate_structural_failures(work_dir: Path, env: dict[str, str]) -> No
 def test_bare_and_help_print_usage_exit_0(args: list[str], work_dir: Path, env: dict[str, str]) -> None:
     proc = run_plan(args, work_dir, env)
     assert proc.returncode == 0, proc.stderr
-    assert proc.stdout.startswith("shctx plan <extract|topology|validate|hash|record-critique|verify> [args]")
+    assert proc.stdout.startswith(
+        "shctx plan <extract|topology|validate|hash|record-critique|verify|amend|lane-drift> [args]"
+    )
 
 
 def test_unknown_subcommand_exits_1_with_stderr_usage(work_dir: Path, env: dict[str, str]) -> None:
@@ -511,10 +513,33 @@ def test_run_flag_falls_back_to_legacy_state_when_run_scoped_absent(work_dir: Pa
 # bash-parity twins (byte-for-byte, same cwd/env)
 # --------------------------------------------------------------------------
 def test_usage_bash_parity(work_dir: Path, env: dict[str, str]) -> None:
+    """The Python usage is a documented SUPERSET of bash's, never a divergence.
+
+    Byte-equality held until v6.4.4, when `amend` (#268) and `lane-drift` (#269)
+    landed Python-only — the bash layer is retired behind `bin/shepherd` (#239
+    tracks deleting it), so new verbs are not backported to it. Precedent:
+    `migrate --layout v3`/`v4` are likewise Python-only.
+
+    So the guard becomes directional, which is the property that actually
+    matters: every verb bash still documents MUST survive in the Python usage
+    (a silently dropped verb is the regression this test exists to catch), and
+    the new verbs are additive on top.
+    """
     python_proc = run_plan([], work_dir, env)
     bash_proc = run_bash_plan([], work_dir, env)
     assert python_proc.returncode == bash_proc.returncode == 0
-    assert python_proc.stdout == bash_proc.stdout
+
+    # Every bash verb block, verbatim, still present in the Python usage.
+    bash_body = bash_proc.stdout.split("\n", 1)[1]
+    for block in (b.strip() for b in bash_body.split("\n\n")):
+        if block:
+            assert block in python_proc.stdout, f"bash usage block dropped from Python usage:\n{block}"
+
+    # And the additions are the two v6.4.4 verbs, in the header and the body.
+    header = python_proc.stdout.split("\n", 1)[0]
+    for verb in ("amend", "lane-drift"):
+        assert verb in header
+        assert f"\n  {verb} " in python_proc.stdout
 
 
 def test_topology_bash_parity_on_bash_written_state(work_dir: Path, env: dict[str, str]) -> None:
@@ -555,3 +580,247 @@ def test_hash_and_verify_bash_parity(work_dir: Path, env: dict[str, str]) -> Non
     bash_v = run_bash_plan(["verify", "--plan", str(plan)], work_dir, env)
     assert python_v.returncode == bash_v.returncode == 0
     assert python_v.stdout == bash_v.stdout
+
+
+# --------------------------------------------------------------------------
+# amend (#268) — root's sanctioned mid-sprint plan correction.
+# --------------------------------------------------------------------------
+def _approved_plan(work_dir: Path, env: dict[str, str], body: str = "# Plan v2\n") -> Path:
+    """A plan carrying a VALID critic-proof — the state root starts a sprint in."""
+    plan = work_dir / "plan.md"
+    plan.write_text("# Plan v1\n")
+    pre = run_plan(["hash", str(plan)], work_dir, env).stdout.strip()
+    plan.write_text(body)
+    proc = run_plan(
+        ["record-critique", "--plan", str(plan), "--pre", pre, "--verdict", "PASS", "--iterations", "2"],
+        work_dir,
+        env,
+    )
+    assert proc.returncode == 0, proc.stderr
+    return plan
+
+
+def test_amend_restores_verify_after_a_legitimate_root_edit(work_dir: Path, env: dict[str, str]) -> None:
+    """The #268 scenario end to end: edit -> STALE -> amend -> verify passes.
+
+    Root holds adjudication authority and lanes route plan defects to it, so a
+    mid-sprint correction is a designed inflow. Before `amend` the only options
+    were forging the proof, leaving the gate red, reverting a correct fix, or
+    misusing the engineer's `record-critique`.
+    """
+    plan = _approved_plan(work_dir, env)
+    assert run_plan(["verify", "--plan", str(plan)], work_dir, env).returncode == 0
+
+    plan.write_text("# Plan v3 — corrected: the issue starves non-BTC, not BTC\n")
+    stale = run_plan(["verify", "--plan", str(plan)], work_dir, env)
+    assert stale.returncode == 1
+    assert "CRITIC-PROOF-STALE" in stale.stdout
+
+    amended = run_plan(
+        ["amend", "--plan", str(plan), "--reason", "CONTEXT-INVENTORY asserted the inverted direction"],
+        work_dir,
+        env,
+    )
+    assert amended.returncode == 0, amended.stderr
+    assert run_plan(["verify", "--plan", str(plan)], work_dir, env).returncode == 0
+
+
+def test_amend_records_the_amendment_rather_than_hiding_it(work_dir: Path, env: dict[str, str]) -> None:
+    """The audit value is the RECORD, not a proof that looks untouched.
+
+    The original critic block survives; the amendment is appended.
+    """
+    plan = _approved_plan(work_dir, env)
+    before = json.loads((work_dir / "plan.critic-proof.json").read_text())
+    plan.write_text("# Plan v3 corrected\n")
+    run_plan(["amend", "--plan", str(plan), "--reason", "wrong asset named in step D-13"], work_dir, env)
+
+    after = json.loads((work_dir / "plan.critic-proof.json").read_text())
+    assert after["critic"] == before["critic"]          # critic block untouched
+    assert after["edited"] is True
+    assert len(after["amendments"]) == 1
+    entry = after["amendments"][0]
+    assert entry["reason"] == "wrong asset named in step D-13"
+    assert entry["from_hash"] == before["post_critic_hash"]
+    assert entry["to_hash"] == after["post_critic_hash"]
+    assert entry["amended_at"].endswith("Z")
+
+
+def test_amend_is_append_only_across_repeated_corrections(work_dir: Path, env: dict[str, str]) -> None:
+    """A multi-wave sprint may correct more than once; no entry is overwritten."""
+    plan = _approved_plan(work_dir, env)
+    for n in (3, 4, 5):
+        plan.write_text(f"# Plan v{n}\n")
+        proc = run_plan(["amend", "--plan", str(plan), "--reason", f"correction {n}"], work_dir, env)
+        assert proc.returncode == 0, proc.stderr
+
+    doc = json.loads((work_dir / "plan.critic-proof.json").read_text())
+    assert [a["reason"] for a in doc["amendments"]] == ["correction 3", "correction 4", "correction 5"]
+
+
+def test_amend_refuses_an_unchanged_plan(work_dir: Path, env: dict[str, str]) -> None:
+    """Amending an unchanged plan would launder a stale proof into a fresh one.
+
+    That is exactly the forgery `verify`'s hash tie exists to prevent, so it
+    must be refused rather than quietly recorded.
+    """
+    plan = _approved_plan(work_dir, env)
+    proc = run_plan(["amend", "--plan", str(plan), "--reason", "no-op"], work_dir, env)
+    assert proc.returncode == 2
+    assert "unchanged" in proc.stderr
+    assert "launder" in proc.stderr
+
+
+def test_amend_requires_a_reason(work_dir: Path, env: dict[str, str]) -> None:
+    """An unexplained re-gate is indistinguishable from a forged one."""
+    plan = _approved_plan(work_dir, env)
+    plan.write_text("# Plan v3\n")
+    proc = run_plan(["amend", "--plan", str(plan)], work_dir, env)
+    assert proc.returncode == 2
+    assert "--reason" in proc.stderr
+
+
+def test_amend_refuses_when_no_proof_exists(work_dir: Path, env: dict[str, str]) -> None:
+    """A never-critiqued plan needs the engineer's record-critique, not an amendment."""
+    plan = work_dir / "plan.md"
+    plan.write_text("# never critiqued\n")
+    proc = run_plan(["amend", "--plan", str(plan), "--reason", "x"], work_dir, env)
+    assert proc.returncode == 2
+    assert "CRITIC-PROOF-MISSING" in proc.stderr
+    assert "record-critique" in proc.stderr
+
+
+# --------------------------------------------------------------------------
+# lane-drift (#269) — lanes/{lane}/plan.md vs lanes/{lane}/vars.json.
+# --------------------------------------------------------------------------
+_LANE_VARS = {
+    "steps": [
+        {
+            "id": "D-13",
+            "title": "instrument the allocator starving non-BTC assets 3.3-4.2x",
+            "actions": ["${CLAUDE_PLUGIN_ROOT}/scripts/df-guard.sh --min=12", "cargo test -p alloc"],
+            "acceptance": "cargo test -p alloc passes",
+        }
+    ],
+    "acceptance": ["lane builds clean"],
+}
+
+_LANE_PLAN = """# Lane l2-moneypath — money path
+
+## Steps
+
+### D-13: instrument the allocator starving non-BTC assets 3.3-4.2x
+
+- [ ] ${CLAUDE_PLUGIN_ROOT}/scripts/df-guard.sh --min=12
+- [ ] cargo test -p alloc
+- **Acceptance:** cargo test -p alloc passes
+
+## Lane acceptance
+
+- [ ] lane builds clean
+
+## Deviations
+
+(none yet)
+"""
+
+
+def _lane(work_dir: Path, env: dict[str, str], *, plan: str, variables: dict) -> None:
+    """Materialize one lane's plan.md + vars.json under runs/v644-dev0/lanes/."""
+    lane_dir = work_dir / ".shepherd" / "runs" / "v644-dev0" / "lanes" / "l2-moneypath"
+    lane_dir.mkdir(parents=True, exist_ok=True)
+    (lane_dir / "plan.md").write_text(plan)
+    (lane_dir / "vars.json").write_text(json.dumps(variables))
+    env["SHEPHERD_WORKDIR"] = str(work_dir / ".shepherd")
+
+
+def test_lane_drift_clean_when_the_pair_agrees(work_dir: Path, env: dict[str, str]) -> None:
+    _lane(work_dir, env, plan=_LANE_PLAN, variables=_LANE_VARS)
+    proc = run_plan(["lane-drift", "v644-dev0"], work_dir, env)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "lane-drift: ok" in proc.stdout
+
+
+def test_lane_drift_ignores_progress_and_deviations(work_dir: Path, env: dict[str, str]) -> None:
+    """A ticked checkbox and an appended Deviations entry are WORK, not drift.
+
+    Reporting them would fire on every correctly-walked lane and train the
+    conductor to ignore the gate.
+    """
+    walked = _LANE_PLAN.replace("- [ ] cargo test", "- [x] cargo test").replace(
+        "(none yet)", "- D-13: shared the lane CARGO_TARGET_DIR with the review auditor."
+    )
+    _lane(work_dir, env, plan=walked, variables=_LANE_VARS)
+    proc = run_plan(["lane-drift", "v644-dev0"], work_dir, env)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+
+
+def test_lane_drift_catches_the_inverted_step_title(work_dir: Path, env: dict[str, str]) -> None:
+    """#269 failure 1: root and the conductor both fixed plan.md; vars.json kept
+    the inverted asset, so a coder briefed from it instruments the wrong thing."""
+    stale = json.loads(json.dumps(_LANE_VARS))
+    stale["steps"][0]["title"] = "instrument the allocator starving BTC 3.3-4.2x"
+    _lane(work_dir, env, plan=_LANE_PLAN, variables=stale)
+
+    proc = run_plan(["lane-drift", "v644-dev0"], work_dir, env)
+    assert proc.returncode == 1
+    assert "step[0].title DRIFT" in proc.stdout
+    assert "starving BTC" in proc.stdout
+    assert "starving non-BTC" in proc.stdout
+
+
+def test_lane_drift_catches_the_broken_precondition(work_dir: Path, env: dict[str, str]) -> None:
+    """#269 failure 2: three of five conductors fixed the disk guard in plan.md,
+    ZERO fixed vars.json, and all five machine artifacts stayed broken."""
+    stale = json.loads(json.dumps(_LANE_VARS))
+    stale["steps"][0]["actions"][0] = "scripts/df-guard.sh --min=12"
+    _lane(work_dir, env, plan=_LANE_PLAN, variables=stale)
+
+    proc = run_plan(["lane-drift", "v644-dev0"], work_dir, env)
+    assert proc.returncode == 1
+    assert "step[0].actions DRIFT" in proc.stdout
+
+
+def test_lane_drift_catches_acceptance_and_count_divergence(work_dir: Path, env: dict[str, str]) -> None:
+    stale = json.loads(json.dumps(_LANE_VARS))
+    stale["steps"][0]["acceptance"] = "cargo build passes"
+    stale["acceptance"] = ["lane builds clean", "no clippy warnings"]
+    stale["steps"].append({"id": "D-14", "title": "extra", "actions": [], "acceptance": "x"})
+    _lane(work_dir, env, plan=_LANE_PLAN, variables=stale)
+
+    proc = run_plan(["lane-drift", "v644-dev0"], work_dir, env)
+    assert proc.returncode == 1
+    assert "step COUNT differs" in proc.stdout
+    assert "step[0].acceptance DRIFT" in proc.stdout
+    assert "lane acceptance DRIFT" in proc.stdout
+    assert "'D-14'" in proc.stdout
+
+
+def test_lane_drift_reports_a_missing_file_without_crashing(work_dir: Path, env: dict[str, str]) -> None:
+    """A half-materialized lane is a real state; crashing the wave gate on it
+    helps nobody."""
+    _lane(work_dir, env, plan=_LANE_PLAN, variables=_LANE_VARS)
+    (work_dir / ".shepherd" / "runs" / "v644-dev0" / "lanes" / "l2-moneypath" / "vars.json").unlink()
+
+    proc = run_plan(["lane-drift", "v644-dev0"], work_dir, env)
+    assert proc.returncode == 1
+    assert "vars.json missing" in proc.stdout
+
+
+def test_lane_drift_lane_filter_and_usage_errors(work_dir: Path, env: dict[str, str]) -> None:
+    _lane(work_dir, env, plan=_LANE_PLAN, variables=_LANE_VARS)
+
+    ok = run_plan(["lane-drift", "v644-dev0", "--lane", "l2-moneypath"], work_dir, env)
+    assert ok.returncode == 0, ok.stdout + ok.stderr
+
+    missing_lane = run_plan(["lane-drift", "v644-dev0", "--lane", "nope"], work_dir, env)
+    assert missing_lane.returncode == 2
+    assert "no such lane" in missing_lane.stderr
+
+    no_run = run_plan(["lane-drift"], work_dir, env)
+    assert no_run.returncode == 2
+    assert "usage" in no_run.stderr
+
+    unknown_run = run_plan(["lane-drift", "v999-dev9"], work_dir, env)
+    assert unknown_run.returncode == 2
+    assert "no lanes directory" in unknown_run.stderr
