@@ -500,3 +500,53 @@ def test_no_memory_dir_is_clean(workdir: Path) -> None:
     result = run_cli(["lint"], lint_env(workdir))
     assert result.returncode == 0
     assert result.stdout.rstrip("\n") == "lint: ok"
+
+
+# --------------------------------------------------------------------------
+# v6.4.4 — unregistered `runs/` directories. See `_check_unregistered_runs`.
+# --------------------------------------------------------------------------
+def test_run_dir_without_run_json_fails_lint(workdir: Path) -> None:
+    """A directory under `runs/` with no `run.json` is not a run — report it.
+
+    `list_runs` indexes by `run.json`, so such a directory is invisible to every
+    run-aware reader while still looking like a run in the tree.
+    """
+    (workdir / "runs" / "some-directory").mkdir(parents=True)
+    result = run_cli(["lint"], lint_env(workdir))
+    assert result.returncode == 1
+    assert "has no run.json" in result.stdout
+    assert "shepherd run init some-directory" in result.stdout
+
+
+def test_registered_run_dir_is_clean(workdir: Path) -> None:
+    """A directory `run init` created carries run.json and lints clean."""
+    init = run_cli(["run", "init", "v641-dev0"], lint_env(workdir))
+    assert init.returncode == 0, init.stderr
+    result = run_cli(["lint"], lint_env(workdir))
+    assert result.returncode == 0
+    assert result.stdout.rstrip("\n") == "lint: ok"
+
+
+def test_non_canonical_run_is_warned_even_without_run_json(workdir: Path) -> None:
+    """The #P4 canonical check enumerates DIRECTORIES, not registered runs.
+
+    This is the regression that let this repo's own `runs/` hold two date-topic
+    SPEC-shaped directories while `shepherd lint` reported ok: with no
+    `run.json` there was nothing for a `list_runs`-based check to enumerate, so
+    the misnamed directories — exactly the ones no `run init` ever created —
+    were the ones it could never see.
+    """
+    (workdir / "runs" / "2026-05-04-shepherd-context").mkdir(parents=True)
+    result = run_cli(["lint"], lint_env(workdir))
+    # FAIL from the unregistered check; WARN from the canonical-id check.
+    assert result.returncode == 1
+    assert "lint: WARN" in result.stdout
+    assert "is a non-canonical run id" in result.stdout
+    assert "2026-05-04-shepherd-context" in result.stdout
+
+
+def test_no_runs_directory_is_clean(workdir: Path) -> None:
+    """A project with no `runs/` at all reports nothing (not an error)."""
+    result = run_cli(["lint"], lint_env(workdir))
+    assert result.returncode == 0
+    assert result.stdout.rstrip("\n") == "lint: ok"

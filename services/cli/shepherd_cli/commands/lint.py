@@ -75,6 +75,26 @@ block it — :func:`_lint` keeps these lines in a SEPARATE list from the
 bash-parity ``messages`` that drive ``fail``/the violation count, so a
 non-canonical run directory never flips the exit code or the "(N
 violation(s))" summary away from what pure bash parity would have printed.
+
+**v6.4.4 EXTENSIONS — also not bash-parity, and these DO fail.** Two additions,
+both FAIL rather than WARN because unlike renaming a live run their fixes are
+safe at any point in a sprint:
+
+- :func:`_check_retired_dirs` — a surviving ``memory/`` (retired; it duplicated
+  ``ctx/`` while being gitignored, so notes filed there were dropped by git).
+  Fix: ``shepherd migrate --layout v4``, idempotent.
+- :func:`_check_unregistered_runs` — a directory under ``runs/`` with no
+  ``run.json``. Per the artifact schema a directory is a run *iff* it carries
+  one, so such a directory is invisible to ``list_runs`` and every run-aware
+  reader while still looking like a run to a human. Fix: ``shepherd run init``,
+  additive.
+
+The second one also fixed a blind spot in :func:`_check_runs` above: it
+enumerated ``list_runs``, which indexes by ``run.json``, so the misnamed
+directories — exactly the ones no ``run init`` ever created, hence with no
+``run.json`` — were the ones it could never see. This repo's own ``runs/`` held
+two date-topic, SPEC-shaped directories and ``shepherd lint`` reported ok. Both
+checks now enumerate directories via :func:`_run_dir_names`.
 """
 
 from __future__ import annotations
@@ -84,7 +104,12 @@ from pathlib import Path
 
 import typer
 
-from shepherd_cli.models_run import is_canonical_run_id, list_runs, run_dir, suggest_canonical_id
+from shepherd_cli.models_run import (
+    is_canonical_run_id,
+    run_dir,
+    runs_root,
+    suggest_canonical_id,
+)
 from shepherd_cli.resolution import resolve_workdir
 
 app = typer.Typer(
@@ -331,6 +356,66 @@ def _check_retired_dirs(root: Path) -> list[str]:
 # note: this is a WARN, deliberately kept out of the bash-parity fail/count
 # path below.
 # --------------------------------------------------------------------------
+def _run_dir_names(workdir: str) -> list[str]:
+    """Every directory name directly under ``runs/``, sorted.
+
+    Deliberately NOT :func:`shepherd_cli.models_run.list_runs`, which indexes
+    by ``run.json`` presence — see :func:`_check_runs` and
+    :func:`_check_unregistered_runs` for why the unregistered ones are exactly
+    the population these checks exist to find.
+
+    Args:
+        workdir: The resolved artifacts root.
+
+    Returns:
+        Sorted directory names, or ``[]`` when ``runs/`` does not exist.
+    """
+    base = Path(runs_root(workdir))
+    if not base.is_dir():
+        return []
+    return sorted(entry.name for entry in base.iterdir() if entry.is_dir())
+
+
+def _check_unregistered_runs(root: Path) -> list[str]:
+    """Fail on any directory under ``runs/`` that is not a run.
+
+    The artifact schema is unambiguous: *a directory is a run iff it contains
+    ``run.json``* (written only by ``shepherd run init``). A directory under
+    ``runs/`` without one is therefore not a run — it is invisible to
+    ``list_runs`` and so to every run-aware reader (the wave gate, `run
+    show/list`, `prune`, the #P4 canonical check), while still looking like a
+    run to a human reading the tree.
+
+    That is how ``runs/`` turns into a second ``docs/specs/``: this repo's own
+    ``runs/`` held ``2026-05-04-shepherd-context`` and
+    ``2026-05-20-v517-canonical-state`` — date-topic SPEC names, the shape
+    §Run identity reserves for cross-run docs — and `lint` reported ok, because
+    with no ``run.json`` there was nothing for it to enumerate.
+
+    FAIL rather than WARN: unlike renaming a live run, registering one is
+    additive and safe mid-sprint (``run init`` on an existing directory
+    scaffolds what is missing and writes ``run.json``; it destroys nothing).
+
+    Args:
+        root: The resolved artifacts root (``resolve_workdir()``).
+
+    Returns:
+        One ``lint: <path> ...`` line per unregistered directory.
+    """
+    workdir = str(root)
+    messages: list[str] = []
+    for name in _run_dir_names(workdir):
+        path = Path(run_dir(name, workdir))
+        if (path / "run.json").is_file():
+            continue
+        messages.append(
+            f"lint: {path} has no run.json -- a directory under runs/ is a run ONLY if it "
+            f"carries one, so nothing that reads runs can see this -- fix: shepherd run init "
+            f"{name} (or move it to docs/ if it is not a run)"
+        )
+    return messages
+
+
 def _check_runs(root: Path) -> list[str]:
     """WARN (never fail) on every non-canonical run directory under ``runs/``.
 
@@ -350,7 +435,14 @@ def _check_runs(root: Path) -> list[str]:
     """
     workdir = str(root)
     messages: list[str] = []
-    for run_id in list_runs(workdir):
+    # Enumerate DIRECTORIES, not `list_runs`. `list_runs` indexes by `run.json`
+    # presence, so a directory without one is invisible to it -- and the
+    # directories most likely to be misnamed are exactly the ones no `run init`
+    # ever created, so they have no `run.json` either. Checking only registered
+    # runs meant this check reported nothing on a `runs/` tree where EVERY
+    # entry was non-canonical (observed in this repo: two date-topic,
+    # spec-shaped directories, `lint: ok`).
+    for run_id in _run_dir_names(workdir):
         if is_canonical_run_id(run_id, workdir):
             continue
         path = run_dir(run_id, workdir)
@@ -394,6 +486,7 @@ def _lint(root: Path) -> int:
     messages.extend(_check_journal(root))
     messages.extend(_check_logs(root))
     messages.extend(_check_retired_dirs(root))
+    messages.extend(_check_unregistered_runs(root))
 
     warnings = _check_runs(root)
 
