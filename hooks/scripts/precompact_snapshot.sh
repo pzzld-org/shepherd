@@ -74,10 +74,16 @@ if [[ -n "$RUN_DIR" ]]; then
   [[ -f "$RUN_DIR/graph/trace.jsonl" ]] && TRACE_JSONL="$RUN_DIR/graph/trace.jsonl"
 fi
 LOCK_FILE="$NS/shepherd.lock"
-# v6.1.3: snapshots live under memory/snapshots/ (co-located with other
-# ephemeral rehydration state). focus_rehydrate.sh reads the SAME path.
-SNAP_DIR="$NS/memory/snapshots"
-LEGACY_SNAP_DIR="$NS/snapshots"
+# v6.4.4: snapshots live under cache/snapshots/. They are disposable machine
+# state, and cache/ is the namespace's disposable-machine-state directory —
+# the v6.1.3 memory/snapshots/ location made `memory/` look like a knowledge
+# silo sitting next to ctx/, which is what ctx/ already is. There is now
+# exactly ONE knowledge silo (ctx/, tracked) and ONE disposable-state dir
+# (cache/, ignored). focus_rehydrate.sh reads the SAME path.
+SNAP_DIR="$NS/cache/snapshots"
+# Both retired locations, newest-first: v6.1.3's memory/snapshots/ and the
+# pre-v6.1.3 top-level snapshots/. Drained into SNAP_DIR below.
+LEGACY_SNAP_DIRS=("$NS/memory/snapshots" "$NS/snapshots")
 TMP_DIR="$NS/tmp"
 
 # Sanitize session id for use in filenames (keep alphanum, dots, dashes, underscores).
@@ -88,13 +94,18 @@ FLAG_FILE="$TMP_DIR/rehydrate-pending.${SESSION_SAFE}"
 
 mkdir -p "$SNAP_DIR" "$TMP_DIR" 2>/dev/null || true
 
-# One-time migration: relocate any snapshots left in the legacy ./snapshots
-# directory into memory/snapshots/, then drop the now-empty legacy dir.
+# One-time migration: drain every retired snapshot location into SNAP_DIR,
+# then drop each now-empty legacy dir. `rmdir` (not `rm -r`) is deliberate —
+# a legacy dir holding anything other than the snapshots we just moved is
+# left standing for `shepherd migrate --layout v4` / the operator to inspect.
 # Fail-open: a migration error must never block snapshotting.
-if [[ -d "$LEGACY_SNAP_DIR" && "$LEGACY_SNAP_DIR" != "$SNAP_DIR" ]]; then
-  mv "$LEGACY_SNAP_DIR"/precompact-*.json "$SNAP_DIR"/ 2>/dev/null || true
-  rmdir "$LEGACY_SNAP_DIR" 2>/dev/null || true
-fi
+for legacy_snap_dir in "${LEGACY_SNAP_DIRS[@]}"; do
+  [[ -d "$legacy_snap_dir" && "$legacy_snap_dir" != "$SNAP_DIR" ]] || continue
+  mv "$legacy_snap_dir"/precompact-*.json "$SNAP_DIR"/ 2>/dev/null || true
+  rmdir "$legacy_snap_dir" 2>/dev/null || true
+  # memory/ existed ONLY to hold snapshots/ — once drained, retire it too.
+  rmdir "$(dirname "$legacy_snap_dir")" 2>/dev/null || true
+done
 
 # --- helper: read file safely -------------------------------------------
 safe_read() { cat "$1" 2>/dev/null || true; }

@@ -585,12 +585,31 @@ def _sweep_logs(rows: list[_PlanRow], *, wd: str, logs_days: int, confirm: bool,
     return count
 
 
+#: Every directory ``_sweep_snapshots`` considers, canonical first. Retention
+#: is applied across the UNION, not per-directory: keeping newest-N in each of
+#: three directories independently would retain up to 3N snapshots during the
+#: v6.4.4 transition, which is not what ``snapshots_keep`` means.
+_SNAPSHOT_DIRS: tuple[tuple[str, ...], ...] = (
+    ("cache", "snapshots"),   # canonical (v6.4.4)
+    ("memory", "snapshots"),  # retired (v6.1.3) — see naming-conventions.md
+    ("snapshots",),           # retired (pre-v6.1.3)
+)
+
+
 def _sweep_snapshots(rows: list[_PlanRow], *, wd: str, snapshots_keep: int, confirm: bool, run_dir: str) -> int:
-    """Sweep ``<wd>/memory/snapshots/precompact-*.json`` beyond the newest-N.
+    """Sweep ``<wd>/cache/snapshots/precompact-*.json`` beyond the newest-N.
 
     Bash parity with ``cmd_prune.sh``'s ``ls -t "$snapdir"/precompact-*.json``
     (newest-first) loop: the ``snapshots_keep`` most-recently-modified files
     survive; everything older is eligible.
+
+    v6.4.4 moved the snapshot directory from ``memory/snapshots`` to
+    ``cache/snapshots`` (``memory/`` is retired — see
+    ``naming-conventions.md §One knowledge silo``). Both retired locations are
+    still swept so an un-migrated project's old snapshots are still subject to
+    retention rather than accumulating forever, and mtime ordering runs over
+    the union so ``snapshots_keep`` keeps N snapshots total, not N per
+    directory.
 
     Args:
         rows: The plan accumulator.
@@ -602,17 +621,22 @@ def _sweep_snapshots(rows: list[_PlanRow], *, wd: str, snapshots_keep: int, conf
     Returns:
         The count of eligible (swept) snapshot files.
     """
-    snapdir = os.path.join(wd, "memory", "snapshots")
-    if not os.path.isdir(snapdir):
-        return 0
-    matches = glob.glob(os.path.join(snapdir, "precompact-*.json"))
     dated: list[tuple[str, float]] = []
-    for path in matches:
-        try:
-            dated.append((path, os.stat(path).st_mtime))
-        except OSError:
+    for parts in _SNAPSHOT_DIRS:
+        snapdir = os.path.join(wd, *parts)
+        if not os.path.isdir(snapdir):
             continue
-    dated.sort(key=lambda pair: pair[1], reverse=True)
+        for path in glob.glob(os.path.join(snapdir, "precompact-*.json")):
+            try:
+                dated.append((path, os.stat(path).st_mtime))
+            except OSError:
+                continue
+    if not dated:
+        return 0
+    # Secondary sort on path keeps the order total (and the plan output
+    # stable) when two snapshots share an mtime — common on fast filesystems
+    # with coarse timestamp granularity.
+    dated.sort(key=lambda pair: (-pair[1], pair[0]))
     count = 0
     for index, (path, _mtime) in enumerate(dated, start=1):
         if index <= snapshots_keep:

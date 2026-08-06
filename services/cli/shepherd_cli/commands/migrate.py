@@ -129,7 +129,7 @@ app = typer.Typer(
         "allow_extra_args": True,
         "ignore_unknown_options": True,
     },
-    help="Apply pending schema migrations, or run the opt-in --layout v2/v3 filesystem migration (bash: cmd_migrate.sh).",
+    help="Apply pending schema migrations, or run the opt-in --layout v2/v3/v4 filesystem migration (bash: cmd_migrate.sh).",
 )
 
 #: Verbatim-in-spirit usage text for ``-h``/``--help`` (GH #249 -- additive,
@@ -138,7 +138,7 @@ app = typer.Typer(
 #: connection, or either filesystem-layout branch runs -- see
 #: :func:`_help_callback`.
 _USAGE = (
-    "shepherd migrate [--layout v2 | --layout v3]\n"
+    "shepherd migrate [--layout v2 | --layout v3 | --layout v4]\n"
     "\n"
     "With no arguments, applies pending schema migrations: every\n"
     "skills/context/schema/migrations/NNNN_*.sql file whose version is\n"
@@ -153,6 +153,9 @@ _USAGE = (
     "                <slug>.seed.md and <slug>.plan.md -> runs/<slug>/;\n"
     "                styles/<profile>.md -> profiles/<profile>/style.md.\n"
     "                No database access.\n"
+    "  --layout v4   Opt-in memory/-retirement migration: memory/snapshots/\n"
+    "                -> cache/snapshots/; memory/*.md -> ctx/ (the one\n"
+    "                knowledge silo). No database access.\n"
     "  -h, --help    Show this usage text and exit.\n"
 )
 
@@ -557,10 +560,10 @@ def _validate_layout_tokens(tokens: list[str]) -> None:
             ``<value>`` other than ``v2``.
     """
     for token in tokens:
-        if token in ("--layout=v2", "--layout=v3", "--layout"):
+        if token in ("--layout=v2", "--layout=v3", "--layout=v4", "--layout"):
             continue
         if token.startswith("--layout="):
-            typer.echo("ERROR: unknown --layout value (only 'v2' and 'v3' supported)", err=True)
+            typer.echo("ERROR: unknown --layout value (only 'v2', 'v3' and 'v4' supported)", err=True)
             raise typer.Exit(code=1)
         # "v2"/"v3" on its own, or any other token: silently ignored (bash `*) ;;`).
 
@@ -607,6 +610,24 @@ def _is_layout_v3(tokens: list[str]) -> bool:
     first = tokens[0] if len(tokens) >= 1 else ""
     second = tokens[1] if len(tokens) >= 2 else ""
     return (first == "--layout" and second == "v3") or first == "--layout=v3"
+
+
+def _is_layout_v4(tokens: list[str]) -> bool:
+    """Does this argv select the ``--layout v4`` branch?
+
+    Same positional shape as :func:`_is_layout_v2`, for the v6.4.4
+    ``memory/``-retirement migration.
+
+    Args:
+        tokens: Every argv token given after ``migrate``, in order.
+
+    Returns:
+        True if ``tokens[0:2] == ["--layout", "v4"]`` or
+        ``tokens[0] == "--layout=v4"``.
+    """
+    first = tokens[0] if len(tokens) >= 1 else ""
+    second = tokens[1] if len(tokens) >= 2 else ""
+    return (first == "--layout" and second == "v4") or first == "--layout=v4"
 
 
 #: Filename suffixes _layout_v3_migrate maps into a run directory, in
@@ -709,6 +730,108 @@ def _layout_v3_migrate() -> int:
     return 0
 
 
+# --------------------------------------------------------------------------
+# --layout v4 branch: retire `memory/`. No database.
+# --------------------------------------------------------------------------
+def _layout_v4_migrate() -> int:
+    """Run the ``--layout v4`` migration: retire the ``memory/`` directory.
+
+    NEW in v6.4.4 (no bash counterpart). ``memory/`` was two unrelated things
+    wearing one name, and both belong somewhere that already exists:
+
+    1. ``memory/snapshots/precompact-*.json`` — disposable machine state, the
+       only thing shepherd itself ever wrote there. Moves to
+       ``cache/snapshots/``, which is what ``cache/`` is for and is already
+       gitignored.
+    2. ``memory/*.md`` — hand-authored cross-run knowledge. That is exactly
+       what ``ctx/`` is, and ``ctx/`` is TRACKED. Moves to ``ctx/``.
+
+    The second half is the reason this migration is not cosmetic. ``memory/``
+    was gitignored, so operator-authored durable notes put in a directory
+    named "memory" were silently dropped by git — observed live in
+    ``FL03/axiom``, whose ``.shepherd/memory/`` holds three untracked
+    hand-written markdown files (carry-forwards and feedback) that ``ctx/``
+    would have carried in history. Moving them into ``ctx/`` puts them under
+    version control for the first time.
+
+    Anything else under ``memory/`` is left in place and REPORTED, never
+    guessed at — an unrecognized file has no correct destination, and a wrong
+    move is worse than a leftover directory. ``memory/`` is only removed once
+    it is genuinely empty, so a partial migration is always safe to re-run.
+
+    Idempotent and collision-safe: an existing destination is a SKIP, never an
+    overwrite; ``git mv``-aware via :func:`_mv_file` so tracked files keep
+    their history.
+
+    Returns:
+        Always 0 (same contract as :func:`_layout_v2_migrate`).
+    """
+    workdir = resolve_workdir()
+    typer.echo(f"shctx migrate --layout v4: workdir = {workdir}")
+
+    moved = 0
+    skipped = 0
+    created = 0
+
+    def _mv_into(src_path: str, dst_path: str) -> None:
+        nonlocal moved, skipped
+        if os.path.exists(dst_path):
+            typer.echo(f"  SKIP (dest exists): {src_path} -> {dst_path}")
+            skipped += 1
+            return
+        os.makedirs(os.path.dirname(dst_path), exist_ok=True)
+        _mv_file(workdir, src_path, dst_path)
+        typer.echo(f"  moved: {src_path} -> {dst_path}")
+        moved += 1
+
+    memory_dir = os.path.join(workdir, "memory")
+    if not os.path.isdir(memory_dir):
+        typer.echo("  memory/ absent — nothing to retire")
+        typer.echo("shctx migrate --layout v4: done — moved=0 skipped=0 created=0")
+        return 0
+
+    # 1. memory/snapshots/precompact-*.json -> cache/snapshots/.
+    snap_src_dir = os.path.join(memory_dir, "snapshots")
+    if os.path.isdir(snap_src_dir):
+        snap_dst_dir = os.path.join(workdir, "cache", "snapshots")
+        for name in sorted(os.listdir(snap_src_dir)):
+            src_path = os.path.join(snap_src_dir, name)
+            if not os.path.isfile(src_path):
+                continue
+            if not (name.startswith("precompact-") and name.endswith(".json")):
+                typer.echo(f"  SKIP (not a precompact snapshot): {src_path}")
+                skipped += 1
+                continue
+            _mv_into(src_path, os.path.join(snap_dst_dir, name))
+        # rmdir, not rmtree: a non-empty snapshots/ still holds something we
+        # deliberately declined to move, and must survive for inspection.
+        try:
+            os.rmdir(snap_src_dir)
+        except OSError:
+            pass
+
+    # 2. memory/*.md -> ctx/ (the one knowledge silo).
+    for name in sorted(os.listdir(memory_dir)):
+        src_path = os.path.join(memory_dir, name)
+        if not os.path.isfile(src_path):
+            continue
+        if name.endswith(".md"):
+            _mv_into(src_path, os.path.join(workdir, "ctx", name))
+        else:
+            typer.echo(f"  SKIP (unrecognized — move it yourself): {src_path}")
+            skipped += 1
+
+    # 3. Retire memory/ itself, but ONLY if the migration emptied it.
+    try:
+        os.rmdir(memory_dir)
+        typer.echo(f"  removed: {memory_dir}/")
+    except OSError:
+        typer.echo(f"  KEPT (not empty): {memory_dir}/ — inspect the SKIPped entries above")
+
+    typer.echo(f"shctx migrate --layout v4: done — moved={moved} skipped={skipped} created={created}")
+    return 0
+
+
 def _help_callback(value: bool) -> None:
     """Eager ``-h``/``--help`` handler: usage, exit 0 -- BEFORE any migrate work.
 
@@ -759,7 +882,7 @@ def migrate(
         ),
     ),
 ) -> None:
-    """Apply pending schema migrations, or run the ``--layout v2``/``v3`` filesystem migration.
+    """Apply pending schema migrations, or run the ``--layout v2``/``v3``/``v4`` filesystem migration.
 
     Native port of ``shctx migrate`` (``cmd_migrate.sh``). See the module
     docstring for the full bash-parity contract, including why this
@@ -794,6 +917,8 @@ def migrate(
         exit_code = _layout_v2_migrate()
     elif _is_layout_v3(tokens):
         exit_code = _layout_v3_migrate()
+    elif _is_layout_v4(tokens):
+        exit_code = _layout_v4_migrate()
     else:
         exit_code = _default_migrate()
 
