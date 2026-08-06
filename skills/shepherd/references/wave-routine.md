@@ -72,6 +72,14 @@ pipeline([
 Five checks, in order — the dispatcher runs them itself, never delegates them into the workflow:
 
 1. `${CLAUDE_PLUGIN_ROOT}/scripts/journal-status.sh <run-journal.jsonl>` — the wave-return TRUTH (#213; the harness task registry is best-effort, never trusted for return detection).
+   On the in-context `Agent()` path there is no journal, and the completion
+   NOTIFICATION does not arrive at all — measured 3/3 across two lanes and
+   three coders (#270). Poll the worktree instead, from the first tick past
+   the step's expected runtime, never after a grace period for a signal that
+   is not coming: `git -C <worktree> status --porcelain` then
+   `git -C <worktree> diff --shortstat`. A finished coder's output sits in the
+   worktree the whole time it is invisible to the dispatcher
+   (`agents/conductor.md §Defensive poll`).
 2. Deterministic LOC assert: `${CLAUDE_PLUGIN_ROOT}/scripts/loc-count.py <base_ref>` vs the wave's stated budget (#216).
 3. Cross-step file-disjointness check — no two steps touched the same path.
 4. The canonical workspace test gate (`{gates}`; `skills/shepherd/references/pipeline.md` §Gates) — NEVER run concurrently with lane cargo builds (#214).
