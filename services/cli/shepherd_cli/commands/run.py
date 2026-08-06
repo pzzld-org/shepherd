@@ -310,6 +310,22 @@ def _find_run_id_references(run_id: str, *, workdir: str | None = None) -> list[
     return sorted(hits)
 
 
+def _run_dir_names() -> list[str]:
+    """Every directory name directly under ``runs/``, sorted.
+
+    Deliberately NOT :func:`shepherd_cli.models_run.list_runs`, which indexes
+    by ``run.json`` presence — an unregistered directory is invisible to it,
+    and that is the population ``canonicalize`` most needs to reach.
+
+    Returns:
+        Sorted directory names, or ``[]`` when ``runs/`` does not exist.
+    """
+    base = runs_root()
+    if not os.path.isdir(base):
+        return []
+    return sorted(name for name in os.listdir(base) if os.path.isdir(os.path.join(base, name)))
+
+
 def _rename_run(old: str, new: str) -> list[str]:
     """Move ``runs/<old>/`` to ``runs/<new>/`` and rewrite the moved run.json.
 
@@ -334,19 +350,28 @@ def _rename_run(old: str, new: str) -> list[str]:
         completes (so nothing under the just-moved ``runs/<new>/`` tree is
         missed if its own prose still mentions ``old``).
     """
-    state = _load_or_fail(old)  # a corrupt run.json fails cleanly (exit 2), same as every other mutator
+    # An UNREGISTERED directory (no run.json) is renameable. That population is
+    # precisely the one that most needs renaming: `run init` REFUSES a
+    # non-canonical id, so a misnamed directory nothing registered could
+    # previously be neither registered nor renamed -- `shepherd lint`'s
+    # unregistered-run check points here, and it must not point at a dead end.
+    # Observed in this repo: `runs/2026-05-04-shepherd-context`, a date-topic
+    # SPEC name, unregistered and unfixable through any sanctioned command.
+    registered = os.path.isfile(run_state_path(old))
+    state = _load_or_fail(old) if registered else None  # corrupt run.json fails cleanly (exit 2)
     old_dir = run_dir(old)
     new_dir = run_dir(new)
     os.rename(old_dir, new_dir)
 
-    state.run = new
-    old_prefix = f"runs/{old}/"
-    new_prefix = f"runs/{new}/"
-    if state.seed.startswith(old_prefix):
-        state.seed = new_prefix + state.seed[len(old_prefix) :]
-    if state.plan.startswith(old_prefix):
-        state.plan = new_prefix + state.plan[len(old_prefix) :]
-    save_run(state)
+    if state is not None:
+        state.run = new
+        old_prefix = f"runs/{old}/"
+        new_prefix = f"runs/{new}/"
+        if state.seed.startswith(old_prefix):
+            state.seed = new_prefix + state.seed[len(old_prefix) :]
+        if state.plan.startswith(old_prefix):
+            state.plan = new_prefix + state.plan[len(old_prefix) :]
+        save_run(state)
 
     return _find_run_id_references(old)
 
@@ -383,13 +408,23 @@ def rename_cmd(
         _fail(str(exc), 2)
     if old == new:
         _fail("old and new run ids are identical", 2)
-    if not os.path.isfile(run_state_path(old)):
-        _fail(f"no such run: {old} (expected {run_state_path(old)})", 5)
+    # Gate on the DIRECTORY, not run.json: an unregistered directory is exactly
+    # what most needs renaming (see _rename_run), and `run init` will not take
+    # a non-canonical id, so requiring run.json here made those a dead end.
+    if not os.path.isdir(run_dir(old)):
+        _fail(f"no such run directory: {old} (expected {run_dir(old)})", 5)
     if os.path.isfile(run_state_path(new)) or os.path.isdir(run_dir(new)):
         _fail(f"destination already exists: {new}", 5)
 
+    registered = os.path.isfile(run_state_path(old))
     references = _rename_run(old, new)
     typer.echo(f"renamed {old} -> {new}: {run_dir(new)}")
+    if not registered:
+        typer.echo(
+            f"NOTE: {new} has no run.json — it is not yet a run that anything can read. "
+            f"Register it with: shepherd run init {new}",
+            err=True,
+        )
     _report_dangling_references(old, references)
 
 
@@ -411,14 +446,18 @@ def canonicalize_cmd(
     """
     if bool(run) == all_runs:
         _fail("pass exactly one of <run> or --all", 2)
-    targets: list[str] = list_runs() if all_runs else [run]  # type: ignore[list-item]
+    # --all enumerates DIRECTORIES, not `list_runs` (which indexes by run.json):
+    # a misnamed directory usually has no run.json either, and `run init`
+    # refuses a non-canonical id, so gating on registration made exactly the
+    # population this command exists to fix unreachable by it.
+    targets: list[str] = _run_dir_names() if all_runs else [run]  # type: ignore[list-item]
     if all_runs and not targets:
         typer.echo("no runs to canonicalize")
         return
 
     for target in targets:
-        if not os.path.isfile(run_state_path(target)):
-            _fail(f"no such run: {target} (expected {run_state_path(target)})", 5)
+        if not os.path.isdir(run_dir(target)):
+            _fail(f"no such run directory: {target} (expected {run_dir(target)})", 5)
         if is_canonical_run_id(target):
             typer.echo(f"{target}: already canonical")
             continue
@@ -429,14 +468,21 @@ def canonicalize_cmd(
                 f"shepherd run rename {target} <new-id>"
             )
             continue
-        if os.path.isfile(run_state_path(suggestion)):
+        if os.path.isfile(run_state_path(suggestion)) or os.path.isdir(run_dir(suggestion)):
             typer.echo(f"{target}: canonical form {suggestion!r} already exists -- refusing to overwrite, fix manually")
             continue
         if dry_run:
             typer.echo(f"{target} -> {suggestion} (dry run, no changes made)")
             continue
+        registered = os.path.isfile(run_state_path(target))
         references = _rename_run(target, suggestion)
         typer.echo(f"{target} -> {suggestion}: {run_dir(suggestion)}")
+        if not registered:
+            typer.echo(
+                f"NOTE: {suggestion} has no run.json — register it with: "
+                f"shepherd run init {suggestion}",
+                err=True,
+            )
         _report_dangling_references(target, references)
 
 

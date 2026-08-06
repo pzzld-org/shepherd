@@ -254,6 +254,13 @@ def _env(tmp_path: Path) -> dict[str, str]:
     return env
 
 
+def naming_env(workdir: Path) -> dict[str, str]:
+    """Env pinning SHEPHERD_WORKDIR at an explicit artifacts root."""
+    env = clean_env_dict()
+    env["SHEPHERD_WORKDIR"] = str(workdir)
+    return env
+
+
 def _run_json(tmp_path: Path, run: str) -> dict:
     return json.loads((tmp_path / ".shepherd" / "runs" / run / "run.json").read_text())
 
@@ -384,7 +391,9 @@ def test_rename_refuses_missing_source(tmp_path: Path) -> None:
     env = _env(tmp_path)
     proc = run_cli(["run", "rename", "ghost", "somewhere"], env)
     assert proc.returncode == 5
-    assert "no such run: ghost" in proc.stderr
+    # v6.4.4: the gate is the DIRECTORY, not run.json — an unregistered
+    # directory is renameable, so the message names what is actually missing.
+    assert "no such run directory: ghost" in proc.stderr
 
 
 def test_rename_source_with_corrupt_run_json_fails_cleanly(tmp_path: Path) -> None:
@@ -527,3 +536,86 @@ def test_canonicalize_all_with_no_runs_is_a_noop(tmp_path: Path) -> None:
     proc = run_cli(["run", "canonicalize", "--all"], env)
     assert proc.returncode == 0
     assert "no runs to canonicalize" in proc.stdout
+
+
+# --------------------------------------------------------------------------
+# v6.4.4 — rename/canonicalize reach UNREGISTERED directories.
+# --------------------------------------------------------------------------
+def test_rename_works_on_a_directory_without_run_json(tmp_path: Path) -> None:
+    """An unregistered directory is renameable — it is the population that needs it.
+
+    `run init` REFUSES a non-canonical id and `run rename` used to require
+    `run.json`, so a misnamed directory nothing had registered could be neither
+    registered nor renamed. `shepherd lint` points operators here; it must not
+    point at a dead end.
+    """
+    workdir = tmp_path / "ws" / ".shepherd"
+    stray = workdir / "runs" / "2026-05-04-shepherd-context"
+    stray.mkdir(parents=True)
+    (stray / "plan.md").write_text("plan body")
+    env = naming_env(workdir)
+
+    proc = run_cli(["run", "rename", "2026-05-04-shepherd-context", "v500"], env)
+
+    assert proc.returncode == 0, proc.stderr
+    assert (workdir / "runs" / "v500" / "plan.md").read_text() == "plan body"
+    assert not stray.exists()
+    # And it says the run is still unregistered rather than implying otherwise.
+    assert "has no run.json" in proc.stderr
+    assert "shepherd run init v500" in proc.stderr
+
+
+def test_canonicalize_works_on_a_directory_without_run_json(tmp_path: Path) -> None:
+    """`canonicalize` enumerates directories too, and derives the canonical id."""
+    workdir = tmp_path / "ws" / ".shepherd"
+    stray = workdir / "runs" / "v514-teammate-parallel"
+    stray.mkdir(parents=True)
+    (stray / "seed.md").write_text("seed body")
+    env = naming_env(workdir)
+
+    proc = run_cli(["run", "canonicalize", "v514-teammate-parallel"], env)
+
+    assert proc.returncode == 0, proc.stderr
+    assert (workdir / "runs" / "v514" / "seed.md").read_text() == "seed body"
+    assert not stray.exists()
+
+
+def test_canonicalize_all_sees_unregistered_directories(tmp_path: Path) -> None:
+    """`--all` must not silently skip the directories it exists to fix."""
+    workdir = tmp_path / "ws" / ".shepherd"
+    (workdir / "runs" / "v514-teammate-parallel").mkdir(parents=True)
+    (workdir / "runs" / "v641-dev0").mkdir(parents=True)
+    env = naming_env(workdir)
+
+    proc = run_cli(["run", "canonicalize", "--all"], env)
+
+    assert proc.returncode == 0, proc.stderr
+    assert (workdir / "runs" / "v514").is_dir()
+    assert (workdir / "runs" / "v641-dev0").is_dir()  # already canonical, untouched
+    assert "already canonical" in proc.stdout
+
+
+def test_rename_refuses_a_missing_directory(tmp_path: Path) -> None:
+    """Loosening the run.json gate must not loosen the existence gate."""
+    workdir = tmp_path / "ws" / ".shepherd"
+    (workdir / "runs").mkdir(parents=True)
+    env = naming_env(workdir)
+
+    proc = run_cli(["run", "rename", "nope", "v500"], env)
+
+    assert proc.returncode == 5
+    assert "no such run directory: nope" in proc.stderr
+
+
+def test_rename_refuses_an_existing_destination_directory(tmp_path: Path) -> None:
+    """Collision check covers a bare DIRECTORY, not just a registered run."""
+    workdir = tmp_path / "ws" / ".shepherd"
+    (workdir / "runs" / "old-name").mkdir(parents=True)
+    (workdir / "runs" / "v500").mkdir(parents=True)
+    env = naming_env(workdir)
+
+    proc = run_cli(["run", "rename", "old-name", "v500"], env)
+
+    assert proc.returncode == 5
+    assert "destination already exists" in proc.stderr
+    assert (workdir / "runs" / "old-name").is_dir()  # nothing moved
