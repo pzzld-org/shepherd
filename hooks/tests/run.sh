@@ -399,6 +399,18 @@ else
   fails=$((fails+1))
 fi
 
+# v6.4.4 wiring (#268/#269/#270 + the layout fixes): doctrine spread across
+# agents, references, CLI, hooks and scripts with no single enforcer.
+echo "== test_v644_wiring.sh (v6.4.4 — #268/#269/#270 + layout wiring) =="
+total=$((total+1))
+if v644_out=$(bash "$TESTS_DIR/test_v644_wiring.sh" 2>&1); then
+  printf '  PASS  %s\n' "v644-doctrine-wiring"
+else
+  printf '  FAIL  %-50s\n' "v644-doctrine-wiring"
+  printf '%s\n' "$v644_out" | sed 's/^/        /'
+  fails=$((fails+1))
+fi
+
 # GH #267: spawn Check 3 must not refuse on the session's own lead-only team,
 # and cleanup must never prune the harness's team files.
 echo "== test_team_preflight.sh (#267 — spawn Check 3 active-team predicate) =="
