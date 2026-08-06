@@ -93,6 +93,12 @@ import typer
 from tortoise import Tortoise
 
 from shepherd_cli import db
+from shepherd_cli.models_run import (
+    RunIdDerivationError,
+    derive_run_id,
+    list_runs,
+    run_dir,
+)
 from shepherd_cli.render import build_env
 from shepherd_cli.resolution import find_bash_shctx, resolve_workdir
 
@@ -130,7 +136,16 @@ _USAGE = (
 
 #: ``docs/handoffs`` under the resolved shepherd work directory -- bash
 #: parity with ``handoff_root() { echo "$(shctx_artifacts_root)/docs/handoffs"; }``.
+#:
+#: LEGACY as of v6.4.4. The artifact schema has said ``{run_dir}/handoff.md``
+#: (tracked, fixed name) since v6.4.1; this directory is where handoffs landed
+#: before :func:`_default_handoff_out` learned to derive the run. ``list``/
+#: ``show`` still read it so pre-migration handoffs stay reachable.
 _HANDOFF_SUBDIR = os.path.join("docs", "handoffs")
+
+#: The fixed run-scoped handoff filename (``naming-conventions.md §Run
+#: layout``). No date or branch prefix -- the run directory carries identity.
+_RUN_HANDOFF_FILENAME = "handoff.md"
 
 #: The file ``create`` reads and fills in -- bash parity with
 #: ``$(shctx_skill_root)/references/handoff-template.md``.
@@ -167,6 +182,47 @@ def _handoff_root() -> str:
         The absolute path to the handoffs directory (need not exist on disk).
     """
     return os.path.join(resolve_workdir(), _HANDOFF_SUBDIR)
+
+
+def _default_handoff_out(branch: str, date: str) -> str:
+    """Resolve where ``create`` writes when ``--out`` was not given.
+
+    A handoff is RUN-SCOPED: it hands off one sprint, and is meaningless
+    detached from it (``naming-conventions.md §The docs/ vs {run_dir}
+    boundary``). Its canonical home is ``{run_dir}/handoff.md`` — tracked,
+    fixed name, no prefix, because the run directory already carries the
+    identity. Writing it to the CROSS-RUN ``docs/handoffs/`` tree instead is
+    the same category error that put a run's audits in ``docs/reports/``.
+
+    The run id is DERIVED, never invented: :func:`derive_run_id` runs the same
+    ``[branching]`` slug pattern ``shepherd run init`` uses, so this lands in
+    the directory the planter already created rather than minting a second one.
+
+    Falls back to the legacy ``docs/handoffs/<date>-<branch>-close-handoff.md``
+    when the branch yields no canonical run id (not a ``v{X}.{Y}.{Z}-dev.{N}``
+    shape — e.g. a hotfix or an ad-hoc branch) or when the derived run has no
+    directory on disk. Inventing a run directory here would create a run that
+    ``run init`` never made and ``list_runs`` will not see (no ``run.json``),
+    which is worse than a legacy-path handoff.
+
+    Args:
+        branch: The branch the handoff covers.
+        date: Today's ``YYYY-MM-DD``, for the legacy filename.
+
+    Returns:
+        An absolute path. The parent directory is NOT created here — the
+        caller owns that.
+    """
+    workdir = resolve_workdir()
+    try:
+        run = derive_run_id(branch, workdir=workdir)
+    except RunIdDerivationError:
+        run = ""
+    if run:
+        rdir = run_dir(run, workdir)
+        if os.path.isdir(rdir):
+            return os.path.join(rdir, _RUN_HANDOFF_FILENAME)
+    return os.path.join(_handoff_root(), f"{date}-{branch}-close-handoff.md")
 
 
 def _skill_root() -> str | None:
@@ -491,10 +547,13 @@ def _do_create(rest: list[str]) -> int:
     date = datetime.now().strftime("%Y-%m-%d")
     session_id = _uuid7()
 
-    hroot = _handoff_root()
-    os.makedirs(hroot, exist_ok=True)
     if not out:
-        out = os.path.join(hroot, f"{date}-{branch}-close-handoff.md")
+        # Only auto-create the directory we chose ourselves. An explicit --out
+        # into a nonexistent tree must still fail (bash parity: cmd_handoff.sh
+        # mkdir -p's the handoff root only, never the --out path), so a typo'd
+        # path errors instead of silently materializing a stray directory.
+        out = _default_handoff_out(branch, date)
+        os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
 
     template_path = _template_path()
     if template_path is None or not os.path.isfile(template_path):
@@ -557,15 +616,47 @@ def _existing_handoffs_newest_first() -> list[str] | None:
         prints ``"(no handoffs at <hroot>)"`` itself, since the exact
         message text embeds ``hroot``).
     """
+    full_paths: list[str] = []
+
+    # 1. Run-scoped handoffs -- the canonical location since v6.4.4.
+    workdir = resolve_workdir()
+    for run in list_runs(workdir):
+        candidate = os.path.join(run_dir(run, workdir), _RUN_HANDOFF_FILENAME)
+        if os.path.isfile(candidate):
+            full_paths.append(candidate)
+
+    # 2. Legacy docs/handoffs/*.md -- kept readable so a project's history
+    #    does not disappear the moment it upgrades.
     hroot = _handoff_root()
-    if not os.path.isdir(hroot):
+    if os.path.isdir(hroot):
+        full_paths.extend(
+            os.path.join(hroot, name) for name in os.listdir(hroot) if name.endswith(".md")
+        )
+
+    if not full_paths:
         return None
-    names = [name for name in os.listdir(hroot) if name.endswith(".md")]
-    if not names:
-        return None
-    full_paths = [os.path.join(hroot, name) for name in names]
     full_paths.sort(key=lambda p: os.path.getmtime(p), reverse=True)
     return full_paths
+
+
+def _handoff_label(path: str) -> str:
+    """Display name for one handoff path.
+
+    A run-scoped handoff is ALWAYS named ``handoff.md`` (the run directory
+    carries the identity), so printing the bare basename would render every
+    run's handoff as the same indistinguishable line. Qualify those with their
+    run id; legacy handoffs keep their already-unique dated basename.
+
+    Args:
+        path: Full path to a handoff file.
+
+    Returns:
+        ``<run>/handoff.md`` for a run-scoped handoff, else the basename.
+    """
+    base = os.path.basename(path)
+    if base == _RUN_HANDOFF_FILENAME:
+        return os.path.join(os.path.basename(os.path.dirname(path)), base)
+    return base
 
 
 # --------------------------------------------------------------------------
@@ -589,7 +680,7 @@ def _do_list(rest: list[str]) -> int:
         typer.echo(f"(no handoffs at {_handoff_root()})")
         return 0
     for path in handoffs:
-        typer.echo(os.path.basename(path))
+        typer.echo(_handoff_label(path))
     return 0
 
 

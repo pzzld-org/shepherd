@@ -98,7 +98,7 @@ make   = false
 phase_0_full_ledger      = true
 classify_into            = ["blocking-this-sprint", "labeled-non-issue", "tracking-future", "drift-risk"]
 non_issue_labels         = ["wontfix", "tracking-future", "design-question", "rfc"]
-carry_forward_file       = "{paths.plans}/v{X}.{Y}.{Z}-carry-forwards.md"
+carry_forward_file       = "{paths.docs}/v{X}.{Y}.{Z}-carry-forwards.md"
 chronic_threshold_patches = 2
 
 [release]

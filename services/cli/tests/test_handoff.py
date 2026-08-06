@@ -568,3 +568,112 @@ def test_show_content_matches_file_bytes_exactly(db_path: Path, project_id: str,
     proc = run_cli(["handoff", "show"], env)
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout == exact
+
+
+# --------------------------------------------------------------------------
+# v6.4.4 — a handoff is RUN-SCOPED: {run_dir}/handoff.md, not docs/handoffs/.
+# --------------------------------------------------------------------------
+def _make_run(workdir: Path, run: str) -> Path:
+    """Create a run directory the way `shepherd run init` would (dir + run.json)."""
+    rdir = workdir / "runs" / run
+    rdir.mkdir(parents=True)
+    (rdir / "run.json").write_text(json.dumps({"schema_version": 1, "run": run, "status": "closing"}))
+    return rdir
+
+
+def test_create_writes_into_the_run_dir_when_the_run_exists(
+    db_path: Path, project_id: str, tmp_path: Path
+) -> None:
+    """The default target is `{run_dir}/handoff.md` — derived, not invented.
+
+    `derive_run_id` runs the same `[branching]` slug pattern `run init` uses, so
+    the handoff lands in the directory the planter already created instead of
+    the CROSS-RUN docs tree.
+    """
+    workdir = tmp_path / "wd"
+    workdir.mkdir()
+    rdir = _make_run(workdir, "v644-dev0")
+    env = handoff_env(db_path, workdir, project_id=project_id)
+
+    proc = run_cli(["handoff", "create", "--branch=v6.4.4-dev.0"], env)
+
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == str(rdir / "handoff.md")
+    assert (rdir / "handoff.md").is_file()
+    # Nothing was ledgered into the cross-run tree.
+    assert not (workdir / "docs" / "handoffs").exists()
+
+
+def test_create_falls_back_to_legacy_when_the_run_dir_is_absent(
+    db_path: Path, project_id: str, tmp_path: Path
+) -> None:
+    """No run directory on disk -> legacy path, NOT an invented run dir.
+
+    Materializing `runs/<slug>/` here would create a run that `run init` never
+    made and `list_runs` cannot see (no run.json) — worse than a legacy write.
+    """
+    workdir = tmp_path / "wd"
+    workdir.mkdir()
+    env = handoff_env(db_path, workdir, project_id=project_id)
+
+    proc = run_cli(["handoff", "create", "--branch=v6.4.4-dev.0"], env)
+
+    assert proc.returncode == 0, proc.stderr
+    assert "docs/handoffs" in proc.stdout
+    assert not (workdir / "runs").exists()
+
+
+def test_create_falls_back_for_a_branch_with_no_canonical_run_id(
+    db_path: Path, project_id: str, tmp_path: Path
+) -> None:
+    """A non-version branch (hotfix, ad-hoc) has no derivable run — legacy path."""
+    workdir = tmp_path / "wd"
+    workdir.mkdir()
+    env = handoff_env(db_path, workdir, project_id=project_id)
+
+    proc = run_cli(["handoff", "create", "--branch=hotfix-login-crash"], env)
+
+    assert proc.returncode == 0, proc.stderr
+    assert "docs/handoffs" in proc.stdout
+    assert "hotfix-login-crash-close-handoff.md" in proc.stdout
+
+
+def test_list_shows_run_scoped_and_legacy_handoffs_together(
+    db_path: Path, project_id: str, tmp_path: Path
+) -> None:
+    """`list` reads both trees, and qualifies run-scoped entries by run id.
+
+    Every run-scoped handoff is named `handoff.md`, so a bare basename would
+    print N identical, useless lines.
+    """
+    workdir = tmp_path / "wd"
+    workdir.mkdir()
+    (_make_run(workdir, "v644-dev0") / "handoff.md").write_text("run scoped")
+    (_make_run(workdir, "v643-dev0") / "handoff.md").write_text("older run")
+    legacy = workdir / "docs" / "handoffs"
+    legacy.mkdir(parents=True)
+    (legacy / "2026-01-01-old-branch-close-handoff.md").write_text("legacy")
+    env = handoff_env(db_path, workdir, project_id=project_id)
+
+    proc = run_cli(["handoff", "list"], env)
+
+    assert proc.returncode == 0, proc.stderr
+    lines = proc.stdout.split()
+    assert "v644-dev0/handoff.md" in lines
+    assert "v643-dev0/handoff.md" in lines
+    assert "2026-01-01-old-branch-close-handoff.md" in lines
+
+
+def test_show_finds_a_run_scoped_handoff_by_run_id(
+    db_path: Path, project_id: str, tmp_path: Path
+) -> None:
+    """`show <pattern>` matches on the full path, so the run id is searchable."""
+    workdir = tmp_path / "wd"
+    workdir.mkdir()
+    (_make_run(workdir, "v644-dev0") / "handoff.md").write_text("body of the v644 handoff")
+    env = handoff_env(db_path, workdir, project_id=project_id)
+
+    proc = run_cli(["handoff", "show", "v644-dev0"], env)
+
+    assert proc.returncode == 0, proc.stderr
+    assert "body of the v644 handoff" in proc.stdout

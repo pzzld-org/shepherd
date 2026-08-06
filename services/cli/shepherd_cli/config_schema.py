@@ -248,11 +248,24 @@ class DupsConfig(BaseModel):
 class PathsConfig(BaseModel):
     """``[paths]`` — artifact locations, relative to the repo root.
 
+    The live cross-run/run-scoped split is ``naming-conventions.md §The docs/
+    vs {run_dir} boundary``: an artifact still worth reading once its run is
+    deleted is cross-run and lives under ``docs``; everything else lives in
+    ``{runs}/{run}/``.
+
+    ``plans`` and ``reports`` are LEGACY (v6.4.4). Layout v3 moved seeds and
+    plans into ``runs/{run}/``, and v6.4.4 moved audits and read-only-role
+    reports into ``runs/{run}/audits|reports/``, so neither key names a
+    destination anything writes to any more. They stay for back-compat with
+    projects that still hold pre-migration files there — the readers
+    (``lint``, ``refresh``) check both shapes — and MUST NOT be used as the
+    target of a new writer. Point a new artifact at ``runs``/``docs``/``ctx``.
+
     Attributes:
-        plans: Cross-run plan docs.
-        reports: Cross-run report docs.
-        docs: General docs root.
-        ctx: Context registry scratch dir.
+        plans: LEGACY — pre-layout-v3 plan docs. Not a write target.
+        reports: LEGACY — pre-v6.4.4 report docs. Not a write target.
+        docs: Cross-run docs root (specs, diagrams, journal, ledgers).
+        ctx: The one cross-run knowledge silo (§One knowledge silo).
         runs: Per-run artifact root (``{run_dir}`` = ``{runs}/{run}``).
     """
 
@@ -326,7 +339,13 @@ class LedgerConfig(BaseModel):
     non_issue_labels: list[str] = Field(
         default_factory=lambda: ["wontfix", "tracking-future", "design-question", "rfc"]
     )
-    carry_forward_file: str = "{paths.plans}/v{X}.{Y}.{Z}-carry-forwards.md"
+    # v6.4.4: was `{paths.plans}/...`, which layout v3 emptied — the ledger was
+    # the last writer aimed at a directory nothing else uses. It is a genuinely
+    # CROSS-RUN doc (it outlives every run it collects from), so `{paths.docs}`
+    # is its home. A project that still has the file under docs/plans/ keeps
+    # working: this is only the default, and an explicit `[ledger]` override in
+    # shepherd.toml wins.
+    carry_forward_file: str = "{paths.docs}/v{X}.{Y}.{Z}-carry-forwards.md"
     chronic_threshold_patches: int = 2
 
 

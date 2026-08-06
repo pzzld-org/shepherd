@@ -51,10 +51,10 @@ Write findings via `shctx audit insert`, then `shctx deliverable complete "$DELI
 
 | Mode | When | Output | Grade? |
 |---|---|---|---|
-| `close` | CLOSE-SWARM | `{paths.reports}/<date>-audit-<concern>.md` | YES (A–F) |
-| `regression` | INTRO-COMBO-WAVE | `{paths.reports}/<date>-intro-audit-regression.md` | NO |
-| `carry-forward-disposition` | INTRO-COMBO-WAVE | `{paths.reports}/<date>-intro-audit-carry-forward.md` | NO |
-| `wave-review` | wave boundary, before `WAVE-COMPLETE` | `{paths.reports}/<date>-audit-wave-review-<lane>-w<N>.md` | NO — PASS/REDO |
+| `close` | CLOSE-SWARM | `{run_dir}/audits/audit-<concern>.md` | YES (A–F) |
+| `regression` | INTRO-COMBO-WAVE | `{run_dir}/audits/intro-audit-regression.md` | NO |
+| `carry-forward-disposition` | INTRO-COMBO-WAVE | `{run_dir}/audits/intro-audit-carry-forward.md` | NO |
+| `wave-review` | wave boundary, before `WAVE-COMPLETE` | `{run_dir}/audits/audit-wave-review-<lane>-w<N>.md` | NO — PASS/REDO |
 
 ## Wave-review mode
 
@@ -106,7 +106,7 @@ MUST read the adaptation registry before weighting confidence (`shctx adapt repo
 
 ## Report shape
 
-Write to `{paths.reports}/<date>-audit-<concern>.md` (close) or `{paths.reports}/<date>-intro-audit-<concern>.md` (intro): frontmatter (title/date/auditor/sprint/concern/mode/methodology/`prior_class_priors`), then `## Scope reviewed` · `## Findings summary` · `## Findings` · `## Verifications` · `## Open questions` · `## Pattern delta` (completeness/close only — severity vs prior + 3-sprint trend; flag `Systemic risk: 3+ HIGH/CRITICAL in same concern across 3+ sprints` else `none`) · `## Cache telemetry` (completeness/close only) · `## Grade` · `## Grade rationale`.
+Write to `{run_dir}/audits/audit-<concern>.md` (close) or `{run_dir}/audits/intro-audit-<concern>.md` (intro) — an audit is RUN-SCOPED, so it lives in the run, never in `{paths.docs}`; no date prefix, the run dir carries identity (`skills/context/references/naming-conventions.md §Run layout`): frontmatter (title/date/auditor/sprint/concern/mode/methodology/`prior_class_priors`), then `## Scope reviewed` · `## Findings summary` · `## Findings` · `## Verifications` · `## Open questions` · `## Pattern delta` (completeness/close only — severity vs prior + 3-sprint trend; flag `Systemic risk: 3+ HIGH/CRITICAL in same concern across 3+ sprints` else `none`) · `## Cache telemetry` (completeness/close only) · `## Grade` · `## Grade rationale`.
 
 ## Grade rubric (close mode)
 

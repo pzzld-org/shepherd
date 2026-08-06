@@ -146,8 +146,31 @@ identity, so filenames inside it take no slug prefix.
 | `{run_dir}/lanes/{lane}/plan.md` | Lane plan (checkbox steps + append-only `## Deviations`) | tracked |
 | `{run_dir}/graph/` | Stage-graph state, trace, compiled workflows | ignored |
 | `{run_dir}/dispatch/` | Dispatch records | ignored |
-| `{run_dir}/reports/` | Materialized read-only-role reports | ignored |
-| `{run_dir}/audits/` | Audit findings | ignored |
+| `{run_dir}/reports/discovery-<id>.md` | @discovery report (`DISCOVERY-WRITE-PATH`) | ignored |
+| `{run_dir}/reports/<deliverable-slug>.md` | @worker deliverable report | ignored |
+| `{run_dir}/reports/partial-close.md` | Early-close open-items report | ignored |
+| `{run_dir}/audits/audit-<concern>.md` | @auditor close-mode findings (`AUDITOR-WRITE-PATH`) | ignored |
+| `{run_dir}/audits/intro-audit-<concern>.md` | @auditor intro-mode findings | ignored |
+| `{run_dir}/audits/audit-wave-review-<lane>-w<N>.md` | @auditor wave-review verdict | ignored |
+
+**Run-scoped artifacts are NEVER ledgered under `{paths.docs}` (v6.4.4).**
+`reports/` and `audits/` have been in this table since v6.4.1 and `run init`
+scaffolds both, but every writer was still pinned to `{paths.reports}` =
+`.shepherd/docs/reports/` with a `<date>-` prefix — the agent bodies
+(`auditor.md`, `discovery.md`, `worker.md`), `flock.md`, and `lock_guard.sh`'s
+`AUDITOR-WRITE-PATH`/`DISCOVERY-WRITE-PATH` regexes alike. So the run-scoped
+directories stayed empty while a run's own audits and discovery reports piled
+into the CROSS-RUN docs tree: `FL03/axiom` has 1548 files in
+`.shepherd/docs/reports/` and one run directory. Doctrine said one thing, every
+writer did another, and nothing reconciled them. All three layers now name the
+run-scoped path, and the guard DENIES the legacy target with a message that
+names the correct one.
+
+Filenames in these sub-directories carry NO date prefix — the run directory
+already carries the identity, exactly as for the fixed top-level run files. The
+discriminator is the concern / discovery id / lane+wave, which is what actually
+distinguishes two artifacts within one run; a date does not (a run produces
+many audits on the same day).
 
 The tracked/ignored split is the durable/disposable split: durable knowledge
 (seed/mesh/plan/phase0/close/handoff + lane plans) compounds in git; run
@@ -210,10 +233,28 @@ LEGACY trees predating layout v3; `<group>` stays extensible via
 | `YYYY-MM-DD.log.md` / `.log.jsonl` | `logs/` | daily human/machine log |
 | `YYYY-MM-DDTHH-MM-SS.log.jsonl` | `logs/` | sub-daily machine log |
 
-Genuinely cross-run docs stay under `{paths.docs}`: specs
-(`docs/specs/YYYY-MM-DD-<topic>-{design|spec}.md`, kebab-case `<topic>`,
-unique within the day), journal entries, carry-forwards (`[ledger]`).
-Run-scoped docs NEVER land there — they belong in `{run_dir}`.
+### The `docs/` vs `{run_dir}` boundary
+
+One question decides it: **would this artifact still be worth reading if the
+run it came from were deleted?** Yes → cross-run, `docs/`. No → run-scoped,
+`{run_dir}`. Nothing sits in both.
+
+| Cross-run → `{paths.docs}` | Run-scoped → `{run_dir}` |
+|---|---|
+| Specs / design docs (`docs/specs/YYYY-MM-DD-<topic>-{design\|spec}.md`, kebab-case `<topic>`, unique within the day) | Seed, mesh, plan, phase0, close, handoff |
+| Journal entries (`docs/journal/YYYY-MM-DD.md`) | Lane plans |
+| Diagrams (`docs/diagrams/`) | Audits (`audits/`), discovery + worker reports (`reports/`) |
+| The carry-forward ledger (`[ledger]`) | Dispatch records, stage-graph state |
+
+A spec describes a design that outlives its sprint, so it is cross-run even
+when a single sprint prompted it. An audit grades one run's work and is
+meaningless detached from it, so it is run-scoped even though it reads like a
+document. Getting this backwards produces exactly the two failures v6.4.4
+fixed: run reports ledgered into `docs/` (see §Run layout), and run
+directories named like specs (see §Run identity).
+
+A cross-run doc NEVER lands in `{run_dir}`, and a run-scoped artifact NEVER
+lands in `docs/`. `shctx lint`'s misplaced-file check enforces both directions.
 
 ## Layout (namespace scaffold)
 

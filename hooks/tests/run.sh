@@ -399,6 +399,20 @@ else
   fails=$((fails+1))
 fi
 
+# v6.4.4 run-scoped write paths (#P-layout): lock_guard.sh Check 1 is the
+# enforcement layer for the artifact schema's read-only-role paths. Pins BOTH
+# directions — {run_dir}/reports|audits allowed, legacy docs/reports/ DENIED —
+# so the doctrine and the guard cannot drift apart again.
+echo "== test_lock_guard_write_path.sh (v6.4.4 — run-scoped role write paths) =="
+total=$((total+1))
+if lgwp_out=$(bash "$TESTS_DIR/test_lock_guard_write_path.sh" 2>&1); then
+  printf '  PASS  %s\n' "lock-guard-run-scoped-write-paths"
+else
+  printf '  FAIL  %-50s\n' "lock-guard-run-scoped-write-paths"
+  printf '%s\n' "$lgwp_out" | sed 's/^/        /'
+  fails=$((fails+1))
+fi
+
 # v6.2.5 wiring (#169/#170/#171): engineer self-contained plan + critic-proof,
 # the [models] map, and workdir prune are behavioral wiring across doctrines +
 # profiles + CLI + the invariant matrix. This guard fails if any leg is dropped.
