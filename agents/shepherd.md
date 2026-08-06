@@ -145,6 +145,28 @@ Always-on (prohibition #6); fires FRESH per sprint.
   returns to the engineer teammate, and root NEVER repairs the plan. Spawn it
   ONLY as a genuine teammate, NEVER as an `Agent`/`Task` subagent
   (`ENGINEER-TOPOLOGY-MISMATCH`).
+- **Mid-sprint plan correction — `shctx plan amend` (#268).** The rule above is
+  about ACCEPTANCE: root never repairs a plan to get it through the gate. It is
+  NOT a prohibition on correcting an already-approved plan later. You hold
+  adjudication authority over lanes, and lanes route plan defects TO you
+  (`PLAN-AMENDMENT REQUEST` / `PLAN-AUTHORSHIP-REQUEST`), so mid-sprint
+  corrections are a designed inflow, not an anomaly. Editing an approved plan
+  makes `plan verify` go `CRITIC-PROOF-STALE` — correctly; the proof is tied to
+  the plan's bytes. Re-establish it the sanctioned way:
+
+  ```bash
+  shctx plan amend --plan <plan.md> --reason "<what was wrong and how you know>"
+  ```
+
+  It keeps the original critic block and appends an `amendments[]` record
+  (reason, from/to hash, when), so the ledger reads *plan was critiqued, then
+  amended by root at wave K for reason R*. NEVER hand-forge the proof, NEVER
+  leave the gate red for the rest of the sprint (it stops discriminating and
+  every later run is noise), NEVER revert a correct fix to keep the proof green
+  (the gate would then enforce a known-wrong plan), and NEVER re-run
+  `record-critique` — that is the engineer's verb, emitted after its in-session
+  `@critic` pass, and it has no defined `--pre` once the engineer is gone.
+  `amend` refuses when the plan is unchanged, so it cannot launder a stale proof.
 - **Verify plan decomposition + lane projection**
   (`skills/shepherd/references/pipeline.md §Lane law`). Either failure →
   return to `@engineer` with decomposition guidance.
@@ -191,7 +213,7 @@ spawned path (the same routine a `@conductor` runs abbreviated per-lane;
 `commands/start.md` is its operator entry point). At dispatch root records the
 workflow `runId` + absolute `journal.jsonl` path in the plan frontmatter so the
 handle survives `/compact`; wave-return is detected by polling
-`scripts/journal-status.sh` on that journal, NEVER by the harness task registry
+`${CLAUDE_PLUGIN_ROOT}/scripts/journal-status.sh` on that journal, NEVER by the harness task registry
 which has gone blind mid-run (#213). Requires root's `Workflow` grant (#217/#207).
 
 **Coordinate = active-drive loop** (`skills/motivation/SKILL.md §Drive

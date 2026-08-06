@@ -37,7 +37,7 @@ Check 0 runs FIRST.
 | 0 | Operator-only invocation | HARD. Refuse if invoked from a teammate session — same secondary signals as `commands/spawn.md §Check 0` (cwd under `.worktrees/`, `INVOCATION-CONTEXT.dispatcher: teammate-conductor`). |
 | 1 | Plan exists for the target | HARD. `sprint_slug` target: `{run_dir}/plan.md` (`{run_dir}` = `{paths.runs}/{run}`, default `.shepherd/runs/{run}`; `{run}` = the sprint slug) MUST exist and be critic-gated, else HALT — route to `/shepherd:plant` + `/shepherd:spawn`. `task` target: the argument text itself is the instruction (no seed/plan lookup) — it must already be concrete and file-scoped enough to compile as one wave. |
 | 2 | shepherd.toml | Scaffold-then-proceed: `shctx config init` if missing, emit `[CONFIG] scaffolded`, PROCEED. Non-blocking. |
-| 3 | Disk pressure | HARD. `scripts/df-guard.sh --min=12` before any cargo invocation; exit 1 INSUFFICIENT halts here. |
+| 3 | Disk pressure | HARD. `${CLAUDE_PLUGIN_ROOT}/scripts/df-guard.sh --min=12` before any cargo invocation; exit 1 INSUFFICIENT halts here. |
 | 4 | Clean worktree / correct branch | HARD. `git status --porcelain` empty on the sprint's dev branch (or the operator-confirmed task branch) before wave 1 compiles. |
 
 ## Execution
@@ -50,11 +50,11 @@ single-shot `task`):
   `shepherd:auditor` pair, batched in a `parallel()`.
 - **Brief** every coder+auditor pair with the hard-rule preamble VERBATIM
   (`wave-routine.md §Hard-rule preamble`): no git commit/push, no `gh` writes (stage +
-  print only), `scripts/df-guard.sh --min=12` before cargo, shared `CARGO_TARGET_DIR`
-  deleted on final PASS, LOC budget measured by `scripts/loc-count.py`, never eyeballed.
+  print only), `${CLAUDE_PLUGIN_ROOT}/scripts/df-guard.sh --min=12` before cargo, shared `CARGO_TARGET_DIR`
+  deleted on final PASS, LOC budget measured by `${CLAUDE_PLUGIN_ROOT}/scripts/loc-count.py`, never eyeballed.
 - **Gate, serially, after EVERY wave** (`wave-routine.md §Root gate`) — never delegated
-  into the workflow: (1) `scripts/journal-status.sh <run-journal.jsonl>` for the wave-return
-  TRUTH; (2) `scripts/loc-count.py <base_ref>` (`--from` if passed, else the sprint branch
+  into the workflow: (1) `${CLAUDE_PLUGIN_ROOT}/scripts/journal-status.sh <run-journal.jsonl>` for the wave-return
+  TRUTH; (2) `${CLAUDE_PLUGIN_ROOT}/scripts/loc-count.py <base_ref>` (`--from` if passed, else the sprint branch
   HEAD) against the wave's stated budget; (3) cross-step file-disjointness check; (4) the
   canonical workspace test gate, never concurrent with lane cargo builds; (5) the #242
   boundary-merge ledger drained — `shepherd run wave pending {run}` exits 0; exit 6
@@ -77,4 +77,4 @@ the whole sprint, run by root instead of one conductor per lane.
 1. No approved plan exists for a `sprint_slug` target — route to `/shepherd:plant` +
    `/shepherd:spawn`.
 2. Invoked from a teammate session (Check 0).
-3. `scripts/df-guard.sh --min=12` fails (INSUFFICIENT) — do not compile the wave.
+3. `${CLAUDE_PLUGIN_ROOT}/scripts/df-guard.sh --min=12` fails (INSUFFICIENT) — do not compile the wave.
