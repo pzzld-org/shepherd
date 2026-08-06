@@ -399,6 +399,18 @@ else
   fails=$((fails+1))
 fi
 
+# GH #266: bin/shepherd must never exec into an unprovisioned venv, and both
+# it and bin/shepherd-venv-ensure must agree on what "provisioned" means.
+echo "== test_cli_venv_selfheal.sh (#266 — unprovisioned CLI venv) =="
+total=$((total+1))
+if venv_out=$(bash "$TESTS_DIR/test_cli_venv_selfheal.sh" 2>&1); then
+  printf '  PASS  %s\n' "cli-venv-selfheal"
+else
+  printf '  FAIL  %-50s\n' "cli-venv-selfheal"
+  printf '%s\n' "$venv_out" | sed 's/^/        /'
+  fails=$((fails+1))
+fi
+
 # v6.4.4 run-scoped write paths (#P-layout): lock_guard.sh Check 1 is the
 # enforcement layer for the artifact schema's read-only-role paths. Pins BOTH
 # directions — {run_dir}/reports|audits allowed, legacy docs/reports/ DENIED —
