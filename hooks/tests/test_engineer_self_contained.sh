@@ -17,6 +17,9 @@ cd "$ROOT"
 fails=0
 need_file() { [[ -f "$1" ]] || { printf '  FAIL  missing file: %s\n' "$1"; fails=$((fails+1)); }; }
 need() { grep -qF -- "$2" "$1" 2>/dev/null || { printf '  FAIL  %s — %s missing %q\n' "$3" "$1" "$2"; fails=$((fails+1)); }; }
+# Inverse of `need`: assert a REGEX has no match. Regex, not fixed-string, so a
+# rule can be denied by whole-line anchor while prose mentioning it still passes.
+deny() { grep -qE -- "$2" "$1" 2>/dev/null && { printf '  FAIL  %s — %s still matches %q\n' "$3" "$1" "$2"; fails=$((fails+1)); }; true; }
 
 DOC="skills/shepherd/references/pipeline.md"
 MM="skills/context/references/model-map.md"
@@ -66,8 +69,12 @@ need .claude/shepherd.toml "[models]"                     "dogfood [models] bloc
 
 # 4. (C) workdir-prune wiring.
 need .claude/shepherd.toml "[prune]"          "dogfood [prune] block"
-need .gitignore ".artifacts/memory/"          "gitignore .artifacts/memory leak fix"
-need .gitignore ".shepherd/memory/"           "gitignore .shepherd/memory leak fix"
+# v6.4.4: memory/ is RETIRED, and is deliberately NOT gitignored any more —
+# ignoring it is what made it a silent knowledge sink. Assert the INVERSE: no
+# memory/ ignore rule may come back, and the retirement is documented.
+deny .gitignore "^\\.artifacts/memory/$"   "no .artifacts/memory ignore rule (retired)"
+deny .gitignore "^\\.shepherd/memory/$"    "no .shepherd/memory ignore rule (retired)"
+need .gitignore "is RETIRED (v6.4.4)"       "gitignore explains the memory/ retirement"
 
 # 5. shctx registers the new subcommands + carries the critic-proof verbs.
 need skills/context/scripts/shctx "|models|prune)"  "shctx dispatcher registers models+prune"

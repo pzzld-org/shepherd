@@ -198,7 +198,7 @@ def test_unrecognized_layout_value_is_rejected_from_any_position(tmp_path: Path)
     proc = run_cli(["migrate", "somethingelse", "--layout=bogus"], env)
 
     assert proc.returncode == 1
-    assert proc.stderr.rstrip("\n") == "ERROR: unknown --layout value (only 'v2' and 'v3' supported)"
+    assert proc.stderr.rstrip("\n") == "ERROR: unknown --layout value (only 'v2', 'v3' and 'v4' supported)"
     assert proc.stdout == ""
 
 
@@ -537,4 +537,103 @@ def test_layout_bogus_value_names_both_supported_layouts(tmp_path: Path) -> None
     proc = _run_migrate(["--layout=v9"], env, cwd=tmp_path)
 
     assert proc.returncode == 1
-    assert "only 'v2' and 'v3' supported" in proc.stderr
+    assert "only 'v2', 'v3' and 'v4' supported" in proc.stderr
+
+
+# --------------------------------------------------------------------------
+# --layout v4 (v6.4.4 memory/ retirement) — NEW, no bash twin.
+# --------------------------------------------------------------------------
+@pytest.mark.parametrize("one_token", [False, True])
+def test_layout_v4_drains_memory_into_cache_and_ctx(tmp_path: Path, one_token: bool) -> None:
+    """Snapshots -> cache/snapshots/; hand-authored markdown -> ctx/; memory/ removed.
+
+    The markdown half is the point: `memory/` was gitignored, so notes filed
+    there were invisible to git. `ctx/` is tracked, so the move puts them under
+    version control for the first time.
+    """
+    workdir = tmp_path / "ws" / ".shepherd"
+    snaps = workdir / "memory" / "snapshots"
+    snaps.mkdir(parents=True)
+    (snaps / "precompact-s1-100.json").write_text("{}")
+    (workdir / "memory" / "project_v023_dev5_carryforwards.md").write_text("carry body")
+    (workdir / "memory" / "feedback_serve_required.md").write_text("feedback body")
+
+    env = clean_env_dict()
+    env["SHEPHERD_WORKDIR"] = str(workdir)
+    args = ["--layout=v4"] if one_token else ["--layout", "v4"]
+    proc = _run_migrate(args, env, cwd=tmp_path)
+
+    assert proc.returncode == 0, proc.stderr
+    assert (workdir / "cache" / "snapshots" / "precompact-s1-100.json").read_text() == "{}"
+    assert (workdir / "ctx" / "project_v023_dev5_carryforwards.md").read_text() == "carry body"
+    assert (workdir / "ctx" / "feedback_serve_required.md").read_text() == "feedback body"
+    assert not (workdir / "memory").exists()
+    assert "moved=3" in proc.stdout
+
+
+def test_layout_v4_on_absent_memory_is_a_clean_noop(tmp_path: Path) -> None:
+    """A project that never had `memory/` migrates cleanly, not with an error."""
+    workdir = tmp_path / "ws" / ".shepherd"
+    workdir.mkdir(parents=True)
+
+    env = clean_env_dict()
+    env["SHEPHERD_WORKDIR"] = str(workdir)
+    proc = _run_migrate(["--layout", "v4"], env, cwd=tmp_path)
+
+    assert proc.returncode == 0, proc.stderr
+    assert "memory/ absent" in proc.stdout
+    assert "moved=0" in proc.stdout
+
+
+def test_layout_v4_keeps_memory_when_an_unrecognized_file_remains(tmp_path: Path) -> None:
+    """An unknown file has no correct destination — it is REPORTED, never guessed at.
+
+    `memory/` survives in that case precisely so the leftover stays visible;
+    silently removing the directory would take the file with it.
+    """
+    workdir = tmp_path / "ws" / ".shepherd"
+    (workdir / "memory").mkdir(parents=True)
+    (workdir / "memory" / "mystery.sqlite").write_text("binary-ish")
+
+    env = clean_env_dict()
+    env["SHEPHERD_WORKDIR"] = str(workdir)
+    proc = _run_migrate(["--layout", "v4"], env, cwd=tmp_path)
+
+    assert proc.returncode == 0, proc.stderr
+    assert "SKIP (unrecognized" in proc.stdout
+    assert "KEPT (not empty)" in proc.stdout
+    assert (workdir / "memory" / "mystery.sqlite").exists()
+
+
+def test_layout_v4_never_clobbers_an_existing_ctx_file(tmp_path: Path) -> None:
+    """A name collision in ctx/ is a SKIP — the existing knowledge file wins."""
+    workdir = tmp_path / "ws" / ".shepherd"
+    (workdir / "memory").mkdir(parents=True)
+    (workdir / "memory" / "notes.md").write_text("from memory")
+    (workdir / "ctx").mkdir()
+    (workdir / "ctx" / "notes.md").write_text("already in ctx")
+
+    env = clean_env_dict()
+    env["SHEPHERD_WORKDIR"] = str(workdir)
+    proc = _run_migrate(["--layout", "v4"], env, cwd=tmp_path)
+
+    assert proc.returncode == 0, proc.stderr
+    assert (workdir / "ctx" / "notes.md").read_text() == "already in ctx"
+    assert (workdir / "memory" / "notes.md").read_text() == "from memory"
+    assert "SKIP (dest exists)" in proc.stdout
+
+
+def test_layout_v4_is_idempotent_on_second_run(tmp_path: Path) -> None:
+    workdir = tmp_path / "ws" / ".shepherd"
+    (workdir / "memory").mkdir(parents=True)
+    (workdir / "memory" / "ledger.md").write_text("body")
+
+    env = clean_env_dict()
+    env["SHEPHERD_WORKDIR"] = str(workdir)
+    first = _run_migrate(["--layout", "v4"], env, cwd=tmp_path)
+    second = _run_migrate(["--layout", "v4"], env, cwd=tmp_path)
+
+    assert first.returncode == 0 and second.returncode == 0
+    assert "moved=1" in first.stdout
+    assert "memory/ absent" in second.stdout
+    assert (workdir / "ctx" / "ledger.md").read_text() == "body"

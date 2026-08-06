@@ -18,7 +18,8 @@
 # On-disk sweeps EXECUTE now (with --confirm):
 #   - dispatch/<sprint>/ dirs where sprint != current branch, older than dispatch_days
 #   - logs/events-*.jsonl + logs/hooks/*.jsonl older than logs_days
-#   - memory/snapshots/precompact-*.json beyond snapshots_keep (newest-first)
+#   - cache/snapshots/precompact-*.json beyond snapshots_keep (newest-first);
+#     retired memory/snapshots/ + snapshots/ are swept too, under one budget
 # DB-row sweeps are PREVIEW-ONLY in v6.2.5 (eligible counts printed, nothing
 # deleted) — enabled incrementally in a later patch, each DELETE table-guarded
 # (this DB may lack migrations 8-18). "start now, finish over time."
@@ -60,7 +61,7 @@ mode="dry-run"; [[ "$confirm" == "1" ]] && mode="confirm"
 add_csv() { printf '%s,%s,%s,%s\n' "$1" "$2" "$3" "$4" >> "$csv"; }
 
 # Record + (with --confirm) MOVE a path into $run, PRESERVING its workdir-relative
-# path so subdir files (logs/hooks/, memory/snapshots/) keep their structure and
+# path so subdir files (logs/hooks/, cache/snapshots/) keep their structure and
 # never collide on basename — restore is `mv $run/<rel> $wd/<rel>`.
 sweep_path() {
   local cat="$1" path="$2" detail="$3"
@@ -100,9 +101,23 @@ if [[ -d "$logsdir" ]]; then
   done < <(find "$logsdir" -type f \( -name 'events-*.jsonl' -o -path '*/hooks/*.jsonl' \) -mtime +"$logs_days" 2>/dev/null || true)
 fi
 
-# precompact snapshots beyond newest-N
-snapdir="$wd/memory/snapshots"
-if [[ -d "$snapdir" ]]; then
+# precompact snapshots beyond newest-N.
+# v6.4.4: canonical dir is cache/snapshots/; memory/snapshots/ (v6.1.3) and
+# top-level snapshots/ (pre-v6.1.3) are retired but still swept so an
+# un-migrated project's snapshots stay under retention. `ls -t` runs over the
+# UNION so snapshots_keep keeps N total, not N per directory.
+snapdirs=("$wd/cache/snapshots" "$wd/memory/snapshots" "$wd/snapshots")
+snapfiles=()
+for d in "${snapdirs[@]}"; do
+  if [[ -d "$d" ]]; then
+    # Guard each glob result with -e so an unmatched pattern (bash leaves it
+    # literal without nullglob) never enters the list as a bogus path.
+    for f in "$d"/precompact-*.json; do
+      if [[ -e "$f" ]]; then snapfiles+=("$f"); fi
+    done
+  fi
+done
+if [[ ${#snapfiles[@]} -gt 0 ]]; then
   i=0
   while IFS= read -r f; do
     [[ -n "$f" ]] || continue
@@ -110,7 +125,7 @@ if [[ -d "$snapdir" ]]; then
     [[ $i -le $snapshots_keep ]] && continue
     sweep_path snapshots "$f" "beyond newest-${snapshots_keep}"
     n_snaps=$((n_snaps+1))
-  done < <(ls -t "$snapdir"/precompact-*.json 2>/dev/null || true)
+  done < <(ls -t "${snapfiles[@]}" 2>/dev/null || true)
 fi
 
 # --- DB-row eligibility (PREVIEW ONLY in v6.2.5) ---

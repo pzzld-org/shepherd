@@ -65,7 +65,7 @@ git config user.email t@t
 git config user.name t
 git -c commit.gpgsign=false commit -q --allow-empty -m init
 git checkout -q -b v0.9.0-dev.0 2>/dev/null || true
-mkdir -p .claude .artifacts/graph .artifacts/memory/snapshots .artifacts/tmp
+mkdir -p .claude .artifacts/graph .artifacts/cache/snapshots .artifacts/tmp
 touch .claude/shepherd.toml   # default config
 
 # Minimal state.json with ready and in_flight arrays.
@@ -83,9 +83,9 @@ PAYLOAD_BASE='{"session_id":"sess-test-01","trigger":"manual","cwd":"/repo","hoo
 # ---------------------------------------------------------------------------
 total=$((total+1))
 printf '[compaction]\nprecompact_snapshot = "off"\n' > .claude/shepherd.toml
-BEFORE=$(count_files '.artifacts/memory/snapshots/precompact-*.json')
+BEFORE=$(count_files '.artifacts/cache/snapshots/precompact-*.json')
 run_hook "$PAYLOAD_BASE"
-AFTER=$(count_files '.artifacts/memory/snapshots/precompact-*.json')
+AFTER=$(count_files '.artifacts/cache/snapshots/precompact-*.json')
 FLAG_EXISTS=0; [[ -f ".artifacts/tmp/rehydrate-pending.sess-test-01" ]] && FLAG_EXISTS=1
 if [[ "$AFTER" -eq "$BEFORE" ]] && [[ "$FLAG_EXISTS" -eq 0 ]]; then
   pass "config-off: no snapshot written, no flag"
@@ -101,7 +101,7 @@ total=$((total+1))
 run_hook "$PAYLOAD_BASE"
 # Collect matching snapshots safely (avoid pipefail globbing).
 SNAPS=()
-for f in .artifacts/memory/snapshots/precompact-sess-test-01-*.json; do [[ -f "$f" ]] && SNAPS+=("$f"); done
+for f in .artifacts/cache/snapshots/precompact-sess-test-01-*.json; do [[ -f "$f" ]] && SNAPS+=("$f"); done
 FLAG_PATH=".artifacts/tmp/rehydrate-pending.sess-test-01"
 if [[ "${#SNAPS[@]}" -ge 1 ]] && [[ -f "$FLAG_PATH" ]]; then
   pass "default-on: snapshot written and pending flag set"
@@ -141,7 +141,7 @@ fi
 total=$((total+1))
 printf '[compaction]\nsnapshot_retention = 5\n' > .claude/shepherd.toml
 # Remove prior snapshots to get a clean slate for the count.
-rm -f .artifacts/memory/snapshots/precompact-*.json 2>/dev/null || true
+rm -f .artifacts/cache/snapshots/precompact-*.json 2>/dev/null || true
 # Write 7 snapshots with different session IDs (each has a distinct safe name).
 for i in 1 2 3 4 5 6 7; do
   # Use `date +%s%N` or a counter to guarantee distinct epoch digits.
@@ -150,7 +150,7 @@ for i in 1 2 3 4 5 6 7; do
   RET_PAYLOAD="{\"session_id\":\"sess-ret-${i}\",\"trigger\":\"auto\"}"
   run_hook "$RET_PAYLOAD"
 done
-FINAL=$(count_files '.artifacts/memory/snapshots/precompact-*.json')
+FINAL=$(count_files '.artifacts/cache/snapshots/precompact-*.json')
 if [[ "$FINAL" -le 5 ]]; then
   pass "retention-trim: ${FINAL} snapshot(s) remain (≤ 5)"
 else
@@ -163,7 +163,7 @@ printf '' > .claude/shepherd.toml
 # ---------------------------------------------------------------------------
 # Clean up all snapshots from prior tests so the retention trimmer cannot
 # remove the newly-written snapshot during this test.
-rm -f .artifacts/memory/snapshots/precompact-*.json 2>/dev/null || true
+rm -f .artifacts/cache/snapshots/precompact-*.json 2>/dev/null || true
 total=$((total+1))
 mv .artifacts/graph/state.json .artifacts/graph/state.json.bak 2>/dev/null || true
 mv .artifacts/graph/trace.jsonl .artifacts/graph/trace.jsonl.bak 2>/dev/null || true
@@ -171,7 +171,7 @@ SESS6="sess-missing-files"
 SESS6_SAFE="${SESS6//[^A-Za-z0-9_.-]/_}"
 run_hook "{\"session_id\":\"${SESS6}\",\"trigger\":\"auto\"}"
 SNAP6=()
-for f in ".artifacts/memory/snapshots/precompact-${SESS6_SAFE}-"*.json; do [[ -f "$f" ]] && SNAP6+=("$f"); done
+for f in ".artifacts/cache/snapshots/precompact-${SESS6_SAFE}-"*.json; do [[ -f "$f" ]] && SNAP6+=("$f"); done
 mv .artifacts/graph/state.json.bak .artifacts/graph/state.json 2>/dev/null || true
 mv .artifacts/graph/trace.jsonl.bak .artifacts/graph/trace.jsonl 2>/dev/null || true
 if [[ "${#SNAP6[@]}" -ge 1 ]]; then
@@ -201,13 +201,13 @@ total=$((total+1))
 if ! command -v jq &>/dev/null; then
   skip "run-scoped-graph" "jq missing"
 else
-  rm -f .artifacts/memory/snapshots/precompact-*.json 2>/dev/null || true
+  rm -f .artifacts/cache/snapshots/precompact-*.json 2>/dev/null || true
   mkdir -p .artifacts/runs/v090-dev0/graph
   printf '{"schema_version":1,"run":"v090-dev0","status": "executing"}\n' > .artifacts/runs/v090-dev0/run.json
   printf '{"ready":["run-node-R"],"in_flight":["run-node-F"]}\n' > .artifacts/runs/v090-dev0/graph/state.json
   run_hook '{"session_id":"sess-run-01","trigger":"auto"}'
   SNAP_RUN=""
-  for f in .artifacts/memory/snapshots/precompact-sess-run-01-*.json; do [[ -f "$f" ]] && SNAP_RUN="$f"; done
+  for f in .artifacts/cache/snapshots/precompact-sess-run-01-*.json; do [[ -f "$f" ]] && SNAP_RUN="$f"; done
   RUN_VAL="$(jq -r '.run // ""' "$SNAP_RUN" 2>/dev/null || true)"
   READY_VAL="$(jq -r '.cursor.ready_nodes | join(",")' "$SNAP_RUN" 2>/dev/null || true)"
   if [[ "$RUN_VAL" == "v090-dev0" && "$READY_VAL" == "run-node-R" ]]; then
@@ -228,7 +228,7 @@ else
   rm -f .artifacts/runs/v090-dev0/graph/state.json 2>/dev/null || true
   run_hook '{"session_id":"sess-run-02","trigger":"auto"}'
   SNAP_FB=""
-  for f in .artifacts/memory/snapshots/precompact-sess-run-02-*.json; do [[ -f "$f" ]] && SNAP_FB="$f"; done
+  for f in .artifacts/cache/snapshots/precompact-sess-run-02-*.json; do [[ -f "$f" ]] && SNAP_FB="$f"; done
   RUN_FB="$(jq -r '.run // ""' "$SNAP_FB" 2>/dev/null || true)"
   READY_FB="$(jq -r '.cursor.ready_nodes | join(",")' "$SNAP_FB" 2>/dev/null || true)"
   if [[ "$RUN_FB" == "v090-dev0" && "$READY_FB" == "node-B,node-C" ]]; then
@@ -249,7 +249,7 @@ else
   printf '{"schema_version":1,"run":"v090-dev0","status": "closed"}\n' > .artifacts/runs/v090-dev0/run.json
   run_hook '{"session_id":"sess-run-03","trigger":"auto"}'
   SNAP_NA=""
-  for f in .artifacts/memory/snapshots/precompact-sess-run-03-*.json; do [[ -f "$f" ]] && SNAP_NA="$f"; done
+  for f in .artifacts/cache/snapshots/precompact-sess-run-03-*.json; do [[ -f "$f" ]] && SNAP_NA="$f"; done
   RUN_NA="$(jq -r '.run // "MISSING"' "$SNAP_NA" 2>/dev/null || true)"
   if [[ "$RUN_NA" == "" ]]; then
     pass "no-active-run: closed run ignored, run field empty (legacy path)"
@@ -257,6 +257,41 @@ else
     fail "no-active-run" "run='$RUN_NA' snap=$SNAP_NA"
   fi
 fi
+
+# ---------------------------------------------------------------------------
+# 11. (v6.4.4) Retired snapshot dirs are DRAINED into cache/snapshots, and the
+#     now-empty memory/ is removed. Without this an upgraded project keeps two
+#     snapshot dirs forever and the rehydrator has to guess between them.
+# ---------------------------------------------------------------------------
+total=$((total+1))
+rm -f .artifacts/cache/snapshots/precompact-*.json 2>/dev/null || true
+mkdir -p .artifacts/memory/snapshots .artifacts/snapshots
+printf '{"session_id":"legacy-mem"}\n'  > .artifacts/memory/snapshots/precompact-legacy-mem-1.json
+printf '{"session_id":"legacy-top"}\n'  > .artifacts/snapshots/precompact-legacy-top-1.json
+run_hook '{"session_id":"sess-drain-01","trigger":"auto"}'
+DRAINED_MEM=".artifacts/cache/snapshots/precompact-legacy-mem-1.json"
+DRAINED_TOP=".artifacts/cache/snapshots/precompact-legacy-top-1.json"
+if [[ -f "$DRAINED_MEM" && -f "$DRAINED_TOP" \
+      && ! -d .artifacts/memory && ! -d .artifacts/snapshots ]]; then
+  pass "legacy-drain: memory/snapshots + snapshots/ drained into cache/, memory/ removed"
+else
+  fail "legacy-drain" "mem=$(ls -d .artifacts/memory 2>&1) top=$(ls -d .artifacts/snapshots 2>&1)"
+fi
+
+# ---------------------------------------------------------------------------
+# 12. (v6.4.4) A legacy dir holding a NON-snapshot file survives the drain —
+#     `rmdir` never takes an unrelated file with it.
+# ---------------------------------------------------------------------------
+total=$((total+1))
+mkdir -p .artifacts/memory/snapshots
+printf 'durable operator note\n' > .artifacts/memory/carryforwards.md
+run_hook '{"session_id":"sess-drain-02","trigger":"auto"}'
+if [[ -f .artifacts/memory/carryforwards.md && ! -d .artifacts/memory/snapshots ]]; then
+  pass "legacy-drain-safety: non-snapshot file kept, empty snapshots/ still removed"
+else
+  fail "legacy-drain-safety" "note=$(ls .artifacts/memory 2>&1)"
+fi
+rm -rf .artifacts/memory 2>/dev/null || true
 
 echo "—— $((total-fails))/$total passed ——"
 exit "$fails"

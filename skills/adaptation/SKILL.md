@@ -33,7 +33,7 @@ shctx adapt roll --sprint=<branch> --grade=<G> [--size=XS|S|M|L|XL] [--lanes=N] 
 
 **Trend + decay.** Before PAUSE, `shctx adapt report --trends` — mechanized, never eyeballed — reads the last 3 sprints, emits an informational **TREND ALERT** on: a HIGH/CRITICAL concern recurring across all 3; grade trending strictly downward (A→B→C); cost rising ≥1.5× (newest vs oldest `wall_minutes`/`api_calls`); <3 closes emits nothing. `shctx adapt recommend` turns the same averages into a lane/t-shirt/watch-concern RECOMMENDATION. Every recurrence refreshes a prior's `updated_at`; unpinned and unseen across `SHCTX_ADAPT_DECAY_SPRINTS` closes (default **6**) prunes next `roll`. Pinned priors are NEVER pruned.
 
-**Feedback classification.** Mid-sprint `feedback_*.md` memory MUST classify: project-specific → project memory; framework-generic → flagged in the close report as a doctrine-promotion candidate. Conductor NEVER pushes doctrine changes to the shepherd repo.
+**Feedback classification.** Mid-sprint `feedback_*.md` notes MUST classify: project-specific → `{paths.ctx}/feedback_<topic>.md` (the one knowledge silo — tracked, so it compounds; NEVER a `memory/` dir, which is retired and was gitignored); framework-generic → flagged in the close report as a doctrine-promotion candidate. Conductor NEVER pushes doctrine changes to the shepherd repo.
 
 **Invariants:** bounded (dedup-by-title, HIGH/CRITICAL-only, decay-6), graceful-empty (empty store == cold start), idempotent (re-running a `roll` never duplicates the row or re-harvests a prior).
 

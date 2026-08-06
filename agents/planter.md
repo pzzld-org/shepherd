@@ -150,4 +150,4 @@ Under `/shepherd:spawn` with a teammate active. Payload schema + rollover: `skil
 
 ## Side-effect boundary
 
-Plant mode writes stay within `.shepherd/`/`.claude/`/`*.md` (seeds, mesh report, `[ledger.carry_forward_file]`, `{paths.ctx}/*.md`, memory, doctrines, GH milestone descriptions) — **never** a run's `plan.md` (engineer's), source/schema/config/build manifests, audit/close reports, handoff docs, `CLAUDE.md`. Spawn mode adds the §Babysitter git-custody perimeter; `[gates]` runs between waves (not a gatekeeper).
+Plant mode writes stay within `.shepherd/`/`.claude/`/`*.md` (seeds, mesh report, `[ledger.carry_forward_file]`, `{paths.ctx}/*.md` — the ONE knowledge silo, never a `memory/` dir, which is retired — doctrines, GH milestone descriptions) — **never** a run's `plan.md` (engineer's), source/schema/config/build manifests, audit/close reports, handoff docs, `CLAUDE.md`. Spawn mode adds the §Babysitter git-custody perimeter; `[gates]` runs between waves (not a gatekeeper).

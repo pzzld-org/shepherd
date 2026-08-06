@@ -282,6 +282,51 @@ def _check_logs(root: Path) -> list[str]:
 
 
 # --------------------------------------------------------------------------
+# v6.4.4 — retired-directory check. Unlike the #P4 runs/ check below this one
+# FAILs, because it is always safe to fix: `migrate --layout v4` is idempotent
+# and can run at any point in a sprint, whereas renaming a live run cannot.
+# --------------------------------------------------------------------------
+#: Directories retired by the artifact schema, mapped to the migration that
+#: drains each one. `memory/` is the v6.4.4 entry: it duplicated `ctx/` (the
+#: one knowledge silo) while being gitignored, so operator-authored notes put
+#: there were silently dropped by git instead of compounding in history.
+_RETIRED_DIRS: tuple[tuple[str, str, str], ...] = (
+    (
+        "memory",
+        "shepherd migrate --layout v4",
+        "snapshots belong in cache/, knowledge belongs in ctx/ -- see "
+        "naming-conventions.md §One knowledge silo",
+    ),
+)
+
+
+def _check_retired_dirs(root: Path) -> list[str]:
+    """Fail on any retired namespace directory still present on disk.
+
+    A retired directory is not merely untidy: ``memory/`` is gitignored, so
+    every hand-authored note left in it is invisible to git. Reporting it as a
+    violation with the exact migration command is the whole point — a silent
+    knowledge sink is what this check exists to make loud.
+
+    An EMPTY retired directory still reports: it is a live trap that the next
+    operator will drop a file into, and ``--layout v4`` removes it.
+
+    Args:
+        root: The resolved artifacts root (``resolve_workdir()``).
+
+    Returns:
+        One ``lint: <path> ...`` line per retired directory present, naming
+        the migration that fixes it — empty when none exist.
+    """
+    messages: list[str] = []
+    for name, fix, why in _RETIRED_DIRS:
+        path = root / name
+        if path.is_dir():
+            messages.append(f"lint: {path} is a RETIRED directory ({why}) -- fix: {fix}")
+    return messages
+
+
+# --------------------------------------------------------------------------
 # #P4 — runs/ canonical-id check. See the module docstring's "#P4 EXTENSION"
 # note: this is a WARN, deliberately kept out of the bash-parity fail/count
 # path below.
@@ -348,6 +393,7 @@ def _lint(root: Path) -> int:
     messages.extend(_check_reports(root))
     messages.extend(_check_journal(root))
     messages.extend(_check_logs(root))
+    messages.extend(_check_retired_dirs(root))
 
     warnings = _check_runs(root)
 

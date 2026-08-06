@@ -60,13 +60,13 @@ git config user.email t@t
 git config user.name t
 git -c commit.gpgsign=false commit -q --allow-empty -m init
 git checkout -q -b v0.9.0-dev.0 2>/dev/null || true
-mkdir -p .claude .artifacts/memory/snapshots .artifacts/tmp
+mkdir -p .claude .artifacts/cache/snapshots .artifacts/tmp
 touch .claude/shepherd.toml
 
 SESSION="sess-rhy-01"
 SESSION_SAFE="${SESSION//[^A-Za-z0-9_.-]/_}"
 FLAG_FILE=".artifacts/tmp/rehydrate-pending.${SESSION_SAFE}"
-SNAP_FILE=".artifacts/memory/snapshots/precompact-${SESSION_SAFE}-$(date +%s).json"
+SNAP_FILE=".artifacts/cache/snapshots/precompact-${SESSION_SAFE}-$(date +%s).json"
 
 PAYLOAD_SS="{\"session_id\":\"${SESSION}\",\"hook_event_name\":\"SessionStart\",\"source\":\"compact\"}"
 PAYLOAD_UPS="{\"session_id\":\"${SESSION}\",\"hook_event_name\":\"UserPromptSubmit\",\"prompt\":\"continue\"}"
@@ -183,7 +183,7 @@ fi
 total=$((total+1))
 touch "$FLAG_FILE"
 rm -f "$SNAP_FILE" 2>/dev/null || true
-rm -f .artifacts/memory/snapshots/precompact-"${SESSION_SAFE}"-*.json 2>/dev/null || true
+rm -f .artifacts/cache/snapshots/precompact-"${SESSION_SAFE}"-*.json 2>/dev/null || true
 out=$(run_hook "$PAYLOAD_UPS")
 FLAG_AFTER=0; [[ -f "$FLAG_FILE" ]] && FLAG_AFTER=1
 if ! is_context "$out" && [[ "$FLAG_AFTER" -eq 0 ]]; then
@@ -227,6 +227,29 @@ if is_context "$out" && ! printf '%s' "$out" | grep -q 'Run: '; then
 else
   fail "no-run-field: legacy snapshot run-silent" "out=${out:0:250}"
 fi
+
+# ---------------------------------------------------------------------------
+# (v6.4.4) A stale snapshot in a leftover memory/snapshots/ must NEVER shadow a
+# fresh one in cache/snapshots/. The pre-v6.4.4 reader picked the first
+# directory that existed, so a leftover memory/ pinned rehydration to
+# pre-upgrade state permanently.
+# ---------------------------------------------------------------------------
+total=$((total+1))
+mkdir -p .artifacts/memory/snapshots
+STALE=".artifacts/memory/snapshots/precompact-${SESSION_SAFE}-1000000000.json"
+FRESH=".artifacts/cache/snapshots/precompact-${SESSION_SAFE}-2000000000.json"
+rm -f .artifacts/cache/snapshots/precompact-*.json 2>/dev/null || true
+SNAP_FILE="$STALE"; write_snapshot
+sed -i.bak 's/"v0\.9\.0-dev\.0"/"v0.1.0-STALE"/' "$STALE" && rm -f "$STALE.bak"
+SNAP_FILE="$FRESH"; write_snapshot
+touch "$FLAG_FILE"
+out=$(run_hook "$PAYLOAD_SS")
+if printf '%s' "$out" | grep -q 'v0.9.0-dev.0' && ! printf '%s' "$out" | grep -q 'STALE'; then
+  pass "no-stale-shadow: fresh cache/ snapshot wins over a leftover memory/ one"
+else
+  fail "no-stale-shadow: fresh cache/ snapshot wins" "out=${out:0:250}"
+fi
+rm -rf .artifacts/memory 2>/dev/null || true
 
 echo "—— $((total-fails))/$total passed ——"
 exit "$fails"
