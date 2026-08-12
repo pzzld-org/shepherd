@@ -23,12 +23,11 @@ file_scope:
     - conformance (NEW — language-neutral golden corpus)
     - services/cli
   additive:
-    - .github/workflows
-    - .githooks
-    - deny.toml
-    - rust-toolchain.toml
     - .shepherd/shepherd.toml
-    - src
+    - agents
+    - commands
+    - skills
+    - hooks
     - CHANGELOG.md
 ---
 
@@ -196,5 +195,6 @@ Recommended shape only. The engineer's Stage Graph is binding.
 - Port precedent: `FL03/codex-shepherd` v1.0.2 `docs/parity.md`; tracking: FL03/shepherd#279, milestone 58
 - Dependency stack + crate topology, locked and Context7-checked: `.shepherd/docs/specs/2026-08-12-v645-rust-dependency-stack.md` — §9 records the four feature-graph defects found while scaffolding and the rusqlite backend correction
 - Sprint setup, run first on any checkout: `scripts/setup.sh` then `scripts/gate.sh full`; tiers, add-a-crate rules and invariants in `CONTRIBUTING.md` + `scripts/check-workspace.sh`
+- Plugin layout contract, read before moving anything at the repo root: `.shepherd/docs/specs/2026-08-12-v645-plugin-layout-contract.md` — `claude plugin validate` passes clean on a tree whose 43 hooks all point at deleted scripts; `scripts/check-plugin.sh` is what catches it
 - Crate contracts, read before touching a member: `crates/sdk/README.md` (umbrella + how to add one), `crates/core/README.md` (boundary), `crates/registry/README.md` (SQLite per target), `crates/render/README.md` (determinism)
 - `skills/shepherd/references/seed-template.md`, `agents/planter.md`, `CHANGELOG.md` v6.4.4
