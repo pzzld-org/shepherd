@@ -26,7 +26,7 @@ path = "bin/cli.rs"
 
 [dependencies]
 # engine — the harness-agnostic core this binary adapts
-shepherd-core = { workspace = true }
+shepherd = { workspace = true }
 # cli
 clap = { features = ["cargo", "derive", "env"], workspace = true }
 # config
@@ -80,7 +80,7 @@ wasm = [
 alloc = [
   "serde/alloc",
   "serde_json/alloc",
-  "shepherd-core/alloc",
+  "shepherd/alloc",
 ]
 
 std = [
@@ -88,7 +88,7 @@ std = [
   "anyhow/std",
   "serde/std",
   "serde_json/std",
-  "shepherd-core/std",
+  "shepherd/std",
   "thiserror/std",
   "tracing/std",
 ]

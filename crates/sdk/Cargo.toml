@@ -1,0 +1,64 @@
+[package]
+build = "build.rs"
+description = "A custom agentic engine for dynamical financial models and market interaction"
+name = "shepherd"
+readme = "README.md"
+
+authors.workspace = true
+categories.workspace = true
+edition.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[package.metadata.docs.rs]
+all-features = false
+features = ["default"]
+rustc-args = ["--cfg", "docsrs"]
+version = "v{{version}}"
+
+[package.metadata.release]
+no-dev-version = true
+tag-name = "v{{version}}"
+
+[lib]
+bench = true
+path = "lib.rs"
+
+[dependencies]
+shepherd-core = { workspace = true }
+
+[dev-dependencies]
+
+[dev-dependencies.criterion]
+features = [
+  "cargo_bench_support",
+  "plotters",
+]
+workspace = true
+
+[features]
+
+default = [
+  "std",
+  "hashbrown",
+  "json",
+]
+
+full = [
+  "default",
+  "tracing",
+  "uuid",
+  "axiom-core/full",
+]
+
+# ********* [FF] Flags *********
+async = [
+  "shepherd-core/async",
+  "sync",
+  "tokio",
+  "tokio_runtime",
+]

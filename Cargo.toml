@@ -1,13 +1,11 @@
 [workspace]
 default-members = [
-  "cli",
-  "core",
+  "crates/cli","crates/sdk"
 ]
 exclude = [
 ]
 members = [
-  "cli",
-  "core",
+  "crates"
 ]
 resolver = "3"
 
@@ -28,8 +26,11 @@ rust-version = "1.96.0"
 version = "6.4.5"
 
 [workspace.dependencies]
-shepherd-cli = { default-features = false, path = "cli", version = "6.4.5" }
-shepherd-core = { default-features = false, path = "core", version = "6.4.5" }
+# bin
+shepherd-cli = { default-features = false, path = "crates/cli", version = "6.4.5" }
+# sdk
+shepherd = { default-features = false, path = "crates/sdk", version = "6.4.5" }
+shepherd-core = { default-features = false, path = "crates/core", version = "6.4.5" }
 
 # cli
 clap = { features = ["cargo", "derive", "env"], version = "4" }
