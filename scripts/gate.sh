@@ -71,6 +71,23 @@ gate_full() {
 # opt-in locally and always-on in CI (.github/workflows/rust-wasm.yml).
 gate_wasm() {
   local missing=0
+
+  # wasm32-unknown-unknown needs a clang with a WebAssembly backend, because
+  # `sqlite-wasm-rs` compiles SQLite from C. Apple's system clang has no wasm
+  # backend and fails deep inside cc-rs with a wall of `-D` flags that says
+  # nothing about the actual cause, so it is worth finding Homebrew's up front.
+  for llvm in /opt/homebrew/opt/llvm/bin /usr/local/opt/llvm/bin; do
+    if [ -x "${llvm}/clang" ]; then
+      export CC="${llvm}/clang"
+      export AR="${llvm}/llvm-ar"
+      break
+    fi
+  done
+  if [ "$(uname -s)" = "Darwin" ] && [ -z "${CC:-}" ]; then
+    printf 'no clang with a wasm backend found (brew install llvm)\n'
+    missing=1
+  fi
+
   command -v wasmtime >/dev/null 2>&1 || { printf 'wasmtime not on PATH\n'; missing=1; }
   [ -n "${WASI_SDK_PATH:-}" ] && [ -x "${WASI_SDK_PATH}/bin/clang" ] || {
     printf 'WASI_SDK_PATH unset or not a wasi-sdk install\n'
