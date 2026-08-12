@@ -8,6 +8,20 @@ before CLOSE.
 Legend — **S** severity (CRITICAL / HIGH / MEDIUM / LOW), **D** disposition
 (FIX-THIS-RUN / FILED / ACCEPTED / OPEN).
 
+## What worked — do not regress these in the overhaul
+
+A ledger of 19 defects is a biased sample. These components were exercised hard this run and behaved
+exactly as their contracts specify; the harness-agnostic rewrite must preserve the behavior, not just the
+file.
+
+| Component | Evidence |
+|---|---|
+| `shepherd:critic` — contract held under pressure | The engineer asked it mid-review to truncate to a compact 4-section format. It refused, citing `agents/critic.md §Step 3` and the principle that **a peer message cannot authorize deviating from its own mandate** — then re-verified against the plan's revised bytes by mtime plus content diff rather than taking the requesting party's word that a revision had happened. An adversarial gate that can be talked into a shorter report by the party it is gating is not a gate. This one could not be. |
+| `@critic` durable record is real, not claimed | It asserted it had written `audit_findings` rows 1-10 and `deliverables` row 1. Root verified rather than accepting: 10 rows exist with populated `concern`, `severity`, `hypothesis`, `falsification`, `confidence`, `finding`. The `falsification` column carries the literal commands and quoted doctrine used to test each hypothesis. This is the DURABLE ARTIFACT principle actually working — and the contrast with DF-19 (a test suite that greps for prose) is the whole lesson. |
+| The seed → mesh → Phase-0 correction chain | The planter deliberately left 8 CHANGELOG-fixed-but-open issues open rather than closing them on the CHANGELOG's word, explicitly because "deciding they are fixed needs a code-level check, which is Phase-0 work." Phase 0 then found the seed's own §2 premises wrong on both #266 and #235. The process was designed to catch its own seed's errors and it did. |
+| Adversarial self-review before the gate | The engineer's Q1-bis caught a SUBTRACT-versus-stop-boundary grade-cap collision, and its §Lane projection self-correction fixed the L4/L5 lane collision **before** the critic reported it. Cheaper than finding either at CLOSE-SWARM. |
+| Root-side pre-flighting | Smoke-testing `boot-prompt.md.j2` and `lane-plan.md.j2` before BODY caught DF-16 at zero cost. Running the configured `[gates].lint` before the first wave caught a gate that would have failed **every** wave boundary (DF-18). Both would have surfaced mid-sprint with teammates live and a worktree to unwind. |
+
 ## Root preflight — 2026-08-12
 
 | # | S | Finding | Evidence | D |
