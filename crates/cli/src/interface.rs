@@ -3,7 +3,7 @@
     Created At: 2026.08.12:15:09:50
     Contrib: @FL03
 */
-use super::ShepherdCommand;
+use crate::cmd::ShepherdCommand;
 
 #[derive(
     Clone,

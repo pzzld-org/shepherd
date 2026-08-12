@@ -16,12 +16,14 @@ sprint_size: XL
 file_scope:
   exclusive:
     - Cargo.toml
-    - cli
+    - crates
+    - scripts/check-features.sh
     - packages (NEW — npm platform packages + TS harness adapters)
     - content (NEW — harness-neutral role and skill sources)
     - conformance (NEW — language-neutral golden corpus)
     - services/cli
   additive:
+    - .github/workflows/rust.yml
     - .shepherd/shepherd.toml
     - skills/context/schema
     - hooks
@@ -53,15 +55,16 @@ Shepherd's engine is rewritten once, in Rust, and published as a single compiled
 
 Changing one of these is a critic-RED escalation, not a sprint-time judgment call.
 
-1. **Rust owns the engine; TypeScript owns Pi's hot path.** `crates/` holds core, registry, render, and CLI. Claude and Codex adapters exec the binary. Pi's per-`tool_call` guards stay TypeScript. No napi-rs and no `.node` addon in this arc: the jiti in-process load path is unverified and Prisma walked back that exact architecture in 7.0.0.
+1. **Rust owns the engine; TypeScript owns Pi's hot path.** `crates/` holds core, registry, render, sdk, and CLI. Claude and Codex adapters exec the binary. Pi's per-`tool_call` guards stay TypeScript. No napi-rs and no `.node` addon in this arc: the jiti in-process load path is unverified and Prisma walked back that exact architecture in 7.0.0.
 2. **Guard predicates are data, not duplicated code.** Both the Rust engine and the TS guard layer interpret one declarative predicate spec under `content/`. A predicate expressed as code in two languages is a defect.
 3. **The registry schema is the cross-harness contract, not CLI stdout.** All 32 guard scripts read SQLite directly and zero of them shell out to the CLI. Schema and row shapes are the compatibility surface.
 4. **`rusqlite` with `features = ["bundled"]` only.** Probe-verified against 0.40.2 (SQLite 3.53.2): FTS5 present, external-content tables with `unicode61 remove_diacritics 2` work, `json_valid` CHECKs enforce. There is no `fts5` cargo feature. `ENABLE_JSON1` is ABSENT from `compile_options` yet `json_valid` works, since JSON went core at SQLite 3.38 — assert the behavior, never that flag.
 5. **No canon flip before the parity gate is green.** Python stays canonical until conformance passes byte-clean. There is no dual-maintenance window.
 6. **The 20 migration files port verbatim.** Migration SQL is the portable artifact; only the runner is rewritten. `rusqlite_migration` is rejected: it tracks state in `user_version`, while this schema uses a `schema_versions` table both existing runners read.
-7. **The dependency stack is closed.** `clap`, `rusqlite`, `config` (toml feature only), `schemars`, `toml`, `nom`, `minijinja`, `serde`, `sha2`, `anyhow`, `thiserror`, `uuid`, `chrono`, `tracing`. 101 resolved packages, down from the scaffold's 201. No `sqlx`, no `tokio`, no `reqwest`; GitHub stays on the `gh` CLI. `config` owns the six-tier precedence chain so `_lib.sh:shctx_config_files()` is deleted rather than ported; `schemars` generates the key universe the validator checks against. Rationale and probe results in `.shepherd/docs/specs/2026-08-12-v645-rust-dependency-stack.md`. Adding a crate is a critic-RED escalation.
-
-8. **The engine never knows it is a CLI.** `core/` holds domain types, config schema, and run state; `cli/` is one adapter over it, and a Node or wasm binding is another. `core` may not depend on `clap`, `anyhow`, a log sink, an I/O backend, or `std::process`, and may not branch on `Harness`. Enforced by the `engine-boundary` CI job, not by prose: `core` compiles to `wasm32-unknown-unknown` on every push, plus a forbidden-dependency gate and a process/argv gate. This is the arc's answer to "never rewrite this again"; a rule that only lives in a doc drifts.
+7. **The dependency stack is closed.** `clap`, `rusqlite`, `config` (toml feature only), `schemars`, `nom`, `minijinja`, `serde`, `sha2`, `strum`, `anyhow`, `thiserror`, `uuid`, `chrono`, `tracing`. 98 resolved packages workspace-wide, down from the scaffold's 201; the `shepherd` umbrella at default features resolves 11, which is the number an embedder pays. Treat these as ceilings to defend. No `sqlx`, no `tokio`, no `reqwest`; GitHub stays on the `gh` CLI. `config` owns the six-tier precedence chain so `_lib.sh:shctx_config_files()` is deleted rather than ported; `schemars` generates the key universe the validator checks against. Rationale and probe results in `.shepherd/docs/specs/2026-08-12-v645-rust-dependency-stack.md`. Adding a crate is a critic-RED escalation.
+8. **The engine never knows it is a CLI.** `crates/core` holds domain types, config schema, and run state; `crates/cli` is one adapter over it, and a Node or wasm binding is another. `core` may not depend on `clap`, `anyhow`, a log sink, an I/O backend, or `std::process`, and may not branch on `Harness`. Enforced by the `engine-boundary` CI job, not by prose: `core` compiles to `wasm32-unknown-unknown` on every push, plus a forbidden-dependency gate and a process/argv gate, each verified against a negative control. This is the arc's answer to "never rewrite this again"; a rule that only lives in a doc drifts.
+9. **Everything routes through the `shepherd` umbrella; nothing links a member crate directly.** `crates/sdk` is the published `shepherd` crate and the only name a consumer puts in a manifest. `crates/cli` depends on `shepherd`, never on `shepherd-core`, `shepherd-registry`, or `shepherd-render`. This is what makes splitting a new member out of the engine an internal refactor instead of a change every adapter absorbs — the same indirection that would have made the Python-to-Rust move a re-implementation of one layer rather than all of them.
+10. **Feature flags are checked, not declared.** Every dependency past `thiserror` and `strum` is optional; capability flags fan out **weakly** (`shepherd-registry?/json`) so enabling `json` never conjures a member the consumer did not request. `cargo check --workspace` builds exactly one combination, so `scripts/check-features.sh` checks each flag in isolation across both wasm targets and runs as its own CI job; it found four real defects on its first runs (recorded in the dependency spec §9). Adding a member without adding its row to that script is an incomplete change. Also note `rusqlite` 0.40 picks its SQLite backend by target cfg, not feature: `wasm32-unknown-unknown` needs `sqlite-wasm` with `bundled` **off**, `wasm32-wasip1` needs `bundled` **on** plus `wasi-vfs`. One flag covering both is wrong.
 
 ## B. Sprint topology
 
@@ -69,7 +72,7 @@ Recommended shape only. The engineer's Stage Graph is binding.
 
 | Sprint | Theme | Size | Depends on | Parallel-safe with |
 |---|---|---|---|---|
-| dev.0 | Workspace scaffold done; registry bootstrap, conformance oracle frozen from Python | L | — | — |
+| dev.0 | Rust workspace scaffold **landed**; npm workspace, registry bootstrap, conformance oracle frozen from Python | L | — | — |
 | dev.1 | Rust core: run state, canonical `run.json`, config schema, Stage Graph | XL | dev.0 | dev.2 |
 | dev.2 | Rust registry: 20 migrations, 39 tables, 25 views, 7 triggers, FTS5 | L | dev.0 | dev.1 |
 | dev.3 | Verb surface: ~147 leaf commands to parity, plus render and templates | XL | dev.1, dev.2 | — |
@@ -98,8 +101,9 @@ Recommended shape only. The engineer's Stage Graph is binding.
 ### Monorepo skeleton and workspace layout  [CRITICAL]
 - **GH:** #280
 - **Priority:** CRITICAL
-- **Spec:** `crates/{core,registry,render,cli}` plus `packages/{harness-claude,harness-codex,harness-pi}`; root holds glue only
-- **Acceptance:** `cargo metadata --no-deps` lists 4 members and `cargo check --workspace` exits 0
+- **Spec:** `crates/{core,registry,render,sdk,cli}` plus `packages/{harness-claude,harness-codex,harness-pi}`; root holds glue only. `sdk` is the published `shepherd` umbrella (decision 9) and every other consumer routes through it
+- **Acceptance:** `cargo metadata --no-deps` lists 5 members, `cargo check --workspace` exits 0, and `scripts/check-features.sh --targets` reports every combination resolving
+- **Status:** the Rust half is landed and green in CI. Remaining: `packages/` (npm workspace: three harness adapters plus the compiler), `content/`, `conformance/`, and the npm-side dependency-rule gate test
 
 ### Conformance oracle frozen from the Python CLI  [CRITICAL]
 - **GH:** #281
@@ -188,5 +192,6 @@ Recommended shape only. The engineer's Stage Graph is binding.
 - Monorepo architecture — `obsidian://adv-uri?vault=pzzld&filepath=src%2Fprojects%2Fshepherd%2Fdocs%2Fshepherd-monorepo.md`
 - Project home — `obsidian://adv-uri?vault=pzzld&filepath=src%2Fprojects%2Fshepherd%2FREADME.md`
 - Port precedent: `FL03/codex-shepherd` v1.0.2 `docs/parity.md`; tracking: FL03/shepherd#279, milestone 58
-- Dependency stack, locked and Context7-checked: `.shepherd/docs/specs/2026-08-12-v645-rust-dependency-stack.md`
+- Dependency stack + crate topology, locked and Context7-checked: `.shepherd/docs/specs/2026-08-12-v645-rust-dependency-stack.md` — §9 records the four feature-graph defects found while scaffolding and the rusqlite backend correction
+- Crate contracts, read these before touching a member: `crates/sdk/README.md` (umbrella, and how to add a member), `crates/core/README.md` (the boundary), `crates/registry/README.md` (SQLite backends per target), `crates/render/README.md` (the determinism contract)
 - `skills/shepherd/references/seed-template.md`, `agents/planter.md`, `CHANGELOG.md` v6.4.4

@@ -31,6 +31,29 @@ cargo check -p shepherd-core --target wasm32-unknown-unknown
 
 Apple's system clang has no WebAssembly backend. CI installs LLVM; locally, use Homebrew's.
 
+## Consumers link `shepherd`, not this crate
+
+Nothing outside the workspace should name `shepherd-core` in a manifest. The `shepherd` umbrella re-exports everything here, which is what makes splitting a new member out of the engine an internal refactor rather than a breaking change for every adapter.
+
 ## Features
 
-`std` is on by default and is what a native or wasm32 build wants. The `alloc` and `std` split exists so the dependency surface can be narrowed later; the crate itself still uses `std::path::PathBuf`, so `#![no_std]` is not yet declared. Note that `wasm32-unknown-unknown` supports `std`, so the wasm target does not depend on that work landing.
+Every dependency past `thiserror` and `strum` is optional, and every module that needs one is gated on it. The point is not minimalism for its own sake: it is that an embedder can take the run-state machine without linking a JSON codec, a schema generator, a clock, or an entropy source.
+
+| Feature | Enables |
+|---|---|
+| `std` *(default)* | `settings`, and the `std` surface of every enabled dependency |
+| `alloc` | the `no_std` floor; `error` and `types` are available here |
+| `json` | `serde` + `serde_json`, for the canonical artifact codec |
+| `parse` | `nom`, for the run-id and branch grammars |
+| `schema` | `schemars`, for the config key universe |
+| `chrono`, `uuid`, `tracing` | the named dependency, nothing more |
+| `full` | everything above; `native` is its alias |
+| `wasm`, `wasi` | the target-appropriate set |
+
+The crate is genuinely `#![no_std]` below `std`. `settings` is gated on `std` because it is the only module that names a filesystem path; under `alloc` alone you still get the error and domain types, and you do not get a type that presumes a filesystem.
+
+`wasm` and `wasi` deliberately exclude `uuid` and `chrono`. UUIDv7 needs an entropy source and chrono's `clock` needs a system timezone, and neither exists on `wasm32-unknown-unknown` without a JS shim; an embedder supplies both.
+
+Every leaf dependency flag pulls in `alloc`, because there is no configuration of this crate that builds below the allocating floor — `Error` carries owned strings. A flag that lets you select an unbuildable combination is a flag that hands you a compile error and blames your feature list.
+
+Run `scripts/check-features.sh` to check each combination in isolation. CI runs it on every push.

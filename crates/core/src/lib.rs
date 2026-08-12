@@ -70,14 +70,14 @@ pub mod types {
     }
 }
 // re-exports
+#[cfg(feature = "std")]
+#[doc(inline)]
+pub use self::settings::ShepherdConfig;
 #[doc(inline)]
 pub use self::{
     error::{Error, Result},
     types::*,
 };
-#[cfg(feature = "std")]
-#[doc(inline)]
-pub use self::settings::ShepherdConfig;
 // prelude
 #[doc(hidden)]
 pub mod prelude {

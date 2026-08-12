@@ -1,6 +1,6 @@
 [package]
 build = "build.rs"
-description = "A custom agentic engine for dynamical financial models and market interaction"
+description = "Sprint orchestration and governance for AI coding agents: the umbrella SDK re-exporting the shepherd engine, registry, and render layers."
 name = "shepherd"
 readme = "README.md"
 
@@ -14,9 +14,17 @@ repository.workspace = true
 rust-version.workspace = true
 version.workspace = true
 
+[lib]
+bench = true
+path = "lib.rs"
+
+[[test]]
+name = "default"
+required-features = []
+
 [package.metadata.docs.rs]
 all-features = false
-features = ["default"]
+features = ["full"]
 rustc-args = ["--cfg", "docsrs"]
 version = "v{{version}}"
 
@@ -24,41 +32,122 @@ version = "v{{version}}"
 no-dev-version = true
 tag-name = "v{{version}}"
 
-[lib]
-bench = true
-path = "lib.rs"
-
 [dependencies]
+# engine — the only mandatory member; everything else is a capability
 shepherd-core = { workspace = true }
-
-[dev-dependencies]
-
-[dev-dependencies.criterion]
-features = [
-  "cargo_bench_support",
-  "plotters",
-]
-workspace = true
+# capability layers, each behind its own flag
+shepherd-registry = { optional = true, workspace = true }
+shepherd-render = { optional = true, workspace = true }
 
 [features]
-
 default = [
   "std",
-  "hashbrown",
-  "json",
 ]
 
 full = [
   "default",
+  "chrono",
+  "json",
+  "parse",
+  "registry",
+  "render",
+  "schema",
   "tracing",
   "uuid",
-  "axiom-core/full",
 ]
 
 # ********* [FF] Flags *********
-async = [
-  "shepherd-core/async",
-  "sync",
-  "tokio",
-  "tokio_runtime",
+#
+# Capability flags fan out to every member that implements the capability. The
+# `?/` form is deliberate throughout: enabling `json` must not drag in the
+# registry, it must only configure the registry *if the consumer already asked
+# for it*. A non-weak `shepherd-registry/json` here would silently make every
+# consumer link SQLite.
+json = [
+  "shepherd-core/json",
+  "shepherd-registry?/json",
+  "shepherd-render?/json",
+]
+
+parse = [
+  "shepherd-core/parse",
+]
+
+schema = [
+  "shepherd-core/schema",
+]
+
+# ********* [FF] Targets *********
+native = ["full"]
+
+nightly = [
+  "shepherd-core/nightly",
+  "shepherd-registry?/nightly",
+  "shepherd-render?/nightly",
+]
+
+# A target flag must enable this crate's OWN std floor, not just forward to the
+# members'. Forwarding alone leaves the umbrella itself below `alloc` and it
+# fails its own `compile_error!` guard — which is exactly how this was caught.
+wasi = [
+  "shepherd-core/wasi",
+  "shepherd-registry?/wasi",
+  "shepherd-render?/wasi",
+  "std",
+]
+
+wasm = [
+  "shepherd-core/wasm",
+  "shepherd-registry?/wasm",
+  "shepherd-render?/wasm",
+  "std",
+]
+
+# ********* [FF] Standard Library *********
+alloc = [
+  "shepherd-core/alloc",
+  "shepherd-registry?/alloc",
+  "shepherd-render?/alloc",
+]
+
+std = [
+  "alloc",
+  "shepherd-core/std",
+  "shepherd-registry?/std",
+  "shepherd-render?/std",
+]
+
+# ********* [FF] Deps *********
+bundled = [
+  "shepherd-registry?/bundled",
+]
+
+chrono = [
+  "shepherd-core/chrono",
+]
+
+registry = [
+  "dep:shepherd-registry",
+]
+
+render = [
+  "dep:shepherd-render",
+]
+
+tracing = [
+  "shepherd-core/tracing",
+  "shepherd-registry?/tracing",
+  "shepherd-render?/tracing",
+]
+
+uuid = [
+  "shepherd-core/uuid",
+]
+
+sqlite-wasm = [
+  "shepherd-registry?/sqlite-wasm",
+]
+
+wasi-vfs = [
+  "shepherd-registry?/wasi-vfs",
 ]

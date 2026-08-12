@@ -131,24 +131,35 @@ std = [
 ]
 
 # ********* [FF] Deps *********
+#
+# Every dep flag pulls in `alloc`. There is no configuration of this crate that
+# builds below the allocating floor -- `Error` carries owned strings -- so a
+# flag that lets you *select* one is a flag that hands you a compile error and
+# blames your feature list. `scripts/check-features.sh` checks each of these in
+# isolation, which is how that was found rather than assumed.
 chrono = [
+  "alloc",
   "dep:chrono",
 ]
 
 serde = [
+  "alloc",
   "dep:serde",
   "chrono?/serde",
   "uuid?/serde",
 ]
 
 serde_json = [
+  "alloc",
   "dep:serde_json",
 ]
 
 tracing = [
+  "alloc",
   "dep:tracing",
 ]
 
 uuid = [
+  "alloc",
   "dep:uuid",
 ]

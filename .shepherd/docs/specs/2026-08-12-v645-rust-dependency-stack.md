@@ -192,3 +192,62 @@ The path that *could* reach it is WASI with preopened directories, which is prec
 - `rusqlite` already supports the target, so the engine does not need restructuring to try it.
 
 The spike's success criterion is narrow and should be stated up front: **open `.shepherd/shepherd.db` from a WASI build, read a row written by the native binary, and have a bash `sqlite3` reader see a row written by the wasm build.** Anything short of that is a demo, not a solution.
+
+## 9. The crate topology, and what checking the feature graph actually found
+
+The workspace is five members, and the shape is a locked decision (seed §5.9):
+
+```
+crates/core      shepherd-core       the engine; no delivery, no I/O backend
+crates/registry  shepherd-registry   SQLite: schema, migrations, queries
+crates/render    shepherd-render     templating + provenance hashing
+crates/sdk       shepherd            the published umbrella; re-exports the above
+crates/cli       shepherd-cli        bin `shepherd`; the only delivery layer
+```
+
+`crates/cli` depends on `shepherd`, never on a member by name. That indirection is the point: splitting a new layer out of the engine becomes an internal refactor instead of a change every adapter absorbs. It is also the thing whose absence forced the Python-to-Rust rewrite to be a re-implementation of every layer at once.
+
+### Why `scripts/check-features.sh` exists
+
+`cargo check --workspace` builds exactly **one** combination: the union of every member's defaults. Every other flag is unbuilt and therefore unfalsified. A `wasm` flag that resolves to a dependency-not-found error, an `alloc` floor that quietly stopped being `no_std`, or a `full` that pulls a crate with no wasm backend all keep passing CI forever, because nothing references them.
+
+The script checks each flag in isolation, across both wasm targets, and runs as its own CI job. It found four real defects, and each is worth recording because each would have surfaced mid-sprint as a confusing build failure in unrelated work.
+
+| # | Defect | Why it was invisible |
+|---|---|---|
+| 1 | `chrono`, `tracing` and `uuid` did not imply `alloc`, so selecting any one alone produced a crate that fails its own `compile_error!` | Never selected alone by any member, so the union build never hit it |
+| 2 | The umbrella's `wasm`/`wasi` forwarded to members' target flags but never enabled its **own** `std`, so the umbrella failed its own floor guard | `cargo check --workspace` never builds a target flag |
+| 3 | `sha2` 0.11 has no `std` feature — the RustCrypto 0.11 line replaced it with `alloc` + `oid`. `sha2/std` is a hard resolution error | Copied from the 0.10-era pattern; would have blocked the first render commit |
+| 4 | `rusqlite` 0.40 selects its backend by **target cfg**, not feature — see below | The prior `wasi = ["std", "wasi-vfs"]` would have produced a wasi build with no SQLite implementation at all |
+
+### The rusqlite backend correction
+
+This supersedes the earlier note that "neither wasm target may enable `bundled`". That is true of only one of them.
+
+`libsqlite3-sys` is a **hard** dependency of `rusqlite` on every target except `cfg(all(target_family = "wasm", target_os = "unknown"))`, where it becomes optional and `sqlite-wasm-rs` takes over behind `ffi-sqlite-wasm-rs` (which is in rusqlite's own defaults).
+
+| Target | `target_os` | Backend | Correct flags |
+|---|---|---|---|
+| native | `linux`/`macos`/`windows` | `libsqlite3-sys` | `bundled` |
+| `wasm32-unknown-unknown` | `unknown` | `sqlite-wasm-rs` | `sqlite-wasm`, `bundled` **off** |
+| `wasm32-wasip1` | `wasi` | `libsqlite3-sys` + VFS shim | `bundled` **on** + `wasi-vfs` |
+
+Because the workspace pins `rusqlite` with `default-features = false`, the wasm backend is **not** inherited and must be enabled explicitly. Verified: `cargo check -p shepherd-registry --target wasm32-unknown-unknown --no-default-features --features wasm` succeeds.
+
+### A gate that passes vacuously is worse than no gate
+
+The first draft of the `engine-boundary` dependency check was:
+
+```bash
+tree() { cargo tree -p "$1" --edges normal --prefix none ${2:+--features "$2"} | ... }
+hits=$(tree shepherd-core full | grep -E "$forbidden" || true)
+```
+
+The `${2:+--features "$2"}` expansion collapsed to a single argument, cargo rejected it, and the `|| true` swallowed the failure. The gate printed **clean** while having checked nothing. It would have passed in CI indefinitely.
+
+Two changes fix the class, not the instance:
+
+1. The `cargo tree` call moved **outside** the `|| true`, so a cargo failure is fatal under `set -euo pipefail`.
+2. A **positive control** was added: `shepherd --features full` must actually link `rusqlite`. If a typo ever drops the `registry` capability from `full`, the forbidden-dependency check would start passing for the wrong reason, and the positive control catches exactly that.
+
+All three boundary gates were then verified against negative controls — an injected `clap` dependency, a `registry` capability removed from `full`, and an injected `std::process::exit` — and each was caught before the change was committed.

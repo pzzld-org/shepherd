@@ -45,10 +45,17 @@ fn fts5_accepts_the_contract_tokenizer() {
     .expect("create an fts5 table with the contract tokenizer");
 
     let hits: i64 = conn
-        .query_row("SELECT count(*) FROM probe WHERE probe MATCH 'resume'", [], |row| row.get(0))
+        .query_row(
+            "SELECT count(*) FROM probe WHERE probe MATCH 'resume'",
+            [],
+            |row| row.get(0),
+        )
         .expect("query the fts5 index");
 
-    assert_eq!(hits, 1, "remove_diacritics 2 must fold 'resumé' to 'resume'");
+    assert_eq!(
+        hits, 1,
+        "remove_diacritics 2 must fold 'resumé' to 'resume'"
+    );
 }
 
 /// `json_valid()` backs CHECK constraints across the schema. Assert the

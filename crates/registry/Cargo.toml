@@ -36,7 +36,10 @@ tag-name = "v{{version}}"
 # engine
 shepherd-core = { workspace = true }
 # database
-rusqlite = { workspace = true }
+# `cache` is pinned here rather than exposed as a flag: it is in rusqlite's own
+# defaults, the registry relies on prepared-statement reuse, and dropping it is
+# a silent performance regression, not a capability choice.
+rusqlite = { features = ["cache"], workspace = true }
 # errors
 thiserror = { workspace = true }
 # serialization
@@ -72,13 +75,23 @@ nightly = [
   "shepherd-core/nightly",
 ]
 
-# NOTE: neither wasm target may enable `bundled`. `bundled` pulls
-# libsqlite3-sys, which compiles SQLite from C and needs a sysroot. Dropping it
-# lets rusqlite's `ffi-sqlite-wasm-rs` backend take over on
-# wasm32-unknown-unknown. Verified against 0.40: a 2.07MB module with fts5,
-# json_valid and the unicode61 tokenizer compiled in. Apple's system clang has
-# no wasm backend; use LLVM's.
+# NOTE: the two wasm targets need *different* SQLite backends, and rusqlite 0.40
+# picks between them by target cfg, not by feature. `libsqlite3-sys` is a hard
+# dependency on every target except `cfg(all(target_family="wasm",
+# target_os="unknown"))`, where it becomes optional and `sqlite-wasm-rs` takes
+# over behind `ffi-sqlite-wasm-rs`.
+#
+#   wasm32-unknown-unknown -> `sqlite-wasm`, and `bundled` must stay OFF:
+#       there is no C sysroot, and the pure-wasm backend is the whole point.
+#       Verified against 0.40: a 2.07MB module with fts5, json_valid and the
+#       unicode61 tokenizer compiled in.
+#   wasm32-wasip1          -> `bundled` + `wasi-vfs`, and `sqlite-wasm` is
+#       unavailable: target_os is "wasi", not "unknown", so rusqlite still
+#       requires libsqlite3-sys and the VFS shim is layered over that C build.
+#
+# Apple's system clang has no wasm backend; use LLVM's for either.
 wasi = [
+  "bundled",
   "json",
   "std",
   "wasi-vfs",
@@ -86,6 +99,7 @@ wasi = [
 
 wasm = [
   "json",
+  "sqlite-wasm",
   "std",
 ]
 
@@ -108,6 +122,10 @@ std = [
 # ********* [FF] Deps *********
 bundled = [
   "rusqlite/bundled",
+]
+
+sqlite-wasm = [
+  "rusqlite/ffi-sqlite-wasm-rs",
 ]
 
 tracing = [

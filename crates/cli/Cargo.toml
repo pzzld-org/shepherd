@@ -18,36 +18,51 @@ version.workspace = true
 # rlib only. `cdylib` was template residue: it builds a dynamic library on every
 # compile for a target nothing consumes. The napi/wasm paths that would need it
 # are explicitly deferred out of this arc — add it back with the spike, not before.
+bench = false
 crate-type = ["rlib"]
 
 [[bin]]
 name = "shepherd"
 path = "bin/cli.rs"
 
+[package.metadata.docs.rs]
+all-features = false
+features = ["full"]
+rustc-args = ["--cfg", "docsrs"]
+version = "v{{version}}"
+
+[package.metadata.release]
+no-dev-version = true
+tag-name = "v{{version}}"
+
 [dependencies]
-# engine — the harness-agnostic core this binary adapts
-shepherd = { workspace = true }
+# sdk — the umbrella, and the only route to the engine. A binary pins the
+# capabilities it needs here rather than exposing them as its own flags: the
+# CLI's feature surface is about *delivery* (which SQLite, which target), and
+# the SDK's is about *capability*. Mixing the two is how a binary ends up
+# shipping a build that cannot open its own database.
+shepherd = { features = [
+  "json",
+  "parse",
+  "registry",
+  "render",
+  "schema",
+  "tracing",
+], workspace = true }
 # cli
-clap = { features = ["cargo", "derive", "env"], workspace = true }
-# config
+clap = { features = ["cargo", "env"], workspace = true }
+# config — the six-tier precedence chain lives here, not in the engine
 config = { workspace = true }
-# parsing
-nom = { workspace = true }
-# errors
+# errors — contextual strings are an application concern, so `anyhow` is
+# allowed on this side of the boundary and forbidden on the other
 anyhow = { workspace = true }
 thiserror = { workspace = true }
 # serialize
-serde = { features = ["derive"], workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
-# database
-rusqlite = { workspace = true }
-# templating
-minijinja = { workspace = true }
-# hashing
-sha2 = { workspace = true }
-# tracing
-tracing = { features = ["attributes", "log"], workspace = true }
-tracing-subscriber = { features = ["env-filter", "fmt"], workspace = true }
+# tracing — the binary is the only place a subscriber may be installed
+tracing = { features = ["log"], workspace = true }
+tracing-subscriber = { workspace = true }
 
 [features]
 default = [
@@ -57,22 +72,29 @@ default = [
 
 full = [
   "default",
+  "shepherd/full",
 ]
 
 # ********* [FF] Targets *********
 native = ["full"]
 
-# NOTE: neither wasm target may enable `bundled`. `bundled` pulls libsqlite3-sys,
-# which compiles SQLite from C and needs a sysroot. Dropping it lets rusqlite's
-# default `ffi-sqlite-wasm-rs` take over on wasm32-unknown-unknown. Verified: a
-# 2.07MB module with fts5, json_valid and the unicode61 tokenizer compiled in.
-# Apple clang has no wasm backend; use LLVM's.
+nightly = [
+  "shepherd/nightly",
+]
+
+# NOTE: the two wasm targets take different SQLite backends. See the rationale
+# on `shepherd-registry`'s flags; the short form is that `wasm32-unknown-unknown`
+# must NOT enable `bundled` and `wasm32-wasip1` must.
 wasi = [
+  "bundled",
+  "shepherd/wasi",
   "std",
   "wasi-vfs",
 ]
 
 wasm = [
+  "shepherd/wasm",
+  "sqlite-wasm",
   "std",
 ]
 
@@ -86,6 +108,7 @@ alloc = [
 std = [
   "alloc",
   "anyhow/std",
+  "clap/std",
   "serde/std",
   "serde_json/std",
   "shepherd/std",
@@ -95,9 +118,13 @@ std = [
 
 # ********* [FF] Deps *********
 bundled = [
-  "rusqlite/bundled",
+  "shepherd/bundled",
+]
+
+sqlite-wasm = [
+  "shepherd/sqlite-wasm",
 ]
 
 wasi-vfs = [
-  "rusqlite/wasm32-wasi-vfs",
+  "shepherd/wasi-vfs",
 ]

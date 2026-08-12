@@ -13,13 +13,22 @@ name: boundaries
 on:
   push:
     branches: [main, "v*"]
-    paths: ["**/*.rs", "**/Cargo.toml", "Cargo.lock", ".github/workflows/rust.yml"]
+    paths:
+      - "**/*.rs"
+      - "**/Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/boundaries.yml"
   pull_request:
     branches: [main, "v*"]
   workflow_dispatch:
 
+# NOTE: this group must NOT match rust.yml's. Concurrency groups are shared
+# across workflows in a repository, so two workflows using `rust-<ref>` with
+# `cancel-in-progress` cancel each OTHER on every push -- and a cancelled
+# boundary job reads as "not failed", which is exactly the outcome this
+# workflow exists to prevent.
 concurrency:
-  group: rust-${{ github.ref }}
+  group: boundaries-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -40,37 +49,90 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       # 1. The engine must reach a non-native host.
       #    Catches anything that assumes an OS, a C toolchain, or a filesystem.
-      #    No LLVM needed: core has no C dependencies, and that is the point.
+      #    No LLVM needed here: core has no C dependencies, and that is the point.
       - name: core compiles to wasm32-unknown-unknown
         run: cargo check -p shepherd-core --target wasm32-unknown-unknown
-      # 2. The engine must not acquire delivery concerns.
+
+      # 2. Nothing on the library side may acquire delivery concerns.
+      #
       #    Check 1 alone is NOT sufficient -- clap, anyhow and tracing-subscriber
       #    all compile to wasm perfectly well. Reaching a host and being free of
       #    host opinions are different properties and each needs its own gate.
-      - name: core carries no delivery dependencies
+      #
+      #    Note the two tiers. Argument parsing, contextual errors, log sinks and
+      #    config loading are forbidden EVERYWHERE on the library side, at every
+      #    feature level, because they are delivery no matter who links them. An
+      #    I/O backend is forbidden only in the engine: `shepherd-registry` owns
+      #    SQLite legitimately, and the umbrella is allowed to re-export it when
+      #    a consumer explicitly asks for the `registry` capability.
+      - name: libraries carry no delivery dependencies
         run: |
-          forbidden='^clap$|^anyhow$|^tracing-subscriber$|^config$|^rusqlite$|^minijinja$'
-          if cargo tree -p shepherd-core --edges normal --prefix none \
-               | awk '{print $1}' | sort -u | grep -qE "$forbidden"; then
-            echo "::error::shepherd-core acquired a delivery dependency."
-            echo "The engine crate must not depend on an argument parser, a"
-            echo "contextual error type, a log sink, or an I/O backend. Those"
-            echo "belong in shepherd-cli or another adapter. Offenders:"
-            cargo tree -p shepherd-core --edges normal --prefix none \
-              | awk '{print $1}' | sort -u | grep -E "$forbidden"
-            exit 1
-          fi
+          set -euo pipefail
+          delivery='^clap$|^anyhow$|^tracing-subscriber$|^config$'
+          io_backend='^rusqlite$|^minijinja$|^libsqlite3-sys$'
 
-      # 3. The engine must not reach for the process it is running in.
-      - name: core does not touch process or argv
+          fail() {
+            echo "::error::$1 acquired a forbidden dependency."
+            echo "$2"
+            echo "Offenders:"
+            printf '%s\n' "$3"
+            exit 1
+          }
+
+          # The cargo call is deliberately OUTSIDE the `|| true` below. Folded
+          # in, a cargo failure yields an empty string, grep matches nothing,
+          # and the gate reports "clean" while having checked nothing at all.
+          # That exact vacuous pass was observed while writing this job.
+          tree() {
+            cargo tree -p "$@" --edges normal --prefix none | awk '{print $1}' | sort -u
+          }
+
+          # The engine, at its widest feature set, must be free of both tiers.
+          core_full=$(tree shepherd-core --features full)
+          hits=$(printf '%s\n' "$core_full" | grep -E "$delivery|$io_backend" || true)
+          [ -z "$hits" ] || fail "shepherd-core" \
+            "The engine must not depend on an argument parser, a contextual error type, a log sink, or an I/O backend." \
+            "$hits"
+
+          # The umbrella, at its widest feature set, must be free of delivery.
+          # `full` deliberately includes registry and render, so an io_backend
+          # hit here is expected and correct.
+          sdk_full=$(tree shepherd --features full)
+          hits=$(printf '%s\n' "$sdk_full" | grep -E "$delivery" || true)
+          [ -z "$hits" ] || fail "shepherd" \
+            "The SDK must not depend on delivery concerns; those belong to shepherd-cli or another adapter." \
+            "$hits"
+
+          # Positive control: `full` must actually reach the registry. Without
+          # this, a typo that silently drops the capability would make the gate
+          # above pass for the wrong reason.
+          printf '%s\n' "$sdk_full" | grep -qE '^rusqlite$' || {
+            echo "::error::shepherd --features full no longer links the registry."
+            echo "The delivery gate above would then be passing vacuously."
+            exit 1
+          }
+
+          # Default features are the embedder's entry point: taking the umbrella
+          # without asking for a capability must not link SQLite or a templater.
+          sdk_default=$(tree shepherd)
+          hits=$(printf '%s\n' "$sdk_default" | grep -E "$delivery|$io_backend" || true)
+          [ -z "$hits" ] || fail "shepherd (default features)" \
+            "Default features must stay minimal; a capability a consumer did not request must not appear." \
+            "$hits"
+
+      # 3. The library side must not reach for the process it is running in.
+      - name: libraries do not touch process or argv
         run: |
+          set -euo pipefail
           # Comment lines are excluded deliberately: the boundary rule is
-          # documented in core/src/lib.rs and would otherwise match itself.
-          # Verified against a negative control before this job was committed.
-          hits=$(grep -rnE 'std::process|std::env::args|process::exit' core/src \
+          # documented in these crates' own doc comments and would otherwise
+          # match itself. Verified against a negative control before this job
+          # was committed -- an injected `std::process::exit` is still caught.
+          hits=$(grep -rnE 'std::process|std::env::args|process::exit' \
+                   crates/core/src crates/registry/src crates/render/src crates/sdk/lib.rs \
                    | grep -vE '^[^:]+:[0-9]+:[[:space:]]*(//|\*|/\*)' || true)
           if [ -n "$hits" ]; then
-            echo "::error::shepherd-core referenced process or argv."
+            echo "::error::a library crate referenced process or argv."
             echo "Process semantics belong to the binary, not the engine."
             echo "$hits"
             exit 1

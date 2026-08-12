@@ -44,6 +44,7 @@ fn harness_is_a_closed_value_set() {
 #[test]
 fn harness_round_trips_through_its_wire_form() {
     use core::str::FromStr;
+    use strum::VariantNames;
 
     for variant in Harness::VARIANTS {
         let parsed = Harness::from_str(variant).expect("variant name must parse");

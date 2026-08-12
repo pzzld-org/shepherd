@@ -147,7 +147,7 @@
 *.iws
 
 #### Visual Studio Code
-**/.vscode/
+**/.vscode/workspace.json
 
 !**/.vscode/settings.json
 

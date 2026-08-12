@@ -36,7 +36,16 @@ tag-name = "v{{version}}"
 # engine
 shepherd-core = { workspace = true }
 # templating
-minijinja = { workspace = true }
+# `preserve_order` is deliberately OFF: without it minijinja backs maps with a
+# BTreeMap, so iteration is sorted and therefore reproducible. Turning it on
+# swaps in insertion order, which makes `output_sha256` depend on the order the
+# caller happened to build its context. That is the determinism contract.
+minijinja = { features = [
+  "builtins",
+  "macros",
+  "multi_template",
+  "serde",
+], workspace = true }
 # hashing — template_sha256, vars_sha256 and output_sha256 must reproduce
 sha2 = { workspace = true }
 # errors
@@ -87,15 +96,18 @@ wasm = [
 alloc = [
   "serde?/alloc",
   "serde_json?/alloc",
+  "sha2/alloc",
   "shepherd-core/alloc",
 ]
 
+# NOTE: `sha2` 0.11 has no `std` feature — the RustCrypto 0.11 line replaced it
+# with `alloc` plus `oid`. Referencing `sha2/std` here resolves to a hard
+# dependency-resolution error, not a warning.
 std = [
   "alloc",
   "minijinja/std_collections",
   "serde?/std",
   "serde_json?/std",
-  "sha2/std",
   "shepherd-core/std",
   "thiserror/std",
   "tracing?/std",

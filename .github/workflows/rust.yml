@@ -3,7 +3,12 @@ name: rust
 on:
   push:
     branches: [main, "v*"]
-    paths: ["**/*.rs", "**/Cargo.toml", "Cargo.lock", ".github/workflows/rust.yml"]
+    paths:
+      - "**/*.rs"
+      - "**/Cargo.toml"
+      - "Cargo.lock"
+      - "scripts/check-features.sh"
+      - ".github/workflows/rust.yml"
   pull_request:
     branches: [main, "v*"]
   workflow_dispatch:
@@ -30,59 +35,27 @@ jobs:
       - run: cargo clippy --workspace --all-targets
       - run: cargo test --workspace
 
-  engine-boundary:
-    name: engine boundary
+  features:
+    name: feature matrix
     runs-on: ubuntu-latest
     # WHY THIS JOB EXISTS.
     #
-    # Shepherd has been rewritten once already, Python to Rust, and the reason
-    # was reach: the old implementation could not be embedded in a host that
-    # needed it without the CLI wrapped around it. A third rewrite happens the
-    # same way. `shepherd-core` is the insurance, and this job is what makes the
-    # insurance real -- an architecture rule that only lives in a README drifts,
-    # one that breaks a build does not.
+    # `cargo check --workspace` builds exactly ONE combination: the union of
+    # every member's defaults. A `wasm` flag that resolves to a
+    # dependency-not-found error, an `alloc` floor that quietly stopped being
+    # no_std, or a `full` that pulls a crate with no wasm backend all keep
+    # passing that check forever, because nothing references them.
+    #
+    # The umbrella's whole promise is that a future host can take the engine
+    # with the capabilities it wants and none of the ones it does not. That
+    # promise is worth exactly as much as the job that exercises it.
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
-
-      # 1. The engine must reach a non-native host.
-      #    Catches anything that assumes an OS, a C toolchain, or a filesystem.
-      #    No LLVM needed: core has no C dependencies, and that is the point.
-      - name: core compiles to wasm32-unknown-unknown
-        run: cargo check -p shepherd-core --target wasm32-unknown-unknown
-
-      # 2. The engine must not acquire delivery concerns.
-      #    Check 1 alone is NOT sufficient -- clap, anyhow and tracing-subscriber
-      #    all compile to wasm perfectly well. Reaching a host and being free of
-      #    host opinions are different properties and each needs its own gate.
-      - name: core carries no delivery dependencies
-        run: |
-          forbidden='^clap$|^anyhow$|^tracing-subscriber$|^config$|^rusqlite$|^minijinja$'
-          if cargo tree -p shepherd-core --edges normal --prefix none \
-               | awk '{print $1}' | sort -u | grep -qE "$forbidden"; then
-            echo "::error::shepherd-core acquired a delivery dependency."
-            echo "The engine crate must not depend on an argument parser, a"
-            echo "contextual error type, a log sink, or an I/O backend. Those"
-            echo "belong in shepherd-cli or another adapter. Offenders:"
-            cargo tree -p shepherd-core --edges normal --prefix none \
-              | awk '{print $1}' | sort -u | grep -E "$forbidden"
-            exit 1
-          fi
-
-      # 3. The engine must not reach for the process it is running in.
-      - name: core does not touch process or argv
-        run: |
-          # Comment lines are excluded deliberately: the boundary rule is
-          # documented in core/src/lib.rs and would otherwise match itself.
-          # Verified against a negative control before this job was committed.
-          hits=$(grep -rnE 'std::process|std::env::args|process::exit' core/src \
-                   | grep -vE '^[^:]+:[0-9]+:[[:space:]]*(//|\*|/\*)' || true)
-          if [ -n "$hits" ]; then
-            echo "::error::shepherd-core referenced process or argv."
-            echo "Process semantics belong to the binary, not the engine."
-            echo "$hits"
-            exit 1
-          fi
+      # sqlite-wasm-rs compiles SQLite from C to wasm; that needs a clang with a
+      # WebAssembly backend. Ubuntu's has one, Apple's system clang does not.
+      - run: sudo apt-get update && sudo apt-get install -y clang
+      - run: ./scripts/check-features.sh --targets

@@ -4,5 +4,6 @@
 */
 
 fn main() {
+    println!("cargo::rustc-check-cfg=cfg(docsrs)");
     println!("cargo::rustc-check-cfg=cfg(no_std)");
 }
