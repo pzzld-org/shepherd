@@ -13,15 +13,21 @@ Every entry below was checked against current documentation through Context7 rat
 | Migrations | **hand-ported runner**, no crate | `rusqlite_migration` forks the ledger; see §3 |
 | Async runtime | **none** | Removed from the scaffold; see §5 |
 | HTTP | **none** | GitHub access stays on the `gh` CLI; see §6 |
-| **Config layering** | **`config` 0.15** | Collapses the duplicated precedence chain to one implementation; see §4 |
+| **Config layering** | **`config` 0.15**, `default-features = false, features = ["toml"]` | Collapses the duplicated precedence chain to one implementation; see §4 |
 | **Config schema** | **`schemars` 1** | Generates the known-key universe that the validator checks against; see §4 |
 | TOML writing | `toml` 1 | `config` reads but does not serialize; `config init` writes |
 | Templating | `minijinja` 2 | Closest Jinja2 semantics, `StrictUndefined` equivalent |
 | Serialization | `serde`, `serde_json` | `serde_yaml` only if the `## Stage Graph` block stays YAML |
 | Hashing | `sha2` 0.11 | `template_sha256`, `vars_sha256`, `output_sha256` lineage |
 | Errors | `anyhow`, `thiserror` 2 | Library errors typed, binary errors contextual |
+| Identifiers | `uuid` 1, `features = ["serde", "v7"]` | `project.json` carries a UUIDv7 project id |
+| Time | `chrono` 0.4, `features = ["clock", "serde", "std"]` | `run.json` `updated_at` must round-trip int, float and ISO8601 |
 | Diagnostics | `tracing`, `tracing-subscriber` | Structured logs into `.shepherd/logs/` |
 | Testing | `cargo-nextest`, `insta` | Snapshot assertions replace the absent golden corpus |
+
+**Dependency floor: 101 packages.** The scaffold resolved 201. Removing `sqlx`/`tokio` took it to 128; restricting `config` to `features = ["toml"]` took it to 101, since its defaults pull `json`, `yaml`, `ini`, `ron`, `json5`, `convert-case`, and `async` — and `async` drags in `async-trait` against the no-runtime decision while `ini` alone pulls `rust-ini` → `ordered-multimap` → `dlv-list` → `const-random` → `getrandom`. shepherd.toml is the only format shepherd has ever read. Treat 101 as a ceiling to defend, not a floor to grow from.
+
+The two transitive names that look like residue and are not: `lazy_static` (via `sharded-slab` ← `tracing-subscriber`) and `wasm-bindgen` (via `js-sys` ← `sqlite-wasm-rs` ← `rusqlite`, a wasm32-only target dep never compiled natively).
 
 **Workspace layout is `cli/` at the repository root**, not `crates/cli`. Members are declared in the root `Cargo.toml` with `resolver = "3"`, edition 2024, `rust-version = "1.96.0"`.
 

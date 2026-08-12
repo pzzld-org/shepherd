@@ -28,54 +28,41 @@ version = "6.4.5"
 [workspace.dependencies]
 shepherd-cli = { default-features = false, path = "cli", version = "6.4.5" }
 
-# custom
-contained = { default-features = false, features = ["macros"], version = "0.2" }
-# frameworks
+# cli
 clap = { features = ["cargo", "derive", "env"], version = "4" }
 # databases
 # NOTE: `bundled` is sufficient and complete. libsqlite3-sys/build.rs:156-163 passes
-# -DSQLITE_ENABLE_FTS5, -DSQLITE_ENABLE_JSON1 and -DSQLITE_DEFAULT_FOREIGN_KEYS=1
-# unconditionally on this path. There is NO `fts5` cargo feature; asserting one
-# is a build-time error. See .shepherd/docs/specs/2026-08-12-v645-rust-dependency-stack.md
+# -DSQLITE_ENABLE_FTS5 and -DSQLITE_DEFAULT_FOREIGN_KEYS=1 unconditionally on this
+# path. There is NO `fts5` cargo feature; asserting one is a build-time error.
+# JSON1 is core since SQLite 3.38, so `ENABLE_JSON1` is ABSENT from compile_options
+# even though json_valid() works — assert the behavior, never that flag.
+# See .shepherd/docs/specs/2026-08-12-v645-rust-dependency-stack.md
 rusqlite = { features = ["bundled"], version = "0.40" }
 # config
-config = { version = "0.15" }
+# TOML only. Defaults pull json/yaml/ini/ron/json5/convert-case/async, and `async`
+# drags in async-trait against the no-async-runtime decision. `ini` alone pulls
+# rust-ini -> ordered-multimap -> dlv-list -> const-random -> getrandom.
+# shepherd.toml is the only config format shepherd has ever read.
+config = { default-features = false, features = ["toml"], version = "0.15" }
+schemars = { default-features = false, features = ["derive"], version = "1" }
 toml = { version = "1" }
 # templating
 minijinja = { version = "2" }
 # hashing
 sha2 = { default-features = false, version = "0.11" }
-# data-structures
-bytes = { default-features = false, version = "1" }
-schemars = { default-features = false, features = ["derive"], version = "1" }
-# random
-getrandom = { default-features = false, version = "0.4" }
-rand = { default-features = false, version = "0.10" }
-rand_distr = { default-features = false, version = "0.6" }
-uuid = { default-features = false, version = "1" }
 # serialization
 serde = { default-features = false, features = ["derive"], version = "1" }
-serde_derive = { default-features = false, version = "1" }
 serde_json = { default-features = false, version = "1" }
 # error handling
 anyhow = { default-features = false, version = "1" }
 thiserror = { default-features = false, version = "2" }
-# time
-chrono = { default-features = false, version = "0.4" }
-cron = { default-features = false, version = "0.17" }
-time = { default-features = false, version = "0.3" }
+# identifiers — project.json carries a UUIDv7 project id
+uuid = { default-features = false, features = ["serde", "v7"], version = "1" }
+# time — run.json updated_at must round-trip int, float and ISO8601
+chrono = { default-features = false, features = ["clock", "serde", "std"], version = "0.4" }
 # tracing
 tracing = { default-features = false, features = ["attributes", "log"], version = "0.1" }
 tracing-subscriber = { features = ["env-filter", "fmt"], version = "0.3" }
-# macros & utilities
-lazy_static = { version = "1" }
-paste = { version = "1" }
-smart-default = { version = "0.7" }
-strum = { default-features = false, features = ["derive"], version = "0.28" }
-# WebAssembly
-gloo = { default-features = false, version = "0.12" }
-wasm-bindgen = { default-features = false, version = "0.2" }
-web-sys = { default-features = false, version = "0.3" }
 
 # ********* Profiles *********
 [profile.dev]
@@ -101,26 +88,6 @@ panic = "unwind"
 rpath = false
 strip = true
 
-[profile.android-dev]
-inherits = "dev"
-
-[profile.server-dev]
-inherits = "dev"
-lto = "thin"
-
-[profile.wasm-dev]
-inherits = "dev"
-opt-level = 1
-strip = true
-
-[profile.wasm-release]
-inherits = "release"
-opt-level = "z"
-strip = true
-
-# docker: CI/container builds. Thin LTO + fewer codegen units to fit within
-# runner memory budgets (7–16 GB). Binary perf is close to release; fat LTO
-# gives marginal wins not worth the OOM risk on constrained builders.
 [profile.docker]
 codegen-units = 4
 inherits = "release"
