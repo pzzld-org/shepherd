@@ -118,3 +118,6 @@ tracing = [
   "dep:tracing",
   "shepherd-core/tracing",
 ]
+
+[lints]
+workspace = true

@@ -1,2 +1,18 @@
+# Pinning the toolchain here is the cheapest defence against "works on my
+# machine". rustup reads this file on every cargo invocation inside the repo and
+# installs whatever is missing, so a fresh clone, a sprint agent's container and
+# CI all resolve to the same compiler, the same lints, and the same targets
+# WITHOUT anyone remembering to run a setup step.
+#
+# The targets matter specifically. `engine-boundary` compiles the engine to
+# wasm32-unknown-unknown on every push; if a contributor's toolchain lacks the
+# target, that check is something they can only ever see fail in CI. Listing it
+# here means `scripts/check-features.sh --targets` works on a clean checkout.
 [toolchain]
 channel = "stable"
+components = ["clippy", "rustfmt"]
+targets = [
+  "wasm32-unknown-unknown",
+  "wasm32-wasip1",
+]
+profile = "minimal"

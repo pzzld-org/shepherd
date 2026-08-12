@@ -151,3 +151,6 @@ sqlite-wasm = [
 wasi-vfs = [
   "shepherd-registry?/wasi-vfs",
 ]
+
+[lints]
+workspace = true

@@ -163,3 +163,6 @@ uuid = [
   "alloc",
   "dep:uuid",
 ]
+
+[lints]
+workspace = true

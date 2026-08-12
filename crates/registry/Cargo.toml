@@ -136,3 +136,6 @@ tracing = [
 wasi-vfs = [
   "rusqlite/wasm32-wasi-vfs",
 ]
+
+[lints]
+workspace = true

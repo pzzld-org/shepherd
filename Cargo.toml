@@ -80,6 +80,34 @@ tracing-subscriber = { default-features = false, features = ["env-filter", "fmt"
 # benchmarks
 criterion = { version = "0.7" }
 
+# ********* Lints *********
+#
+# Declared once and inherited by every member via `[lints] workspace = true`.
+# A new crate that forgets that line is caught by `scripts/check-workspace.sh`,
+# because the failure mode is silent: the crate simply lints looser than the
+# rest of the workspace and nobody notices until its code is the exception.
+#
+# Deliberately modest. CI runs with `RUSTFLAGS: -D warnings`, so every `warn`
+# here is a hard failure — a pedantic set would spend the sprint's budget on
+# style churn instead of the port. Tightening this is a deliberate decision,
+# not a drive-by.
+[workspace.lints.rust]
+# The engine is data structures and pure functions. Nothing here needs `unsafe`,
+# and the day something claims to, that is a conversation and not a diff.
+# `deny` rather than `forbid` so a justified exception stays *possible* with an
+# explicit, reviewable `#[allow]`.
+unsafe_code = "deny"
+# A `pub` item that no public path reaches is either dead or a missing
+# re-export. In a five-crate workspace behind an umbrella, it is usually the
+# second, and it is exactly the kind of drift that makes an SDK feel arbitrary.
+unreachable_pub = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+# A byte-exact port cannot afford silent numeric surprises.
+cast_possible_truncation = "warn"
+cast_sign_loss = "warn"
+
 # ********* Profiles *********
 [profile.dev]
 codegen-units = 256
