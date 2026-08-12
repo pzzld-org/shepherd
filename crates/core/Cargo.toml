@@ -1,4 +1,5 @@
 [package]
+build = "build.rs"
 description = "The harness-agnostic shepherd engine: domain types, configuration schema, and run state. Knows nothing about any CLI, harness, or process."
 name = "shepherd-core"
 
@@ -14,16 +15,41 @@ rust-version.workspace = true
 version.workspace = true
 
 [lib]
+bench = false
 crate-type = ["rlib"]
 
+[[test]]
+name = "default"
+required-features = []
+
+[package.metadata.docs.rs]
+all-features = false
+features = ["full"]
+rustc-args = ["--cfg", "docsrs"]
+version = "v{{version}}"
+
+[package.metadata.release]
+no-dev-version = true
+tag-name = "v{{version}}"
+
 [dependencies]
-# serialize
-schemars = { workspace = true }
-serde = { features = ["derive"], workspace = true }
-# errors
+# errors — typed only; `anyhow` is a delivery concern and is forbidden here
 thiserror = { workspace = true }
-# utilities
-strum = { features = ["derive"], workspace = true }
+# macros & utilities — derive-only, no runtime surface
+strum = { workspace = true }
+# parsing — the run-id and branch grammars are engine rules, not CLI rules
+nom = { optional = true, workspace = true }
+# schema generation — feeds the config key universe the validator checks
+schemars = { optional = true, workspace = true }
+# serialization
+serde = { optional = true, workspace = true }
+serde_json = { optional = true, workspace = true }
+# time — run.json updated_at must round-trip int, float and ISO8601
+chrono = { optional = true, workspace = true }
+# identifiers — project.json carries a UUIDv7 project id
+uuid = { optional = true, workspace = true }
+# tracing — the facade only. A library never installs a subscriber.
+tracing = { optional = true, workspace = true }
 
 [features]
 default = [
@@ -32,26 +58,97 @@ default = [
 
 full = [
   "default",
+  "chrono",
+  "json",
+  "parse",
+  "schema",
+  "tracing",
+  "uuid",
+]
+
+# ********* [FF] Flags *********
+json = [
+  "alloc",
+  "serde",
+  "serde_json",
+]
+
+parse = [
+  "alloc",
+  "dep:nom",
+]
+
+schema = [
+  "alloc",
+  "dep:schemars",
+  "serde",
 ]
 
 # ********* [FF] Targets *********
+#
 # No target here may enable a host-coupled dependency. That is the whole point
-# of this crate; see the boundary rule in src/lib.rs.
+# of this crate; see the boundary rule in src/lib.rs. Note that `wasm` and
+# `wasi` deliberately exclude `uuid` and `chrono`: UUIDv7 needs an entropy
+# source and chrono's `clock` needs a system timezone, and neither exists on
+# `wasm32-unknown-unknown` without a JS shim. An embedder supplies both.
 native = ["full"]
 
-wasi = ["std"]
+nightly = []
 
-wasm = ["std"]
+wasi = [
+  "json",
+  "parse",
+  "schema",
+  "std",
+]
+
+wasm = [
+  "json",
+  "parse",
+  "schema",
+  "std",
+]
 
 # ********* [FF] Standard Library *********
 alloc = [
-  "serde/alloc",
+  "chrono?/alloc",
+  "nom?/alloc",
+  "serde?/alloc",
+  "serde_json?/alloc",
+  "uuid?/std",
 ]
 
 std = [
   "alloc",
-  "schemars/std",
-  "serde/std",
+  "chrono?/std",
+  "nom?/std",
+  "schemars?/std",
+  "serde?/std",
+  "serde_json?/std",
   "strum/std",
   "thiserror/std",
+  "tracing?/std",
+]
+
+# ********* [FF] Deps *********
+chrono = [
+  "dep:chrono",
+]
+
+serde = [
+  "dep:serde",
+  "chrono?/serde",
+  "uuid?/serde",
+]
+
+serde_json = [
+  "dep:serde_json",
+]
+
+tracing = [
+  "dep:tracing",
+]
+
+uuid = [
+  "dep:uuid",
 ]

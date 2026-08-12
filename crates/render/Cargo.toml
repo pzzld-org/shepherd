@@ -1,0 +1,108 @@
+[package]
+build = "build.rs"
+description = "The shepherd render layer: template resolution, deterministic rendering, and the provenance manifest that pins every emitted artifact."
+name = "shepherd-render"
+
+authors.workspace = true
+categories.workspace = true
+edition.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+license.workspace = true
+readme = "README.md"
+repository.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[lib]
+bench = false
+crate-type = ["rlib"]
+
+[[test]]
+name = "default"
+required-features = []
+
+[package.metadata.docs.rs]
+all-features = false
+features = ["full"]
+rustc-args = ["--cfg", "docsrs"]
+version = "v{{version}}"
+
+[package.metadata.release]
+no-dev-version = true
+tag-name = "v{{version}}"
+
+[dependencies]
+# engine
+shepherd-core = { workspace = true }
+# templating
+minijinja = { workspace = true }
+# hashing — template_sha256, vars_sha256 and output_sha256 must reproduce
+sha2 = { workspace = true }
+# errors
+thiserror = { workspace = true }
+# serialization
+serde = { optional = true, workspace = true }
+serde_json = { optional = true, workspace = true }
+# tracing
+tracing = { optional = true, workspace = true }
+
+[features]
+default = [
+  "std",
+]
+
+full = [
+  "default",
+  "json",
+  "tracing",
+]
+
+# ********* [FF] Flags *********
+json = [
+  "alloc",
+  "dep:serde",
+  "dep:serde_json",
+  "shepherd-core/json",
+]
+
+# ********* [FF] Targets *********
+native = ["full"]
+
+nightly = [
+  "shepherd-core/nightly",
+]
+
+wasi = [
+  "json",
+  "std",
+]
+
+wasm = [
+  "json",
+  "std",
+]
+
+# ********* [FF] Standard Library *********
+alloc = [
+  "serde?/alloc",
+  "serde_json?/alloc",
+  "shepherd-core/alloc",
+]
+
+std = [
+  "alloc",
+  "minijinja/std_collections",
+  "serde?/std",
+  "serde_json?/std",
+  "sha2/std",
+  "shepherd-core/std",
+  "thiserror/std",
+  "tracing?/std",
+]
+
+# ********* [FF] Deps *********
+tracing = [
+  "dep:tracing",
+  "shepherd-core/tracing",
+]

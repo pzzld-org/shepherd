@@ -22,13 +22,44 @@
 //! The rule is enforced by CI compiling this crate to `wasm32-unknown-unknown`
 //! on every push, not by this comment. A dependency that cannot reach that
 //! target fails the build and names itself.
+//!
+//! ## Features
+//!
+//! Every dependency past `thiserror` and `strum` is optional, and every module
+//! that needs one is gated on it. The point is not minimalism for its own sake:
+//! it is that an embedder can take the run-state machine without linking a JSON
+//! codec, a schema generator, a clock, or an entropy source.
+//!
+//! | Feature | Enables |
+//! |---|---|
+//! | `std` *(default)* | [`settings`], and the `std` surface of every enabled dependency |
+//! | `alloc` | the `no_std` floor; [`error`] and [`types`] are available here |
+//! | `json` | `serde` + `serde_json`, for the canonical artifact codec |
+//! | `parse` | `nom`, for the run-id and branch grammars |
+//! | `schema` | `schemars`, for the config key universe |
+//! | `chrono`, `uuid`, `tracing` | the named dependency, nothing more |
+//! | `full` | everything above; `native` is its alias |
+//! | `wasm`, `wasi` | the target-appropriate set, deliberately without `uuid`/`chrono` |
+#![cfg_attr(not(feature = "std"), no_std)]
+#![cfg_attr(docsrs, feature(doc_auto_cfg))]
+#![cfg_attr(feature = "nightly", feature(allocator_api))]
+
+#[cfg(not(any(feature = "alloc", feature = "std")))]
+compile_error! {
+    "shepherd-core requires at least one of the `alloc` or `std` features; \
+     the engine's error and domain types are allocating."
+}
+
 #[cfg(feature = "alloc")]
 extern crate alloc;
+
 // modules (public)
 pub mod error;
+#[cfg(feature = "std")]
 pub mod settings;
 // module (inline)
 pub mod types {
+    //! Domain types shared by every consumer of the engine.
     #[doc(inline)]
     pub use self::prelude::*;
 
@@ -42,13 +73,17 @@ pub mod types {
 #[doc(inline)]
 pub use self::{
     error::{Error, Result},
-    settings::ShepherdConfig,
     types::*,
 };
+#[cfg(feature = "std")]
+#[doc(inline)]
+pub use self::settings::ShepherdConfig;
 // prelude
 #[doc(hidden)]
 pub mod prelude {
+    #[allow(unused_imports)]
     pub use crate::error::*;
+    #[cfg(feature = "std")]
     pub use crate::settings::*;
     pub use crate::types::*;
 }

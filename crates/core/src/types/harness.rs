@@ -18,9 +18,6 @@
     Ord,
     PartialEq,
     PartialOrd,
-    schemars::JsonSchema,
-    serde::Deserialize,
-    serde::Serialize,
     strum::AsRefStr,
     strum::Display,
     strum::EnumCount,
@@ -29,7 +26,9 @@
     strum::IntoStaticStr,
     strum::VariantNames,
 )]
-#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[strum(ascii_case_insensitive, serialize_all = "snake_case")]
 #[non_exhaustive]
 pub enum Harness {

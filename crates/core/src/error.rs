@@ -8,6 +8,8 @@
 //! This crate returns typed errors, never `anyhow`. A caller that wants
 //! contextual strings adds them at its own boundary; an embedder that wants to
 //! match on a variant can.
+#[cfg(all(feature = "alloc", not(feature = "std")))]
+use alloc::string::{String, ToString};
 
 /// The result type returned throughout the engine.
 pub type Result<T = (), E = Error> = core::result::Result<T, E>;

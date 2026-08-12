@@ -1,4 +1,14 @@
-name: rust
+name: boundaries
+
+  # --- JOBS ---
+  #
+  # -- engine --
+  # Motivation: shepherd has been rewritten once already, Python to Rust, and the reason
+  # was reach: the old implementation could not be embedded in a host that
+  # needed it without the CLI wrapped around it. A third rewrite happens the
+  # same way. `shepherd-core` is the insurance, and this job is what makes the
+  # insurance real -- an architecture rule that only lives in a README drifts,
+  # one that breaks a build does not.
 
 on:
   push:
@@ -17,43 +27,22 @@ env:
   RUSTFLAGS: -D warnings
 
 jobs:
-  check:
-    name: check + clippy + test
+  engine:
+    name: Verify the engine boundaries
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy, rustfmt
-      - uses: Swatinem/rust-cache@v2
-      - run: cargo fmt --all --check
-      - run: cargo clippy --workspace --all-targets
-      - run: cargo test --workspace
-
-  engine-boundary:
-    name: engine boundary
-    runs-on: ubuntu-latest
-    # WHY THIS JOB EXISTS.
-    #
-    # Shepherd has been rewritten once already, Python to Rust, and the reason
-    # was reach: the old implementation could not be embedded in a host that
-    # needed it without the CLI wrapped around it. A third rewrite happens the
-    # same way. `shepherd-core` is the insurance, and this job is what makes the
-    # insurance real -- an architecture rule that only lives in a README drifts,
-    # one that breaks a build does not.
-    steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Setup the Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
-
       # 1. The engine must reach a non-native host.
       #    Catches anything that assumes an OS, a C toolchain, or a filesystem.
       #    No LLVM needed: core has no C dependencies, and that is the point.
       - name: core compiles to wasm32-unknown-unknown
         run: cargo check -p shepherd-core --target wasm32-unknown-unknown
-
       # 2. The engine must not acquire delivery concerns.
       #    Check 1 alone is NOT sufficient -- clap, anyhow and tracing-subscriber
       #    all compile to wasm perfectly well. Reaching a host and being free of
