@@ -14,11 +14,11 @@ authors = [
   "FL03 <joe@pzzld.org>",
   "Scattered-Systems LLC <support@scsys.io>",
 ]
-categories = ["mathematics"]
-description = "A composable, modular, and extensible multi-channel pipeline for designing your own trading engine(s), agents, and simulations."
+categories = ["command-line-utilities", "development-tools"]
+description = "Sprint orchestration and governance for AI coding agents — the canonical engine and CLI behind the shepherd plugin."
 edition = "2024"
 homepage = "https://github.com/FL03/shepherd/wiki"
-keywords = ["bot", "finance", "runtime", "simulation"]
+keywords = ["agent", "orchestration", "sprint", "cli", "plugin"]
 license = "Apache-2.0"
 readme = "README.md"
 repository = "https://github.com/FL03/shepherd.git"
@@ -33,10 +33,18 @@ contained = { default-features = false, features = ["macros"], version = "0.2" }
 # frameworks
 clap = { features = ["cargo", "derive", "env"], version = "4" }
 # databases
-sqlx = { default-features = false, features = ["derive", "macros"], version = "0.9" }
-sqlx-macros = { default-features = false, features = ["derive"], version = "0.9" }
+# NOTE: `bundled` is sufficient and complete. libsqlite3-sys/build.rs:156-163 passes
+# -DSQLITE_ENABLE_FTS5, -DSQLITE_ENABLE_JSON1 and -DSQLITE_DEFAULT_FOREIGN_KEYS=1
+# unconditionally on this path. There is NO `fts5` cargo feature; asserting one
+# is a build-time error. See .shepherd/docs/specs/2026-08-12-v645-rust-dependency-stack.md
+rusqlite = { features = ["bundled"], version = "0.40" }
 # config
 config = { version = "0.15" }
+toml = { version = "1" }
+# templating
+minijinja = { version = "2" }
+# hashing
+sha2 = { default-features = false, version = "0.11" }
 # data-structures
 bytes = { default-features = false, version = "1" }
 schemars = { default-features = false, features = ["derive"], version = "1" }
@@ -56,8 +64,6 @@ thiserror = { default-features = false, version = "2" }
 chrono = { default-features = false, version = "0.4" }
 cron = { default-features = false, version = "0.17" }
 time = { default-features = false, version = "0.3" }
-# tokio
-tokio = { default-features = false, features = ["macros"], version = "1" }
 # tracing
 tracing = { default-features = false, features = ["attributes", "log"], version = "0.1" }
 tracing-subscriber = { features = ["env-filter", "fmt"], version = "0.3" }

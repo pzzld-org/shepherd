@@ -15,7 +15,8 @@ sprint_dependencies: []
 sprint_size: XL
 file_scope:
   exclusive:
-    - crates (NEW — Rust workspace: core, registry, render, cli)
+    - Cargo.toml
+    - cli
     - packages (NEW — npm platform packages + TS harness adapters)
     - content (NEW — harness-neutral role and skill sources)
     - conformance (NEW — language-neutral golden corpus)
@@ -55,10 +56,10 @@ Changing one of these is a critic-RED escalation, not a sprint-time judgment cal
 1. **Rust owns the engine; TypeScript owns Pi's hot path.** `crates/` holds core, registry, render, and CLI. Claude and Codex adapters exec the binary. Pi's per-`tool_call` guards stay TypeScript. No napi-rs and no `.node` addon in this arc: the jiti in-process load path is unverified and Prisma walked back that exact architecture in 7.0.0.
 2. **Guard predicates are data, not duplicated code.** Both the Rust engine and the TS guard layer interpret one declarative predicate spec under `content/`. A predicate expressed as code in two languages is a defect.
 3. **The registry schema is the cross-harness contract, not CLI stdout.** All 32 guard scripts read SQLite directly and zero of them shell out to the CLI. Schema and row shapes are the compatibility surface.
-4. **`rusqlite` with `features = ["bundled"]` only.** `libsqlite3-sys/build.rs:156-163` passes `-DSQLITE_ENABLE_FTS5`, `-DSQLITE_ENABLE_JSON1`, and `-DSQLITE_DEFAULT_FOREIGN_KEYS=1` unconditionally on the bundled path. There is no `fts5` cargo feature; asserting one is a build-time error.
+4. **`rusqlite` with `features = ["bundled"]` only.** Probe-verified against 0.40.2 (SQLite 3.53.2): FTS5 present, external-content tables with `unicode61 remove_diacritics 2` work, `json_valid` CHECKs enforce. There is no `fts5` cargo feature. `ENABLE_JSON1` is ABSENT from `compile_options` yet `json_valid` works, since JSON went core at SQLite 3.38 — assert the behavior, never that flag.
 5. **No canon flip before the parity gate is green.** Python stays canonical until conformance passes byte-clean. There is no dual-maintenance window.
 6. **The 20 migration files port verbatim.** Migration SQL is the portable artifact; only the runner is rewritten. `rusqlite_migration` is rejected: it tracks state in `user_version`, while this schema uses a `schema_versions` table both existing runners read.
-7. **The dependency stack is closed.** `clap`, `rusqlite`, `minijinja`, `serde`, `sha2`. No `sqlx`, no `tokio`, no `reqwest`; GitHub stays on the `gh` CLI. Rationale and Context7 citations in `.shepherd/docs/specs/2026-08-12-v645-rust-dependency-stack.md`. Adding a crate is a critic-RED escalation.
+7. **The dependency stack is closed.** `clap`, `rusqlite`, `config`, `schemars`, `toml`, `minijinja`, `serde`, `sha2`, `anyhow`, `thiserror`, `tracing`. No `sqlx`, no `tokio`, no `reqwest`; GitHub stays on the `gh` CLI. `config` owns the six-tier precedence chain so `_lib.sh:shctx_config_files()` is deleted rather than ported; `schemars` generates the key universe the validator checks against. Rationale and probe results in `.shepherd/docs/specs/2026-08-12-v645-rust-dependency-stack.md`. Adding a crate is a critic-RED escalation.
 
 ## B. Sprint topology
 
@@ -66,7 +67,7 @@ Recommended shape only. The engineer's Stage Graph is binding.
 
 | Sprint | Theme | Size | Depends on | Parallel-safe with |
 |---|---|---|---|---|
-| dev.0 | Monorepo skeleton, registry bootstrap, conformance oracle frozen from Python | L | — | — |
+| dev.0 | Workspace scaffold done; registry bootstrap, conformance oracle frozen from Python | L | — | — |
 | dev.1 | Rust core: run state, canonical `run.json`, config schema, Stage Graph | XL | dev.0 | dev.2 |
 | dev.2 | Rust registry: 20 migrations, 39 tables, 25 views, 7 triggers, FTS5 | L | dev.0 | dev.1 |
 | dev.3 | Verb surface: ~147 leaf commands to parity, plus render and templates | XL | dev.1, dev.2 | — |
