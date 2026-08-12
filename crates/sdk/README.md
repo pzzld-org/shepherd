@@ -20,6 +20,7 @@ Members are addressed by what they do, never by their crate name.
 | Feature | Adds | Cost |
 |---|---|---|
 | *(none)* | the engine: domain types, run state, config schema | `thiserror`, `strum` |
+| `config` | the configuration precedence chain and layering | `config` |
 | `json` | the canonical artifact codec | `serde`, `serde_json` |
 | `parse` | the run-id and branch grammars | `nom` |
 | `schema` | the config key universe | `schemars` |

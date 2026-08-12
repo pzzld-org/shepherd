@@ -39,6 +39,11 @@ thiserror = { workspace = true }
 strum = { workspace = true }
 # parsing — the run-id and branch grammars are engine rules, not CLI rules
 nom = { optional = true, workspace = true }
+# configuration layering — the PRECEDENCE CHAIN is engine policy, so the string
+# -parsing half of `config` lives here. The filesystem and environment halves
+# (`File::with_name`, `Environment`) stay on the adapter side; see src/loader.rs
+# and the `engine-boundary` job that enforces the split by name.
+config = { optional = true, workspace = true }
 # schema generation — feeds the config key universe the validator checks
 schemars = { optional = true, workspace = true }
 # serialization
@@ -59,6 +64,7 @@ default = [
 full = [
   "default",
   "chrono",
+  "config",
   "json",
   "parse",
   "schema",
@@ -67,6 +73,12 @@ full = [
 ]
 
 # ********* [FF] Flags *********
+config = [
+  "dep:config",
+  "json",
+  "std",
+]
+
 json = [
   "alloc",
   "serde",
@@ -96,6 +108,7 @@ native = ["full"]
 nightly = []
 
 wasi = [
+  "config",
   "json",
   "parse",
   "schema",
@@ -103,6 +116,7 @@ wasi = [
 ]
 
 wasm = [
+  "config",
   "json",
   "parse",
   "schema",

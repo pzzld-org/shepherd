@@ -47,6 +47,7 @@ default = [
 full = [
   "default",
   "chrono",
+  "config",
   "json",
   "parse",
   "registry",
@@ -57,6 +58,10 @@ full = [
 ]
 
 # ********* [FF] Flags *********
+config = [
+  "shepherd-core/config",
+]
+
 #
 # Capability flags fan out to every member that implements the capability. The
 # `?/` form is deliberate throughout: enabling `json` must not drag in the

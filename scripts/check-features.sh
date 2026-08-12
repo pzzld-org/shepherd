@@ -50,7 +50,7 @@ check "core --no-default-features --features alloc" \
   -p shepherd-core --no-default-features --features alloc
 check "core --no-default-features --features std" \
   -p shepherd-core --no-default-features --features std
-for ff in chrono json parse schema tracing uuid; do
+for ff in chrono config json parse schema tracing uuid; do
   check "core --no-default-features --features ${ff}" \
     -p shepherd-core --no-default-features --features "${ff}"
 done
@@ -63,7 +63,7 @@ echo "== umbrella: each capability alone, then together =="
 # check cannot tell the difference.
 check "sdk --no-default-features --features alloc" \
   -p shepherd --no-default-features --features alloc
-for ff in json parse schema registry render tracing; do
+for ff in config json parse schema registry render tracing; do
   check "sdk --no-default-features --features std,${ff}" \
     -p shepherd --no-default-features --features "std,${ff}"
 done

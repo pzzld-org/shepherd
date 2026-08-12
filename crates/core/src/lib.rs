@@ -34,6 +34,7 @@
 //! |---|---|
 //! | `std` *(default)* | [`settings`], and the `std` surface of every enabled dependency |
 //! | `alloc` | the `no_std` floor; [`error`] and [`types`] are available here |
+//! | `config` | [`loader`], the configuration precedence chain and layering |
 //! | `json` | `serde` + `serde_json`, for the canonical artifact codec |
 //! | `parse` | `nom`, for the run-id and branch grammars |
 //! | `schema` | `schemars`, for the config key universe |
@@ -55,6 +56,8 @@ extern crate alloc;
 
 // modules (public)
 pub mod error;
+#[cfg(all(feature = "config", feature = "std"))]
+pub mod loader;
 #[cfg(feature = "std")]
 pub mod settings;
 // module (inline)

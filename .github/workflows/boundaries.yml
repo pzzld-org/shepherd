@@ -67,10 +67,18 @@ jobs:
       #    I/O backend is forbidden only in the engine: `shepherd-registry` owns
       #    SQLite legitimately, and the umbrella is allowed to re-export it when
       #    a consumer explicitly asks for the `registry` capability.
+      #
+      #    `config` USED to be on the delivery list and no longer is. The
+      #    precedence chain -- ten candidate files, four tiers, harness
+      #    parameterised, written highest-first while layering libraries apply
+      #    lowest-first -- is engine policy, and an adapter that reimplements it
+      #    gets a config file silently ignored. So `crates/core/src/loader.rs`
+      #    owns it through `config::File::from_str`, which parses a `&str`.
+      #    The I/O half is still forbidden, by name, in step 4.
       - name: libraries carry no delivery dependencies
         run: |
           set -euo pipefail
-          delivery='^clap$|^anyhow$|^tracing-subscriber$|^config$'
+          delivery='^clap$|^anyhow$|^tracing-subscriber$'
           io_backend='^rusqlite$|^minijinja$|^libsqlite3-sys$'
 
           fail() {
@@ -136,6 +144,35 @@ jobs:
           if [ -n "$hits" ]; then
             echo "::error::a library crate referenced process or argv."
             echo "Process semantics belong to the binary, not the engine."
+            echo "$hits"
+            exit 1
+          fi
+
+      # 4. The engine may parse configuration; it may not go looking for it.
+      #
+      #    Dropping `config` from the dependency gate above bought a real
+      #    property (one precedence chain instead of one per adapter) and cost
+      #    a real guarantee (nothing stops someone reaching for the filesystem
+      #    half of the same crate). This step restores the guarantee at the
+      #    only level that can still see the difference: the call site.
+      #
+      #    `File::from_str` takes a `&str` and is fine. `File::with_name`,
+      #    `File::from(Path)` and `Environment` read the filesystem and the
+      #    process environment, and belong to the adapter.
+      - name: the engine parses configuration but does not go looking for it
+        run: |
+          set -euo pipefail
+          forbidden='config::Environment|Environment::with_prefix|File::with_name|File::from\(|add_source\(config::File::from\(' 
+          hits=$(grep -rnE "${forbidden}" \
+                   crates/core/src crates/registry/src crates/render/src crates/sdk/lib.rs \
+                   | grep -vE '^[^:]+:[0-9]+:[[:space:]]*(//|\*|/\*)' || true)
+          if [ -n "$hits" ]; then
+            echo "::error::a library crate reached for configuration I/O."
+            echo "The engine owns WHICH files matter and IN WHAT ORDER"
+            echo "(crates/core/src/loader.rs). Reading them -- File::with_name,"
+            echo "File::from(Path), Environment -- belongs to shepherd-cli or"
+            echo "another adapter. Use config::File::from_str over contents the"
+            echo "caller supplies."
             echo "$hits"
             exit 1
           fi

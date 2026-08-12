@@ -5,10 +5,23 @@
 */
 //! The configuration schema.
 //!
-//! These types are the schema only. Loading, layering, and precedence are a
-//! consumer's concern: `shepherd-cli` owns that and resolves the six tiers with
-//! the `config` crate. Keeping the schema here means an embedder can validate
-//! or generate configuration without linking a file loader.
+//! These types are the schema. **Precedence lives next door** in
+//! [`crate::loader`], not in the CLI.
+//!
+//! An earlier draft of this module claimed the opposite — that "loading,
+//! layering, and precedence are a consumer's concern". That was wrong, and
+//! wrong in the way that causes rewrites. The precedence chain is ten
+//! candidate files across four tiers, harness-parameterised, with a legacy
+//! tier honoured indefinitely, written highest-priority-first while layering
+//! libraries apply lowest-first. Leaving that to each adapter means every
+//! adapter reimplements it, and the failure mode is a config file silently
+//! ignored — no error, no log line, just a value that never takes effect.
+//!
+//! What genuinely is a consumer's concern is the *I/O*: resolving a repo root,
+//! deciding which candidates exist, reading them, and consulting the process
+//! environment. The engine says which files matter and in what order; the
+//! adapter opens them. See [`crate::loader`] for where the line falls and the
+//! `engine-boundary` CI job for what enforces it.
 //!
 //! This module is gated on `std` because it is the only part of the engine that
 //! names a filesystem path. Under `alloc` alone you still get [`crate::error`]
