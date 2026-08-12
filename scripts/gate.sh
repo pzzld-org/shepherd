@@ -76,14 +76,23 @@ gate_wasm() {
   # `sqlite-wasm-rs` compiles SQLite from C. Apple's system clang has no wasm
   # backend and fails deep inside cc-rs with a wall of `-D` flags that says
   # nothing about the actual cause, so it is worth finding Homebrew's up front.
+  #
+  # The variables are TARGET-SCOPED (`CC_wasm32_unknown_unknown`), not bare
+  # `CC`. A bare `CC` also captures the wasip1 build below, and Homebrew's
+  # clang has a wasm backend but no WASI sysroot -- so it compiles the
+  # unknown-unknown leg and silently breaks the WASI one. That is exactly what
+  # happened the first time this ran. Note underscores: cc-rs reads
+  # `CC_wasm32_unknown_unknown`, matching the target triple with `-` replaced.
+  local found_clang=0
   for llvm in /opt/homebrew/opt/llvm/bin /usr/local/opt/llvm/bin; do
     if [ -x "${llvm}/clang" ]; then
-      export CC="${llvm}/clang"
-      export AR="${llvm}/llvm-ar"
+      export CC_wasm32_unknown_unknown="${llvm}/clang"
+      export AR_wasm32_unknown_unknown="${llvm}/llvm-ar"
+      found_clang=1
       break
     fi
   done
-  if [ "$(uname -s)" = "Darwin" ] && [ -z "${CC:-}" ]; then
+  if [ "$(uname -s)" = "Darwin" ] && [ "${found_clang}" = "0" ]; then
     printf 'no clang with a wasm backend found (brew install llvm)\n'
     missing=1
   fi

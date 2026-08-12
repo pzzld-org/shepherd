@@ -251,3 +251,43 @@ Two changes fix the class, not the instance:
 2. A **positive control** was added: `shepherd --features full` must actually link `rusqlite`. If a typo ever drops the `registry` capability from `full`, the forbidden-dependency check would start passing for the wrong reason, and the positive control catches exactly that.
 
 All three boundary gates were then verified against negative controls — an injected `clap` dependency, a `registry` capability removed from `full`, and an injected `std::process::exit` — and each was caught before the change was committed.
+
+## 10. WebAssembly, revisited — proven to RUN
+
+§8 recorded that the wasm builds compiled and stated plainly that "the module was never executed" and "the proven path cannot reach shepherd's registry". Both caveats are now resolved, and the resolution is stronger than the original claim.
+
+### What was executed
+
+`crates/registry/tests/default.rs` — the four SQLite capability gate tests — compiled to `wasm32-wasip1` and **executed under wasmtime**:
+
+```
+running 4 tests
+test a_file_database_survives_being_closed_and_reopened ... ok
+test fts5_accepts_the_contract_tokenizer ... ok
+test json_valid_enforces_check_constraints ... ok
+test sqlite_ships_with_fts5 ... ok
+```
+
+The first of those is the one that matters. It opens a WAL-mode database **as a real file**, writes a row, closes the connection, reopens the same path, and reads the row back — through SQLite's WASI VFS, against a `wasmtime --dir=.` preopen. That is precisely the capability §8 said was unproven and on which the whole in-process question turns.
+
+### The recipe
+
+wasi-sdk **33.0** (wasi-libc `161b3195fc25`, LLVM 22.1.0). `WASI_SDK_PATH` alone is sufficient: `cc` 1.4.2 has native wasi-sdk detection and derives clang, `llvm-ar` and the sysroot from it, because wasi-sdk ships `bin/clang.cfg` carrying `--sysroot=<CFGDIR>/../share/wasi-sysroot`. The explicit `CC_wasm32_wasip1` / `AR_wasm32_wasip1` / `CFLAGS_wasm32_wasip1` triple also works and is the belt-and-braces form.
+
+Four configurations were tested. Bare system clang fails with `'stdio.h' file not found` (no sysroot) on macOS, and `unable to create target: 'No available targets are compatible with triple "wasm32-unknown-wasip1"'` when pointed at a sysroot without a wasm backend. Both wasip1 and wasip2 build, link and run.
+
+`libsqlite3-sys` 0.38.2 keys on `TARGET.starts_with("wasm32-wasi")`, which matches both, and force-disables threading with `-DSQLITE_THREADSAFE=0` plus the `_WASI_EMULATED_MMAN` / `GETPID` / `SIGNAL` / `PROCESS_CLOCKS` defines. Those did **not** require the corresponding `-lwasi-emulated-*` link flags; Rust's bundled wasip1 libc resolves them.
+
+### A trap worth naming
+
+`std::env::temp_dir()` **panics** on `wasm32-wasip1`. WASI has no ambient temp directory, only what the host preopens. A test that reaches for an absolute temp path aborts with a `wasm unreachable` trap and a stack that names `std::env::temp_dir` twelve frames down — legible once you know, opaque when you do not. Use relative paths inside the preopen.
+
+The mirror-image trap on the tooling side: exporting a bare `CC` to point at Homebrew LLVM (for `wasm32-unknown-unknown`) also captures the wasip1 build, and Homebrew's clang has a wasm backend but **no WASI sysroot**. It compiles one leg and silently breaks the other. Both `scripts/gate.sh` and `scripts/check-features.sh` therefore use the target-scoped `CC_wasm32_unknown_unknown` form.
+
+### Consequence for the arc
+
+**v6.4.5 is unchanged.** Pi's hot-path guards stay TypeScript over the shared declarative predicate spec (locked decision 1). Nothing here argues otherwise, and a behaviour change during a rewrite is unverifiable against the oracle.
+
+**The v6.5.x spike is now half-done and permanently guarded.** Its stated success criterion was: *open `.shepherd/shepherd.db` from a WASI build, read a row written by the native binary, and have a bash `sqlite3` reader see a row written by the wasm build.* The file-VFS round trip within a single implementation is done and runs on every push via `.github/workflows/rust-wasm.yml`. What remains is the cross-implementation half — native writes, wasm reads, and back — which is a conformance-corpus exercise rather than a feasibility question.
+
+The distinction between the two wasm targets is now load-bearing and should not be blurred: `wasm32-unknown-unknown` gives an in-memory VFS plus OPFS in browsers, and Node has no OPFS, so it cannot reach `shepherd.db` at all. Only the WASI targets can. Any future "compile it to wasm" proposal has to say which one.

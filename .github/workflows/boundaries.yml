@@ -22,13 +22,15 @@ on:
     branches: [main, "v*"]
   workflow_dispatch:
 
-# NOTE: this group must NOT match rust.yml's. Concurrency groups are shared
-# across workflows in a repository, so two workflows using `rust-<ref>` with
-# `cancel-in-progress` cancel each OTHER on every push -- and a cancelled
-# boundary job reads as "not failed", which is exactly the outcome this
-# workflow exists to prevent.
+# NOTE: `${{ github.workflow }}` rather than a hand-written name. Concurrency
+# groups are shared across ALL workflows in a repository, so two workflows that
+# both hard-code `rust-<ref>` with `cancel-in-progress` cancel each OTHER on
+# every push -- and a cancelled boundary job reads as "not failed", which is
+# exactly the outcome this workflow exists to prevent. That bug was live here.
+# The interpolated form cannot collide, so it removes the class, not just the
+# instance.
 concurrency:
-  group: boundaries-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:

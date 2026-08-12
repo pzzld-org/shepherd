@@ -81,10 +81,15 @@ if [[ "${WITH_TARGETS}" == "1" ]]; then
   echo "== cross-target: the reason the boundary exists =="
 
   # Homebrew LLVM ships a clang with a wasm backend; Apple's does not.
+  #
+  # TARGET-SCOPED on purpose. A bare `CC` would also capture a wasm32-wasip1
+  # build, and Homebrew's clang has a wasm backend but no WASI sysroot, so it
+  # compiles this leg and silently breaks that one. cc-rs reads
+  # `CC_wasm32_unknown_unknown` -- the triple with `-` replaced by `_`.
   for llvm in /opt/homebrew/opt/llvm/bin /usr/local/opt/llvm/bin; do
     if [[ -x "${llvm}/clang" ]]; then
-      export CC="${llvm}/clang"
-      export AR="${llvm}/llvm-ar"
+      export CC_wasm32_unknown_unknown="${llvm}/clang"
+      export AR_wasm32_unknown_unknown="${llvm}/llvm-ar"
       break
     fi
   done

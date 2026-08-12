@@ -20,6 +20,46 @@ By participating in this project, you agree to abide by our [Code of Conduct](CO
 8. **Open a Pull Request**: Navigate to the original pzzld repository and open a pull request from your forked repository. Provide a detailed description of your changes and the problem they solve.
 9. **Address Feedback**: Be responsive to any feedback or requests for changes from the project maintainers.
 
+## Rust workspace — start here
+
+One command makes a fresh clone ready. It is idempotent and prints what it changed.
+
+```bash
+scripts/setup.sh          # toolchain, wasm targets, cargo-deny/nextest, git hooks
+scripts/setup.sh --wasm   # the above, plus wasi-sdk for the WebAssembly suite
+scripts/setup.sh --check  # report what is missing, change nothing
+```
+
+It exists because several things are only true if somebody remembered them, and none are discoverable by reading the code. Git hooks are inert until `core.hooksPath` is set, and that is *local* config which cannot be committed, so every clone starts with them off. The wasm targets have to be installed before the cross-target checks mean anything. The WASI suite needs a `wasi-sdk` and a `wasmtime` that nothing else in the toolchain provides.
+
+### The gate
+
+```bash
+scripts/gate.sh fast   # formatting + workspace invariants; no compilation   (runs on commit)
+scripts/gate.sh full   # the above, plus clippy, tests, feature matrix       (runs on push)
+scripts/gate.sh wasm   # the WebAssembly suite, executed under wasmtime
+scripts/gate.sh all    # full + wasm
+```
+
+The tiers follow the budget in `CLAUDE.md`: the per-commit gate is deterministic, local, free, and under two seconds, which rules out anything that compiles. Compilation happens at push, the last boundary that is still local and free.
+
+Do not bypass a hook with `--no-verify` — it disables `commit-msg` and every future hook too, silently. `SHEPHERD_SKIP_GATE=1` skips the gate alone, visibly, when you genuinely need to commit a broken tree mid-rebase.
+
+### Adding a crate
+
+Adding a member is mechanical, and the steps are enforced rather than remembered:
+
+```bash
+scripts/check-workspace.sh --self-test   # prove the rules can fail
+scripts/check-workspace.sh               # then check them
+```
+
+Nine invariants: every member inherits the workspace lints and version, carries a README and a description, builds its docs.rs page from `full`, is reachable through the `shepherd` umbrella, and appears in `scripts/check-features.sh`. Only `shepherd-cli` may ship a binary, and it must route through the umbrella rather than naming a member directly. `crates/sdk/README.md` walks the four steps.
+
+### Feature flags
+
+`cargo check --workspace` builds exactly **one** combination — the union of every member's defaults — so every other flag is unverified by it. `scripts/check-features.sh` checks each in isolation across both wasm targets. A new flag without a row there is a flag nothing exercises.
+
 ## Coding Standards
 
 - Follow the existing coding style and conventions used in the project.

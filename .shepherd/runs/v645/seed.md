@@ -17,17 +17,18 @@ file_scope:
   exclusive:
     - Cargo.toml
     - crates
-    - scripts/check-features.sh
+    - scripts
     - packages (NEW — npm platform packages + TS harness adapters)
     - content (NEW — harness-neutral role and skill sources)
     - conformance (NEW — language-neutral golden corpus)
     - services/cli
   additive:
-    - .github/workflows/rust.yml
+    - .github/workflows
+    - .githooks
+    - deny.toml
+    - rust-toolchain.toml
     - .shepherd/shepherd.toml
-    - skills/context/schema
-    - hooks
-    - docs
+    - src
     - CHANGELOG.md
 ---
 
@@ -173,7 +174,7 @@ Recommended shape only. The engineer's Stage Graph is binding.
 
 ## F. Patch-level non-goals
 
-- **No napi-rs, no WASM engine build.** Deferred to v6.5.x behind a timeboxed spike; the TS guard layer makes it an optimization, never a prerequisite.
+- **No napi-rs, no WASM engine build.** Deferred to v6.5.x behind a timeboxed spike; the TS guard layer makes it an optimization, never a prerequisite. Note the spike is now half-proven: the registry's four SQLite gate tests execute under `wasm32-wasip1` in wasmtime, including a WAL file database opened through the WASI VFS, and `rust-wasm.yml` keeps it that way (dependency spec §10).
 - **No new orchestration features.** The flock, Stage Graph semantics, and dispatch law ship unchanged; a behavior change during a rewrite is unverifiable against the oracle.
 - **No MCP dependency.** Probed when present, never required.
 - **No seventh flock role.** Closed at six plus two orchestration tiers.
@@ -193,5 +194,6 @@ Recommended shape only. The engineer's Stage Graph is binding.
 - Project home — `obsidian://adv-uri?vault=pzzld&filepath=src%2Fprojects%2Fshepherd%2FREADME.md`
 - Port precedent: `FL03/codex-shepherd` v1.0.2 `docs/parity.md`; tracking: FL03/shepherd#279, milestone 58
 - Dependency stack + crate topology, locked and Context7-checked: `.shepherd/docs/specs/2026-08-12-v645-rust-dependency-stack.md` — §9 records the four feature-graph defects found while scaffolding and the rusqlite backend correction
-- Crate contracts, read these before touching a member: `crates/sdk/README.md` (umbrella, and how to add a member), `crates/core/README.md` (the boundary), `crates/registry/README.md` (SQLite backends per target), `crates/render/README.md` (the determinism contract)
+- Sprint setup, run first on any checkout: `scripts/setup.sh` then `scripts/gate.sh full`; tiers and add-a-crate rules in `CONTRIBUTING.md`, invariants enforced by `scripts/check-workspace.sh`
+- Crate contracts, read before touching a member: `crates/sdk/README.md` (umbrella + how to add one), `crates/core/README.md` (boundary), `crates/registry/README.md` (SQLite per target), `crates/render/README.md` (determinism)
 - `skills/shepherd/references/seed-template.md`, `agents/planter.md`, `CHANGELOG.md` v6.4.4
