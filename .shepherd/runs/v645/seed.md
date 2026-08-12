@@ -57,7 +57,8 @@ Changing one of these is a critic-RED escalation, not a sprint-time judgment cal
 3. **The registry schema is the cross-harness contract, not CLI stdout.** All 32 guard scripts read SQLite directly and zero of them shell out to the CLI. Schema and row shapes are the compatibility surface.
 4. **`rusqlite` with `features = ["bundled"]` only.** `libsqlite3-sys/build.rs:156-163` passes `-DSQLITE_ENABLE_FTS5`, `-DSQLITE_ENABLE_JSON1`, and `-DSQLITE_DEFAULT_FOREIGN_KEYS=1` unconditionally on the bundled path. There is no `fts5` cargo feature; asserting one is a build-time error.
 5. **No canon flip before the parity gate is green.** Python stays canonical until conformance passes byte-clean. There is no dual-maintenance window.
-6. **The 20 migration files port verbatim.** Migration SQL is the portable artifact; only the runner is rewritten.
+6. **The 20 migration files port verbatim.** Migration SQL is the portable artifact; only the runner is rewritten. `rusqlite_migration` is rejected: it tracks state in `user_version`, while this schema uses a `schema_versions` table both existing runners read.
+7. **The dependency stack is closed.** `clap`, `rusqlite`, `minijinja`, `serde`, `sha2`. No `sqlx`, no `tokio`, no `reqwest`; GitHub stays on the `gh` CLI. Rationale and Context7 citations in `.shepherd/docs/specs/2026-08-12-v645-rust-dependency-stack.md`. Adding a crate is a critic-RED escalation.
 
 ## B. Sprint topology
 
@@ -184,4 +185,5 @@ Recommended shape only. The engineer's Stage Graph is binding.
 - Monorepo architecture — `obsidian://adv-uri?vault=pzzld&filepath=src%2Fprojects%2Fshepherd%2Fdocs%2Fshepherd-monorepo.md`
 - Project home — `obsidian://adv-uri?vault=pzzld&filepath=src%2Fprojects%2Fshepherd%2FREADME.md`
 - Port precedent: `FL03/codex-shepherd` v1.0.2 `docs/parity.md`; tracking: FL03/shepherd#279, milestone 58
+- Dependency stack, locked and Context7-checked: `.shepherd/docs/specs/2026-08-12-v645-rust-dependency-stack.md`
 - `skills/shepherd/references/seed-template.md`, `agents/planter.md`, `CHANGELOG.md` v6.4.4
