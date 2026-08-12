@@ -63,6 +63,12 @@ Three read-only discovery lanes ran under the plant-mode bounded-discovery allow
 | Canonical CLI language and Pi binding | Rust core, TypeScript guard layer for Pi | No `.node` addon and no cross-compiled Node binding in this arc |
 | Arc scope | Monorepo, CLI, and the Pi adapter together | #279 is pulled from milestone 59 into this arc |
 
+## Resolved after planting
+
+Class (c) had zero anchors at mesh time. Filed against milestone 58 immediately after: **#280** workspace layout, **#281** conformance oracle, **#282** Rust core, **#283** registry. **#279** was an empty stub and has been rescoped from "create a Pi version" to the content compiler plus all three adapters. **#235**, **#239**, **#266**, **#277**, **#278** were milestoned onto 58. Milestone 58 went from effectively empty to 10 issues, and every seed deliverable now carries a real anchor.
+
+The eight CHANGELOG-fixed-but-open issues were **deliberately left open**. Deciding they are fixed needs a code-level check, which is Phase-0 work and seed open question 1; closing them on the CHANGELOG's word alone would destroy the evidence the arc cites.
+
 ## Residual
 
 `shctx discovery insert` rows were not written; this file and `reports/discovery-mesh-gh.md` are the durable record until the registry is bootstrapped at Phase 0.

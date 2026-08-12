@@ -93,25 +93,25 @@ Recommended shape only. The engineer's Stage Graph is binding.
 ## 6. Deliverables (issue-anchored)
 
 ### Monorepo skeleton and workspace layout  [CRITICAL]
-- **GH:** *file at Phase 0 — title: "feat(repo): cargo + npm workspace layout, one core many adapters"*
+- **GH:** #280
 - **Priority:** CRITICAL
 - **Spec:** `crates/{core,registry,render,cli}` plus `packages/{harness-claude,harness-codex,harness-pi}`; root holds glue only
 - **Acceptance:** `cargo metadata --no-deps` lists 4 members and `cargo check --workspace` exits 0
 
 ### Conformance oracle frozen from the Python CLI  [CRITICAL]
-- **GH:** *file at Phase 0 — title: "feat(conformance): language-neutral golden corpus pinning current CLI behavior"*
+- **GH:** #281
 - **Priority:** CRITICAL
 - **Spec:** capture stdout, exit code, `run.json` bytes, rendered templates, and `sqlite_master` per case; no implementation may merge before its cases exist
 - **Acceptance:** `conformance/run.sh --impl=python` exits 0 with a non-zero case count and a committed corpus checksum
 
 ### Rust core engine  [CRITICAL]
-- **GH:** *file at Phase 0 — title: "feat(core): run state, canonical run.json, config schema, Stage Graph"*
+- **GH:** #282
 - **Priority:** CRITICAL
 - **Spec:** unknown-key round-trip preserved; recursively sorted canonical JSON; atomic write via temp, fsync, rename
 - **Acceptance:** `conformance/run.sh --impl=rust --suite=run-state` byte-clean against the python oracle
 
 ### Rust registry and migration runner  [CRITICAL]
-- **GH:** *file at Phase 0 — title: "feat(registry): port 20 migrations, FTS5 external-content tables, json_valid CHECKs"*
+- **GH:** #283
 - **Priority:** CRITICAL
 - **Spec:** migration SQL copied verbatim; 6 FTS5 sync triggers reproduced; `unicode61 remove_diacritics 2` tokenizer preserved
 - **Acceptance:** order-normalized `sqlite_master` dump identical between implementations; `PRAGMA compile_options` includes `ENABLE_FTS5`
