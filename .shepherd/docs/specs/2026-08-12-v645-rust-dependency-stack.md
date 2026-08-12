@@ -16,6 +16,7 @@ Every entry below was checked against current documentation through Context7 rat
 | **Config layering** | **`config` 0.15**, `default-features = false, features = ["toml"]` | Collapses the duplicated precedence chain to one implementation; see §4 |
 | **Config schema** | **`schemars` 1** | Generates the known-key universe that the validator checks against; see §4 |
 | TOML writing | `toml` 1 | `config` reads but does not serialize; `config init` writes |
+| Structured-text parsing | `nom` 8 | Slug patterns, brief headers, seed blocks; see §7 |
 | Templating | `minijinja` 2 | Closest Jinja2 semantics, `StrictUndefined` equivalent |
 | Serialization | `serde`, `serde_json` | `serde_yaml` only if the `## Stage Graph` block stays YAML |
 | Hashing | `sha2` 0.11 | `template_sha256`, `vars_sha256`, `output_sha256` lineage |
@@ -136,3 +137,58 @@ If a future need is proven, the shape is `reqwest` with `blocking` and `rustls-t
 2. The verb-surface sprint gains `override_help` as its parity mechanism and loses the hand-rolled-argv assumption.
 3. Exit-code mapping is an explicit conformance suite, since clap's defaults do not match shepherd's codes.
 4. The dependency tree stays small enough that cross-compiling the npm platform matrix is a build concern, not a linking one.
+
+## 7. nom for structured text
+
+**Sanctioned, with a boundary.** `nom` 8.0.0 is the parser for shepherd's structured text. It is not a general-purpose reach.
+
+**Use `nom` for:**
+- The four bidirectional branch and slug templates in `[branching]`: `v{X}.{Y}.{Z}`, `v{X}.{Y}.{Z}-dev.{N}`, `v{X}{Y}{Z}`, `v{X}{Y}{Z}-dev{N}`. These both parse a branch into components and render components into a slug, and today that round-trip is spread across bash regex and Python string work.
+- The seven bracketed brief headers the coder's startup protocol parses strictly (`[SKILLS]`, `[CONTEXT-INVENTORY]`, `[DO-NOT-DUPLICATE]`, `[USER-STYLE]`, `[FILE-SCOPE]`, `[NON-GOALS]`, `[ACCEPTANCE]`). Drift halts the coder with `BRIEF INVALID`, so the parser is a correctness boundary, not a convenience.
+- Seed structure for `seed verify`: deliverable blocks, `**GH:**` anchors, mesh rows, the `file_scope` block. That gate is currently `grep`/`awk` in `cmd_seed.sh` and its precision ceiling is why the footprint check counts raw lines.
+- The `## Stage Graph` block extraction from `plan.md`.
+- Capturing legacy usage text and exit codes into conformance fixtures.
+
+**Do not use `nom` for:** CLI arguments (`clap` owns those), or TOML/JSON (`config`, `toml`, `serde` own those). Reaching for a parser combinator where a `split` suffices is its own defect.
+
+**API note for the port:** nom 8 is `Parser`-impl based. Call `.parse(input)` on the combinator rather than invoking it directly; nom 7 examples will not compile.
+
+`nom` is declared in `[workspace.dependencies]` but is not yet a member dependency, so it adds nothing to the lock until first use. The package count stays 101.
+
+## 8. WebAssembly viability — proven to build, not proven to run
+
+This section exists because the answer is genuinely promising and it would be easy to overread.
+
+### What is actually true
+
+`rusqlite` 0.40 ships **two** first-class wasm paths, both wired into the crate rather than bolted on:
+
+| Path | Mechanism | Evidence |
+|---|---|---|
+| `wasm32-unknown-unknown` | Swaps `libsqlite3-sys` for `sqlite-wasm-rs` | `default = ["cache", "ffi-sqlite-wasm-rs"]`; `ffi-sqlite-wasm-rs = ["dep:sqlite-wasm-rs"]` |
+| `wasm32-wasip1` / `wasip2` | `libsqlite3-sys` with WASI emulation | `wasm32-wasi-vfs = ["libsqlite3-sys?/wasm32-wasi-vfs"]` |
+
+**Built successfully, 2026-08-12:** `wasm32-unknown-unknown`, release, `crate-type = ["cdylib"]`, rusqlite without `bundled` so `sqlite-wasm-rs` takes over. Output is a **2.07 MB** `.wasm`. String scan confirms `fts5`, `json_valid`, `unicode61`, `remove_diacritics`, and `sqlite3_open` are all compiled in. A table with a `CHECK(json_valid(..))` column and an external-content FTS5 virtual table using the exact `unicode61 remove_diacritics 2` tokenizer compiles against it.
+
+**Toolchain requirement:** Apple's system clang has no WebAssembly backend (`No available targets are compatible with triple "wasm32-unknown-unknown"`). Homebrew LLVM does. The build needs `CC_wasm32_unknown_unknown=/opt/homebrew/opt/llvm/bin/clang`. Any CI job targeting wasm must install LLVM, not rely on the platform compiler.
+
+**`wasm32-wasip2` currently fails**, and the failure is instructive rather than fatal: `libsqlite3-sys`'s build script correctly recognized the target and passed `-D_WASI_EMULATED_MMAN`, `-D_WASI_EMULATED_GETPID`, `-D_WASI_EMULATED_SIGNAL`, `-D_WASI_EMULATED_PROCESS_CLOCKS` and `-DSQLITE_THREADSAFE=0`. It died on `fatal error: 'stdio.h' file not found` — a missing WASI sysroot. That is an absent `wasi-sdk`, not absent support.
+
+### What is NOT true, and matters most
+
+**The module was never executed.** Build success is not runtime success. No query has been run through the wasm build.
+
+**The proven path cannot reach shepherd's registry.** `sqlite-wasm-rs` on `wasm32-unknown-unknown` provides an in-memory VFS and, in browsers, OPFS. Node has no OPFS. Shepherd's registry is a real file at `.shepherd/shepherd.db` that **32 bash guard scripts open directly with the `sqlite3` binary**. A wasm module that cannot open that exact file on disk does not solve the guard problem; it solves a different problem.
+
+The path that *could* reach it is WASI with preopened directories, which is precisely the path that is unproven here and whose Node support is experimental.
+
+### Consequence for the arc
+
+**The v6.4.5 decision is unchanged.** Pi's hot-path guards stay TypeScript over the shared declarative predicate spec. Nothing above changes that, because the unproven part is exactly the part the guards depend on.
+
+**What does change is the v6.5.x spike.** WASM now replaces napi-rs as the preferred candidate for in-process Pi embedding, and the reasoning is no longer speculative:
+- It matches the closest structural precedent. Biome ships a Rust core as a native CLI *and* `@biomejs/wasm-nodejs` for in-process Node, having chosen WASM over napi for that boundary.
+- It sidesteps the entire unverified question that killed napi here, since jiti transforms source text and a `.wasm` import has no native-addon ESM edge cases.
+- `rusqlite` already supports the target, so the engine does not need restructuring to try it.
+
+The spike's success criterion is narrow and should be stated up front: **open `.shepherd/shepherd.db` from a WASI build, read a row written by the native binary, and have a bash `sqlite3` reader see a row written by the wasm build.** Anything short of that is a demo, not a solution.

@@ -46,6 +46,10 @@ rusqlite = { features = ["bundled"], version = "0.40" }
 config = { default-features = false, features = ["toml"], version = "0.15" }
 schemars = { default-features = false, features = ["derive"], version = "1" }
 toml = { version = "1" }
+# parsing — structured text only (slugs, brief headers, seed blocks). NOT for
+# CLI args (clap owns those) and NOT for TOML/JSON (serde/config own those).
+# nom 8 is Parser-impl based: call `.parse(input)`, not the parser directly.
+nom = { default-features = false, features = ["std"], version = "8" }
 # templating
 minijinja = { version = "2" }
 # hashing
