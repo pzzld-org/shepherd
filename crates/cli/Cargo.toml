@@ -15,15 +15,12 @@ rust-version.workspace = true
 version.workspace = true
 
 [lib]
-# rlib only. `cdylib` was template residue: it builds a dynamic library on every
-# compile for a target nothing consumes. The napi/wasm paths that would need it
-# are explicitly deferred out of this arc — add it back with the spike, not before.
 bench = false
-crate-type = ["rlib"]
 
 [[bin]]
 name = "shepherd"
 path = "bin/cli.rs"
+doc = false
 
 [package.metadata.docs.rs]
 all-features = false

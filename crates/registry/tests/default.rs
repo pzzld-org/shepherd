@@ -81,3 +81,50 @@ fn json_valid_enforces_check_constraints() {
         "the json_valid CHECK must reject malformed payloads"
     );
 }
+
+/// The registry is a **file** at `.shepherd/shepherd.db`, not an in-memory
+/// handle: 32 bash guard scripts open that exact path with the `sqlite3`
+/// binary. So a build that can only manage `:memory:` does not solve the guard
+/// problem, it solves a different one.
+///
+/// This is the check that distinguishes the two WebAssembly targets. On
+/// `wasm32-unknown-unknown`, `sqlite-wasm-rs` offers an in-memory VFS and, in
+/// browsers, OPFS — and Node has no OPFS, so this test cannot pass there. On
+/// `wasm32-wasip1` the WASI VFS reaches a real preopened directory and it can.
+///
+/// The path is relative on purpose. `std::env::temp_dir()` **panics** on
+/// `wasm32-wasip1` -- WASI has no ambient temp directory, only what the host
+/// preopens -- so an absolute temp path turns this into a test that cannot run
+/// on the one target it exists to characterise. A relative path lands in the
+/// preopened directory, which `.cargo/config.toml` grants via `wasmtime --dir=.`.
+#[test]
+fn a_file_database_survives_being_closed_and_reopened() {
+    let path = std::path::PathBuf::from("shepherd-registry-file-vfs-probe.db");
+    // WAL leaves sidecars; clear all three so a previous failure cannot make
+    // this pass by reading a stale database.
+    let cleanup = || {
+        for suffix in ["", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{suffix}", path.display()));
+        }
+    };
+    cleanup();
+
+    {
+        let conn = rusqlite::Connection::open(&path).expect("create a file-backed database");
+        conn.execute_batch(
+            "PRAGMA journal_mode = WAL;
+             CREATE TABLE probe (id INTEGER PRIMARY KEY, note TEXT NOT NULL);
+             INSERT INTO probe(note) VALUES ('written before close');",
+        )
+        .expect("write to a file-backed database");
+    }
+
+    let conn = rusqlite::Connection::open(&path).expect("reopen the same file");
+    let note: String = conn
+        .query_row("SELECT note FROM probe WHERE id = 1", [], |row| row.get(0))
+        .expect("read back a row written by a previous connection");
+
+    assert_eq!(note, "written before close");
+    drop(conn);
+    cleanup();
+}

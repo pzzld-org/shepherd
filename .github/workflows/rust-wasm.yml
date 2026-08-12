@@ -1,0 +1,244 @@
+name: rust-wasm
+
+# WHY THIS IS ITS OWN WORKFLOW.
+#
+# WebAssembly is not a nice-to-have here, it is the reason the crate split
+# exists. Shepherd was rewritten once, Python to Rust, because the old
+# implementation could not reach a new host; `wasm32-*` is the concrete proof
+# that the new one can. Folding these checks into `rust.yml` would hide them
+# behind a matrix leg nobody reads, and they need a toolchain (wasi-sdk, a
+# clang with a wasm backend, wasmtime) that no other job wants.
+#
+# The two targets are NOT interchangeable, and the difference is the whole
+# story. `rusqlite` 0.40 selects its SQLite backend by target cfg:
+#
+#   wasm32-unknown-unknown -> sqlite-wasm-rs, `bundled` OFF.
+#       In-memory VFS, plus OPFS in browsers. Node has no OPFS, so this
+#       target CANNOT open `.shepherd/shepherd.db` as a real file.
+#   wasm32-wasip1/p2       -> libsqlite3-sys + the WASI VFS, `bundled` ON.
+#       Reaches a real preopened directory, so it CAN.
+#
+# That distinction decides whether an in-process Pi embedding is possible at
+# all, so both are built and the WASI one has its behaviour executed rather
+# than merely compiled.
+
+concurrency:
+  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.ref }}
+
+on:
+  pull_request:
+    branches: [main, master, "v*"]
+    paths:
+      - "**/*.rs"
+      - "**/Cargo.toml"
+      - "Cargo.lock"
+      - ".cargo/config.toml"
+      - "rust-toolchain.toml"
+      - ".github/workflows/rust-wasm.yml"
+  push:
+    branches:
+      - main
+      - master
+      - "v[0-9]*.[0-9]*.[0-9]*"
+      - "v[0-9]*.[0-9]*.[0-9]*-dev.[0-9]*"
+    paths:
+      - "**/*.rs"
+      - "**/Cargo.toml"
+      - "Cargo.lock"
+      - ".cargo/config.toml"
+      - "rust-toolchain.toml"
+      - ".github/workflows/rust-wasm.yml"
+  repository_dispatch:
+    types: [wasm, rust-wasm]
+  workflow_dispatch:
+
+env:
+  CACHE_ON_FAILURE: true
+  CARGO_INCREMENTAL: 0
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: full
+  # Pinned rather than floating: a wasi-sdk bump changes the C compiler that
+  # builds SQLite, which is exactly the kind of thing that should move on a
+  # commit somebody reviewed.
+  WASI_SDK_VERSION: "33"
+  WASI_SDK_RELEASE: "33.0"
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    name: resolve ref
+    runs-on: ubuntu-latest
+    outputs:
+      ref: ${{ steps.dispatch_ref.outputs.ref }}
+    steps:
+      # `client_payload.*` is authored by whoever sends the dispatch, and
+      # dispatch is grantable WITHOUT `contents: write` -- so interpolating it
+      # into `ref:` lets a token that cannot push a commit still make CI check
+      # out and execute arbitrary code (FL03/axiom#2578). The untrusted value
+      # reaches the script through `env:` and is never spliced into the command.
+      - name: Resolve a trusted checkout ref
+        id: dispatch_ref
+        shell: bash
+        env:
+          DISPATCH_REF: ${{ github.event.client_payload.ref }}
+          FALLBACK_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${DISPATCH_REF}" ]]; then
+            printf 'ref=%s\n' "${FALLBACK_REF}" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          if [[ "${DISPATCH_REF}" =~ ^(refs/heads/|refs/tags/)?(main|master|latest|v[0-9]+\.[0-9]+\.[0-9]+(-dev\.[0-9]+)?)$ ]] \
+            || [[ "${DISPATCH_REF}" =~ ^[0-9a-f]{40}$ ]]; then
+            printf 'ref=%s\n' "${DISPATCH_REF}" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          printf '::error::rejected dispatch ref: not an allowlisted branch, tag, or commit SHA\n'
+          exit 1
+
+  # ------------------------------------------------------------------ #
+  # wasm32-unknown-unknown — the reach check.                          #
+  #                                                                     #
+  # Every library member must compile here. This is what catches a      #
+  # dependency that assumes an OS, a C toolchain, or a filesystem.      #
+  # ------------------------------------------------------------------ #
+  unknown:
+    name: wasm32-unknown-unknown (${{ matrix.package }})
+    needs: resolve
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - package: shepherd-core
+            features: wasm
+          - package: shepherd
+            features: wasm
+          # The interesting one: proves `sqlite-wasm` is wired to the backend
+          # rusqlite actually selects on this target.
+          - package: shepherd-registry
+            features: wasm
+          - package: shepherd-render
+            features: wasm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+          ref: ${{ needs.resolve.outputs.ref }}
+          repository: ${{ github.repository }}
+      - name: Setup rust-cache
+        uses: swatinem/rust-cache@v2
+        with:
+          key: wasm-unknown-${{ matrix.package }}
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache: false
+          target: wasm32-unknown-unknown
+      # sqlite-wasm-rs compiles SQLite from C to wasm, so it needs a clang with
+      # a WebAssembly backend. Ubuntu's has one; Apple's system clang does not,
+      # which is why local runs want Homebrew LLVM.
+      - name: Setup clang
+        run: sudo apt-get update && sudo apt-get install -y clang
+      - name: cargo build ${{ matrix.package }}
+        run: |
+          cargo build --locked --release \
+            --package ${{ matrix.package }} \
+            --target wasm32-unknown-unknown \
+            --no-default-features --features ${{ matrix.features }}
+
+  # ------------------------------------------------------------------ #
+  # wasm32-wasip1 / p2 — the behaviour check.                          #
+  #                                                                     #
+  # Building proves the C cross-compile. It does not prove the module   #
+  # links, or that SQLite's WASI VFS reaches a real file. So the        #
+  # registry's gate tests are EXECUTED under wasmtime here.             #
+  # ------------------------------------------------------------------ #
+  wasi:
+    name: ${{ matrix.target }} (execute)
+    needs: resolve
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [wasm32-wasip1, wasm32-wasip2]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+          ref: ${{ needs.resolve.outputs.ref }}
+          repository: ${{ github.repository }}
+      - name: Setup rust-cache
+        uses: swatinem/rust-cache@v2
+        with:
+          key: wasi-${{ matrix.target }}
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache: false
+          target: ${{ matrix.target }}
+      # The tarball is ~180MB and expands to ~1GB, so it is cached on the
+      # pinned version rather than re-downloaded on every run.
+      - name: Cache wasi-sdk
+        id: wasi-sdk-cache
+        uses: actions/cache@v4
+        with:
+          path: /opt/wasi-sdk
+          key: wasi-sdk-${{ env.WASI_SDK_RELEASE }}-x86_64-linux
+      - name: Install wasi-sdk
+        if: steps.wasi-sdk-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          url="https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_SDK_VERSION}/wasi-sdk-${WASI_SDK_RELEASE}-x86_64-linux.tar.gz"
+          printf 'downloading %s\n' "${url}"
+          curl -fsSL -o /tmp/wasi-sdk.tar.gz "${url}"
+          sudo mkdir -p /opt/wasi-sdk
+          sudo tar xzf /tmp/wasi-sdk.tar.gz -C /opt/wasi-sdk --strip-components=1
+      # `cc` reads WASI_SDK_PATH natively and derives clang, llvm-ar and the
+      # sysroot from it -- wasi-sdk ships `bin/clang.cfg` carrying
+      # `--sysroot=<CFGDIR>/../share/wasi-sysroot`. Setting CC_/AR_/CFLAGS_ per
+      # target also works and is the belt-and-braces form; this is the minimum
+      # that was verified to work.
+      - name: Export the wasi-sdk path
+        run: echo "WASI_SDK_PATH=/opt/wasi-sdk" >> "${GITHUB_ENV}"
+      - name: Setup wasmtime
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasmtime
+      - name: cargo build shepherd-registry
+        run: |
+          cargo build --locked --release \
+            --package shepherd-registry \
+            --target ${{ matrix.target }} \
+            --no-default-features --features wasi
+      # THE POINT OF THIS JOB. `.cargo/config.toml` sets the runner to
+      # `wasmtime --dir=. --dir=/tmp`, so these tests do not merely compile --
+      # they execute, and one of them opens a WAL-mode database as a real file,
+      # closes it, and reads the row back through the WASI VFS.
+      #
+      # That is the property `wasm32-unknown-unknown` cannot satisfy in Node,
+      # and it is the first half of the v6.5.x in-process spike's success
+      # criterion. Regressing it should break a build, not a spike six months
+      # from now.
+      - name: execute the registry gate tests under wasmtime
+        run: |
+          cargo test --locked \
+            --package shepherd-registry \
+            --target ${{ matrix.target }} \
+            --no-default-features --features wasi \
+            -- --nocapture
+      - name: Report module size
+        run: |
+          set -euo pipefail
+          printf '### %s artifacts\n\n' "${{ matrix.target }}" >> "${GITHUB_STEP_SUMMARY}"
+          printf '| artifact | bytes |\n|---|---:|\n' >> "${GITHUB_STEP_SUMMARY}"
+          while IFS= read -r artifact; do
+            printf '| `%s` | %s |\n' \
+              "$(basename "${artifact}")" \
+              "$(stat -c%s "${artifact}")" >> "${GITHUB_STEP_SUMMARY}"
+          done < <(find "target/${{ matrix.target }}/release" -maxdepth 1 -name '*.rlib' -o -maxdepth 1 -name '*.wasm' | sort)

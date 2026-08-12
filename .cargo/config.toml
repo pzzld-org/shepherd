@@ -1,0 +1,29 @@
+# Workspace cargo configuration.
+#
+# The point of this file is that cross-target work needs no tribal knowledge.
+# `cargo test --target wasm32-wasip1` should just run, on a clean clone, for
+# whoever picks up dev.2 — not require them to rediscover which environment
+# variables `cc` reads and which runner wasmtime needs.
+
+# --- WebAssembly System Interface -------------------------------------- #
+#
+# `wasmtime` executes the test binary; `--dir=.` preopens the working directory
+# so SQLite's WASI VFS can reach real files. Without a preopen, WASI has no
+# filesystem at all and only `:memory:` databases work — which is precisely the
+# distinction between this target and wasm32-unknown-unknown, so the file-VFS
+# test would silently pass for the wrong reason.
+#
+# Requires `wasmtime` on PATH: `cargo install wasmtime-cli` (scripts/setup.sh
+# installs it).
+[target.wasm32-wasip1]
+runner = "wasmtime --dir=. --dir=/tmp"
+
+[target.wasm32-wasip2]
+runner = "wasmtime --dir=. --dir=/tmp"
+
+# --- Aliases ------------------------------------------------------------ #
+#
+# The full gate suite, under one name, identical locally and in the pre-push
+# hook. A gate that is remembered as four commands gets run as three.
+[alias]
+gate = "!scripts/gate.sh"
