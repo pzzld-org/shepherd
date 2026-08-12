@@ -1,0 +1,39 @@
+[package]
+default-run = "shepherd"
+description = "A composable, modular, and extensible multi-channel pipeline for designing your own trading engine(s), agents, and simulations."
+name = "shepherd-cli"
+
+authors.workspace = true
+categories.workspace = true
+edition.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+license.workspace = true
+readme = "README.md"
+repository.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "shepherd"
+path = "bin/cli.rs"
+
+[dependencies]
+clap = { features = ["cargo", "derive", "env"], workspace = true }
+# config
+config = { workspace = true }
+# errors
+anyhow = { features = ["std"], workspace = true }
+thiserror = { features = ["std"], workspace = true }
+# serialize
+serde = { features = ["derive", "std"], workspace = true }
+serde_json = { features = ["std"], workspace = true }
+schemars = { workspace = true }
+# database
+sqlx = { features = ["derive", "macros"], workspace = true }
+# tracing
+tracing = { features = ["attributes", "log", "std"], workspace = true }
+tracing-subscriber = { features = ["env-filter", "fmt"], workspace = true}

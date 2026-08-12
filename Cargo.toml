@@ -1,0 +1,121 @@
+[workspace]
+default-members = [
+  "cli"
+]
+exclude = [
+]
+members = [
+  "cli"
+]
+resolver = "3"
+
+[workspace.package]
+authors = [
+  "FL03 <joe@pzzld.org>",
+  "Scattered-Systems LLC <support@scsys.io>",
+]
+categories = ["mathematics"]
+description = "A composable, modular, and extensible multi-channel pipeline for designing your own trading engine(s), agents, and simulations."
+edition = "2024"
+homepage = "https://github.com/FL03/shepherd/wiki"
+keywords = ["bot", "finance", "runtime", "simulation"]
+license = "Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/FL03/shepherd.git"
+rust-version = "1.96.0"
+version = "6.4.5"
+
+[workspace.dependencies]
+shepherd-cli = { default-features = false, path = "cli", version = "6.4.5" }
+
+# custom
+contained = { default-features = false, features = ["macros"], version = "0.2" }
+# frameworks
+clap = { features = ["cargo", "derive", "env"], version = "4" }
+# databases
+sqlx = { default-features = false, features = ["derive", "macros"], version = "0.9" }
+sqlx-macros = { default-features = false, features = ["derive"], version = "0.9" }
+# config
+config = { version = "0.15" }
+# data-structures
+bytes = { default-features = false, version = "1" }
+schemars = { default-features = false, features = ["derive"], version = "1" }
+# random
+getrandom = { default-features = false, version = "0.4" }
+rand = { default-features = false, version = "0.10" }
+rand_distr = { default-features = false, version = "0.6" }
+uuid = { default-features = false, version = "1" }
+# serialization
+serde = { default-features = false, features = ["derive"], version = "1" }
+serde_derive = { default-features = false, version = "1" }
+serde_json = { default-features = false, version = "1" }
+# error handling
+anyhow = { default-features = false, version = "1" }
+thiserror = { default-features = false, version = "2" }
+# time
+chrono = { default-features = false, version = "0.4" }
+cron = { default-features = false, version = "0.17" }
+time = { default-features = false, version = "0.3" }
+# tokio
+tokio = { default-features = false, features = ["macros"], version = "1" }
+# tracing
+tracing = { default-features = false, features = ["attributes", "log"], version = "0.1" }
+tracing-subscriber = { features = ["env-filter", "fmt"], version = "0.3" }
+# macros & utilities
+lazy_static = { version = "1" }
+paste = { version = "1" }
+smart-default = { version = "0.7" }
+strum = { default-features = false, features = ["derive"], version = "0.28" }
+# WebAssembly
+gloo = { default-features = false, version = "0.12" }
+wasm-bindgen = { default-features = false, version = "0.2" }
+web-sys = { default-features = false, version = "0.3" }
+
+# ********* Profiles *********
+[profile.dev]
+codegen-units = 256
+debug = true
+debug-assertions = true
+incremental = true
+lto = false
+opt-level = 1
+overflow-checks = true
+rpath = false
+strip = false
+
+[profile.release]
+codegen-units = 16
+debug = false
+debug-assertions = false
+incremental = false
+lto = "fat"
+opt-level = 2
+overflow-checks = false
+panic = "unwind"
+rpath = false
+strip = true
+
+[profile.android-dev]
+inherits = "dev"
+
+[profile.server-dev]
+inherits = "dev"
+lto = "thin"
+
+[profile.wasm-dev]
+inherits = "dev"
+opt-level = 1
+strip = true
+
+[profile.wasm-release]
+inherits = "release"
+opt-level = "z"
+strip = true
+
+# docker: CI/container builds. Thin LTO + fewer codegen units to fit within
+# runner memory budgets (7–16 GB). Binary perf is close to release; fat LTO
+# gives marginal wins not worth the OOM risk on constrained builders.
+[profile.docker]
+codegen-units = 4
+inherits = "release"
+lto = "thin"
