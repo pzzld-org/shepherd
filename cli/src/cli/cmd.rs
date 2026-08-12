@@ -13,7 +13,6 @@ pub(crate) mod prelude {
     pub use super::init::InitCmd;
 }
 
-
 #[derive(
     Clone,
     Debug,
@@ -27,5 +26,5 @@ pub(crate) mod prelude {
     serde::Serialize,
 )]
 pub enum ShepherdCommand {
-    Init(InitCmd)
+    Init(InitCmd),
 }

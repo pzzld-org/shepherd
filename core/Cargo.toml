@@ -1,0 +1,57 @@
+[package]
+description = "The harness-agnostic shepherd engine: domain types, configuration schema, and run state. Knows nothing about any CLI, harness, or process."
+name = "shepherd-core"
+
+authors.workspace = true
+categories.workspace = true
+edition.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+license.workspace = true
+readme = "README.md"
+repository.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+# serialize
+schemars = { workspace = true }
+serde = { features = ["derive"], workspace = true }
+# errors
+thiserror = { workspace = true }
+# utilities
+strum = { features = ["derive"], workspace = true }
+
+[features]
+default = [
+  "std",
+]
+
+full = [
+  "default",
+]
+
+# ********* [FF] Targets *********
+# No target here may enable a host-coupled dependency. That is the whole point
+# of this crate; see the boundary rule in src/lib.rs.
+native = ["full"]
+
+wasi = ["std"]
+
+wasm = ["std"]
+
+# ********* [FF] Standard Library *********
+alloc = [
+  "serde/alloc",
+]
+
+std = [
+  "alloc",
+  "schemars/std",
+  "serde/std",
+  "strum/std",
+  "thiserror/std",
+]

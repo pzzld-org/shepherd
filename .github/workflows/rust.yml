@@ -1,0 +1,88 @@
+name: rust
+
+on:
+  push:
+    branches: [main, "v*"]
+    paths: ["**/*.rs", "**/Cargo.toml", "Cargo.lock", ".github/workflows/rust.yml"]
+  pull_request:
+    branches: [main, "v*"]
+  workflow_dispatch:
+
+concurrency:
+  group: rust-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  check:
+    name: check + clippy + test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets
+      - run: cargo test --workspace
+
+  engine-boundary:
+    name: engine boundary
+    runs-on: ubuntu-latest
+    # WHY THIS JOB EXISTS.
+    #
+    # Shepherd has been rewritten once already, Python to Rust, and the reason
+    # was reach: the old implementation could not be embedded in a host that
+    # needed it without the CLI wrapped around it. A third rewrite happens the
+    # same way. `shepherd-core` is the insurance, and this job is what makes the
+    # insurance real -- an architecture rule that only lives in a README drifts,
+    # one that breaks a build does not.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+
+      # 1. The engine must reach a non-native host.
+      #    Catches anything that assumes an OS, a C toolchain, or a filesystem.
+      #    No LLVM needed: core has no C dependencies, and that is the point.
+      - name: core compiles to wasm32-unknown-unknown
+        run: cargo check -p shepherd-core --target wasm32-unknown-unknown
+
+      # 2. The engine must not acquire delivery concerns.
+      #    Check 1 alone is NOT sufficient -- clap, anyhow and tracing-subscriber
+      #    all compile to wasm perfectly well. Reaching a host and being free of
+      #    host opinions are different properties and each needs its own gate.
+      - name: core carries no delivery dependencies
+        run: |
+          forbidden='^clap$|^anyhow$|^tracing-subscriber$|^config$|^rusqlite$|^minijinja$'
+          if cargo tree -p shepherd-core --edges normal --prefix none \
+               | awk '{print $1}' | sort -u | grep -qE "$forbidden"; then
+            echo "::error::shepherd-core acquired a delivery dependency."
+            echo "The engine crate must not depend on an argument parser, a"
+            echo "contextual error type, a log sink, or an I/O backend. Those"
+            echo "belong in shepherd-cli or another adapter. Offenders:"
+            cargo tree -p shepherd-core --edges normal --prefix none \
+              | awk '{print $1}' | sort -u | grep -E "$forbidden"
+            exit 1
+          fi
+
+      # 3. The engine must not reach for the process it is running in.
+      - name: core does not touch process or argv
+        run: |
+          # Comment lines are excluded deliberately: the boundary rule is
+          # documented in core/src/lib.rs and would otherwise match itself.
+          # Verified against a negative control before this job was committed.
+          hits=$(grep -rnE 'std::process|std::env::args|process::exit' core/src \
+                   | grep -vE '^[^:]+:[0-9]+:[[:space:]]*(//|\*|/\*)' || true)
+          if [ -n "$hits" ]; then
+            echo "::error::shepherd-core referenced process or argv."
+            echo "Process semantics belong to the binary, not the engine."
+            echo "$hits"
+            exit 1
+          fi

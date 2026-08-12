@@ -1,11 +1,13 @@
 [workspace]
 default-members = [
-  "cli"
+  "cli",
+  "core",
 ]
 exclude = [
 ]
 members = [
-  "cli"
+  "cli",
+  "core",
 ]
 resolver = "3"
 
@@ -27,17 +29,12 @@ version = "6.4.5"
 
 [workspace.dependencies]
 shepherd-cli = { default-features = false, path = "cli", version = "6.4.5" }
+shepherd-core = { default-features = false, path = "core", version = "6.4.5" }
 
 # cli
 clap = { features = ["cargo", "derive", "env"], version = "4" }
 # databases
-# NOTE: `bundled` is sufficient and complete. libsqlite3-sys/build.rs:156-163 passes
-# -DSQLITE_ENABLE_FTS5 and -DSQLITE_DEFAULT_FOREIGN_KEYS=1 unconditionally on this
-# path. There is NO `fts5` cargo feature; asserting one is a build-time error.
-# JSON1 is core since SQLite 3.38, so `ENABLE_JSON1` is ABSENT from compile_options
-# even though json_valid() works — assert the behavior, never that flag.
-# See .shepherd/docs/specs/2026-08-12-v645-rust-dependency-stack.md
-rusqlite = { features = ["bundled"], version = "0.40" }
+rusqlite = { version = "0.40" }
 # config
 # TOML only. Defaults pull json/yaml/ini/ron/json5/convert-case/async, and `async`
 # drags in async-trait against the no-async-runtime decision. `ini` alone pulls
@@ -45,10 +42,7 @@ rusqlite = { features = ["bundled"], version = "0.40" }
 # shepherd.toml is the only config format shepherd has ever read.
 config = { default-features = false, features = ["toml"], version = "0.15" }
 schemars = { default-features = false, features = ["derive"], version = "1" }
-toml = { version = "1" }
-# parsing — structured text only (slugs, brief headers, seed blocks). NOT for
-# CLI args (clap owns those) and NOT for TOML/JSON (serde/config own those).
-# nom 8 is Parser-impl based: call `.parse(input)`, not the parser directly.
+# parsing — structured text only (slugs, brief headers, seed blocks)
 nom = { default-features = false, features = ["std"], version = "8" }
 # templating
 minijinja = { version = "2" }
@@ -57,6 +51,8 @@ sha2 = { default-features = false, version = "0.11" }
 # serialization
 serde = { default-features = false, features = ["derive"], version = "1" }
 serde_json = { default-features = false, version = "1" }
+# macros & utils
+strum = { default-features = false, features = ["derive"], version = "0.28" }
 # error handling
 anyhow = { default-features = false, version = "1" }
 thiserror = { default-features = false, version = "2" }

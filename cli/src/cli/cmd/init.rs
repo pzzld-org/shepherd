@@ -17,6 +17,4 @@
     serde::Deserialize,
     serde::Serialize,
 )]
-pub struct InitCmd {
-    
-}
+pub struct InitCmd {}

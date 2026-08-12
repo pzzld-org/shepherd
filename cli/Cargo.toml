@@ -25,17 +25,20 @@ name = "shepherd"
 path = "bin/cli.rs"
 
 [dependencies]
+# engine — the harness-agnostic core this binary adapts
+shepherd-core = { workspace = true }
+# cli
 clap = { features = ["cargo", "derive", "env"], workspace = true }
 # config
 config = { workspace = true }
-toml = { workspace = true }
+# parsing
+nom = { workspace = true }
 # errors
-anyhow = { features = ["std"], workspace = true }
-thiserror = { features = ["std"], workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
 # serialize
-serde = { features = ["derive", "std"], workspace = true }
-serde_json = { features = ["std"], workspace = true }
-schemars = { workspace = true }
+serde = { features = ["derive"], workspace = true }
+serde_json = { workspace = true }
 # database
 rusqlite = { workspace = true }
 # templating
@@ -43,5 +46,58 @@ minijinja = { workspace = true }
 # hashing
 sha2 = { workspace = true }
 # tracing
-tracing = { features = ["attributes", "log", "std"], workspace = true }
-tracing-subscriber = { features = ["env-filter", "fmt"], workspace = true}
+tracing = { features = ["attributes", "log"], workspace = true }
+tracing-subscriber = { features = ["env-filter", "fmt"], workspace = true }
+
+[features]
+default = [
+  "bundled",
+  "std",
+]
+
+full = [
+  "default",
+]
+
+# ********* [FF] Targets *********
+native = ["full"]
+
+# NOTE: neither wasm target may enable `bundled`. `bundled` pulls libsqlite3-sys,
+# which compiles SQLite from C and needs a sysroot. Dropping it lets rusqlite's
+# default `ffi-sqlite-wasm-rs` take over on wasm32-unknown-unknown. Verified: a
+# 2.07MB module with fts5, json_valid and the unicode61 tokenizer compiled in.
+# Apple clang has no wasm backend; use LLVM's.
+wasi = [
+  "std",
+  "wasi-vfs",
+]
+
+wasm = [
+  "std",
+]
+
+# ********* [FF] Standard Library *********
+alloc = [
+  "serde/alloc",
+  "serde_json/alloc",
+  "shepherd-core/alloc",
+]
+
+std = [
+  "alloc",
+  "anyhow/std",
+  "serde/std",
+  "serde_json/std",
+  "shepherd-core/std",
+  "thiserror/std",
+  "tracing/std",
+]
+
+# ********* [FF] Deps *********
+bundled = [
+  "rusqlite/bundled",
+]
+
+wasi-vfs = [
+  "rusqlite/wasm32-wasi-vfs",
+]

@@ -5,12 +5,20 @@
 */
 use shepherd_cli::ShepherdCli;
 
-
 fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt().with_max_level(tracing::Level::TRACE).init();
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::TRACE)
+        .init();
 
     tracing::debug!("Parsing cli arguments...");
     let cli = ShepherdCli::parse();
+    tracing::debug!(
+        config = %cli.config,
+        release = cli.release,
+        update = cli.update,
+        verbose = cli.verbose,
+        "parsed cli arguments"
+    );
 
     Ok(())
 }

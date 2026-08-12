@@ -61,6 +61,8 @@ Changing one of these is a critic-RED escalation, not a sprint-time judgment cal
 6. **The 20 migration files port verbatim.** Migration SQL is the portable artifact; only the runner is rewritten. `rusqlite_migration` is rejected: it tracks state in `user_version`, while this schema uses a `schema_versions` table both existing runners read.
 7. **The dependency stack is closed.** `clap`, `rusqlite`, `config` (toml feature only), `schemars`, `toml`, `nom`, `minijinja`, `serde`, `sha2`, `anyhow`, `thiserror`, `uuid`, `chrono`, `tracing`. 101 resolved packages, down from the scaffold's 201. No `sqlx`, no `tokio`, no `reqwest`; GitHub stays on the `gh` CLI. `config` owns the six-tier precedence chain so `_lib.sh:shctx_config_files()` is deleted rather than ported; `schemars` generates the key universe the validator checks against. Rationale and probe results in `.shepherd/docs/specs/2026-08-12-v645-rust-dependency-stack.md`. Adding a crate is a critic-RED escalation.
 
+8. **The engine never knows it is a CLI.** `core/` holds domain types, config schema, and run state; `cli/` is one adapter over it, and a Node or wasm binding is another. `core` may not depend on `clap`, `anyhow`, a log sink, an I/O backend, or `std::process`, and may not branch on `Harness`. Enforced by the `engine-boundary` CI job, not by prose: `core` compiles to `wasm32-unknown-unknown` on every push, plus a forbidden-dependency gate and a process/argv gate. This is the arc's answer to "never rewrite this again"; a rule that only lives in a doc drifts.
+
 ## B. Sprint topology
 
 Recommended shape only. The engineer's Stage Graph is binding.
