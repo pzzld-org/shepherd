@@ -1,160 +1,190 @@
-# CODER REPORT — W0-S11
-
-- Lane: l5-harness
-- Skills loaded: code-style (SKILL.md; per-language files present: rust.md only — no shell.md exists)
-- Halt: **BRIEF INVALID** — skill `shell` listed in `[SKILLS]` not found
+# CODER REPORT — W0-S11 (DF-17, CRITICAL, RE-DISPATCH)
 
 ## Files changed
+- `hooks/scripts/agent_invocation_tagger.sh` (modified)
+- `hooks/tests/lint_agent_capabilities.sh` (modified)
 
-None. Halted at Step 1 (Load skills) of the mandatory Startup Protocol, before the Step 0
-brief-shape check completed and before any read/write inside `[FILE-SCOPE]`. Per
-`agents/coder.md`: "you MUST NOT write code before Steps 0-3 of the Startup Protocol
-complete. Stop — do not partial-execute on a malformed brief."
+No file outside `[FILE-SCOPE]` was touched. `agents/*.md` and `skills/harness/SKILL.md` were
+read-only inputs. Confirmed via `git status --porcelain -- hooks/scripts/agent_invocation_tagger.sh
+hooks/tests/lint_agent_capabilities.sh` (exactly these two, modified) and a broader
+`git status --porcelain` scan that every other dirty/untracked path in the shared worktree belongs
+to a sibling lane (`.github/workflows/*`, `commands/spawn.md`, `hooks/hooks.json`,
+`hooks/scripts/_lib.sh`, `hooks/scripts/session_open.sh`, `hooks/tests/test_engineer_self_contained.sh`,
+`hooks/tests/test_v644_wiring.sh`, `skills/shepherd/SKILL.md`, `.github/scripts/`, `content/`,
+`hooks/scripts/plan_proof_guard.sh`, `hooks/tests/test_plan_proof_guard.sh`, `package.json`,
+`packages/`) — none of it mine. `skills/harness/SKILL.md` shows as modified in the shared worktree;
+that change is NOT mine (I only `Read` it) — see `## Notes`.
 
 ## LOC delta
-
-+0 / -0
+`git diff --stat -- hooks/scripts/agent_invocation_tagger.sh hooks/tests/lint_agent_capabilities.sh`:
+```
+ hooks/scripts/agent_invocation_tagger.sh |  70 ++++++++++++++++-
+ hooks/tests/lint_agent_capabilities.sh   | 128 ++++++++++++++++++++++++++++++-
+ 2 files changed, 194 insertions(+), 4 deletions(-)
+```
++194 / -4 total. The brief's LOC budget (~130) is an estimate for shell, and this is shell, not
+Rust — `loc-count.py`'s ONE-LOC rule is scoped to `*.rs` production lines by construction and does
+not apply to `.sh` files at all (confirmed: invoking it against these two files errors out looking
+for a `*.rs` pathspec). I'm reporting the actual number rather than trimming to force-fit the
+estimate or adjudicating whether being over it is acceptable — that adjudication is the
+dispatcher's per `LOC-BUDGET-GOVERNANCE`, never mine. The size is the honest cost of the two
+`[ACTIONS]` items 1+2 (a written record schema + doc, and a reusable detector + `--self-test` +
+scan loop + two summary-string updates) — both mandated, neither cuttable.
 
 ## Acceptance outputs
-
-NOT RUN. The brief's `[ACCEPTANCE]` commands (`bash hooks/tests/lint_agent_capabilities.sh`,
-`--self-test`, and the `rg -q 'observed|runtime'` grep) exercise the fix this step is meant
-to produce. Producing that fix requires completing the Startup Protocol first, which halted
-at the skill-load gate (Step 1) — before Step 0.5's worktree/base-commit check even runs in
-the mandated order. Running the acceptance commands now would only reproduce the pre-existing
-(stale) state of `hooks/tests/lint_agent_capabilities.sh`, which is not a valid acceptance
-signal for work not yet done, and running them is not itself a git/cargo write so it is
-technically permitted — but doing so here would misrepresent verification of code I did not
-write.
-
-For traceability, the verification commands I actually ran (read-only, no writes):
+All three commands run from the worktree root (`/Users/jo3/src/fl03/shepherd/.worktrees/v645-l5-harness`),
+verbatim stdout + exit code, captured on the final version of the file (re-run fresh, not reused
+from an earlier iteration):
 
 ```
-$ cd /Users/jo3/src/fl03/shepherd/.worktrees/v645-l5-harness && git rev-parse HEAD && pwd
-5be42280615c8dc5321061798240f476dffed645
-/Users/jo3/src/fl03/shepherd/.worktrees/v645-l5-harness
-```
-→ matches `[BASE-COMMIT-EXPECTED]` exactly and `pwd` matches `[WORKTREE].Path`. Step 0.5
-would have PASSED had Step 1 cleared first (order is documented as Step 1 before Step 0.5 in
-`agents/coder.md §Startup Protocol`; I ran this check regardless, out of order, purely to
-confirm the worktree itself was not the problem before concluding the halt is skill-related).
+$ bash hooks/tests/lint_agent_capabilities.sh
+  OBSERVED-CAPABILITY (DF-17): 0 dispatch record(s) under /Users/jo3/src/fl03/shepherd/.worktrees/v645-l5-harness/.shepherd carry a self-reported observed_tools list yet — expected until a future wave wires a role's own runtime tool-presence probe to self-report (agent_invocation_tagger.sh already records the declared half + a self-report-pending placeholder at every dispatch)
+lint_agent_capabilities: OK — read-only trio mutation-free (GH #74); all nine carry no destructive MCP verb (GH #84); all three leads (shepherd/engineer/conductor) grant Workflow in-tree (#233, live on an Agent-Teams teammate substrate — #263); read-only shctx-runners grant Bash; no profile claims an ungranted tool (v6.2.1); NO frontmatter names a provider-specific MCP token — capabilities are discovered via ToolSearch (v6.4.3, #110); DF-17 observed-vs-declared capability scan ran (0 record(s), 0 delta(s), non-fatal)
+(exit code: 0)
 
-```
-$ (Skill tool) skill: code-style, args: shell
-```
-→ loaded `code-style/SKILL.md` successfully. It documents its own directory contents
-verbatim: only `rust.md` and `python.md` (scaffolded) exist as per-language files — no
-`shell.md`. Its own text: "If no file exists for the language, apply the shared principles
-below and note the gap."
+$ bash hooks/tests/lint_agent_capabilities.sh --self-test
+  SELF-TEST (DF-17): fabricating a role that declares 'Glob' but whose observed set omits it
+  SELF-TEST OK — the injected delta WAS detected:
+    FINDING fixture-role: declares 'Glob' but it is not present in the runtime-observed tool list (declared != observed, DF-17)
+lint_agent_capabilities --self-test: exiting 1 deliberately — this is the proof the detector CAN fail, not a normal-run failure
+(exit code: 1)
 
+$ rg -q 'observed|runtime' hooks/tests/lint_agent_capabilities.sh
+(exit code: 0)
 ```
-$ (Skill tool) skill: shell
-Unknown skill: shell. Did you mean help?
-```
-→ confirms `shell` is not a registered/invokable skill via the Skill tool — the only
-authoritative runtime oracle for "is this skill installed."
 
-```
-$ (Skill tool) skill: bash
-Unknown skill: bash. Did you mean batch?
-```
-→ confirmed no alternate slug (`bash`) resolves either, ruling out a naming mismatch.
+All three PASS: (1) the extended lint still exits 0 on the real tree; (2) `--self-test` proves
+the detector genuinely fires (fabricates a `Glob` delta, detects it, and deliberately exits 1 as
+the proof — not a normal-run failure); (3) the script's own text carries both `observed` and
+`runtime`.
 
+Beyond the three mandated commands, I additionally verified the mechanism end-to-end against a
+real, non-synthetic scenario — a fixture dispatch record shaped exactly like DF-17's own cited
+evidence (`agent_role: "engineer"`, `declared_tools` including `Workflow`/`Glob`/`Grep`,
+`observed_tools` missing them), pointed at via `SHEPHERD_LINT_RUNS_DIR`:
 ```
-$ find /Users/jo3/.claude/skills -maxdepth 1 -type d | sort
+$ SHEPHERD_LINT_RUNS_DIR=<fixture dir> bash hooks/tests/lint_agent_capabilities.sh
+  FINDING (<fixture>/dispatch/testsprint/fx1.json):
+    FINDING engineer: declares 'Workflow' but it is not present in the runtime-observed tool list (declared != observed, DF-17)
+    FINDING engineer: declares 'Glob' but it is not present in the runtime-observed tool list (declared != observed, DF-17)
+    FINDING engineer: declares 'Grep' but it is not present in the runtime-observed tool list (declared != observed, DF-17)
+  OBSERVED-CAPABILITY (DF-17): scanned 1 dispatch record(s) with self-reported data, found 1 declared-vs-observed delta(s) — reported as findings above, non-fatal
+lint_agent_capabilities: OK ... DF-17 observed-vs-declared capability scan ran (1 record(s), 1 delta(s), non-fatal)
+(exit code: 0)
 ```
-→ 23 entries (agents-sdk, cloudflare*, code-style, context7-mcp, durable-objects,
-polymarket, questdb, rust, sandbox-sdk, sentry-cli, trader, turnstile-spin, typing,
-wasmtime, web-perf, webassembly, workers-best-practices, workflow, wrangler, .archive).
-No `shell` entry.
+This proves the full pipeline (record on disk → declared/observed diff → FINDING, non-fatal) works
+for real data, not only for the in-process `--self-test` shortcut.
 
-```
-$ find /Users/jo3/.claude/plugins/cache/shepherd -maxdepth 6 -type d -iname "*shell*"
-$ find /Users/jo3/.claude/plugins/cache/shepherd/shepherd/6.4.4/skills -maxdepth 1 -type d
-```
-→ Only hit for `*shell*` is `.shepherd/profiles/shell` (a shepherd **profile** artifact, not
-a Skill-tool-invokable skill). The plugin's actual `skills/` directory contains exactly
-`adaptation, bridge, context, harness, motivation, shepherd, thinking` — matching this
-project's own `skills/` directory 1:1. No `shell` skill.
-
-```
-$ find /Users/jo3/.claude/plugins/marketplaces -type d -iname "shell"
-```
-→ 1 hit: `/Users/jo3/.claude/plugins/marketplaces/shepherd/.shepherd/profiles/shell` — same
-profile artifact, not a skill.
+I also smoke-tested `agent_invocation_tagger.sh` directly (fabricated `PreToolUse` JSON on stdin,
+both a known role (`coder`) and an `unknown` role) and confirmed the written record for `coder`
+carries `"declared_tools": ["Bash","Edit","Glob","Grep","Read","Skill","ToolSearch","Write"]` —
+byte-for-byte the same 8 tokens as `agents/coder.md`'s real `tools:` line — and the `unknown`-role
+case degrades cleanly to `"declared_tools": [], "declared_source": "role-unresolved"` with no
+error and no non-zero exit, preserving the hook's "never blocks; pure side-effect" contract. Both
+the jq path and the python3 fallback path were exercised. Test artifacts were removed afterward
+(`.shepherd/dispatch/**` is gitignored by `.shepherd/.gitignore` regardless, so nothing could have
+leaked into the diff).
 
 ## Deviations
-
-**HALT — BRIEF INVALID.** `[SKILLS]` for this dispatch reads `code-style, shell`.
-`agents/coder.md §Skills to load` is unambiguous: "Listed skill not installed → halt
-`BRIEF INVALID — skill \`<slug>\` listed in [SKILLS] not found. Halting.`" I verified across
-every place a skill could be registered (user-level `~/.claude/skills/`, every cached plugin
-under `~/.claude/plugins/cache/**`, this project's own `skills/` directory, every marketplace
-cache, and two direct `Skill(skill=...)` invocations for both `shell` and `bash`) and `shell`
-does not exist anywhere as an installed, invokable skill. `code-style` itself only carries a
-`rust.md` per-language file — no `shell.md` — so there is no fallback language-idiom
-reference for `.sh` files in this environment today.
-
-This is the **identical gap** the sibling coder for step W0-S6 (same lane `l5-harness`, same
-run `v645`) already hit and halted on — see
-`/Users/jo3/src/fl03/shepherd/.shepherd/runs/v645/reports/coder-W0-S6.md`, which reports the
-same `[SKILLS] = code-style, shell` dispatch, the same missing-`shell` finding, and the same
-halt code. Since W0-S11's brief also targets bash scripts
-(`hooks/tests/lint_agent_capabilities.sh`, `hooks/scripts/agent_invocation_tagger.sh`) under
-the same `[SKILLS] = code-style, shell` computation, the gap reproduces exactly. This is a
-conductor-side skill-registration gap — not something resolvable by substitution or by
-silently proceeding on `code-style` + general shell knowledge alone. `agents/coder.md` is
-explicit: "load every entry, never substitute." Per the brief's own `[DOCTRINES]` clause for
-this dispatch — "an unverified capability CLAIM ... must be checked by a script, not trusted
-as prose" — I verified via the Skill tool itself (the deterministic oracle) rather than
-assuming `shell` existed because it sounds plausible, and it does not.
-
-I am halting before touching `hooks/tests/lint_agent_capabilities.sh` or
-`hooks/scripts/agent_invocation_tagger.sh`.
-
-Two ways to unblock, for the dispatcher to choose (not mine to adjudicate):
-1. Register/author a `shell` language-mastery skill (mirroring how `rust` backs `.rs` work)
-   and re-dispatch — the durable fix, given this repo's `hooks/scripts/*.sh` and
-   `hooks/tests/*.sh` surface is large (already two steps in this single wave — W0-S6 and
-   W0-S11 — dispatched against bash files with this same unmet `[SKILLS]` entry) and will
-   recur every time a shell-scoped step is dispatched.
-2. Amend `[SKILLS]` for this step (and W0-S6, and any other bash-scoped step in this wave)
-   to drop `shell` and explicitly declare `code-style` (whose shared principles + this
-   brief's own `[USER-STYLE]` clause, which already states bash 3.2 compatibility
-   requirements verbatim) as sufficient, then re-dispatch with that correction on record.
-
-No code was written under either path until re-dispatch; nothing in `[FILE-SCOPE]`
-(`hooks/tests/lint_agent_capabilities.sh`, `hooks/scripts/agent_invocation_tagger.sh`) was
-read or modified beyond the read-only existence/registration checks documented above.
+None from `[ACTIONS]`. One correctness fix caught in testing, not a deviation from the brief:
+`agent_invocation_tagger.sh` runs under `set -eu -o pipefail`. My first draft of the new
+`declared_tools_csv()` helper ended its pipeline in `grep -v '^$' | paste -sd, -`; when a role has
+no `tools:` line (e.g. `unknown`), `grep` exits 1 on the empty match, and under `pipefail` that
+propagates through the plain (non-`local`) assignment `declared_csv="$(declared_tools_csv ...)"` —
+`set -e` treats that assignment's failing exit status as the whole script's, silently killing the
+hook before it wrote *any* record, for every unknown-role dispatch. I found this by tracing the
+smoke test (`bash -x`), not by inspection, and fixed it by appending `|| true` inside the helper
+(mirroring the file's own established pattern, e.g. line 79's
+`... | sed 's/^# @//' || true` for the identical reason). Verified the fix directly: the
+`unknown`-role smoke test now writes a clean record every time.
 
 ## Staged GH commands
-
-None.
+None. This step required no `gh` write and no git write of any kind (per `[PROTOCOL-REMINDERS]`,
+custody of staging/committing these two files belongs to the dispatcher, not me).
 
 ## Notes
 
-- The substance of the requested fix is understood and ready to execute the moment this gate
-  clears: (1) design a simple observed-tools record convention — one text/JSON file per role
-  invocation under a run-scoped directory (e.g. `.shepherd/runs/<run>/capabilities/<role>-<step>.observed`)
-  that a script can populate today with a documented "static-script proxy" list (what tools
-  *this* bash context can exercise, explicitly caveated as NOT the same oracle as a live
-  dispatched agent) and that a future live-dispatched role could self-report into using the
-  same file convention/schema; (2) extend `hooks/tests/lint_agent_capabilities.sh` in place
-  (no new file — confirmed via `rg -n 'need .*tools:' hooks/tests/` returning nothing extra
-  to duplicate) to diff each `agents/*.md` frontmatter `tools:` declaration against that
-  role's observed-record file, reporting deltas as findings/warnings rather than a hard grep
-  pass/fail, while preserving exit-0 on a clean/no-observed-record run (backward compatible)
-  and adding a `--self-test` mode that seeds a synthetic fixture with a deliberately-missing
-  observed tool and asserts the script detects and fails on it; (3) grep confirms
-  `skills/harness/SKILL.md` already exists and is in `may_read` only — I did not open it in
-  this halted run, so I cannot yet state whether it needs a new section; that determination
-  is deferred to the re-dispatched run since it depends on Step 2/3 (CONTEXT-INVENTORY +
-  DO-NOT-DUPLICATE greps) which I did not reach.
-- I did not touch any file outside `[FILE-SCOPE]`, ran no git write commands, and ran no
-  cargo/build commands (consistent with this step's "no cargo invocation" instruction).
-- Cross-reference for the dispatcher: this is the second coder in lane `l5-harness`, wave W0,
-  to independently hit and report this exact `shell`-skill-not-found gap (W0-S6 and now
-  W0-S11). A single `[SKILLS]` amendment or skill registration would very likely unblock both
-  (and any other bash-scoped step in this wave) in one shot rather than requiring N separate
-  re-dispatches.
-- Reporter: shepherd-conductor-v645-l5-harness (acting as @coder per dispatched `[ROLE]`) @ 2026-08-13T00:33:11Z
+**What "observed" means in a script context, and the boundary of what I could build here (per
+`[ACTIONS]` 1's explicit ask).** A `PreToolUse(Agent|Task)` hook — `agent_invocation_tagger.sh` —
+fires *before* the dispatched role's own session exists. It has no live introspection API to call;
+nothing running as a static shell script does (confirmed by grepping the codebase — the only
+precedent, `shepherd_mcp_available()` in `_lib.sh`, probes an *external* MCP server over the
+`claude` CLI, not a session's own tool list, and even that comment explicitly says "no per-session
+tool manifest — no such file/env var exists, checked live, v6.4.5"). So "observed" from a script's
+vantage point can only ever mean one of two things: (a) a maintained, hand-curated table of
+facts measured by a human/agent reading real transcripts, or (b) a schema + convention that lets
+the *actual* dispatched session (the only party with real introspection, per
+`skills/harness/SKILL.md §Tool presence`: "The agent itself, not any hook, is the authoritative
+check") write its own finding back later. I deliberately built (b), not (a): hardcoding a table
+like `engineer: absent Workflow,Glob,Grep` sourced from the brief's evidence blurb risked baking in
+a stale or substrate-conditional fact as permanent truth — `skills/harness/SKILL.md`'s own
+`#263`-era doctrine treats `Workflow` presence as SUBSTRATE-conditional (present on a live
+Agent-Teams teammate substrate, absent on an Agent-tool subagent substrate), so a flat "engineer
+never sees Workflow" constant would be actively WRONG on one of the two substrates and would fight
+the very doctrine it's citing. Design (b) instead: `agent_invocation_tagger.sh` now writes
+`declared_tools`/`declared_source` (derived exactly as this lint already derives them — same
+`tools:`-line parse) plus an explicit `observed_tools: null, observed_at: null, observed_source:
+"self-report-pending"` placeholder at every dispatch, and `lint_agent_capabilities.sh` reads
+whatever `observed_tools` any record on disk actually carries and diffs it. Today that is
+zero records everywhere (verified against both this worktree and, structurally, the empty
+`.shepherd/runs/v645/dispatch/` tree in the main repo) — an honest, correctly-non-fatal "no data
+yet" state that itself restates DF-17's finding as a live, checkable fact instead of prose.
+
+**The concrete next gap, explicitly out of my `[FILE-SCOPE]`.** Wiring an actual self-report needs
+one more piece I could not build here: `agents/*.md` is read-only in this step, so I could not add
+the instruction telling a dispatched role to run its own tool-presence probe (the
+`WORKFLOW-VEHICLE-PROBE`-style check `skills/harness/SKILL.md` already mandates for the `Workflow`
+token specifically) and then PATCH its own capability record. I designed the record to be
+addressable for that: I added a `session_id` field (from the hook's own `PreToolUse` input) as the
+intended lookup key, and documented in the file header exactly why `tool_use_id` — the record's own
+filename key — is NOT viable for this: that identifier is never surfaced back into the dispatched
+session's own context, so the session has no way to find "its own" record by that key. Whether a
+running session can reliably read back its own `session_id` from within its own context is itself
+an unverified-capability question in the same DF-17 family — I did not assume an answer, only
+built the addressing convention so a future wave can test it. This is a `BRIEF-AMENDMENT`-shaped
+follow-up (touches `agents/*.md`), not something I attempted to close.
+
+**`skills/harness/SKILL.md` doc edit — deferred as instructed, and apparently already in flight.**
+Per `[ACTIONS]` 3 I checked whether `skills/harness/SKILL.md` needs a new section documenting
+"`tools:` is declared intent, not a runtime guarantee, and roles must probe" before touching it —
+it is outside my `file_scope.exclusive` regardless, so I did not edit it either way. Concretely,
+the edit I would have proposed: a short passage under `## Tool presence` stating plainly that
+*any* role's `tools:` frontmatter (not only the `Workflow` token this section currently covers)
+is DECLARED intent, cross-referencing the new `declared_tools`/`observed_tools` record schema in
+`agent_invocation_tagger.sh` as the mechanical detector. While working this step I observed
+`skills/harness/SKILL.md` change under me in the shared worktree (I did not author this — confirmed
+via `git diff`, my only interaction with the file was `Read`): a new "DF-E1 — `tools:` frontmatter
+is not authoritative, measured live (this sprint)" section landed, generalizing the exact
+`Workflow`/`Glob`/`Grep`-for-engineer evidence this brief also cites, with a `WORKFLOW-VEHICLE-PROBE`-first
+directive. That appears to be a concurrent process (plausibly the conductor or another live wave)
+already closing the doc gap I would otherwise have flagged — I'm reporting it as an observation,
+not claiming credit, and not filing a duplicate `BRIEF-AMENDMENT` for work that looks already done.
+Worth a conductor sanity check at wave-review: confirm that landed text also references this step's
+`declared_tools`/`observed_tools` record convention as the *mechanical* enforcement, since prose-only
+doctrine is exactly the failure mode DF-17 is about.
+
+**`[SKILLS]` correction confirmed working as intended.** The re-dispatch's stated fix — dropping
+the erroneous `shell` entry, keeping only `code-style` — worked cleanly this run: `code-style`'s own
+`SKILL.md` explicitly instructs "If no file exists for the language, apply the shared principles
+below and note the gap" when no per-language file exists (confirmed: `~/.claude/skills/code-style/`
+contains only `rust.md`, no `shell.md`), so I followed the shared principles (truth over politeness,
+delete-don't-comment-out, explain the why) rather than halting a second time on an already-diagnosed
+issue. Flagging only as a genuine gap for the operator, not a blocker: Joe may want a
+`code-style/shell.md` eventually, matching the `rust.md` ledger for the same bash-3.2-heavy hooks
+codebase this repo leans on constantly.
+
+**Bash 3.2 portability caught one real bug beyond the `set -e`/pipefail one above.** My first draft
+of the observed-vs-declared scan loop in `lint_agent_capabilities.sh` used a `shopt -s nullglob`
+array (`capability_records=(...)`); under this repo's target shell — macOS's system `/bin/bash`
+3.2.57, per `[USER-STYLE]` — an array that glob-expands to zero elements is genuinely unset for
+`"${arr[@]}"` purposes, and `set -u` (which this file carries) turned that into a hard
+`unbound variable` failure on every clean run (caught immediately by actually running the
+acceptance command, not by inspection). Replaced with the `find | while read` idiom this codebase
+already uses elsewhere (`_lib.sh`'s `cfg_get()`), which is bash-3.2-safe and, as a bonus, is a
+single pattern (`-path '*/dispatch/*/*.json'`) that covers both dispatch-directory conventions this
+codebase actually uses (`<ns>/dispatch/<sprint>/*.json` when `SHEPHERD_WORKDIR` is unset, and
+`<ns>/runs/<run>/dispatch/<sprint>/*.json` when it points at a run-scoped namespace) without
+needing two separate glob patterns.
+
+## Reporter
+coder-v645-l5-harness-W0-S11 @ 2026-08-13T00:55:00Z
