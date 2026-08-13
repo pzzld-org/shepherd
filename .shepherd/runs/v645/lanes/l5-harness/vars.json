@@ -141,6 +141,17 @@
       ],
       "id": "W0-S15",
       "title": "a recorded critic proof must not be silently invalidated (DF-22)"
+    },
+    {
+      "acceptance": [
+        "grep -c 'check-plugin\\.sh' .github/workflows/rust.yml returns 0",
+        "grep -c 'check-plugin\\.py' .github/workflows/rust.yml returns 2"
+      ],
+      "actions": [
+        "Update .github/workflows/rust.yml:138,140 from ./scripts/check-plugin.sh to .py, ahead of lane l4-conformance's rename. Added at root's direction after W0-S13's coder correctly refused the same change as an unverifiable inline scope expansion."
+      ],
+      "id": "W0-S16",
+      "title": "rust.yml check-plugin rename fix (cross-lane, DF-26)"
     }
   ],
   "worktree_path": "/Users/jo3/src/fl03/shepherd/.worktrees/v645-l5-harness"
