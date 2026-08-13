@@ -141,12 +141,11 @@ DF-41 was exactly that defect twice over. Read what each command actually prints
   demonstrated DENYING by hand with fixture JSON pasted into the report; Check 8
   demonstrated as a non-denying recorder — a well-formed dispatch PASSES and produces an
   ownership row, and an unwritable registry PASSES with a visible warning (never a deny).
-  **Added mid-wave (see Deviations): `hooks/tests/test_dispatch_guard.sh` stays under 2s
-  end-to-end** (measured regression: 124ms → 207ms per Check-8 invocation with no pragma
-  tuning, ~40 dispatching fixtures in the suite → 0.8s baseline balloons to 10.9s, a 13×
-  fast-tier regression). Fix via `PRAGMA journal_mode=WAL` + `PRAGMA synchronous=NORMAL` on
-  the Check-8 connection; if pragmas alone don't clear the 2s line, batching/deferring the
-  write is in scope — thinning W2-G2's fixtures to hide the cost is NOT.
+  **Perf line corrected mid-wave (root's own retraction, see Deviations):** the suite's
+  PRE-WAVE baseline already ran 2.37-2.48s (40 fixtures) before Check 7/8 touched anything
+  — the original `<2s` line in this plan was baseline-unaware and unachievable when
+  written. Measured under load-free conditions, Check 7/8 add ~7-9ms/fixture (54 fixtures
+  now) → accept ~3.7s total. Do NOT chase 2s.
 - W2-G2: `hooks/tests/test_dispatch_guard.sh` runs green, and **every** assertion (not
   just the new ones — the full file) is shown to be load-bearing — invert one fixture per
   rule, confirm the suite goes red, restore. Report the count of rules proven able to
@@ -467,3 +466,251 @@ Three concerns, three dispatches. Not one brief with two (or three) headings.
   FULL as a mandatory step, not spot-check the new section alone — a silently-invalidated
   pre-existing positive control is a false-GREEN risk indistinguishable from a real pass
   until the whole file runs.
+- **PERF CORRECTIONS (root retracted its own 13x-regression call and the <2s target;
+  perf fix ACCEPTED at ~3.7s, not chasing 2s).** Two errors, both root's, both self-
+  identified: (1) the `<2s` line this plan stated was baseline-unaware — the coder
+  measured `git show ada05dd:hooks/scripts/dispatch_guard.sh` (zero Check 7/8 code) at
+  2.37-2.48s across 3 runs, already over budget before this wave touched anything; (2) the
+  13x figure (0.8s->10.9s) was measured while 22 concurrent `rustc` processes were live on
+  the box — a load artifact, not a steady-state number. Corrected arithmetic: baseline
+  ~59-62ms/fixture x 54 fixtures (fixture count rose 40->54 across the wave) ~ 3.19-3.35s
+  before Check 7/8 does any work; actual 3.68-3.73s -> genuine per-dispatch cost ~7-9ms,
+  not the 83ms figure taken under contention. Decision: accept ~3.7s, do not chase 2s;
+  closing the remaining gap would mean touching Checks 1-6's own overhead or the runner's
+  execution model, correctly outside this step. Amended `## Acceptance` above to the
+  corrected line. **Pre-existing, separately-reportable finding, root is carrying it**:
+  `hooks/tests/test_dispatch_guard.sh` was ALREADY ~2.4s against its stated `fast`-tier
+  2s budget before this sprint touched it — a real fast-tier violation nobody had
+  measured, predating every lane here.
+- **W2-G1 perf-fix specifics, kept for the record (all still UNCOMMITTED, coder-reported
+  via root's relay, pending `guard-fail-closed` auditor verification):** `PRAGMA
+  journal_mode=WAL` confirmed active (`PRAGMA journal_mode` -> `wal`, was `delete`); two
+  additional disclosed micro-optimizations — deferred `tool_use_id`/`model` `json_field()`
+  extraction into Check 8's own block (Checks 1-6 denials stop paying for two subprocess
+  spawns they never read) and `mkdir -p` guarded behind a `[[ -d ]]` builtin check after
+  measuring the fork cost (1.24ms vs 0.04ms); connection-holding investigated and
+  correctly ruled out (every hook here is a fresh OS process, no persistent daemon exists
+  in this codebase — the coder checked rather than assumed). Claimed 54/54 across three
+  consecutive runs, `bash -n` clean, `shellcheck --severity=warning` clean. **Flag for the
+  `guard-fail-closed` auditor specifically**: the fail-visible warning text changed from
+  `"registry write failed"` to `"registry directory create failed"` because the `mkdir`
+  and `sqlite3` error paths are now separate branches — contract unchanged (never deny,
+  always warn-and-pass, name path/subagent_type/tool_use_id/real error), but the auditor
+  MUST confirm the split didn't leave a path that warns without actually naming the real
+  error underneath it.
+- **WORKFLOW-VEHICLE-PROBE re-verification, urgent, mid-wave — retracted in full, root's
+  error not mine.** Root demanded a one-line re-answer (`Workflow`: present/absent) after
+  discovering `agents/conductor.md`'s frontmatter grants `Workflow` and reasoning my three
+  coders/three auditors should have compiled to Dynamic Workflows. Re-checked both my
+  directly-loaded tool list and the deferred-tool listing: `Workflow` absent from both,
+  same as `Glob`/`Grep`, unchanged from my boot-time probe (this file, earlier entry).
+  Root verified independently (GH #263: availability follows `backendType`; in-process
+  teammates are denied regardless of the frontmatter grant) and retracted in full — my
+  `Agent()` fan-outs stand as correct, no `FANOUT-VEHICLE-DOWNGRADE`, nothing to redo.
+  Root also found the master plan already recorded this exact fact at its own
+  `plan.md:17-18` and that `plan.md:253` pre-refutes the theory root was chasing (that
+  DF-46's routing defect might be a Workflow-vs-Agent() artifact) by citing GH #270 as
+  vehicle-independent — root's own escalation cost was "one grep it never ran." Nothing
+  changes for this lane's record or its auditors' grading.
+  **One real, narrower finding survives root's retraction, carried forward per root's
+  request**: reporting the `WORKFLOW-VEHICLE-PROBE` result to the dispatching lead BEFORE
+  the first fan-out (not only inside `WAVE-COMPLETE`, which lands after every dispatch it
+  would have governed) closes a real visibility gap — I probed and recorded correctly at
+  boot, but root had no way to know the answer until asking directly, an hour and several
+  dispatches later. Root has updated `boot-prompt.md.j2` for future spawns; does not apply
+  retroactively to this session (`shepherd` on PATH resolves the 6.4.4 plugin cache, not
+  this working tree — DF-54, root's problem to carry, not mine to fix).
+- **LANE OWNERSHIP RE-ATTRIBUTION (root's error, not mine; work ships unchanged).** The
+  master plan's `## Lane projection` fixes five lanes "total and constant across waves"
+  (L1-L5) and assigns `agents/`, `commands/`, `skills/`, `hooks/`, `bin/` to L5-harness
+  "for the entire sprint... no other lane writes them at any point, so the ownership claim
+  needs no temporal argument to hold." l6-guards was created mid-Wave-1 as a reactive 6th
+  lane over exactly that territory — the same "disjoint only because of sequencing" error
+  the master plan itself names one paragraph above the table (originally an engineer
+  rejecting an L4/L5 overlap draft) and root now names against its own l6-guards decision:
+  W4-S3 (the `content/` compiler) emits into `hooks/`, so L5 WILL write these files.
+  Root: nothing about this lane's next steps changes — finish the three auditors, one wave
+  commit, WAVE-COMPLETE. Carrying root's two requested items into that payload verbatim:
+  (1) **ownership re-attribution** — this wave's commits count as L5-harness territory for
+  the close report's lane accounting, not a sixth lane's; (2) **hard input to W4-S3** —
+  the compiler MUST treat `dispatch_guard.sh` Checks 7/8, `test_dispatch_guard.sh`'s
+  Check-7/8 fixtures, and the four `cmd_teammate.sh` branch fixes as pre-existing content
+  to PRESERVE, never as a tree to regenerate from scratch; an unabsorbed W4-S3 run would
+  silently revert this entire lane three waves from now.
+- **Cargo concurrency cap never applied (root's finding, does not touch this lane).** The
+  master plan caps concurrent `CARGO_TARGET_DIR` holders at 2 (L1+L2 only; L3 builds only
+  at its wave gate against shared warm `target/`; L4/L5 build no Rust at all). Root never
+  enforced it — three lanes built concurrently, the swap monitor fired four times. Noted
+  for completeness since it's readable in the same plan.md; l6-guards touches no `crates/`
+  and holds no `CARGO_TARGET_DIR`, so it neither caused nor is affected by this.
+- **`[CONCERN] test-integrity` — PASS (1 of 3 wave-review auditors in).** Agent
+  `ab4d2db8254fc5ee9`, report at
+  `{run_dir}/audits/audit-wave-review-l6-guards-w2-test-integrity.md`. Independently
+  re-ran invert->confirm-RED->restore on 5 rule-groups itself (checks 1, 4c, 7, both
+  Check-8 shapes) in an isolated scratch copy, all genuinely RED broken, real worktree
+  files untouched (`git diff --numstat` identical before/after). All 7 briefed hypotheses
+  tested and disproved: 54/0 across 3 runs post-perf-fix; Rule 7's inversion confirmed as
+  the corrected clean-block form; both disclosed fixture corrections verified against live
+  guard behavior; line-56 fixture confirmed non-colliding with the dedicated Check-7
+  positive control; zero `$SHCTX_DB` anywhere in the file, `resolve_namespace()` confirmed
+  `$SHEPHERD_WORKDIR`/`$SHCTX_ROOT_OVERRIDE`-only; `bash -n` clean both files.
+  **One LOW, fixed in-wave rather than carried** (root's call left to me — took it,
+  cheap and squarely this lane's thesis): the Check-8 unwritable-registry fixture used
+  `chmod 500 .shepherd`, which the root unix user bypasses — run as root, the registry
+  stays writable, no warning fires, and the assertion passes for the wrong reason. Latent,
+  not live (auditor checked all 8 workflow files, confirmed no `container:`/root
+  override — no current CI divergence), but a passes-for-the-wrong-reason assertion is
+  precisely the DF-41 family this whole suite exists to eliminate. Dispatched the one-line
+  fix (fail loudly / skip visibly on `EUID==0` rather than proceeding into an assertion
+  that cannot hold) to the resumed W2-G2 coder (`a3d2c2cae1ade0151`).
+- **`[CONCERN] cmd-teammate-fix-completeness` — PASS, 2 LOW, both folded into this round.**
+  Agent `a87f31b783804aa6b`, report at
+  `{run_dir}/audits/audit-wave-review-l6-guards-w2-cmd-teammate-fix-completeness.md`. All
+  four branches confirmed carrying the exact pattern, all four regressions independently
+  proven load-bearing in isolated scratch copies, `50/50` on `ctx_tests`, and the
+  SQL-escaping gap confirmed present, unfixed, and NOT masked by the unbound-variable fix
+  (`status "o'brien"` still errors identically post-fix — the two defect classes stayed
+  genuinely independent). **Correction to my own earlier log entry**: I recorded the
+  relayed `cmd_teammate.sh` diff-stat as `+12/-4`; the auditor's MEASURED actual is
+  `+8/-4`. Correcting it here — `+8/-4` is the real number, `test_cmd_teammate.sh`'s
+  `+25/-0` was right. LOW 2: the four no-name regression assertions grep the same literal
+  usage-text substring rather than each branch's own output line — proven NOT a
+  false-pass risk (4/4 still invert-to-RED correctly), but the coupling is loose enough to
+  tighten. Dispatched to the resumed W2-G3 coder (`a338975964367b955`).
+- **`[CONCERN] guard-fail-closed` — REDO. CRITICAL=1. This is the sharpest finding of the
+  sprint and it lands on this lane's own thesis.** Agent `ab2cceb8c5d6030ef`. Check 6
+  (`PRIMITIVE-INVERSION`, pre-existing, correctly left unrestructured) calls
+  `emit_context()`, which unconditionally `exit 0`s, whenever `teammate_mode==1` (`cwd`
+  under `.worktrees/`) and `subagent_type` is `shepherd:coder`/`shepherd:auditor` — and it
+  sits TEXTUALLY BEFORE Checks 7 and 8. So it swallows every teammate-conductor's
+  coder/auditor dispatch before either new check ever runs. The auditor did not infer
+  this — it fired the LITERAL DF-43 shape (bundled 5-topic prompt, zero `[CONCERN]` tags,
+  `cwd` under `.worktrees/v645-l6-guards`) against the live uncommitted file in an
+  independent scratch repo and got only Check 6's advisory, no deny, and
+  `dispatch_ownership` was never even created. My own Deviations log already names the
+  real incident's actual topology — dispatched by the l2-registry CONDUCTOR, from a
+  worktree — which is exactly the unreachable path. **The suite passed 54/54 while this
+  was true because no fixture sets a `.worktrees` cwd** — every assertion exercised the
+  root topology, where Check 6 never fires. W2-G2 proved every assertion COULD fail;
+  nobody had asked whether the code under test was REACHABLE in the topology it targets.
+  REDO scoped exactly as the auditor specified, dispatched as two coder follow-ups:
+  (1) **W2-G1** (`hooks/scripts/dispatch_guard.sh` only) — relocate the Check 7 and Check
+  8 blocks to execute immediately after Check 5 and before Check 6; pure textual
+  reordering, zero logic change inside Checks 1-6 or 7/8. (2) **W2-G2**
+  (`hooks/tests/test_dispatch_guard.sh` only) — add at least one Check-7 and one Check-8
+  fixture with a `.worktrees` cwd set, proven RED against the CURRENT (pre-reorder)
+  ordering first (that inversion IS the point), then GREEN after the reorder lands.
+  Root's instruction: re-dispatch both coders, re-run `guard-fail-closed` ONLY once both
+  land — `test-integrity` and `cmd-teammate-fix-completeness` are settled, re-auditing
+  either is waste (their LOW fold-ins above are coder-side fixes, not re-audits).
+  **Everything else in this report held**: Check 7's deny/pass logic, Check 8's
+  never-deny guarantee and both fail-visible branches, the additive-only diff, `bash -n`/
+  `shellcheck` clean. The defect is reachability and ordering, nothing else in the logic
+  itself.
+- **DISPATCH ERROR (mine): used `Agent()` instead of `SendMessage()` for the REDO round,
+  risking a concurrent-write collision.** Dispatched all three REDO/follow-up fixes
+  (W2-G1 relocation, W2-G2 fixtures+EUID, W2-G3 tightening) as brand-new `Agent()` calls
+  instead of `SendMessage`-resuming the three original coders who already owned this
+  worktree's context — the same pattern I'd used correctly for every prior follow-up this
+  wave. Caught it immediately after dispatch. Checked all three originals: `a0b78876849fcdc8a`
+  and `a338975964367b955` had no active task (idle, safely stood down, no collision).
+  `a3d2c2cae1ade0151` had ALREADY COMPLETED the EUID-guard fix before my stand-down message
+  arrived (confirmed by the resume call returning "stopped (completed)") — so no active
+  concurrent write occurred there either, but it was close: had that agent still been
+  mid-edit on `hooks/tests/test_dispatch_guard.sh` when the fresh `a4f661df7f6b3c346` also
+  started writing to the same file, that would have been a genuine collision risk this
+  lane's own file-disjointness discipline exists to prevent, just at the wrong granularity
+  (same file, two sessions, not two different files). Resolved: told all three originals to
+  stand down and make no further edits; the three fresh agents (`a8f6760abbf960f12` for
+  W2-G1, `a4f661df7f6b3c346` for W2-G2, `a55486aefa2b49f9b` for W2-G3) are now sole owners
+  of their files for this round. Told `a4f661df7f6b3c346` explicitly to re-verify the EUID
+  guard's presence before acting rather than assume its own brief's premise, since the
+  premise (item 2 possibly already done) turned out to be literally true.
+- **W2-G1-REDO coder reports done — still UNCOMMITTED, sitting in the worktree diff, NOT
+  git history; relayed by root, who says it independently re-verified rather than only
+  accepting the report.** Agent `a8f6760abbf960f12`. Claimed: check order now
+  `1, 2, 3, 4, 4b, 4c, 5, 7, 8, 6` (`grep -n "^# Check "`), pure relocation (486 lines
+  before and after, `git diff --stat ada05dd` inside the worktree shows `190 insertions,
+  0 deletions` against the uncommitted copy — this diffs the WORKING TREE against
+  `ada05dd`, not a commit range, since nothing here is committed yet), done via a
+  line-slice/reassemble with asserts on each slice boundary rather than retyping. Claimed:
+  firing the literal DF-43 shape (bundled 5-topic prompt, zero `[CONCERN]` tags, cwd under
+  `.worktrees/v645-l6-guards`) now gets the deny, not Check 6's advisory — the exact
+  invocation that silently passed before. Claimed: full matrix re-confirmed — 1-concern
+  non-teammate silent-pass+row, 2-concern deny (Check 8 never reached, no table created),
+  teammate `.worktrees` coder now gets BOTH an ownership row AND Check 6's advisory
+  (coexistence is the fix), `sqlite3` absent still fail-visible-warns, exit 0, never
+  blocks; real worktree DB confirmed to have no `dispatch_ownership` table (no test
+  pollution). One disclosed gap: the REDO brief didn't restate canonical bracketed
+  headers and the coder proceeded rather than halting on a mechanical reorder of
+  already-written code — root's own DF-49 finding, not mine, logged for completeness.
+  ALL of the above is still a coder self-report relayed through a lead — the binding
+  verification is the re-run `guard-fail-closed` auditor, still pending, once the other
+  two REDO/fold-in coders land.
+- **ROOT CAUSE OF THE FAN-OUT SUBSTRATE FOUND (root's finding, fully vindicates the
+  boot-time probe and every downgrade decision this lane made).** `~/.claude/settings.json`
+  sets `teammateMode: "auto"`; this session has no `TMUX` and `TERM_PROGRAM` is
+  `Apple_Terminal`, not iTerm2 — with neither an own-session backend available, `auto`
+  fell back to `in-process` for all six teammates this sprint (team config confirms it).
+  In-process teammates run inside the lead's own process and the harness gates them as
+  subagents verbatim — which is exactly why the real `Workflow` invocation above returned
+  "not available inside subagents." So: the boot-time `WORKFLOW-VEHICLE-PROBE` was right,
+  the in-context `Agent()` downgrade was right, GH #263 was right, `plan.md:17` was right,
+  and every hand-rolled fan-out in this lane (three coders, three auditors, this REDO
+  round) was the correct and only vehicle for the substrate actually given. The operator's
+  separate claim that a genuine teammate CAN drive Dynamic Workflows was also right — ours
+  simply never were genuine session-backed teammates. **Carrying into WAVE-COMPLETE as a
+  root-owned finding, per root's explicit request**: spawn preflight must resolve the
+  EFFECTIVE `teammateMode` (the configured mode plus `TMUX`/`TERM_PROGRAM`), and on a
+  resolved `in-process` outcome, say so loudly and downgrade to root-drives-workflows
+  rather than spawning conductors that can never compile one.
+- **W2-G2-REDO coder reports done — still UNCOMMITTED, sitting in the worktree diff, NOT
+  git history; relayed by root.** Agent `a4f661df7f6b3c346`. Claimed: two `.worktrees`-cwd
+  fixtures added (Check 7 and Check 8), `+207/-2`, 54->57 assertions. Claimed proof method:
+  reconstructed a faithful PRE-RELOCATION snapshot from its own earlier `Read` output
+  (caught that a naive `cp` at that point would have captured the sibling's already-landed
+  reorder instead of the actual regression — verified snapshot line count + check ordering
+  matched pre-relocation), proved both new fixtures RED against that snapshot, then
+  mutation-tested each against the FIXED file with only its own target check defeated
+  (Check 7's condition neutered / Check 8's `INSERT` swapped for `SELECT 1`) and got RED
+  for the right reason both times — falsifiability argued in both directions, not just one.
+  **Doctrine call surfaced, root decided it, not me**: the pre-existing `#172
+  engineer-self-contained` fixture dispatches `shepherd:auditor` with
+  `dispatcher: engineer-self-contained` and no `[CONCERN]` tag — pre-relocation Check 6
+  pre-empted it (vacuous pass), post-relocation Check 7 correctly denies it. Coder
+  correctly refused to touch it under its own `[NON-GOALS]` and flagged it instead of
+  guessing. **Root's ruling: the FIXTURE is wrong, add `[CONCERN]`, no carve-out.**
+  `agents/auditor.md:92` is unqualified and shouldn't be qualified — the engineer's own
+  discovery wave is >=3 intro-auditors split by area, concern-splitting BY CONSTRUCTION,
+  so an intro auditor with no declared concern is the identical defect to a wave-review
+  auditor with none; carving out `engineer-self-contained` would exempt exactly the
+  dispatch shape where bundling temptation is highest. One-line fix authorized: add
+  `[CONCERN]` to that fixture, same shape as the earlier line-56 fix, preserving its
+  original `#172` topology intent — dispatched to `a4f661df7f6b3c346` (the fixture is in
+  its file scope; this message IS the authorization it was waiting for).
+  **Standing convention (root asked this carried into WAVE-COMPLETE as its own finding,
+  stronger statement of DF-56 than root's own framing)**: any fixture asserting
+  non-deny/non-record behavior at a teammate/`.worktrees` topology MUST set a real `cwd`
+  field, never merely mention `.worktrees/` in a prompt string — a prose-only mention
+  silently under-tests the `cwd`-gated branch, which is exactly how the pre-existing
+  `OWN_LANE_PAYLOAD`-style fixture under-tested for however long before this wave's
+  reachability finding surfaced it.
+- **W2-G3-followup coder reports done — still UNCOMMITTED, sitting in the worktree diff,
+  NOT git history; relayed by root. Last of the three follow-up coders in.** Agent
+  `a55486aefa2b49f9b`. Verdict PASS. Claimed root cause: `usage()` prints the same static
+  8-line block for every subcommand, so all four no-name assertions were borrowing the
+  `status` line as a generic "usage printed" marker instead of each checking its own
+  branch. Retargeted each to its own subcommand's line (`register <name> --team=`,
+  `retire <name>`, `heartbeat <name>`), verified each pattern matches exactly one line
+  with no cross-matches (`register <name> --team=` confirmed not matching
+  `register-lead <team_id>`). `+5/-0`, one file, `cmd_teammate.sh` untouched and
+  byte-verified against baseline. Proof claimed as a 4x4 invert matrix with a perfect
+  diagonal — each of the four branches broken in turn, all four assertions run against
+  each break, every broken branch fails ONLY its own assertion:
+  `BROKEN=register -> register RED, others PASS`; `BROKEN=status -> status RED, others
+  PASS`; `BROKEN=retire -> retire RED, others PASS`; `BROKEN=heartbeat -> heartbeat RED,
+  others PASS`. Decoupling proven, not asserted — a stronger standard than the single
+  invert-to-red I originally asked for.
+  **All three follow-up/REDO coders are now in.** The single remaining piece before the
+  `guard-fail-closed` re-audit is the authorized `#172` `[CONCERN]` one-liner, dispatched
+  to `a4f661df7f6b3c346` and still pending.
