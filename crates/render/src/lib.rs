@@ -37,7 +37,17 @@ extern crate alloc;
 pub use shepherd_core as core;
 
 // modules (public)
+pub mod env;
 pub mod error;
+// `filters` depends on `serde_json` (this crate's optional `json` feature)
+// for its recursively-sorted `Map` -- see `crate::filters`' module docs.
+#[cfg(feature = "json")]
+pub mod filters;
+// `manifest` depends on `std` (filesystem reads) and `json`
+// (`serde_json::Value`, canonical vars serialization) -- see
+// `crate::manifest`'s module docs.
+#[cfg(all(feature = "std", feature = "json"))]
+pub mod manifest;
 
 // re-exports
 #[doc(inline)]

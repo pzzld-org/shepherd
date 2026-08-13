@@ -68,10 +68,20 @@ full = [
 ]
 
 # ********* [FF] Flags *********
+# `minijinja/json` is required so the negative control in `filters::tests`
+# has minijinja's BUILTIN `tojson` to diverge against -- minijinja's own
+# `builtins` feature (enabled unconditionally above) only reserves the
+# builtin-filter registration slot; the `tojson` filter body itself compiles
+# only under minijinja's OWN `json` feature (minijinja-2.24.0
+# `src/defaults.rs:129-132`), a namespace independent of this crate's `json`
+# feature. Without this line, `minijinja::Environment::new()` has NO
+# `tojson` filter at all under any feature leg of this crate -- see
+# `env.rs`'s module docs.
 json = [
   "alloc",
   "dep:serde",
   "dep:serde_json",
+  "minijinja/json",
   "shepherd-core/json",
 ]
 
