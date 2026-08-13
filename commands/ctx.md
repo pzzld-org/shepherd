@@ -12,7 +12,6 @@ Thin command shim. The full skill body lives at `${CLAUDE_PLUGIN_ROOT}/skills/co
 
 1. Load the `shepherd-context` skill via the Skill tool.
 2. Read `.claude/shepherd.toml` `[context]` if present; otherwise use defaults from `${CLAUDE_PLUGIN_ROOT}/docs/configuration.md`.
-3. Resolve the CLI path: `${CLAUDE_PLUGIN_ROOT}/bin/shepherd`.
 
 ## Step 1 — Run
 

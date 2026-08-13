@@ -128,12 +128,100 @@ def test_wave_ledger_pending_gate(tmp_path: Path) -> None:
     run_cli(["run", "wave", "merged", "v641-dev0", "lane-a"], env)
     still = run_cli(["run", "wave", "pending", "v641-dev0", "--json"], env)
     assert still.returncode == 6
-    assert json.loads(still.stdout) == [{"lane": "lane-b", "commit": "bbb2222"}]
+    still_payload = json.loads(still.stdout)
+    assert still_payload["pending"] == [{"lane": "lane-b", "commit": "bbb2222"}]
+    assert still_payload["missing_lanes"] == []
+    assert still_payload["ok"] is False
 
     run_cli(["run", "wave", "merged", "v641-dev0", "lane-b"], env)
     done = run_cli(["run", "wave", "pending", "v641-dev0"], env)
     assert done.returncode == 0
     assert done.stdout == ""
+
+
+# --------------------------------------------------------------------------
+# #1 GATE-EXIT-CODE-MISMATCH / DF-63 -- ledger-completeness check.
+#
+# pending_merges() alone only ever looks AT registered rows; a lane that
+# was never `run lane add`-ed at all has zero rows, which read as "not
+# pending" rather than "missing" -- the gate exited 0 against a live
+# ledger missing a lane entirely (dogfood.md DF-63). These tests are the
+# falsifiability the finding itself demands: the first MUST fail (report a
+# wrong exit code) against an unfixed `wave_pending_cmd` and pass once the
+# completeness check is wired; the second pins the false-positive-free
+# baseline (a plan with no declared lanes at all never trips the check).
+# --------------------------------------------------------------------------
+def _write_lane_projection_plan(tmp_path: Path, run: str, lane_ids: list[str]) -> None:
+    """Plant a minimal ``plan.md`` with a ``## Lane projection`` table.
+
+    Mirrors ``.shepherd/runs/v645/plan.md``'s own table shape exactly (the
+    live plan DF-63 was measured against: prose paragraph, then a
+    ``| lane_id | member_steps | file_scope.exclusive | parallel_with |``
+    table with backtick-wrapped ids) so :func:`parse_declared_lane_ids` is
+    exercised against the real doc shape, not a synthetic one.
+    """
+    rows = "\n".join(f"| `{lane_id}` | W1-S1 | `crates/{lane_id}` | - |" for lane_id in lane_ids)
+    text = (
+        "# plan\n\n"
+        "## Lane projection\n\n"
+        "Prose paragraph before the table, matching the live doc shape.\n\n"
+        "| lane_id | member_steps | file_scope.exclusive | parallel_with |\n"
+        "|---|---|---|---|\n"
+        f"{rows}\n"
+    )
+    (tmp_path / ".shepherd" / "runs" / run / "plan.md").write_text(text)
+
+
+def test_wave_pending_gate_exit_code_mismatch_df63(tmp_path: Path) -> None:
+    """Falsifiability for #1 GATE-EXIT-CODE-MISMATCH: FAILS (reports the
+    wrong exit code) against a ``wave_pending_cmd`` with no
+    ledger-completeness check, PASSES once it is wired.
+
+    Mirrors DF-63's exact live repro shape: a run plan declares 3 lanes,
+    only 2 are ever ``run lane add``-ed -- the omitted lane (fully worked,
+    just never registered) is precisely the shape that measured exit 0 on
+    a 5-defect live ledger before this fix."""
+    env = _env(tmp_path)
+    run_cli(["run", "init", "v641-dev0"], env)
+    _write_lane_projection_plan(tmp_path, "v641-dev0", ["l1-engine", "l2-registry", "l3-surface"])
+    # l3-surface is declared by the plan but NEVER registered -- DF-63's
+    # exact defect shape (a fully-worked lane nobody `run lane add`-ed).
+    run_cli(["run", "lane", "add", "v641-dev0", "l1-engine"], env)
+    run_cli(["run", "lane", "add", "v641-dev0", "l2-registry"], env)
+
+    incomplete = run_cli(["run", "wave", "pending", "v641-dev0"], env)
+    assert incomplete.returncode == 6, (
+        "ledger-completeness check regressed: a plan-declared but "
+        f"unregistered lane must exit 6, not {incomplete.returncode} (DF-63)"
+    )
+    assert "l3-surface\tMISSING-DECLARED-LANE" in incomplete.stdout
+
+    payload = json.loads(run_cli(["run", "wave", "pending", "v641-dev0", "--json"], env).stdout)
+    assert payload["missing_lanes"] == ["l3-surface"]
+    assert payload["pending"] == []
+    assert payload["ok"] is False
+
+    # Registering the omitted lane completes the ledger: exit 0, no output.
+    run_cli(["run", "lane", "add", "v641-dev0", "l3-surface"], env)
+    complete = run_cli(["run", "wave", "pending", "v641-dev0"], env)
+    assert complete.returncode == 0, complete.stdout
+    assert complete.stdout == ""
+
+
+def test_wave_pending_no_lane_projection_is_never_a_false_positive(tmp_path: Path) -> None:
+    """A run with no ``## Lane projection`` section (or no plan.md at all)
+    declares nothing, so the completeness check must never fire -- only
+    the pre-existing #242 pending-set check can still gate it."""
+    env = _env(tmp_path)
+    run_cli(["run", "init", "v641-dev0"], env)
+    run_cli(["run", "lane", "add", "v641-dev0", "lane-a"], env)
+
+    no_plan = run_cli(["run", "wave", "pending", "v641-dev0"], env)
+    assert no_plan.returncode == 0, "no plan.md at all must not trip the completeness check"
+
+    (tmp_path / ".shepherd" / "runs" / "v641-dev0" / "plan.md").write_text("# plan\n\nno lane table here.\n")
+    no_section = run_cli(["run", "wave", "pending", "v641-dev0"], env)
+    assert no_section.returncode == 0, "a plan with no Lane projection section must not trip the check"
 
 
 def test_wave_merged_requires_prior_accept(tmp_path: Path) -> None:

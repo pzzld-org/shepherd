@@ -61,14 +61,51 @@ for (const s of STEPS)
     claimed.set(p, s.id)
   }
 
-// GH #270: a dispatched agent's return value routes to the task-tree owner, not
-// to this script. The contracted deliverable is a file on disk, always.
+// GH #270 applies to Agent() dispatch, where a return value routes to the
+// task-tree owner. It does NOT apply to a Workflow agent() call: that value
+// comes back to this script, and with `schema` it comes back validated. So a
+// file is contracted only where the artifact IS a document.
+//
+// An @auditor writes a file — a verification report is a durable artifact and
+// the role exists to author one. A @coder does NOT. A coder's deliverable is
+// the DIFF, and `git diff` is a truer account of what it did than any prose it
+// writes about itself. Measured on this run: 37 coder reports, 318 KB, ~46% of
+// the whole reports directory — every one of them bypassed, because the central
+// auditor re-verifies against live HEAD and explicitly distrusts self-reports.
+// Report authorship belongs to @auditor / @discovery / @worker.
 const deliverable = (path) => `
 YOUR CONTRACTED DELIVERABLE IS A FILE ON DISK at exactly:
   ${path}
 Write it with the Write tool before you finish. Your chat return value is NOT
 collected — a report that exists only in your reply is a failed dispatch.
 Absolute paths only. Repo root is ${REPO}.`
+
+// The only thing a coder knows that the diff cannot show: what it could not
+// verify because it was forbidden to build. That is the whole payload.
+const CODER_RESULT = {
+  type: 'object',
+  properties: {
+    step: { type: 'string' },
+    files_touched: { type: 'array', items: { type: 'string' } },
+    loc_delta: { type: 'string', description: 'e.g. "+41/-58"' },
+    assumptions: {
+      type: 'array',
+      items: { type: 'string' },
+      description: 'each assumption needing compile-time or runtime confirmation; [] if none',
+    },
+    halts: {
+      type: 'array',
+      items: { type: 'string' },
+      description: 'halt codes raised, or [] — a halt is a valid outcome, not a failure to hide',
+    },
+    out_of_scope_writes: {
+      type: 'array',
+      items: { type: 'string' },
+      description: 'any file written outside file_scope.exclusive; [] if none. Declare it, do not conceal it',
+    },
+  },
+  required: ['step', 'files_touched', 'loc_delta', 'assumptions', 'halts', 'out_of_scope_writes'],
+}
 
 // #256 rule 2: fan out fixes, verify ONCE centrally. N agents each running the
 // project's build is the documented way this box gets taken down — measured at
@@ -100,12 +137,18 @@ Writing outside that scope collides with a concurrent sibling.
 
 ${s.brief || ''}
 ${noBuild}
-${deliverable(`${REPORTS}/coder-${s.id}.md`)}`,
+
+DO NOT WRITE A REPORT FILE. Your deliverable is the DIFF — the code itself, in
+your scope, on disk. The central auditor reads \`git diff\`, not prose about it.
+Return the structured result you are given a schema for and nothing else; the
+only thing it carries that the diff cannot is your ASSUMPTIONS list, which is
+the one input that makes verification fast.`,
       {
         agentType: s.agentType || 'shepherd:coder',
         model: s.model || 'sonnet',
         label: `coder:${s.id}`,
         phase: 'Implement',
+        schema: CODER_RESULT,
       }
     )
   )
@@ -122,13 +165,19 @@ const verify = a.verify || {}
 const verdict = await flockAgent(
   `You are the CENTRAL verification auditor for ${RUN} ${WAVE}. READ-ONLY: no edits, no git writes.
 
-You are the ONLY agent this wave permitted to build. Everything below was written by
-agents that were forbidden to compile, so their reports list ASSUMPTIONS needing
-compile-time confirmation — check every one.
+You are the ONLY agent this wave permitted to build. The coders were forbidden to
+compile, so each declared the ASSUMPTIONS it could not confirm — check every one.
+
+VERIFY AGAINST THE DIFF, NOT AGAINST SELF-REPORTS. \`git diff\` and live HEAD are
+the evidence; the structured results below are a coder's own account of its work
+and carry no authority. Where they disagree, the tree wins and the step is REDO.
 
 Steps to verify (${landed} of ${STEPS.length} returned):
-${STEPS.map((s) => `  ${s.id} — report: ${REPORTS}/coder-${s.id}.md`).join('\n')}
-${landed < STEPS.length ? '\nA step whose report is ABSENT did not complete. Treat its scope as UNWRITTEN and fail it — absence is not a pass.\n' : ''}
+${JSON.stringify(built.filter(Boolean), null, 1)}
+
+Declared file scopes, for the out-of-scope check:
+${STEPS.map((s) => `  ${s.id}: ${(s.scope || []).join(', ') || '(none declared)'}`).join('\n')}
+${landed < STEPS.length ? '\nA step that returned NOTHING did not complete. Treat its scope as UNWRITTEN and fail it — absence is not a pass.\n' : ''}
 ${verify.commands && verify.commands.length ? `Run these SERIALLY, one at a time, never a workspace-wide parallel build:
 ${verify.commands.map((c) => `  ${c}`).join('\n')}
 Read each command's OWN exit code — redirect to a file and echo it. Do NOT pipe
@@ -154,14 +203,21 @@ ${deliverable(`${REPORTS}/auditor-${WAVE}-central-verify.md`)}`,
   }
 )
 
+// Coders return data, not documents. The ONE file this wave produces is the
+// auditor's — the only artifact anyone reads twice.
 return {
   run: RUN,
   wave: WAVE,
   steps_dispatched: STEPS.length,
   steps_returned: landed,
+  steps: built.filter(Boolean),
+  assumptions: built
+    .filter(Boolean)
+    .flatMap((r) => (r.assumptions || []).map((x) => `${r.step}: ${x}`)),
+  out_of_scope: built
+    .filter(Boolean)
+    .flatMap((r) => (r.out_of_scope_writes || []).map((x) => `${r.step}: ${x}`)),
+  halts: built.filter(Boolean).flatMap((r) => (r.halts || []).map((x) => `${r.step}: ${x}`)),
   verify: verdict ? 'returned' : 'FAILED to return',
-  reports: [
-    ...STEPS.map((s) => `${REPORTS}/coder-${s.id}.md`),
-    `${REPORTS}/auditor-${WAVE}-central-verify.md`,
-  ],
+  report: `${REPORTS}/auditor-${WAVE}-central-verify.md`,
 }

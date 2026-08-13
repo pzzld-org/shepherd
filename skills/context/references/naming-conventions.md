@@ -38,7 +38,10 @@ layout migration is idempotent and never clobbers existing destination files.
 
 **`ctx/` is the ONLY knowledge silo. `cache/` is the ONLY disposable-machine-
 state directory. `memory/` is RETIRED (v6.4.4) and `shepherd lint` FAILs if it
-exists.**
+exists.** `learnings/` (§Layout below) is durable too, but it is the
+cross-shepherd-shared counterpart the bridge contract pairs with `ctx/`
+(`skills/bridge/SKILL.md`), not a second general-purpose silo — `ctx/`
+remains the one place THIS implementation's own cross-run knowledge lives.
 
 Until v6.4.4 the namespace carried two directories that read as the same
 thing. `ctx/` was documented as the cross-run knowledge silo and is tracked.
@@ -146,12 +149,12 @@ identity, so filenames inside it take no slug prefix.
 | `{run_dir}/lanes/{lane}/plan.md` | Lane plan (checkbox steps + append-only `## Deviations`) | tracked |
 | `{run_dir}/graph/` | Stage-graph state, trace, compiled workflows | ignored |
 | `{run_dir}/dispatch/` | Dispatch records | ignored |
-| `{run_dir}/reports/discovery-<id>.md` | @discovery report (`DISCOVERY-WRITE-PATH`) | ignored |
-| `{run_dir}/reports/<deliverable-slug>.md` | @worker deliverable report | ignored |
-| `{run_dir}/reports/partial-close.md` | Early-close open-items report | ignored |
-| `{run_dir}/audits/audit-<concern>.md` | @auditor close-mode findings (`AUDITOR-WRITE-PATH`) | ignored |
-| `{run_dir}/audits/intro-audit-<concern>.md` | @auditor intro-mode findings | ignored |
-| `{run_dir}/audits/audit-wave-review-<lane>-w<N>.md` | @auditor wave-review verdict | ignored |
+| `{run_dir}/reports/discovery-<id>.md` | @discovery report (`DISCOVERY-WRITE-PATH`) | tracked |
+| `{run_dir}/reports/<deliverable-slug>.md` | @worker deliverable report | tracked |
+| `{run_dir}/reports/partial-close.md` | Early-close open-items report | tracked |
+| `{run_dir}/audits/audit-<concern>.md` | @auditor close-mode findings (`AUDITOR-WRITE-PATH`) | tracked |
+| `{run_dir}/audits/intro-audit-<concern>.md` | @auditor intro-mode findings | tracked |
+| `{run_dir}/audits/audit-wave-review-<lane>-w<N>.md` | @auditor wave-review verdict | tracked |
 
 **Run-scoped artifacts are NEVER ledgered under `{paths.docs}` (v6.4.4).**
 `reports/` and `audits/` have been in this table since v6.4.1 and `run init`
@@ -166,6 +169,15 @@ writer did another, and nothing reconciled them. All three layers now name the
 run-scoped path, and the guard DENIES the legacy target with a message that
 names the correct one.
 
+**`reports/` and `audits/` are TRACKED, not ignored (v6.4.5, DF-61).** Every
+top-tier dispatch lands its output there — a discovery pass that fetched
+primary sources, an adversarial audit that found a defect by mutation
+testing — and `skills/shepherd/SKILL.md §Principles` DURABLE ARTIFACT makes
+that the opposite of disposable: "every top-tier dispatch MUST terminate in
+exactly one durable artifact … reasoning that lives only in a transcript is
+spend without impact." `.gitignore` carries explicit `!` negations for both
+(`!.shepherd/runs/*/reports/*.md`, `!.shepherd/runs/*/audits/*.md`).
+
 Filenames in these sub-directories carry NO date prefix — the run directory
 already carries the identity, exactly as for the fixed top-level run files. The
 discriminator is the concern / discovery id / lane+wave, which is what actually
@@ -173,12 +185,13 @@ distinguishes two artifacts within one run; a date does not (a run produces
 many audits on the same day).
 
 The tracked/ignored split is the durable/disposable split: durable knowledge
-(seed/mesh/plan/phase0/close/handoff + lane plans) compounds in git; run
-state (`run.json`, `graph/`, `dispatch/`, `reports/`, `audits/`) is
-disposable. The root `.gitignore` implements it as `.shepherd/runs/**` plus
-per-file negations for exactly the tracked set. **`runs/` is deliberately NOT
-ignored wholesale** — a run's seed, plan, and lane plans ARE the project's
-plans and belong in history; only the disposable state around them is not.
+(seed/mesh/plan/phase0/close/handoff + lane plans, and `reports/`/`audits/`
+as of v6.4.5 — see above) compounds in git; run STATE (`run.json`, `graph/`,
+`dispatch/`) is disposable. The root `.gitignore` implements it as
+`.shepherd/runs/**` plus per-file negations for exactly the tracked set.
+**`runs/` is deliberately NOT ignored wholesale** — a run's seed, plan, lane
+plans, reports, and audits ARE the project's durable output and belong in
+history; only the disposable state around them is not.
 
 **The layout is SCAFFOLDED, never emergent (v6.4.3).** `shepherd run init`
 creates every directory in the table above — `lanes/`, `graph/`, `dispatch/`,
@@ -276,10 +289,12 @@ Hook-owned `tmp/` files (per-session, machine-generated, never tracked):
 Stop guard reads — #232/#228), `tmp/gates-ran-<session>.jsonl` (the #59
 gate-invocation ledger `doctor` reports on), `tmp/gates-extra-warned.<session>`
 (close-finalize warn-once flag).
-`CONVENTIONS.md`, `archive/`, `ctx/`, `docs/{specs,diagrams}`,
+`CONVENTIONS.md`, `archive/`, `ctx/`, `learnings/`, `docs/{specs,diagrams}`,
 `docs/journal/` (one file per day, append-mode), `profiles/`, `scripts/`,
-`templates/`, `types/`, and the tracked `runs/` set — tracked. Legacy
-`docs/{plans,reports,handoffs}` and `styles/` remain honored until
+`templates/`, `types/`, and the tracked `runs/` set — tracked. `learnings/`
+is paired with `ctx/` as durable, shared-read, single-writer-per-file
+knowledge (`skills/bridge/SKILL.md §Principle: the filesystem is the bus`).
+Legacy `docs/{plans,reports,handoffs}` and `styles/` remain honored until
 `--layout v3` migrates them.
 
 ## Date discipline

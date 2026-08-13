@@ -14,9 +14,13 @@
 #   invocation shape services/cli/tests/conftest.py's run_cli() uses, and
 #   the one bin/shepherd's own python3-fallback path reaches).
 # --impl=rust is a REAL BUT EMPTY lane: no Rust port exists yet (W1-W3
-#   build it) -- this always reports "0 cases implemented" and exits 0, so
-#   the wave-0 gate script (plan.md's W0-GATE) has a runnable target from
-#   day one and nothing errors just because the port hasn't landed.
+#   build it) -- the corpus (and any --suite filter) always resolves to 0
+#   implemented cases today, and this branch FAILS CLOSED (exit 1) rather
+#   than reporting a false green: an acceptance predicate written against
+#   `--impl=rust` must be falsifiable, and zero cases run is zero
+#   verification, not a pass (#10, DF-59). `--impl=rust --count` stays
+#   informational -- exit 0, prints "0" -- since it reports a case count,
+#   not a pass/fail verdict.
 # --suite=<name> filters the corpus to cases tagged with that suite in
 #   their case.json (see conformance/cases/**/case.json). --suite=guard-cli
 #   is the MUST-FIX-BEFORE-DISPATCH suite (critic pass 2, HIGH): the five
@@ -89,15 +93,22 @@ fi
 
 if [[ "$impl" == "rust" ]]; then
   # No Rust port exists yet (W1-W3 build it) -- real-but-empty lane per
-  # plan.md W0-S9 action 5. Always exits 0: this is what makes W0-GATE's
-  # `conformance/run.sh --impl=rust; test $? -eq 0` pass long before any
-  # Rust code lands.
+  # plan.md W0-S9 action 5. `--count` stays informational (exit 0): it
+  # reports a case count, not a verdict. The run path (no --count) FAILS
+  # CLOSED: zero implemented cases means zero verification happened, so
+  # exit 1 rather than the false-green exit 0 this stub used to return
+  # unconditionally (#10, DF-59) -- a predicate re-run against this branch
+  # must be able to observe a failure, or it isn't a gate.
   if [[ "$mode" == "count" ]]; then
     printf '0\n'
     exit 0
   fi
-  printf 'conformance --impl=rust: 0 cases implemented (Rust port not yet built -- W1-W3)\n'
-  exit 0
+  if [[ -n "$suite" ]]; then
+    printf 'conformance --impl=rust: FAIL -- 0 cases implemented for --suite=%s (Rust port not yet built -- W1-W3)\n' "$suite" >&2
+  else
+    printf 'conformance --impl=rust: FAIL -- 0 cases implemented (Rust port not yet built -- W1-W3)\n' >&2
+  fi
+  exit 1
 fi
 
 # impl == python from here on.

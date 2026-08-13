@@ -10,9 +10,9 @@ metadata:
 
 # /shepherd:ctx — Per-project Context Registry
 
-The canonical CLI is `${CLAUDE_PLUGIN_ROOT}/bin/shepherd`; `${CLAUDE_PLUGIN_ROOT}/skills/context/scripts/shctx` is an alias shim to it (the historical name the `shctx …` invocations below use). The DB lives at `.shepherd/shepherd.db` (`.artifacts/shepherd.db`/`root.db` legacy, auto-detected), preferring whichever exists.
+The canonical CLI is `${CLAUDE_PLUGIN_ROOT}/bin/shepherd`, a native Python (Tortoise/Typer) CLI over the same registry. `${CLAUDE_PLUGIN_ROOT}/skills/context/scripts/shctx` — what the `shctx …` invocations below actually invoke — is NOT an alias/exec shim to it; it is the original, standalone bash dispatcher, routing each subcommand straight to a sibling `cmd_<subcommand>.sh` script (`shctx:182-187`) and never calling `bin/shepherd`. (The shim runs the other way for a handful of still-bash-only groups — `bin/shepherd` shells out to `shctx` via `find_bash_shctx()`.) The DB lives at `.shepherd/shepherd.db` (`.artifacts/shepherd.db`/`root.db` legacy, auto-detected), preferring whichever exists.
 
-The CLI is plugin-local and is NEVER on `$PATH`. A bare `shctx …` / `command -v shctx` returns absent BY DESIGN — always invoke the absolute path above. Reporting "shctx absent" from a `command -v` probe is the #1 false-negative — never do it. When `$CLAUDE_PLUGIN_ROOT` doesn't propagate (remote/web launches), `session_open` prints the resolved path at SessionStart (`[context].announce_shctx_path`, default `on`); fallback: the installed plugin dir, e.g. `~/.claude/plugins/shepherd/bin/shepherd`.
+The CLI is plugin-local and is NEVER on `$PATH`. A bare `shctx …` / `command -v shctx` returns absent BY DESIGN — always invoke the `shctx` absolute path above. Reporting "shctx absent" from a `command -v` probe is the #1 false-negative — never do it. When `$CLAUDE_PLUGIN_ROOT` doesn't propagate (remote/web launches), `session_open` prints the resolved path at SessionStart (`[context].announce_shctx_path`, default `on`); fallback: the installed plugin dir, e.g. `~/.claude/plugins/shepherd/bin/shepherd`.
 
 Quick reference only — detail lives in the sibling `references/` files.
 

@@ -10,7 +10,8 @@
 #   list [--state=open|closed|all] [--limit=N] [--json|--md]
 #       Plain issue listing from cache, no classification.
 #
-# Exit codes: 0=ok, 1=no DB / stale, 2=usage error
+# Exit codes: 0=ok, 1=no DB / stale, 2=usage error,
+#             3=malformed [ledger] config array (see _cfg_ledger_array_raw)
 
 set -eu -o pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -41,7 +42,9 @@ shctx issues <classify|list> [args]
 
 Buckets (classify):
   blocking-this-sprint  milestone == sprint OR labels contain blocking/critical
-  labeled-non-issue     labels contain deferred/wontfix/invalid/duplicate/question
+  labeled-non-issue     labels contain wontfix/tracking-future/design-question/rfc
+                        (override the list via [ledger].non_issue_labels — single-
+                        line or multi-line TOML array, both forms supported)
   tracking-future       labels contain tracking/epic/enhancement, no sprint milestone
   drift-risk            labels contain critical/high/bug + no sprint milestone +
                         updated within --drift-days days
@@ -62,6 +65,118 @@ _sprint_from_toml() {
   local pattern; pattern=$(grep -E '^\s*sprint_branch_pattern\s*=' "$toml" \
     | head -1 | sed 's/.*=\s*"\(.*\)".*/\1/' || true)
   echo "${pattern:-}"
+}
+
+# Fallback bucket-labeled-non-issue set, applied only when [ledger].
+# non_issue_labels is unset. Matches docs/configuration.md §[ledger]
+# `non_issue_labels`'s documented default value VERBATIM
+# (["wontfix","tracking-future","design-question","rfc"]) — these two lists
+# must be kept in sync by hand; a drift here silently changes classify's
+# default bucketing with no doc to catch it (the earlier code default —
+# deferred/wontfix/won't fix/invalid/duplicate/question — disagreed with the
+# doc it claimed to implement). Newline-delimited (not space-delimited) so a
+# future multi-word label survives the same `while IFS= read -r` split used
+# for a config-supplied list in _classify_row() below.
+_DEFAULT_NON_ISSUE_LABELS=$'wontfix\ntracking-future\ndesign-question\nrfc'
+
+# Read a TOML array value for [section].key from the shepherd config
+# precedence chain (shctx_config_files — the same local/harness/project/user
+# order cfg_section_get resolves, sourced via _lib.sh), collecting every line
+# from the "key = [" line through the line holding the matching "]". Exists
+# because cfg_section_get is line-based (`awk` matches only `^key[ \t]*=` on
+# a SINGLE line): given the idiomatic multi-line array form
+#   non_issue_labels = [
+#     "wontfix",
+#     ...
+#   ]
+# cfg_section_get returns just "[" (the rest of the array is on later lines
+# it never reads), which _non_issue_labels_from_toml() below would then
+# silently treat as an unset/empty override and fall back to the built-in
+# default with no warning — the exact "documented override no-ops silently"
+# failure class this reader exists to close. Single-line arrays
+# (`key = ["a","b"]`) still parse identically to before.
+# Echoes the raw bracketed text (including the outer `[`/`]`) on stdout, or
+# "" if the key is absent from every config file (the normal, expected
+# "not overridden" case — the caller falls back to the default for this).
+# Returns 3, after printing a diagnostic to stderr, if a "key = [" line is
+# found but no closing "]" is ever reached before EOF (malformed/
+# unterminated TOML) or any other read failure occurs — never silently
+# treated as "unset". Callers MUST check the exit status: do not swallow it
+# by putting this inside `... || true` the way cfg_section_get callers do.
+_cfg_ledger_array_raw() {
+  local section="$1" key="$2" f v rc
+  while IFS= read -r f; do
+    [[ -f "$f" ]] || continue
+    if v="$(awk -v sect="$section" -v k="$key" '
+      /^[ \t]*\[/ {
+        h=$0; sub(/^[ \t]*\[/,"",h); sub(/\].*$/,"",h); gsub(/[ \t]/,"",h)
+        cur=h; in_val=0; next
+      }
+      cur==sect && !in_val && $0 ~ ("^[ \t]*" k "[ \t]*=") {
+        line=$0; sub(/^[^=]*=[ \t]*/,"",line); sub(/[ \t]+#.*$/,"",line)
+        val=line; in_val=1
+        if (val ~ /\]/) { print val; found=1; in_val=0; exit }
+        next
+      }
+      in_val {
+        ln=$0; sub(/[ \t]+#.*$/,"",ln)
+        val = val "\n" ln
+        if (ln ~ /\]/) { print val; found=1; in_val=0; exit }
+        next
+      }
+      END { if (!found && in_val) exit 3 }
+    ' "$f")"; then
+      rc=0
+    else
+      rc=$?
+    fi
+    if [[ $rc -ne 0 ]]; then
+      if [[ $rc -eq 3 ]]; then
+        echo "ERROR: shctx issues: [$section].$key in $f opens a TOML array" \
+             "(\"$key = [\") but never closes it (\"]\") before end of file" \
+             "— malformed config. Refusing to silently fall back to the" \
+             "default $key list; fix the array in $f." >&2
+      else
+        echo "ERROR: shctx issues: failed to read [$section].$key from $f" \
+             "(awk exit $rc)." >&2
+      fi
+      return "$rc"
+    fi
+    [[ -n "$v" ]] && { printf '%s' "$v"; return 0; }
+  done < <(shctx_config_files)
+  printf '%s' ""
+  return 0
+}
+
+_non_issue_labels_from_toml() {
+  # Read [ledger].non_issue_labels from shepherd config so the documented
+  # override (docs/configuration.md §[ledger]) actually takes effect —
+  # finding NON-ISSUE-LABELS-CONFIG-MISMATCH — for both single-line and
+  # multi-line TOML array forms. Uses _cfg_ledger_array_raw() above rather
+  # than cfg_section_get directly, because cfg_section_get truncates a
+  # multi-line array (see that function's header comment for the failure
+  # mode). Echoes a newline-separated label list, or "" when the key is
+  # unset so the caller falls back to $_DEFAULT_NON_ISSUE_LABELS. Propagates
+  # (does not swallow) a non-zero exit from _cfg_ledger_array_raw — a
+  # malformed override must fail the whole `classify` invocation, never
+  # silently degrade to the default.
+  local raw rc
+  if raw="$(_cfg_ledger_array_raw ledger non_issue_labels)"; then
+    rc=0
+  else
+    rc=$?
+  fi
+  [[ $rc -ne 0 ]] && return "$rc"
+  [[ -z "$raw" ]] && return 0
+  # Strip the TOML array's [ ] brackets, split on commas, trim surrounding
+  # whitespace/quotes per element. `sed`'s `^`/`$` anchor per line (not per
+  # stream), so this also correctly unwraps a multi-line raw value: the lone
+  # "[" and "]" lines strip to empty, and each element line's own leading/
+  # trailing quote+whitespace is trimmed same as the single-line case.
+  # Newline- (not space-) joined so a future multi-word label survives the
+  # split intact.
+  printf '%s' "$raw" | sed -e 's/^\[//' -e 's/\]$//' | tr ',' '\n' \
+    | sed -E 's/^[[:space:]]*"?//; s/"?[[:space:]]*$//'
 }
 
 _current_milestone_from_branch() {
@@ -87,12 +202,21 @@ _has_label() {
 
 _classify_row() {
   # Classify a single issue row into a bucket.
-  # Args: number title state labels milestone updated_at current_milestone drift_threshold_epoch
+  # Args: number title state labels milestone updated_at current_milestone
+  #       drift_threshold_epoch non_issue_labels_cfg
   local number="$1" title="$2" state="$3" labels="$4" milestone="${5:-}" \
-        updated_at="$6" current_milestone="$7" drift_thresh="$8"
+        updated_at="$6" current_milestone="$7" drift_thresh="$8" non_issue_cfg="${9:-}"
 
-  # labeled-non-issue (checked first — explicit dismissal labels win)
-  if _has_label "$labels" "deferred" "wontfix" "won't fix" "invalid" "duplicate" "question"; then
+  # labeled-non-issue (checked first — explicit dismissal labels win). Honors
+  # the [ledger].non_issue_labels override (non_issue_cfg, resolved once by
+  # the caller via _non_issue_labels_from_toml — reading per-row would be
+  # wasteful); falls back to the hardcoded default when the key is unset.
+  local -a non_issue_labels=()
+  local _nil_line _nil_src="${non_issue_cfg:-$_DEFAULT_NON_ISSUE_LABELS}"
+  while IFS= read -r _nil_line; do
+    [[ -n "$_nil_line" ]] && non_issue_labels+=("$_nil_line")
+  done <<< "$_nil_src"
+  if _has_label "$labels" "${non_issue_labels[@]}"; then
     echo "labeled-non-issue"
     return
   fi
@@ -158,6 +282,18 @@ cmd_classify() {
 
   local project_id; project_id=$(shctx_project_id)
 
+  # Resolve the [ledger].non_issue_labels override ONCE (not per-row inside
+  # the classify loop below) — see _non_issue_labels_from_toml(). A malformed
+  # override (e.g. an unterminated multi-line array) must abort here rather
+  # than silently classifying against the default list.
+  local non_issue_labels_cfg rc
+  if non_issue_labels_cfg="$(_non_issue_labels_from_toml)"; then
+    rc=0
+  else
+    rc=$?
+  fi
+  [[ $rc -ne 0 ]] && exit "$rc"
+
   # Fetch open issues from cache
   local rows
   rows=$(shctx_sql "SELECT number, title, state, labels, COALESCE(milestone,''), updated_at
@@ -192,7 +328,7 @@ cmd_classify() {
     [[ -z "$number" ]] && continue
     local bucket
     bucket=$(_classify_row "$number" "$title" "$state" "$labels" "$milestone" \
-              "$updated_at" "$current_milestone" "$drift_thresh")
+              "$updated_at" "$current_milestone" "$drift_thresh" "$non_issue_labels_cfg")
 
     _bk_append "$bucket" "${number}|${title}|${labels}|${milestone}"$'\n'
 
@@ -268,7 +404,7 @@ cmd_classify() {
   print_bucket "drift-risk"           "Drift risk (high-severity, no sprint milestone)"
   print_bucket "unclassified"         "Unclassified (review manually)"
   print_bucket "tracking-future"      "Tracking / future work"
-  print_bucket "labeled-non-issue"    "Labeled non-issue (deferred / wontfix / etc.)"
+  print_bucket "labeled-non-issue"    "Labeled non-issue (wontfix / tracking-future / etc.)"
 
   if [[ "$unclassified_only" -eq 0 ]]; then
     echo ""

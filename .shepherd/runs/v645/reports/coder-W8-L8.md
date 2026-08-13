@@ -1,0 +1,14 @@
+## CODER REPORT
+- Lane: W8-L8 (contradiction-ledger Finding #18 — `changelog-rewrite-claim-vs-bash-retention`)
+- Skills loaded: code-style (markdown/prose entry has no dedicated language skill; treated as prose per CHANGELOG's existing house style, cross-checked against two in-file "Correction (...)" precedents at lines 233 and 189)
+- Files touched (created/modified/deleted): `/Users/jo3/src/fl03/shepherd/CHANGELOG.md` (modified, 1 line replaced with 1 corrected line — no other lines shifted)
+- LOC delta: +1 / -1 (prose-only changelog entry; not Rust/production code, no LOC-budget applicability)
+- Acceptance grep results:
+  - `rg -n "retires behind \`bin/shepherd\`" CHANGELOG.md` → **PASS** (0 hits post-edit; the false claim is removed from the v6.4.1 bullet)
+  - `rg -n "thin exec alias" CHANGELOG.md` → **PASS** (0 hits post-edit)
+  - `rg -n "Deliberately left on the bash shim" CHANGELOG.md` → **PASS** (1 hit, still at line 306, byte-for-byte unmodified — the historical admission was not rewritten)
+  - `rg -n "Correction \(2026-08-13, v6.4.5 audit\)" CHANGELOG.md` → **PASS** (1 hit, the new correction clause)
+  - `skills/context/scripts/shctx` still exists and dispatches to `cmd_*.sh` directly (verified via `sed -n` read, lines ~1-40 and ~175-200): confirms the correction's factual claim that `shctx` never calls `bin/shepherd`.
+- Halts encountered: none
+- Summary: Finding #18 said the false claim sat at `CHANGELOG.md:254`; by the time this lane ran, the actual offending sentence ("`skills/context/scripts/` retires behind `bin/shepherd` (`shctx` stays as a thin exec alias)") was at line 201, inside the v6.4.1 "last 7 bash commands ported" bullet — verified by `rg -n "retires\|thin exec alias"` before editing (CONTEXT-INVENTORY re-grep per Step 2/3; the cited line number had drifted but the cited content was found exactly once, so this is content-identity, not a stale-citation halt). Corrected in place following the CHANGELOG's own established inline-correction convention (matching the `**Correction (date, ref):**` pattern already used at lines 189 and 233): removed the two false claims (bash "retires", `shctx` is a "thin exec alias") and replaced them with the true state — the 7 commands were ported to native Python IN ADDITION to the bash originals, `shctx` remains a standalone bash dispatcher, and the actual `shctx`→`bin/shepherd` shim cutover was deferred at v6.4.0 and never landed. The pre-existing admission at line 306 ("Deliberately left on the bash shim") was read and cross-referenced but not touched, per the brief's explicit instruction. No other files were read outside CHANGELOG.md except read-only verification (`skills/context/scripts/shctx`, `.shepherd/runs/v645/dogfood.md`, prior commits) to confirm the correction's factual content before writing it — no code paths were modified.
+- Reporter: coder-W8-L8 @ 2026-08-13T00:00:00Z

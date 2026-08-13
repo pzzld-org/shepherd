@@ -49,9 +49,10 @@ Hard prohibitions:
   parallel coders WILL deadlock. Main chat validates once after rebase.
 - NEVER run git at all — no `commit`/`add`/`push`/`reset`/`checkout`/`stash`/`branch`/`worktree`.
   Git custody is NEVER the coder's; `coder_git_guard.sh` blocks it (`CODER-GIT-WRITE`). The conductor
-  stages+commits your reported files AFTER the wave-review returns PASS — which is exactly why you
-  never commit: a REDO re-runs you over the SAME files, so uncommitted output means nothing to
-  unwind. Read-only inspection (`git status`/`diff`/`log`/`show`/`rev-parse`) stays yours.
+  stages+commits exactly the paths you return in `files_touched` AFTER the wave-review returns PASS
+  — which is exactly why you never commit: a REDO re-runs you over the SAME files, so uncommitted
+  output means nothing to unwind. Read-only inspection (`git status`/`diff`/`log`/`show`/`rev-parse`)
+  stays yours.
 - NEVER edit outside `[FILE-SCOPE]` (reading is fine) or write outside `[WORKTREE].Path` — full
   confinement contract: `skills/shepherd/references/flock.md §Write boundaries`.
 - NEVER add a build-manifest dependency without conductor approval — file
@@ -104,8 +105,8 @@ these greps pre-dispatch; re-run each as a tripwire against parallel-wave races:
 citing existing locations. NEVER write an identifier already present in the workspace.
 
 Write-time backstop: Write/Edit introducing an already-existing public symbol is BLOCKED
-(`DEDUP-HIT`) — reuse, extend, or add a `JUSTIFY-NEW` block to your report; never fight the
-block.
+(`DEDUP-HIT`) — reuse, extend, or add a `JUSTIFY-NEW` entry to your structured result's
+`assumptions`; never fight the block.
 
 ### Step 4 — Write code
 
@@ -114,12 +115,13 @@ idioms plus `code-style:<language>.md`. Honor `[NON-GOALS]`. Match `[ACCEPTANCE]
 symbol outside `[FILE-SCOPE]` unowned by a wave-sibling → `BRIEF-AMENDMENT REQUEST`, or a
 close-time finding if out-of-sprint. No mid-lane pause.
 
-### Step 5 — Hand off (no git)
+### Step 5 — Hand off (no git, no report file)
 
-Do NOT stage, commit, or touch git — leave your files uncommitted in `[WORKTREE].Path`. List every
-file you wrote (exact paths) in the CODER REPORT `Files touched` line: that report IS the handoff.
-The conductor stages+commits your files after the wave-review returns PASS (a REDO simply re-runs
-you over the same files — nothing to unwind). Proceed to CODER REPORT.
+Do NOT stage, commit, or touch git — leave your files uncommitted in `[WORKTREE].Path`. Return
+every file you wrote (exact paths) in the STRUCTURED RESULT's `files_touched` field: that field IS
+the handoff — the conductor's PASS-gated commit stages exactly those paths (pathspec-explicit,
+never `-A`). The conductor stages+commits your files after the wave-review returns PASS (a REDO
+simply re-runs you over the same files — nothing to unwind). Proceed to Output discipline.
 
 ## LOC budget & the ONE-LOC rule (#215)
 
@@ -147,30 +149,49 @@ every cargo invocation (`skills/shepherd/references/pipeline.md §Gates`, #214).
 
 ## Output discipline
 
-```
-## CODER REPORT
-- Lane: <lane name from brief>
-- Skills loaded: <list>
-- Files touched (created/modified/deleted): <list>
-- LOC delta: +<adds> / -<dels>
-- Acceptance grep results: <each line from [ACCEPTANCE] with PASS/FAIL>
-- Halts encountered: none | listed
-- Summary: <2-3 sentences>
-- Reporter: <agent-id> @ <ISO-8601 timestamp>
-```
-
-No diff in the summary — read `git diff` directly.
-
-### Optional: `## INSIGHTS`
-
-MAY append cross-lane observations for next sprint. Canonical taxonomy:
-`skills/adaptation/SKILL.md §INSIGHTS`. Skip if nothing structural to flag. Header + delimiter
-below are VERBATIM — the capture hook parses them:
+Your deliverable has two halves: the diff on disk, and one STRUCTURED RESULT matching the
+dispatcher's schema. There is no third half — no report file, no `## CODER REPORT` block, no
+prose summary. A coder that writes a report file is producing an artifact nothing downstream
+reads; the dispatcher does not collect your chat reply, only the schema-validated object:
 
 ```
-## INSIGHTS
-- kind: relocation|extension|duplication|consolidation|gap|nit — <one-line observation>
+{
+  "step": "<step id from the brief>",
+  "files_touched": ["<exact path>", ...],
+  "loc_delta": "+<adds>/-<dels>",
+  "assumptions": ["<each assumption needing compile-time or runtime confirmation>", ...],
+  "halts": ["<halt code raised>", ...],
+  "out_of_scope_writes": ["<any file written outside [FILE-SCOPE]>", ...]
+}
 ```
+
+`files_touched` / `halts` / `out_of_scope_writes` are `[]` when empty — never omitted, never
+left implicit in prose. `files_touched` is not decoration: the conductor's PASS-gated commit
+stages exactly those paths, pathspec-explicit and never `-A` (`skills/shepherd/references/flock.md
+§@coder`) — get it exact or the commit misses a file or stages one you never touched.
+
+**`git diff` is the authoritative account of what you did. Your own account carries NO
+verification authority.** The central auditor re-verifies every claim against live HEAD before
+a wave-review can PASS — it does not take your word for `files_touched`, `loc_delta`, or
+anything else in the structured result; where the tree disagrees with what you returned, the
+tree wins and the step is REDO. `assumptions` is the one field the diff cannot reconstruct:
+what you could not confirm because you were forbidden to build (§Hard prohibitions). That is the
+entire reason a coder still returns prose at all — not to describe the diff, but to flag what
+the diff can't show.
+
+This replaces a report-file convention that was measured, not merely disliked: 37 coder reports,
+318 KB, ~46% of one run's `reports/` directory — every single one bypassed, because the auditor
+that reads `git diff` and live HEAD never had a reason to trust a self-report over the tree.
+Prose the auditor structurally ignores is pure cost with no offsetting benefit.
+
+### Cross-lane observations (`## INSIGHTS`)
+
+Taxonomy stays canonical: `skills/adaptation/SKILL.md §INSIGHTS` (`kind:
+relocation|extension|duplication|consolidation|gap|nit`). It no longer has a guaranteed landing
+spot: once a dispatch carries a result schema, only the schema-validated object is collected —
+the same rule that retired the CODER REPORT means a coder's free-form chat reply is not read
+back either. Appending `## INSIGHTS` prose to your reply is best-effort only; a finding that
+MUST surface belongs in `assumptions` instead, or a close-time finding.
 
 ## Adaptability, role, and memory
 

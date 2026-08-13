@@ -88,6 +88,60 @@ case "$sub" in
         exit 1
         ;;
     esac
+    # TEAMMATE-SESSION gate (DF-71 part a, v6.4.5). teammate_git_guard.sh's
+    # TEAMMATE-GIT-WRITE enforcement (and every OTHER session_id consumer —
+    # teammate_heartbeat.sh's liveness stamp, coordinate_drive_guard.sh's
+    # self-teammate gate) keys on teammates.session_id. `--session` was
+    # documented OPTIONAL (commands/spawn.md §Register teammates) and every
+    # real registration this sprint omitted it, so session_id stayed NULL for
+    # all six live teammates and every downstream `WHERE session_id=...`
+    # lookup matched zero rows for every one of them (DF-71 CRITICAL — the
+    # guard fired for nobody, all sprint). Convert the silent-NULL acceptance
+    # into a loud refusal: require `--session`, ERROR if it is absent.
+    #
+    # W8R-R1 CORRECTION: an earlier version of this gate fell back to
+    # `${CLAUDE_SESSION_ID:-}` (cmd_deliverable.sh's convention) before
+    # erroring. That fallback is wrong HERE and was itself a defect, not a
+    # fix: `register <name> ...` always runs in the REGISTRAR's own process
+    # (root/spawn), never inside the SUBJECT teammate's session — a native
+    # Agent-spawn cannot execute code inside the child it is creating. So
+    # `$CLAUDE_SESSION_ID` at this call site is unconditionally the CALLER's
+    # session, not the teammate's, and it is essentially never empty — the
+    # loud-failure path the comment above describes would almost never fire.
+    # Worse, every registration would silently resolve to the SAME session
+    # id (root's), which is actively wrong rather than merely absent:
+    # (1) teammate_git_guard.sh's `WHERE session_id='<payload session>'`
+    #     lookup would then MATCH on root's own session, so root's own
+    #     `git merge`/`rebase`/`worktree add|remove|prune`/`branch -D` get
+    #     DENIED — the exact LANE-INTEGRATE authority the guard exists to
+    #     preserve for root, inverted.
+    # (2) UNIQUE is on (project_id, team_name, teammate_name), not session,
+    #     so every teammate would collide on one session id and
+    #     teammate_heartbeat.sh liveness + coordinate_drive_guard.sh's
+    #     self-teammate gate would all key off root's activity instead of
+    #     each teammate's own.
+    # Substituting the registrar's identity for the subject's is strictly
+    # worse than the NULL it replaced (an invisible fail-open) — it is an
+    # active mis-identification. Do NOT reintroduce this or any other
+    # environment-variable fallback here: a missing `--session` is a real,
+    # actionable error, not something to paper over.
+    #
+    # KNOWN GAP, stated rather than papered over: as of this sprint no caller
+    # has a PROVEN way to supply a teammate's own session uuid at
+    # registration time — the native Agent-spawn primitive returns
+    # `name@team-id`, never a session uuid (DF-12) — so this WILL block every
+    # bare `register` call (including every invocation commands/spawn.md
+    # §Register teammates currently documents) until that doc's follow-up
+    # wave wires an actual resolution path. BLOCKED here: a sibling wave owns
+    # commands/spawn.md this run. That is the intended, visible trade — an
+    # invisible defect (DF-71) for a loud, actionable one.
+    if [[ -z "$session" ]]; then
+      echo "ERR: TEAMMATE-SESSION-UNRESOLVED — refusing to register teammate '$name' with no session id." >&2
+      echo "  Pass --session=<the teammate's own session uuid>. Root cannot infer it: the" >&2
+      echo "  native Agent-spawn primitive returns name@team-id, never a session uuid (DF-12)." >&2
+      echo "  See DF-71 in .shepherd/runs/v645/dogfood.md for the full defect + follow-up." >&2
+      exit 1
+    fi
     pid="$(project_id)"
     id="$(uuidgen 2>/dev/null || python3 -c 'import uuid;print(uuid.uuid4())')"
     ts="$(now_ms)"

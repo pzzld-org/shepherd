@@ -38,6 +38,14 @@ Design rules (from the codex-shepherd port-back review):
   boundary-merge ledger: WAVE-COMPLETE acceptance records the commit,
   the boundary merge marks it merged, and the wave gate asserts the
   pending set (accepted, unmerged) is EMPTY before any gate goes green.
+- **#1 GATE-EXIT-CODE-MISMATCH / DF-63**: the pending-set check above is
+  BLIND to a lane that was never ``run lane add``-ed at all -- zero rows
+  is trivially "not pending", so an omitted registration used to make
+  ``wave pending`` exit GREENER, not redder. ``RunState.missing_declared_
+  lanes`` closes that hole by reading the run's OWN plan.md ``## Lane
+  projection`` table (:func:`parse_declared_lane_ids`) as the independent
+  source of what the run actually committed to shipping, so the gate has
+  something to compare the ledger against besides the ledger itself.
 
 CANONICAL RUN IDS (#P4, 2026-08-03 operator directive)
 =========================================================
@@ -474,6 +482,107 @@ def suggest_canonical_id(run_id: str, *, workdir: str | None = None) -> str | No
     return _canonical_prefix(run_id, workdir=workdir)
 
 
+# --------------------------------------------------------------------------
+# #1 GATE-EXIT-CODE-MISMATCH / DF-63 -- ledger-completeness check. See the
+# module docstring's #242 bullet above: `pending_merges()` alone cannot see
+# a lane that was never `run lane add`-ed, because zero ledger rows reads
+# as "not pending" rather than "missing". Everything below reads the run's
+# OWN plan.md `## Lane projection` table as the independent declared-lane
+# source `RunState.missing_declared_lanes` (below `pending_merges`) joins
+# against.
+# --------------------------------------------------------------------------
+#: The run plan's ``## Lane projection`` section heading -- any header
+#: level, case-insensitive (prose casing drifts; the anchor should not).
+_LANE_PROJECTION_HEADING_RE = re.compile(r"^#{1,6}\s*lane projection\s*$", re.IGNORECASE)
+
+#: ANY markdown heading, any level -- bounds :func:`parse_declared_lane_ids`'s
+#: table scan to the ``## Lane projection`` section itself. Without this the
+#: scan runs to end-of-file: a plan whose section renders empty (``run
+#: init``'s ``templates/plan.md.j2`` -- the section holds only a Jinja
+#: comment until PLAN-GATE appends the table) then wanders into later
+#: sections and adopts the first pipe-table it finds there, headed
+#: ``lane_id`` or not.
+_MARKDOWN_HEADING_RE = re.compile(r"^#{1,6}\s")
+
+#: One markdown table separator cell (``---``, ``:--``, ``--:``, ``:-:``)
+#: -- distinguishes a table's header row from its first DATA row without
+#: hardcoding a column count.
+_TABLE_SEPARATOR_CELL_RE = re.compile(r"^:?-+:?$")
+
+
+def parse_declared_lane_ids(plan_text: str) -> list[str]:
+    """The declared lane ids from a run plan's ``## Lane projection`` table.
+
+    Pure text parsing, no IO -- callers (``commands/run.py``'s ``wave
+    pending``) read ``plan.md`` themselves and pass its text in. DF-63's
+    measured defect: a lane can be fully worked (worktree, branch,
+    WAVE-COMPLETE-accepted) and still never appear in ``run.json`` because
+    nobody ran ``run lane add`` for it -- the #242 pending-set check is
+    then blind to it BY CONSTRUCTION (zero ledger rows is trivially "not
+    pending", not "missing"). This function reads the one independent
+    source that knows what the run actually committed to shipping: the
+    plan's own lane table (``.shepherd/runs/v645/plan.md`` §Lane
+    projection is the canonical shape this mirrors: ``| lane_id |
+    member_steps | file_scope.exclusive | parallel_with |``), so a
+    completeness check has something to compare the ledger against besides
+    the ledger itself.
+
+    Args:
+        plan_text: The full text of a run's ``plan.md``.
+
+    Returns:
+        Declared lane ids in table order, lowercased and stripped of
+        backtick/emphasis decoration (plan prose `` `L1-engine` `` becomes
+        ``"l1-engine"``, matching the lowercase grammar
+        :func:`validate_id` already holds registered lane ids to). Empty
+        when the plan has no ``## Lane projection`` section, the section
+        (bounded by the next markdown heading of any level) has no table,
+        that table isn't headed ``lane_id``, or the table has zero data
+        rows -- none of those are errors: a plan that predates or omits
+        the section has nothing declared to check ledger completeness
+        against. The section bound also means a table in a LATER section
+        (a lane-status table, a deviations table -- anything else headed
+        ``lane_id``) is never mistaken for the declared-lane table just
+        because ``## Lane projection`` itself rendered empty.
+    """
+    lines = plan_text.splitlines()
+    heading_idx: int | None = None
+    for i, line in enumerate(lines):
+        if _LANE_PROJECTION_HEADING_RE.match(line.strip()):
+            heading_idx = i
+            break
+    if heading_idx is None:
+        return []
+
+    lane_ids: list[str] = []
+    saw_header = False
+    saw_separator = False
+    for line in lines[heading_idx + 1 :]:
+        stripped = line.strip()
+        if _MARKDOWN_HEADING_RE.match(stripped):
+            break  # next section -- Lane projection ended, table or not.
+        if not stripped or not stripped.startswith("|"):
+            if saw_header:
+                break  # blank line or prose after the table ends the section.
+            continue  # prose between the heading and the table.
+        cells = [cell.strip() for cell in stripped.strip("|").split("|")]
+        if not saw_header:
+            saw_header = True
+            if not cells or cells[0].strip("`* ").lower() != "lane_id":
+                break  # the first table after the heading isn't the lane table.
+            continue
+        if not saw_separator:
+            saw_separator = True
+            if cells and all(_TABLE_SEPARATOR_CELL_RE.match(c) for c in cells if c):
+                continue  # the `|---|---|` separator row -- no lane id here.
+        if not cells or not cells[0]:
+            continue
+        lane_id = cells[0].strip("`* ").lower()
+        if lane_id:
+            lane_ids.append(lane_id)
+    return lane_ids
+
+
 class LaneState(BaseModel):
     """One lane's registration + boundary-merge ledger row.
 
@@ -539,6 +648,33 @@ class RunState(BaseModel):
             A non-empty return at a wave gate is a mechanical stop.
         """
         return [lane for lane in self.lanes if lane.accepted_commit and not lane.merged]
+
+    def missing_declared_lanes(self, plan_text: str) -> list[str]:
+        """#1 GATE-EXIT-CODE-MISMATCH / DF-63: declared lanes with no ledger row.
+
+        The completeness half of the #242 wave gate, alongside
+        :meth:`pending_merges`: a lane the run's plan declares
+        (:func:`parse_declared_lane_ids`) but that was never
+        ``run lane add``-ed has ZERO rows in ``self.lanes`` -- invisible to
+        ``pending_merges`` by construction, since that check only ever
+        looks AT registered rows, never for absent ones. This is the other
+        half: it looks for absence.
+
+        Args:
+            plan_text: The run's ``plan.md`` text -- pass ``""`` when the
+                run has no plan.md yet; an empty plan declares no lanes,
+                so the return is always empty in that case, never a crash.
+
+        Returns:
+            Declared lane ids (:func:`parse_declared_lane_ids` order,
+            already lowercased) absent from ``self.lanes`` -- empty when
+            every declared lane is registered, including when the plan
+            declares none at all. A non-empty return at a wave gate is a
+            mechanical stop, exactly like a non-empty :meth:`pending_merges`.
+        """
+        declared = parse_declared_lane_ids(plan_text)
+        registered = {lane.id.lower() for lane in self.lanes}
+        return [lane_id for lane_id in declared if lane_id not in registered]
 
 
 def runs_root(workdir: str | None = None) -> str:
@@ -839,6 +975,7 @@ __all__ = [
     "load_run",
     "load_run_with_migrations",
     "normalize_run_document",
+    "parse_declared_lane_ids",
     "run_dir",
     "run_state_path",
     "runs_root",

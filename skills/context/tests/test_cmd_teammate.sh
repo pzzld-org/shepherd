@@ -19,8 +19,20 @@ sqlite3 "$SHCTX_DB" "INSERT INTO projects (id, name, created_at, updated_at) VAL
 
 CMD="bash $ROOT/skills/context/scripts/cmd_teammate.sh"
 
-# register
-id=$($CMD register conductor-test --team=team-a --type=conductor --pane='%5')
+# W8R-R1: a bare `register` with no resolvable session is a loud ERROR, not a
+# silent NULL (and NOT a fallback to $CLAUDE_SESSION_ID — that env var, if
+# set, names the CALLER's own session, never the teammate being registered;
+# see cmd_teammate.sh:91-125 for the full inversion this refusal prevents).
+# Unset it here so this assertion is not accidentally defeated by a value the
+# outer harness happens to export.
+rc=0; out=$(env -u CLAUDE_SESSION_ID $CMD register conductor-nosession --team=team-a --type=conductor --pane='%5' 2>&1) || rc=$?
+[[ "$rc" == "1" ]] || { echo "FAIL: register with no session exit code: $rc (want 1)"; exit 1; }
+echo "$out" | grep -q "TEAMMATE-SESSION-UNRESOLVED" || { echo "FAIL: register with no session missing TEAMMATE-SESSION-UNRESOLVED code: $out"; exit 1; }
+n=$(sqlite3 "$SHCTX_DB" "SELECT count(*) FROM teammates WHERE teammate_name='conductor-nosession';")
+[[ "$n" == "0" ]] || { echo "FAIL: conductor-nosession row was inserted despite the session refusal"; exit 1; }
+
+# register (positive case, explicit --session — the fixture the rest of this file uses)
+id=$($CMD register conductor-test --team=team-a --type=conductor --pane='%5' --session=sess-conductor-test)
 [[ -n "$id" ]] || { echo "FAIL: register returned empty id"; exit 1; }
 
 # heartbeat moves status booting → active

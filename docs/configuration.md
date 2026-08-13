@@ -177,10 +177,14 @@ claim honest — this is a label an operator sets, not a mechanism.
 | `main_branch` | string | `"main"` |
 | `release_tag_pattern` | string | `"v{X}.{Y}.{Z}"` |
 | `allow_direct_main_commit` | bool | `false` — MUST NEVER be `true` except solo bootstrap |
+| `version_files` | list of string | *(not read)* — see note below |
+| `mod_base` | table `{sprint, patch, minor}` | *(not read)* — see note below |
 
 `{X}{Y}{Z}{N}` are fixed integer placeholders. Branches keep dots; filenames use `*_slug_pattern`
 instead (falls back to `*_branch_pattern` + a deprecation warning). See
 `skills/shepherd/references/seed-template.md`.
+
+`version_files` and `mod_base` are doctrine-only keys (`skills/shepherd/references/branching-model.md:33` and `:46`). Neither is wired into the release pipeline yet. `services/cli/shepherd_cli/commands/release.py`'s `VERSION_FILES` module constant hardcodes the five bumped files (`.claude-plugin/plugin.json`, `skills/shepherd/SKILL.md`, `skills/context/SKILL.md`, `.claude-plugin/marketplace.json`, `README.md`) instead of reading `[branching].version_files`, and `_next_version()` hardcodes the mod-10 `< 9` rollover gears instead of reading `[branching].mod_base`; the module's own header comment (lines 25-28) documents this as a known, deferred gap. Treat both keys as planned, not live, until a config-read lands.
 
 ### `[gates]` — between-wave validation
 

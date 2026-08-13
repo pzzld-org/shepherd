@@ -29,19 +29,34 @@ sqlite3 "$SHCTX_DB" "INSERT INTO projects (id, name, created_at, updated_at) VAL
 CMD="bash $ROOT/skills/context/scripts/cmd_teammate.sh"
 fails=0
 
-# 1. --type=conductor → succeeds, returns an id.
-id=$($CMD register conductor-ok --team=team-a --type=conductor) || { echo "FAIL: conductor register rejected"; fails=$((fails+1)); }
+# 0. W8R-R1: a valid ROLE with no resolvable session is still refused, loudly,
+#    BEFORE any row is inserted — the session gate applies to every accepted
+#    role, not just conductor's happy path. Also pins that no fallback to
+#    $CLAUDE_SESSION_ID exists (that env var, if set, would name the CALLER's
+#    own session — root's — never the teammate being registered).
+if env -u CLAUDE_SESSION_ID $CMD register conductor-nosession --team=team-a --type=conductor 2>/tmp/cwg_teammate_nosession.err; then
+  echo "FAIL: conductor register with no session was NOT refused"; fails=$((fails+1))
+fi
+grep -q "TEAMMATE-SESSION-UNRESOLVED" /tmp/cwg_teammate_nosession.err || { echo "FAIL: no-session refusal missing TEAMMATE-SESSION-UNRESOLVED code"; fails=$((fails+1)); }
+n=$(sqlite3 "$SHCTX_DB" "SELECT count(*) FROM teammates WHERE teammate_name='conductor-nosession';")
+[[ "$n" == "0" ]] || { echo "FAIL: conductor-nosession row was inserted despite the session refusal"; fails=$((fails+1)); }
+rm -f /tmp/cwg_teammate_nosession.err
+
+# 1. --type=conductor + explicit --session → succeeds, returns an id.
+id=$($CMD register conductor-ok --team=team-a --type=conductor --session=sess-conductor-ok) || { echo "FAIL: conductor register rejected"; fails=$((fails+1)); }
 [[ -n "${id:-}" ]] || { echo "FAIL: conductor register returned empty id"; fails=$((fails+1)); }
 
-# 2. --type=shepherd:conductor (fully-qualified form) → succeeds.
-id2=$($CMD register conductor-ok2 --team=team-a --type=shepherd:conductor) || { echo "FAIL: shepherd:conductor register rejected"; fails=$((fails+1)); }
+# 2. --type=shepherd:conductor (fully-qualified form) + explicit --session → succeeds.
+id2=$($CMD register conductor-ok2 --team=team-a --type=shepherd:conductor --session=sess-conductor-ok2) || { echo "FAIL: shepherd:conductor register rejected"; fails=$((fails+1)); }
 [[ -n "${id2:-}" ]] || { echo "FAIL: shepherd:conductor register returned empty id"; fails=$((fails+1)); }
 
-# 3. --type=Conductor (case variance) → succeeds.
-id3=$($CMD register conductor-ok3 --team=team-a --type=Conductor) || { echo "FAIL: Conductor (mixed case) register rejected"; fails=$((fails+1)); }
+# 3. --type=Conductor (case variance) + explicit --session → succeeds.
+id3=$($CMD register conductor-ok3 --team=team-a --type=Conductor --session=sess-conductor-ok3) || { echo "FAIL: Conductor (mixed case) register rejected"; fails=$((fails+1)); }
 [[ -n "${id3:-}" ]] || { echo "FAIL: Conductor register returned empty id"; fails=$((fails+1)); }
 
-# 4. --type=critic → refused, non-zero exit, no row inserted.
+# 4. --type=critic → refused, non-zero exit, no row inserted. (Role gate runs
+#    BEFORE the session gate, so this stays session-less on purpose — it is
+#    pinning role refusal, not session refusal.)
 if $CMD register critic-oops --team=team-a --type=critic 2>/tmp/cwg_teammate_critic.err; then
   echo "FAIL: critic register was NOT refused"; fails=$((fails+1))
 fi
@@ -49,18 +64,19 @@ grep -q "TEAMMATE-ROLE-INVALID" /tmp/cwg_teammate_critic.err || { echo "FAIL: cr
 n=$(sqlite3 "$SHCTX_DB" "SELECT count(*) FROM teammates WHERE teammate_name='critic-oops';")
 [[ "$n" == "0" ]] || { echo "FAIL: critic-oops row was inserted despite refusal"; fails=$((fails+1)); }
 
-# 5. --type=engineer → ACCEPTED (self-contained engineer is a native teammate, #183).
-eng_id=$($CMD register engineer-ok --team=team-a --type=engineer) || { echo "FAIL: engineer register rejected (#183 — self-contained engineer must register)"; fails=$((fails+1)); }
+# 5. --type=engineer + explicit --session → ACCEPTED (self-contained engineer
+#    is a native teammate, #183).
+eng_id=$($CMD register engineer-ok --team=team-a --type=engineer --session=sess-engineer-ok) || { echo "FAIL: engineer register rejected (#183 — self-contained engineer must register)"; fails=$((fails+1)); }
 [[ -n "${eng_id:-}" ]] || { echo "FAIL: engineer register returned empty id"; fails=$((fails+1)); }
 
-# 6. --type=coder → refused (subagent only).
+# 6. --type=coder → refused (subagent only; role gate runs before session gate).
 if $CMD register coder-oops --team=team-a --type=coder 2>/dev/null; then
   echo "FAIL: coder register was NOT refused"; fails=$((fails+1))
 fi
 
 # 7. Idempotent upsert (#183): re-registering the same (team,name) returns the
 #    SAME row id, does not error, and does not create a duplicate row.
-id_first=$($CMD register conductor-idem --team=team-a --type=conductor) || { echo "FAIL: idempotent first register failed"; fails=$((fails+1)); }
+id_first=$($CMD register conductor-idem --team=team-a --type=conductor --session=sess-idem-1) || { echo "FAIL: idempotent first register failed"; fails=$((fails+1)); }
 id_again=$($CMD register conductor-idem --team=team-a --type=conductor --session=sess-xyz) || { echo "FAIL: idempotent re-register errored (UNIQUE violation?)"; fails=$((fails+1)); }
 [[ "$id_first" == "$id_again" ]] || { echo "FAIL: re-register changed the row id ($id_first != $id_again)"; fails=$((fails+1)); }
 dupes=$(sqlite3 "$SHCTX_DB" "SELECT count(*) FROM teammates WHERE team_name='team-a' AND teammate_name='conductor-idem';")
@@ -71,9 +87,9 @@ sess=$(sqlite3 "$SHCTX_DB" "SELECT session_id FROM teammates WHERE teammate_name
 # 8. Crashed/retired revival (#183): re-registering a crashed name flips status
 #    back to 'booting' (so a respawned teammate is live again) without churning
 #    the row id.
-id_rev=$($CMD register conductor-rev --team=team-a --type=conductor) || { echo "FAIL: revival setup register failed"; fails=$((fails+1)); }
+id_rev=$($CMD register conductor-rev --team=team-a --type=conductor --session=sess-rev-1) || { echo "FAIL: revival setup register failed"; fails=$((fails+1)); }
 sqlite3 "$SHCTX_DB" "UPDATE teammates SET status='crashed' WHERE teammate_name='conductor-rev';"
-id_rev2=$($CMD register conductor-rev --team=team-a --type=conductor) || { echo "FAIL: re-register of crashed teammate errored"; fails=$((fails+1)); }
+id_rev2=$($CMD register conductor-rev --team=team-a --type=conductor --session=sess-rev-2) || { echo "FAIL: re-register of crashed teammate errored"; fails=$((fails+1)); }
 [[ "$id_rev" == "$id_rev2" ]] || { echo "FAIL: revival changed the row id ($id_rev != $id_rev2)"; fails=$((fails+1)); }
 rev_status=$(sqlite3 "$SHCTX_DB" "SELECT status FROM teammates WHERE teammate_name='conductor-rev';")
 [[ "$rev_status" == "booting" ]] || { echo "FAIL: crashed teammate not revived to booting (got '$rev_status')"; fails=$((fails+1)); }

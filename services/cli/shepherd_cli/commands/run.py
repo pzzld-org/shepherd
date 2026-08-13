@@ -43,8 +43,13 @@ lock file, latent prose). Subcommands:
 - ``run wave merged <run> <lane>`` — mark that lane's accepted commit
   boundary-merged.
 - ``run wave pending <run> [--json]`` — the mechanical #242 gate: exit 0
-  with no output when the pending set is empty; exit 6 listing
-  ``lane<TAB>sha`` rows when accepted-but-unmerged lanes remain. Root
+  with no output when the pending set is empty AND the ledger is
+  lane-complete; exit 6 listing ``lane<TAB>sha`` rows for each
+  accepted-but-unmerged lane and ``lane<TAB>MISSING-DECLARED-LANE`` rows
+  for each lane the run's plan.md ``## Lane projection`` table declares
+  but ``run.json`` never registered at all (#1 GATE-EXIT-CODE-MISMATCH,
+  DF-63 — an omitted ``run lane add`` used to make this gate GREENER, not
+  redder, since a lane with zero rows is trivially "not pending"). Root
   MUST run this before declaring any wave gate green.
 - ``run ledger path [<run>] [--check]`` — v6.4.3 (#261): print the run's
   audit ledger's ABSOLUTE, PRIMARY-checkout path
@@ -84,7 +89,8 @@ detected (``ledger path --check``); 5 run exists (init) or missing
 (everything else, including ``rename``'s source/destination checks,
 ``ledger check`` when the run's ledger is absent, and ``wave verify``
 when the run or its lane-plan directory is absent); 6 pending merges
-remain (``wave pending``) or step/verdict join findings are present
+remain OR a plan-declared lane has no ledger row (``wave pending``, #1
+GATE-EXIT-CODE-MISMATCH) or step/verdict join findings are present
 (``wave verify``); 7 worktree ledger divergence (``ledger check``).
 """
 
@@ -648,20 +654,64 @@ def wave_merged_cmd(
     typer.echo(f"merged {lane} @ {lane_row.accepted_commit}")
 
 
+def _plan_text_or_empty(run: str) -> str:
+    """The run's ``plan.md`` text, or ``""`` when it doesn't exist yet.
+
+    ``wave_pending_cmd``'s ledger-completeness check
+    (:meth:`~shepherd_cli.models_run.RunState.missing_declared_lanes`)
+    reads this to learn which lanes the run's plan actually declares. A
+    run whose plan predates or omits the ``## Lane projection`` section --
+    or has no ``plan.md`` at all yet (``run init`` scaffolds the run
+    before ``plan.md`` is written) -- has nothing declared to check
+    completeness against, so absence here is silent, never an error.
+
+    Args:
+        run: The run identifier (already validated by the caller's
+            :func:`_load_or_fail`).
+
+    Returns:
+        The file's text, or ``""``.
+    """
+    path = os.path.join(run_dir(run), "plan.md")
+    if not os.path.isfile(path):
+        return ""
+    with open(path, "r", encoding="utf-8") as handle:
+        return handle.read()
+
+
 @wave_app.command("pending")
 def wave_pending_cmd(
     run: str = typer.Argument(...),
     json_flag: bool = typer.Option(False, "--json"),
 ) -> None:
-    """Assert the pending set is empty (exit 6 with the list when it is not)."""
+    """Assert the pending set is empty AND the ledger is lane-complete.
+
+    #1 GATE-EXIT-CODE-MISMATCH (DF-63): exit 6 fires on EITHER an
+    accepted-but-unmerged lane (the original #242 pending-set check) OR a
+    lane the plan's ``## Lane projection`` table declares but ``run.json``
+    never registered at all -- an omitted ``run lane add`` used to make
+    this gate GREENER, not redder, because a lane with zero ledger rows is
+    trivially "not pending". Absence is not acceptance.
+    """
     state = _load_or_fail(run)
     pending = state.pending_merges()
+    missing = state.missing_declared_lanes(_plan_text_or_empty(run))
     if json_flag:
-        typer.echo(json.dumps([{"lane": p.id, "commit": p.accepted_commit} for p in pending]))
+        typer.echo(
+            json.dumps(
+                {
+                    "pending": [{"lane": p.id, "commit": p.accepted_commit} for p in pending],
+                    "missing_lanes": missing,
+                    "ok": not pending and not missing,
+                }
+            )
+        )
     else:
         for row in pending:
             typer.echo(f"{row.id}\t{row.accepted_commit}")
-    if pending:
+        for lane_id in missing:
+            typer.echo(f"{lane_id}\tMISSING-DECLARED-LANE")
+    if pending or missing:
         raise typer.Exit(6)
 
 
