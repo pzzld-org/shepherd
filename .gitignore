@@ -65,7 +65,24 @@
 .shepherd/pauses/
 # NOTE: no `.shepherd/memory/` rule — see the `.artifacts/memory/` note above.
 # runs/ split (v6.4.1 artifact schema): durable run artifacts tracked,
-# run state (run.json, graph/, dispatch/, reports/, audits/) ignored
+# disposable run STATE (run.json, graph/, dispatch/, locks) ignored.
+#
+# `reports/` and `audits/` moved from the ignored side to the tracked side in
+# v6.4.5 (DF-61). They were classified as disposable run state, but they are
+# where every expensive dispatch lands its output, and SKILL.md §Principles
+# makes that the opposite of disposable: "every top-tier dispatch MUST
+# terminate in exactly one durable artifact ... reasoning that lives only in a
+# transcript is spend without impact." A discovery report that fetched 8
+# primary sources, or an adversarial audit that found a defect by mutation
+# testing, is the durable artifact — not scratch.
+#
+# The rule was also already being violated in practice, which is what made it
+# harmful rather than merely wrong: 23 report files and 3 audit files were
+# tracked (gitignore does not apply to already-tracked paths), while 9 newer
+# reports from the same run were silently untracked. Whether an artifact
+# survived depended on whether someone had once run `git add -f`. An allowlist
+# that does not match practice reads as "reports are tracked" at a glance and
+# drops the next one.
 .shepherd/runs/**
 !.shepherd/runs/*/
 !.shepherd/runs/*/seed.md
@@ -74,9 +91,15 @@
 !.shepherd/runs/*/phase0.md
 !.shepherd/runs/*/close.md
 !.shepherd/runs/*/handoff.md
+!.shepherd/runs/*/dogfood.md
 !.shepherd/runs/*/lanes/
 !.shepherd/runs/*/lanes/*/
 !.shepherd/runs/*/lanes/*/plan.md
+# durable dispatch output — see the DF-61 note above
+!.shepherd/runs/*/reports/
+!.shepherd/runs/*/reports/*.md
+!.shepherd/runs/*/audits/
+!.shepherd/runs/*/audits/*.md
 
 # Dev-only tooling output (scripts/ — not part of the shipped plugin surface)
 /scripts/.filetree.json
