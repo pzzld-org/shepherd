@@ -54,6 +54,27 @@ fi
 # bash-3.2-safe; routed through emit_context (inherits quiet_warnings).
 ns=$(resolve_namespace)
 db="$(hook_db_path "$ns")"
+
+# --- Registry self-heal (v6.4.5 — DF-01) -------------------------------------
+# A fresh clone carries the tracked `.shepherd/shepherd.toml` (version-
+# controlled) but the registry DB itself is gitignored (canonical state
+# model: `shepherd.db` is rebuildable, never committed), so a session that
+# opens BEFORE ever running `/shepherd:spawn` (whose own Preflight Check 4b
+# mirrors this exact scaffold) would otherwise sit on a permanently
+# un-bootstrapped registry forever — `shctx doctor` fails closed with no
+# automatic remedy. Mirrors Check 4's `shepherd.toml` scaffold-then-proceed
+# shape: non-blocking, NEVER a hard failure. A missing DB is scaffolded; a
+# corrupt one is left for `shctx doctor` to report, never auto-repaired here.
+registry_line=""
+if [[ ! -f "$db" ]]; then
+  sh_cli="$plugin_root/bin/shepherd"
+  if [[ -x "$sh_cli" ]] && "$sh_cli" init >/dev/null 2>&1; then
+    registry_line="[REGISTRY] scaffolded — registry DB was absent; ran 'shctx init'."
+  else
+    registry_line="registry DB absent — run 'shctx init' to scaffold it."
+  fi
+fi
+
 adapt_line=""
 if [[ "$(cfg_get announce_adaptation)" != "off" ]] && [[ -f "$db" ]] && command -v sqlite3 >/dev/null 2>&1; then
   n=$(sqlite3 "$db" "SELECT count(*) FROM sprint_metrics;" 2>/dev/null || echo 0)
@@ -176,13 +197,14 @@ fi
 # --- Build output ---
 # Emit if there's a locator/doctrine/adaptation line OR any hygiene warning;
 # else stay silent.
-if [[ -z "$shctx_line" && -z "$doctrine_line" && -z "$adapt_line" && ${#warnings[@]} -eq 0 ]]; then
+if [[ -z "$shctx_line" && -z "$doctrine_line" && -z "$adapt_line" && -z "$registry_line" && ${#warnings[@]} -eq 0 ]]; then
   pass_silent "session_open" "Session" "conductor" ""
 fi
 
 msg="[shepherd] Session orientation:"$'\n'
 [[ -n "$shctx_line" ]] && msg+="$shctx_line"$'\n'
 [[ -n "$doctrine_line" ]] && msg+="$doctrine_line"$'\n'
+[[ -n "$registry_line" ]] && msg+="$registry_line"$'\n'
 [[ -n "$adapt_line" ]] && msg+="$adapt_line"$'\n'
 if [[ ${#warnings[@]} -gt 0 ]]; then
   msg+="Session-open hygiene (v5.1.8):"$'\n'

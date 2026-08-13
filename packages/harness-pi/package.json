@@ -1,0 +1,17 @@
+{
+  "name": "@fl03/harness-pi",
+  "version": "6.4.5",
+  "private": true,
+  "description": "Pi coding agent adapter: consumes @fl03/compiler's `pi` emission target (~/.pi/agent/prompts/*.md slash commands, ~/.pi/agent/skills/, and a jiti-loaded TypeScript extension implementing the guard layer as pi.on('tool_call', ...)). The only adapter that re-interprets the shared predicate spec in TypeScript rather than shelling out to the Rust engine, since Pi has no native hook module. Implemented in Wave 4 (W4-S6); this is the workspace skeleton only.",
+  "type": "module",
+  "scripts": {
+    "test": "node test.mjs"
+  },
+  "dependencies": {
+    "@fl03/compiler": "6.4.5"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "Apache-2.0"
+}

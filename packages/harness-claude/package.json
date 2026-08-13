@@ -1,0 +1,17 @@
+{
+  "name": "@fl03/harness-claude",
+  "version": "6.4.5",
+  "private": true,
+  "description": "Claude Code adapter: consumes @fl03/compiler's `claude` emission target (agents/*.md, commands/*.md, skills/*/SKILL.md, hooks/hooks.json) and wires it against Claude's native mechanisms -- Agent Teams, matcher-based hook interception, the closed model enum sonnet|opus|haiku|fable. Implemented in Wave 4 (W4-S4); this is the workspace skeleton only.",
+  "type": "module",
+  "scripts": {
+    "test": "node test.mjs"
+  },
+  "dependencies": {
+    "@fl03/compiler": "6.4.5"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "Apache-2.0"
+}

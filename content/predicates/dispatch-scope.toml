@@ -1,0 +1,79 @@
+# dispatch-scope — governs which role may dispatch which other role. The flock is closed
+# at nine (content/skills/shepherd/SKILL.md §The flock is closed); this predicate is what
+# a compiler reads to refuse an off-flock or wrong-tier dispatch attempt before it fires,
+# on any harness's own dispatch primitive (Agent()/Workflow's agent() on Claude, spawn_agent
+# on Codex, a subprocess invocation on Pi — the predicate is the same, the verb differs).
+
+[predicate]
+id = "dispatch-scope"
+version = 1
+description = "A dispatch is denied unless the target role is inside the closed flock AND the dispatching role's tier is permitted to invoke that specific target."
+
+[[rule]]
+id = "closed-flock-only"
+description = "The dispatch target MUST be one of the nine content/roles/*.md role ids; any other value is refused on sight."
+subject = "dispatch.target_role"
+action = "dispatch"
+effect = "deny_if_target_outside_flock"
+
+[[rule]]
+id = "plan-authorship-and-gating-are-root-tier-exclusive"
+description = "Only the root orchestrator (shepherd) may dispatch the plan-author (engineer) or gating (critic) roles for sprint-plan authorship/gating; a lane-executor lead (conductor) invoking either directly is refused."
+subject = "dispatch.dispatcher_tier"
+action = "dispatch"
+effect = "deny_if_dispatcher_is_lane_lead_and_target_is_plan_or_gate_role"
+
+[[rule]]
+id = "implementer-roles-never-dispatch"
+description = "An implementer role (coder, worker, discovery, auditor, critic) never dispatches any other role at all — a missing dependency is a scope-amendment request or a close-time finding on that same dispatch, never a nested dispatch."
+subject = "role.tier"
+action = "dispatch"
+effect = "deny_if_dispatcher_is_implementer"
+
+[[example]]
+name = "root-dispatches-engineer-at-plan-authorship"
+kind = "allow"
+role = "shepherd"
+action = "dispatch"
+target_role = "engineer"
+context = { dispatcher_tier = "root" }
+result = "allow"
+
+[[example]]
+name = "conductor-dispatches-coder-inside-its-own-lane"
+kind = "allow"
+role = "conductor"
+action = "dispatch"
+target_role = "coder"
+context = { dispatcher_tier = "lane-lead" }
+result = "allow"
+
+[[example]]
+name = "conductor-attempts-to-dispatch-engineer"
+kind = "deny"
+role = "conductor"
+action = "dispatch"
+target_role = "engineer"
+context = { dispatcher_tier = "lane-lead" }
+result = "deny"
+halt_code = "WRONG-TIER-DISPATCH"
+
+[[example]]
+name = "coder-attempts-to-dispatch-worker-for-a-missing-dependency"
+kind = "deny"
+role = "coder"
+action = "dispatch"
+target_role = "worker"
+context = { dispatcher_tier = "implementer" }
+result = "deny"
+note = "a coder blocked on a missing dependency files a scope-amendment request on its OWN dispatch, it never dispatches another role to unblock itself."
+
+[[example]]
+name = "dispatch-outside-the-closed-flock"
+kind = "deny"
+role = "shepherd"
+action = "dispatch"
+target_role = "general-purpose"
+context = { dispatcher_tier = "root" }
+result = "deny"
+halt_code = "DISPATCH-OFF-FLOCK"

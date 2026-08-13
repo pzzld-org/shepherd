@@ -11,6 +11,8 @@
 #   log_event hook decision tool role session fields_json
 #                                    — append one JSONL entry to <ns>/logs/hooks/YYYY-MM-DD.jsonl
 #   current_role tool_use_id         — echo agent role from <ns>/dispatch/<sprint>/<id>.json, or "unknown"
+#   shepherd_mcp_available svc [cli] — probed (not just declared) MCP availability; emits the
+#                                      sanctioned [WARN] MCP <svc> unavailable — using <cli> degrade
 #   json_field input "<field>"       — extract scalar from JSON stdin; jq-then-python fallback
 #
 # All emit_* functions log_event before emitting JSON. Log failures are silent.
@@ -94,6 +96,78 @@ is_shepherd_project() {
   ns="$(resolve_namespace 2>/dev/null || true)"
   [[ -n "$ns" && -f "$ns/shepherd.toml" ]] && return 0
   [[ -f ".claude/shepherd.toml" ]]
+}
+
+# DF-04/DF-E2: declared capability becomes PROBED capability. `[mcp].<svc> =
+# true` is the operator's intent, not proof — docs/configuration.md: "an
+# [mcp] server is true but unloaded" is a documented, silent-degrade WARNING
+# case (confirmed live 2026-08-12: this repo's own shepherd.toml sets
+# `[mcp].github = true` with no `github` MCP connected this session). Returns
+# 0 only when BOTH hold: the config flag is on, AND a runtime probe confirms
+# the server actually answers.
+#
+# The runtime probe: a bash hook cannot call ToolSearch (agent-only,
+# skills/shepherd/SKILL.md §Provider-agnostic discovery) or read a
+# per-session tool manifest — no such file/env var exists (checked live,
+# v6.4.5). The one runtime signal a shell process has is the `claude` CLI
+# itself: `claude mcp list` health-checks every configured server and
+# renders each as "<name>: <target> - <status>", "Connected" (with a ✔) the
+# only positive status (verbatim per `claude mcp list --help`; there is no
+# --json form). A same-line, case-insensitive match of <svc> followed by
+# "Connected" counts as available. This is a literal-name probe, not full
+# provider-agnostic resolution (a GitHub capability routed through a
+# differently-named Docker gateway, e.g. `MCP_DOCKER`, will not match
+# "github" here) — that full resolution is exactly what ToolSearch is for,
+# and stays the agent's job; this helper's failure mode is deliberately
+# conservative (treat as unavailable, degrade to CLI) rather than guess.
+#
+# `claude mcp list` performs a real network round-trip per configured
+# server, so the result is cached per-<svc> under <ns>/cache/mcp-probe/<svc>
+# for MCP_PROBE_TTL_S seconds (default 300) — a hook firing on every tool
+# call cannot pay a multi-second health-check on every invocation.
+#
+# Usage: shepherd_mcp_available <svc> [<cli>]   e.g. shepherd_mcp_available github gh
+# On failure (config off OR probe negative), emits the sanctioned degrade
+# line to stderr so no caller has to remember to (skills/shepherd/SKILL.md
+# §MCP-over-CLI): "[WARN] MCP <svc> unavailable — using <cli>".
+MCP_PROBE_TTL_S="${MCP_PROBE_TTL_S:-300}"
+shepherd_mcp_available() {
+  local svc="$1" cli="${2:-cli}"
+  [[ -n "$svc" ]] || return 1
+
+  # 1. Config gate — an operator's explicit `[mcp].<svc> = false` is a hard
+  # opt-out, never overridden by a stray same-named MCP the probe happens
+  # to find connected for an unrelated reason.
+  if [[ "$(cfg_section_get mcp "$svc" 2>/dev/null)" != "true" ]]; then
+    printf '[WARN] MCP %s unavailable — using %s\n' "$svc" "$cli" >&2
+    return 1
+  fi
+
+  # 2. Runtime probe, TTL-cached.
+  local ns cache_file now mtime hit
+  ns="$(resolve_namespace 2>/dev/null || printf '.shepherd')"
+  cache_file="$ns/cache/mcp-probe/$svc"
+  now="$(date -u +%s 2>/dev/null || echo 0)"
+  if [[ -f "$cache_file" ]]; then
+    mtime="$(stat -f %m "$cache_file" 2>/dev/null || stat -c %Y "$cache_file" 2>/dev/null || echo 0)"
+    if [[ "$((now - mtime))" -lt "$MCP_PROBE_TTL_S" ]]; then
+      hit="$(cat "$cache_file" 2>/dev/null || echo 0)"
+      [[ "$hit" == "1" ]] && return 0
+      printf '[WARN] MCP %s unavailable — using %s\n' "$svc" "$cli" >&2
+      return 1
+    fi
+  fi
+
+  hit=0
+  if command -v claude &>/dev/null && claude mcp list 2>/dev/null | grep -qiE "${svc}.*Connected"; then
+    hit=1
+  fi
+  mkdir -p "$ns/cache/mcp-probe" 2>/dev/null || true
+  printf '%s' "$hit" > "$cache_file" 2>/dev/null || true
+
+  [[ "$hit" == "1" ]] && return 0
+  printf '[WARN] MCP %s unavailable — using %s\n' "$svc" "$cli" >&2
+  return 1
 }
 
 # Echoes the project-local work directory. Mirrors the skills-lib

@@ -1,0 +1,17 @@
+{
+  "name": "@fl03/harness-codex",
+  "version": "6.4.5",
+  "private": true,
+  "description": "Codex CLI adapter: consumes @fl03/compiler's `codex` emission target (skills/, hooks/hooks.json, shepherd.codex.toml -- no command surface, Codex has nowhere to put one) and maps the 8 shepherd roles onto Codex's two native primitives (explorer read-only, worker write-capable) via [agent_types], declaring the max_concurrent_children = 3 descendant cap and per-role reasoning_effort profiles. Implemented in Wave 4 (W4-S5); this is the workspace skeleton only.",
+  "type": "module",
+  "scripts": {
+    "test": "node test.mjs"
+  },
+  "dependencies": {
+    "@fl03/compiler": "6.4.5"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "Apache-2.0"
+}

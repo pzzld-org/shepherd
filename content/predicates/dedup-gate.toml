@@ -1,0 +1,52 @@
+# dedup-gate — governs whether an implementer role's write introducing a NEW symbol
+# (function, type, constant) is allowed, given the registry's existing corpus. Detection
+# (the registry scan) is a separate concern (content/skills/context/SKILL.md §Dedup); this
+# file is the predicate that turns a detection hit into an allow/deny decision at write time.
+
+[predicate]
+id = "dedup-gate"
+version = 1
+description = "A write introducing a public symbol identical to one already present in the registry's corpus is denied unless the dispatch brief explicitly justifies the addition."
+
+[[rule]]
+id = "no-hit-allows"
+description = "A symbol absent from the corpus at or above the similarity threshold writes through cleanly."
+subject = "registry.dedup_check"
+action = "fs.write"
+effect = "allow_if_no_hit"
+
+[[rule]]
+id = "hit-requires-justification"
+description = "A symbol matching an existing one at or above the block threshold is denied UNLESS the dispatch carries an explicit justification block naming why this is a genuine new symbol, not a duplicate."
+subject = "registry.dedup_check"
+action = "fs.write"
+effect = "deny_if_hit_without_justification"
+
+[[example]]
+name = "coder-writes-a-genuinely-new-symbol"
+kind = "allow"
+role = "coder"
+action = "fs.write"
+symbol = "resolve_lane_from_worktree"
+context = { dedup_hit = false }
+result = "allow"
+
+[[example]]
+name = "coder-writes-an-already-existing-public-symbol"
+kind = "deny"
+role = "coder"
+action = "fs.write"
+symbol = "normalize_id"
+context = { dedup_hit = true, justification_present = false, existing_location = "crates/store/src/util.rs:42" }
+result = "deny"
+halt_code = "DEDUP-HIT"
+
+[[example]]
+name = "coder-writes-a-near-duplicate-with-justification"
+kind = "allow"
+role = "coder"
+action = "fs.write"
+symbol = "normalize_id_v2"
+context = { dedup_hit = true, justification_present = true, existing_location = "crates/store/src/util.rs:42" }
+result = "allow"
+note = "JUSTIFY-NEW block present in the coder's own report — reuse/extend was considered and explicitly rejected, not skipped."
