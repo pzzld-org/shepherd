@@ -311,6 +311,177 @@ def test_resolve_json_additive_flag(work_dir: Path, xdg_dir: Path) -> None:
 
 
 # --------------------------------------------------------------------------
+# resolve --harness — the engine translates intent slugs, not each
+# dispatcher (DF-03). Independent restatement of `models.py`'s
+# `_HARNESS_TRANSLATION` (NOT an import) — asserts the implementation
+# against a hand-written oracle, never against itself.
+# --------------------------------------------------------------------------
+_HARNESSES = ("claude", "codex", "pi")
+
+#: Claude's `Agent` tool `model` parameter is a closed enum. Every
+#: `--harness=claude` output, for every role and every intent slug, must
+#: land inside this set — never `opus[1m]`, never anything else.
+_CLAUDE_MODEL_ENUM = {"sonnet", "opus", "haiku", "fable"}
+
+_EXPECTED_HARNESS_TRANSLATION: dict[str, dict[str, str]] = {
+    "opus[1m]": {"claude": "opus", "codex": "sol/max", "pi": "opus[1m]"},
+    "opus": {"claude": "opus", "codex": "sol/max", "pi": "opus"},
+    "sonnet": {"claude": "sonnet", "codex": "terra/high", "pi": "sonnet"},
+    "haiku": {"claude": "haiku", "codex": "terra/medium", "pi": "haiku"},
+    "fable": {"claude": "fable", "codex": "terra/medium", "pi": "fable"},
+}
+
+
+def _expected_translation(role: str, harness: str) -> str:
+    return _EXPECTED_HARNESS_TRANSLATION[_default_model(role)][harness]
+
+
+@pytest.mark.parametrize("harness", _HARNESSES)
+@pytest.mark.parametrize("role", MODELS_ROLES)
+def test_resolve_harness_translation_every_role_every_harness(
+    role: str, harness: str, work_dir: Path, xdg_dir: Path
+) -> None:
+    """Table-test all 9 roles x 3 harnesses (27 cases) against a
+    hand-written oracle, on the built-in (no config override) intent
+    slug each role resolves to by default."""
+    env = _models_env(xdg_dir)
+    proc = run_models(["resolve", role, f"--harness={harness}"], work_dir, env)
+
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout == f"{_expected_translation(role, harness)}\n"
+
+
+@pytest.mark.parametrize("role", MODELS_ROLES)
+def test_resolve_claude_harness_always_in_closed_enum(role: str, work_dir: Path, xdg_dir: Path) -> None:
+    """Hard assertion (brief-mandated): `--harness=claude` output is
+    ALWAYS inside `{sonnet, opus, haiku, fable}`, for every one of the 9
+    roles — `opus[1m]` must never reach this surface."""
+    env = _models_env(xdg_dir)
+    proc = run_models(["resolve", role, "--harness=claude"], work_dir, env)
+
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() in _CLAUDE_MODEL_ENUM
+
+
+@pytest.mark.parametrize("harness", _HARNESSES)
+@pytest.mark.parametrize("intent", ["opus[1m]", "opus", "sonnet", "haiku", "fable"])
+def test_resolve_harness_translation_every_known_intent_slug(
+    intent: str, harness: str, work_dir: Path, xdg_dir: Path
+) -> None:
+    """Exercise every row of the translation table, not just the two
+    intent slugs the 9 built-in role defaults happen to produce —
+    `[models].<role>` can override to any of Claude's four bare names,
+    or stay at `opus[1m]`."""
+    _write_toml(work_dir / ".claude" / "shepherd.toml", {"worker": intent})
+    env = _models_env(xdg_dir)
+
+    proc = run_models(["resolve", "worker", f"--harness={harness}"], work_dir, env)
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout == f"{_EXPECTED_HARNESS_TRANSLATION[intent][harness]}\n"
+
+
+def test_resolve_claude_harness_unknown_config_slug_falls_back_to_sonnet(
+    work_dir: Path, xdg_dir: Path
+) -> None:
+    """A `[models].<role>` override outside the built-in intent-slug set
+    (e.g. a typo, or someone pasting a harness-specific string into the
+    wrong key) must still land inside Claude's closed enum — fall back to
+    `sonnet` rather than handing the `Agent` tool a slug it will reject."""
+    _write_toml(work_dir / ".claude" / "shepherd.toml", {"worker": "gpt-5-nonsense"})
+    env = _models_env(xdg_dir)
+
+    proc = run_models(["resolve", "worker", "--harness=claude"], work_dir, env)
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout == "sonnet\n"
+
+
+def test_resolve_codex_and_pi_harness_unknown_config_slug_passes_through(
+    work_dir: Path, xdg_dir: Path
+) -> None:
+    """Codex and Pi have no closed enum — an unrecognized config override
+    passes through unchanged; there is nothing safer to guess."""
+    _write_toml(work_dir / ".claude" / "shepherd.toml", {"worker": "gpt-5-nonsense"})
+    env = _models_env(xdg_dir)
+
+    for harness in ("codex", "pi"):
+        proc = run_models(["resolve", "worker", f"--harness={harness}"], work_dir, env)
+        assert proc.returncode == 0, proc.stderr
+        assert proc.stdout == "gpt-5-nonsense\n"
+
+
+def test_resolve_unknown_harness_exits_2(work_dir: Path, xdg_dir: Path) -> None:
+    env = _models_env(xdg_dir)
+    proc = run_models(["resolve", "root", "--harness=bogus"], work_dir, env)
+
+    assert proc.returncode == 2
+    assert proc.stdout == ""
+    assert proc.stderr.strip() == "ERROR: unknown harness: bogus (valid: claude codex pi)"
+
+
+def test_resolve_json_with_harness_adds_harness_key_and_translates_model(
+    work_dir: Path, xdg_dir: Path
+) -> None:
+    env = _models_env(xdg_dir)
+    proc = run_models(["resolve", "engineer", "--harness=codex", "--json"], work_dir, env)
+
+    assert proc.returncode == 0, proc.stderr
+    payload = json.loads(proc.stdout)
+    assert payload == {
+        "role": "engineer",
+        "model": "sol/max",
+        "source": "default",
+        "harness": "codex",
+    }
+
+
+def test_resolve_json_without_harness_payload_unchanged(work_dir: Path, xdg_dir: Path) -> None:
+    """Regression guard: `--json` alone (no `--harness`) must keep
+    emitting exactly the pre-existing 3-key payload — no stray `harness`
+    key leaking in."""
+    env = _models_env(xdg_dir)
+    proc = run_models(["resolve", "engineer", "--json"], work_dir, env)
+
+    assert proc.returncode == 0, proc.stderr
+    payload = json.loads(proc.stdout)
+    assert payload == {"role": "engineer", "model": "opus[1m]", "source": "default"}
+    assert "harness" not in payload
+
+
+# --------------------------------------------------------------------------
+# The plan's exact [ACCEPTANCE] lines, restated as tests (direct
+# traceability — each of these four is byte-for-byte the same assertion
+# `shctx models resolve ... | grep ...` makes).
+# --------------------------------------------------------------------------
+def test_acceptance_engineer_claude_harness_in_closed_enum(work_dir: Path, xdg_dir: Path) -> None:
+    env = _models_env(xdg_dir)
+    proc = run_models(["resolve", "engineer", "--harness=claude"], work_dir, env)
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() in _CLAUDE_MODEL_ENUM
+
+
+def test_acceptance_engineer_codex_harness_is_sol_max(work_dir: Path, xdg_dir: Path) -> None:
+    env = _models_env(xdg_dir)
+    proc = run_models(["resolve", "engineer", "--harness=codex"], work_dir, env)
+    assert proc.returncode == 0, proc.stderr
+    assert "sol/max" in proc.stdout
+
+
+def test_acceptance_discovery_claude_harness_is_sonnet(work_dir: Path, xdg_dir: Path) -> None:
+    env = _models_env(xdg_dir)
+    proc = run_models(["resolve", "discovery", "--harness=claude"], work_dir, env)
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == "sonnet"
+
+
+def test_acceptance_engineer_no_harness_intent_preserved(work_dir: Path, xdg_dir: Path) -> None:
+    """No `--harness` == today's raw intent-slug output, byte-for-byte."""
+    env = _models_env(xdg_dir)
+    proc = run_models(["resolve", "engineer"], work_dir, env)
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == "opus[1m]"
+
+
+# --------------------------------------------------------------------------
 # help / -h / --help / unknown subcommand.
 # --------------------------------------------------------------------------
 _USAGE_MARKER = "shctx models <resolve|show> [args]"

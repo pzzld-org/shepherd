@@ -155,21 +155,35 @@ OTHER BASH-PARITY NOTES
   zero, the same idiom already documented in
   :mod:`shepherd_cli.commands.status`/:mod:`shepherd_cli.commands.mem`
   for identical reasons.
-* **The ``artifacts`` refresh zone is structurally ALWAYS "never
-  refreshed"** — verified against both the schema and the real bash
-  script: ``artifacts`` (``0001_init.sql``) has no ``refreshed_at``
-  column at all (unlike the other four zones' tables), so
-  ``cmd_doctor.sh``'s ``SELECT MAX(refreshed_at) FROM artifacts;``
-  always fails with sqlite's own "no such column" error, silently
-  swallowed by ``2>/dev/null || echo 0`` — ``latest`` is therefore always
-  0, so this zone reads ``warn ... never refreshed`` on every real
-  project, forever (confirmed against ``cmd_doctor.sh`` directly with a
-  seeded ``artifacts`` row: ``rows=1, never refreshed``). This is
-  preserved AS A BUG, not fixed — :func:`_sql_scalar`'s blanket
-  ``sqlite3.OperationalError`` tolerance reproduces it automatically
-  (the SAME code path every other zone uses, no artifacts-specific
-  branch needed), exactly like bash's own uniform per-zone loop that
-  happens to hit this for one of its five iterations.
+* **The ``artifacts`` refresh zone's freshness column is ``updated_at``,
+  a DELIBERATE DEVIATION from bash parity (DF-09, v6.4.5 dogfood pass)
+  — this one zone no longer mirrors ``cmd_doctor.sh`` byte-for-byte.**
+  ``artifacts`` (``0001_init.sql``) has no ``refreshed_at`` column at
+  all (unlike the other four zones' tables), so ``cmd_doctor.sh``'s
+  ``SELECT MAX(refreshed_at) FROM artifacts;`` always fails with
+  sqlite's own "no such column" error, silently swallowed by
+  ``2>/dev/null || echo 0`` — ``latest`` is therefore always 0, and the
+  legacy bash script reads ``warn ... never refreshed`` on every real
+  project, forever, EVEN immediately after a successful ``refresh
+  --scope=artifacts`` (confirmed against ``cmd_doctor.sh`` directly
+  with a seeded ``artifacts`` row: ``rows=1, never refreshed``). That
+  was preserved here unmodified through v6.4.4, on the theory that
+  faithful bash parity outranked fixing a pre-existing bug — but it
+  makes the zone's own remediation text ("run 'shctx refresh
+  --scope=artifacts'") a permanent lie: running the fix it prescribes
+  can never clear the warning. :func:`refresh_impl.refresh_artifacts`
+  (``services/cli/shepherd_cli/refresh_impl.py``) DOES stamp
+  ``updated_at`` to "now" on every row it upserts, insert or update,
+  unconditionally (its two ``INSERT ... ON CONFLICT ... DO UPDATE SET
+  ... updated_at=excluded.updated_at`` statements), so ``updated_at``
+  is a genuine, always-current freshness marker for this zone —
+  :data:`_ZONE_FRESHNESS_COLUMN` substitutes it in for ``artifacts``
+  only; every other zone still reads ``refreshed_at``, unchanged.
+  :func:`_sql_scalar`'s blanket ``sqlite3.OperationalError`` tolerance
+  is no longer exercised by this zone as a result (``updated_at``
+  exists, so the query no longer fails) — that tolerance remains in
+  place for genuine schema drift on any zone, just not as this zone's
+  load-bearing mechanism anymore.
 * **``shepherd.toml`` candidate order is project → local → XDG** — the
   OPPOSITE precedence ``_lib.sh``'s ``cfg_get``/``cfg_section_get`` use
   (local → project → XDG) for VALUE resolution. This is not a bug this
@@ -265,6 +279,42 @@ _ZONE_TABLES: tuple[tuple[str, str], ...] = (
     ("releases", "index_releases"),
     ("artifacts", "artifacts"),
 )
+
+#: Maps each `_ZONE_TABLES` zone label to the `shctx refresh --scope=`
+#: value that actually refreshes it (DF-08, v6.4.5 dogfood pass).
+#: `symbols` and `artifacts` are themselves real `refresh --scope=`
+#: values (`shctx refresh --help` accepts `symbols|shapes|github|
+#: artifacts|telemetry|all`), so they map to themselves. `issues`/
+#: `prs`/`releases` are three DISTINCT DB-table freshness checks --
+#: real, separate rows worth reporting separately -- but only ONE real
+#: refresh scope repopulates all three in a single pass:
+#: `refresh_impl.refresh_github` writes `index_issues`/`index_prs`/
+#: `index_releases` together. Before this fix, `_check_refresh_zones`
+#: built each remediation string directly from the raw `zone` label
+#: (`f"run 'shctx refresh --scope={zone}'"`), so the `issues`/`prs`/
+#: `releases` warns prescribed `--scope=issues`/`--scope=prs`/
+#: `--scope=releases` -- none of which `refresh` accepts (`ERROR:
+#: unknown --scope: issues`). This map is the fix: every remediation
+#: string below is built from `_ZONE_REFRESH_SCOPE[zone]`, never `zone`
+#: directly, so it always names a scope `refresh` actually recognizes.
+_ZONE_REFRESH_SCOPE: dict[str, str] = {
+    "symbols": "symbols",
+    "issues": "github",
+    "prs": "github",
+    "releases": "github",
+    "artifacts": "artifacts",
+}
+
+#: Per-zone freshness column, keyed by `_ZONE_TABLES` zone label
+#: (DF-09, v6.4.5 dogfood pass). Every zone but `artifacts` reads
+#: `refreshed_at` (the default via `.get(zone, "refreshed_at")` at the
+#: call site) -- `artifacts` has no such column at all
+#: (`0001_init.sql`: `created_at`/`updated_at` only) and reads
+#: `updated_at` instead, which `refresh_impl.refresh_artifacts` DOES
+#: stamp to "now" on every row it touches. See the module docstring's
+#: `artifacts` note for the full history of why this zone alone
+#: deviates from `refreshed_at`.
+_ZONE_FRESHNESS_COLUMN: dict[str, str] = {"artifacts": "updated_at"}
 
 #: `cmd_doctor.sh`'s `age_min > 60` (lock staleness) / `age_min > 120`
 #: (refresh staleness) thresholds, in MINUTES.
@@ -555,9 +605,14 @@ def _sql_scalar(db_path: str, sql: str, params: tuple[object, ...] = ()) -> obje
     Returns:
         The first row's first column, or `None` if the query returned no
         row, the value itself is SQL `NULL`, or any `sqlite3.Error` was
-        raised while connecting or executing (including, deliberately,
-        "no such column" -- see the module docstring's `artifacts` zone
-        note, which relies on exactly this tolerance).
+        raised while connecting or executing -- including "no such
+        column"/"no such table" on a genuinely drifted schema. (Through
+        v6.4.4 this tolerance was also load-bearing for the `artifacts`
+        refresh zone, whose `refreshed_at` column never existed -- see
+        the module docstring's `artifacts` note; DF-09 moved that zone
+        onto its real `updated_at` column, so this path is no longer
+        THAT zone's mechanism, just the general schema-drift fallback
+        every zone still gets.)
     """
     try:
         conn = sqlite3.connect(db_path)
@@ -813,19 +868,28 @@ def _check_refresh_zones(db_path: str) -> list[Result]:
 
     Returns:
         Five `Result`s, in `_ZONE_TABLES` order. Each is `warn ...
-        "never refreshed"` when the zone's `MAX(refreshed_at)` is 0/NULL/
-        unreadable (including, deliberately, the `artifacts` zone, which
-        has no `refreshed_at` column at all -- see the module docstring);
-        `warn ... "stale ${age}m"` when `age_min > 120`; otherwise `ok
-        ... "fresh ${age}m"`.
+        "never refreshed"` when the zone's freshness column
+        (`_ZONE_FRESHNESS_COLUMN` -- `refreshed_at` for every zone
+        except `artifacts`, which uses `updated_at`; see the module
+        docstring) is 0/NULL/unreadable; `warn ... "stale ${age}m"`
+        when `age_min > 120`; otherwise `ok ... "fresh ${age}m"`. Every
+        remediation string names a real `shctx refresh --scope=` value
+        via `_ZONE_REFRESH_SCOPE`, never the raw zone label (DF-08 --
+        `issues`/`prs`/`releases` are DB-table checks, not refresh
+        scopes; all three are actually refreshed by `--scope=github`).
     """
     results: list[Result] = []
     now = int(time.time())
     for zone, table in _ZONE_TABLES:
         count = _sql_scalar(db_path, f"SELECT COUNT(*) FROM {table};")  # noqa: S608 - fixed table allow-list above
         count = count if isinstance(count, int) else 0
-        latest = _sql_scalar(db_path, f"SELECT MAX(refreshed_at) FROM {table};")  # noqa: S608 - fixed table allow-list above
+        # `freshness_column`, like `table` above, is drawn from a fixed,
+        # hardcoded allow-list (_ZONE_FRESHNESS_COLUMN's two possible
+        # values), never from user input.
+        freshness_column = _ZONE_FRESHNESS_COLUMN.get(zone, "refreshed_at")
+        latest = _sql_scalar(db_path, f"SELECT MAX({freshness_column}) FROM {table};")  # noqa: S608
         latest = latest if isinstance(latest, int) else 0
+        refresh_scope = _ZONE_REFRESH_SCOPE[zone]
 
         if latest == 0:
             results.append(
@@ -834,7 +898,7 @@ def _check_refresh_zones(db_path: str) -> list[Result]:
                     "refresh",
                     zone,
                     f"rows={count}, never refreshed",
-                    f"run 'shctx refresh --scope={zone}' (or 'shctx sync')",
+                    f"run 'shctx refresh --scope={refresh_scope}' (or 'shctx sync')",
                 )
             )
             continue
@@ -843,7 +907,11 @@ def _check_refresh_zones(db_path: str) -> list[Result]:
         if age_min > _REFRESH_STALE_MINUTES:
             results.append(
                 Result(
-                    "warn", "refresh", zone, f"rows={count}, stale {age_min}m", f"run 'shctx refresh --scope={zone}'"
+                    "warn",
+                    "refresh",
+                    zone,
+                    f"rows={count}, stale {age_min}m",
+                    f"run 'shctx refresh --scope={refresh_scope}'",
                 )
             )
         else:

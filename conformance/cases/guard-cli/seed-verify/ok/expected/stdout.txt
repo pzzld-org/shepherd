@@ -1,0 +1,2 @@
+  warn  frontmatter missing 'milestone:' (engineer + critic parse it)
+OK: 0 hard failures, 1 warning(s)

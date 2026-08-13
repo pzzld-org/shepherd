@@ -1,0 +1,11 @@
+{
+  "root": {"model": "opus[1m]", "source": "default"},
+  "planter": {"model": "opus[1m]", "source": "default"},
+  "engineer": {"model": "opus[1m]", "source": "default"},
+  "conductor": {"model": "sonnet", "source": "default"},
+  "critic": {"model": "sonnet", "source": "default"},
+  "discovery": {"model": "sonnet", "source": "default"},
+  "coder": {"model": "sonnet", "source": "default"},
+  "auditor": {"model": "sonnet", "source": "default"},
+  "worker": {"model": "sonnet", "source": "default"}
+}

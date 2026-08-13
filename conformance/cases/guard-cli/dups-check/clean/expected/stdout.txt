@@ -1,0 +1,7 @@
+{
+  "schema": "dups-check/1",
+  "threshold": 0.7,
+  "block_threshold": 0.85,
+  "block": false,
+  "candidates": []
+}

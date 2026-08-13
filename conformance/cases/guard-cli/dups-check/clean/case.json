@@ -1,0 +1,9 @@
+{
+  "suite": "guard-cli",
+  "kind": "pure",
+  "description": "hooks/scripts/dups_write_guard.sh:65 -- printf '%s' \"$content\" | shctx dups check --stdin --as \"$file_path\" --json, against an empty (never-scanned) registry. Success path: no match, exit 0.",
+  "args": ["dups", "check", "--stdin", "--as", "new_struct.rs", "--json"],
+  "stdin_file": "stdin.rs",
+  "db_fixture": "none",
+  "capture_files": []
+}

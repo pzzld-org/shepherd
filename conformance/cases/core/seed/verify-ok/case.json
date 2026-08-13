@@ -1,0 +1,9 @@
+{
+  "suite": "core",
+  "kind": "pure",
+  "description": "seed verify <path> --quiet -- the quiet variant (suppresses every printed line; exit code still computed).",
+  "args": ["seed", "verify", "good.seed.md", "--quiet"],
+  "input_files": {"good.seed.md": "good.seed.md"},
+  "db_fixture": "none",
+  "capture_files": []
+}

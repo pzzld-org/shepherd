@@ -1,0 +1,8 @@
+{
+  "suite": "core",
+  "kind": "mutating",
+  "description": "run init <run> --kind sprint --branch B --base B -- the MUTATING breadth example plan.md W0-S9 action 3 names verbatim, writing the canonical run.json shape (base, branch, kind, lanes, plan, run, schema_version, seed, status, updated_at -- verified against the real .shepherd/runs/v645/run.json). Captures the written run.json bytes, not just stdout.",
+  "args": ["run", "init", "v900-dev0", "--kind", "sprint", "--branch", "v9.0.0-dev.0", "--base", "main"],
+  "db_fixture": "none",
+  "capture_files": ["runs/v900-dev0/run.json"]
+}

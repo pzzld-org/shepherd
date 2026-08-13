@@ -1,0 +1,78 @@
+{
+  "lane_id": "l4-conformance",
+  "run": "v645",
+  "objective_title": "close the doctrine-conformance defects blocking BODY",
+  "objective": "Fix the artifacts (lint counter, gate rename, lane-plan template, capability probe) that stop a spec-conformant plan from executing.",
+  "worktree_path": "/Users/jo3/src/fl03/shepherd/.worktrees/v645-l4-conformance",
+  "base_commit": "5be42280615c8dc5321061798240f476dffed645",
+  "git_custody": "lane",
+  "file_scope": {
+    "exclusive": [
+      "services/cli/shepherd_cli/templates/lane-plan.md.j2",
+      ".shepherd/runs/v645/fixtures/lane-plan-spec.json"
+    ],
+    "may_read": [
+      "agents/engineer.md",
+      "agents/conductor.md",
+      ".shepherd/runs/v645/plan.md"
+    ]
+  },
+  "parallel_with": [
+    "l1-core",
+    "l2-cli",
+    "l3-hooks"
+  ],
+  "interfaces": {
+    "consumes": [],
+    "produces": [
+      "a lane-plan template that renders this plan's step schema"
+    ]
+  },
+  "do_not_duplicate": [
+    "rg -n 'step\\.id|step\\.title' services/cli/shepherd_cli/templates/"
+  ],
+  "steps": [
+    {
+      "step_id": "W0-S10",
+      "predecessors": [],
+      "estimated_loc": 90,
+      "actions": [
+        "Change `step.id` -> `step_id` and drop `step.title` (or map it to the step's first action line, which is the only title-shaped content the schema has).",
+        "Add `file_scope.must_not_touch` and `parallel_with` to the rendered output.",
+        "Commit a spec-shaped fixture at `.shepherd/runs/v645/fixtures/lane-plan-spec.json` and pin the render with the acceptance above.",
+        "Decide whether the `file_scope_*`/`interfaces_*` flattening is deliberate; if not, align the vocabulary so plan schema and template speak one language."
+      ],
+      "acceptance": "shepherd render lane-plan.md.j2 --vars-json .shepherd/runs/v645/fixtures/lane-plan-spec.json --out /tmp/lp.md exits 0; grep -q 'must_not_touch' /tmp/lp.md; grep -q 'parallel_with' /tmp/lp.md; grep -q 'W0-S10' /tmp/lp.md",
+      "file_scope": {
+        "exclusive": [
+          "services/cli/shepherd_cli/templates/lane-plan.md.j2"
+        ],
+        "may_read": [
+          "agents/engineer.md",
+          "agents/conductor.md",
+          ".shepherd/runs/v645/plan.md"
+        ],
+        "must_not_touch": [
+          "crates/**",
+          "other templates"
+        ]
+      },
+      "interfaces": {
+        "consumes": [],
+        "produces": [
+          "a lane-plan template that renders this plan's step schema"
+        ]
+      }
+    }
+  ],
+  "acceptance": [
+    "shepherd render lane-plan.md.j2 --vars-json .shepherd/runs/v645/fixtures/lane-plan-spec.json --out /tmp/lp.md; test $? -eq 0",
+    "grep -q 'must_not_touch' /tmp/lp.md",
+    "grep -q 'parallel_with' /tmp/lp.md",
+    "grep -q 'W0-S10' /tmp/lp.md"
+  ],
+  "non_goals": [
+    "Do not change agents/engineer.md's step schema.",
+    "Do not add fields the plan schema does not define."
+  ]
+}

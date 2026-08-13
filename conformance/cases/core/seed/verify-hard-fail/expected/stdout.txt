@@ -1,0 +1,2 @@
+  HARD  prescriptive 'Lane N' numbering present — lane decomposition is engineer territory (#67)
+FAIL: 1 hard failure(s), 0 warning(s)
