@@ -48,7 +48,8 @@ USAGE
 sub="${1:-}"; shift || true
 case "$sub" in
   register)
-    name="$1"; shift
+    name="${1:-}"; shift || true
+    [[ -n "$name" ]] || { usage; exit 2; }
     team=""; type=""; session=""; pane=""
     while [[ $# -gt 0 ]]; do case "$1" in
       --team=*)    team="${1#*=}";;
@@ -132,7 +133,8 @@ case "$sub" in
         spawned_at  = excluded.spawned_at;"
     ;;
   heartbeat)
-    name="$1"; shift
+    name="${1:-}"; shift || true
+    [[ -n "$name" ]] || { usage; exit 2; }
     phase=""; tool=""; note=""; state=""
     while [[ $# -gt 0 ]]; do case "$1" in
       --phase=*) phase="${1#*=}";;
@@ -180,7 +182,8 @@ case "$sub" in
     sqlite3 "$DB" "SELECT COALESCE(declared_state,'') FROM teammates WHERE id='$tid';"
     ;;
   status)
-    name="$1"
+    name="${1:-}"; shift || true
+    [[ -n "$name" ]] || { usage; exit 2; }
     sqlite3 -json "$DB" "SELECT * FROM teammates WHERE teammate_name='$name' ORDER BY spawned_at DESC LIMIT 1;"
     ;;
   liveness)
@@ -244,7 +247,8 @@ case "$sub" in
     echo "pruned $n teammate(s)"
     ;;
   retire)
-    name="$1"
+    name="${1:-}"; shift || true
+    [[ -n "$name" ]] || { usage; exit 2; }
     sqlite3 "$DB" "UPDATE teammates SET status='retired' WHERE teammate_name='$name';"
     ;;
   ""|help|--help|-h) usage;;
