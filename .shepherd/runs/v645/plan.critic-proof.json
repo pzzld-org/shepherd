@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "sprint": "v6.4.5",
+  "plan_path": ".shepherd/runs/v645/plan.md",
+  "pre_critic_hash": "sha256:bd4ab67537191560a21ed83fc5fef36f750b06fffabf3964383ee4ffd4de8934",
+  "post_critic_hash": "sha256:2141dbb327f499ca8709513280ed23980eb8027f71501419b38139f85c289139",
+  "edited": true,
+  "critic": {
+    "verdict": "PASS",
+    "iterations": 2,
+    "findings": 16
+  },
+  "recorded_at": "2026-08-13T00:01:43Z"
+}
