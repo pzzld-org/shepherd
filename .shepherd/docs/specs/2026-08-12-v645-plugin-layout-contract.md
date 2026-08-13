@@ -47,7 +47,7 @@ Counting it honestly: the override path is ~1,000 edits (43 hook commands, 24 te
 ## Decision
 
 1. **The root layout stands.** `agents/`, `commands/`, `skills/`, `hooks/` stay at the repository root. Reverted in this commit.
-2. **The contract is checked, not remembered.** `scripts/check-plugin.sh` holds six rules, each with a self-test proving it can fail. It runs in the `fast` gate tier — pure filesystem work, no compilation — so it fires on every commit that touches a plugin-shaped path, and in CI.
+2. **The contract is checked, not remembered.** `scripts/check-plugin.py` holds six rules, each with a self-test proving it can fail. It runs in the `fast` gate tier — pure filesystem work, no compilation — so it fires on every commit that touches a plugin-shaped path, and in CI. *(Renamed from `check-plugin.sh` in v6.4.5 W0-S1: it was always Python wearing a shell extension, which A1 flagged as misleading to anyone grepping for bash. `gate.sh` and `.github/workflows/rust.yml` were updated in the same wave — this doc was the third reference site and belonged to no lane's file scope, which is DF-26.)*
 3. **`content/` is still the answer to the underlying want.** The instinct behind the move — author once, stop maintaining parallel copies — is right, and deliverable #279 already specifies it: role and skill bodies authored under `content/`, **compiled out** to `agents/`, `commands/`, `skills/` and `hooks/` at the root. Emitted artifacts stay committed so `source: github` installs need no build step. That gives single-source authoring *and* keeps every harness reading the shape it expects. `content/` is a new source tree that emits into the root layout; the root layout has to survive for the compiler to have a target.
 
 ## What the gate checks
