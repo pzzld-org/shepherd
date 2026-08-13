@@ -6,6 +6,17 @@
 # (registered git worktrees; never tracked in the plugin repo)
 .claude/worktrees/
 
+# shepherd lane worktrees — created by /shepherd:spawn as
+# `git worktree add .worktrees/{sprint_slug}-{lane_id}` (commands/spawn.md
+# §Pre-spawn worktree creation). These are registered git worktrees holding a
+# full checkout EACH, plus per-lane CARGO_TARGET_DIR output: measured at 3.8 GB
+# for a 6-lane sprint in this repo. Without this rule every spawn leaves a
+# multi-gigabyte untracked directory sitting in `git status`, and `git add -A`
+# during a wave commit would stage another checkout of the whole repo into
+# itself. The rule above only ever covered `.claude/worktrees/` — a path the
+# plugin does not use.
+.worktrees/
+
 *.db
 *.db.*
 
