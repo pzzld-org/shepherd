@@ -145,13 +145,16 @@ impl RunState {
     /// (or a caller writing to a different sink) adds that at the point of
     /// writing, matching `atomic_write_json`'s separate `handle.write("\n")`.
     ///
-    /// Infallible by signature, matching the produced interface. This can
-    /// only panic if `extra` carries a `serde_json::Value` built from a NaN
-    /// or infinite float via the non-parsing constructors (`Value::from`) —
-    /// unreachable here, because every `Value` this struct ever holds either
-    /// came from parsing valid JSON (whose numbers cannot be NaN/Infinity by
-    /// construction) or was built by a caller who already had a valid
-    /// `Value` to assign.
+    /// Infallible by signature, matching the produced interface. The
+    /// `.expect(...)` below can never actually panic, for a reason specific
+    /// to `serde_json` rather than to how `extra` gets populated: encoding a
+    /// NaN or infinite `f64` is not a `serde_json::Error` in the first
+    /// place. `serde_json::Number::from_f64` returns `None` for a
+    /// non-finite float, and `Value`'s float-serialization path treats that
+    /// `None` as `Value::Null` — so a NaN/Infinity float silently becomes
+    /// JSON `null`, not a serialization failure. There is therefore no code
+    /// path through this struct's serialization that can produce a
+    /// `serde_json::Error` at all, regardless of what `extra` holds.
     #[must_use]
     pub fn to_canonical_json(&self) -> String {
         canonical::to_canonical_string(self)

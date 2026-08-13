@@ -282,6 +282,7 @@ fn empty_containers_do_not_expand() {
 #[cfg(feature = "std")]
 mod atomic_io {
     use super::minimal_state;
+    use crate::run::atomic::write_and_rename;
 
     fn unique_temp_dir(label: &str) -> std::path::PathBuf {
         let nanos = std::time::SystemTime::now()
@@ -360,6 +361,65 @@ mod atomic_io {
         let dir = unique_temp_dir("missing");
         let path = dir.join("does-not-exist.json");
         assert!(super::RunState::load(&path).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Regression for the `File::create` bug this module was fixed for:
+    /// `File::create` opens `O_CREAT|O_TRUNC`, not `O_CREAT|O_EXCL`, so two
+    /// *different OS processes* independently computing the same
+    /// `(nanos, counter)` candidate from `temp_path` could both "succeed" at
+    /// opening it -- the second silently truncating the first's in-flight
+    /// tempfile out from under it, no error to either side. This drives
+    /// `write_and_rename` directly (rather than `RunState::store`) with an
+    /// injected candidate sequence, so the collision is deterministic --
+    /// not dependent on a real two-process race or wall-clock timing.
+    ///
+    /// The first candidate is a file this test has already created (playing
+    /// the role of "another writer's in-flight tempfile"); the second is
+    /// genuinely free. A correct `write_and_rename` must retry past the
+    /// first (via `create_new`'s `AlreadyExists`) rather than truncating it,
+    /// and the FINAL bytes at `target` must be exactly this write's
+    /// content -- never a splice of two writers, never truncated.
+    #[test]
+    fn store_recovers_from_a_temp_name_collision() {
+        let dir = unique_temp_dir("collision");
+        let target = dir.join("run.json");
+
+        let colliding = dir.join(".run.json-collision-1.tmp");
+        std::fs::write(&colliding, b"stale bytes from another writer's tempfile\n")
+            .expect("seed the colliding candidate");
+        let free = dir.join(".run.json-collision-2.tmp");
+
+        let mut candidates = vec![colliding.clone(), free.clone()].into_iter();
+        let contents = "{\"run\":\"collision-probe\"}";
+
+        write_and_rename(&target, contents, || {
+            candidates
+                .next()
+                .expect("only two candidates are needed to prove the retry")
+        })
+        .expect("write_and_rename must retry past the collision and still succeed");
+
+        // The complete, correct bytes landed at `target` -- not a mix of
+        // the collision placeholder and this write, and not truncated
+        // partway through.
+        let on_disk = std::fs::read_to_string(&target).expect("target exists");
+        assert_eq!(on_disk, format!("{contents}\n"));
+
+        // The colliding candidate is untouched: `create_new` failing on it
+        // means it was never opened, let alone truncated, by this call --
+        // exactly the guarantee `File::create` did not give.
+        let untouched =
+            std::fs::read_to_string(&colliding).expect("the colliding file must still exist");
+        assert_eq!(untouched, "stale bytes from another writer's tempfile\n");
+
+        // The candidate that actually succeeded was renamed onto `target`,
+        // so nothing should be left behind at its own path.
+        assert!(
+            !free.exists(),
+            "the successful tempfile must be renamed away, not left behind"
+        );
+
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
