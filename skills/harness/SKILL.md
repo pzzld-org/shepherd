@@ -67,7 +67,24 @@ MUST-know constraints (the 6 platform Limitations plus load-bearing facts):
   registry and NEVER blocks progression.
 - Display mode is observability-only and NEVER required: tmux is an
   optional display mode, not a dependency of teammate-spawn — enum
-  `teammateMode: in-process | tmux | auto`.
+  `teammateMode: in-process | tmux | auto`. `teammateMode` is read at SPAWN
+  time, never at session start: changing it in `~/.claude/settings.json`
+  mid-session takes effect on the very next spawn — no lead relaunch
+  required (DF-68).
+- **Pane-backed teammates live on a PRIVATE tmux socket, keyed to the
+  lead's OS PID — never the default socket.** Claude Code spawns them with
+  `tmux -L claude-swarm-<lead-pid> new-session -d -s claude-swarm -n
+  swarm-view -P -F #{pane_id} -- cat`, observed verbatim in `ps`. Bare
+  `tmux ls` reads the DEFAULT socket (`/private/tmp/tmux-501/default` on
+  macOS) and reports "no server running" regardless of how many pane
+  teammates are live — a FALSE NEGATIVE BY CONSTRUCTION, never evidence of
+  in-process fallback. The correct oracle is `tmux -L claude-swarm-<lead-
+  pid> ls` plus the `backendType`/`tmuxPaneId` fields per member in
+  `~/.claude/teams/<team>/config.json` (DF-68).
+- **A `backendType: tmux` teammate is a separate CLI process** — its own
+  `claude` invocation, its own MCP servers, its own hooks, its own
+  `caffeinate` — never a subagent living inside the lead's Node process.
+  That makes it a MAIN session, not a subagent (DF-68).
 - Plan approval mode for teammates is a distinct, per-teammate, read-only
   platform feature — not a sprint-level plan-approval gate a caller layers
   on top.
@@ -143,6 +160,22 @@ is actually running on when it fans out, never its tier:
   `parallel_with` clique fired in ONE `Agent` message (bounded-concurrent)
   — is correct here and is the ONLY option this substrate has. This is NOT
   a downgrade to apologize for; it is the right answer for a subagent.
+
+**The mechanism behind "MAY work," measured not reasoned (DF-68).** A
+`backendType: tmux` teammate is a separate CLI process — a MAIN session
+(`## Agent Teams`, above) — which sits OUTSIDE the sub-agents-only tool
+filter documented at `/docs/en/sub-agents` that strips `Workflow`; a
+`backendType: in-process` teammate is a subagent living inside the lead's
+own process and DOES hit that filter. So `backendType`, not "is this
+nominally a teammate," is the variable that actually controls
+`Workflow`/`ScheduleWakeup` availability — confirmed live: teammate
+`shepherd-probe-v645-wf` (`backendType: tmux`) carried both tools and its
+`Workflow` call was ACCEPTED, `Run ID: wf_020292db-fef`, no error, and the
+inner `shepherd:worker` agent it dispatched returned exactly `PROBE-OK` —
+a full round trip, not just an accepted-but-unverified call. This is WHY
+`WORKFLOW-VEHICLE-PROBE` (`## Tool presence`, below) is correct even
+though it never reasons about `backendType` directly — the visible tool
+list is a faithful proxy for the backend that produced it.
 
 **Measured, not quoted (#263).** Two genuine teammate sessions in the
 `FL03/axiom` corpus (`79a8e11a`, `cfeec725`, identified by a rendered
@@ -290,6 +323,16 @@ tool list is the only valid oracle, on either substrate. Past failure this
 code exists to prevent: a session `ToolSearch`'d "workflow," found nothing,
 and wrongly concluded the tool was absent.
 
+**Same invalid-oracle class, one substrate probe over (DF-68).** Bare
+`tmux ls` reads the DEFAULT socket and reports "no server running"
+regardless of how many pane teammates are actually live — a FALSE NEGATIVE
+BY CONSTRUCTION, exactly like `ToolSearch select:Workflow` above: a probe
+that comes back null whether or not the thing exists, misread as absence.
+Claude Code spawns pane teammates on a PRIVATE socket keyed to the lead's
+OS PID (`## Agent Teams`, above); `tmux -L claude-swarm-<lead-pid> ls` plus
+the `backendType` field in `~/.claude/teams/<team>/config.json` is the only
+valid oracle.
+
 **#251 resolved by #263, not open.** #251's "invisible to discovery"
 measurement was taken with `ToolSearch` against a native tool (a guaranteed
 null regardless of true state — see `WORKFLOW-SELFCHECK-TOOLSEARCH` just
@@ -313,6 +356,19 @@ on either substrate. This is why `WORKFLOW-VEHICLE-PROBE` runs fresh every
 session instead of trusting the grant, and why a NEGATIVE probe result on
 a genuine teammate is the EXPECTED outcome to record and move past, not a
 fact to reconcile against the frontmatter.
+
+**Tool delta, tallied on both backends (DF-64/DF-65).** A `backendType:
+tmux` `shepherd:conductor` teammate carries 14 of its definition's 16
+granted tools — only `Glob` and `Grep` missing, `Workflow` and
+`ScheduleWakeup` both present. A `backendType: in-process` teammate of the
+SAME declared type diverges from the SAME 16-tool grant in BOTH
+directions: it loses `Glob`/`Grep`/`Skill`/`Workflow`/`ScheduleWakeup`
+(five granted tools absent) AND gains `Edit`/`Write`/`Artifact` — three
+WRITE tools the definition never grants. `tools:` frontmatter is therefore
+not a contract on either backend, and on in-process specifically this is a
+containment breach, not just a capability gap: a role defined read-only
+(`@conductor`, `@critic`) is not read-only at runtime unless the backend
+happens to be tmux.
 
 ## Lazy-load economics
 

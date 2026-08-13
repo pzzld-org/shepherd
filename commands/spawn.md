@@ -48,7 +48,7 @@ Check 0 runs FIRST.
 | Check | Gate | Rule |
 |---|---|---|
 | 0 | Operator-only invocation | HARD. Refuse if invoked from a teammate session (detail below). |
-| 1 | Substrate verification | VERIFY (#220). `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` env check + probe note (detail below). Failed verification DOWNGRADES to `/shepherd:start` — never a blind spawn. |
+| 1 | Substrate verification | VERIFY (#220). Env check (substrate present at all) + RESOLVES a predicted `backendType` from `teammateMode` (detail below, DF-66/DF-68) — never just reads the flag and stops. Failed verification DOWNGRADES to `/shepherd:start` — never a blind spawn. |
 | 2 | Claude Code version | ADVISORY. NEVER hard-refuse on version; act on the real runtime signal. |
 | 3 | No active team | HARD, but computed — `${CLAUDE_PLUGIN_ROOT}/scripts/team-preflight.sh` (exit 1 → refuse). One team per lead; a lead-only roster is THIS session's own team and blocks nothing (detail below, #267). |
 | 4 | shepherd.toml | Scaffold-then-proceed: `shctx config init` if missing, emit `[CONFIG] scaffolded`, PROCEED. Non-blocking. |
@@ -109,19 +109,59 @@ says blocked, it names the offending team.
 
 ### Check 1 — substrate verification (#220)
 
-Verify the Agent Teams substrate BEFORE the spawn instruction fires:
+Verify the Agent Teams substrate BEFORE the spawn instruction fires, and RESOLVE the backend a
+teammate will actually receive — not merely whether the feature flag is set. DF-66: a lead ran
+an entire dogfood session with `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` set, this check "passed"
+on that basis alone, and every teammate still spawned `backendType: in-process` — because the
+deciding setting is `teammateMode`, and this check never read it. A check that reads
+configuration instead of resolving it keeps reporting capabilities the runtime does not
+deliver.
 
-1. **Env check:** `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` set in the lead session's
-   environment. Unset → the teammate substrate is absent.
-2. **Probe note:** a "teammate" spawned without the substrate is silently an Agent-tool
+1. **Env check (necessary, not sufficient):** `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` set in
+   the lead session's environment. Unset → the teammate substrate is absent outright — DOWNGRADE
+   below. **Probe note:** a "teammate" spawned without the substrate is silently an Agent-tool
    SUBAGENT — notifications misrouted (`TeammateIdle`/`TaskCompleted` never fire for it,
-   liveness rows never match). `Workflow` itself is NOT what's lost: the grant lives in
-   `shepherd:conductor`'s own `tools:` frontmatter and stays live on a bare subagent dispatch
-   too (#263) — the 6.3.9-era "Workflow-denied" reading of this failure mode is RETIRED. What's
-   actually lost is everything Agent-Teams-specific: no team registration, no liveness row, no
-   idle/complete signal. The failure is invisible at spawn time and surfaces only as a stalled
-   sprint — WHY this is a verification, not an advisory.
-3. **Permission-mode inheritance:** teammates inherit the lead session's permission mode.
+   liveness rows never match). `Workflow` itself is NOT what's lost in this branch: the grant
+   lives in `shepherd:conductor`'s own `tools:` frontmatter and stays live on a bare subagent
+   dispatch too (#263) — the 6.3.9-era "Workflow-denied" reading of this failure mode is
+   RETIRED. What's actually lost is everything Agent-Teams-specific: no team registration, no
+   liveness row, no idle/complete signal. The failure is invisible at spawn time and surfaces
+   only as a stalled sprint — WHY this is a verification, not an advisory. Set is NOT proof of a
+   working substrate; it only clears the outright-absent case — proceed to step 2.
+2. **Compute and PRINT the predicted `backendType` — BEFORE the spawn instruction fires.**
+   Read `teammateMode` from `~/.claude/settings.json`:
+   - `teammateMode: "tmux"` → predicted `backendType=tmux`.
+   - `teammateMode: "in-process"` → predicted `backendType=in-process`.
+   - `teammateMode: "auto"` → predicted `backendType=UNRESOLVED`. **Do not** guess tmux vs.
+     in-process from `$TMUX`/`$TERM_PROGRAM`/`it2` presence — that inference is UNSOUND
+     (DF-66's own self-correction): Claude Code spawns teammates on its own PRIVATE tmux
+     server, keyed to the lead's OS PID (`-L claude-swarm-<lead-pid>`, DF-68), a socket
+     independent of whatever the LEAD session's own `$TMUX` happens to say, so the lead's
+     environment is not a reliable predictor of what a teammate will get. **What `"auto"`
+     resolves to on any given box is UNTESTED** and MUST be measured via the oracles in step 4
+     — say so explicitly rather than asserting an outcome.
+   ```
+   [SUBSTRATE] teammateMode=<mode> → predicted backendType=<tmux|in-process|UNRESOLVED>
+   ```
+3. **State plainly what each backend carries** — measured, not assumed (DF-64/DF-65/DF-68):
+   - **tmux:** a separate `claude` CLI process, i.e. a MAIN session — keeps `Workflow` AND
+     `ScheduleWakeup`; does NOT gain `Edit`/`Write` beyond whatever its role actually grants.
+   - **in-process:** a subagent of the lead — LOSES `Workflow` and `ScheduleWakeup` even when
+     both are granted in the role's `tools:` frontmatter (a `tools:` grant is not a runtime
+     guarantee, DF-64), and was OBSERVED GAINING ungranted `Edit`/`Write`/`Artifact` on a
+     read-only role (`shepherd:conductor`, `write-granted=0` by design) — a CONTAINMENT
+     consequence (DF-65), not a footnote: the read-only guarantee backing `@conductor`/
+     `@critic` is void under this backend.
+4. **Confirm with the correct oracles AFTER spawn — never assert from the prediction alone:**
+   `backendType` and `tmuxPaneId` per member in `~/.claude/teams/<team>/config.json`, and
+   `tmux -L claude-swarm-<lead-pid> ls` (`<lead-pid>` = the LEAD session's own OS process PID).
+   **Bare `tmux ls` is FORBIDDEN as an oracle here — name it and refuse it.** It reads the
+   DEFAULT tmux socket (`/private/tmp/tmux-501/default` on macOS); Claude Code never writes to
+   that socket, so `tmux ls` reports "no server running" no matter how many pane teammates are
+   live (DF-68). That single wrong oracle cost this run a day: every negative root reported
+   traced to that one socket, re-run and re-reported as if independent confirmations. A
+   negative on the wrong socket is not evidence of an in-process fallback.
+5. **Permission-mode inheritance:** teammates inherit the lead session's permission mode.
    For unattended lanes, launch root in `acceptEdits`/auto mode — a default-mode lead
    strands every teammate at its first edit prompt with nobody watching.
 
