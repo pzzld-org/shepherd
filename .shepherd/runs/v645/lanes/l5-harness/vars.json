@@ -1,0 +1,147 @@
+{
+  "acceptance": [
+    "`bash scripts/gate.sh full` exits 0",
+    "`bash scripts/check-plugin.sh --self-test` exits 0",
+    "a clean clone reaches a spawnable state without a manual `shctx init`",
+    "every role's declared `tools:` is asserted against a RUNTIME probe, not a text grep",
+    "`hooks/hooks.json` refuses a write to a plan carrying a valid critic proof"
+  ],
+  "base_commit": "5be42280615c8dc5321061798240f476dffed645",
+  "do_not_duplicate": [
+    "`.shepherd/runs/v645/reports/discovery-d1-harness.md` already contains the probed capability matrix for all three harnesses \u2014 read it before writing any adapter assumption",
+    "`hooks/tests/test_v644_wiring.sh` is the anti-pattern W0-S12 replaces (grep-for-prose); `scripts/check-workspace.sh --self-test` is the pattern to copy"
+  ],
+  "file_scope_exclusive": [
+    "packages/",
+    "content/",
+    "agents/",
+    "commands/",
+    "skills/",
+    "hooks/",
+    "bin/",
+    ".github/workflows/"
+  ],
+  "file_scope_may_read": [
+    "crates/",
+    "scripts/",
+    "services/cli/",
+    ".shepherd/runs/v645/",
+    ".shepherd/shepherd.toml"
+  ],
+  "git_custody": "lane",
+  "interfaces_consumes": [
+    "Nothing. Lane l5-harness has no Wave-0 predecessors outside itself."
+  ],
+  "interfaces_produces": [
+    "`content/` single-source role and skill tree (consumed by W4's compiler)",
+    "`packages/` npm workspace skeleton (consumed by W4 distribution)",
+    "a runtime role-capability probe (consumed by every later dispatch)"
+  ],
+  "lane_id": "l5-harness",
+  "non_goals": [
+    "`conformance/`",
+    "`scripts/`",
+    "`services/cli/`",
+    "`CHANGELOG.md`",
+    "`README.md`",
+    "`.claude-plugin/plugin.json` \u2014 all owned by lane l4-conformance this wave",
+    "`crates/**` \u2014 no lane owns it in Wave 0",
+    "Do NOT re-argue the operator's Option B scope decision; it is DECIDED"
+  ],
+  "objective": "Wave 0 for the lane that owns everything the three harnesses read. Make a clean clone able to spawn (DF-01), align dispatch doctrine with the platform that actually ships (DF-02/DF-11), turn declared capability into probed capability (DF-04, and DF-17 at W0-S11 \u2014 the CRITICAL one, since role frontmatter grants tools the runtime does not deliver), convert the string-presence wiring tests into behaviour tests (DF-19), give the boundary gates real negative controls, stand up `packages/` and `content/`, and guard a recorded critic proof from silent invalidation (DF-22, W0-S15).",
+  "objective_title": "Harness truth, the content tree, and the npm skeleton",
+  "run": "v645",
+  "steps": [
+    {
+      "acceptance": [
+        "Every runnable assertion in plan.md \u00a7W0-S2 [ACCEPTANCE] exits 0."
+      ],
+      "actions": [
+        "Read `.shepherd/runs/v645/plan.md` \u00a7W0-S2 and execute its [ACTIONS] verbatim. The plan is the brief; this file is the index."
+      ],
+      "id": "W0-S2",
+      "title": "a clean clone can spawn (DF-01)"
+    },
+    {
+      "acceptance": [
+        "Every runnable assertion in plan.md \u00a7W0-S5 [ACCEPTANCE] exits 0."
+      ],
+      "actions": [
+        "Read `.shepherd/runs/v645/plan.md` \u00a7W0-S5 and execute its [ACTIONS] verbatim. The plan is the brief; this file is the index."
+      ],
+      "id": "W0-S5",
+      "title": "dispatch doctrine matches the platform that actually ships (DF-02, DF-11, DF-E1)"
+    },
+    {
+      "acceptance": [
+        "Every runnable assertion in plan.md \u00a7W0-S6 [ACCEPTANCE] exits 0."
+      ],
+      "actions": [
+        "Read `.shepherd/runs/v645/plan.md` \u00a7W0-S6 and execute its [ACTIONS] verbatim. The plan is the brief; this file is the index."
+      ],
+      "id": "W0-S6",
+      "title": "declared capability becomes probed capability (DF-04, DF-E2)"
+    },
+    {
+      "acceptance": [
+        "Every runnable assertion in plan.md \u00a7W0-S7 [ACCEPTANCE] exits 0."
+      ],
+      "actions": [
+        "Read `.shepherd/runs/v645/plan.md` \u00a7W0-S7 and execute its [ACTIONS] verbatim. The plan is the brief; this file is the index."
+      ],
+      "id": "W0-S7",
+      "title": "`packages/` npm workspace skeleton"
+    },
+    {
+      "acceptance": [
+        "Every runnable assertion in plan.md \u00a7W0-S8 [ACCEPTANCE] exits 0."
+      ],
+      "actions": [
+        "Read `.shepherd/runs/v645/plan.md` \u00a7W0-S8 and execute its [ACTIONS] verbatim. The plan is the brief; this file is the index."
+      ],
+      "id": "W0-S8",
+      "title": "`content/` single-source tree and the drift reconciliation"
+    },
+    {
+      "acceptance": [
+        "Every runnable assertion in plan.md \u00a7W0-S11 [ACCEPTANCE] exits 0."
+      ],
+      "actions": [
+        "Read `.shepherd/runs/v645/plan.md` \u00a7W0-S11 and execute its [ACTIONS] verbatim. The plan is the brief; this file is the index."
+      ],
+      "id": "W0-S11",
+      "title": "role capability guarantees are unverified at runtime (DF-17, CRITICAL)"
+    },
+    {
+      "acceptance": [
+        "Every runnable assertion in plan.md \u00a7W0-S12 [ACCEPTANCE] exits 0."
+      ],
+      "actions": [
+        "Read `.shepherd/runs/v645/plan.md` \u00a7W0-S12 and execute its [ACTIONS] verbatim. The plan is the brief; this file is the index."
+      ],
+      "id": "W0-S12",
+      "title": "convert string-presence \"wiring tests\" into behavior tests (DF-19, HIGH)"
+    },
+    {
+      "acceptance": [
+        "Every runnable assertion in plan.md \u00a7W0-S13 [ACCEPTANCE] exits 0."
+      ],
+      "actions": [
+        "Read `.shepherd/runs/v645/plan.md` \u00a7W0-S13 and execute its [ACTIONS] verbatim. The plan is the brief; this file is the index."
+      ],
+      "id": "W0-S13",
+      "title": "give the boundary gates real negative controls (A1 finding #1)"
+    },
+    {
+      "acceptance": [
+        "Every runnable assertion in plan.md \u00a7W0-S15 [ACCEPTANCE] exits 0."
+      ],
+      "actions": [
+        "Read `.shepherd/runs/v645/plan.md` \u00a7W0-S15 and execute its [ACTIONS] verbatim. The plan is the brief; this file is the index."
+      ],
+      "id": "W0-S15",
+      "title": "a recorded critic proof must not be silently invalidated (DF-22)"
+    }
+  ],
+  "worktree_path": "/Users/jo3/src/fl03/shepherd/.worktrees/v645-l5-harness"
+}
