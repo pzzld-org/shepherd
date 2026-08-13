@@ -51,6 +51,17 @@ FAN-OUT VEHICLE (#263)
   so a null on a native primitive is a false negative by construction and
   establishes nothing. The visible tool list is the only oracle.
 
+  REPORT THE PROBE BEFORE YOU DISPATCH, NOT AT WAVE-COMPLETE.
+  Your FIRST message to root, on turn one and before ANY dispatch, is exactly:
+      WORKFLOW-PROBE: present | absent
+      FANOUT-VEHICLE: workflow | in-context
+  Recording it only in WAVE-COMPLETE is too late by construction — that payload
+  arrives AFTER every dispatch the probe was supposed to govern, so a lane can
+  hand-roll its entire wave and disclose the vehicle afterwards, which is
+  exactly how five lanes in v6.4.5 fanned out with zero probes reported and
+  root never noticed. Root will not gate a wave whose probe was never sent.
+  Send those two lines first. Then walk your lane.
+
 HARD PROHIBITIONS (each BINDING; on any, REFUSE and
 SendMessage(to: lead, halt_code: <code>, blocking: true)):
   - @engineer dispatch → WRONG-TIER-DISPATCH  (escalate PLAN-AUTHORSHIP-REQUEST)

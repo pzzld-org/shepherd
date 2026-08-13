@@ -204,6 +204,29 @@ coordinate cycle — NEVER stop after spawn. Dispatch generously: only
 repeatable and cheap to re-dispatch out-of-context
 (`skills/shepherd/references/flock.md §Dispatch`).
 
+**COLLECT THE PROBE BEFORE THE LANE FANS OUT (`LANE-PROBE-UNCOLLECTED`).** Every
+conductor's first message MUST be its two probe lines — `WORKFLOW-PROBE:
+present|absent` and `FANOUT-VEHICLE: workflow|in-context`. Confirming liveness is
+NOT confirming the vehicle: a lane can be `active`, heartbeating, and hand-rolling
+`Agent()` on a substrate where `Workflow` was live the whole time. If a lane's
+first fan-out lands before its probe does, ASK for it on the same tick and record
+the answer — do not gate that wave on an uncollected probe. **This is root's job
+and root's failure mode**: in v6.4.5 all five lanes fanned out with zero probes
+reported, `conductor.md:75`/`:181` already made the probe a REQUIREMENT with its own
+halt code, `:138` already put `workflow_tool` in the WAVE-COMPLETE schema — and none
+of it bound, because the payload carrying the answer arrives AFTER every dispatch it
+governs and nobody asked earlier. A requirement whose only reporting channel is
+downstream of the decision is not a requirement.
+
+**When the probe says `present`, a hand-rolled `Agent()` clique is
+`FANOUT-VEHICLE-DOWNGRADE`, and it costs more than style.** A Dynamic Workflow's
+`agent()` results return INTO the script the lane is driving — to the conductor.
+Hand-rolled `Agent()` sub-dispatch is nested-Agent behavior whose completions route
+to the session owning the task tree (root), which is why root spent v6.4.5
+hand-relaying every coder report and auditor verdict to lanes that could not see
+their own agents' output (DF-46). Verify the vehicle at the first fan-out, not at
+the close report.
+
 **Root-drives-workflows mode (fallback + `/shepherd:start`).** When Agent Teams
 is unavailable or a teammate-conductor stalls/fails, root drives the wave routine
 (`skills/shepherd/references/wave-routine.md`) DIRECTLY over the sprint's lanes —
