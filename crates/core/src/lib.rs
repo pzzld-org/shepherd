@@ -35,7 +35,7 @@
 //! | `std` *(default)* | [`settings`], and the `std` surface of every enabled dependency |
 //! | `alloc` | the `no_std` floor; [`error`] and [`types`] are available here |
 //! | `config` | [`loader`], the configuration precedence chain and layering |
-//! | `json` | `serde` + `serde_json`, for the canonical artifact codec |
+//! | `json` | [`run`], the canonical run-state codec (`serde` + `serde_json`) |
 //! | `parse` | `nom`, for the run-id and branch grammars |
 //! | `schema` | `schemars`, for the config key universe |
 //! | `chrono`, `uuid`, `tracing` | the named dependency, nothing more |
@@ -58,6 +58,8 @@ extern crate alloc;
 pub mod error;
 #[cfg(all(feature = "config", feature = "std"))]
 pub mod loader;
+#[cfg(feature = "json")]
+pub mod run;
 #[cfg(feature = "std")]
 pub mod settings;
 // module (inline)
@@ -73,6 +75,9 @@ pub mod types {
     }
 }
 // re-exports
+#[cfg(feature = "json")]
+#[doc(inline)]
+pub use self::run::RunState;
 #[cfg(feature = "std")]
 #[doc(inline)]
 pub use self::settings::ShepherdConfig;
@@ -86,6 +91,8 @@ pub use self::{
 pub mod prelude {
     #[allow(unused_imports)]
     pub use crate::error::*;
+    #[cfg(feature = "json")]
+    pub use crate::run::*;
     #[cfg(feature = "std")]
     pub use crate::settings::*;
     pub use crate::types::*;
