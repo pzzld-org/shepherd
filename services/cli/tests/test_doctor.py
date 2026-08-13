@@ -17,19 +17,29 @@ shape + escaping, section/row ordering, the missing-DB branch (schema/
 pending/refresh sections entirely absent, not degraded), the empty-
 `schema_versions` WARN branch, the pending-migrations WARN branch (via
 `conftest.build_partial_schema_db`, the #200 fixture), lock free/held/
-stale/corrupt, refresh-zone never/fresh/stale (including the `artifacts`
-zone's structural "always never refreshed" quirk — see
-`shepherd_cli/commands/doctor.py`'s module docstring), the dual-namespace
-WARN (plus its triplicated stderr warning), `shepherd.toml`
-found/not-found, exit codes 0/1/2, `-h`/`--help`, an unknown arg, and
-byte-for-byte STDOUT parity against the legacy `skills/context/scripts/
-cmd_doctor.sh` on IDENTICAL fixture state — the same bash-parity pattern
-`test_status.py`/`test_config.py` already established.
+stale/corrupt, refresh-zone never/fresh/stale for every zone including
+`artifacts` (empty-table "never refreshed" is still bash-parity; a
+recent `updated_at` now correctly reads `fresh`/`stale` -- DF-09, v6.4.5,
+a DELIBERATE, documented, single-zone deviation from bash parity -- see
+`shepherd_cli/commands/doctor.py`'s module docstring), every
+`refresh`-zone remediation string naming a real `shctx refresh --scope=`
+value (DF-08, v6.4.5 -- `issues`/`prs`/`releases` now correctly prescribe
+`--scope=github`, never their own non-existent zone label), the
+dual-namespace WARN (plus its triplicated stderr warning),
+`shepherd.toml` found/not-found, exit codes 0/1/2, `-h`/`--help`, an
+unknown arg, and byte-for-byte STDOUT parity against the legacy
+`skills/context/scripts/cmd_doctor.sh` on IDENTICAL fixture state -- the
+same bash-parity pattern `test_status.py`/`test_config.py` already
+established, with DF-08's own known, textual divergence normalized out
+via `_normalize_known_doctor_deviations` (DF-09 is NOT normalizable the
+same way and gets its own from-scratch, bash-independent assertions
+instead -- see that helper's docstring for why).
 """
 
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 import subprocess
 import time
@@ -47,6 +57,12 @@ from conftest import (
 )
 
 CMD_DOCTOR_SH = REPO_ROOT / "skills" / "context" / "scripts" / "cmd_doctor.sh"
+
+#: The real, top-level `shctx` dispatcher (bash) -- used only by
+#: `_real_shctx_subcommands` (DF-08 regression coverage) to derive the
+#: CLI's actual recognized subcommand set from its own `usage()` heredoc,
+#: rather than hand-copying a second list here that could silently drift.
+SHCTX_SH = REPO_ROOT / "skills" / "context" / "scripts" / "shctx"
 
 _USAGE_MARKER = "shctx doctor [--md|--json]"
 
@@ -217,6 +233,64 @@ def _strip_post_parity_json(payload: dict) -> dict:
         },
         "checks": checks,
     }
+
+
+# --------------------------------------------------------------------------
+# Known, intentional doctor.py <-> cmd_doctor.sh deviations (DF-08, v6.4.5
+# dogfood pass) -- normalized OUT of the legacy bash output before a
+# byte-for-byte comparison, the same "assert what you mean" discipline
+# `_strip_post_parity_md`/`_strip_post_parity_json` already apply to
+# sections 7-10. See `shepherd_cli/commands/doctor.py`'s module docstring
+# for the full defect history. DF-09 (the `artifacts` freshness column) is
+# NOT normalized here -- unlike DF-08, it can flip a row's status/message/
+# tally, which a text substitution cannot express safely, so the one
+# fixture that exercises it asserts the fixed behavior directly instead
+# (`test_artifacts_zone_reports_fresh_after_updated_at_bump` below).
+# --------------------------------------------------------------------------
+def _normalize_known_doctor_deviations(bash_stdout: str) -> str:
+    """Rewrite legacy `cmd_doctor.sh` STDOUT to read as it would if it
+    carried DF-08's zone-remediation fix (`doctor.py`'s
+    `_ZONE_REFRESH_SCOPE`).
+
+    DF-08 is purely textual: it only ever changes the `--scope=<value>`
+    substring inside a zone's own `-> fix:` remediation line, never a
+    status, message, row count, or tally -- so a plain substring
+    replacement is exact and lossless for every fixture in this file,
+    both `--md` and `--json` output (the substring is identical either
+    way; JSON's own string-escaping never touches an `=`/word character).
+
+    Args:
+        bash_stdout: The legacy bash script's raw STDOUT.
+
+    Returns:
+        `bash_stdout` with `--scope=issues`/`--scope=prs`/
+        `--scope=releases` replaced by `--scope=github` -- a no-op on any
+        fixture that never reaches one of those three zones' WARN branch.
+    """
+    result = bash_stdout
+    for stale_scope in ("issues", "prs", "releases"):
+        result = result.replace(f"--scope={stale_scope}", "--scope=github")
+    return result
+
+
+def _real_shctx_subcommands() -> frozenset[str]:
+    """Every top-level subcommand name the real `shctx` (bash) recognizes.
+
+    Parsed from `shctx help`'s own usage banner rather than hand-copied,
+    so this can never silently drift from the real CLI as subcommands are
+    added/renamed: every subcommand line in `usage()`'s heredoc is
+    indented by EXACTLY two spaces (verified against the heredoc source --
+    every wrapped continuation line and section header uses a different
+    indent), so a strict two-space anchor extracts exactly the real
+    subcommand names and nothing else.
+
+    Returns:
+        The subcommand name set (e.g. `{"doctor", "refresh", "sync", ...,
+        "help"}`), derived fresh each call.
+    """
+    proc = subprocess.run(["bash", str(SHCTX_SH), "help"], capture_output=True, text=True, timeout=15)
+    assert proc.returncode == 0, proc.stderr
+    return frozenset(m.group(1) for m in re.finditer(r"^  ([a-z][a-z-]*)", proc.stdout, re.MULTILINE))
 
 
 def _insert_row(db_path: Path, table: str, **columns: object) -> None:
@@ -404,8 +478,13 @@ def test_json_matches_bash_byte_for_byte(work_dir: Path, xdg_dir: Path) -> None:
     # Structural, not byte-for-byte: `_strip_post_parity_json` recomputes
     # `summary` from the filtered `checks` list, so a `total`/`warn` count
     # inflated by an unrelated `version`/`gates`/`user` row can never mask
-    # a genuine parity break in cmd_doctor.sh's own six sections.
-    assert _strip_post_parity_json(json.loads(python_proc.stdout)) == json.loads(bash_proc.stdout)
+    # a genuine parity break in cmd_doctor.sh's own six sections. This
+    # fixture's empty `index_issues`/`index_prs`/`index_releases` tables
+    # also trip DF-08's own fix -- `_normalize_known_doctor_deviations`
+    # rewrites bash's stale `--scope=issues`/`--scope=prs`/
+    # `--scope=releases` to the real `--scope=github` before comparing.
+    normalized_bash = _normalize_known_doctor_deviations(bash_proc.stdout)
+    assert _strip_post_parity_json(json.loads(python_proc.stdout)) == json.loads(normalized_bash)
 
 
 # --------------------------------------------------------------------------
@@ -480,7 +559,9 @@ def test_empty_schema_versions_matches_bash(work_dir: Path, xdg_dir: Path) -> No
     python_proc = run_doctor([], work_dir, env)
     bash_proc = run_bash_doctor([], work_dir, env)
 
-    assert _strip_post_parity_md(python_proc.stdout) == bash_proc.stdout
+    # This fixture's empty `index_issues`/`index_prs`/`index_releases`
+    # tables trip DF-08's own fix -- see `_normalize_known_doctor_deviations`.
+    assert _strip_post_parity_md(python_proc.stdout) == _normalize_known_doctor_deviations(bash_proc.stdout)
     assert python_proc.returncode == bash_proc.returncode
 
 
@@ -511,7 +592,9 @@ def test_pending_migrations_matches_bash(work_dir: Path, xdg_dir: Path) -> None:
     python_proc = run_doctor([], work_dir, env)
     bash_proc = run_bash_doctor([], work_dir, env)
 
-    assert _strip_post_parity_md(python_proc.stdout) == bash_proc.stdout
+    # This fixture's empty `index_issues`/`index_prs`/`index_releases`
+    # tables trip DF-08's own fix -- see `_normalize_known_doctor_deviations`.
+    assert _strip_post_parity_md(python_proc.stdout) == _normalize_known_doctor_deviations(bash_proc.stdout)
     assert python_proc.returncode == bash_proc.returncode
 
 
@@ -739,10 +822,42 @@ def test_refresh_zone_stale_past_120_minutes(work_dir: Path, xdg_dir: Path) -> N
     assert "→ fix: run 'shctx refresh --scope=symbols'" in proc.stdout
 
 
-def test_artifacts_zone_always_never_refreshed_even_with_rows(work_dir: Path, xdg_dir: Path) -> None:
-    """Structural quirk (see module docstring): `artifacts` has no
-    `refreshed_at` column at all, so this zone reads "never refreshed"
-    unconditionally — verified against the real bash script too."""
+def test_artifacts_zone_never_refreshed_when_empty(work_dir: Path, xdg_dir: Path) -> None:
+    """An empty `artifacts` table still reads "never refreshed" after
+    DF-09 (v6.4.5): `MAX(updated_at)` on zero rows is NULL/0 exactly like
+    `MAX(refreshed_at)` was -- the fix only changes which column is read,
+    not the "zero rows -> never refreshed" behavior itself. Bash parity
+    holds here too (no rows means neither column matters)."""
+    db_path = work_dir.parent / "shepherd.db"
+    build_full_schema_db(db_path)
+    env = _doctor_env(xdg_dir, db_path=db_path, workdir=work_dir)
+
+    python_proc = run_doctor([], work_dir, env)
+    bash_proc = run_bash_doctor([], work_dir, env)
+
+    assert "WARN   refresh   artifacts              rows=0, never refreshed" in python_proc.stdout
+    assert _strip_post_parity_md(python_proc.stdout) == _normalize_known_doctor_deviations(bash_proc.stdout)
+
+
+def test_artifacts_zone_reports_fresh_after_updated_at_bump(work_dir: Path, xdg_dir: Path) -> None:
+    """DF-09 (v6.4.5) regression: a row whose `updated_at` was stamped
+    "now" (exactly what `refresh_impl.refresh_artifacts` does on every
+    real run) must read `fresh 0m`, `ok` -- never the old, permanent
+    "never refreshed" `warn`. This is the ONE deliberate, documented
+    deviation from `cmd_doctor.sh` byte-parity in this whole module (see
+    the module docstring's `artifacts` note): the legacy bash script has
+    no fix for this and still reports `warn ... never refreshed` on this
+    exact fixture, forever -- so this test does NOT compare against
+    `run_bash_doctor` at all, unlike almost every other test in this
+    file. `test_artifacts_zone_never_refreshed_when_empty` above already
+    covers the (unaffected, still-parity) empty-table case.
+
+    Asserted via `--json` on the `artifacts` check alone (not overall
+    exit code / whole-stdout substrings): the other four zones are still
+    genuinely empty in this minimal fixture and correctly warn "never
+    refreshed" on their own account, so the OVERALL report still exits 2
+    -- this test cares only about the ONE row DF-09 actually touches.
+    """
     db_path = work_dir.parent / "shepherd.db"
     build_full_schema_db(db_path)
     project_id = insert_project(db_path)
@@ -753,11 +868,123 @@ def test_artifacts_zone_always_never_refreshed_even_with_rows(work_dir: Path, xd
     )
     env = _doctor_env(xdg_dir, db_path=db_path, workdir=work_dir)
 
-    python_proc = run_doctor([], work_dir, env)
-    bash_proc = run_bash_doctor([], work_dir, env)
+    proc = run_doctor(["--json"], work_dir, env)
+    payload = json.loads(proc.stdout)
 
-    assert "WARN   refresh   artifacts              rows=1, never refreshed" in python_proc.stdout
-    assert _strip_post_parity_md(python_proc.stdout) == bash_proc.stdout
+    artifacts_check = next(c for c in payload["checks"] if c["category"] == "refresh" and c["name"] == "artifacts")
+    assert artifacts_check["status"] == "ok"
+    assert artifacts_check["message"] == "rows=1, fresh 0m"
+    assert artifacts_check["fix"] == ""
+
+
+def test_artifacts_zone_reports_stale_past_120_minutes(work_dir: Path, xdg_dir: Path) -> None:
+    """DF-09 (v6.4.5) regression, the stale-not-fresh branch: a row whose
+    `updated_at` is 200 minutes old reads `stale 200m`, `warn`, with a
+    remediation string naming the real `--scope=artifacts` value (DF-08
+    is a no-op for this zone -- `artifacts` maps to itself). `project.json`
+    is written so the overall exit code is deterministic (2, warn-only --
+    the other four zones are still empty and warn on their own account,
+    same as every sibling test in this section; no FAIL anywhere)."""
+    db_path = work_dir.parent / "shepherd.db"
+    build_full_schema_db(db_path)
+    project_id = insert_project(db_path)
+    (work_dir / "project.json").write_text(json.dumps({"id": project_id}))
+    old = int(time.time()) - 200 * 60
+    _insert_row(
+        db_path, "artifacts", id="a1", project_id=project_id, kind="doc",
+        path="/tmp/a1.md", hash="h1", created_at=old, updated_at=old,
+    )
+    env = _doctor_env(xdg_dir, db_path=db_path, workdir=work_dir)
+
+    proc = run_doctor([], work_dir, env)
+
+    assert "WARN   refresh   artifacts              rows=1, stale 200m" in proc.stdout
+    assert "→ fix: run 'shctx refresh --scope=artifacts'" in proc.stdout
+    assert proc.returncode == 2, proc.stderr
+
+
+#: `shctx refresh --help` / `refresh.py`'s own `_HELP_TEXT` and
+#: `_refresh_impl`'s `if scope ==` dispatch chain -- the CLI's real,
+#: accepted `--scope=` values. Kept here (not imported) because
+#: `refresh.py` exports no single constant to import: the accepted set
+#: lives only in that module's usage prose and if-chain, so this is its
+#: own fixed, hardcoded allow-list, exactly like `EXPECTED_ZONE_ORDER`
+#: above.
+_VALID_REFRESH_SCOPES = {"symbols", "shapes", "github", "artifacts", "telemetry", "all"}
+
+
+def test_every_refresh_zone_fix_string_names_a_real_refresh_scope(work_dir: Path, xdg_dir: Path) -> None:
+    """DF-08 (v6.4.5) regression: every `refresh`-category remediation
+    string must name a `--scope=` value `shctx refresh` genuinely
+    accepts -- never the raw (unrunnable) zone label. Before the fix, the
+    `issues`/`prs`/`releases` zones each prescribed `--scope=issues`/
+    `--scope=prs`/`--scope=releases`, none of which `refresh` accepts.
+
+    Exercises every zone's "never refreshed" WARN branch at once (an
+    empty, fully-migrated DB -- no per-zone rows inserted at all), so
+    every zone's fix string is emitted and checked in a single report.
+    """
+    db_path = work_dir.parent / "shepherd.db"
+    build_full_schema_db(db_path)
+    env = _doctor_env(xdg_dir, db_path=db_path, workdir=work_dir)
+
+    proc = run_doctor(["--json"], work_dir, env)
+    payload = json.loads(proc.stdout)
+
+    refresh_checks = [c for c in payload["checks"] if c["category"] == "refresh"]
+    assert len(refresh_checks) == 5, refresh_checks  # every zone present -- see EXPECTED_ZONE_ORDER
+    assert all(c["status"] == "warn" for c in refresh_checks), refresh_checks  # empty DB -- every zone unrefreshed
+
+    checked = 0
+    for check in refresh_checks:
+        match = re.search(r"--scope=(\S+?)'", check["fix"])
+        assert match, f"zone {check['name']!r} fix string has no --scope= clause: {check['fix']!r}"
+        scope = match.group(1)
+        assert scope in _VALID_REFRESH_SCOPES, (
+            f"zone {check['name']!r} prescribes 'shctx refresh --scope={scope}', which is not one of "
+            f"{sorted(_VALID_REFRESH_SCOPES)} -- DF-08 regression: {check['fix']!r}"
+        )
+        checked += 1
+    assert checked == 5
+
+
+def test_every_quoted_shctx_command_in_a_fix_string_is_a_real_subcommand(work_dir: Path, xdg_dir: Path) -> None:
+    """Generalized DF-08 regression (the seed's own framing: "the
+    diagnostic tool stops prescribing commands that do not exist"):
+    every single-quoted `'shctx <word> ...'` clause inside ANY `-> fix:`
+    remediation string this module can emit must name a subcommand the
+    real CLI recognizes -- checked against `shctx help`'s own usage
+    banner (`_real_shctx_subcommands`), never a hand-copied list, so this
+    can never itself drift from the real CLI.
+
+    Exercises every WARN/FAIL branch one minimal fixture can trigger at
+    once: a missing `schema_versions` row, a stale lock, and every
+    refresh zone unrefreshed (an empty, fully-migrated DB).
+    """
+    db_path = work_dir.parent / "shepherd.db"
+    build_full_schema_db(db_path)
+    _delete_schema_versions_rows(db_path)
+    old = int(time.time()) - 90 * 60
+    _write_lock_file(work_dir, {"holder_session_id": "s", "mode": "context", "acquired_at": old, "pid": 1, "children": []})
+    env = _doctor_env(xdg_dir, db_path=db_path, workdir=work_dir)
+
+    proc = run_doctor(["--json"], work_dir, env)
+    payload = json.loads(proc.stdout)
+
+    real_subcommands = _real_shctx_subcommands()
+    fix_strings = [c["fix"] for c in payload["checks"] if c["fix"]]
+    assert fix_strings, "fixture produced no fix strings at all -- test is not exercising anything"
+
+    checked = 0
+    for fix in fix_strings:
+        for clause in re.findall(r"'(shctx [^']+)'", fix):
+            subcommand = clause.split()[1]
+            assert subcommand in real_subcommands, (
+                f"fix string {fix!r} prescribes 'shctx {subcommand} ...', which "
+                f"'shctx help' does not recognize as a subcommand -- DF-08-class regression"
+            )
+            checked += 1
+    assert checked >= 5, f"expected at least 5 quoted 'shctx ...' clauses across this fixture's fix strings, saw {checked}"
 
 
 def test_refresh_zones_absent_when_db_missing(work_dir: Path, xdg_dir: Path) -> None:
@@ -1503,7 +1730,9 @@ def test_bootstrap_section_bash_parity_stripped_matches_bash(work_dir: Path, xdg
     python_proc = run_doctor([], work_dir, env)
     bash_proc = run_bash_doctor([], work_dir, env)
 
-    assert _strip_post_parity_md(python_proc.stdout) == bash_proc.stdout
+    # This fixture's empty `index_issues`/`index_prs`/`index_releases`
+    # tables trip DF-08's own fix -- see `_normalize_known_doctor_deviations`.
+    assert _strip_post_parity_md(python_proc.stdout) == _normalize_known_doctor_deviations(bash_proc.stdout)
 
 
 def test_bootstrap_row_count_never_disturbs_dual_namespace_stderr_warning_count(

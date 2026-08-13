@@ -41,6 +41,20 @@ branch does not have, per hard rule #7 ("Provide --json on every read
 command"). Omitting ``--json`` reproduces bash's exact bare-slug stdout
 byte-for-byte; passing it is new, additive behavior only, never invoked by
 any bash-parity code path.
+
+A second ADDITIVE deviation (DF-03): ``resolve`` also gains an optional
+``--harness`` flag. ``shctx models`` resolves an *intent* slug (``sonnet``,
+``opus[1m]``, ...) -- what the flock CONCEPTUALLY wants for a role. That
+slug is not what every dispatch surface accepts verbatim: the Claude
+``Agent`` tool's ``model`` parameter is a closed enum (``sonnet|opus|
+haiku|fable``) that rejects ``opus[1m]`` outright, Codex expresses the same
+intent as a ``[profiles]`` entry, and Pi pins per role via a subprocess
+``--model`` flag. Before this flag existed, that translation was each
+dispatcher's own silent, untracked guess (DF-03) -- exactly the drift this
+module now ends by owning the ONE translation table
+(:data:`_HARNESS_TRANSLATION`). Omitting ``--harness`` reproduces the
+untranslated intent slug byte-for-byte, unchanged from before this flag
+existed.
 """
 
 from __future__ import annotations
@@ -152,6 +166,79 @@ def _model_default(role: str) -> str:
         for every other role.
     """
     return "opus[1m]" if role in _OPUS_ROLES else "sonnet"
+
+
+#: The harness ids ``resolve --harness`` accepts. Kept local to this module
+#: rather than reused from ``commands.config.KNOWN_HARNESSES`` -- that tuple
+#: answers a different question (which harnesses may carry their own
+#: ``shepherd.<harness>.toml`` config layer) and does not include ``pi``.
+_HARNESSES: tuple[str, ...] = ("claude", "codex", "pi")
+
+#: Per-harness translation of every intent slug this module (or a
+#: ``[models].<role>`` config override) can produce. This is the ONE place
+#: harness translation happens (DF-03): every dispatcher -- a future
+#: Claude/Codex/Pi adapter, ``graph.py``'s compile emitter, ... -- asks
+#: ``shctx models resolve <role> --harness=<h>`` instead of re-deriving its
+#: own guess.
+#:
+#: - Claude's ``Agent`` tool ``model`` parameter is a CLOSED ENUM
+#:   (``sonnet|opus|haiku|fable``); ``opus[1m]`` is rejected outright, so
+#:   the opus-tier intent slugs collapse to bare ``opus``.
+#: - Codex expresses the same intent as a ``[profiles]`` entry (``model`` +
+#:   ``reasoning_effort``): ``sol/max`` for the opus tier, ``terra/high``
+#:   for the sonnet workhorse tier, ``terra/medium`` for the lighter
+#:   haiku/fable tier.
+#: - Pi pins per role via a subprocess ``--model`` flag and has no closed
+#:   enum of its own -- it takes the bare intent slug unchanged.
+_HARNESS_TRANSLATION: dict[str, dict[str, str]] = {
+    "opus[1m]": {"claude": "opus", "codex": "sol/max", "pi": "opus[1m]"},
+    "opus": {"claude": "opus", "codex": "sol/max", "pi": "opus"},
+    "sonnet": {"claude": "sonnet", "codex": "terra/high", "pi": "sonnet"},
+    "haiku": {"claude": "haiku", "codex": "terra/medium", "pi": "haiku"},
+    "fable": {"claude": "fable", "codex": "terra/medium", "pi": "fable"},
+}
+
+#: Claude's own closed enum, restated here (rather than derived from
+#: :data:`_HARNESS_TRANSLATION`) so :func:`_translate_for_harness` has an
+#: explicit fallback target even for a slug the table above has never
+#: heard of (an arbitrary ``[models].<role>`` config override).
+_CLAUDE_MODEL_ENUM = frozenset({"sonnet", "opus", "haiku", "fable"})
+
+
+def _translate_for_harness(model: str, harness: str) -> str:
+    """Translate one resolved intent slug into the given harness's own spelling.
+
+    The harness-agnostic core's job (DF-03): every dispatcher asks THIS
+    function what a harness calls a model, rather than each dispatcher
+    encoding its own silent ``opus[1m]`` -> ``opus`` substitution (or,
+    worse, forgetting to and handing Claude's ``Agent`` tool a slug its
+    closed enum rejects outright).
+
+    Args:
+        model: The resolved intent slug (:attr:`ModelRoleResolution.model`)
+            -- one of :data:`_HARNESS_TRANSLATION`'s keys for every
+            built-in default, or an arbitrary ``[models].<role>`` config
+            override.
+        harness: One of :data:`_HARNESSES`. Callers validate this before
+            calling (see ``resolve``'s ``ERROR: unknown harness`` check);
+            this function trusts it.
+
+    Returns:
+        The slug that harness's own dispatch surface accepts. A known
+        intent slug maps through :data:`_HARNESS_TRANSLATION`. An unknown
+        one (a config override outside the built-in set) falls back to
+        ``"sonnet"`` for ``claude`` -- Claude's enum is closed, so handing
+        it anything else is a guaranteed rejection -- and passes through
+        unchanged for ``codex``/``pi``, neither of which has a closed
+        enum, so the config author's own value is the best available
+        answer.
+    """
+    row = _HARNESS_TRANSLATION.get(model)
+    if row is not None:
+        return row[harness]
+    if harness == "claude":
+        return model if model in _CLAUDE_MODEL_ENUM else "sonnet"
+    return model
 
 
 def _config_search_paths(repo_root: str) -> tuple[str, str, str]:
@@ -434,6 +521,16 @@ def resolve(
         metavar="ROLE",
         help=f"Role to resolve. One of: {', '.join(MODELS_ROLES)}.",
     ),
+    harness: str | None = typer.Option(
+        None,
+        "--harness",
+        help=(
+            "ADDITIVE (not in cmd_models.sh): translate the resolved intent slug into "
+            f"one of {', '.join(_HARNESSES)}'s own dispatch-surface spelling before "
+            "printing it (DF-03). Omitting it reproduces bash's exact untranslated "
+            "intent-slug output byte-for-byte."
+        ),
+    ),
     json_out: bool = typer.Option(
         False,
         "--json",
@@ -454,14 +551,26 @@ def resolve(
             via Typer's ``required=True``, so bash's exact ``ERROR:
             usage: ...`` message on a missing argument is reproduced
             verbatim rather than Click's own "missing argument" error).
+        harness: ADDITIVE, like ``json_out``, and not present in
+            ``cmd_models.sh``: when given, translate the resolved intent
+            slug (e.g. ``"opus[1m]"``) into that harness's own spelling
+            (e.g. ``"opus"`` for Claude, ``"sol/max"`` for Codex) via
+            :func:`_translate_for_harness` before printing. Omitting it
+            reproduces bash's exact untranslated intent-slug output --
+            this is the harness-agnostic core's job (DF-03), not each
+            dispatcher's own silent guess.
         json_out: ADDITIVE convenience flag, not present in
             ``cmd_models.sh``: when set, print
             ``{"role": ..., "model": ..., "source": ...}`` instead of the
             bare model slug. Omitting it reproduces bash's exact output.
+            Combined with ``--harness``, the JSON payload's ``"model"``
+            reflects the translated slug and gains a ``"harness"`` key;
+            without ``--harness`` the payload is untouched.
 
     Raises:
         typer.Exit: code 2 (stderr message, bash parity) if ``role`` is
-            missing/empty, or is not one of :data:`MODELS_ROLES`.
+            missing/empty, is not one of :data:`MODELS_ROLES`, or if
+            ``harness`` is given and is not one of :data:`_HARNESSES`.
     """
     if not role:
         typer.echo("ERROR: usage: shctx models resolve <role>", err=True)
@@ -469,12 +578,22 @@ def resolve(
     if role not in MODELS_ROLES:
         typer.echo(f"ERROR: unknown role: {role} (valid: {' '.join(MODELS_ROLES)})", err=True)
         raise typer.Exit(code=2)
+    if harness is not None and harness not in _HARNESSES:
+        typer.echo(
+            f"ERROR: unknown harness: {harness} (valid: {' '.join(_HARNESSES)})", err=True
+        )
+        raise typer.Exit(code=2)
 
     resolved = _resolve_role(role, resolve_repo_root())
+    model = _translate_for_harness(resolved.model, harness) if harness else resolved.model
     if json_out:
-        typer.echo(json.dumps(resolved.model_dump(mode="json"), indent=2))
+        payload = resolved.model_dump(mode="json")
+        if harness:
+            payload["model"] = model
+            payload["harness"] = harness
+        typer.echo(json.dumps(payload, indent=2))
     else:
-        typer.echo(resolved.model)
+        typer.echo(model)
 
 
 @app.command()

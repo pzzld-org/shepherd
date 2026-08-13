@@ -1,0 +1,8 @@
+{
+  "suite": "guard-cli",
+  "kind": "pure",
+  "description": "deliverable stalled given a non-integer --since-mins (a malformed guard-script call) -- Click's own type-coercion error, exit 2, before the DB is ever touched.",
+  "args": ["deliverable", "stalled", "--since-mins=not-a-number"],
+  "db_fixture": "none",
+  "capture_files": []
+}

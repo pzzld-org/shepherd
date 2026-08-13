@@ -1,0 +1,8 @@
+{
+  "suite": "core",
+  "kind": "pure",
+  "description": "models resolve <role> -- a PURE command named explicitly in plan.md W0-S9 action 3 as a canonical example. Isolated scratch cwd carries no .claude/shepherd.toml, so this resolves the built-in default (sonnet, source=default) rather than any repo-specific override.",
+  "args": ["models", "resolve", "coder"],
+  "db_fixture": "none",
+  "capture_files": []
+}

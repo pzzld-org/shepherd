@@ -14,14 +14,15 @@ this checkout (which has its own real files) is never touched — the same
 isolation concern ``test_style.py``'s module docstring documents for the
 filesystem half of that command.
 
-**BASH QUIRK COVERED EXPLICITLY: the violation count is always capped at
-1.** ``cmd_lint.sh``'s ``fail=1`` (never incremented) means the final
+**VIOLATION COUNT IS A REAL TALLY, DELIBERATELY NOT BASH PARITY.**
+``cmd_lint.sh``'s ``fail=1`` (never incremented) means the bash script's own
 ``lint: FAIL (N violation(s))`` line always reads ``(1 violation(s))`` the
 instant any violation exists, regardless of how many real violations were
-found — see :func:`shepherd_cli.commands.lint._lint`'s docstring.
-:func:`test_multiple_violations_count_stays_capped_at_one` locks this in
-byte-for-byte so a well-meaning "fix" to make the count accurate would be
-caught as a parity regression.
+found. This port does not reproduce that bug — see
+:func:`shepherd_cli.commands.lint._lint`'s docstring.
+:func:`test_multiple_violations_count_is_a_real_tally` and
+:func:`test_three_distinct_violations_count_is_exactly_three` lock the real
+count in so a regression back to the bash cap would be caught.
 """
 
 from __future__ import annotations
@@ -146,7 +147,7 @@ def test_plans_docs_plans_checked_after_legacy_plans(workdir: Path) -> None:
     lines = result.stdout.rstrip("\n").splitlines()
     assert lines[0] == f"lint: {legacy_bad} does not match *.seed.md or *.plan.md"
     assert lines[1] == f"lint: {new_bad} does not match *.seed.md or *.plan.md"
-    assert lines[2] == "lint: FAIL (1 violation(s))"
+    assert lines[2] == "lint: FAIL (2 violation(s))"
 
 
 # --------------------------------------------------------------------------
@@ -292,7 +293,7 @@ def test_logs_events_pattern_is_exact(workdir: Path) -> None:
 
 
 # --------------------------------------------------------------------------
-# Cross-section ordering + the bash fail-count quirk.
+# Cross-section ordering + the real violation-count tally.
 # --------------------------------------------------------------------------
 def test_section_order_plans_reports_journal_logs(workdir: Path) -> None:
     """Violations print in bash's own section order: plans, reports, journal, logs."""
@@ -310,19 +311,20 @@ def test_section_order_plans_reports_journal_logs(workdir: Path) -> None:
         f"lint: {reports_bad} does not match *.{{phase0,close,walk}}.md or YYYY-MM-DD-*.md",
         f"lint: {journal_bad} does not match YYYY-MM-DD.md",
         f"lint: {logs_bad} has unrecognized log filename pattern",
-        "lint: FAIL (1 violation(s))",
+        "lint: FAIL (4 violation(s))",
     ]
 
 
-def test_multiple_violations_count_stays_capped_at_one(workdir: Path) -> None:
-    """Bash-parity quirk: N>1 real violations still print ``(1 violation(s))``.
+def test_multiple_violations_count_is_a_real_tally(workdir: Path) -> None:
+    """N>1 real violations print the exact count N, not a capped-at-1 total.
 
     ``cmd_lint.sh``'s ``fail=1`` literal assignment (never incremented) on
-    every violating branch means the trailing summary line's count can
-    never read anything but 1 once any violation exists — see
-    ``shepherd_cli/commands/lint.py``'s module docstring. Every individual
-    violation line is still printed once per real violation; only the
-    final parenthetical count is capped.
+    every violating branch means bash's own trailing summary line can never
+    read anything but 1 once any violation exists. This port deliberately
+    does not reproduce that bug — see ``shepherd_cli/commands/lint.py``'s
+    module docstring "VIOLATION COUNT IS A REAL TALLY" note. Every
+    individual violation line is still printed once per real violation, and
+    now the final parenthetical count matches ``len(bad_paths)`` exactly.
     """
     bad_paths = [
         workdir / "plans" / "a.md",
@@ -337,7 +339,21 @@ def test_multiple_violations_count_stays_capped_at_one(workdir: Path) -> None:
     assert result.returncode == 1
     lines = result.stdout.rstrip("\n").splitlines()
     assert len(lines) == len(bad_paths) + 1  # one line per violation + the summary
-    assert lines[-1] == "lint: FAIL (1 violation(s))"
+    assert lines[-1] == f"lint: FAIL ({len(bad_paths)} violation(s))"
+
+
+def test_three_distinct_violations_count_is_exactly_three(workdir: Path) -> None:
+    """The regression case this step exists for: three real violations across
+    three different sections print ``FAIL (3 violation(s))``, not the old
+    bash-parity cap of ``(1 violation(s))``."""
+    plans_bad = workdir / "plans" / "notes.md"
+    journal_bad = workdir / "docs" / "journal" / "notes.md"
+    logs_bad = workdir / "logs" / "notes.txt"
+    for path in (plans_bad, journal_bad, logs_bad):
+        touch(path)
+    result = run_cli(["lint"], lint_env(workdir))
+    assert result.returncode == 1
+    assert "lint: FAIL (3 violation(s))" in result.stdout.rstrip("\n").splitlines()
 
 
 # --------------------------------------------------------------------------

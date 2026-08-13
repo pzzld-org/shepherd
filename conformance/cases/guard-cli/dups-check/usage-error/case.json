@@ -1,0 +1,8 @@
+{
+  "suite": "guard-cli",
+  "kind": "pure",
+  "description": "dups check invoked with neither --stdin nor a file argument (a malformed guard-script call) -- the CLI's own usage-error branch (dups.py _do_check, line ~815-817), exit 1, stderr usage message.",
+  "args": ["dups", "check", "--json"],
+  "db_fixture": "none",
+  "capture_files": []
+}

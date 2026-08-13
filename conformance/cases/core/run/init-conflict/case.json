@@ -1,0 +1,9 @@
+{
+  "suite": "core",
+  "kind": "mutating",
+  "description": "run init <run> a SECOND time (setup runs it once first) -- refuses, exit 5, 'run already exists'. The MUTATING teardown case plan.md W0-S9 action 3 calls for: this state only exists because of a prior invocation, unlike a PURE case's fixture.",
+  "setup": [["run", "init", "v900-dev1", "--kind", "sprint", "--branch", "v9.0.0-dev.1", "--base", "main"]],
+  "args": ["run", "init", "v900-dev1", "--kind", "sprint", "--branch", "v9.0.0-dev.1", "--base", "main"],
+  "db_fixture": "none",
+  "capture_files": []
+}

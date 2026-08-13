@@ -1,0 +1,8 @@
+{
+  "suite": "core",
+  "kind": "pure",
+  "description": "models show --json -- the full 9-role table in bash-parity hand-built JSON shape (models.py _render_json), all built-in defaults in this isolated scratch cwd.",
+  "args": ["models", "show", "--json"],
+  "db_fixture": "none",
+  "capture_files": []
+}

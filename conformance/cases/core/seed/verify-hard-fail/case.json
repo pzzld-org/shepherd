@@ -1,0 +1,9 @@
+{
+  "suite": "core",
+  "kind": "pure",
+  "description": "seed verify <path> -- HARD failure via prescriptive 'Lane N' numbering (the #67 firewall check), a different HARD trigger than guard-cli/seed-verify/hard-fail's TODO: marker.",
+  "args": ["seed", "verify", "lane-numbered.seed.md"],
+  "input_files": {"lane-numbered.seed.md": "lane-numbered.seed.md"},
+  "db_fixture": "none",
+  "capture_files": []
+}

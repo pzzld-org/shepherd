@@ -1,0 +1,5 @@
+Usage: python -m shepherd_cli deliverable stalled [OPTIONS]
+Try 'python -m shepherd_cli deliverable stalled -h' for help.
+╭─ Error ──────────────────────────────────────────────────────────────────────╮
+│ Invalid value for '--since-mins': 'not-a-number' is not a valid int.         │
+╰──────────────────────────────────────────────────────────────────────────────╯

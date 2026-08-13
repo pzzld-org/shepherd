@@ -51,8 +51,8 @@ gate_fast() {
   # The plugin layout is an interface contract with the harness. `claude plugin
   # validate` passes clean on a tree whose hooks all point at deleted scripts,
   # so it cannot be the thing that catches this.
-  step "plugin contract is falsifiable" ./scripts/check-plugin.sh --self-test
-  step "plugin contract" ./scripts/check-plugin.sh
+  step "plugin contract is falsifiable" ./scripts/check-plugin.py --self-test
+  step "plugin contract" ./scripts/check-plugin.py
 }
 
 # ---------------------------------------------------------------- full --- #

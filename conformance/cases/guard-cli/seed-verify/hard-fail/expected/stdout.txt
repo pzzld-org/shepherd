@@ -1,0 +1,2 @@
+  HARD  TODO:/FIXME: marker(s) present — resolve before commit
+FAIL: 1 hard failure(s), 0 warning(s)

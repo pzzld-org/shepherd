@@ -17,19 +17,21 @@ applies here in its filesystem form). The only shared import is
 :func:`shepherd_cli.resolution.resolve_workdir`, which mirrors ``_lib.sh``'s
 ``resolve_workdir``/``shctx_artifacts_root`` precedence exactly.
 
-**BASH QUIRK MIRRORED DELIBERATELY — the violation *count* is always 1, not
-the real tally.** ``cmd_lint.sh``'s four ``case`` default arms all execute
-the literal statement ``fail=1`` (never ``fail=$((fail+1))``) on every
+**VIOLATION COUNT IS A REAL TALLY — A DELIBERATE DIVERGENCE FROM BASH, NOT
+PARITY.** ``cmd_lint.sh``'s four ``case`` default arms all execute the
+literal statement ``fail=1`` (never ``fail=$((fail+1))``) on every
 violation, so its closing ``echo "lint: FAIL ($fail violation(s))"`` always
 prints ``(1 violation(s))`` the instant ANY violation occurred, no matter
-whether there was one violation or fifty — bash never counts past 1. This
-is very likely an unintentional bug in the original script, but bash parity
-is this port's bar (see the module's HARD RULES), not bash correctness, so
-:func:`_lint` reproduces it byte-for-byte: ``fail`` here is a 0/1 flag, not
-a running tally, exactly like the bash variable it mirrors. Every individual
-``lint: <path> does not match ...`` line is still printed once per real
-violation — only the trailing summary line's parenthetical count is capped
-at 1.
+whether there was one violation or fifty — bash never counts past 1. That
+is very likely an unintentional bug in the original script: a gate whose
+reported count never reflects its own findings cannot be used to track
+progress and silently understates severity. This port does NOT mirror it —
+:func:`_lint` counts real instances (``len(messages)``) for the printed
+``FAIL (N violation(s))`` summary. The pass/fail *exit code* stays 0/1
+regardless (any violation still exits 1; the exit code is never the
+violation count itself). Every individual ``lint: <path> does not match
+...`` line was already printed once per real violation even before this
+fix — only the trailing summary line's parenthetical count changed.
 
 **Recursive-walk file ORDER is a deliberate, documented deviation.**
 ``cmd_lint.sh`` discovers files via ``find "$dir" -type f -name '*.md'
@@ -58,9 +60,10 @@ Every other behavior is exact:
   through unused), so this module's callback accepts and silently ignores
   any, exactly like bash silently ignoring them.
 - Exit code: 0 with ``lint: ok`` on stdout when zero violations; 1 with
-  every violation line followed by ``lint: FAIL (1 violation(s))`` on
-  stdout when one or more violations were found. Bash never writes lint
-  output to stderr, so neither does this module.
+  every violation line followed by ``lint: FAIL (N violation(s))`` (N is
+  the real violation count — see above) on stdout when one or more
+  violations were found. Bash never writes lint output to stderr, so
+  neither does this module.
 
 **#P4 EXTENSION — NOT a bash-parity check, a new one.** ``cmd_lint.sh`` has
 no notion of ``runs/`` at all; :func:`_check_runs` is a Python-only addition
@@ -464,7 +467,7 @@ def _check_runs(root: Path) -> list[str]:
 # Whole-run driver + Typer wiring.
 # --------------------------------------------------------------------------
 def _lint(root: Path) -> int:
-    """Run every section check, print bash-parity output, and return the exit code.
+    """Run every section check, print output, and return the exit code.
 
     Args:
         root: The resolved artifacts root (``resolve_workdir()``).
@@ -473,12 +476,13 @@ def _lint(root: Path) -> int:
         0 if no violations were found (after printing ``lint: ok``); 1 if
         one or more violations were found (after printing every violation
         line, in section order — ``plans`` then ``reports`` then
-        ``journal`` then ``logs`` — followed by ``lint: FAIL (1
-        violation(s))``; see the module docstring for why the count is
-        always 1 rather than a real tally, matching bash's own ``fail=1``
-        (never incremented) exactly). A non-canonical ``runs/`` entry
-        (:func:`_check_runs`) NEVER changes this return value — see the
-        module docstring's "#P4 EXTENSION" note.
+        ``journal`` then ``logs`` — followed by ``lint: FAIL (N
+        violation(s))`` where N is the real violation count, a deliberate
+        divergence from bash's own always-1 ``fail`` variable — see the
+        module docstring's "VIOLATION COUNT IS A REAL TALLY" note). A
+        non-canonical ``runs/`` entry (:func:`_check_runs`) NEVER changes
+        this return value — see the module docstring's "#P4 EXTENSION"
+        note.
     """
     messages: list[str] = []
     messages.extend(_check_plans(root))
@@ -490,16 +494,16 @@ def _lint(root: Path) -> int:
 
     warnings = _check_runs(root)
 
-    fail = 1 if messages else 0
+    count = len(messages)
     for message in messages:
         typer.echo(message)
     for warning in warnings:
         typer.echo(warning)
 
-    if fail == 0:
+    if count == 0:
         typer.echo("lint: ok")
         return 0
-    typer.echo(f"lint: FAIL ({fail} violation(s))")
+    typer.echo(f"lint: FAIL ({count} violation(s))")
     return 1
 
 

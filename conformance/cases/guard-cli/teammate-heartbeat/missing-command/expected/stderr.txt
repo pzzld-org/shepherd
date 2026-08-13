@@ -1,0 +1,5 @@
+Usage: python -m shepherd_cli teammate [OPTIONS] COMMAND [ARGS]...
+Try 'python -m shepherd_cli teammate -h' for help.
+╭─ Error ──────────────────────────────────────────────────────────────────────╮
+│ No such command 'heartbeat'.                                                 │
+╰──────────────────────────────────────────────────────────────────────────────╯

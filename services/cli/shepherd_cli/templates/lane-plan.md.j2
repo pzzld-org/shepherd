@@ -18,26 +18,34 @@
 ## File scope
 
 - Exclusive (OWNED):
-{% for path in file_scope_exclusive %}
+{% for path in file_scope.exclusive %}
   - `{{ path }}`
 {% endfor %}
-{% if file_scope_may_read %}
+{% if file_scope.may_read %}
 - May read:
-{% for path in file_scope_may_read %}
+{% for path in file_scope.may_read %}
   - `{{ path }}`
 {% endfor %}
 {% endif %}
 
+## Parallel lanes
+
+{% for lane in parallel_with %}
+- `{{ lane }}`
+{% else %}
+- none
+{% endfor %}
+
 ## Interfaces
 
 - Consumes:
-{% for item in interfaces_consumes %}
+{% for item in interfaces.consumes %}
   - {{ item }}
 {% else %}
   - none
 {% endfor %}
 - Produces:
-{% for item in interfaces_produces %}
+{% for item in interfaces.produces %}
   - {{ item }}
 {% else %}
   - none
@@ -54,12 +62,18 @@
 ## Steps
 
 {% for step in steps %}
-### {{ step.id }}: {{ step.title }}
+### {{ step.step_id }}: {{ step.actions[0] }}
 
 {% for action in step.actions %}
 - [ ] {{ action }}
 {% endfor %}
 - **Acceptance:** {{ step.acceptance }}
+- **must_not_touch:**
+{% for path in step.file_scope.must_not_touch %}
+  - `{{ path }}`
+{% else %}
+  - none
+{% endfor %}
 {% endfor %}
 
 ## Lane acceptance
