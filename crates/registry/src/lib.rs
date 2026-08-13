@@ -18,9 +18,15 @@
 //!
 //! ## The contract this crate owes
 //!
-//! - The 20 migration files port **verbatim**. Migration SQL is the portable
-//!   artifact; only the runner is rewritten. `rusqlite_migration` is rejected:
-//!   it tracks state in `user_version`, while this schema uses a
+//! - **21** migration files port **verbatim**: `0001_init.sql` (the baseline
+//!   schema, applied first) plus the 20 files under `migrations/`
+//!   (`0002`-`0021`). `0001_init.sql` sits at the schema-dir TOP LEVEL, not
+//!   under `migrations/`, and is applied by a separate path in the existing
+//!   bash/Python runners (`shctx init`) -- a runner that globs only
+//!   `migrations/*.sql` silently skips the baseline. [`migrate::apply_all`]
+//!   applies both, in order, and never skips version 1. Migration SQL is the
+//!   portable artifact; only the runner is rewritten. `rusqlite_migration` is
+//!   rejected: it tracks state in `user_version`, while this schema uses a
 //!   `schema_versions` table that both existing runners already read.
 //! - FTS5 external-content tables keep the `unicode61 remove_diacritics 2`
 //!   tokenizer and all 6 sync triggers.
@@ -46,6 +52,8 @@ pub use shepherd_core as core;
 
 // modules (public)
 pub mod error;
+#[cfg(feature = "std")]
+pub mod migrate;
 
 // re-exports
 #[doc(inline)]

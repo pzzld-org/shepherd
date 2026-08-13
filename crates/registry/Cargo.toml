@@ -40,6 +40,10 @@ shepherd-core = { workspace = true }
 # defaults, the registry relies on prepared-statement reuse, and dropping it is
 # a silent performance regression, not a capability choice.
 rusqlite = { features = ["cache"], workspace = true }
+# hashing — schema_versions.checksum is a sha256 hex digest of the migration
+# file's bytes, matching services/cli/shepherd_cli/commands/migrate.py's
+# `hashlib.sha256(sql_text.encode("utf-8")).hexdigest()` exactly.
+sha2 = { workspace = true }
 # errors
 thiserror = { workspace = true }
 # serialization
@@ -107,9 +111,14 @@ wasm = [
 alloc = [
   "serde?/alloc",
   "serde_json?/alloc",
+  "sha2/alloc",
   "shepherd-core/alloc",
 ]
 
+# NOTE: `sha2` 0.11 has no `std` feature — the RustCrypto 0.11 line replaced it
+# with `alloc` plus `oid`. Referencing `sha2/std` here resolves to a hard
+# dependency-resolution error, not a warning (see crates/render/Cargo.toml,
+# which hit this first).
 std = [
   "alloc",
   "serde?/std",
