@@ -83,11 +83,11 @@
 
 ## Lane acceptance
 
-- [ ] `bash scripts/gate.sh full` exits 0
-- [ ] `bash scripts/check-plugin.sh --self-test` exits 0
-- [ ] a clean clone reaches a spawnable state without a manual `shctx init`
-- [ ] every role's declared `tools:` is asserted against a RUNTIME probe, not a text grep
-- [ ] `hooks/hooks.json` refuses a write to a plan carrying a valid critic proof
+- [x] `bash scripts/gate.sh full` exits 0 — confirmed via this lane's own pre-push hook run (rustfmt, workspace invariants + self-test, plugin contract + self-test, clippy default+full, tests, 23-combo feature matrix, supply chain — all green, 59s) at commit `4ee106a`. (`scripts/` is L4's exclusive scope, not mine — I did not invoke this by hand; the repo's pre-push hook ran it.)
+- [ ] `bash scripts/check-plugin.sh --self-test` exits 0 — STALE reference, see Deviations note: L4's W0-S1 renames this to `check-plugin.py`; not runnable as literally written once that lands. `.github/workflows/rust.yml` (mine) already updated (W0-S16); this template line in `## Lane acceptance` itself was not mine to fix.
+- [x] a clean clone reaches a spawnable state without a manual `shctx init` — W0-S2, verified against a real clean clone.
+- [x] every role's declared `tools:` is asserted against a RUNTIME probe, not a text grep — W0-S11 (CRITICAL), verified.
+- [x] `hooks/hooks.json` refuses a write to a plan carrying a valid critic proof — W0-S15, verified via `test_plan_proof_guard.sh`.
 
 ## Non-goals
 
