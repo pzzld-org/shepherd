@@ -1272,8 +1272,30 @@ sqlite3 "$DB" "SELECT 1 FROM sqlite_master WHERE type='view' AND name='v_teammat
 
 ## Wave 2 — render, template parity, and the mechanically-portable verbs
 
-**Wave gate (`W2-GATE`):** `conformance/run.sh --impl=rust --suite=render` byte-clean,
-with `template_sha256`, `vars_sha256` and `output_sha256` all reproducing identically.
+**Wave gate (`W2-GATE`):** ~~`conformance/run.sh --impl=rust --suite=render` byte-clean,
+with `template_sha256`, `vars_sha256` and `output_sha256` all reproducing identically.~~
+**STRUCK — that command cannot fail (DF-60 is a sibling; this is DF-59).** All three
+clauses are unrunnable against the runner that actually ships: there is no `render` suite
+(`conformance/cases/` holds only `core` and `guard-cli`); `--impl=rust` is a stub that
+FAILS OPEN, printing `0 cases implemented` and exiting **0** (`run.sh:90-101`); and
+`--assert-reproducible` is not a flag at all (0 occurrences across `run.sh`, `runner.py`,
+`lib/harness.py` — it hits the unknown-arg handler and exits 2). The `--impl=python` path
+fails CLOSED correctly, which is why the defect survived review: it is invisible to anyone
+spot-checking with the default impl.
+
+**W2-GATE, corrected — root MUST NOT release Wave 2 on the struck command:**
+
+```bash
+CARGO_TARGET_DIR=target/.central cargo test -p shepherd-render   # serial, central, once
+# byte-parity against the Python oracle, all 5 templates, same vars:
+#   render each with services/cli (python) and with crates/render (rust), diff bytes
+# and the digests must reproduce across two renders in ONE process
+```
+
+The struck command is restored as the gate only once tasks #21 (`--impl=rust` fails
+closed on zero implemented cases), #22 (`--assert-reproducible` implemented) and #23
+(`conformance/cases/render/` authored from the frozen Python oracle) have landed. Until
+then a green `conformance/run.sh --impl=rust --suite=render` is evidence of nothing.
 
 **Measured surface** (engineer-derived; A2/D2 did not return in time — see §Proof of
 dispatch). The template surface is far smaller than the seed implies, which materially
@@ -2588,3 +2610,23 @@ PLAN-GATE.
 ## Mid-sprint plan deviations
 
 *(append-only; empty at authorship)*
+
+### PD-01 — W2-GATE struck and replaced (root, Wave 2)
+
+- **Author:** root-shepherd. **Trigger:** DF-59, raised by a haiku `@discovery` dispatch
+  inside Wave 2's own Dynamic Workflow, before the W2 coders finished writing.
+- **What changed:** the `W2-GATE` line at §Wave 2 is struck and replaced with a central
+  `cargo test -p shepherd-render` plus an explicit byte-parity diff against the Python
+  renderer over all 5 templates.
+- **Why:** the gate as authored is a false green. `--impl=rust` is a stub that exits **0**
+  on `0 cases implemented` (`run.sh:90-101`), there is no `render` suite in
+  `conformance/cases/`, and `--assert-reproducible` is not a recognized flag (exit 2).
+  A wave gate whose verdict releases a commit must be able to fail; this one could not.
+- **Scope of the change:** the ACCEPTANCE MECHANISM only. No step's deliverable, file
+  scope, or predecessor changed. W2-S1 and W2-S2 are unamended.
+- **Reversion condition:** the struck command is restored verbatim as the gate once tasks
+  #21, #22 and #23 land. This deviation is not a permanent weakening of the gate — it is a
+  refusal to accept a gate that cannot fail, pending the three fixes that make it real.
+- **Related:** DF-47 (a CRITICAL step's acceptance ran none of its tests), DF-19 (wiring
+  test greps prose), DF-17 (lint pins tokens in text). Fourth instance of the same class
+  this run; first to reach a wave boundary.
