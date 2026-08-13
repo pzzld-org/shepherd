@@ -106,15 +106,70 @@ auto_invoke = "doctor"
 # it names the model your live session SHOULD run; a config key cannot rebind a
 # running main-chat session (a spawn preflight warns on mismatch). Set any role
 # to any slug for total control. See docs/configuration.md §models.
+#
+# TIERING RULE (v6.4.5, operator directive 2026-08-12: "use haiku whenever
+# compiling research"). Tier by WHAT THE ROLE DOES, applying the two-machine-spaces
+# split in CLAUDE.md to model choice, not just to code-vs-prompt:
+#
+#   COMPILING  — probe a binary, read a doc, count objects, grep, tabulate. Same
+#                input, same correct output. Deterministic-shaped work wearing a
+#                model. -> haiku
+#   JUDGING    — grade, refute, decide, decompose, adjudicate. Genuinely latent.
+#                -> sonnet and up
+#
+# Measured on the v6.4.5 intro wave, subagent tokens actually billed:
+#   discovery  D1 122,024 · D2 275,034 (incl. a 143k re-emission)  = 397,058
+#   auditor    A1 146,393 · A2 252,903 (incl. a 128k re-emission)
+#              A3 134,218                                          = 533,514
+#   critic     pass1 239,042 · pass2 203,490                       = 442,532
+#                                                          total  ~1,373,104
+#
+# Every one of those agents spent the BULK of its budget compiling: D1 probed
+# `pi --help` and bundled docs; D2 read live registry package.json and minijinja
+# source; A1 counted LOC and grepped for `todo!()`; A2 AST-walked 43 modules and
+# tokenize-measured code density; A3 counted 36 tables / 14 views / 34 indexes.
+# The load-bearing JUDGMENTS -- A2's NO-FIT verdict, A3's refutation of locked
+# decision 3 -- were each one short inference sitting on top of a large pile of
+# mechanical measurement.
+#
+# SHAPE (operator, 2026-08-12): do NOT tier the mixed roles whole. Split them.
+# `@discovery` stays SONNET and becomes a research LEAD: it decomposes the question,
+# fans out haiku `@worker`s to compile the evidence, and synthesizes the report the
+# engineer consumes. The compiling tier is `@worker` at HAIKU. No seventh role is
+# needed and the flock stays closed at six -- `@worker` is already defined as bounded
+# execution for research, ops and batches, which is exactly the compiler tier.
+#
+# This is strictly better than tiering discovery down, for two reasons beyond cost:
+# the synthesis stays at a tier that can actually weigh conflicting evidence (D2 had
+# to settle two lanes' contradictory rusqlite/FTS5 claims at the source), and fan-out
+# forces each compiler's evidence onto disk as its own artifact instead of leaving it
+# in one agent's reasoning trace.
+#
+# BLOCKED ON DF-14, and this is the point where that finding stops being an
+# inconvenience and becomes load-bearing: on this substrate a dispatched agent's
+# result is delivered to the TASK-TREE OWNER, not to the agent that dispatched it
+# (measured 5/5 this run; GH #270). A `@discovery` lead fanning out haiku `@worker`s
+# would therefore receive none of their reports -- exactly the failure that cost this
+# run ~270k tokens in re-queries before root materialized the payloads to disk by
+# hand. So this shape is CORRECT and NOT YET DISPATCHABLE. W0 has to land the DF-14
+# fix (sub-flock reports written to `{run_dir}/reports/` by the agents themselves as
+# their contracted durable artifact, lead reads from disk by design) before the
+# discovery-lead pattern can run at all.
+#
+# `auditor` stays sonnet because it GRADES, and `critic` stays sonnet because it is
+# the adversarial gate -- this run is the argument against cheapening it: the critic
+# caught a deadlock the engineer introduced, then refused a peer's request to truncate
+# its own mandated report. `coder` stays sonnet; it writes.
+#
 root      = "opus[1m]"
 planter   = "opus[1m]"
 engineer  = "opus[1m]"
 conductor = "sonnet"
 critic    = "sonnet"
-discovery = "sonnet"
+discovery = "sonnet"   # research LEAD: decomposes, fans out haiku workers, synthesizes
 coder     = "sonnet"
 auditor   = "sonnet"
-worker    = "sonnet"
+worker    = "haiku"    # the compiling tier: probe, read, count, grep, tabulate
 
 [prune]
 # Workdir + registry GC retention windows (v6.2.5). `shctx prune` defaults to
