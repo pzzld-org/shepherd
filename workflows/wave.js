@@ -2,9 +2,7 @@ export const meta = {
   name: 'wave',
   description: 'Execute one shepherd wave: fan out file-disjoint coder steps, verify ONCE centrally.',
   whenToUse:
-    'When a shepherd run has an approved plan and a wave of file-disjoint steps to execute. ' +
-    'Pass the wave spec as args. This is the sanctioned fan-out vehicle — do not hand-roll a ' +
-    'batch of Agent() calls, and do not fan out the verify phase.',
+    'When a shepherd run has an approved plan and a wave of file-disjoint steps to execute. Pass the wave spec as args. This is the sanctioned fan-out vehicle — do not hand-roll a batch of Agent() calls, and do not fan out the verify phase.',
   phases: [
     { title: 'Implement', detail: 'one coder per file-disjoint step, concurrently' },
     { title: 'Verify', detail: 'ONE central auditor — the only agent permitted to build' },
