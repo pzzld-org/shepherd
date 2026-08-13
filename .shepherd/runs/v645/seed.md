@@ -14,37 +14,11 @@ milestone: 58
 sprint_dependencies: []
 sprint_size: XL
 sprint_metadata:
-  # SUBTRACT pre-authorization — operator sign-off 2026-08-12, recorded by root at
-  # PLAN-GATE under the two-meta-loading planter frame. Required before W0-GATE per
-  # critic pass 1 Q1-bis / pass 2 finding 16, and independent of the critic verdict.
-  #
-  # Measured, not estimated. Deletion side at full-arc completion:
-  #   services/cli implementation   42,560
-  #   services/cli tests            32,945
-  #   skills/context/scripts/cmd_*   8,310  (40 files)
-  #   skills/context/tests           3,101  (53 files)
-  #                                 ------
-  #                                 86,916
-  # Addition side: ~21,700-26,700 lines of executable Rust (A2's tokenize-measured
-  # 16,684 real Python lines x 1.3-1.6), landing near 35,000-45,000 total Rust file
-  # LOC at this codebase's doc density, plus packages/ (~200), content/ (~260) and
-  # conformance/ (~340 + corpus).
-  #
-  # So the arc ENDS net-negative by roughly 40,000 lines. The pre-authorization is
-  # not for the end state; it is for the intermediate. Seed decision 5 forbids
-  # deleting Python before the conformance parity gate is green, so every wave
-  # boundary between the Rust surface existing and retirement landing is sharply
-  # net-POSITIVE, peaking near +45,000. Without this block the completeness auditor
-  # files SUBTRACT-VIOLATION and grade-caps at C+ on a sprint that is executing the
-  # seed's own locked sequencing correctly.
-  expected_loc_delta: -40000        # at full-arc completion (W4 retirement landed)
-  subtract_floor: +45000            # ceiling on the intermediate positive excursion
-  subtract_note: |
-    Net-positive is pre-authorized ONLY between the first Rust surface landing and
-    W4 retirement. The arc MUST still close net-negative; a close that ends positive
-    is a genuine SUBTRACT-VIOLATION and is not covered by this block. If the operator
-    stops the arc before retirement lands, the stopping wave inherits this
-    pre-authorization and the carry-forward records the outstanding deletion.
+  # SUBTRACT pre-auth. Operator sign-off 2026-08-12 at PLAN-GATE, required before
+  # W0-GATE per critic pass-1 Q1-bis. Derivation: plan.md §Global Constraints.
+  expected_loc_delta: -40000   # at full-arc completion (W4 retirement landed)
+  subtract_floor: 45000        # ceiling on the intermediate positive excursion
+  subtract_note: "Net-positive pre-authorized ONLY between first Rust surface and W4 retirement. A close that ends positive is a genuine SUBTRACT-VIOLATION, not covered."
 file_scope:
   exclusive:
     - Cargo.toml
@@ -79,9 +53,7 @@ Shepherd's engine is rewritten once, in Rust, and published as a single compiled
 
 ## 2-bis. Priors / lessons carried forward
 
-| Prior id | Lesson (concern) | Guard this patch applies |
-|---|---|---|
-| none (registry absent) | `.shepherd/ctx/` and `shepherd.db` were never bootstrapped in this checkout, so ROW 11/12 are structurally empty and `shctx discovery insert` failed 8/8 during the mesh | Registry bootstrap is the first release-gate check (§C.1); the arc may not close with an unprovisioned silo |
+No adaptation priors exist (`shctx adapt priors` empty; absence recorded, none invented). One lesson: `.shepherd/ctx/` and `shepherd.db` were never bootstrapped in this checkout, so mesh ROW 11/12 are structurally empty and `shctx discovery insert` failed 8/8. **RESOLVED at spawn preflight 2026-08-12** — root ran `shctx init`, 21 migrations applied. Registry bootstrap remains release-gate check §C.1.
 
 ## 5. Engineering decisions (locked)
 
@@ -213,17 +185,13 @@ Recommended shape only. The engineer's Stage Graph is binding.
 
 ## 11. Open questions for critic
 
-1. Are the 8 CHANGELOG-fixed-but-open issues genuinely fixed? The arc cites `#266` and `#235` as live pain; if they are closed in code, the citations need restating.
-2. Does the `shctx` name survive as an alias of the new binary, or retire with the bash layer? Agent-authored prose across `skills/**` invokes it by name.
-3. Is 6 sprints honest for ~42,500 implementation lines and 1,583 test assertions, or does the verb surface deserve its own arc?
-4. Pi's `--tools` is documented as a replacing allowlist over built-in tools; that is read from `pi --help` on 0.84.1, not confirmed by a runtime probe. Does the adapter's capability claim need the probe first?
+1. **RESOLVED.** 6 of the 8 are genuinely fixed and closeable. **#270 is NOT** (measured 5/5 this run) and #263 is documented but contradicted by `agents/engineer.md:65-67`. Both #266 and #235 are fixed in code, so §2's citations are restated above and decision 3 was rewritten. Method note: A3 first graded #263/#270 fixed by grepping doctrine prose — the same blind spot as `test_v644_wiring.sh`; behavioral measurement overturned it. 3. **RESOLVED (operator, full arc).** 4. **RESOLVED** — probe-confirmed on the installed 0.84.1 binary: `--tools` is a replacing allowlist, and `--no-builtin-tools`/`--no-tools` exist independently.
+2. **STILL OPEN.** Does `shctx` survive as an alias of the new binary, or retire with the bash layer? Agent-authored prose across `skills/**` invokes it by name.
 
 ## 12. References
 
 - Mesh report: `.shepherd/runs/v645/mesh.md` — the tracked, durable record. Raw lane evidence sits at `runs/v645/reports/discovery-mesh-gh.md`, which `.gitignore` excludes by design, so mesh.md is authoritative for anyone cloning
-- Pi implementation spec — `obsidian://adv-uri?vault=pzzld&filepath=src%2Fprojects%2Fshepherd%2Fdocs%2Fpi-shepherd.md`
-- Monorepo architecture — `obsidian://adv-uri?vault=pzzld&filepath=src%2Fprojects%2Fshepherd%2Fdocs%2Fshepherd-monorepo.md`
-- Project home — `obsidian://adv-uri?vault=pzzld&filepath=src%2Fprojects%2Fshepherd%2FREADME.md`
+- Vault specs (`obsidian://adv-uri?vault=pzzld&filepath=src%2Fprojects%2Fshepherd%2F…`): `docs/pi-shepherd.md` (Pi implementation), `docs/shepherd-monorepo.md` (architecture), `README.md` (project home). **Superseded on the harness surface by `runs/v645/reports/discovery-d1-harness.md`, which probed the installed binaries directly** — prefer it where the two disagree
 - Port precedent: `FL03/codex-shepherd` v1.0.2 `docs/parity.md`; tracking: FL03/shepherd#279, milestone 58
 - Dependency stack + crate topology, locked and Context7-checked: `.shepherd/docs/specs/2026-08-12-v645-rust-dependency-stack.md` — §9 records the four feature-graph defects found while scaffolding and the rusqlite backend correction
 - Sprint setup, run first on any checkout: `scripts/setup.sh` then `scripts/gate.sh full`; tiers, add-a-crate rules and invariants in `CONTRIBUTING.md` + `scripts/check-workspace.sh`
