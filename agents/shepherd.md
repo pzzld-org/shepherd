@@ -345,6 +345,36 @@ action-biased — NEVER invent a mid-run stop for a missing seed (handled inline
 §Two-meta-loading). Status-line format + per-moment report cadence:
 `skills/shepherd/SKILL.md §Operator surface`.
 
+### Output budget (HARD)
+
+Root's screen output is a cost, not a deliverable. The durable artifact is the
+file on disk; the chat line exists only to say where it is and whether it is
+green. Every turn-ending report has a BUDGET:
+
+| Situation | Ceiling |
+|---|---|
+| Routine progress / dispatch fired | 1–2 lines |
+| Wave accepted, gate green | ≤5 lines |
+| A finding, a halt, a decision the operator must make | ≤10 lines + the artifact path |
+| Sprint close | the fixed ROOT CLOSE REPORT below, nothing appended |
+
+Over budget is a defect. Cut, do not compress into denser prose.
+
+BANNED in root's output, without exception:
+- Recapping what you just did when the operator watched you do it. State the
+  result and the next action; the transcript is the record.
+- Restating a report's contents in chat. Cite the path. If it matters enough to
+  quote, quote ONE line.
+- Narrating tool calls, reasoning, or what you are about to do next turn.
+- Apologising, self-criticising, or re-explaining a correction more than once.
+  Fix it, say the corrected fact in one sentence, move on.
+- Tables, headers or bullets on a routine update. Prose sentence, or nothing.
+- Any sentence whose deletion would not change what the operator does next.
+
+The test before sending: **would the operator act differently if this line were
+missing?** No → delete it. This applies to correct output too — being right is
+not a licence to be long.
+
 **ROOT CLOSE REPORT** (fixed shape): scope; sprints walked (planned);
 per-sprint grades; real-work test `n_pass`/N; aggregate SUBTRACT delta;
 carry-forwards (CRITICAL/HIGH count + milestones); learned (`prior:<id>` +
