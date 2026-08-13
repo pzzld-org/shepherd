@@ -13,6 +13,38 @@ planter_mesh: .shepherd/runs/v645/mesh.md
 milestone: 58
 sprint_dependencies: []
 sprint_size: XL
+sprint_metadata:
+  # SUBTRACT pre-authorization — operator sign-off 2026-08-12, recorded by root at
+  # PLAN-GATE under the two-meta-loading planter frame. Required before W0-GATE per
+  # critic pass 1 Q1-bis / pass 2 finding 16, and independent of the critic verdict.
+  #
+  # Measured, not estimated. Deletion side at full-arc completion:
+  #   services/cli implementation   42,560
+  #   services/cli tests            32,945
+  #   skills/context/scripts/cmd_*   8,310  (40 files)
+  #   skills/context/tests           3,101  (53 files)
+  #                                 ------
+  #                                 86,916
+  # Addition side: ~21,700-26,700 lines of executable Rust (A2's tokenize-measured
+  # 16,684 real Python lines x 1.3-1.6), landing near 35,000-45,000 total Rust file
+  # LOC at this codebase's doc density, plus packages/ (~200), content/ (~260) and
+  # conformance/ (~340 + corpus).
+  #
+  # So the arc ENDS net-negative by roughly 40,000 lines. The pre-authorization is
+  # not for the end state; it is for the intermediate. Seed decision 5 forbids
+  # deleting Python before the conformance parity gate is green, so every wave
+  # boundary between the Rust surface existing and retirement landing is sharply
+  # net-POSITIVE, peaking near +45,000. Without this block the completeness auditor
+  # files SUBTRACT-VIOLATION and grade-caps at C+ on a sprint that is executing the
+  # seed's own locked sequencing correctly.
+  expected_loc_delta: -40000        # at full-arc completion (W4 retirement landed)
+  subtract_floor: +45000            # ceiling on the intermediate positive excursion
+  subtract_note: |
+    Net-positive is pre-authorized ONLY between the first Rust surface landing and
+    W4 retirement. The arc MUST still close net-negative; a close that ends positive
+    is a genuine SUBTRACT-VIOLATION and is not covered by this block. If the operator
+    stops the arc before retirement lands, the stopping wave inherits this
+    pre-authorization and the carry-forward records the outstanding deletion.
 file_scope:
   exclusive:
     - Cargo.toml
@@ -57,7 +89,7 @@ Changing one of these is a critic-RED escalation, not a sprint-time judgment cal
 
 1. **Rust owns the engine; TypeScript owns Pi's hot path.** `crates/` holds core, registry, render, sdk, and CLI. Claude and Codex adapters exec the binary. Pi's per-`tool_call` guards stay TypeScript. No napi-rs and no `.node` addon in this arc: the jiti in-process load path is unverified and Prisma walked back that exact architecture in 7.0.0.
 2. **Guard predicates are data, not duplicated code.** Both the Rust engine and the TS guard layer interpret one declarative predicate spec under `content/`. A predicate expressed as code in two languages is a defect.
-3. **The registry schema is the cross-harness contract, not CLI stdout.** All 32 guard scripts read SQLite directly and zero of them shell out to the CLI. Schema and row shapes are the compatibility surface.
+3. **The registry schema AND five named CLI behaviors are the cross-harness contract.** *(Restated 2026-08-12 by operator decision at PLAN-GATE. The original wording — "All 32 guard scripts read SQLite directly and zero of them shell out to the CLI" — was measured false during Phase 0 and escalated CRITIC-RED by `@engineer` as Q6; critic pass 2 independently re-derived the same counts and upheld it.)* Ten of 32 guard scripts read SQLite directly. **Five shellouts across four scripts** drive guard decisions through the CLI instead: `dups_write_guard.sh:65` (`dups check --stdin --as --json`, drives BLOCK/WARN), `seed_preflight_check.sh:64` (`seed verify`, gates SEED-GATE), `teammate_idle.sh:57` (`teammate heartbeat --note`) and `:88` (`deliverable stalled --since-mins`), `user_prompt_submit.sh:102` (`status`). **Three of those four touch DB state exclusively through the CLI** — zero direct `sqlite3` calls — so their exact stdout, exit codes and JSON shape are load-bearing compatibility surface, not implementation detail. The conformance oracle therefore covers schema, row shapes, **and** those five verbs' observable behavior (`--suite=guard-cli`, wired into W0-S9 as MUST-FIX-BEFORE-DISPATCH). Rewriting the four guards to read SQLite directly was considered and rejected as invasive unseeded scope on live guards.
 4. **`rusqlite` with `features = ["bundled"]` only.** Probe-verified against 0.40.2 (SQLite 3.53.2): FTS5 present, external-content tables with `unicode61 remove_diacritics 2` work, `json_valid` CHECKs enforce. There is no `fts5` cargo feature. `ENABLE_JSON1` is ABSENT from `compile_options` yet `json_valid` works, since JSON went core at SQLite 3.38 — assert the behavior, never that flag.
 5. **No canon flip before the parity gate is green.** Python stays canonical until conformance passes byte-clean. There is no dual-maintenance window.
 6. **The 20 migration files port verbatim.** Migration SQL is the portable artifact; only the runner is rewritten. `rusqlite_migration` is rejected: it tracks state in `user_version`, while this schema uses a `schema_versions` table both existing runners read.
