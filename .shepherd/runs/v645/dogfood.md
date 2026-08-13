@@ -8,6 +8,28 @@ before CLOSE.
 Legend — **S** severity (CRITICAL / HIGH / MEDIUM / LOW), **D** disposition
 (FIX-THIS-RUN / FILED / ACCEPTED / OPEN).
 
+## Disposition map — where each finding stands after Wave 0
+
+Wave 0 was largely a remediation wave: nine of its sixteen steps exist only because this run
+surfaced the defect. This table is the close report's input; it is maintained as findings land.
+
+| Status | Findings | Notes |
+|---|---|---|
+| **CLOSED by Wave 0** | DF-01 (W0-S2), DF-02 (W0-S5), DF-03 (W0-S4), DF-04 (W0-S6), DF-08 (W0-S3), DF-09 (W0-S3), DF-16 (W0-S10), DF-17 (W0-S11), DF-18 (W0-S1), DF-19 (W0-S12), DF-21 (W0-S14), DF-22 (W0-S15), DF-26-partial (W0-S16 + root) | 12 closed, each verified by root re-running the acceptance rather than reading the report |
+| **REFUTED** | DF-07 | `doctor` exits 1/2/0 correctly; root's evidence was `$?` from a pipeline |
+| **DISPOSITIONED, no code change** | DF-06 | W0-S3 investigated: `--version` is already the sole adequate probe surface |
+| **OPEN — operator decision** | DF-10 | GitHub MCP: `github-official` exists in the Docker catalog, needs a PAT. Not root's to provision |
+| **OPEN — carried to W1** | DF-25 (`shctx skills validate`), DF-26 (wave-gate reference integrity) | Both proposed as W1 steps by the l4 conductor, correctly refusing to smuggle them in ungated |
+| **OPEN — the liveness cluster** | DF-12, DF-13, DF-33, DF-36 | One root cause with four faces: two dead heartbeat paths, a one-way `idle` latch, and no way to tell a working agent from a hung one. DF-36 is the keystone — `teammate_idle.sh` calls a verb that does not exist and `\|\| true` hides it |
+| **OPEN — the two-implementations cluster** | DF-05, DF-20, DF-32 | `shctx` (bash) and `shepherd` (Python) have diverged, and the doctrine cites whichever the author happened to use. DF-32 is the sharp end: `agents/shepherd.md:158` sends ROOT to a command that does not exist |
+| **OPEN — the looks-like-verification cluster** | DF-19-adjacent, DF-29, DF-37 | Three mechanisms that execute and prove nothing: a wiring test that greps prose (fixed), a `[gates.extra]` block that never runs, an acceptance predicate that passes vacuously. Common fix: **prove the check can fail** |
+| **OPEN — the fail-open cluster** | DF-35, DF-36, DF-38 | Guards that are correct, wired, and blind: confinement fails open on a cwd-resolved lookup; the heartbeat swallows a permanent error; `teammate_git_guard` matches teammates and a coder is a subagent. Each default is individually defensible and collectively catastrophic |
+| **OPEN — trust and authority** | DF-27, DF-28, DF-34 | No authenticated channel for amending a running agent's brief, no verb for widening one, and mid-run capability changes reach in-flight agents unmarked. Held so far only by agents choosing to refuse |
+| **OPEN — artifact durability** | DF-15, DF-23, DF-24, DF-35 | The run dir is gitignored, lane ids the plan must emit are rejected by the ledger that consumes them, `.worktrees/` is unignored, and a relative reports path forks per worktree |
+| **OPEN — doctrine contradictions** | DF-39, DF-31 | Lane custody versus the drift gate cannot both be satisfied; fixing the lane-plan template disarms the drift check that covered for it |
+
+**Six refusals, all correct, all against a dispatcher.** W0-S4 refused its conductor's skills override; W0-S13 refused an unverifiable inline scope expansion; W0-S15 refused a mid-flight skill injection contradicting its brief; W0-S1, W0-S4 and W0-S10 refused root's own absolute-path instruction. The framework's hard rules held **only** because subordinate agents enforced them upward. That is the single most load-bearing behaviour observed this run, and nothing in the toolchain produced it.
+
 ## What worked — do not regress these in the overhaul
 
 A ledger of 19 defects is a biased sample. These components were exercised hard this run and behaved
