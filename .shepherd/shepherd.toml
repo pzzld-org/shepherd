@@ -161,6 +161,34 @@ auto_invoke = "doctor"
 # caught a deadlock the engineer introduced, then refused a peer's request to truncate
 # its own mandated report. `coder` stays sonnet; it writes.
 #
+# ---------------------------------------------------------------------------
+# TIERING POLICY (operator, 2026-08-12). Binding floors, not preferences:
+#
+#   TEAM LEADS AND PERSISTENT AGENTS -- `engineer`, `conductor` -- are SONNET AT
+#   MINIMUM. Never haiku. They hold state across a whole plan or a whole lane,
+#   they decompose, and they adjudicate; a lead that loses the thread costs more
+#   than the tier ever saves. `engineer` is RECOMMENDED and DEFAULTED to an
+#   opus-level model. `conductor` may dispatch at sonnet or opus at root's
+#   discretion per lane -- escalate a lane that is dense, cross-cutting, or
+#   carrying an unresolved gate; sonnet is the default and is sufficient for a
+#   lane walking a well-decomposed plan.
+#
+#   `discovery` may run at SONNET OR HAIKU, with a condition attached: **if
+#   haiku, fan out wider and cut each task narrower.** Haiku compiles a tightly
+#   scoped question well and degrades on a broad one, so the tier is only cheaper
+#   if the decomposition does the work the model no longer does. One haiku agent
+#   asked "probe the Pi harness surface" is a false economy; six asked one
+#   concrete question each, with the answer shape specified, is not. At sonnet,
+#   discovery can hold a broad brief and settle conflicting evidence itself --
+#   which D2 had to do this run, resolving two lanes' contradictory rusqlite and
+#   FTS5 claims by going to the source and finding both wrong.
+#
+#   The rule generalizes: DROPPING A TIER IS ONLY A SAVING IF THE BRIEF GETS
+#   NARROWER BY THE SAME MEASURE. Cheaper model, same broad question, is how a
+#   research pass returns something plausible and wrong -- the most expensive
+#   outcome available, because the cost lands downstream on whoever trusts it.
+# ---------------------------------------------------------------------------
+#
 root      = "opus[1m]"
 planter   = "opus[1m]"
 engineer  = "opus[1m]"
