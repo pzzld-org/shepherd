@@ -4,6 +4,45 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v6.4.5 — unreleased
+
+**The first sprint run as a genuine dogfood, and the plugin's own failures became most of the work. Root drove `/shepherd:spawn` on this repo with two lanes and roughly twenty coders; forty defects surfaced against the framework itself, nine of them became Wave-0 steps that were never in the seed, and the single most expensive one killed ten coders for ~610k tokens before a line was written. Four separate mechanisms turned out to look like verification and not be: a wiring test that greps prose, a `[gates.extra]` block that never executes, an acceptance predicate that passes vacuously, and a version-match test left red across a release. The through-line of every fix below is the same — prove the check can fail.**
+
+### Fixed — the toolchain stops lying
+
+- **`lint` counts violations, not violation kinds.** It reported six stale run directories and printed `FAIL (1 violation(s))`. `scripts/check-plugin.sh` is renamed to `.py` — it was always Python wearing a shell extension, which is misleading to anyone grepping for bash; `gate.sh` and `.github/workflows/rust.yml` follow. That rename had three reference sites across two lanes' scopes and one owned by nobody, and no structural check found any of them.
+- **`doctor` stops prescribing commands that do not exist.** Three of its five warnings said `→ fix: run 'shctx refresh --scope=issues'` (likewise `prs`, `releases`), and `refresh` rejects all three — only `symbols` and `artifacts` are accepted. The `artifacts` zone also read a freshness column nothing stamps, so it reported `never refreshed` immediately after a successful refresh. Both fixed against the live registry.
+- **Model slugs are translated by the engine, not by each dispatcher.** `shctx models resolve engineer` returned `opus[1m]`, which the dispatch tool's closed enum rejects, so every Opus-tier dispatch silently rewrote the slug at the call site. `models resolve --harness` now owns the 9-role × 3-harness table; no-flag output stays byte-identical by construction.
+- **A clean clone can spawn.** The registry DB is gitignored by design and nothing scaffolded it, so a fresh checkout sat permanently un-bootstrapped: `doctor` failed closed with no automatic remedy and every spawn-critical verb depended on the missing DB. `session_open.sh` self-heals and spawn gains Preflight Check 4b, both scaffold-then-proceed. Verified against a real clone, `doctor` 2-fail → 0-fail with no hand-run `init`.
+
+### Fixed — verification that verifies
+
+- **`test_v644_wiring.sh` asserts behaviour, not prose.** It "verified" #268, #269 and #270 with `need <file> "<string>"` greps over documentation. It could not see that **#270 is still broken** (measured 5/5 this run) because the text describing the fix was present, and presence was all it checked. All 24 assertions are now real invocations or explicit `UNVERIFIABLE-IN-TEST` citations naming why. On its first run the rewritten test **failed**, correctly: `agents/shepherd.md:158` sends root to `shctx plan amend`, which errors `unknown subcommand` — the bash surface lacks it while the Python CLI implements it.
+- **The three grep-based boundary gates get genuine negative controls.** `boundaries.yml` claimed negative-control verification in a *comment* — a one-time manual check, with no committed fixture. `.github/scripts/boundary-selftest.sh` now proves each gate's exact regex rejects a deliberately-broken fixture and accepts the real tree, and runs ahead of the gates so a broken gate is caught before it silently no-ops.
+- **The Stage Graph gets a checker, because the same defect class was caught three times by hand.** `scripts/check-stage-graph.py` runs six invariants — dangling targets, stranding edges, unbacked predicates, same-predecessor AND-joins, reachability, terminal-reachability — each with a deliberately-broken fixture proving it can fail. Its `--self-test` is the pattern, explicitly not the grep-for-prose one. Two of the three prior catches were a critic finding a deadlock and then the engineer's own generalisation missing a third of it.
+- **A recorded critic proof cannot be silently invalidated.** `record-critique` succeeds, the plan stays an ordinary file, and nothing warns at record time or edit time — so the author invalidates the attestation and reports the gate green in good faith, twice, and only a later reader running `verify` finds out. `plan_proof_guard.sh` refuses a write to a plan whose sibling proof verifies clean, and deliberately does **not** auto-re-record: that would forge an attestation the critic never made.
+
+### Added — the harness-agnostic substrate
+
+- **`content/` is the single source.** Nine harness-neutral role files, seven skill digests, four declarative guard predicates, and a reconciliation ledger. Every role carries `write_eligible` as a first-class fact rather than an unenforced convention — required because Codex `explorer` roles cannot write files at all, so a compiler emitting from tool-grants alone produces a broken adapter.
+- **A conformance oracle frozen from the Python CLI (#281).** 15 cases across `core` and `guard-cli`, green on both, with a committed corpus checksum and a `NORMALIZATION.md` pinning timestamps, UUIDs, absolute paths, locale, JSON key order and `sqlite_master` ordering. The `guard-cli` suite exists because locked decision 3 was measured **false**: five CLI shellouts across four guard scripts, three of which touch DB state *exclusively* through the CLI, so their exact stdout, exit codes and JSON shape are compatibility surface. No golden fixtures existed anywhere beforehand — this is from zero, with 1,583 pytest assertions as the only prior specification.
+- **`packages/` npm workspace** with three harness adapters, a compiler stub, and `check-deps.mjs` — a dependency-direction gate carrying three synthetic negative fixtures.
+- **Role capability becomes probed, not declared.** `agents/engineer.md:7` grants `Workflow`, `Glob` and `Grep`; the spawned engineer could see none of the three. Frontmatter `tools:` does not survive to runtime, so `lint_agent_capabilities.sh` — which pinned tokens in the *text* of a file — proved nothing. It now records declared-versus-observed per dispatch and detects the delta, with a `--self-test` that fabricates one.
+
+### Fixed — dispatch doctrine matches the platform that ships
+
+- `commands/spawn.md` described teammates as created by a "native teammate-spawn" distinct from the `Agent` tool. On Claude Code 2.1.229 that distinction is gone: `Agent` carries a `name`, `team_name` is documented as ignored, and the session has a single implicit team. `skills/harness/SKILL.md` now records the flat-roster constraint, task-tree-owner notification routing, and the frontmatter-non-authoritative fact.
+- **`[mcp].<svc>` becomes a probe, not a promise.** `shepherd_mcp_available` gates on config *and* a TTL-cached runtime probe, emitting the sanctioned `[WARN] MCP <svc> unavailable — using <cli>` degrade automatically.
+
+### Known-broken, measured this run and not yet fixed
+
+- **`teammate_idle.sh` calls a subcommand that does not exist.** `bin/shepherd teammate heartbeat` exits 2 on every invocation; the Python group exposes only `liveness`, `status`, `state`. `2>/dev/null || true` hides it. With the PreToolUse hook matching on a `session_id` root cannot supply, **both** liveness-stamping paths are dead — while the same script's `UPDATE … status='idle'` works, making `idle` a one-way latch. Frozen as a golden oracle case.
+- **`shepherd plan extract --run` is rejected outright**, so no invocation produces run-scoped graph state and `plan topology`/`validate` are unavailable. #278 describes the flag as undocumented; here it does not exist.
+- **`[gates.extra]` is never executed** — `gate.sh` is a warn-only close ledger, not a runner. Registering a check there does not make it block.
+- **Four version sources, three answers**: `plugin.json` 6.4.5, `Cargo.toml` 6.4.5, `shepherd_cli.__version__` 6.4.4, `README.md` v6.4.2. `test_version_match_emits_no_row` exists to assert they agree and has been red since before this sprint.
+
+---
+
 ## v6.4.4 — 2026-08-06
 
 **The artifact schema stops contradicting itself. `.shepherd/` had two knowledge silos with the wrong one gitignored, run-scoped audits and reports piling into the cross-run `docs/` tree while the run-scoped directories sat empty, and a `runs/` folder holding spec-shaped directories that `lint` could not see. Plus the five issues that landed with it: an unprovisioned CLI venv that blocked every spawn, a preflight that refused on the session's own team file, no sanctioned way for root to re-gate a plan it correctly fixed, two unlinked sources of truth per lane, and a completion notification that never arrives.**
