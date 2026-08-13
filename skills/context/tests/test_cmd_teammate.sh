@@ -45,6 +45,35 @@ $CMD liveness --stale-mins=10 | grep -c "conductor-test" >/dev/null || { echo "F
 # status returns JSON
 $CMD status conductor-test | grep -c '"teammate_name":"conductor-test"' >/dev/null || { echo "FAIL: status JSON shape"; exit 1; }
 
+# W2-G3 regression: status/register/retire must not crash with a raw bash
+# unbound-variable trace when called with no <name> — each branch read $1 directly with
+# no default under `set -u`. Each must instead hit the usage()+exit 2 guard, matching the
+# `state` branch's pre-existing safe shape (`name="${1:-}"; shift || true` + explicit
+# `[[ -n "$name" ]]` check).
+# Each usage-printed assertion below greps ITS OWN subcommand's line out of the
+# static usage() block (skills/context/scripts/cmd_teammate.sh) rather than a
+# shared borrowed line, so a regression in one branch cannot hide behind (or be
+# confused with) a coincidental match from another branch's assertion.
+rc=0; out=$($CMD status 2>&1) || rc=$?
+[[ "$rc" == "2" ]] || { echo "FAIL: status with no name exit code: $rc (want 2)"; exit 1; }
+[[ "$out" != *"unbound variable"* ]] || { echo "FAIL: status with no name raised unbound variable: $out"; exit 1; }
+echo "$out" | grep -q "shctx teammate status <name>" || { echo "FAIL: status with no name did not print its own usage line: $out"; exit 1; }
+
+rc=0; out=$($CMD register 2>&1) || rc=$?
+[[ "$rc" == "2" ]] || { echo "FAIL: register with no args exit code: $rc (want 2)"; exit 1; }
+[[ "$out" != *"unbound variable"* ]] || { echo "FAIL: register with no args raised unbound variable: $out"; exit 1; }
+echo "$out" | grep -q "shctx teammate register <name> --team=" || { echo "FAIL: register with no args did not print its own usage line: $out"; exit 1; }
+
+rc=0; out=$($CMD retire 2>&1) || rc=$?
+[[ "$rc" == "2" ]] || { echo "FAIL: retire with no name exit code: $rc (want 2)"; exit 1; }
+[[ "$out" != *"unbound variable"* ]] || { echo "FAIL: retire with no name raised unbound variable: $out"; exit 1; }
+echo "$out" | grep -q "shctx teammate retire <name>" || { echo "FAIL: retire with no name did not print its own usage line: $out"; exit 1; }
+
+rc=0; out=$($CMD heartbeat 2>&1) || rc=$?
+[[ "$rc" == "2" ]] || { echo "FAIL: heartbeat with no name exit code: $rc (want 2)"; exit 1; }
+[[ "$out" != *"unbound variable"* ]] || { echo "FAIL: heartbeat with no name raised unbound variable: $out"; exit 1; }
+echo "$out" | grep -q "shctx teammate heartbeat <name>" || { echo "FAIL: heartbeat with no name did not print its own usage line: $out"; exit 1; }
+
 # retire sets status
 $CMD retire conductor-test
 status=$(sqlite3 "$SHCTX_DB" "SELECT status FROM teammates WHERE id='$id';")

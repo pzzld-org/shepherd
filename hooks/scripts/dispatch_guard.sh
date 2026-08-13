@@ -37,6 +37,21 @@
 #     v2.1.178: `team_name` on Agent/Task is accepted but ignored, so it no longer
 #     signals a teammate even if a caller sets it. They are retained as a
 #     documented contract assertion + unit-tested belt-and-suspenders, harmless.
+#   - Check 7 (concern-declaration discipline) is LOAD-BEARING and MECHANICAL:
+#     it fires on every `shepherd:auditor` dispatch and enforces
+#     agents/auditor.md:92 ("brief's `concern` field is authoritative, NEVER
+#     collapse two into one report") in code, not prose (DF-44; a bundled
+#     five-concern @auditor dispatch at a live lane's own wave-review gate is
+#     the incident this whole lane exists to make mechanically impossible).
+#   - Check 8 is a PURE OBSERVER: it NEVER blocks or denies, under any
+#     condition. Every `shepherd:<flock>` dispatch that reaches it (i.e. was
+#     not already denied by Checks 1-7) gets a forensic ownership row
+#     (dispatching session, subagent_type, model, lane if resolvable from
+#     `cwd`/prompt, the declared `[CONCERN]` slug when Check 7 found exactly
+#     one) appended to the SAME registry DB the teammate rows live in, so a
+#     completion that surfaces in the wrong session (dispatch routing/
+#     attribution confusion is a live, recurring failure mode this sprint)
+#     can be traced back to who actually issued the Agent()/Task call.
 #
 # Input  (stdin): PreToolUse JSON { tool_name, cwd, tool_input.{subagent_type,prompt,description,team_name?}, ... }
 # Output (stdout):
@@ -54,6 +69,8 @@
 #   4c.brief dispatcher: engineer-self-contained AND type ∉ {discovery,auditor,critic} → ENGINEER-SUBFLOCK-VIOLATION (deny) [#172; sub-flock is read-only, no code]
 #   5. subagent_type = shepherd:<x>, x ∉ closed-flock+conductor → DISPATCH-OFF-FLOCK              (deny)  [mechanical]
 #   6. teammate-session AND a flock fan-out role, no compile    → PRIMITIVE-INVERSION (handrolled) (flag) [#89 inversion 2; #263 default-ON]
+#   7. subagent_type = shepherd:auditor, [CONCERN] count ≠ 1    → AUDIT-CONCERN-UNDECLARED        (deny)  [mechanical; agents/auditor.md:92, DF-44]
+#   8. subagent_type = shepherd:<flock-or-conductor>, survives 1-7 → DISPATCH-OWNERSHIP-RECORD    (observer, never deny) [forensic dispatch attribution, DF-44]
 #
 # Binding (skills/shepherd/references/pipeline.md §Lane law): a LANE = one teammate-conductor
 # spawned via the native teammate-spawn (Agent Teams; no TeamCreate tool); a STEP =
@@ -77,6 +94,15 @@ team_name=$(json_field "$input" '.tool_input.team_name')
 session=$(json_field "$input" '.session_id')
 cwd=$(json_field "$input" '.cwd')
 prompt=$(json_field "$input" '.tool_input.prompt')
+# tool_use_id/model are ONLY consumed by Check 8 (DISPATCH-OWNERSHIP-RECORD),
+# deliberately NOT extracted here: two more json_field calls (each a jq/
+# python3 subprocess spawn) on EVERY dispatch, including the large majority
+# that exit at Checks 1-6 before Check 8 is ever reached, was measured
+# overhead with no payoff for those paths. Extracted inline inside Check 8's
+# own block below, where they are actually used. Both fields are confirmed
+# live on THIS exact hook event by agent_invocation_tagger.sh (same
+# PreToolUse payload, `.tool_use_id` top-level + `.tool_input.model`): not
+# guessed.
 
 # Brief markers (v6.2.6, engineer-self-contained-plan.md). The engineer teammate's
 # own brief FROM root carries `mode: self-contained`; the sub-flock briefs it
@@ -243,6 +269,180 @@ if [[ "$st_lc" == shepherd:* ]] && ! [[ "$st_lc" =~ $FLOCK_RE ]] && [[ "$st_lc" 
   msg+="+ conductor (teammate spawns). Plan authorship, critic gating, audit grading,"$'\n'
   msg+="and code implementation are NEVER substitutable. See $DOC."
   emit_deny "$msg" "dispatch_guard" "$tool" "unknown" "$session"
+fi
+
+# ---------------------------------------------------------------------------
+# Check 7: @auditor dispatch without exactly one declared concern
+# (AUDIT-CONCERN-UNDECLARED, deny). DF-44: root dispatched a single @auditor
+# at a live lane's own wave-review gate carrying FIVE bundled concerns.
+# agents/auditor.md:92 forbids this in prose ("brief's `concern` field is
+# authoritative, NEVER collapse two into one report"), and prose deterrence
+# already failed once in the field. Zero declarations means the dispatcher
+# never told the auditor what to grade; two-or-more bundles multiple reviews
+# into one report, the exact DF-44 shape. Strict: a prose mention of the
+# WORD "concern" is NOT a declaration, only a line-anchored `[CONCERN]
+# <slug>` tag counts, same anchoring discipline as MODE_RE/DISP_RE above.
+# ---------------------------------------------------------------------------
+CONCERN_RE='^[[:space:]]*\[CONCERN\][[:space:]]+[A-Za-z0-9][A-Za-z0-9_-]*'
+if [[ "$st_lc" == "shepherd:auditor" ]]; then
+  concern_matches="$(printf '%s' "$prompt" | grep -oE "$CONCERN_RE" 2>/dev/null || true)"
+  if [[ -z "$concern_matches" ]]; then
+    concern_count=0
+  else
+    concern_count=$(printf '%s\n' "$concern_matches" | wc -l | tr -d '[:space:]')
+  fi
+  if [[ "$concern_count" -ne 1 ]]; then
+    msg="[shepherd] AUDIT-CONCERN-UNDECLARED — refused."$'\n'
+    msg+="  subagent_type: 'shepherd:auditor'   [CONCERN] declarations found: ${concern_count}"$'\n'
+    msg+="agents/auditor.md:92 — \"brief's \`concern\` field is authoritative — NEVER"$'\n'
+    msg+="collapse two into one report.\" Every @auditor dispatch MUST declare EXACTLY"$'\n'
+    msg+="ONE concern, as a line of the form: [CONCERN] <slug>"$'\n'
+    if [[ "$concern_count" -eq 0 ]]; then
+      msg+="Found: none. A prose mention of the word \"concern\" does not count — the"$'\n'
+      msg+="bracketed [CONCERN] tag is required, on its own line."
+    else
+      concern_list="$(printf '%s' "$concern_matches" \
+        | sed -E 's/^[[:space:]]*\[CONCERN\][[:space:]]+//' | tr '\n' ',' | sed -E 's/,$//; s/,/, /g')"
+      msg+="Found ${concern_count}: ${concern_list}."$'\n'
+      msg+="Split into ${concern_count} separate dispatches, one [CONCERN] <slug> each."
+    fi
+    emit_deny "$msg" "dispatch_guard" "$tool" "unknown" "$session"
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+# Check 8: DISPATCH-OWNERSHIP-RECORD (pure observer; NEVER denies, NEVER
+# blocks, under any condition). DF-44 (retargeted mid-wave from an earlier
+# WAVE-GATE-USURPED deny design: root's finding it was built on turned out
+# to be a self-report of a violation that never happened, itself caused by
+# the SAME dispatch-attribution gap this check now records against). Appends
+# a forensic row (dispatching session, subagent_type, model, lane if
+# resolvable from `cwd`/the prompt, never guessed, the `[CONCERN]` slug
+# Check 7 already parsed when it found exactly one, and a timestamp) to the
+# SAME registry DB `teammate_idle.sh`/`coordinate_drive_guard.sh` read
+# (`resolve_namespace` + `hook_db_path`, no second code path). Only reaches
+# dispatches that survive Checks 1-7 (this file's single-exit-per-invocation,
+# first-match-wins architecture, see the header, means a check that fires
+# via emit_deny/emit_context upstream has already exited before this point;
+# extending ownership rows to denied dispatches too would mean restructuring
+# 1-6, which is explicitly out of scope for this step).
+#
+# Table self-heal: hooks/scripts/_lib.sh (this file's only sourced lib) has
+# no versioned-migration machinery. `shctx_ensure_migrated` is a DIFFERENT,
+# skills-side helper (skills/context/scripts/_lib.sh, sourced only by `shctx`
+# CLI commands, never by hooks) and a real skills/context/schema/migrations/
+# entry is outside this step's exclusive [FILE-SCOPE] (hooks/scripts/
+# dispatch_guard.sh only). `CREATE TABLE IF NOT EXISTS` on every invocation
+# is the scope-correct equivalent: idempotent, same DB file, no parallel
+# store. Flagged for the conductor as a deliberate, scope-driven deviation
+# (see CODER REPORT); a real versioned migration is a legitimate follow-up.
+# ---------------------------------------------------------------------------
+sql_lit() {
+  # Echo a single-quoted, escaped SQL string literal for a non-empty value,
+  # or the bare word NULL for an empty/unset one. bash-3.2-safe.
+  #
+  # Escaping goes through `sed "s/'/''/g"` — the same idiom as
+  # skills/context/scripts/cmd_teammate.sh's `esc()` — NOT the bash
+  # `${v//\'/\'\'}` parameter-expansion doubling that used to live here: that
+  # form inserts a literal backslash ahead of each doubled quote
+  # (`o'brien` -> `'o\'\'brien'`), which is not valid SQL-literal escaping
+  # and made sqlite3 reject the INSERT outright, silently dropping the
+  # ownership row for any field containing an apostrophe. Verified against a
+  # real `sqlite3 :memory:` parse, including a DROP-TABLE-shaped adversarial
+  # value, before landing this.
+  local v="$1"
+  if [[ -z "$v" ]]; then
+    printf 'NULL'
+  else
+    printf "'%s'" "$(printf '%s' "$v" | sed "s/'/''/g")"
+  fi
+}
+
+if [[ "$st_lc" == shepherd:* ]]; then
+  tool_use_id=$(json_field "$input" '.tool_use_id')
+  model=$(json_field "$input" '.tool_input.model')
+
+  do_lane=""
+  case "$cwd" in
+    */.worktrees/*)
+      do_lane="$(printf '%s' "$cwd" | grep -oE '\.worktrees/[A-Za-z0-9_.-]+' 2>/dev/null | head -1 \
+        | sed -E 's#^\.worktrees/##')" || true
+      ;;
+  esac
+  if [[ -z "$do_lane" ]]; then
+    do_lane="$(printf '%s' "$prompt" | grep -oE '\.worktrees/[A-Za-z0-9_.-]+' 2>/dev/null | head -1 \
+      | sed -E 's#^\.worktrees/##')" || true
+  fi
+
+  do_concern=""
+  if [[ "${concern_count:-0}" -eq 1 && -n "${concern_matches:-}" ]]; then
+    do_concern="$(printf '%s' "$concern_matches" | sed -E 's/^[[:space:]]*\[CONCERN\][[:space:]]+//')"
+  fi
+
+  do_ns="$(resolve_namespace 2>/dev/null || echo .)"
+  do_db="$(hook_db_path "$do_ns" 2>/dev/null || true)"
+  do_ts=$(date +%s 2>/dev/null || echo 0)
+
+  # WAL + synchronous=NORMAL: journal_mode is a PERSISTENT property of the
+  # DB FILE (set once, on the first-ever write, and every later connection
+  # inherits it, matching the codebase's own schema-init idiom, e.g.
+  # skills/context/schema/0001_init.sql:3, migrations/0007:12); synchronous
+  # is PER-CONNECTION and defaults back to FULL (fsync every commit) unless
+  # reasserted here, so it has to be on every invocation's SQL, not just the
+  # first. No existing journal_mode/synchronous idiom lives in hooks/scripts/
+  # or skills/context/scripts/ (grepped both before writing this), so this
+  # is the plain, direct form. Default rollback-journal mode measured at
+  # ~91ms/invocation (fsync-per-write); WAL+NORMAL keeps Check 7/8's actual
+  # deny/record/fail-visible behavior byte-for-byte unchanged, this is a
+  # connection tuning change only.
+  do_sql="PRAGMA busy_timeout=5000;
+PRAGMA journal_mode=WAL;
+PRAGMA synchronous=NORMAL;
+CREATE TABLE IF NOT EXISTS dispatch_ownership (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  tool_use_id   TEXT,
+  session_id    TEXT,
+  subagent_type TEXT NOT NULL,
+  model         TEXT,
+  lane          TEXT,
+  concern_slug  TEXT,
+  tool          TEXT NOT NULL,
+  recorded_at   INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_dispatch_ownership_recorded ON dispatch_ownership(recorded_at);
+INSERT INTO dispatch_ownership
+  (tool_use_id, session_id, subagent_type, model, lane, concern_slug, tool, recorded_at)
+VALUES
+  ($(sql_lit "$tool_use_id"), $(sql_lit "$session"), $(sql_lit "$subagent_type"), $(sql_lit "$model"),
+   $(sql_lit "$do_lane"), $(sql_lit "$do_concern"), $(sql_lit "$tool"), $do_ts);"
+
+  if ! command -v sqlite3 >/dev/null 2>&1; then
+    warn="[shepherd] DISPATCH-OWNERSHIP-RECORD degraded — sqlite3 not found on PATH."$'\n'
+    warn+="  subagent_type: '${subagent_type}'   tool_use_id: '${tool_use_id:-<none>}'"$'\n'
+    warn+="Dispatch PASSED WITHOUT the ownership record — this observer NEVER blocks."
+    emit_context "$warn" "dispatch_guard" "$tool" "unknown" "$session"
+  else
+    # Skip the mkdir(1) fork entirely once the namespace dir already exists
+    # (the steady-state case on every invocation after the first): measured
+    # ~30x cheaper as a bash builtin `[[ -d ]]` test than an unconditional
+    # `mkdir -p` fork+exec on an already-existing directory.
+    do_dir="$(dirname "$do_db")"
+    do_mkdir_err=""
+    [[ -d "$do_dir" ]] || do_mkdir_err="$(mkdir -p "$do_dir" 2>&1)" || true
+    if [[ -n "$do_mkdir_err" ]]; then
+      warn="[shepherd] DISPATCH-OWNERSHIP-RECORD degraded — registry directory create failed."$'\n'
+      warn+="  dir: '${do_dir}'   subagent_type: '${subagent_type}'   tool_use_id: '${tool_use_id:-<none>}'"$'\n'
+      warn+="  error: ${do_mkdir_err}"$'\n'
+      warn+="Dispatch PASSED WITHOUT the ownership record — this observer NEVER blocks."
+      emit_context "$warn" "dispatch_guard" "$tool" "unknown" "$session"
+    elif ! do_err="$(sqlite3 "$do_db" "$do_sql" 2>&1)"; then
+      warn="[shepherd] DISPATCH-OWNERSHIP-RECORD degraded — registry write failed."$'\n'
+      warn+="  DB: '${do_db}'   subagent_type: '${subagent_type}'   tool_use_id: '${tool_use_id:-<none>}'"$'\n'
+      warn+="  error: ${do_err}"$'\n'
+      warn+="Dispatch PASSED WITHOUT the ownership record — this observer NEVER blocks."
+      emit_context "$warn" "dispatch_guard" "$tool" "unknown" "$session"
+    fi
+  fi
 fi
 
 # ---------------------------------------------------------------------------
