@@ -65,6 +65,27 @@ Every step's requirements implicitly include this section.
      project-wins treatment as `hashbrown`/`tokio`.
 
    None of the three authorizes adding a *new* crate. Adding one remains critic-RED.
+
+8. **SUBTRACT is pre-authorized in the seed. The arc ends net-negative by ~40,000 lines.**
+   Q1-bis flagged that every intermediate wave boundary is net-positive because the only
+   deletion is the last step. Root amended the seed under the planter frame with
+   **measured, not estimated** figures:
+
+   | Removed at W4-S2 | Lines |
+   |---|---|
+   | `services/cli` implementation | 42,560 |
+   | `services/cli` tests | 32,945 |
+   | bash verb layer (40 × `cmd_*.sh`) | 8,310 |
+   | bash tests (53 files) | 3,101 |
+   | **Total retired** | **86,916** |
+   | Rust added (est.) | 35,000–45,000 |
+   | **Net** | **≈ −40,000** |
+
+   Seed now carries `expected_loc_delta: -40000`, `subtract_floor: 45000`. **The floor
+   covers only the intermediate excursion** between the first Rust surface landing and
+   W4 retirement — the window decision 5 forces by forbidding deletion before parity is
+   green. **A close that ends net-positive is still a real `SUBTRACT-VIOLATION` and is
+   explicitly not covered by this pre-authorization.**
 3. **Rust idioms** (`code-style/rust.md`): edition 2024, MSRV 1.94,
    `version.workspace = true`, `workspace.dependencies` as the single version source,
    `resolver = "2"`, named-file module pattern, never `{traits,types,utils,impls}/mod.rs`,
@@ -253,6 +274,7 @@ substrate, already filed, and my intro wave reproduced three of them live.**
 |---|---|---|---|
 | **#270** | "Agent() completion never notifies the dispatching conductor — the only reliable signal is SendMessage's 'had no active task' reply" | **This is DF-11.** Root logged it as new; it was filed already. Previously measured 3/3; my wave makes it **5/5**, and both resumed agents returned the exact documented string. **Confirms NOT-FIXED** — which answers part of seed open question 1 with live evidence | **W0-S5** documents the mechanism; issue stays open |
 | **#263** | "Workflow availability is decided by backendType (own session vs in-process), NOT tier or team membership — in-process teammates ARE denied; agent bodies must check the tool list, not predict from role" | **This is DF-E1.** My `WORKFLOW-VEHICLE-PROBE` returned negative as an in-process teammate — exactly what #263 predicts. The issue's diagnosis is correct and my run is a second confirmation | **W0-S5**; note that `engineer.md:65-67`'s "the grant is LIVE" text contradicts this filed, measured issue |
+| **#278** | "make run-scoped graph state mandatory" — **live, and worse than the issue records.** The issue says `--help` "didn't even expose the `--run` flag that would have prevented it." Measured this run: `shepherd plan extract .shepherd/runs/v645/plan.md --run v645` → **`ERROR: unknown arg: --run`**. The flag is not merely undocumented, it is **rejected**; usage is `extract <plan.md> [--sprint=BRANCH] [--force]` and it stores to flat `<namespace>/graph/state.json`. `.shepherd/runs/v645/graph/` exists and stays empty | **Strengthens the disposition.** Root declined to run `extract` at all rather than write project-global state — precisely the pollution #278 records as having been stripped from a release candidate by hand. Consequence for BODY: **the Stage Graph is unextracted**, so `shctx graph next`/`mark` are unavailable and root gates on `scripts/check-stage-graph.py` (W0-S14) instead |
 | **#269** | "`lanes/{lane}/vars.json` and `plan.md` are two sources of truth with no drift check (measured 5/5 lanes)" | **Threatens this plan's own §Lane projection.** Root materializes lanes via `shepherd render lane-plan.md.j2`; corrections made to prose silently miss the artifact dispatch renders from | **Drift risk — operator decides.** Not absorbed: fixing it is unseeded scope. Flagged so root does not lose lane-plan edits during BODY |
 | **#275** / **#276** | "SUBTRACT grades sprints on LOC, which is a bad proxy — a sprint that ships a new crate is auto-capped at C+" | **Directly governs §Q1-bis.** #275 carries the operator's own objection verbatim: *"I HAVE NEVER ONCE CLAIMED THAT WE SHOULD END NET NEGATIVE E[VERY SPRINT]"* | **Drift risk — operator decides.** My Q1-bis recommendation should be read as *this arc's instance of an already-contested rule*, not a novel request |
 
@@ -580,6 +602,66 @@ rg -q 'negative control' .github/workflows/boundaries.yml
 2. Add `boundary-selftest.sh` asserting each gate rejects its fixture and accepts the real
    tree.
 3. Wire it into `boundaries.yml` ahead of the real gates.
+
+### W0-S14 — the Stage Graph gets a checker, because this defect class has now bitten three times
+
+- **step_id:** `W0-S14` · **predecessors:** none · **estimated_loc:** 180
+- **file_scope.exclusive:** `scripts/check-stage-graph.py`, `scripts/tests/fixtures/stage-graph/`
+- **file_scope.may_read:** `.shepherd/runs/v645/plan.md`,
+  `skills/context/scripts/cmd_graph.sh`, `scripts/check-workspace.sh`
+- **file_scope.must_not_touch:** `crates/**`, `skills/context/scripts/**`
+- **interfaces — Produces:** `scripts/check-stage-graph.py <plan.md>` + `--self-test`,
+  wired into `[gates]`.
+
+**Why this is a step and not a habit.** The same defect — a Stage Graph edge with no
+matching `in_predicate`, or the reverse — was caught **three separate times by three
+different readers**: critic pass 2 finding 12 (`PLAN-GATE-POST-Q1`), finding 14
+(`CLOSE-FINALIZE`), and root's independent check (`CANONICAL-TYPES-REFRESH`, `WORKER-IO`,
+`CODER-CONVERGENCE`). My own generalized check found 8 instances but **missed root's
+three**, because it exempted a predicate when a `parallel_with` sibling carried the
+matching edge — an exemption that hides exactly the topology error `shctx plan topology`
+renders wrong. Three catches by inspection is three too many. `CLAUDE.md`'s
+latent-vs-deterministic rule is explicit: same input, same answer, by definition → write
+the script.
+
+A working implementation already exists at
+`/private/tmp/.../scratchpad/graph_check.py` (119 lines, authored by root, parses 32
+nodes / 49 edges / 32 predicates). **Port it; do not rewrite it.** Root writes `.md` only
+and could not land it.
+
+**[SKILLS]** `code-style`, `python`
+**[CONTEXT-INVENTORY]** The authoritative semantics are in
+`skills/context/scripts/cmd_graph.sh` `_cmd_mark`: on a `done` mark it sets
+`satisfied=True` on every predicate matching `(predecessor, exit_edge)` **scanning all
+nodes**, then promotes a node when `all(p["satisfied"])`. Two consequences the checker
+must encode: (1) a node with two `in_predicates` from the **same** predecessor can never
+be satisfied, since a node fires exactly one exit edge — this is the generalization of
+findings 12 and 14; (2) readiness does **not** consult the predecessor's `out_edges`, so
+an unbacked predicate does not stall the walk but *does* render the topology wrong.
+Mirror `scripts/check-workspace.sh`'s `--self-test` pattern, **not**
+`test_v644_wiring.sh`'s grep-for-prose pattern (DF-19).
+**[DO-NOT-DUPLICATE]** `rg -n 'in_predicates' scripts/` (expected 0 before this step).
+**[USER-STYLE]** A gate with no negative control may be silently passing.
+**[FILE-SCOPE]** as above.
+**[NON-GOALS]** Do not modify `cmd_graph.sh`. Do not make the checker mutate a plan.
+**[ACCEPTANCE]**
+```bash
+# passes on the real plan
+./scripts/check-stage-graph.py .shepherd/runs/v645/plan.md; test $? -eq 0
+# and provably fails on each deliberately-broken fixture
+./scripts/check-stage-graph.py --self-test; test $? -eq 0
+grep -q 'check-stage-graph' .shepherd/shepherd.toml
+```
+
+**Actions**
+
+1. Port `graph_check.py` to `scripts/check-stage-graph.py`, keeping all six checks:
+   dangling edge targets, stranding edges, unbacked predicates, **same-predecessor
+   AND-joins**, reachability, terminal-reachability.
+2. Commit one fixture per check under `scripts/tests/fixtures/stage-graph/`, each
+   violating exactly one rule, and a `--self-test` asserting each is rejected and the real
+   plan accepted.
+3. Wire it into `[gates]` so it runs on every commit touching a plan.
 
 ### W0-S2 — a clean clone can spawn (DF-01)
 
@@ -1748,17 +1830,22 @@ nodes:
   - id: DEDUP-GATE-W0
     type: conductor-inline
     in_predicates: [{from: PLAN-GATE, label: on-green}]
+    # Both clique members are declared explicitly on the SAME edge label. _cmd_mark
+    # satisfies every predicate matching (predecessor, exit_edge), so one firing of
+    # on-dedup-clear readies both -- and `shctx plan topology`, which renders from
+    # out_edges, now shows the Wave-0 clique with both members instead of one orphan.
     out_edges:
       - {to: WAVE-0-IMPL, label: on-dedup-clear}
+      - {to: CANONICAL-TYPES-REFRESH, label: on-dedup-clear}
       - {to: HARD-STOP, label: on-dedup-block}
 
   - id: WAVE-0-IMPL
     type: parallel-batch
-    agents: [coder x13]
+    agents: [coder x14]
     in_predicates: [{from: DEDUP-GATE-W0, label: on-dedup-clear}]
     parallel_with: [CANONICAL-TYPES-REFRESH]
     out_edges: [{to: WAVE-0-AUDIT, label: on-coder-complete}]
-    note: "S1-S13. W0-S5 has predecessor W0-S2 (both own commands/spawn.md) - not co-batched"
+    note: "S1-S14. W0-S5 has predecessor W0-S2 (both own commands/spawn.md) - not co-batched"
 
   - id: WAVE-0-AUDIT
     type: parallel-batch
@@ -1776,7 +1863,11 @@ nodes:
     in_predicates:
       - {from: WAVE-0-AUDIT, label: on-pass}
       - {from: CANONICAL-TYPES-REFRESH, label: unconditional}
-    out_edges: [{to: WAVE-1-IMPL, label: on-green}, {to: HARD-STOP, label: on-hard-stop}]
+    # WORKER-IO declared on the same on-green edge -- see DEDUP-GATE-W0's note.
+    out_edges:
+      - {to: WAVE-1-IMPL, label: on-green}
+      - {to: WORKER-IO, label: on-green}
+      - {to: HARD-STOP, label: on-hard-stop}
 
   - id: WORKER-IO
     type: parallel-batch
@@ -1818,6 +1909,14 @@ nodes:
     type: pause
     in_predicates: [{from: W1-GATE, label: on-green}]
     operator_question: "Q1: Option A (ship the harness layer, defer the engine port) or Option B (continue the verb port)?"
+    operator_answer: "OPTION B — full arc, engine port included. DECIDED, not reopened."
+    answered_at: "2026-08-13, pre-recorded before BODY"
+    note: |
+      The node is still walked -- it is where the W2/W3 decomposition fires -- but its
+      outcome is already known, so it does not pause for a fresh answer. It routes
+      on-amend straight to PLAN-REVISION-POST-Q1, where a fresh @engineer decomposes
+      Waves 2/3 to the 80-100 LOC floor against a BUILT W0+W1 rather than a forecast of
+      one, and a fresh @critic gates that decomposition.
     out_edges:
       - {to: PLAN-REVISION-POST-Q1, label: on-amend}
       - {to: HARD-STOP, label: on-hard-stop}
@@ -1872,7 +1971,11 @@ nodes:
   - id: W2-GATE
     type: wave-gate
     in_predicates: [{from: WAVE-2-AUDIT, label: on-pass}]
-    out_edges: [{to: WAVE-3-IMPL, label: on-green}, {to: HARD-STOP, label: on-hard-stop}]
+    # CODER-CONVERGENCE declared on the same on-green edge -- see DEDUP-GATE-W0's note.
+    out_edges:
+      - {to: WAVE-3-IMPL, label: on-green}
+      - {to: CODER-CONVERGENCE, label: on-green}
+      - {to: HARD-STOP, label: on-hard-stop}
 
   - id: CODER-CONVERGENCE
     type: loop
@@ -1973,14 +2076,27 @@ nodes:
     in_predicates: [{from: CLOSE-SWARM, label: on-no-finding}]
     out_edges: [{to: PAUSE, label: unconditional}]
 
+  # Same conductor-inline RF-1..RF-5 procedure as CLOSE-FINALIZE, plus recording the
+  # capped grade. A separate node purely because the walker cannot express an OR-join
+  # (see CLOSE-SWARM.grade_cap_note); duplicating one inline procedure is cheaper than
+  # a graph that strands on a real, non-rare outcome.
+  - id: CLOSE-FINALIZE-CAPPED
+    type: conductor-inline
+    in_predicates: [{from: CLOSE-SWARM, label: on-grade-cap}]
+    grade: capped
+    out_edges: [{to: PAUSE, label: unconditional}]
+
   - id: HARD-STOP
     type: terminal
     in_predicates: []
     out_edges: []
 
+  # Terminal, entered by whichever of the two close paths fired -- same idiom as
+  # HARD-STOP. Terminals carry no in_predicates: a terminal gates nothing downstream,
+  # and listing both close nodes would recreate the OR-join deadlock one level lower.
   - id: PAUSE
     type: terminal
-    in_predicates: [{from: CLOSE-FINALIZE, label: unconditional}]
+    in_predicates: []
     out_edges: []
 ```
 
@@ -1999,7 +2115,7 @@ cache-warm fan-out *within* a lane is already cheap.
 | `L1-engine` | W1-S1, W2-*(core), W3-*(core) | `crates/core`, `crates/sdk`, root `Cargo.toml` | L2, L3, L4, L5 |
 | `L2-registry` | W1-S2, W3-*(registry) | `crates/registry` | L1, L3, L4, L5 |
 | `L3-surface` | W2-*(render), W3-*(cli) | `crates/cli`, `crates/render` | L1, L2, L4, L5 |
-| `L4-conformance` | W0-S1, W0-S3, W0-S4, W0-S9, W0-S10, W4-S2, W4-S7 | `conformance/`, `scripts/`, `services/cli/`, `.shepherd/runs/*/run.json`, `CHANGELOG.md`, `README.md`, `.claude-plugin/plugin.json` | L1, L2, L3, L5 |
+| `L4-conformance` | W0-S1, W0-S3, W0-S4, W0-S9, W0-S10, W0-S14, W4-S2, W4-S7 | `conformance/`, `scripts/`, `services/cli/`, `.shepherd/runs/*/run.json`, `CHANGELOG.md`, `README.md`, `.claude-plugin/plugin.json` | L1, L2, L3, L5 |
 | `L5-harness` | W0-S2, W0-S5, W0-S6, W0-S7, W0-S8, W0-S11, W0-S12, W0-S13, W4-S1, W4-S3, W4-S4, W4-S5, W4-S6 | `packages/`, `content/`, `agents/`, `commands/`, `skills/`, `hooks/`, `bin/`, `.github/workflows/` | L1, L2, L3, L4 |
 
 **Cargo concurrency cap: 2.** Only `L1-engine` and `L2-registry` may hold a
@@ -2269,14 +2385,32 @@ Under Option B every intermediate stop leaves the north star undelivered, becaus
 adapters are last. Under Option A the north star is delivered first and the language
 migration is what waits.
 
-**My recommendation: OPTION A.** It delivers exactly what the operator asked for, in ~12%
-of the steps, and it leaves the deferred work in better shape than it found it (the oracle
-exists before the port that needs it). If the operator's actual priority is retiring
-Python rather than harness-agnosticism, Option B at **W1-GATE** is the right stop instead —
-but those are different goals and the directive named the first one.
+### DECIDED — the operator chose OPTION B: the full arc
 
-**The only irreversible step in either option is W4-S2** (deletes Python), which is gated
-behind full parity and cannot run in Option A at all.
+**This is the sprint. It is settled and is not reopened.** The engineer recommended Option
+A, root concurred, and A2 returned an explicit NO-FIT verdict. The operator had all three
+in front of them and chose **Option B — execute the full arc, engine port included.**
+
+Everything above this line is the *record of what informed that decision*, retained so a
+future reader can see the sizing evidence and the trade-off that was weighed. **It is not
+an open question and must not be re-argued in any downstream artifact** — not in the
+post-Q1 decomposition, not in a lane brief, not at close.
+
+What the decision binds:
+
+- `OPERATOR-GATE-Q1`'s answer is **pre-recorded as Option B**. The node still exists and is
+  still walked — it is where the W2/W3 decomposition fires — but its outcome is known, so
+  it routes `on-amend → PLAN-REVISION-POST-Q1` without pausing for a fresh answer.
+- Waves 2, 3 and 4 all execute. **W4-S2 runs**, so Python retirement is part of this arc
+  rather than a deferred follow-on.
+- Global Constraint 8's SUBTRACT pre-authorization is what makes that survivable: the arc
+  ends net-negative by ~40,000 lines *because* W4-S2 lands.
+- **W4-S2 remains the single irreversible step**, gated behind a byte-clean
+  `conformance/run.sh --impl=rust` with zero skips (decision 5). The scope decision does
+  not relax that gate.
+- The stop-boundary table below is retained as a **contingency reference** — if the arc is
+  halted for any reason, it says what state each boundary leaves behind. It is no longer a
+  recommendation.
 
 Coherent stop-boundaries, in order of preference. Decision 5 ("no canon flip before the
 parity gate is green") is what makes every one of these safe: Python stays canonical, so
@@ -2290,17 +2424,20 @@ nothing is broken by stopping.
 | **W3-GATE** | Full verb parity, zero skips | Yes |
 | mid-W4 | **UNSAFE** — W4-S2 deletes Python | **No** |
 
-**My recommendation: plan the full arc, execute through W1-GATE, then re-decide.** W0+W1
-delivers the structural wins (no more unbootstrapped clones, no more venv outages, a
-real oracle) and leaves the repo strictly better with Python still canonical. The only
-irreversible boundary in the whole plan is W4-S2.
+> **Superseded by the Option B decision above.** This paragraph recommended executing
+> through W1-GATE and re-deciding. The operator decided the full arc instead. Retained as
+> record; the table above is now a contingency reference, not a plan.
 
-**Q1-bis — stopping early collides with SUBTRACT, and the seed does not pre-authorize
-it.** `SKILL.md §Principles` requires every sprint to end **strictly net-negative** on
-LOC across `[gates.subtract_paths]`, and the close `completeness` auditor files
-`SUBTRACT-VIOLATION` (grade-cap C+) otherwise. The only deletion in this entire arc is
-**W4-S2**, which removes ~50,870 lines (42,560 Python + 8,310 bash) — and it is the last
-substantive step, gated behind full parity by decision 5.
+**Q1-bis — RESOLVED. The seed now pre-authorizes SUBTRACT.** The concern was real: the
+only deletion in the arc is **W4-S2**, gated behind full parity by decision 5, so the LOC
+curve is positive at every intermediate boundary and a close before W4 would file
+`SUBTRACT-VIOLATION` (grade-cap C+).
+
+Root amended the seed with measured figures — **86,916 lines retired against 35–45k added,
+net ≈ −40,000** — carrying `expected_loc_delta: -40000` and `subtract_floor: 45000`. The
+full derivation is Global Constraint 8. Under Option B the arc runs to W4-S2, so the
+net-negative close is reached rather than pre-authorized-around. **The floor covers only
+the intermediate excursion; a close that ends net-positive is still a real violation.**
 
 So the LOC curve is monotonically **positive** until the very end:
 
