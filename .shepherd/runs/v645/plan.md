@@ -663,6 +663,64 @@ grep -q 'check-stage-graph' .shepherd/shepherd.toml
    plan accepted.
 3. Wire it into `[gates]` so it runs on every commit touching a plan.
 
+### W0-S15 — a recorded critic proof must not be silently invalidated (DF-22)
+
+- **step_id:** `W0-S15` · **predecessors:** none · **estimated_loc:** 120
+- **file_scope.exclusive:** `hooks/scripts/plan_proof_guard.sh`, `hooks/hooks.json`
+- **file_scope.may_read:** `services/cli/shepherd_cli/commands/plan.py`,
+  `hooks/scripts/lock_guard.sh`
+- **file_scope.must_not_touch:** `crates/**`, `.shepherd/runs/**`
+- **interfaces — Produces:** a `PreToolUse` guard that refuses a write to a plan carrying a
+  valid critic proof unless the proof is explicitly invalidated first.
+
+**Lived evidence, not a hypothetical.** This engineer recorded the critic proof and then
+kept editing **twice** — once for ~34 lines, once for a further window — and **reported
+the gate green both times in good faith**, because `record-critique` succeeded and a
+`verify` run immediately after it also succeeded. The staleness only surfaced when root, a
+*different role at a later time*, ran `shctx plan verify` before spawning conductors.
+
+That is the defect: **nothing warns at record time or at edit time.** The proof is a
+hash-tied attestation, the plan is an ordinary file, and the toolchain lets you invalidate
+the first by touching the second with no signal at all. The author cannot tell; only a
+later reader can. Root refused to spawn five conductors against it and refused to
+hand-forge the proof, which is correct and is also the only thing that caught it.
+
+**[SKILLS]** `code-style`, `shell`
+**[CONTEXT-INVENTORY]** `plan.critic-proof.json` carries `pre_critic_hash`,
+`post_critic_hash`, `edited`, `verdict`, `iterations`, `findings`.
+`shctx plan verify` recomputes the live hash and fails
+`CRITIC-PROOF-STALE` when it drifts from `post_critic_hash`.
+`hooks/scripts/lock_guard.sh` is the in-repo precedent for a path-scoped `PreToolUse`
+write guard — follow its shape.
+**[DO-NOT-DUPLICATE]** `rg -n 'critic-proof' hooks/scripts/` (expected 0 before this step).
+**[USER-STYLE]** bash 3.2 compatible. The guard blocks with a message naming the exact
+recovery command; it never silently rewrites the proof.
+**[FILE-SCOPE]** as above.
+**[NON-GOALS]** Do NOT auto-re-record on edit — that would forge an attestation the critic
+never made, which is worse than the defect. Do not weaken `verify`.
+**[ACCEPTANCE]**
+```bash
+# editing a plan with a valid proof is refused
+bash hooks/tests/test_plan_proof_guard.sh
+# the guard names the recovery path in its refusal
+bash hooks/scripts/plan_proof_guard.sh --self-test 2>&1 | grep -q 'record-critique'
+# and a plan with no proof, or an already-stale one, edits freely
+bash hooks/tests/test_plan_proof_guard.sh --no-proof
+```
+
+**Actions**
+
+1. Add a `PreToolUse(Write|Edit)` guard: if the target is a `plan.md` whose sibling
+   `plan.critic-proof.json` currently verifies clean, refuse the write with
+   `PLAN-PROOF-LOCKED` and print the recovery command
+   (`shctx plan record-critique … ` after the edits are complete).
+2. Allow the write when no proof exists, or when the proof is already stale — the guard
+   protects a *valid* attestation, it does not obstruct ordinary authoring.
+3. Add the paired test plus a `--self-test`, following `check-workspace.sh`'s
+   negative-control pattern rather than `test_v644_wiring.sh`'s grep-for-prose pattern.
+4. Consider (and note in the step's report, not here) whether `record-critique` should
+   additionally stamp the plan read-only; the guard is the minimum viable fix.
+
 ### W0-S2 — a clean clone can spawn (DF-01)
 
 - **step_id:** `W0-S2` · **predecessors:** none · **estimated_loc:** 90
@@ -1841,11 +1899,11 @@ nodes:
 
   - id: WAVE-0-IMPL
     type: parallel-batch
-    agents: [coder x14]
+    agents: [coder x15]
     in_predicates: [{from: DEDUP-GATE-W0, label: on-dedup-clear}]
     parallel_with: [CANONICAL-TYPES-REFRESH]
     out_edges: [{to: WAVE-0-AUDIT, label: on-coder-complete}]
-    note: "S1-S14. W0-S5 has predecessor W0-S2 (both own commands/spawn.md) - not co-batched"
+    note: "S1-S15. W0-S5 has predecessor W0-S2 (both own commands/spawn.md) - not co-batched"
 
   - id: WAVE-0-AUDIT
     type: parallel-batch
@@ -2116,7 +2174,7 @@ cache-warm fan-out *within* a lane is already cheap.
 | `L2-registry` | W1-S2, W3-*(registry) | `crates/registry` | L1, L3, L4, L5 |
 | `L3-surface` | W2-*(render), W3-*(cli) | `crates/cli`, `crates/render` | L1, L2, L4, L5 |
 | `L4-conformance` | W0-S1, W0-S3, W0-S4, W0-S9, W0-S10, W0-S14, W4-S2, W4-S7 | `conformance/`, `scripts/`, `services/cli/`, `.shepherd/runs/*/run.json`, `CHANGELOG.md`, `README.md`, `.claude-plugin/plugin.json` | L1, L2, L3, L5 |
-| `L5-harness` | W0-S2, W0-S5, W0-S6, W0-S7, W0-S8, W0-S11, W0-S12, W0-S13, W4-S1, W4-S3, W4-S4, W4-S5, W4-S6 | `packages/`, `content/`, `agents/`, `commands/`, `skills/`, `hooks/`, `bin/`, `.github/workflows/` | L1, L2, L3, L4 |
+| `L5-harness` | W0-S2, W0-S5, W0-S6, W0-S7, W0-S8, W0-S11, W0-S12, W0-S13, W0-S15, W4-S1, W4-S3, W4-S4, W4-S5, W4-S6 | `packages/`, `content/`, `agents/`, `commands/`, `skills/`, `hooks/`, `bin/`, `.github/workflows/` | L1, L2, L3, L4 |
 
 **Cargo concurrency cap: 2.** Only `L1-engine` and `L2-registry` may hold a
 `CARGO_TARGET_DIR=target/.lanes/<lane-slug>` simultaneously. `L3-surface` builds only at

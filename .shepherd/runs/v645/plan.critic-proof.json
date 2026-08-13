@@ -3,12 +3,12 @@
   "sprint": "v6.4.5",
   "plan_path": ".shepherd/runs/v645/plan.md",
   "pre_critic_hash": "sha256:bd4ab67537191560a21ed83fc5fef36f750b06fffabf3964383ee4ffd4de8934",
-  "post_critic_hash": "sha256:5c967482ab9321a6ff97366191c4e51224aaad3a6c950ec780f9dace2963bbae",
+  "post_critic_hash": "sha256:b6cfe8a1b6e1b2cb9687fad43198696dbdf826e6e3aba5f630aee4d694932a7a",
   "edited": true,
   "critic": {
     "verdict": "PASS",
     "iterations": 2,
     "findings": 16
   },
-  "recorded_at": "2026-08-13T00:17:50Z"
+  "recorded_at": "2026-08-13T00:20:09Z"
 }
