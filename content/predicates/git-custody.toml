@@ -1,0 +1,69 @@
+# git-custody — governs which role may perform a version-control write (commit, push,
+# rebase, merge, cherry-pick, worktree add/remove/prune) and on which branch/worktree.
+# An implementer role's exclusion from ALL version-control writes is deliberate and
+# load-bearing: a redo re-runs the same implementer over the same uncommitted files, so
+# uncommitted output is nothing to unwind (content/roles/coder.md §Prohibitions).
+
+[predicate]
+id = "git-custody"
+version = 1
+description = "A version-control write is denied unless the acting role holds git custody for the target branch/worktree at the current dispatch tier."
+
+[[rule]]
+id = "implementer-never-writes-git"
+description = "A role dispatched to implement one file-disjoint scope (coder) never performs any version-control write, under any circumstance — custody sits one tier up, always."
+subject = "role.tier"
+action = "vcs.write"
+effect = "deny_if_role_is_implementer"
+
+[[rule]]
+id = "lane-lead-owns-its-own-branch-only"
+description = "A lane-executor lead (conductor) may commit and push its OWN lane's branch inside its OWN worktree; it may never touch a sibling lane's branch, the integration branch, or perform cross-lane rebase/merge/cherry-pick — that is the integration owner's exclusive right."
+subject = "dispatch.git_custody"
+action = "vcs.write"
+effect = "deny_if_branch_outside_own_lane"
+
+[[rule]]
+id = "cross-lane-integration-is-root-exclusive"
+description = "Rebase/merge/cherry-pick onto the shared integration branch, and worktree add/remove/prune, are denied to every role except the top-level orchestrator (shepherd)."
+subject = "role.tier"
+action = "vcs.integrate"
+effect = "deny_unless_root"
+
+[[example]]
+name = "conductor-commits-its-own-lane-branch"
+kind = "allow"
+role = "conductor"
+action = "vcs.write"
+target_branch = "agent-v645-l5-harness"
+context = { is_own_lane_branch = true }
+result = "allow"
+
+[[example]]
+name = "coder-attempts-a-commit"
+kind = "deny"
+role = "coder"
+action = "vcs.write"
+target_branch = "agent-v645-l5-harness"
+context = { role_tier = "implementer" }
+result = "deny"
+halt_code = "CODER-GIT-WRITE"
+
+[[example]]
+name = "conductor-attempts-cross-lane-rebase"
+kind = "deny"
+role = "conductor"
+action = "vcs.integrate"
+target_branch = "v645-dev0"
+context = { is_own_lane_branch = false, role_tier = "lane-lead" }
+result = "deny"
+halt_code = "TEAMMATE-GIT-WRITE"
+
+[[example]]
+name = "root-runs-close-time-rebase-merge"
+kind = "allow"
+role = "shepherd"
+action = "vcs.integrate"
+target_branch = "v645-dev0"
+context = { role_tier = "root" }
+result = "allow"

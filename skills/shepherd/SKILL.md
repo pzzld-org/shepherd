@@ -17,7 +17,7 @@ metadata:
 
 This file is the contract; detailed pipeline/flock mechanics live in `references/`.
 
-Every `/shepherd:*` invocation MUST begin by reading `.claude/shepherd.toml` (or its `.local.toml` override) — it binds branch patterns, gate commands, artifact paths, MCP/CLI availability, and the resolved `{sprint_branch}`/`{patch_branch}`/`{paths.*}`/`{gates.*}`. Missing: warn and use `${CLAUDE_PLUGIN_ROOT}/docs/configuration.md` defaults. Broken: STOP and surface the error.
+Every `/shepherd:*` invocation MUST begin by reading `.shepherd/shepherd.toml` (the canonical project binding, or its `.local.toml` override; the legacy `.claude/shepherd.toml` pre-v6.4.2 path is still honored forever as a fallback tier — `docs/configuration.md#config-resolution`) — it binds branch patterns, gate commands, artifact paths, MCP/CLI availability, and the resolved `{sprint_branch}`/`{patch_branch}`/`{paths.*}`/`{gates.*}`. Missing: warn and use `${CLAUDE_PLUGIN_ROOT}/docs/configuration.md` defaults. Broken: STOP and surface the error.
 
 ## Flock and tiers
 

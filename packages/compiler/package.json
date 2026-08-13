@@ -1,0 +1,14 @@
+{
+  "name": "@fl03/compiler",
+  "version": "6.4.5",
+  "private": true,
+  "description": "Pure emitter for the content/ single source of truth (content/roles/*.md, content/skills/*/SKILL.md, content/predicates/*.toml). compile(target: 'claude'|'codex'|'pi') -> EmittedTree, consumed by packages/harness-claude, packages/harness-codex, and packages/harness-pi. Implemented in Wave 4 (W4-S3); this is the workspace skeleton only.",
+  "type": "module",
+  "scripts": {
+    "test": "node test.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "Apache-2.0"
+}

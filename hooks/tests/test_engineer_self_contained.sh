@@ -65,10 +65,15 @@ need agents/shepherd.md   "shctx models resolve"          "root resolves model f
 need agents/conductor.md  "model-map.md"                  "conductor cites model-map"
 need agents/conductor.md  "shctx models resolve"          "conductor resolves model from map"
 need commands/spawn.md    "shctx models resolve conductor" "spawn resolves conductor model"
-need .claude/shepherd.toml "[models]"                     "dogfood [models] block"
+need .shepherd/shepherd.toml "[models]"                    "dogfood [models] block"
 
 # 4. (C) workdir-prune wiring.
-need .claude/shepherd.toml "[prune]"          "dogfood [prune] block"
+# v6.4.5: canonical live config moved to .shepherd/shepherd.toml
+# (docs/configuration.md#config-resolution); .claude/shepherd.toml is the
+# legacy fallback tier, still honored, but this dogfood project's real
+# binding lives at the canonical path — assert against that, not the tier
+# this project no longer uses.
+need .shepherd/shepherd.toml "[prune]"        "dogfood [prune] block"
 # v6.4.4: memory/ is RETIRED, and is deliberately NOT gitignored any more —
 # ignoring it is what made it a silent knowledge sink. Assert the INVERSE: no
 # memory/ ignore rule may come back, and the retirement is documented.

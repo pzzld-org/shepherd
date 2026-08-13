@@ -41,6 +41,24 @@ MUST-know constraints (the 6 platform Limitations plus load-bearing facts):
   events), never an env var a script reads.
 - `team_name` is a dead discriminator since v2.1.178 — the platform accepts
   but ignores it.
+- `Agent(subagent_type, name)` **is** the teammate-spawn primitive — the
+  lead's natural-language "spawn a teammate" instruction resolves to this
+  call. `name` (not `team_name`) is the live discriminator: it "makes it
+  addressable via `SendMessage`" and is what lands a dispatch as a teammate
+  instead of an ephemeral subagent. There is no separate tool-free "native"
+  spawn path distinct from `Agent` (DF-02, measured live this sprint).
+- **Roster is FLAT — no nested teammates.** A teammate that calls
+  `Agent(subagent_type, name=...)` to dispatch its own sub-flock is refused
+  outright: "Teammates cannot spawn other teammates — the team roster is
+  flat." A teammate MUST omit `name` when dispatching its own flock; that
+  dispatch lands as an ordinary subagent, never a nested teammate (DF-02).
+- **Async `Agent()` notifications route to the task-tree owner, not the
+  dispatcher.** The completion `<task-notification>` for a background
+  `Agent()` call delivers to whichever session owns that task tree, which
+  is not always the agent that issued the call. Measured with `Workflow`
+  itself absent from the dispatching teammate's own tool list, so this is a
+  fact about `Agent()`/task-tree ownership, never a `Workflow`-specific
+  behavior (DF-11).
 - Lead↔teammate channel is `SendMessage` (address a teammate by name); a
   shared task list (`TaskCreate`/`TaskUpdate`/`TaskGet`/`TaskList`) is
   available but unreliable — treat it as a best-effort MIRROR, never the
@@ -107,11 +125,17 @@ section derives from it, not the reverse. The axis is the substrate a role
 is actually running on when it fans out, never its tier:
 
 - **Agent-Teams teammate** — `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` set
-  in the lead's environment, spawned via native teammate-spawn (the normal
-  condition for `@conductor` and `@engineer` under `/shepherd:spawn`):
-  `Workflow` WORKS. Fan out via a compiled Dynamic Workflow — the same
-  vehicle root uses, never a hand-rolled batch of individual `Agent()`
-  calls.
+  in the lead's environment, spawned via `Agent(subagent_type, name=...)`
+  (the normal condition for `@conductor` and `@engineer` under
+  `/shepherd:spawn`): `Workflow` MAY work — run `WORKFLOW-VEHICLE-PROBE`
+  and act on what it reports, never on the `tools:` frontmatter grant
+  (`## Tool presence`, `DF-E1`, below). Present → fan out via a compiled
+  Dynamic Workflow, the same vehicle root uses. Genuinely absent → this is
+  now the EXPECTED result for a teammate, not an anomaly to explain away
+  (DF-02/DF-11, measured live this sprint against `@conductor`'s and
+  `@engineer`'s own frontmatter grant of `Workflow`); record
+  `fanout_downgrade_reason` as routine bookkeeping and fan out via
+  in-context `Agent()`, same as the subagent case below.
 - **Agent-tool subagent** — dispatched via `Agent(...)`, INCLUDING a
   "teammate" spawned when the Agent-Teams substrate was absent at spawn
   time, which is silently just a subagent wearing a teammate's brief:
@@ -197,10 +221,12 @@ NEVER `ToolSearch` targets:
 
 1. **Subagents, teammates, specialists.** An agent type is not a tool.
    Discover it from the visible available-agents system-reminder list;
-   dispatch via `Agent({subagent_type})` or the native teammate-spawn
-   instruction. `ToolSearch select:<any-agent-type>` returns nothing or
-   errors by design — a nothing-result is NEVER evidence the agent is
-   absent.
+   dispatch via `Agent({subagent_type})` — add `name` to land the dispatch
+   as an addressable teammate, omit it for an ephemeral subagent; there is
+   no separate "native teammate-spawn" tool, only this one primitive with
+   or without `name` (DF-02). `ToolSearch select:<any-agent-type>` returns
+   nothing or errors by design — a nothing-result is NEVER evidence the
+   agent is absent.
 2. **Native orchestration primitives** — `Agent`, `Workflow`,
    `TaskCreate`/`TaskGet`/`TaskList`/`TaskUpdate`, `SendMessage`, plus
    `Bash`/`Edit`/`Read`/etc. All top-level, called directly.
@@ -273,6 +299,20 @@ measurement are invalid when read onto a teammate. There is no unresolved
 discovery-vs-invocation ambiguity to chase: the axis is SUBSTRATE, not
 tier, and the visible-tool-list probe answers it directly regardless of
 which failure mode a `Workflow` denial would otherwise present as.
+
+**DF-E1 — `tools:` frontmatter is not authoritative, measured live (this
+sprint).** `agents/engineer.md:7` grants `Workflow`, `Glob`, `Grep` in
+frontmatter; a live engineer teammate's actual visible tool list carried
+NONE of the three — independently reproduced a THIRD time this sprint,
+including the conductor session performing this very correction probing
+its OWN tool list and finding `Workflow` absent despite `agents/
+conductor.md` carrying an identical grant. Frontmatter `tools:` states
+what a role DEFINITION is offered at dispatch, never what a running
+session actually HOLDS; only the live visible tool list is authoritative,
+on either substrate. This is why `WORKFLOW-VEHICLE-PROBE` runs fresh every
+session instead of trusting the grant, and why a NEGATIVE probe result on
+a genuine teammate is the EXPECTED outcome to record and move past, not a
+fact to reconcile against the frontmatter.
 
 ## Lazy-load economics
 

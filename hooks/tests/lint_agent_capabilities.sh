@@ -46,6 +46,11 @@ REPO_ROOT="$(cd "$HERE/../.." && pwd)"
 AGENTS_DIR="${SHEPHERD_LINT_AGENTS_DIR:-$REPO_ROOT/agents}"  # override for tests
 HOOKS_JSON="$REPO_ROOT/hooks/hooks.json"
 GUARD="$REPO_ROOT/hooks/scripts/lock_guard.sh"
+# Where agent_invocation_tagger.sh writes its per-dispatch capability record
+# (<ns>/dispatch/<sprint>/<tool_use_id>.json) — glob root for the DF-17
+# observed-vs-declared scan below. Overridable so a test can point this at a
+# synthetic fixture dir without touching the real run tree.
+RUNS_DIR="${SHEPHERD_LINT_RUNS_DIR:-$REPO_ROOT/.shepherd}"
 
 # The closed-flock read-only reviewer set. The flock is closed (CLAUDE.md), so
 # this list is stable; a new read-only role would be added here deliberately.
@@ -53,6 +58,87 @@ READONLY_ROLES="auditor discovery critic"
 
 fails=0
 note() { printf '  %s\n' "$*"; }
+
+# ---------------------------------------------------------------------------
+# DF-17 — role capability guarantees are unverified at RUNTIME.
+#
+# `tools:` frontmatter is DECLARED intent, never a runtime guarantee (measured
+# live: an engineer teammate session granted Workflow/Glob/Grep saw NEITHER —
+# `agents/engineer.md:7` vs. the platform's actual behavior). This lint's
+# violation checks above/below all pin the DECLARATION — a string present in a
+# file — never what a dispatched session actually sees; nothing in this file
+# closed that gap before DF-17. Closing the gap for real needs a live
+# introspection API no static script has (`skills/harness/SKILL.md §Tool
+# presence`: "The agent itself, not any hook, is the authoritative check").
+# What a static script CAN do is make the gap MECHANICALLY DETECTABLE once
+# data exists: `agent_invocation_tagger.sh` now records the DECLARED half of
+# every dispatch (`declared_tools`, from the same `tools:` line this lint
+# already parses) plus an explicit `observed_tools: null` "self-report
+# pending" placeholder, at `<ns>/dispatch/<sprint>/<tool_use_id>.json`. No
+# role currently writes into `observed_tools` — that self-report write lives
+# in `agents/*.md`, outside this step's file_scope (flagged separately as a
+# BRIEF-AMENDMENT) — so on today's tree this section finds zero non-null
+# records and says so; it is not a hard requirement to have any yet. The
+# instant a future wave wires a role's own boot-time tool-presence probe
+# (`WORKFLOW-VEHICLE-PROBE` et al.) to PATCH `observed_tools` into that same
+# record, this section starts diffing real observed data against the
+# declaration with no further change here.
+#
+# capability_delta_findings ROLE DECLARED_CSV OBSERVED_CSV — echo one
+# 'FINDING ...' line per DECLARED_CSV token absent from OBSERVED_CSV (empty
+# output means no delta). A FINDING is non-fatal by design (§ACTIONS 2: report
+# the delta, don't hard-fail a normal run on it) — callers decide whether a
+# given findings-set should also increment $fails.
+capability_delta_findings() {
+  local role="$1" declared_csv="$2" observed_csv="$3" tool observed_norm out=""
+  observed_norm=",$(printf '%s' "$observed_csv" | tr -d '[:space:]'),"
+  IFS=',' read -ra decl_toks <<< "$declared_csv"
+  for tool in "${decl_toks[@]}"; do
+    tool="$(printf '%s' "$tool" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+    [[ -z "$tool" ]] && continue
+    case "$observed_norm" in
+      *",$tool,"*) ;;
+      *) out+="FINDING $role: declares '$tool' but it is not present in the runtime-observed tool list (declared != observed, DF-17)"$'\n' ;;
+    esac
+  done
+  printf '%s' "$out"
+}
+
+# Echo a JSON array field (e.g. .observed_tools, .declared_tools) from a
+# capability record as a comma-joined string; "" for null/[]/missing/unparsable.
+record_array_csv() {
+  local f="$1" field="$2"
+  if command -v jq &>/dev/null; then
+    jq -r --arg f "$field" '(.[$f] // []) | join(",")' "$f" 2>/dev/null
+  else
+    python3 -c '
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+except Exception:
+    print("")
+else:
+    print(",".join(d.get(sys.argv[2]) or []))
+' "$f" "$field" 2>/dev/null
+  fi
+}
+
+# --self-test: fabricate a synthetic declared/observed delta (no real agents/
+# or run-tree file is touched) and prove capability_delta_findings CAN detect
+# and fail on it — the concrete evidence, per §ACCEPTANCE, that this is a real
+# detector and not text-presence theater.
+if [[ "${1:-}" == "--self-test" ]]; then
+  note "SELF-TEST (DF-17): fabricating a role that declares 'Glob' but whose observed set omits it"
+  self_test_findings="$(capability_delta_findings "fixture-role" "Read,Write,Workflow,Glob" "Read,Write,Workflow")"
+  if [[ -z "$self_test_findings" ]]; then
+    printf 'lint_agent_capabilities --self-test: FAIL — the injected declared-vs-observed delta went undetected; capability_delta_findings is broken\n'
+    exit 1
+  fi
+  note "SELF-TEST OK — the injected delta WAS detected:"
+  printf '%s\n' "$self_test_findings" | sed 's/^/    /'
+  printf 'lint_agent_capabilities --self-test: exiting 1 deliberately — this is the proof the detector CAN fail, not a normal-run failure\n'
+  exit 1
+fi
 
 # Echo the single-line `tools:` frontmatter value for an agent file (empty if none).
 tools_line() {
@@ -320,9 +406,49 @@ for role in $ALL_ROLES; do
   fi
 done
 
+# ---------------------------------------------------------------------------
+# DF-17 — declared-vs-OBSERVED capability scan (see the block above `note()`
+# for the full contract). Scans every capability record `agent_invocation_
+# tagger.sh` has written under $RUNS_DIR (real dispatches, or a
+# SHEPHERD_LINT_RUNS_DIR-pointed fixture tree in a test); records with a still
+# -null/empty `observed_tools` are self-report-pending, not a delta, and are
+# skipped. This is intentionally NEVER fatal on a normal run — an empty scan
+# (today's state, everywhere) is expected until a future wave wires a role's
+# own boot-time probe to write `observed_tools`; a real delta is reported as a
+# FINDING (visibility), never a hard $fails (per §ACTIONS 2: report, don't
+# block, on drift this lint cannot itself close).
+# ---------------------------------------------------------------------------
+capability_scanned=0
+capability_deltas=0
+while IFS= read -r rec; do
+  [[ -f "$rec" ]] || continue
+  capability_scanned=$((capability_scanned+1))
+  observed="$(record_array_csv "$rec" observed_tools)"
+  [[ -z "$observed" ]] && continue   # self-report-pending — nothing to diff yet
+  if command -v jq &>/dev/null; then
+    rrole="$(jq -r '.agent_role // "unknown"' "$rec" 2>/dev/null)"
+  else
+    rrole="$(python3 -c 'import json,sys
+try: print(json.load(open(sys.argv[1])).get("agent_role","unknown"))
+except Exception: print("unknown")' "$rec" 2>/dev/null)"
+  fi
+  declared="$(record_array_csv "$rec" declared_tools)"
+  rec_findings="$(capability_delta_findings "${rrole:-unknown}" "$declared" "$observed")"
+  if [[ -n "$rec_findings" ]]; then
+    capability_deltas=$((capability_deltas+1))
+    note "FINDING ($rec):"
+    printf '%s\n' "$rec_findings" | sed 's/^/    /'
+  fi
+done < <(find "$RUNS_DIR" -path '*/dispatch/*/*.json' -type f 2>/dev/null)
+if [[ "$capability_scanned" -eq 0 ]]; then
+  note "OBSERVED-CAPABILITY (DF-17): 0 dispatch record(s) under $RUNS_DIR carry a self-reported observed_tools list yet — expected until a future wave wires a role's own runtime tool-presence probe to self-report (agent_invocation_tagger.sh already records the declared half + a self-report-pending placeholder at every dispatch)"
+else
+  note "OBSERVED-CAPABILITY (DF-17): scanned $capability_scanned dispatch record(s) with self-reported data, found $capability_deltas declared-vs-observed delta(s) — reported as findings above, non-fatal"
+fi
+
 if [[ "$fails" -gt 0 ]]; then
   printf 'lint_agent_capabilities: %d violation(s) — read-only mutation-free (GH #74); no destructive verb (GH #84); all three leads (shepherd/engineer/conductor) grant Workflow (#233); read-only shctx-runners grant Bash (#207-class); no ungranted-tool claim (v6.2.1); no provider-specific MCP token in any frontmatter (v6.4.3)\n' "$fails"
   exit 1
 fi
-printf 'lint_agent_capabilities: OK — read-only trio mutation-free (GH #74); all nine carry no destructive MCP verb (GH #84); all three leads (shepherd/engineer/conductor) grant Workflow in-tree (#233, live on an Agent-Teams teammate substrate — #263); read-only shctx-runners grant Bash; no profile claims an ungranted tool (v6.2.1); NO frontmatter names a provider-specific MCP token — capabilities are discovered via ToolSearch (v6.4.3, #110)\n'
+printf 'lint_agent_capabilities: OK — read-only trio mutation-free (GH #74); all nine carry no destructive MCP verb (GH #84); all three leads (shepherd/engineer/conductor) grant Workflow in-tree (#233, live on an Agent-Teams teammate substrate — #263); read-only shctx-runners grant Bash; no profile claims an ungranted tool (v6.2.1); NO frontmatter names a provider-specific MCP token — capabilities are discovered via ToolSearch (v6.4.3, #110); DF-17 observed-vs-declared capability scan ran (%d record(s), %d delta(s), non-fatal)\n' "$capability_scanned" "$capability_deltas"
 exit 0

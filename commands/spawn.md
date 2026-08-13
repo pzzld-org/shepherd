@@ -52,6 +52,7 @@ Check 0 runs FIRST.
 | 2 | Claude Code version | ADVISORY. NEVER hard-refuse on version; act on the real runtime signal. |
 | 3 | No active team | HARD, but computed — `${CLAUDE_PLUGIN_ROOT}/scripts/team-preflight.sh` (exit 1 → refuse). One team per lead; a lead-only roster is THIS session's own team and blocks nothing (detail below, #267). |
 | 4 | shepherd.toml | Scaffold-then-proceed: `shctx config init` if missing, emit `[CONFIG] scaffolded`, PROCEED. Non-blocking. |
+| 4b | Registry DB | Scaffold-then-proceed: `shctx init` if the registry DB is absent, emit `[REGISTRY] scaffolded`, PROCEED. Non-blocking. |
 | 5 | Flag preflight | `--parallel`/`--auto`/`--scope` gates — `skills/shepherd/references/spawn-flags.md`. |
 | 6 | Scope enumeration | Enumerate the concrete sprint list. A multi-sprint scope with a missing seed REFUSES (route to `/shepherd:plant`). A single `--scope sprint` plants inline. |
 | 7 | Scope confirmation | `--scope minor` requires the exact phrase `confirm minor`; `--scope version` requires `confirm version` + resource-warning block. |
@@ -229,8 +230,13 @@ root materializes every artifact.
 ### Pre-spawn tool check
 
 Before the spawn instruction fires, root MUST verify the `Agent` tool is registered in the
-lead session — the spawned teammate inherits it to dispatch the flock (`Agent` spawns
-subagents, NOT teammates). If it is absent, HALT and surface:
+lead session — `Agent(subagent_type, name)` **is** the teammate-spawn primitive on this
+platform (DF-02, measured live this sprint: `name` is what "makes it addressable via
+`SendMessage`"; `team_name` is documented "Deprecated; ignored" — never set it). The spawned
+teammate inherits `Agent` to dispatch its OWN flock too, but MUST omit `name` there — a
+teammate that passes `name` while dispatching its own sub-flock is refused outright
+("Teammates cannot spawn other teammates — the team roster is flat," `skills/harness/SKILL.md
+§Agent Teams`). If `Agent` is absent, HALT and surface:
 
 ```
 /shepherd:spawn — REFUSED: Agent tool not registered in lead session.
@@ -247,10 +253,15 @@ lane worktrees exist. A teammate that creates its own worktree raises `TEAMMATE-
 
 ## Spawn dispatch
 
-The lead spawns teammates via the native teammate-spawn — a natural-language instruction to
-spawn one teammate per lane, each referencing the `shepherd:conductor` subagent definition as
-its agent type. NEVER call a `TeamCreate` tool — it does not exist. The team forms on the
-first spawn; the channel is `SendMessage` plus the shared task list.
+The lead spawns teammates via a natural-language instruction to spawn one teammate per lane,
+each referencing the `shepherd:conductor` subagent definition as its agent type. That
+instruction resolves to one `Agent(subagent_type: "shepherd:conductor", name:
+"shepherd-conductor-{sprint_slug}[-{lane_id}]")` call per lane — `Agent(..., name=...)` **is**
+the teammate-spawn primitive on this platform (measured live this sprint, DF-02/DF-11); passing
+`name` is what lands the dispatch as an addressable teammate instead of an ephemeral subagent,
+not a separate tool-free "native" spawn path. NEVER call a `TeamCreate` tool — it does not
+exist; `team_name` is likewise dead ("Deprecated; ignored" per the platform — never set it).
+The team forms on the first spawn; the channel is `SendMessage` plus the shared task list.
 
 ```
 "Spawn one teammate per lane to run sprint {sprint_slug}, each of agent type
@@ -340,8 +351,10 @@ Subagents/workers are unaffected; `"off"` leaves the lead session's effort uncha
 
 ### Self-contained engineer
 
-Root spawns `@engineer` as a self-contained teammate (the DEFAULT) via the native
-teammate-spawn, NEVER the Agent/Task tool (`skills/shepherd/references/pipeline.md §INTRO`).
+Root spawns `@engineer` as a self-contained teammate (the DEFAULT) via `Agent(subagent_type:
+"shepherd:engineer", name: <teammate-name>)` — the `name` parameter is what makes the dispatch
+a teammate rather than an ephemeral subagent; there is no separate tool-free "native" spawn
+path (`skills/shepherd/references/pipeline.md §INTRO`).
 Its brief carries `mode: self-contained` and `dispatcher: root-shepherd` (the
 `engineer-self-contained` marker is what the ENGINEER tags on its own sub-flock dispatches,
 never what root puts on the engineer's brief). The engineer's sub-flock is the three
@@ -351,8 +364,8 @@ engineer's discretion), then its own critic gate looped until GREEN, returning O
 plan + a hash-tied critic-proof; no code is touched. Root accepts via a thin gate (`shctx
 seed verify` + `shctx plan verify --plan <plan>` + a lane-count sanity check) and runs NEITHER
 its own intro wave NOR `@critic` (`ROOT-INTRO-USURPED`). Only ROOT spawns the engineer
-teammate; a self-contained engineer dispatched as an Agent/Task subagent →
-`ENGINEER-TOPOLOGY-MISMATCH`.
+teammate; a self-contained engineer dispatched via `Agent(...)` WITHOUT `name` (landing as a
+bare subagent, never reaching teammate status) → `ENGINEER-TOPOLOGY-MISMATCH`.
 
 ### Post-spawn confirmation
 

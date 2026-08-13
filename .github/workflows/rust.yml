@@ -135,9 +135,9 @@ jobs:
       # never opens the `command` strings inside. A tree with every hook wired
       # to a deleted script reports "Validation passed".
       - name: plugin contract is falsifiable
-        run: ./scripts/check-plugin.sh --self-test
+        run: ./scripts/check-plugin.py --self-test
       - name: plugin contract holds
-        run: ./scripts/check-plugin.sh
+        run: ./scripts/check-plugin.py
 
   # ------------------------------------------------------------------ #
   # Clippy, per feature set, with results surfaced in code scanning.    #

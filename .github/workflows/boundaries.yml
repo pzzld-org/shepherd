@@ -49,6 +49,17 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
+
+      # 0. The three grep-based gates below only enforce anything as long as
+      #    their regex can still fail. That property used to live in a prose
+      #    comment; a gate with no negative control may be silently passing.
+      #    This step runs each gate's own pattern against a deliberately
+      #    broken synthetic fixture (must reject) and the real tree (must
+      #    accept), so a regex a typo narrowed to nothing is caught here
+      #    instead of no-opping forever.
+      - name: boundary gates have a negative control
+        run: bash .github/scripts/boundary-selftest.sh
+
       # 1. The engine must reach a non-native host.
       #    Catches anything that assumes an OS, a C toolchain, or a filesystem.
       #    No LLVM needed here: core has no C dependencies, and that is the point.
