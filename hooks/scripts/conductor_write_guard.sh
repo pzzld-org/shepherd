@@ -31,13 +31,41 @@
 #                                                     or a read-safe command
 #
 # DETECTION (two independent legs, either satisfies "this is a conductor turn"):
-#   1. `current_role` (hooks/scripts/_lib.sh) resolves "conductor" for any tool
-#      call NOT tagged as an in-flight `@coder`/`@auditor`/`@worker`/`@discovery`/
-#      `@engineer`/`@critic` dispatch by agent_invocation_tagger.sh — i.e. every
-#      direct tool call the top-level session makes IS the conductor's, in both
-#      SOLO (main chat running `/shepherd:start`) and TEAMMATE
-#      (`/shepherd:start --teammate`) mode. This mirrors the documented
-#      current_role fallback contract verbatim.
+#   1. `current_role` (hooks/scripts/_lib.sh) resolves "conductor" ONLY when
+#      tool_use_id itself is empty (no in-flight tool_use at all). Every OTHER
+#      untagged call — a direct call that DOES carry a tool_use_id but matches
+#      no dispatch record, the common case for the conductor's own Edit/Write/
+#      Bash calls — resolves "unknown" (DF-77 FIX 2: current_role() no longer
+#      silently promotes an unresolved caller to "conductor"; that promotion
+#      was itself the #187 defect, since it let an uncorrelated @coder
+#      git-write pass coder_git_guard.sh as though it were root's own
+#      command). This guard treats "conductor" AND "unknown" as equivalent for
+#      Leg 1 — every direct top-level call the conductor makes, in both SOLO
+#      (`/shepherd:start`) and TEAMMATE (`/shepherd:start --teammate`) mode,
+#      resolves to one of those two values, never to a tagged role, so
+#      accepting both is what makes this guard fire again at all. This is NOT
+#      a re-creation of the promotion DF-77 removed: that fix lives INSIDE
+#      current_role() itself (the one shared function every consumer reads)
+#      and stays untouched here — this guard never reclassifies "unknown" as
+#      "conductor" upstream, it only chooses, LOCALLY, to respond to "unknown"
+#      the way its OWN fail-closed domain requires (no artifact/registry write
+#      may pass unaccounted for). coder_git_guard.sh makes a DIFFERENT local
+#      choice for the exact same "unknown" value (WARN, never hard-deny),
+#      because it is protecting a different resource with a different safe
+#      default — each consumer owns its own interpretation of an inherently
+#      ambiguous signal. Known residual gap (DF-77 FIX 3, not yet landed — see
+#      _lib.sh's current_role() header): a genuinely-dispatched @coder's OWN
+#      Edit/Write, issued from inside its lane worktree, also resolves
+#      "unknown" today, since its tool_use_id never correlates back to the
+#      ORIGINAL Task-dispatch record. In SOLO mode Leg 2 below still screens
+#      this out (an agent-*/lane-* worktree branch never matches the sprint
+#      branch pattern, and a plain Task-dispatched coder is never itself a
+#      registered teammates row). In TEAMMATE mode, where the coder's tool
+#      calls share its dispatching teammate-conductor's session_id, Leg 2's
+#      sqlite3 fallback CAN still resolve SPRINT_OPEN=1 against that
+#      teammate-conductor's OWN active row for what is actually the coder's
+#      call — the same correlation gap FIX 3 exists to close, pre-existing and
+#      out of this guard's file_scope to fix here.
 #   2. "Is a sprint actually open" — checked so this guard never fires on a
 #      plain operator session that merely happens to sit in a shepherd-managed
 #      repo but is not running `/shepherd:start` at all: HEAD matches the sprint
@@ -88,9 +116,13 @@ SESSION="$(json_field "$PAYLOAD" '.session_id' 2>/dev/null || true)"
 TOOL_USE_ID="$(json_field "$PAYLOAD" '.tool_use_id' 2>/dev/null || true)"
 
 # --- Leg 1: is this the conductor's own turn (not a tagged flock dispatch)? ---
+# current_role() always exits 0 (its own contract — every branch ends in a
+# printf, several explicitly `|| printf 'unknown'`-guarded), so a fallback on
+# non-zero exit here never fires; dropped rather than left as dead
+# error-handling that looks like a safety net but is not one.
 SPRINT="$(current_sprint)"
-ROLE="$(current_role "$TOOL_USE_ID" "$SPRINT" 2>/dev/null || echo conductor)"
-[[ "$ROLE" == "conductor" ]] || exit 0
+ROLE="$(current_role "$TOOL_USE_ID" "$SPRINT" 2>/dev/null)"
+[[ "$ROLE" == "conductor" || "$ROLE" == "unknown" ]] || exit 0
 
 # --- Leg 2: is a sprint actually open? -----------------------------------
 SPRINT_OPEN=0

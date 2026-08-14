@@ -109,6 +109,21 @@ def test_amend_happy_path_re_greens_verify_after_a_root_edit(work_dir: Path, env
     assert amended.returncode == 0, amended.stderr
     assert "plan amended" in amended.stdout
 
+    # `_cmd_amend`'s closing message was previously the unconditional (and
+    # false) claim "'shctx plan verify' now passes; the proof records the
+    # amendment." -- false because amend never touches the `critic` block, so
+    # a REJECTED verdict (proved below, in
+    # test_amend_cannot_launder_a_rejected_critic_verdict_into_a_pass) stays
+    # REJECTED after an amend. Fixed to the accurate, conditional wording
+    # below. Pin it here: without this assertion, reverting the message back
+    # to the false "now passes" claim leaves every test in this file green.
+    assert "hash re-tied to the plan's current bytes; the amendment is recorded." in amended.stdout
+    assert (
+        "'shctx plan verify' re-checks the critic verdict independently -- "
+        "a plan the critic REJECTED is still rejected after this." in amended.stdout
+    )
+    assert "now passes" not in amended.stdout
+
     reverified = run_plan(["verify", "--plan", str(plan)], work_dir, env)
     assert reverified.returncode == 0, reverified.stdout
 

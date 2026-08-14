@@ -23,6 +23,34 @@
 #
 # So: probe, self-heal once, and fail with an actionable message. The probe is
 # filesystem-only -- no interpreter start on the hot path.
+#
+# T3-startup-cost -- `poetry -C services/cli env info --executable` STARTS A FRESH
+# POETRY PROCESS (~250-320ms measured) on every single invocation just to
+# answer a question that only changes when the venv is created, destroyed, or
+# moved: "where is the interpreter". Cache that answer in a plain-text file
+# INSIDE the venv directory itself ($VENV_PY_CACHE below) -- deleting or
+# recreating the venv drops the cache with it, nothing to separately clean up
+# -- and trust the cached path once it passes the EXACT SAME
+# `venv_provisioned` check the slow (uncached) path already runs before every
+# exec. Two things invalidate the cache, both filesystem-cheap and both
+# already checked below:
+#   1. the cached path no longer exists / is not executable -- covers venv
+#      deletion, `poetry env remove`, or a Python upgrade that unlinked the
+#      base interpreter a venv's `bin/python` symlink pointed at (`[ -x ]` on
+#      a dangling symlink is false);
+#   2. `venv_provisioned` on the cached path is false -- covers `poetry env
+#      remove && poetry env use` recreating an empty venv at the same path
+#      before `poetry install` runs again.
+# A plain `poetry install` that only changes installed PACKAGES (the common
+# case: it is what #266's self-heal branch itself runs) invalidates NEITHER
+# check -- the venv's path and `venv_provisioned`'s two signals (the
+# `shepherd` console script, the `typer` package) are unaffected by
+# installing or upgrading dependencies -- so the cache correctly survives it.
+# On a miss we fall through to the untouched poetry-resolution path below and
+# rewrite the cache; #266's guarantee (never exec into an unprovisioned venv)
+# is enforced identically on both the cached and the resolved path, by the
+# same function, so a stale cache degrades to "one redundant `poetry env
+# info` call", never to a bad exec.
 set -eu -o pipefail
 
 # Resolve the plugin root: prefer ${CLAUDE_PLUGIN_ROOT} (set by Claude Code when
@@ -36,6 +64,7 @@ else
 fi
 
 CLI_DIR="$ROOT/services/cli"
+VENV_PY_CACHE="$CLI_DIR/.venv/.shepherd-venv-python"
 
 # Is the venv holding this interpreter actually provisioned?
 #
@@ -57,6 +86,17 @@ venv_provisioned() {
   return 1
 }
 
+# T3-startup-cost fast path: a cached interpreter path that still passes the
+# provisioned check is trusted with zero `poetry` calls -- two `stat`-class
+# checks (`-x`, then `venv_provisioned`'s own) replace a ~300ms process
+# spawn. See the T3-startup-cost block above for exactly what invalidates this.
+if [ -r "$VENV_PY_CACHE" ]; then
+  CACHED_PY="$(cat "$VENV_PY_CACHE" 2>/dev/null || true)"
+  if [ -n "$CACHED_PY" ] && [ -x "$CACHED_PY" ] && venv_provisioned "$CACHED_PY"; then
+    exec env PYTHONPATH="$CLI_DIR${PYTHONPATH:+:$PYTHONPATH}" "$CACHED_PY" -m shepherd_cli "$@"
+  fi
+fi
+
 # `poetry -C <dir> run` executes the command with its OWN cwd set to <dir>,
 # so every relative path argument would resolve against services/cli/ instead
 # of the caller's directory (`shepherd seed verify my.seed.md` from a repo
@@ -75,6 +115,10 @@ if command -v poetry >/dev/null 2>&1; then
       VENV_PY="$(poetry -C "$CLI_DIR" env info --executable 2>/dev/null || echo "$VENV_PY")"
     fi
     if [ -n "$VENV_PY" ] && [ -x "$VENV_PY" ] && venv_provisioned "$VENV_PY"; then
+      # Best-effort cache write for the next invocation's fast path (above).
+      # Never fatal: a read-only venv dir just means every call re-resolves,
+      # same as before this cache.
+      printf '%s\n' "$VENV_PY" >"$VENV_PY_CACHE" 2>/dev/null || true
       exec env PYTHONPATH="$CLI_DIR${PYTHONPATH:+:$PYTHONPATH}" "$VENV_PY" -m shepherd_cli "$@"
     fi
     # Name the actual problem and the exact recovery, rather than execing into

@@ -43,8 +43,26 @@ out=$(env -u CLAUDE_PLUGIN_ROOT bash "$HOOK" <<<"$payload" 2>/dev/null || true)
 if grep -qF "operating-philosophy.md" <<<"$out"; then echo "  PASS  core-doctrine-pointer-default-on"; else
   echo "  FAIL  expected operating-philosophy.md pointer: $out"; fails=$((fails+1)); fi
 
-# 4. All v6.2.0 context surfaces off → true silence on a clean (DB-less) repo.
-printf '[context]\nannounce_shctx_path = "off"\nannounce_core_doctrine = "off"\nannounce_adaptation = "off"\n' > .claude/shepherd.toml
+# 4a. [context].announce_registry = off (DF-01, v6.4.5), alone, on a DB-less
+#     repo → the registry self-heal announcement is suppressed while another
+#     default-on surface (the core-doctrine pointer) still fires — proves this
+#     is a SELECTIVE gate, not incidental silence from something else being off.
+printf '[context]\nannounce_registry = "off"\n' > .claude/shepherd.toml
+out=$(env -u CLAUDE_PLUGIN_ROOT bash "$HOOK" <<<"$payload" 2>/dev/null || true)
+if ! grep -qF "registry DB absent" <<<"$out" && ! grep -qF "REGISTRY" <<<"$out"; then
+  echo "  PASS  announce_registry-off-suppresses-registry-line"
+else
+  echo "  FAIL  expected no registry line with announce_registry=off, got: $out"; fails=$((fails+1))
+fi
+if grep -qF "operating-philosophy.md" <<<"$out"; then echo "  PASS  other-surfaces-remain-with-registry-off"; else
+  echo "  FAIL  expected doctrine pointer still present with only registry off: $out"; fails=$((fails+1))
+fi
+
+# 4b. All context surfaces off (incl. v6.4.5 registry self-heal announcement)
+#     → true silence on a clean (DB-less) repo. The self-heal ACTION itself
+#     still runs unconditionally (session_open.sh) — only the ANNOUNCEMENT is
+#     gated, so this is silence in the surfaced context, not in the scaffold.
+printf '[context]\nannounce_shctx_path = "off"\nannounce_core_doctrine = "off"\nannounce_adaptation = "off"\nannounce_registry = "off"\n' > .claude/shepherd.toml
 out=$(env -u CLAUDE_PLUGIN_ROOT bash "$HOOK" <<<"$payload" 2>/dev/null || true)
 if [[ -z "$out" ]]; then echo "  PASS  all-off-switches-yield-silence"; else
   echo "  FAIL  expected silence with all off, got: $out"; fails=$((fails+1)); fi

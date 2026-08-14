@@ -510,6 +510,21 @@ else
   fails=$((fails+1))
 fi
 
+# Agent invocation tagger (DF-77 FIX 1): agent_invocation_tagger.sh resolves
+# agent_role from tool_input.subagent_type (PRIMARY signal — the field the
+# dispatch law GUARANTEES present) with the legacy `# @<role>` prompt-header
+# grep kept only as a SECONDARY fallback; unresolved and off-flock
+# subagent_type values fall through to "unknown", never guessed.
+echo "== test_agent_invocation_tagger.sh (DF-77 FIX 1 — subagent_type role tagging) =="
+total=$((total+1))
+if ait_out=$(bash "$TESTS_DIR/test_agent_invocation_tagger.sh" 2>&1); then
+  printf '  PASS  %s\n' "agent-invocation-tagger"
+else
+  printf '  FAIL  %-50s\n' "agent-invocation-tagger"
+  printf '%s\n' "$ait_out" | sed 's/^/        /'
+  fails=$((fails+1))
+fi
+
 # Teammate idle routing (v6.3.0, #183): teammate_idle.sh flips a teammate's
 # status to idle by NAME (the key named-Agent teammates register under, across
 # identity fields), and suppresses the "no row matched" flood when no spawn is

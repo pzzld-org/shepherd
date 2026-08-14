@@ -5,20 +5,33 @@
 //   PostToolUse(spawn_agent|collaborationspawn_agent) -- tags the just-spawned agent with its
 //     role (src/dispatch-record.mjs `recordSpawnDispatch`); never blocks, never prints.
 //   PreToolUse(apply_patch|Bash) -- the write-boundary/git-custody guard: resolve role
-//     locally, then shell out to `bin/shepherd guard eval` for anything that needs the
-//     engine, translating the verdict into Codex's real `PreToolUse` hook-output shape
-//     (`src/guard.mjs`'s `preToolUseDeny`/`interpretEngineResult` -- see that module's header
-//     for how the wire format was verified, not assumed).
+//     locally, then relay to the shared guard engine, translating the verdict into Codex's
+//     real `PreToolUse` hook-output shape (`src/guard.mjs`'s
+//     `preToolUseDeny`/`interpretEngineResult` -- see that module's header for how the wire
+//     format was verified, not assumed).
+//
+// T2-serve-wiring: the PreToolUse branch used to `spawnSync(LAUNCHER, ["guard", "eval"], ...)` --
+// a fresh `bin/shepherd` process (and a fresh `content/predicates/*.toml` parse) on EVERY
+// guarded apply_patch/Bash call, measured at 450-535ms/call. It now relays through
+// `packages/harness-claude/src/guard-serve-client.mjs`'s `requestGuardVerdict()` (SHARED, not
+// copied -- see that module's own header, and `guard-serve-engine.mjs`'s header for why it is
+// not `packages/harness-pi`'s TypeScript `GuardClient` either), which talks to a persistent
+// `bin/shepherd guard serve` engine over a Unix socket broker: warm requests measured
+// sub-millisecond (see this step's CODER REPORT). `requestGuardVerdict()` always resolves to the
+// same `{ok:true, engineResult} | {ok:false, detail}` envelope a `spawnSync` call's
+// `{error,status}`/`JSON.parse(stdout)` used to produce, so the branch below is unchanged in
+// shape, only in what feeds it.
 //
 // All decision logic lives in ../../src/guard.mjs + ../../src/dispatch-record.mjs so both stay
 // unit-testable without a subprocess (../../test/guard.test.mjs); this script is the thin
-// stdio + `spawnSync` shell around them, mirroring `packages/harness-claude/hooks/guard-eval.mjs`'s
+// stdio + transport shell around them, mirroring `packages/harness-claude/hooks/guard-eval.mjs`'s
 // own split.
 
-import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { defaultSocketPath } from "../../../harness-claude/src/guard-serve-broker.mjs";
+import { requestGuardVerdict } from "../../../harness-claude/src/guard-serve-client.mjs";
 import { isSpawnTool, recordSpawnDispatch, resolveDataDir, resolveRole } from "../../src/dispatch-record.mjs";
 import { buildGuardDecision, engineUnavailableVerdict, interpretEngineResult, missingRecordDeniedVerdict } from "../../src/guard.mjs";
 
@@ -30,6 +43,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 // root on Codex, not the repo root).
 const REPO_ROOT = join(HERE, "..", "..", "..", "..");
 const LAUNCHER = join(REPO_ROOT, "bin", "shepherd");
+const CONTENT_DIR = join(REPO_ROOT, "content");
 
 function readStdin() {
   try {
@@ -43,7 +57,7 @@ function emit(verdict) {
   if (Object.keys(verdict).length > 0) console.log(JSON.stringify(verdict));
 }
 
-function main() {
+async function main() {
   const raw = readStdin();
   let payload;
   try {
@@ -73,23 +87,22 @@ function main() {
     return 0;
   }
 
-  const result = spawnSync(LAUNCHER, ["guard", "eval"], { input: JSON.stringify(decision.payload), encoding: "utf8" });
-  if (result.error || result.status !== 0) {
-    const detail = result.error ? result.error.message : `exit ${result.status}: ${result.stderr?.trim()}`;
-    emit(engineUnavailableVerdict(detail));
+  const result = await requestGuardVerdict({
+    shepherdBin: LAUNCHER,
+    contentDir: CONTENT_DIR,
+    payload: decision.payload,
+    socketPath: defaultSocketPath(CONTENT_DIR),
+  });
+
+  if (!result.ok) {
+    emit(engineUnavailableVerdict(result.detail));
     return 0;
   }
 
-  let engineResult;
-  try {
-    engineResult = JSON.parse(result.stdout);
-  } catch (error) {
-    emit(engineUnavailableVerdict(`unparseable engine output: ${error.message}`));
-    return 0;
-  }
-
-  emit(interpretEngineResult(engineResult));
+  emit(interpretEngineResult(result.engineResult));
   return 0;
 }
 
-process.exitCode = main();
+main().then((code) => {
+  process.exitCode = code;
+});

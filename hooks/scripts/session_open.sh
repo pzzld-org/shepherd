@@ -65,13 +65,21 @@ db="$(hook_db_path "$ns")"
 # automatic remedy. Mirrors Check 4's `shepherd.toml` scaffold-then-proceed
 # shape: non-blocking, NEVER a hard failure. A missing DB is scaffolded; a
 # corrupt one is left for `shctx doctor` to report, never auto-repaired here.
+# Config-gated [context].announce_registry = on (default) | off — the gate
+# governs ONLY the announcement text below; the self-heal action (the
+# `shctx init` call) always runs when the DB is absent, off-switch or not, so
+# silencing the surface can never silence the scaffolding itself (DF-01 self-
+# heal stays intact even with every announce_* flag off).
 registry_line=""
 if [[ ! -f "$db" ]]; then
   sh_cli="$plugin_root/bin/shepherd"
+  announce_registry="$(cfg_get announce_registry)"
   if [[ -x "$sh_cli" ]] && "$sh_cli" init >/dev/null 2>&1; then
-    registry_line="[REGISTRY] scaffolded — registry DB was absent; ran 'shctx init'."
+    [[ "$announce_registry" != "off" ]] && \
+      registry_line="[REGISTRY] scaffolded — registry DB was absent; ran 'shctx init'."
   else
-    registry_line="registry DB absent — run 'shctx init' to scaffold it."
+    [[ "$announce_registry" != "off" ]] && \
+      registry_line="registry DB absent — run 'shctx init' to scaffold it."
   fi
 fi
 

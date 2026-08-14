@@ -40,7 +40,7 @@ _proof_path() {
 
 usage() {
   cat <<'EOF'
-shctx plan <extract|topology|validate|hash|record-critique|verify> [args]
+shctx plan <extract|topology|validate|hash|record-critique|verify|amend|lane-drift> [args]
 
   extract <plan.md> [--sprint=BRANCH] [--force]
       Parse the Stage Graph YAML from plan.md and store
@@ -60,6 +60,18 @@ shctx plan <extract|topology|validate|hash|record-critique|verify> [args]
       Write the critic-proof alongside the plan. Computes the post-critic hash
       from the current plan bytes; edited = (pre != post). Emitted by the
       engineer teammate after the in-session @critic pass + revision.
+
+  amend --plan <path> --reason <text>
+      Root's sanctioned mid-sprint correction (#268). Re-ties an EXISTING
+      critic-proof to the plan's current bytes and appends an append-only
+      amendments[] record (reason, from/to hash, when). Use after root
+      legitimately edits an approved plan; refuses when the plan is unchanged.
+
+  lane-drift <run> [--lane <lane>]
+      Diff each lane's plan.md against its vars.json — step ids, titles,
+      actions, acceptance (#269). Exit 1 on any divergence. The brief renders
+      from vars.json, so a correction that reached only plan.md is invisible
+      to the next dispatch.
 
   verify [--plan <path>] [--quiet]
       Root's thin acceptance gate (mirrors `shctx seed verify`): the plan was
@@ -469,6 +481,29 @@ PY
 }
 
 # ---------------------------------------------------------------------------
+# amend / lane-drift — delegate to the Python CLI, never reimplement (#268/#269)
+# ---------------------------------------------------------------------------
+# services/cli/tests/test_plan.py::test_usage_bash_parity pins the policy
+# this arm honors: byte-equality between bash and Python held until v6.4.4,
+# when `amend` (#268) and `lane-drift` (#269) landed Python-only because "the
+# bash layer is retired behind bin/shepherd (#239 tracks deleting it), so new
+# verbs are not backported to it" — i.e. NOT reimplemented a second time in
+# bash+heredoc, the exact duplication this sprint has spent eleven waves
+# removing. `bin/shepherd` (services/cli/shepherd_cli/commands/plan.py) is
+# the single owner of both verbs' logic; this arm only resolves the repo root
+# and forwards argv + exit code, so there is one implementation, reachable
+# from two entrypoints.
+_cmd_amend() {
+  local repo; repo="$(shctx_repo_root)"
+  "$repo/bin/shepherd" plan amend "$@"
+}
+
+_cmd_lane_drift() {
+  local repo; repo="$(shctx_repo_root)"
+  "$repo/bin/shepherd" plan lane-drift "$@"
+}
+
+# ---------------------------------------------------------------------------
 # dispatch
 # ---------------------------------------------------------------------------
 case "$sub" in
@@ -477,6 +512,8 @@ case "$sub" in
   validate)         _cmd_validate "$@" ;;
   hash)             _cmd_hash "$@" ;;
   record-critique)  _cmd_record_critique "$@" ;;
+  amend)            _cmd_amend "$@" ;;
+  lane-drift)       _cmd_lane_drift "$@" ;;
   verify)           _cmd_verify "$@" ;;
   ""|-h|--help) usage; exit 0 ;;
   *) echo "ERROR: unknown subcommand: $sub" >&2; usage >&2; exit 1 ;;

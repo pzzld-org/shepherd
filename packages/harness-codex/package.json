@@ -12,7 +12,8 @@
     "apply": "node bin/apply.mjs"
   },
   "dependencies": {
-    "@fl03/compiler": "6.4.5"
+    "@fl03/compiler": "6.4.5",
+    "@fl03/harness-claude": "6.4.5"
   },
   "engines": {
     "node": ">=20"
