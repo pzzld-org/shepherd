@@ -1,0 +1,18 @@
+{
+  "description": "Codex Shepherd content/predicates/*.toml guard wiring (packages/harness-codex, W4-S5). Same relative path Codex already reads (confirmed against the installed codex-shepherd@1.0.2 bundle). Only the two predicates whose context is cheaply computable without a Codex-side dispatch-record writer are wired live -- see src/guard.mjs's module header for the write-boundary/git-custody scope and the named gap that leaves dedup-gate/dispatch-scope evaluable (predicates.mjs, proven against every content/predicates/*.toml example in test/) but not yet live-hooked.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "^(apply_patch|Bash)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$PLUGIN_ROOT/hooks/scripts/shepherd_guard.mjs\"",
+            "timeout": 5,
+            "statusMessage": "Checking Shepherd guard predicates"
+          }
+        ]
+      }
+    ]
+  }
+}
