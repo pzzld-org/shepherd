@@ -98,10 +98,35 @@ directories — exactly the ones no ``run init`` ever created, hence with no
 ``run.json`` — were the ones it could never see. This repo's own ``runs/`` held
 two date-topic, SPEC-shaped directories and ``shepherd lint`` reported ok. Both
 checks now enumerate directories via :func:`_run_dir_names`.
+
+**DF-72 (v6.4.5 dogfood) EXTENSION — a gate that could not fail.** W7's central
+auditor ran ``bin/shepherd lint`` from ``.shepherd/runs/v645/reports/`` and got
+a silent ``lint: ok``: the command prints no path, so a run that inspected
+nothing reads identically to a run that inspected everything and found it
+clean. Two additions, both scoped to an AUTO-DETECTED workdir only (no
+``SHEPHERD_WORKDIR``/``SHCTX_ROOT_OVERRIDE`` set — see
+:func:`_workdir_is_explicit`):
+
+- Every such run now prints ``lint: root=<resolved root> files=<count>``
+  before any violation output, so the scope actually inspected is visible in
+  the output instead of inferred.
+- A resolved root with **zero** files across every section this command
+  inspects (``plans/``, ``docs/plans/``, ``reports/``, ``docs/reports/``,
+  ``docs/journal/``, ``logs/``, excluding ``.gitkeep``) now FAILS outright
+  (exit 1), naming the resolved root — linting nothing is never a pass.
+
+An **explicit** ``SHEPHERD_WORKDIR``/``SHCTX_ROOT_OVERRIDE`` is trusted
+verbatim, banner and zero-file check both skipped: the caller named the exact
+directory, so an empty result there (a fresh project, an isolated CI/test
+fixture — every scenario in ``tests/test_lint.py`` pins one) is an
+intentional, legitimate state, not a resolution failure. It is precisely the
+*un-pinned*, auto-detected path that DF-72 found landing on the wrong
+directory, so that is the only path this guards.
 """
 
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 
@@ -464,6 +489,56 @@ def _check_runs(root: Path) -> list[str]:
 
 
 # --------------------------------------------------------------------------
+# DF-72 — workdir-scope visibility. See the module docstring's "DF-72
+# EXTENSION" note: both helpers below drive the auto-detected-only banner
+# and zero-file FAIL, never the explicit-SHEPHERD_WORKDIR path.
+# --------------------------------------------------------------------------
+def _workdir_is_explicit() -> bool:
+    """True when the caller pinned the workdir explicitly.
+
+    Mirrors ``resolve_workdir()``'s own precedence (``_lib.sh``): these are
+    the exact two environment variables it checks BEFORE auto-detection, so
+    reading them here never diverges from what actually decided the root.
+
+    Returns:
+        True if ``SHEPHERD_WORKDIR`` or ``SHCTX_ROOT_OVERRIDE`` is set
+        (non-empty); False when the root was auto-detected.
+    """
+    return bool(os.environ.get("SHEPHERD_WORKDIR") or os.environ.get("SHCTX_ROOT_OVERRIDE"))
+
+
+def _count_lintable_files(root: Path) -> int:
+    """Count every non-``.gitkeep`` file the naming-convention checks inspect.
+
+    Sums the exact population :func:`_check_plans`/:func:`_check_reports`/
+    :func:`_check_journal`/:func:`_check_logs` walk — ``plans/``,
+    ``docs/plans/``, ``reports/``, ``docs/reports/``, ``docs/journal/`` (all
+    recursive), and ``logs/`` (top-level only). Used solely to detect the
+    DF-72 false pass: an auto-detected root that landed somewhere with no
+    plugin surface at all inspects zero files and would otherwise print the
+    same ``lint: ok`` as a real, clean run.
+
+    Args:
+        root: The resolved artifacts root.
+
+    Returns:
+        The total non-``.gitkeep`` file count across every section.
+    """
+
+    def _non_gitkeep(paths: list[Path]) -> int:
+        return sum(1 for path in paths if path.name != ".gitkeep")
+
+    return (
+        _non_gitkeep(_walk_md_files(root / "plans"))
+        + _non_gitkeep(_walk_md_files(root / "docs" / "plans"))
+        + _non_gitkeep(_walk_md_files(root / "reports"))
+        + _non_gitkeep(_walk_md_files(root / "docs" / "reports"))
+        + _non_gitkeep(_walk_md_files(root / "docs" / "journal"))
+        + _non_gitkeep(_list_top_level_files(root / "logs"))
+    )
+
+
+# --------------------------------------------------------------------------
 # Whole-run driver + Typer wiring.
 # --------------------------------------------------------------------------
 def _lint(root: Path) -> int:
@@ -482,8 +557,27 @@ def _lint(root: Path) -> int:
         module docstring's "VIOLATION COUNT IS A REAL TALLY" note). A
         non-canonical ``runs/`` entry (:func:`_check_runs`) NEVER changes
         this return value — see the module docstring's "#P4 EXTENSION"
-        note.
+        note. DF-72: on an AUTO-DETECTED root (see
+        :func:`_workdir_is_explicit`) this also prints a
+        ``lint: root=... files=...`` banner and returns 1 immediately, before
+        any section runs, when that count is zero — see the module
+        docstring's "DF-72 EXTENSION" note. An explicit
+        ``SHEPHERD_WORKDIR``/``SHCTX_ROOT_OVERRIDE`` skips both and behaves
+        exactly as before.
     """
+    explicit = _workdir_is_explicit()
+    if not explicit:
+        total = _count_lintable_files(root)
+        typer.echo(f"lint: root={root} files={total}")
+        if total == 0:
+            typer.echo(
+                f"lint: FAIL -- resolved root {root} has 0 lintable files under "
+                "plans/, docs/plans/, reports/, docs/reports/, docs/journal/, "
+                "logs/ -- linting nothing is not a pass. Set SHEPHERD_WORKDIR "
+                "to pin the intended root explicitly if this is expected."
+            )
+            return 1
+
     messages: list[str] = []
     messages.extend(_check_plans(root))
     messages.extend(_check_reports(root))

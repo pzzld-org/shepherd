@@ -50,29 +50,32 @@ apply to their own harnesses.
 ## Guard-layer wiring (`src/guard.mjs`, `hooks/guard-eval.mjs`)
 
 Decision 2 (seed): guard predicates (`content/predicates/*.toml`) are interpreted by exactly
-ONE evaluator on Claude and Codex -- the shared Rust engine -- with Pi's TS interpreter as
-the only second one. `src/guard.mjs` is therefore deliberately not a predicate interpreter:
+ONE evaluator on Claude and Codex -- the shared engine -- with Pi's TS interpreter as the
+only second one. `src/guard.mjs` is therefore deliberately not a predicate interpreter:
 `hooks/guard-eval.mjs` is a thin PreToolUse relay that forwards the hook payload to
 `bin/shepherd guard eval` and translates the verdict back into Claude's own hook-output
 shape (`{"permissionDecision":"deny","message":"..."}` to block, silence to allow -- verified
 against this repo's own live `hooks/scripts/_lib.sh`). All decision logic
 (`interpretEngineResult`, `engineUnavailableVerdict`) lives in `src/guard.mjs`, unit tested
-in `test/guard.test.mjs` with an explicit allow case and an explicit deny case (plan.md
-[ACCEPTANCE]'s cross-adapter requirement, proven at this adapter's own level since
-`packages/scripts/predicate-coverage.mjs` -- the shared cross-adapter enforcer of that line
--- belongs to no single adapter's file scope).
+in `test/guard.test.mjs` with an explicit allow case, an explicit deny case, AND a live
+integration case that spawns the real engine (plan.md [ACCEPTANCE]'s cross-adapter
+requirement, proven at this adapter's own level since `packages/scripts/predicate-coverage.mjs`
+-- the shared cross-adapter enforcer of that line -- belongs to no single adapter's file
+scope).
 
-**Named gap, not silently degraded:** `crates/cli` exposes no `guard eval` subcommand as of
-this adapter's base commit (`crates/cli/src/cmd.rs`'s only variant is `Init`) -- the "shared
-Rust engine" plan.md's Action 2 names has no CLI surface yet, and `crates/**` is outside this
-step's file scope to build one. `src/guard.mjs`'s module doc comment declares the exact
-contract that engine needs to satisfy (stdin JSON in, `{"decision":"allow"|"deny",...}` on
-stdout, exit 0 for a successful evaluation either way) so the relay has a concrete target,
-and fails CLOSED (never a silent allow) when that engine is unreachable -- confirmed live
-against the actual `bin/shepherd` launcher on this box, which currently resolves to `shctx`
-(a different, pre-existing tool) rather than the Rust binary; `bin/shepherd guard eval`
-correctly surfaces as `guard engine unavailable, failing closed: exit 1: ERROR: unknown
-subcommand: guard`, not a hang or a false allow.
+**Engine exists, LIVE (DF-76 -- this note replaces a prior "named gap" that predates the
+engine)**: the engine is `services/cli/shepherd_cli/` (`commands/guard.py` + `predicates.py`),
+Python, served through `bin/shepherd guard eval` -- NOT `crates/cli`, which remains a second,
+near-empty binary (`crates/cli/src/cmd.rs`'s only variant is `Init`) and was never the CLI
+surface this relay shells out to. `bin/shepherd` on this box resolves to the real bash
+launcher at the repo root (its own header: "the single canonical entrypoint for the shepherd
+CLI"), not `shctx` -- confirmed live: `echo '{"role":"coder","tool_name":"Bash","tool_input":
+{"command":"git commit -am x"}}' | bin/shepherd guard eval` returns
+`{"decision": "deny", "predicate": "git-custody", "rule": "implementer-never-writes-git",
+"halt_code": "CODER-GIT-WRITE", ...}`, exit 0. The relay still fails CLOSED (never a silent
+allow) if the engine becomes unreachable for any reason (missing venv, bad stdin, `content/`
+not found) -- that path is unit tested via `engineUnavailableVerdict`, not re-verified live
+here since it requires deliberately breaking the engine.
 
 ## Run-state interop (`src/run-state.mjs`, `test/advance-run.mjs`) -- release-gate C.4
 

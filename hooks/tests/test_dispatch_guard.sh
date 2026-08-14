@@ -242,6 +242,41 @@ expect_block_code() {  # name script payload code [env...]
   fi
 }
 
+echo "== dispatch_guard.sh — Check 0 malformed payload fails CLOSED, not open (GH #284) =="
+# GH #284: json_field (_lib.sh) is DELIBERATELY fail-open on malformed JSON --
+# empty string for every field, the correct contract for a sourcing hook
+# under `set -e` -- but this file's OWN top-of-script tool_name gate then
+# read that empty string as "not Agent/Task" and exited 0 SILENTLY, taking
+# every downstream check (1-8) down with it at once. Feed deliberately
+# broken JSON and assert this now DENIES loud and attributable -- the
+# `scripts/check-workspace.sh --self-test` discipline the issue names
+# ("every rule must be able to fail" -- prove the checker actually detects
+# a bad fixture), explicitly NOT a grep-for-prose assertion (the DF-19
+# pattern this exists to kill). Asserting the script merely exits 0 proves
+# nothing here (the pre-fix script ALSO exited 0 on every case below); the
+# DENY reaching stdout in the shape Claude's hook contract expects, with
+# the specific halt code, is the only thing that proves the fix.
+expect_block_code "Check 0: truncated JSON (unterminated object) denies, not silently passes" \
+  dispatch_guard.sh '{"session_id":"s1","tool_name":"Agent","tool_input":{"subagent_type":' \
+  DISPATCH-GUARD-MALFORMED-PAYLOAD
+
+# The exact regression shape from the issue: a malformed payload that WOULD
+# have carried a Check-1-triggering subagent_type ("general-purpose") had it
+# parsed cleanly -- must still deny on the malformed-payload code, not
+# silently pass just because the corrupted tail makes tool_name unreadable.
+expect_block_code "Check 0: malformed payload that would-be Check-1-triggering still denies" \
+  dispatch_guard.sh '{"session_id":"s1","tool_name":"Agent","tool_input":{"subagent_type":"general-purpose"' \
+  DISPATCH-GUARD-MALFORMED-PAYLOAD
+
+# Not-quite-JSON garbage (never was JSON) -- same fail-closed contract.
+expect_block_code "Check 0: non-JSON garbage payload denies" \
+  dispatch_guard.sh 'not json at all {{{' \
+  DISPATCH-GUARD-MALFORMED-PAYLOAD
+
+# Positive control: a well-formed dispatch is unaffected by the new gate.
+expect_pass "Check 0: well-formed dispatch is unaffected (positive control)" dispatch_guard.sh \
+  "$(P '{"subagent_type":"shepherd:coder"}')"
+
 expect_block_code "Check 7: zero [CONCERN] declarations" dispatch_guard.sh \
   "$(P '{"subagent_type":"shepherd:auditor","prompt":"Please review the lane for issues."}')" \
   AUDIT-CONCERN-UNDECLARED

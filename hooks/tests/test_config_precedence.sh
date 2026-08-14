@@ -20,6 +20,14 @@
 # Self-contained: no sqlite3, no jq required (cfg_get/cfg_section_get fall
 # back to grep/awk directly — they never touch json_field). Conventions mirror
 # hooks/tests/test_resolve_namespace.sh.
+#
+# DF-74: the v6.4.2 layering block at the bottom of this file (harness +
+# user tiers) used to sit AFTER an unconditional `exit "$fails"`, so its 9
+# assertions were dead code -- indented, well-formed, and never executed
+# even once (a gate that cannot fail because it never runs, same family as
+# GH #284/DF-19/DF-59). Confirmed live (isolated the block, ran it stand-
+# alone): all 9 pass. The summary print + exit now sit at the TRUE end of
+# the file so the whole suite actually runs.
 set -eu -o pipefail
 cd "$(dirname "$0")"
 LIB="$(cd ../scripts && pwd)/_lib.sh"
@@ -28,6 +36,44 @@ fails=0; total=0
 pass() { printf '  PASS  %s\n' "$1"; }
 fail() { printf '  FAIL  %s — %s\n' "$1" "$2"; fails=$((fails+1)); }
 assert_eq() { total=$((total+1)); if [[ "$2" == "$3" ]]; then pass "$1"; else fail "$1" "expected '$3', got '$2'"; fi; }
+
+# DF-74: macOS symlinks /var -> /private/var and $TMPDIR lands under it, but
+# `git rev-parse --show-toplevel` (what resolve_namespace uses) ALWAYS
+# returns the realpath-resolved form -- so a config-search chain built partly
+# from a git-resolved tier and partly from a raw $TMPDIR-derived tier (e.g.
+# $SHEPHERD_HOME/$XDG_CONFIG_HOME below) disagrees about the SAME directory
+# in two different spellings, and a byte-exact assertion sees a false
+# divergence. canon_path resolves the longest EXISTING ancestor directory via
+# `cd`+`pwd -P` (bash-3.2-safe -- no GNU `realpath` on macOS) and re-appends
+# whatever tail does not exist yet (a config file that has not been written
+# has no symlink to collapse); canon_lines applies it line-by-line. Both
+# helpers are applied to BOTH sides of a path-list assertion via
+# assert_eq_paths, below -- normalizing ONE side only (or loosening to a
+# substring match) would hide a genuine precedence-order regression instead
+# of proving the chain right.
+canon_path() {
+  local p="$1" dir="$1" tail=""
+  while [[ -n "$dir" && "$dir" != "/" && ! -d "$dir" ]]; do
+    tail="/${dir##*/}$tail"
+    dir="${dir%/*}"
+  done
+  [[ -z "$dir" ]] && dir="/"
+  printf '%s%s' "$(cd "$dir" 2>/dev/null && pwd -P || printf '%s' "$dir")" "$tail"
+}
+canon_lines() {
+  local line first=1
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    if [[ "$first" -eq 1 ]]; then first=0; else printf '\n'; fi
+    canon_path "$line"
+  done
+}
+assert_eq_paths() {  # name got_multiline expected_multiline
+  local name="$1" got_n expected_n
+  got_n="$(printf '%s\n' "$2" | canon_lines)"
+  expected_n="$(printf '%s\n' "$3" | canon_lines)"
+  assert_eq "$name" "$got_n" "$expected_n"
+}
 
 tmp=$(mktemp -d -t shep-cfg-test.XXXXXX)
 trap 'rm -rf "$tmp"' EXIT
@@ -72,7 +118,7 @@ $ROOT/.claude/shepherd.toml
 $USER_HOME/shepherd.local.toml
 $USER_HOME/shepherd.toml
 $XDG_CONFIG_HOME/shepherd.toml"
-assert_eq "config-files-full-chain-in-order" "$(config_files)" "$expected"
+assert_eq_paths "config-files-full-chain-in-order" "$(config_files)" "$expected"
 
 # ---------------------------------------------------------------------------
 # 2. Precedence order across all 5 tiers with real temp files: lowest tier
@@ -160,7 +206,7 @@ $ROOT/.claude/shepherd.toml
 $USER_HOME/shepherd.local.toml
 $USER_HOME/shepherd.toml
 $XDG_CONFIG_HOME/shepherd.toml"
-assert_eq "artifacts-namespace-tiers-1-2" "$(config_files)" "$expected_artifacts"
+assert_eq_paths "artifacts-namespace-tiers-1-2" "$(config_files)" "$expected_artifacts"
 
 printf 'greeting = "artifacts-tier2"\n' > "$ROOT/.artifacts/shepherd.toml"
 assert_eq "artifacts-tier2-resolves" "$(get_key greeting)" "artifacts-tier2"
@@ -170,9 +216,6 @@ assert_eq "artifacts-tier1-beats-tier2" "$(get_key greeting)" "artifacts-tier1-l
 
 total=$((total+1))
 if check_is_shepherd_project; then pass "is-shepherd-artifacts-namespace"; else fail "is-shepherd-artifacts-namespace" "expected true, got false"; fi
-
-echo "—— $((total-fails))/$total passed ——"
-exit "$fails"
 
 # ---- v6.4.2 layering: harness + user tiers (operator directive) -------------
 # project(local > harness > base) > legacy(.claude) > user(local > harness > base) > xdg
@@ -213,3 +256,6 @@ assert_eq "legacy-project-beats-user" \
   "$( cd "$lay3" && SHEPHERD_HARNESS=claude bash -c "source $LIB; cfg_get max_parallel" )" "22"
 unset SHEPHERD_HOME
 rm -rf "$lay" "$lay2" "$lay3"
+
+echo "—— $((total-fails))/$total passed ——"
+exit "$fails"

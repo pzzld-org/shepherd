@@ -26,31 +26,39 @@ profile name).
   default this package's own root, so `shepherd.codex.toml` + `skills/**` below are real,
   committed files, not just code that could produce them).
 - `src/model-profile.mjs` -- `model_hint` -> Codex `[profiles."<name>"]` resolution.
-- `src/predicates.mjs` + `src/toml-lite.mjs` -- a hand-rolled reader/interpreter of
-  `content/predicates/*.toml`'s declarative guard spec (decision 2: shared data, one
-  interpreter's worth of logic per harness). `test/predicates.test.mjs` loads every one of the
-  four files' own `[[example]]` blocks and asserts `evaluate()` reproduces every declared
-  `allow`/`deny` result -- including a documented fix for `write-boundary.toml`'s rule 1,
-  which reads "denied outright" but is contradicted by its own worked example (see
-  `src/predicates.mjs`'s module header).
-- `src/guard.mjs` -- the pure decision core behind `hooks/scripts/shepherd_guard.mjs`, wiring
-  `write-boundary` (via `apply_patch`) and `git-custody` (via `Bash` git-subcommand parsing,
-  read-only verbs excluded). **Named gap**, not a silent no-op: `dedup-gate` and
-  `dispatch-scope` are loaded and fully evaluable (proven against the corpus in
-  `test/predicates.test.mjs`) but not yet live-hooked, because their context (a dedup-registry
-  hit lookup; a dispatcher's role/tier from a Codex-side dispatch record) needs infrastructure
-  this step's file scope doesn't include -- no Codex-side analog of
-  `hooks/scripts/agent_invocation_tagger.sh` exists yet to tag a `spawn_agent` call with the
-  acting role, so this adapter trusts a `SHEPHERD_ROLE` env var and fails OPEN on an
-  unset/unrecognized role, exactly like every existing Claude-side guard does for a dispatch it
-  cannot identify. Closing that gap is `spawn_agent` interception work (W4-S1's "auto-wire the
-  launcher" or a dedicated follow-up), not this adapter's.
-- `hooks/hooks.json` + `hooks/scripts/shepherd_guard.mjs` -- the live PreToolUse wiring, same
-  `{"permissionDecision":"deny","message":"..."}` JSON contract Claude's own
-  `hooks/scripts/_lib.sh` and the installed `codex-shepherd@1.0.2` bundle's `shepherd_hook.py`
-  both already use.
+- `src/dispatch-record.mjs` -- Codex's own analog of
+  `hooks/scripts/agent_invocation_tagger.sh` + `current_role()` (DF-75). No Claude-shaped
+  identifier exists at Codex's spawn time (`agent_id` is runtime-assigned only once
+  `spawn_agent`/`collaborationspawn_agent` returns), so this module tags a spawned agent at
+  `PostToolUse(spawn_agent|collaborationspawn_agent)` -- where the original `tool_input`
+  (role-bearing `task_name`/`message`) and the `tool_response` (the assigned `agent_id`) are
+  both present in one event -- and resolves it back on every later guarded call, which carries
+  `agent_id` on its own `PreToolUse` payload. See this module's own header for the three
+  independent sources that verified this wire shape (a discovery report, the installed
+  `codex-shepherd@1.0.2` sibling's own working code, and `strings` on the installed `codex`
+  binary) rather than assuming it.
+- `src/guard.mjs` -- DF-75/CRITICAL fixed here: the previous `decideForToolCall` opened with
+  `if (!role) return { result: "allow" }`, where `role` came from a `SHEPHERD_ROLE` env var
+  nothing set for a Codex subprocess -- every branch fell through to allow, permanently. Now a
+  thin relay (mirrors `packages/harness-claude/src/guard.mjs`'s own shape): `buildGuardDecision`
+  resolves role via `src/dispatch-record.mjs` (no marker -> allow without touching the engine;
+  marker + no record -> deny, loudly, the exact case that used to be a silent allow; marker +
+  resolved role -> forward to the engine) and never interprets a predicate itself. Interpretation
+  collapsed onto the shared `shepherd guard eval` engine (`services/cli/shepherd_cli/predicates.py`)
+  -- the two prior hand-rolled interpreters this package carried (`src/predicates.mjs`,
+  `src/toml-lite.mjs`, plus a third copy of the git-subcommand tokenizer inside this file) are
+  deleted; that engine owns all three now, replaying every `content/predicates/*.toml`
+  `[[example]]` itself (`shepherd guard test`).
+- `hooks/hooks.json` + `hooks/scripts/shepherd_guard.mjs` -- the live wiring:
+  `PostToolUse(spawn_agent|collaborationspawn_agent)` tags the spawn; `PreToolUse(apply_patch|Bash)`
+  guards writes. Wire format verified, not assumed identical to Claude's own flat
+  `{"permissionDecision":"deny",...}` shape: Codex's real `PreToolUse` deny is
+  `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"..."}}`
+  -- confirmed against the installed `codex-shepherd@1.0.2` bundle's own `protocol.py`/tests
+  AND against `strings` on the installed `codex` binary itself (`src/guard.mjs`'s module header
+  has the full citation trail).
 - `bin/apply.mjs` -- CLI: `node bin/apply.mjs [--dir=<targetDir>] [--check]`.
 - `shepherd.codex.toml`, `skills/**` -- the real materialized output, regenerate via
   `npm run apply` (or `node bin/apply.mjs`) after any `content/` change.
 
-Implemented in Wave 4 (W4-S5).
+Implemented in Wave 4 (W4-S5); guard made real in v6.4.5 W10 (DF-75).

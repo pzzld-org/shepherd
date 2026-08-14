@@ -1,136 +1,131 @@
-// packages/harness-codex/src/guard.mjs -- the pure decision core behind
-// hooks/scripts/shepherd_guard.mjs. Separated from stdio so it is directly unit-testable
-// (test/guard.test.mjs) without spawning a subprocess, mirroring why
-// packages/compiler/src/compile.mjs and packages/compiler/bin/compile.mjs are two files.
+// packages/harness-codex/src/guard.mjs -- Codex's guard-layer wiring. DF-75/CRITICAL: the
+// PREVIOUS version of this module opened `decideForToolCall` with
+// `if (!role) return { result: "allow" }`, where `role` came from a `SHEPHERD_ROLE`
+// environment variable NOTHING sets for a Codex subprocess -- every branch fell through to
+// allow, permanently. Two changes, in the binding order the wave auditor required:
 //
-// NAMED GAP (read before extending this module): Claude's `current_role()`
-// (hooks/scripts/_lib.sh) resolves the acting role from a dispatch record
-// `agent_invocation_tagger.sh` writes on every `Agent()` call. Codex has no analogous
-// tagger for `spawn_agent`/`collaborationspawn_agent` -- building one is `spawn_agent`
-// interception work, squarely W4-S1's "auto-wire the launcher" concern (or a dedicated
-// follow-up), not this adapter's file scope. `decideForToolCall` therefore trusts a
-// `SHEPHERD_ROLE` environment variable as the interim role signal; an unset/unknown role
-// fails OPEN (returns `allow`), matching every existing Claude-side guard's own posture for
-// a dispatch it cannot identify (`hooks/scripts/coder_git_guard.sh`: "Non-coder turns fail
-// open"). The same applies to `path_in_dispatch_write_scope`: this adapter has no Codex-side
-// reader of the CURRENT dispatch's declared file scope, so it is left `undefined` --
-// `EFFECT_HANDLERS.deny_if_false` (predicates.mjs) then denies a `write_eligible: false`
-// role's write by default (fail-closed, the safe direction) and allows a `write_eligible:
-// true` role's write (fail-open, since per-path scope enforcement is not yet wired). Both
-// gaps close together once a Codex-side dispatch-record writer exists.
-
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { loadRoles } from "../../compiler/src/content.mjs";
-import { buildEnv, evaluate, loadPredicates } from "./predicates.mjs";
-
-const HERE = dirname(fileURLToPath(import.meta.url));
-const DEFAULT_CONTENT_DIR = join(HERE, "..", "..", "..", "content");
-
-/** content/predicates/dispatch-scope.toml + git-custody.toml's own `role` tiering, as
- * evidenced by their examples (`shepherd` -> root, `conductor` -> lane-lead, the five
- * implementer roles -> implementer). `engineer`/`planter` never appear as a `role` in any
- * example across the four predicate files, so they are deliberately left unmapped rather
- * than guessed -- `decideForToolCall` fails open for them, same as an unknown role. */
-const ROLE_TIER = Object.freeze({
-  shepherd: "root",
-  conductor: "lane-lead",
-  coder: "implementer",
-  worker: "implementer",
-  discovery: "implementer",
-  auditor: "implementer",
-  critic: "implementer",
-});
-
-// git subcommands git-custody.toml's `vcs.integrate` action governs; everything else a git
-// invocation reaches is `vcs.write` (mirrors hooks/scripts/coder_git_guard.sh's own verb
-// split, narrowed to the two this predicate's rules actually distinguish).
-const INTEGRATE_VERBS = Object.freeze(new Set(["merge", "rebase", "cherry-pick"]));
-
-// Read-only git subcommands never reach git-custody at all -- hooks/scripts/coder_git_guard.sh's
-// own READONLY_GIT_VERBS allowlist, ported directly (that script is the enforced Claude-side
-// behavior this predicate already governs; a `git status` is not a `vcs.write`/`vcs.integrate`
-// attempt under either harness).
-const READONLY_GIT_VERBS = Object.freeze(
-  new Set(
-    "status diff log show rev-parse ls-files ls-tree cat-file blame show-ref rev-list merge-base describe shortlog for-each-ref name-rev diff-tree diff-index grep var whatchanged count-objects show-branch cherry version help".split(
-      " "
-    )
-  )
-);
-
-// git global options that consume a SEPARATE following token (coder_git_guard.sh's own
-// `takes_arg` set) -- without this, `git -C x commit` would misparse `x` as the subcommand.
-const GIT_OPTS_TAKING_ARG = new Set(["-C", "-c", "--git-dir", "--work-tree", "--namespace"]);
+// (1) ROLE RESOLUTION FIRST (src/dispatch-record.mjs) -- Codex's own analog of
+//     hooks/scripts/agent_invocation_tagger.sh + `current_role()`. `resolveRole` distinguishes
+//     three cases: no marker at all (root/operator session -> ALLOW, never touches the
+//     engine), a marker with a resolved record (evaluate for real), and a marker with NO
+//     record (a dispatched agent whose role cannot be determined -> DENY, loudly -- this is
+//     the exact case that used to be a silent allow).
+// (2) ONLY THEN collapse write-boundary/git-custody interpretation onto the shared engine
+//     (`shepherd guard eval`, `services/cli/shepherd_cli/predicates.py`) -- this module is
+//     now deliberately NOT a predicate interpreter (mirrors `packages/harness-claude/src/guard.mjs`'s
+//     own module doc comment): it never reads `content/predicates/`, never encodes a
+//     `subject`/`action`/`effect` rule. `hooks/scripts/shepherd_guard.mjs` is the thin stdio
+//     shell that shells out to `bin/shepherd guard eval` and calls `interpretEngineResult`
+//     below to translate the verdict -- `buildGuardDecision` stays pure (no subprocess, no
+//     `spawnSync`) so it is directly unit-testable, matching why
+//     `packages/harness-claude/src/guard.mjs`/`hooks/guard-eval.mjs` are also split in two.
+//
+// WIRE FORMAT -- verified, not copied from Claude's shape. The pre-existing
+// `hooks/scripts/shepherd_guard.mjs` (now rewritten) claimed a flat
+// `{"permissionDecision":"deny","message":"..."}` shape "confirmed identical" to Codex's own
+// `codex-shepherd@1.0.2` bundle -- that claim does not hold up: reading that bundle's
+// `hooks/protocol.py` `denial()` directly (not just this package's paraphrase of it) shows
+// Codex's real `PreToolUse` hook output is a NESTED
+// `{"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny"|"allow",
+// "permissionDecisionReason": "..."}}` shape -- confirmed a second, independent way by
+// `strings /opt/homebrew/bin/codex` (the installed `codex-cli 0.147.0` binary), which embeds
+// `PreToolUseHookSpecificOutputWire` with exactly those field names, and a third way by that
+// bundle's own `tests/gate/test_governance.py` (`output["hookSpecificOutput"]["permissionDecision"]`).
+// Emitting the OLD flat shape would have meant a correct `deny` verdict was silently ignored
+// by Codex -- "it enforces nothing while looking healthy" one layer deeper than DF-75's own
+// role-resolution defect. `preToolUseDeny` below is the one place this shape is built.
 
 /**
- * @param {string} command a Bash tool_input.command string.
- * @returns {string[]} every top-level `git <subcommand>` found, lowercased. A single-pass,
- *   non-recursive port of coder_git_guard.sh's tokenizer (that script's own Layer 2 raw scan
- *   is the documented fallback for exactly this simpler shape) -- sufficient to classify
- *   `vcs.write` vs `vcs.integrate`, not a full shell-injection audit.
+ * @param {string} reason
+ * @returns {{hookSpecificOutput: {hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: string}}}
  */
-export function extractGitSubcommands(command) {
-  const tokens = command.split(/\s+/).filter(Boolean);
-  const verbs = [];
-  for (let i = 0; i < tokens.length; i++) {
-    if (tokens[i].replace(/^.*\//, "") !== "git") continue;
-    let j = i + 1;
-    while (j < tokens.length) {
-      const opt = tokens[j];
-      if (GIT_OPTS_TAKING_ARG.has(opt)) {
-        j += 2;
-        continue;
-      }
-      if (opt.startsWith("-")) {
-        j += 1;
-        continue;
-      }
-      verbs.push(opt.toLowerCase().replace(/[;&|].*$/, ""));
-      break;
-    }
-    i = j;
-  }
-  return verbs.filter(Boolean);
+function preToolUseDeny(reason) {
+  return {
+    hookSpecificOutput: {
+      hookEventName: "PreToolUse",
+      permissionDecision: "deny",
+      permissionDecisionReason: reason,
+    },
+  };
 }
 
 /**
- * @param {{toolName: string, toolInput?: Record<string, unknown>, role?: string, contentDir?: string}} call
- * @returns {{result: "allow"|"deny", predicateId?: string, firedRuleIds?: string[]}}
+ * Pure translation from the engine's verdict JSON to Codex's real `PreToolUse` hook-output
+ * shape. An `allow` verdict is `{}` (silence -- the executable relay prints nothing, matching
+ * this codebase's `pass_silent` convention everywhere else). `deny` and any OTHER shape
+ * (including `unresolved` -- DF-75's whole point: an unidentifiable dispatch must not
+ * silently allow) fail CLOSED.
+ *
+ * @param {{decision?: string, predicate?: string, rule?: string, halt_code?: string, reason?: string}} engineResult
+ * @returns {{}|ReturnType<typeof preToolUseDeny>}
  */
-export function decideForToolCall(call) {
-  const role = call.role;
-  if (!role) return { result: "allow" }; // no role signal -- fail open, see module header
-
-  const contentDir = call.contentDir ?? DEFAULT_CONTENT_DIR;
-  const predicates = loadPredicates(contentDir);
-  const roles = loadRoles(contentDir);
-  const roleRecord = roles.find((r) => r.role === role);
-  if (!roleRecord) return { result: "allow" }; // unrecognized role id -- fail open
-
-  const env = buildEnv(roles.map((r) => r.role));
-
-  if (call.toolName === "apply_patch") {
-    const decision = evaluate(
-      "write-boundary",
-      "fs.write",
-      { write_eligible: roleRecord.writeEligible, path_in_dispatch_write_scope: undefined },
-      predicates,
-      env
-    );
-    return { predicateId: "write-boundary", ...decision };
+export function interpretEngineResult(engineResult) {
+  if (engineResult?.decision === "allow") return {};
+  if (engineResult?.decision === "deny") {
+    const where = engineResult.predicate ? ` (${engineResult.predicate}/${engineResult.rule ?? "?"})` : "";
+    const halt = engineResult.halt_code ? `[${engineResult.halt_code}] ` : "";
+    return preToolUseDeny(`${halt}guard denied${where}: ${engineResult.reason ?? "no reason given"}`);
   }
+  return preToolUseDeny(`guard engine returned an unrecognized verdict: ${JSON.stringify(engineResult)}`);
+}
 
-  if (call.toolName === "Bash") {
-    const verbs = extractGitSubcommands(String(call.toolInput?.command ?? ""));
-    const writeVerbs = verbs.filter((v) => !READONLY_GIT_VERBS.has(v));
-    if (writeVerbs.length === 0) return { result: "allow" };
-    const roleTier = ROLE_TIER[role];
-    if (!roleTier) return { result: "allow" }; // unclassified tier -- fail open, see module header
-    const action = writeVerbs.some((v) => INTEGRATE_VERBS.has(v)) ? "vcs.integrate" : "vcs.write";
-    const decision = evaluate("git-custody", action, { role_tier: roleTier, is_own_lane_branch: undefined }, predicates, env);
-    return { predicateId: "git-custody", ...decision };
-  }
+/**
+ * The fail-closed verdict `hooks/scripts/shepherd_guard.mjs` emits when the `shepherd guard
+ * eval` subprocess itself cannot be reached or exits non-zero -- an infra failure, never a
+ * predicate decision. An unreachable engine must not be indistinguishable from "allowed."
+ *
+ * @param {string} detail
+ */
+export function engineUnavailableVerdict(detail) {
+  return preToolUseDeny(`guard engine unavailable, failing closed: ${detail}`);
+}
 
-  return { result: "allow" };
+/**
+ * DF-75's own regression case, given its own specific, loud message rather than the engine's
+ * generic "missing role" reason (which does not name what is actually missing): a
+ * `PreToolUse` call whose `agent_id` marker is present but for which no dispatch record was
+ * ever written. Deliberately never invents a halt code (no `content/predicates/*.toml`
+ * `[[example]]` attests one for this adapter-local, pre-engine case -- it mirrors
+ * `packages/harness-pi/src/extension.ts`'s own unset-`SHEPHERD_ROLE` denial, which also
+ * carries no halt code).
+ *
+ * @param {string} agentId
+ */
+export function missingRecordDeniedVerdict(agentId) {
+  return preToolUseDeny(
+    `role unresolved -- no dispatch record for agent \`${agentId}\`. This Codex subagent's ` +
+      "spawn_agent/collaborationspawn_agent call was never tagged with a role, or its dispatch " +
+      "record is missing. DF-75 requires failing closed rather than allowing an unidentified " +
+      "dispatch to write."
+  );
+}
+
+/**
+ * The pure decision core behind `hooks/scripts/shepherd_guard.mjs`'s `PreToolUse` handling.
+ * Resolves role locally (never touching the engine for the "no marker" case -- see module
+ * header), then either short-circuits ALLOW/DENY or hands back the exact request the
+ * executable relay forwards to `shepherd guard eval` (shape (b), a raw tool call --
+ * `services/cli/shepherd_cli/predicates.py`'s `Engine._evaluate_tool_call` already maps
+ * `apply_patch`/`Bash` onto `write-boundary`/`git-custody` and extracts git subcommands
+ * itself; this module never re-implements that tokenizer).
+ *
+ * @param {{toolName: string, toolInput?: Record<string, unknown>, agentId?: string|null, dataDir: string}} call
+ * @param {(agentId: string|null|undefined, dataDir: string) => {kind: string, role?: string, agentId?: string}} resolveRoleFn
+ *   injected so this stays a pure function of its arguments -- `hooks/scripts/shepherd_guard.mjs`
+ *   passes the real `resolveRole` from `src/dispatch-record.mjs`.
+ * @returns {{kind: "allow"}|{kind: "missing-record", agentId: string}|{kind: "request", payload: object}}
+ */
+export function buildGuardDecision(call, resolveRoleFn) {
+  const resolution = resolveRoleFn(call.agentId, call.dataDir);
+  if (resolution.kind === "no-marker") return { kind: "allow" };
+  if (resolution.kind === "missing-record") return { kind: "missing-record", agentId: resolution.agentId };
+  return {
+    kind: "request",
+    payload: {
+      harness: "codex",
+      role: resolution.role,
+      tool_name: call.toolName,
+      tool_input: call.toolInput ?? {},
+    },
+  };
 }

@@ -9,6 +9,29 @@
 // dedup-gate is implemented and tested here but deliberately NOT wired into
 // src/extension.ts's pi.on('tool_call', ...) handler -- see that file's header for why
 // (the tool_call event carries no resolved symbol name or registry hit).
+//
+// W10-B2-pi (post-DF-76) MEASURED, DID NOT COLLAPSE, this file onto the now-real engine --
+// read before "fixing" this by deleting it. DF-76's engine exists now
+// (services/cli/shepherd_cli/predicates.py, served by `shepherd guard eval`; see that
+// module's own header) and Claude/Codex's adapters already relay to it. Pi's dispatch
+// brief for this step required measuring `bin/shepherd guard eval`'s per-call latency
+// before committing to the same relay shape, because extension.ts calls this file's
+// `evaluate()` SYNCHRONOUSLY, in-process, on every single `pi.on('tool_call', ...)` --
+// there is no hooks.json subprocess boundary to absorb a slow call the way Claude's
+// PreToolUse hook does. Measured live (10-run average, this repo, 2026-08-13):
+//   - `bin/shepherd guard eval` (the documented entrypoint, via its `poetry env info`
+//     resolution): ~430-600ms/call
+//   - the resolved venv Python invoked directly (`.venv/bin/python -m shepherd_cli guard
+//     eval`, bypassing the poetry wrapper's own subprocess): ~150-180ms/call
+// Both are one to two orders of magnitude past the brief's "single-digit ms is fine,
+// ~100ms+ is not" bar -- shelling out per call would add a 150-600ms stall to every Read,
+// Write, Edit, and Bash a Pi session issues. Per that brief's own contract this is a HALT,
+// not a silent keep: this interpreter stays wired into extension.ts, UNCHANGED, until a
+// long-lived-process or batched-eval shape exists for the engine (e.g. a `shepherd guard
+// serve` persistent-process mode, or a warmed worker pool Pi's extension host keeps alive
+// across calls) -- building that is a services/cli change, outside this step's
+// packages/harness-pi/** file scope, and a shape chosen without an owner and a measurement
+// on it would just be a second guess layered on this one.
 
 import { PLAN_OR_GATE_TARGET_ROLES, ROLE_TIER } from "./roles.mjs";
 

@@ -317,15 +317,15 @@ Immediately after the spawn instruction — BEFORE polling liveness — root reg
 into the canonical store:
 
 ```
-# First stamp THIS root session as the spawn lead (#223) so the coordinate-drive
+# Stamp THIS root session as the spawn lead (#223) so the coordinate-drive
 # Stop guard fires only for the real lead, never a concurrent bystander session:
 shctx teammate register-lead {team_id} --session={main_chat_session_id}
-# and, for the self-contained engineer teammate (KNOWN GAP, not this step's scope: root has no
-# more of the engineer's own session than a conductor's — DF-12 applies identically — so this
-# call ALSO hard-errors without --session; it needs the same self-register split this section
-# documents for the conductor, wired through agents/engineer.md, not here):
-shctx teammate register {engineer_name} --team={team_id} --type=engineer
 ```
+
+Root registers NEITHER the conductor's row NOR the self-contained engineer's — both hit the
+identical gap (DF-12: root never holds a spawned teammate's session id) and both resolve the
+identical way, self-registration on the teammate's own first turn (`agents/engineer.md
+§Self-contained mode`, same two-step split as the conductor's below).
 
 **Root does NOT register the teammate-conductor's own row — `--session` is REQUIRED and root
 does not have one to give it.** `shctx teammate register` HARD-ERRORS
@@ -374,17 +374,20 @@ eyeballed (`skills/shepherd/references/pipeline.md §Wave gate`).
 **Declare progress, don't infer it (#193/#197).** Liveness derives "crashed" from the heartbeat
 gap, but teammates don't heartbeat on a cadence, so a healthy long-running lane reads
 `presumed-crashed` after 5 min and root wrongly cancels it. Set the explicit `declared_state`
-(migration 0019) instead — mark each teammate `in-progress` right after registering, `complete`
-when you materialize its `LANE-COMPLETE` (before prune), `error` on a returned HALT:
+instead — the full enum (migration 0019; `NULL` = no declaration, pre-0019 behavior preserved):
+`init` (registered, work not yet started) → `in-progress` (mark right after registering) →
+`idle` (the state a healthy `WAVE-COMPLETE` leaves a teammate in while it waits for root — NEVER
+a synonym for crashed/dead, DF-73; `teammate_idle.sh`/`cmd_panes.sh` both read it) → `complete`
+(set when you materialize its `LANE-COMPLETE`, before prune); `error` on any returned HALT:
 
 ```
-shctx teammate state <name> --set=in-progress|complete|error   # heartbeat --state=<s> does both in one call
+shctx teammate state <name> --set=init|in-progress|idle|complete|error   # heartbeat --state=<s> does both in one call
 ```
 
-`in-progress` is never presumed-crashed regardless of the gap; `complete`/stale-ghost rows drop out
-of the live set that `shctx teammate liveness` and the coordinate-drive Stop hook read. That Stop
-hook is now root-only — it never fires on a teammate's own session (#197), so a self-contained
-`@engineer` is no longer trapped in root's drain loop.
+`in-progress`/`idle` are never presumed-crashed regardless of the gap; `complete`/stale-ghost rows
+drop out of the live set that `shctx teammate liveness` and the coordinate-drive Stop hook read.
+That Stop hook is now root-only — it never fires on a teammate's own session (#197), so a
+self-contained `@engineer` is no longer trapped in root's drain loop.
 
 After registering, root confirms liveness (`shctx teammate liveness` until each lane is
 `active`/heartbeating) before the dispatch is complete. `hooks/scripts/dispatch_guard.sh`
@@ -424,9 +427,11 @@ Root spawns `@engineer` as a self-contained teammate (the DEFAULT) via `Agent(su
 "shepherd:engineer", name: <teammate-name>)` — the `name` parameter is what makes the dispatch
 a teammate rather than an ephemeral subagent; there is no separate tool-free "native" spawn
 path (`skills/shepherd/references/pipeline.md §INTRO`).
-Its brief carries `mode: self-contained` and `dispatcher: root-shepherd` (the
+Its brief carries `mode: self-contained`, `dispatcher: root-shepherd`, and a `Teammate name:
+<name>` line — the exact string passed to `Agent(..., name=)` — the field the engineer's own
+self-register step consumes (`agents/engineer.md §Self-contained mode`, DF-12). The
 `engineer-self-contained` marker is what the ENGINEER tags on its own sub-flock dispatches,
-never what root puts on the engineer's brief). The engineer's sub-flock is the three
+never what root puts on the engineer's brief. The engineer's sub-flock is the three
 read-only / adversarial roles ONLY — `@discovery`, intro-mode `@auditor`, `@critic` — with a
 MINIMUM 5-subagent intro wave (2 `@discovery` + 3 intro-`@auditor`, scaled upward at the
 engineer's discretion), then its own critic gate looped until GREEN, returning ONE finalized

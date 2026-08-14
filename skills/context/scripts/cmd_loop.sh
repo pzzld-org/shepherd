@@ -95,10 +95,20 @@ now=$(shctx_now)
 # ---------------------------------------------------------------------------
 # SQL helpers
 # ---------------------------------------------------------------------------
+# esc: double every single quote so a value round-trips through SQL text-
+# literal interpolation intact (SQL escaping, not shell escaping). The bash
+# parameter-expansion form `${v//\'/\'\'}` does NOT do this on bash 3.2 — it
+# leaves a literal backslash in the output and the original quote unescaped,
+# so any free-text value (a note, a reason, a title) containing an apostrophe
+# produces malformed SQL (#285). Mirrors the proven-correct idiom already in
+# cmd_teammate.sh's esc() (sed "s/'/''/g"); duplicated here rather than
+# sourced because it belongs in the shared _lib.sh, which is a sibling's
+# scope this wave — see #285 follow-up to consolidate.
+esc() { printf '%s' "$1" | sed "s/'/''/g"; }
 _txt() {
   local v="${1:-}"
   [[ -z "$v" ]] && { printf 'NULL'; return; }
-  printf "'%s'" "${v//\'/\'\'}"
+  printf "'%s'" "$(esc "$v")"
 }
 _num() {
   local v="${1:-}" label="${2:-value}"
@@ -160,7 +170,7 @@ _cmd_init() {
   today=$(date +%Y%m%d)
   seq=$(shctx_sql "SELECT COALESCE(MAX(CAST(substr(id,16) AS INTEGER)),0) + 1
                    FROM loops
-                   WHERE project_id='${pid//\'/\'\'}' AND id LIKE 'loop-${today}-%';")
+                   WHERE project_id='$(esc "$pid")' AND id LIKE 'loop-${today}-%';")
   loop_id=$(printf 'loop-%s-%03d' "$today" "${seq:-1}")
 
   shctx_sql "INSERT INTO loops
@@ -168,12 +178,12 @@ _cmd_init() {
                 interval, status, created_at)
              VALUES (
                '$loop_id',
-               '${pid//\'/\'\'}',
+               '$(esc "$pid")',
                $(_txt "$kind"),
                $(_txt "$task"),
                $(_txt "$agent"),
                $(_num "$max" max),
-               '${until_field//\'/\'\'}',
+               '$(esc "$until_field")',
                $(_txt "$interval"),
                'active',
                $now
@@ -206,10 +216,10 @@ _cmd_native_cmd() {
   done
   [[ -n "$loop_id" ]] || { echo "ERROR: loop native-cmd requires --id=<loop-id>" >&2; exit 1; }
 
-  local lid_esc="${loop_id//\'/\'\'}"
+  local lid_esc; lid_esc="$(esc "$loop_id")"
   local row
   row=$(shctx_sql "SELECT COALESCE(interval,'')||'|'||COALESCE(kind,'generic')
-                   FROM loops WHERE id='$lid_esc' AND project_id='${pid//\'/\'\'}';")
+                   FROM loops WHERE id='$lid_esc' AND project_id='$(esc "$pid")';")
   [[ -n "$row" ]] || { echo "ERROR: loop not found: $loop_id" >&2; exit 1; }
   local interval kind
   IFS='|' read -r interval kind <<< "$row"
@@ -242,10 +252,10 @@ _cmd_status() {
   done
   [[ -n "$loop_id" ]] || { echo "ERROR: loop status requires --id=<loop-id>" >&2; exit 1; }
 
-  local lid_esc="${loop_id//\'/\'\'}"
+  local lid_esc; lid_esc="$(esc "$loop_id")"
   local row
   row=$(shctx_sql "SELECT id,kind,task,agent,max_iterations,until_field,interval,status,created_at
-                   FROM loops WHERE id='$lid_esc' AND project_id='${pid//\'/\'\'}';")
+                   FROM loops WHERE id='$lid_esc' AND project_id='$(esc "$pid")';")
   [[ -n "$row" ]] || { echo "ERROR: loop not found: $loop_id" >&2; exit 1; }
 
   if [[ "$fmt" == "json" ]]; then
@@ -260,7 +270,7 @@ _cmd_status() {
                    FROM loop_iterations li WHERE li.loop_id = l.id
                    ORDER BY li.iteration))
                FROM loops l
-               WHERE l.id='$lid_esc' AND l.project_id='${pid//\'/\'\'}'; "
+               WHERE l.id='$lid_esc' AND l.project_id='$(esc "$pid")'; "
     return 0
   fi
 
@@ -324,9 +334,9 @@ _cmd_record() {
   [[ -n "$iteration" ]]  || { echo "ERROR: loop record requires --iteration=<N>" >&2; exit 1; }
   [[ -n "$new_findings" ]] || { echo "ERROR: loop record requires --new_findings=<true|false|0|1>" >&2; exit 1; }
 
-  local lid_esc="${loop_id//\'/\'\'}"
+  local lid_esc; lid_esc="$(esc "$loop_id")"
   local exists
-  exists=$(shctx_sql "SELECT 1 FROM loops WHERE id='$lid_esc' AND project_id='${pid//\'/\'\'}' LIMIT 1;")
+  exists=$(shctx_sql "SELECT 1 FROM loops WHERE id='$lid_esc' AND project_id='$(esc "$pid")' LIMIT 1;")
   [[ -n "$exists" ]] || { echo "ERROR: loop not found: $loop_id" >&2; exit 1; }
 
   local nf; nf=$(_bool "$new_findings")
@@ -361,12 +371,12 @@ _cmd_close() {
     *) echo "ERROR: --status must be converged|cap-reached|aborted (got '$status')" >&2; exit 1 ;;
   esac
 
-  local lid_esc="${loop_id//\'/\'\'}"
+  local lid_esc; lid_esc="$(esc "$loop_id")"
   local exists
-  exists=$(shctx_sql "SELECT 1 FROM loops WHERE id='$lid_esc' AND project_id='${pid//\'/\'\'}' LIMIT 1;")
+  exists=$(shctx_sql "SELECT 1 FROM loops WHERE id='$lid_esc' AND project_id='$(esc "$pid")' LIMIT 1;")
   [[ -n "$exists" ]] || { echo "ERROR: loop not found: $loop_id" >&2; exit 1; }
 
-  shctx_sql "UPDATE loops SET status='${status//\'/\'\'}' WHERE id='$lid_esc';"
+  shctx_sql "UPDATE loops SET status='$(esc "$status")' WHERE id='$lid_esc';"
 
   # Summary line mirrors the close report's loop summary block.
   local iters
@@ -390,7 +400,7 @@ _cmd_list() {
     esac
   done
 
-  local where="project_id='${pid//\'/\'\'}'"
+  local where; where="project_id='$(esc "$pid")'"
   [[ "$filter" == "active" ]] && where="$where AND status='active'"
 
   if [[ "$fmt" == "json" ]]; then
@@ -470,8 +480,8 @@ _cmd_focus() {
           || { echo "ERROR: --invariants is not valid JSON" >&2; exit 1; }
       fi
 
-      local sp_esc="${sprint//\'/\'\'}"
-      local lane_esc="${lane//\'/\'\'}"          # lane='' is the sprint-level record
+      local sp_esc; sp_esc="$(esc "$sprint")"
+      local lane_esc; lane_esc="$(esc "$lane")"  # lane='' is the sprint-level record
       local key="sprint='$sp_esc' AND lane='$lane_esc'"
       local label="$sprint"; [[ -n "$lane" ]] && label="$sprint/$lane"
       local exists
@@ -499,8 +509,8 @@ _cmd_focus() {
       if [[ -z "$target" ]]; then
         target=$(current_sprint)
       fi
-      local t_esc="${target//\'/\'\'}"
-      local lane_esc="${lane//\'/\'\'}"          # lane='' = sprint-level record
+      local t_esc; t_esc="$(esc "$target")"
+      local lane_esc; lane_esc="$(esc "$lane")"  # lane='' = sprint-level record
       local key="sprint='$t_esc' AND lane='$lane_esc'"
       local tlabel="$target"; [[ -n "$lane" ]] && tlabel="$target/$lane"
       local row

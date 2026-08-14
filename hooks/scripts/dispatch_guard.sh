@@ -52,6 +52,18 @@
 #     completion that surfaces in the wrong session (dispatch routing/
 #     attribution confusion is a live, recurring failure mode this sprint)
 #     can be traced back to who actually issued the Agent()/Task call.
+#   - Check 0 (malformed-payload) is LOAD-BEARING and MECHANICAL, and runs
+#     FIRST: `json_field` (_lib.sh) is deliberately fail-OPEN per-field on a
+#     parse failure (empty string, so a sourcing hook under `set -e` never
+#     dies on bad input) — correct for every OTHER hook, but wrong for this
+#     file's own top-of-script `tool_name` gate, which then read the
+#     resulting empty string as "not Agent/Task" and exited silently,
+#     0 checks run (#284). Since this hook's PreToolUse matcher
+#     (hooks/hooks.json) already restricts invocation to real Agent/Task
+#     calls, an unparseable payload here can ONLY be a malformed payload —
+#     Check 0 makes that fail CLOSED instead, so a harness payload-shape
+#     change (or an adversarial one) cannot silently disable Checks 1-8 at
+#     once while the script still exits 0 looking healthy.
 #
 # Input  (stdin): PreToolUse JSON { tool_name, cwd, tool_input.{subagent_type,prompt,description,team_name?}, ... }
 # Output (stdout):
@@ -60,6 +72,7 @@
 #   exit 0 silently                                   — a well-formed dispatch
 #
 # Decision table (first match wins; halt codes per dispatch-tier-separation §IV-bis):
+#   0. hook-input JSON payload fails to parse                   → DISPATCH-GUARD-MALFORMED-PAYLOAD (deny)  [mechanical; #284]
 #   1. subagent_type ∈ {∅, general-purpose, Explore, Chat}     → DISPATCH-MISSING-SUBAGENT-TYPE  (deny)  [mechanical]
 #   2. teammate-session AND team_name set                       → TEAMMATE-NESTING-ATTEMPT        (deny)  [defence-in-depth]
 #   3. team_name set AND subagent_type ≠ shepherd:conductor     → DISPATCH-TEAMMATE-TYPE-MISMATCH (deny)  [defence-in-depth; #66.1,#61]
@@ -83,15 +96,60 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 source "$HERE/_lib.sh"
 
+DOC='skills/shepherd/references/pipeline.md §Lane law + skills/shepherd/SKILL.md §Dispatch law'
+
+# True (rc 0) iff $1 parses as JSON. bash-3.2-safe; jq-then-python3 fallback,
+# matching json_field's own convention (_lib.sh) so this stays consistent
+# with the rest of the guard's JSON handling. `jq empty` is the idiomatic
+# "does this parse" check: it runs the trivial filter over the input (so a
+# syntax error still fails) without asserting anything about the resulting
+# value's truthiness (unlike `jq -e .`, which would also reject a
+# legitimately-parsed top-level `null`/`false`).
+json_valid() {
+  local s="$1"
+  if command -v jq &>/dev/null; then
+    printf '%s' "$s" | jq empty >/dev/null 2>&1
+  else
+    printf '%s' "$s" | python3 -c 'import json,sys; json.load(sys.stdin)' >/dev/null 2>&1
+  fi
+}
+
 input=$(cat)
 is_shepherd_project || exit 0
+session=$(json_field "$input" '.session_id')
+
+# ---------------------------------------------------------------------------
+# Check 0 — malformed hook payload (DISPATCH-GUARD-MALFORMED-PAYLOAD, deny)
+# GH #284. MUST run before anything else parses a field out of $input: every
+# downstream check (1-8) reads its inputs via json_field, whose fail-open
+# empty-string-on-malformed-JSON contract (see the comment above json_valid)
+# is correct for a sourcing hook under `set -e`, but was fatally wrong as
+# this file's OWN top-of-script `tool_name` gate — that gate read the
+# resulting empty string as "not an Agent/Task call" and exited 0 silently,
+# taking every check below down with it, with the script still looking
+# healthy. Fail CLOSED instead: name the malformed payload explicitly and
+# deny, loud and attributable, per the fix agreed in #284.
+# ---------------------------------------------------------------------------
+if ! json_valid "$input"; then
+  msg="[shepherd] DISPATCH-GUARD-MALFORMED-PAYLOAD — refused."$'\n'
+  msg+="  This hook fires only for Agent/Task dispatches (hooks/hooks.json"$'\n'
+  msg+="  PreToolUse matcher), so an unparseable stdin payload here can only"$'\n'
+  msg+="  be a malformed hook-input JSON, never a legitimately different"$'\n'
+  msg+="  tool call."$'\n'
+  msg+="Every check this guard enforces (1-8) parses its fields FROM this"$'\n'
+  msg+="payload; failing open here would silently disable ALL of them at"$'\n'
+  msg+="once — WRONG-TIER-DISPATCH, DISPATCH-MISSING-SUBAGENT-TYPE,"$'\n'
+  msg+="DISPATCH-OFF-FLOCK, DISPATCH-TEAMMATE-TYPE-MISMATCH, and"$'\n'
+  msg+="AUDIT-CONCERN-UNDECLARED (#284). Fix the caller emitting the"$'\n'
+  msg+="payload, or investigate a harness hook-input shape change. See $DOC."
+  emit_deny "$msg" "dispatch_guard" "unknown" "unknown" "$session"
+fi
 
 tool=$(json_field "$input" '.tool_name')
 case "$tool" in Agent|Task) ;; *) exit 0 ;; esac
 
 subagent_type=$(json_field "$input" '.tool_input.subagent_type')
 team_name=$(json_field "$input" '.tool_input.team_name')
-session=$(json_field "$input" '.session_id')
 cwd=$(json_field "$input" '.cwd')
 prompt=$(json_field "$input" '.tool_input.prompt')
 # tool_use_id/model are ONLY consumed by Check 8 (DISPATCH-OWNERSHIP-RECORD),
@@ -142,7 +200,6 @@ fi
 st_lc=$(printf '%s' "$subagent_type" | tr '[:upper:]' '[:lower:]')
 FLOCK_RE='^shepherd:(engineer|critic|coder|auditor|worker|discovery)$'
 CONDUCTOR='shepherd:conductor'
-DOC='skills/shepherd/references/pipeline.md §Lane law + skills/shepherd/SKILL.md §Dispatch law'
 
 # ---------------------------------------------------------------------------
 # Check 1 — missing / default subagent_type (DISPATCH-MISSING-SUBAGENT-TYPE)

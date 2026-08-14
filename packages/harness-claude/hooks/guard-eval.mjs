@@ -1,10 +1,13 @@
 #!/usr/bin/env node
 // packages/harness-claude/hooks/guard-eval.mjs -- the executable PreToolUse relay
 // `src/guard.mjs`'s `buildGuardHooksEntry()` wires in. Reads Claude's PreToolUse hook JSON
-// from stdin, forwards it verbatim (plus `harness: "claude"`) to the shared Rust guard
-// engine via `bin/shepherd guard eval` (see `src/guard.mjs`'s module doc comment for the
-// declared contract and why that engine's CLI surface does not exist yet at this adapter's
-// base commit), and prints Claude's own hook-output JSON. All decision logic lives in
+// from stdin, forwards it verbatim (plus `harness: "claude"`) to the shared guard engine via
+// `bin/shepherd guard eval` -- LIVE, confirmed by running this exact file end to end against
+// the real `services/cli/shepherd_cli/` engine (see `src/guard.mjs`'s module doc comment for
+// the full contract, and `test/guard.test.mjs`'s integration case for the reproducible
+// invocation) -- and prints Claude's own hook-output JSON. `LAUNCHER` below resolves to the
+// repo-root `bin/shepherd` bash wrapper, never `crates/cli`; that wrapper's own header calls
+// itself "the single canonical entrypoint for the shepherd CLI." All decision logic lives in
 // `src/guard.mjs` (`interpretEngineResult` / `engineUnavailableVerdict`) so it stays unit
 // testable without spawning a process -- this file is intentionally the thinnest possible
 // wrapper around that logic plus stdin/stdout/`spawnSync` plumbing.

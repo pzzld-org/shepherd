@@ -69,6 +69,7 @@ LAZY_GROUPS: dict[str, str] = {
     "eval": "eval",
     "export": "export",
     "graph": "graph",
+    "guard": "guard",
     "handoff": "handoff",
     "home": "home",
     "init": "init",

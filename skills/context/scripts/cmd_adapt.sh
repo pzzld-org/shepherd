@@ -94,11 +94,21 @@ pid=$(shctx_project_id)
 now=$(shctx_now)
 
 # SQL literal helpers ---------------------------------------------------------
+# esc: double every single quote so a value round-trips through SQL text-
+# literal interpolation intact (SQL escaping, not shell escaping). The bash
+# parameter-expansion form `${v//\'/\'\'}` does NOT do this on bash 3.2 — it
+# leaves a literal backslash in the output and the original quote unescaped,
+# so any free-text value (a note, a reason, a title) containing an apostrophe
+# produces malformed SQL (#285). Mirrors the proven-correct idiom already in
+# cmd_teammate.sh's esc() (sed "s/'/''/g"); duplicated here rather than
+# sourced because it belongs in the shared _lib.sh, which is a sibling's
+# scope this wave — see #285 follow-up to consolidate.
+esc() { printf '%s' "$1" | sed "s/'/''/g"; }
 # _txt: quoted text literal, or NULL when empty (mirrors cmd_audit NULLIF intent).
 _txt() {
   local v="${1:-}"
   [[ -z "$v" ]] && { printf 'NULL'; return; }
-  printf "'%s'" "${v//\'/\'\'}"
+  printf "'%s'" "$(esc "$v")"
 }
 # _num: numeric literal, or NULL when empty; abort on a malformed value.
 _num() {
@@ -130,13 +140,14 @@ _cmd_roll() {
   done
   [[ -n "$sprint" ]] || { echo "ERROR: adapt roll requires --sprint=<branch>" >&2; exit 1; }
 
-  local sprint_esc="${sprint//\'/\'\'}"
+  local sprint_esc; sprint_esc="$(esc "$sprint")"
 
   # Findings summary for this sprint (high/critical counts), stored as JSON.
-  local hi cr findings
+  local hi cr findings findings_esc
   hi=$(shctx_sql "SELECT count(*) FROM audit_findings WHERE project_id='$pid' AND sprint_branch='$sprint_esc' AND severity='high';")
   cr=$(shctx_sql "SELECT count(*) FROM audit_findings WHERE project_id='$pid' AND sprint_branch='$sprint_esc' AND severity='critical';")
   findings=$(jq -cn --argjson h "${hi:-0}" --argjson c "${cr:-0}" '{high:$h,critical:$c}')
+  findings_esc="$(esc "$findings")"
 
   # 1) metrics row (idempotent on UNIQUE(project_id,sprint_branch))
   shctx_sql "INSERT OR REPLACE INTO sprint_metrics
@@ -146,7 +157,7 @@ _cmd_roll() {
                      $(_num "$lanes" lanes), $(_num "$waves" waves),
                      $(_num "$loca" loc-add), $(_num "$locd" loc-del),
                      $(_num "$wall" wall-min), $(_num "$api" api),
-                     '${findings//\'/\'\'}', $now);"
+                     '$findings_esc', $now);"
 
   # 2) harvest HIGH/CRITICAL findings → mem_entries(kind='prior'), deduped by title
   local ids harvested=0 fid concern gist sev title title_esc dup body body_esc tags tags_esc mid
@@ -159,7 +170,7 @@ _cmd_roll() {
     # collapse newlines so each prior stays one line (briefs + tab-free reads)
     gist=$(shctx_sql "SELECT replace(replace(substr(finding,1,240),char(10),' '),char(13),' ') FROM audit_findings WHERE id=$fid;")
     title="prior: ${concern}"
-    title_esc="${title//\'/\'\'}"
+    title_esc="$(esc "$title")"
     dup=$(shctx_sql "SELECT 1 FROM mem_entries WHERE project_id='$pid' AND kind='prior' AND title='$title_esc' LIMIT 1;")
     # Recurrence: the concern already has a prior — refresh its last-seen
     # (updated_at) so decay never prunes a still-recurring lesson, then skip
@@ -170,9 +181,9 @@ _cmd_roll() {
       continue
     fi
     body="[$sev] sprint $sprint: ${gist}"
-    body_esc="${body//\'/\'\'}"
+    body_esc="$(esc "$body")"
     tags=$(jq -cn --arg c "$concern" '[$c]')
-    tags_esc="${tags//\'/\'\'}"
+    tags_esc="$(esc "$tags")"
     mid=$(shctx_uuid7)
     shctx_sql "INSERT INTO mem_entries (id,project_id,kind,title,body,tags,pinned,created_at,updated_at)
                VALUES ('$mid','$pid','prior','$title_esc','$body_esc','$tags_esc',0,$now,$now);"
@@ -245,11 +256,11 @@ _cmd_reflect() {
   [[ -n "$note" ]]   || { echo "ERROR: adapt reflect requires --note=<lesson>" >&2; exit 1; }
 
   local title="prior: reflection ($sprint)"
-  local title_esc="${title//\'/\'\'}"
+  local title_esc; title_esc="$(esc "$title")"
   local note1; note1=$(printf '%s' "$note" | tr '\n\r' '  ')
   local body="[reflection] sprint $sprint: $note1"
-  local body_esc="${body//\'/\'\'}"
-  local tags tags_esc; tags=$(jq -cn '["reflection"]'); tags_esc="${tags//\'/\'\'}"
+  local body_esc; body_esc="$(esc "$body")"
+  local tags tags_esc; tags=$(jq -cn '["reflection"]'); tags_esc="$(esc "$tags")"
 
   local dup; dup=$(shctx_sql "SELECT id FROM mem_entries
                               WHERE project_id='$pid' AND kind='prior' AND title='$title_esc' LIMIT 1;")
@@ -513,7 +524,7 @@ _emit_compile_telemetry() {
   # Check for any data for this sprint.
   local sprint_branch sprint_esc
   sprint_branch=$(current_sprint)
-  sprint_esc="${sprint_branch//\'/\'\'}"
+  sprint_esc="$(esc "$sprint_branch")"
 
   local any
   any=$(shctx_sql "SELECT 1 FROM compile_runs

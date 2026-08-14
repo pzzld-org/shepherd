@@ -19,8 +19,22 @@ set -eu -o pipefail
 # focus/teammates". Resolve to the MAIN worktree via --git-common-dir (which
 # points at the shared .git even from a linked worktree); its parent is the main
 # worktree root. Mirrors the proven hooks/scripts/_lib.sh:sprint_root pattern
-# (the two libs are deliberately not cross-sourced). Fall back to
-# --show-toplevel, then pwd, when git is unavailable.
+# (the two libs are deliberately not cross-sourced).
+#
+# DF-72 (v6.4.5 dogfood): `git rev-parse` is the ONLY anchor this function
+# ever tried, so a tree with no reachable `.git` (an installed plugin copy
+# whose `.git` was stripped for distribution, or a `git` binary that is
+# simply absent from PATH) fell straight through to bare `pwd` — trusting
+# whatever the caller's cwd happened to be, exactly the "resolves relative to
+# the current directory instead of walking up" failure mode this row
+# describes. Before giving up, walk up from cwd looking for the plugin
+# manifest (`.claude-plugin/plugin.json`) — the same anchor
+# `shepherd_cli.commands.{release,doctor}` already treat as the plugin/repo
+# root marker, so this recognizes the identical root a git checkout's own
+# `.git` would have. Purely additive: when neither `.git` nor the manifest is
+# found anywhere above cwd, this still falls through to the exact same `pwd`
+# it has always returned outside a repo — the "not inside a repo" behavior is
+# unchanged.
 shctx_repo_root() {
   local common main
   common="$(git rev-parse --git-common-dir 2>/dev/null || true)"
@@ -29,7 +43,16 @@ shctx_repo_root() {
     main="$(cd "$(dirname "$common")" 2>/dev/null && pwd || true)"
     [[ -n "$main" ]] && { printf '%s\n' "$main"; return 0; }
   fi
-  git rev-parse --show-toplevel 2>/dev/null || pwd
+  local top
+  top="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+  [[ -n "$top" ]] && { printf '%s\n' "$top"; return 0; }
+  local dir
+  dir="$(pwd)"
+  while [[ -n "$dir" && "$dir" != "/" ]]; do
+    [[ -f "$dir/.claude-plugin/plugin.json" ]] && { printf '%s\n' "$dir"; return 0; }
+    dir="$(dirname "$dir")"
+  done
+  pwd
 }
 
 # True when the cwd is inside a LINKED worktree (not the primary). The shared

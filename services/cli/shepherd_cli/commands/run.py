@@ -30,6 +30,20 @@ lock file, latent prose). Subcommands:
   recognizable canonical prefix is reported and skipped, never crashed
   on; ``--dry-run`` previews every planned rename with no changes made.
 - ``run show <run> [--json]`` / ``run list [--json]`` — read side.
+- ``run claim <run> [--json]`` — #286: the cross-harness resumption path for
+  an already-existing run that ``run init`` correctly refuses (exit 5) to
+  reinitialize — the "third door" for a second Shepherd implementation
+  (e.g. codex-shepherd) that finds a run already ``executing`` and needs to
+  safely resume it rather than duplicate it. READ-ONLY: loads ``run.json``
+  through the exact same schema/migration reader ``run show`` uses
+  (:func:`_load_with_migrations_or_fail`) and never writes anything back;
+  ``--json`` emits stable evidence (``run``/``schema_version``/``status``/
+  ``lane_count``/``path``) an adapter can treat exit 0 as authoritative
+  claim evidence for. Fails CLOSED (exit 2) on a malformed, schema-invalid,
+  or higher-than-supported-schema document; exit 5 (the same no-such-run
+  class ``run show`` returns) when the run is missing. Idempotent — a
+  repeated claim, by the same or a different harness, reads the identical
+  unmutated document and exits 0 again.
 - ``run set <run> [--status S] [--seed P] [--plan P]`` — field updates
   (status validated against the closed vocabulary).
 - ``run migrate <run> | --all`` — #247: load a run.json tolerantly
@@ -82,13 +96,15 @@ lock file, latent prose). Subcommands:
   lane-plan directory is missing.
 
 Exit codes: 0 ok; 2 usage/validation (includes a non-canonical explicit
-``run init`` id, without ``--force``, and ``ledger path``/``ledger
-check`` given no ``<run>`` and no resolvable active run — see the module
-docstring's ``ledger path`` entry); 3 a divergent local ledger copy was
-detected (``ledger path --check``); 5 run exists (init) or missing
-(everything else, including ``rename``'s source/destination checks,
-``ledger check`` when the run's ledger is absent, and ``wave verify``
-when the run or its lane-plan directory is absent); 6 pending merges
+``run init`` id, without ``--force``, ``ledger path``/``ledger check``
+given no ``<run>`` and no resolvable active run — see the module
+docstring's ``ledger path`` entry — and ``claim`` on a malformed,
+schema-invalid, or higher-than-supported-schema ``run.json``); 3 a
+divergent local ledger copy was detected (``ledger path --check``); 5 run
+exists (init) or missing (everything else, including ``rename``'s
+source/destination checks, ``claim`` on a missing run, ``ledger check``
+when the run's ledger is absent, and ``wave verify`` when the run or its
+lane-plan directory is absent); 6 pending merges
 remain OR a plan-declared lane has no ledger row (``wave pending``, #1
 GATE-EXIT-CODE-MISMATCH) or step/verdict join findings are present
 (``wave verify``); 7 worktree ledger divergence (``ledger check``).
@@ -528,6 +544,85 @@ def list_cmd(
         return
     for name in runs:
         typer.echo(name)
+
+
+#: The highest ``run.json`` ``schema_version`` :func:`claim_cmd` will vouch
+#: for. Bumped in lockstep with :class:`shepherd_cli.models_run.RunState`'s
+#: own ``schema_version`` default (currently 1). Parsing a document's fields
+#: cleanly today is no proof a NEWER schema's fields were read correctly too
+#: -- #286 point 2 requires failing closed on "unsupported", and a schema
+#: this CLI has never seen is exactly that, even though pydantic's
+#: ``extra="allow"`` config would otherwise let it validate silently.
+_MAX_CLAIMABLE_SCHEMA_VERSION = 1
+
+
+@app.command("claim")
+def claim_cmd(
+    run: str = typer.Argument(..., help="Existing canonical run id to claim (e.g. v039-dev1)."),
+    json_flag: bool = typer.Option(False, "--json", help="Emit stable machine-readable claim evidence."),
+) -> None:
+    """Claim an ALREADY-EXISTING run for cross-harness custody — READ-ONLY (#286).
+
+    ``run init`` on an existing canonical run always exits 5 (never
+    reinitializes, never duplicates) — this is the third door: a second
+    Shepherd implementation (e.g. codex-shepherd) that finds a run already
+    ``executing`` and needs to safely RESUME it. skills/bridge/SKILL.md's
+    contract already says a local claim may be recorded after a successful
+    primary ``run init`` OR claim relay; before #286 the claim-relay half had
+    no surface on this side. Live repro this closes: FL03/axiom's
+    ``v039-dev1`` (schema 1, status ``executing``, five lanes
+    ``in-progress``) — ``run show`` succeeds, ``run init`` refuses at exit
+    5, and there was nothing in between.
+
+    Loads ``run.json`` through the exact same schema/migration reader every
+    other read command in this module uses
+    (:func:`_load_with_migrations_or_fail` — the identical
+    load-then-exit-code process boundary ``run show`` already relies on;
+    this command hand-rolls no second one) and NEVER writes anything back:
+    no scaffold, no rename, no field mutation, no ``save_run`` call — a
+    claim is provably a no-op against ``run.json`` on disk. Exit 0 (plus
+    this command's stable ``--json`` evidence) IS the claim evidence an
+    external harness is meant to treat as authoritative, and since nothing
+    is ever written, a claim is idempotent by construction: a second claim
+    — by the same harness or a different one — reads the identical
+    unmutated document and exits 0 again.
+
+    Fails CLOSED, never partially: a missing run exits 5 (the exact
+    no-such-run class ``run show`` already returns); a malformed or
+    schema-invalid ``run.json`` exits 2 (ditto — same
+    ``JSONDecodeError``/``ValidationError`` handling); and a run stamped
+    with a schema NEWER than :data:`_MAX_CLAIMABLE_SCHEMA_VERSION` also
+    exits 2 rather than being silently vouched for.
+    """
+    state, _applied = _load_with_migrations_or_fail(run)
+    if state.schema_version > _MAX_CLAIMABLE_SCHEMA_VERSION:
+        _fail(
+            f"run {run} is schema_version {state.schema_version}, newer than this CLI "
+            f"supports claiming (max {_MAX_CLAIMABLE_SCHEMA_VERSION}) -- refusing to vouch "
+            "for an unrecognized future schema",
+            2,
+        )
+
+    path = run_state_path(run)
+    if json_flag:
+        typer.echo(
+            json.dumps(
+                {
+                    "run": state.run,
+                    "schema_version": state.schema_version,
+                    "status": state.status,
+                    "lane_count": len(state.lanes),
+                    "path": path,
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
+    else:
+        typer.echo(
+            f"claimed {state.run} (schema {state.schema_version}, status {state.status}, "
+            f"{len(state.lanes)} lane(s)): {path}"
+        )
 
 
 @app.command("migrate")

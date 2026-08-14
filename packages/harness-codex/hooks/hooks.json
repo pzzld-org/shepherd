@@ -1,5 +1,5 @@
 {
-  "description": "Codex Shepherd content/predicates/*.toml guard wiring (packages/harness-codex, W4-S5). Same relative path Codex already reads (confirmed against the installed codex-shepherd@1.0.2 bundle). Only the two predicates whose context is cheaply computable without a Codex-side dispatch-record writer are wired live -- see src/guard.mjs's module header for the write-boundary/git-custody scope and the named gap that leaves dedup-gate/dispatch-scope evaluable (predicates.mjs, proven against every content/predicates/*.toml example in test/) but not yet live-hooked.",
+  "description": "Codex Shepherd guard wiring (packages/harness-codex, DF-75). PostToolUse(spawn_agent|collaborationspawn_agent) tags each spawned agent with its dispatched role (src/dispatch-record.mjs) -- Codex's own analog of hooks/scripts/agent_invocation_tagger.sh, since nothing sets a SHEPHERD_ROLE env var for a Codex subprocess. PreToolUse(apply_patch|Bash) resolves that role, then relays write-boundary/git-custody evaluation to the shared `shepherd guard eval` engine (services/cli/shepherd_cli/predicates.py) -- src/guard.mjs is the thin translator, never a predicate interpreter itself.",
   "hooks": {
     "PreToolUse": [
       {
@@ -10,6 +10,19 @@
             "command": "node \"$PLUGIN_ROOT/hooks/scripts/shepherd_guard.mjs\"",
             "timeout": 5,
             "statusMessage": "Checking Shepherd guard predicates"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "^(spawn_agent|collaborationspawn_agent)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$PLUGIN_ROOT/hooks/scripts/shepherd_guard.mjs\"",
+            "timeout": 5,
+            "statusMessage": "Tagging spawned agent role"
           }
         ]
       }

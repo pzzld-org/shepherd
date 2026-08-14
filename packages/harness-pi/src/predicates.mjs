@@ -11,6 +11,11 @@
 // corpus, not by discipline") -- reading content/predicates/*.toml live means a change there
 // is caught by test/guard-predicates.test.mjs on the next run, never silently drifts from a
 // hand-copied fixture list.
+//
+// STILL HERE post-DF-76: see src/guard.ts's own header for why -- a measured 150-600ms/call
+// engine relay is not safe to put on extension.ts's synchronous, in-process, every-tool-call
+// path, so this module and src/guard.ts remain the wired interpreter pending a long-lived-
+// process shape for `shepherd guard eval` (out of this step's file scope to build).
 
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";

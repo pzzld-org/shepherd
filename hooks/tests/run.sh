@@ -660,5 +660,36 @@ else
   fails=$((fails+1))
 fi
 
+# GH #285: SQL-literal quote-escaping correctness (sql_lit()-family idioms
+# across dispatch_guard.sh/cmd_teammate.sh/cmd_adapt.sh/cmd_loop.sh — see the
+# guard-fail-closed audit's Finding 1). Registered here for the sibling lane
+# authoring hooks/tests/test_sql_escaping.sh this wave; this file may not
+# exist yet at some point during the wave, which is the correct loud-failure
+# outcome, not a silent skip.
+echo "== test_sql_escaping.sh (GH #285 — SQL quote-escaping correctness) =="
+total=$((total+1))
+if sqle_out=$(bash "$TESTS_DIR/test_sql_escaping.sh" 2>&1); then
+  printf '  PASS  %s\n' "sql-quote-escaping"
+else
+  printf '  FAIL  %-50s\n' "sql-quote-escaping"
+  printf '%s\n' "$sqle_out" | sed 's/^/        /'
+  fails=$((fails+1))
+fi
+
+# DF-69: a compiled workflow's meta block must carry a literal (non-templated)
+# value, not a string that still contains an unexpanded placeholder. Registered
+# here for the sibling lane authoring hooks/tests/test_workflow_meta_gate.sh
+# this wave; may not exist yet at some point during the wave -- loud failure,
+# not a silent skip, is the correct outcome.
+echo "== test_workflow_meta_gate.sh (DF-69 — workflow meta literal gate) =="
+total=$((total+1))
+if wfmg_out=$(bash "$TESTS_DIR/test_workflow_meta_gate.sh" 2>&1); then
+  printf '  PASS  %s\n' "workflow-meta-literal"
+else
+  printf '  FAIL  %-50s\n' "workflow-meta-literal"
+  printf '%s\n' "$wfmg_out" | sed 's/^/        /'
+  fails=$((fails+1))
+fi
+
 echo "—— $((total-fails))/$total passed ——"
 exit "$fails"

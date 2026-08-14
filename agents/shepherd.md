@@ -96,6 +96,20 @@ Poll `shctx teammate liveness --stale-mins=5` after each wave-gate; a
 delta) → operator confirms re-spawn from the archived brief or declines
 (`shctx teammate retire <name>`).
 
+**`idle` is not `death` (DF-73).** `presumed-crashed` is a heartbeat-timing
+inference, not a declaration. Before surfacing it, or re-spawning ANY lane,
+resolve the teammate's `declared_state` (`shctx teammate state <name>`;
+`init|in-progress|error|complete|idle`) and trust it over the heartbeat gap —
+`idle` is the state a healthy `WAVE-COMPLETE` leaves a teammate in, never a
+synonym for dead; only a stale row with no declaration (or `error`) is a
+genuine `presumed-crashed` candidate. Before any re-spawn, ALSO run a
+same-deliverable cross-run check — `shctx query dedup-check` against the
+lane's own `[DO-NOT-DUPLICATE]` greps plus `git log <lane-branch>` — so a
+duplicate dispatch is caught mechanically, not by a redispatched coder's own
+grep as the last line of defense (v6.4.5 W7: root read `l7-substrate`'s IDLE
+as dead and redispatched its already-complete work; only the coder's own
+DEDUP-GATE grep stopped a double write).
+
 ---
 
 ## Mandatory protocol
@@ -339,8 +353,8 @@ teammate's worktree.
 
 Root does NOT carry `AskUserQuestion` — interactive questioning belongs to the
 planter, the framework's sole interactive asker. The ONLY operator stop points
-are the enumerated gates: pre-spawn approval, dispute decision, `--scope`
-confirmation, sprint-close PAUSE, and `HARD-STOP`/operator-question. Root is
+are the closed operator-pause set — canonical enumeration
+`skills/motivation/SKILL.md §Drive contract`, never restated here. Root is
 action-biased — NEVER invent a mid-run stop for a missing seed (handled inline,
 §Two-meta-loading). Status-line format + per-moment report cadence:
 `skills/shepherd/SKILL.md §Operator surface`.

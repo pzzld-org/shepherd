@@ -1,64 +1,95 @@
 #!/usr/bin/env node
-// packages/harness-codex/hooks/scripts/shepherd_guard.mjs -- Codex PreToolUse guard
-// entrypoint, wired by ../hooks.json. Reads one JSON hook payload from stdin and writes one
-// JSON decision to stdout, matching the SAME `{"permissionDecision":"deny","message":"..."}`
-// / silent-exit-0-on-allow contract Claude's own `hooks/scripts/_lib.sh` (`emit_deny`/
-// `pass_silent`) and the installed `codex-shepherd@1.0.2` bundle's `shepherd_hook.py` both
-// already use (confirmed identical wire format by reading that bundle's own `main()`) -- this
-// script is the thin stdio shell; all decision logic lives in ../../src/guard.mjs so it can
-// be unit-tested without a subprocess (../../test/guard.test.mjs).
+// packages/harness-codex/hooks/scripts/shepherd_guard.mjs -- Codex hook entrypoint, wired by
+// ../hooks.json under TWO events now (DF-75):
 //
-// SHEPHERD_ROLE is read from the environment as the interim role signal -- see
-// src/guard.mjs's module header for exactly why, and what closes this gap later.
+//   PostToolUse(spawn_agent|collaborationspawn_agent) -- tags the just-spawned agent with its
+//     role (src/dispatch-record.mjs `recordSpawnDispatch`); never blocks, never prints.
+//   PreToolUse(apply_patch|Bash) -- the write-boundary/git-custody guard: resolve role
+//     locally, then shell out to `bin/shepherd guard eval` for anything that needs the
+//     engine, translating the verdict into Codex's real `PreToolUse` hook-output shape
+//     (`src/guard.mjs`'s `preToolUseDeny`/`interpretEngineResult` -- see that module's header
+//     for how the wire format was verified, not assumed).
+//
+// All decision logic lives in ../../src/guard.mjs + ../../src/dispatch-record.mjs so both stay
+// unit-testable without a subprocess (../../test/guard.test.mjs); this script is the thin
+// stdio + `spawnSync` shell around them, mirroring `packages/harness-claude/hooks/guard-eval.mjs`'s
+// own split.
 
-import { decideForToolCall } from "../../src/guard.mjs";
+import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { isSpawnTool, recordSpawnDispatch, resolveDataDir, resolveRole } from "../../src/dispatch-record.mjs";
+import { buildGuardDecision, engineUnavailableVerdict, interpretEngineResult, missingRecordDeniedVerdict } from "../../src/guard.mjs";
 
-// halt_code per (predicateId, fired rule id), transcribed from content/predicates/*.toml's
-// own `[[example]]` blocks -- the only two predicates this adapter's guard actually fires.
-const HALT_CODES = Object.freeze({
-  "write-boundary:role-write-eligibility": "SCOPE OVERFLOW",
-  "write-boundary:path-in-declared-scope": "SCOPE OVERFLOW",
-  "git-custody:implementer-never-writes-git": "CODER-GIT-WRITE",
-  "git-custody:lane-lead-owns-its-own-branch-only": "TEAMMATE-GIT-WRITE",
-  "git-custody:cross-lane-integration-is-root-exclusive": "TEAMMATE-GIT-WRITE",
-});
+const HERE = dirname(fileURLToPath(import.meta.url));
+// hooks/scripts -> hooks -> harness-codex -> packages -> repo root (4 ups) -- `bin/shepherd`
+// lives in the monorepo root, not under this package's own materialized tree; see
+// src/guard.mjs's module header and packages/harness-claude/hooks/guard-eval.mjs for the same
+// import.meta.url-relative pattern (never `$PLUGIN_ROOT`, which resolves to this package's own
+// root on Codex, not the repo root).
+const REPO_ROOT = join(HERE, "..", "..", "..", "..");
+const LAUNCHER = join(REPO_ROOT, "bin", "shepherd");
 
 function readStdin() {
-  return new Promise((resolve) => {
-    let data = "";
-    process.stdin.setEncoding("utf8");
-    process.stdin.on("data", (chunk) => (data += chunk));
-    process.stdin.on("end", () => resolve(data));
-    process.stdin.on("error", () => resolve(data));
-  });
+  try {
+    return readFileSync(0, "utf8");
+  } catch {
+    return "";
+  }
 }
 
-async function main() {
-  const raw = await readStdin();
+function emit(verdict) {
+  if (Object.keys(verdict).length > 0) console.log(JSON.stringify(verdict));
+}
+
+function main() {
+  const raw = readStdin();
   let payload;
   try {
-    payload = JSON.parse(raw);
+    payload = JSON.parse(raw || "{}");
   } catch {
-    return 0; // malformed hook input fails open, same as hooks/scripts/_lib.sh's json_field
+    return 0; // malformed hook input: nothing to decide, stay silent (never a false deny)
   }
 
-  const decision = decideForToolCall({
-    toolName: payload.tool_name ?? "",
-    toolInput: payload.tool_input ?? {},
-    role: process.env.SHEPHERD_ROLE ?? "",
-  });
+  const dataDir = resolveDataDir();
 
-  if (decision.result === "deny") {
-    const firedRuleIds = decision.firedRuleIds ?? [];
-    const haltCode = firedRuleIds.map((id) => HALT_CODES[`${decision.predicateId}:${id}`]).find(Boolean) ?? "SCOPE OVERFLOW";
-    process.stdout.write(
-      JSON.stringify({
-        permissionDecision: "deny",
-        message: `[shepherd] ${haltCode} -- predicate \`${decision.predicateId}\` denied (fired: ${firedRuleIds.join(", ")}).`,
-      })
-    );
+  if (payload.hook_event_name === "PostToolUse" && isSpawnTool(payload.tool_name)) {
+    recordSpawnDispatch({ toolInput: payload.tool_input, toolResponse: payload.tool_response, dataDir });
+    return 0;
   }
+
+  if (payload.hook_event_name !== "PreToolUse") return 0;
+
+  const decision = buildGuardDecision(
+    { toolName: payload.tool_name ?? "", toolInput: payload.tool_input ?? {}, agentId: payload.agent_id ?? null, dataDir },
+    resolveRole
+  );
+
+  if (decision.kind === "allow") return 0;
+
+  if (decision.kind === "missing-record") {
+    emit(missingRecordDeniedVerdict(decision.agentId));
+    return 0;
+  }
+
+  const result = spawnSync(LAUNCHER, ["guard", "eval"], { input: JSON.stringify(decision.payload), encoding: "utf8" });
+  if (result.error || result.status !== 0) {
+    const detail = result.error ? result.error.message : `exit ${result.status}: ${result.stderr?.trim()}`;
+    emit(engineUnavailableVerdict(detail));
+    return 0;
+  }
+
+  let engineResult;
+  try {
+    engineResult = JSON.parse(result.stdout);
+  } catch (error) {
+    emit(engineUnavailableVerdict(`unparseable engine output: ${error.message}`));
+    return 0;
+  }
+
+  emit(interpretEngineResult(engineResult));
   return 0;
 }
 
-main().then((code) => (process.exitCode = code));
+process.exitCode = main();
