@@ -1,49 +1,82 @@
 #!/usr/bin/env bash
-# hooks/tests/test_coder_git_guard.sh — tests for coder_git_guard.sh (v6.3.0, #187).
+# hooks/tests/test_coder_git_guard.sh — tests for coder_git_guard.sh (v6.3.0,
+# #187; rebuilt DF-77).
 #
-# Covers the PreToolUse(Bash) @coder git-write guard: git custody is never the
-# coder's, so every git write/mutating verb is denied for a @coder dispatch
-# while read-only inspection (status/diff/log/show/rev-parse) passes. Role is
-# resolved via the dispatch record agent_invocation_tagger.sh writes (same path
-# bash_guard.sh uses for @auditor/@discovery), simulated here as
-# .shepherd/dispatch/<sprint>/<tool_use_id>.json.
+# WHY REBUILT: every prior DENY case fed the guard a HAND-WRITTEN dispatch
+# record (`{"agent_role":"coder"}`) at a filename chosen to equal the Bash
+# call's own tool_use_id — a payload shape that never occurs in production
+# (agent_invocation_tagger.sh derives agent_role, it is never handed one
+# directly; and a dispatch record is keyed by the DISPATCHING Agent() call's
+# own tool_use_id, never the id of a LATER Bash call). The suite passed
+# 31/31 while the real guard denied nothing in this repository — proving the
+# fixture, not the mechanism (the exact DF-19 pattern). This rebuild runs the
+# REAL agent_invocation_tagger.sh, fed a REALISTIC
+# tool_input.subagent_type-bearing PreToolUse(Agent) payload, to PRODUCE every
+# dispatch record the guard cases below consume — so a passing DENY case now
+# proves FIX 1 (role derivation) and coder_git_guard.sh's deny logic work
+# TOGETHER, end to end, through both real hook scripts.
 #
-#   1. No shepherd.toml                         → PASS (not a shepherd project)
-#   2. coder + git commit                       → DENY + CODER-GIT-WRITE
-#   3. coder + git add <file>                   → DENY
-#   4. coder + git add -A                        → DENY
-#   5. coder + git reset --hard                  → DENY
-#   6. coder + git checkout main                 → DENY
-#   7. coder + git stash                         → DENY
-#   8. coder + git push                          → DENY
-#   9. coder + git worktree add                  → DENY
-#  10. coder + git branch -D foo                 → DENY
-#  11. coder + git -C <path> commit (global opt) → DENY
-#  12. coder + git status && git commit (mixed)  → DENY
-#  13. coder + git status                        → PASS (read-only)
-#  14. coder + git diff                          → PASS
-#  15. coder + git log --oneline -5              → PASS
-#  16. coder + git show HEAD                     → PASS
-#  17. coder + git rev-parse HEAD (Step 0.5)     → PASS
-#  18. coder + rg pattern (no git)               → PASS
-#  19. auditor + git commit (non-coder role)     → PASS (guard only polices coder)
-#  20. untagged turn + git commit (role≠coder)   → PASS
+# ONE assertion matters most: "coder + git commit → DENY (real tagger,
+# real guard)" below — a dispatch tagged shepherd:coder attempting `git
+# commit` is denied end to end. Everything else is the regression matrix
+# around it, plus the FIX-2/FIX-3 controls the DF-77 brief calls out
+# explicitly:
+#   - a coder's `git status` passes (read-only)
+#   - root — a Bash call with NO matching dispatch record at all — is NOT
+#     denied for a git write (current_role() resolves "unknown", never
+#     escalates to "conductor"; coder_git_guard.sh warns, never denies, on
+#     "unknown" — see _lib.sh current_role() + coder_git_guard.sh headers for
+#     why: root's own direct git writes resolve to the identical "unknown"
+#     value, so a blanket deny would block root too)
+#   - that same "unknown role + git write" case emits a LOUD warn
+#     (additionalContext), never a silent pass — DF-77's own root cause was a
+#     guard nobody could see was doing nothing
+#
+#   1. No shepherd.toml                                → PASS (not a shepherd project)
+#   2. tagger: subagent_type=shepherd:coder             → writes agent_role="coder" (FIX 1, real)
+#   3. coder + git commit → DENY (real tagger, real guard) *** the ONE assertion ***
+#   4. coder + git add <file>                           → DENY
+#   5. coder + git add -A                                → DENY
+#   6. coder + git reset --hard                          → DENY
+#   7. coder + git checkout main                         → DENY
+#   8. coder + git stash                                 → DENY
+#   9. coder + git push                                  → DENY
+#  10. coder + git worktree add                          → DENY
+#  11. coder + git branch -D foo                         → DENY
+#  12. coder + git -C <path> commit (global opt)         → DENY
+#  13. coder + git status && git commit (mixed)          → DENY
+#  14. coder + git status                                → PASS (read-only)
+#  15. coder + git diff                                  → PASS
+#  16. coder + git log --oneline -5                      → PASS
+#  17. coder + git show HEAD                              → PASS
+#  18. coder + git rev-parse HEAD (Step 0.5)              → PASS
+#  19. coder + rg pattern (no git)                        → PASS
+#  20. auditor (real tagger) + git commit                 → PASS (guard only polices coder)
+#  21. untagged/unresolved + git commit                   → PASS but WARN (FIX 2/3 — root not denied)
+#  22. untagged/unresolved + git status                   → PASS, no warn (ordinary read, no noise)
 
 set -uo pipefail
 cd "$(dirname "$0")"
 SCRIPT="$(cd .. && pwd)/scripts/coder_git_guard.sh"
+TAGGER="$(cd .. && pwd)/scripts/agent_invocation_tagger.sh"
 
 fails=0; total=0
 pass()  { printf '  PASS  %s\n' "$1"; }
 fail()  { printf '  FAIL  %s — %s\n' "$1" "$2"; fails=$((fails+1)); }
 is_deny()  { printf '%s' "$1" | grep -q '"permissionDecision"[[:space:]]*:[[:space:]]*"deny"'; }
 has_code() { printf '%s' "$1" | grep -q "CODER-GIT-WRITE"; }
+is_warn()  { printf '%s' "$1" | grep -q '"additionalContext"'; }
 run_hook() { printf '%s' "$1" | bash "$SCRIPT" 2>/dev/null; return 0; }
 
 # current_role needs jq or python3 to read the dispatch record; without either
-# the role resolves to "conductor" and every coder case would false-pass.
+# the role resolves to "unknown" and every coder case would false-warn instead
+# of denying (see coder_git_guard.sh's own ROLE-DETECTION header).
 if ! command -v jq >/dev/null 2>&1 && ! command -v python3 >/dev/null 2>&1; then
   printf '  SKIP  all cases — neither jq nor python3 available for role resolution\n'
+  exit 0
+fi
+if ! command -v python3 >/dev/null 2>&1; then
+  printf '  SKIP  all cases — python3 required to build realistic Agent()/Bash() payloads\n'
   exit 0
 fi
 
@@ -58,7 +91,7 @@ bare=$(mktemp -d -t shep-cgg-bare.XXXXXX)
 ) || fails=$((fails+1))
 rm -rf "$bare"
 
-# --- shared ephemeral shepherd repo + dispatch records -------------------
+# --- shared ephemeral shepherd repo ---------------------------------------
 tmp=$(mktemp -d -t shep-cgg.XXXXXX)
 trap 'rm -rf "$tmp"' EXIT
 cd "$tmp"
@@ -69,18 +102,36 @@ mkdir -p .claude; touch .claude/shepherd.toml
 git add .claude/shepherd.toml
 git -c commit.gpgsign=false commit -q -m init
 sprint=$(git rev-parse --abbrev-ref HEAD)
-mkdir -p ".shepherd/dispatch/$sprint"
-printf '{"agent_role":"coder"}'   > ".shepherd/dispatch/$sprint/coder1.json"
-printf '{"agent_role":"auditor"}' > ".shepherd/dispatch/$sprint/aud1.json"
+
+# --- Agent() payload builder + REAL tagger invocation ---------------------
+# Mirrors a real PreToolUse(Agent) hook payload: tool_input.subagent_type is
+# the dispatch-law-mandated field FIX 1 reads. Runs the REAL
+# agent_invocation_tagger.sh so the dispatch record consumed below is
+# genuinely produced by the fix under test, not hand-authored.
+AGENT_PAYLOAD() { # <tool_use_id> <subagent_type e.g. shepherd:coder>
+  python3 -c 'import json,sys; print(json.dumps({"session_id":"s","tool_name":"Agent","tool_use_id":sys.argv[1],"tool_input":{"subagent_type":sys.argv[2],"model":"claude-sonnet-5","prompt":"do the work"}}))' "$1" "$2"
+}
+tag_dispatch() { # <tool_use_id> <subagent_type>
+  printf '%s' "$(AGENT_PAYLOAD "$1" "$2")" | bash "$TAGGER" >/dev/null 2>&1 || true
+}
+
+tag_dispatch coder1 shepherd:coder
+tag_dispatch aud1   shepherd:auditor
+
+# --- case 2: tagger writes agent_role from subagent_type (FIX 1, real) ----
+total=$((total+1))
+record_file=".shepherd/dispatch/$sprint/coder1.json"
+if [[ -f "$record_file" ]] && grep -q '"agent_role"[[:space:]]*:[[:space:]]*"coder"' "$record_file"; then
+  pass "tagger: subagent_type=shepherd:coder -> agent_role=coder (FIX 1)"
+else
+  fail "tagger: subagent_type=shepherd:coder -> agent_role=coder (FIX 1)" \
+    "record missing or wrong role: $(cat "$record_file" 2>/dev/null || echo '<no file>')"
+fi
 
 # payload builder: <tool_use_id> <command> — JSON-escape the command (it may
 # contain embedded quotes, e.g. bash -c "git commit").
 P() {
-  if command -v python3 >/dev/null 2>&1; then
-    python3 -c 'import json,sys; print(json.dumps({"session_id":"s","tool_name":"Bash","tool_use_id":sys.argv[1],"tool_input":{"command":sys.argv[2]}}))' "$1" "$2"
-  else
-    printf '{"session_id":"s","tool_name":"Bash","tool_use_id":"%s","tool_input":{"command":"%s"}}' "$1" "$2"
-  fi
+  python3 -c 'import json,sys; print(json.dumps({"session_id":"s","tool_name":"Bash","tool_use_id":sys.argv[1],"tool_input":{"command":sys.argv[2]}}))' "$1" "$2"
 }
 
 deny_case() { # <label> <tool_use_id> <cmd>
@@ -92,7 +143,9 @@ pass_case() { # <label> <tool_use_id> <cmd>
   if ! is_deny "$out"; then pass "$1"; else fail "$1" "unexpected deny: ${out:0:100}"; fi
 }
 
-deny_case "coder + git commit → DENY"                 coder1 'git commit -m feat'
+# --- case 3: THE ONE ASSERTION THAT MATTERS -------------------------------
+deny_case "*** coder + git commit -> DENY (real tagger, real guard) ***" coder1 'git commit -m feat'
+
 deny_case "coder + git add <file> → DENY"             coder1 'git add src/lib.rs'
 deny_case "coder + git add -A → DENY"                 coder1 'git add -A'
 deny_case "coder + git reset --hard → DENY"           coder1 'git reset --hard HEAD'
@@ -110,8 +163,7 @@ pass_case "coder + git log → PASS"                    coder1 'git log --onelin
 pass_case "coder + git show → PASS"                   coder1 'git show HEAD'
 pass_case "coder + git rev-parse → PASS (Step 0.5)"   coder1 'git rev-parse HEAD'
 pass_case "coder + rg (no git) → PASS"                coder1 'rg -n pattern src/'
-pass_case "auditor + git commit → PASS (non-coder)"   aud1   'git commit -m x'
-pass_case "untagged + git commit → PASS (role≠coder)" nodisp 'git commit -m x'
+pass_case "auditor (real tagger) + git commit → PASS" aud1   'git commit -m x'
 
 # --- bypass regressions (review CRITICAL #2/#3, MEDIUM #8) ----------------
 deny_case "coder + bash -c \"git commit\" → DENY"     coder1 'bash -c "git commit -am x"'
@@ -123,6 +175,29 @@ deny_case "coder + glued git status;git commit → DENY" coder1 'git status;git 
 deny_case "coder + sh -c git checkout → DENY"         coder1 'sh -c "git checkout -- ."'
 pass_case "coder + glued git status;git log → PASS"   coder1 'git status;git log --oneline'
 pass_case "coder + git status;echo ok → PASS"         coder1 'git status;echo ok'
+
+# --- DF-77 FIX 2/3 controls: untagged tool_use_id (root, or an unresolved
+# dispatch — mechanically identical to current_role(), which is the honest
+# point: neither can be distinguished from the other today) -----------------
+total=$((total+1))
+out=$(run_hook "$(P nodisp-untagged 'git commit -m x')")
+if is_deny "$out"; then
+  fail "untagged + git commit → NOT denied (root not blocked, DF-77 FIX 2)" "unexpected deny: ${out:0:100}"
+elif ! is_warn "$out"; then
+  fail "untagged + git commit → NOT denied (root not blocked, DF-77 FIX 2)" "expected a warn (additionalContext), got: ${out:0:100}"
+else
+  pass "untagged + git commit → NOT denied, but WARNS (DF-77 FIX 2/3 — root not blocked, gap stays visible)"
+fi
+
+total=$((total+1))
+out=$(run_hook "$(P nodisp-untagged2 'git status')")
+if is_deny "$out"; then
+  fail "untagged + git status → PASS, no noise" "unexpected deny: ${out:0:100}"
+elif is_warn "$out"; then
+  fail "untagged + git status → PASS, no noise" "unexpected warn on an ordinary read: ${out:0:100}"
+else
+  pass "untagged + git status → PASS, no noise (ordinary read stays quiet)"
+fi
 
 # --- cross-worktree role detection (review CRITICAL #1, _lib.sh current_role) ---
 # The coder's Bash runs from its OWN linked worktree (a different branch AND

@@ -1,19 +1,32 @@
 #!/usr/bin/env bash
-# shepherd hook — PreToolUse(Agent|Task) role tagger (v5.1.2)
+# shepherd hook — PreToolUse(Agent|Task) role tagger (v5.1.2; role-signal fixed
+# DF-77 FIX 1, #187/#215-adjacent field incident)
 #
-# Parses the Agent/Task tool_input.prompt for the canonical flock-agent
-# header (`# @<role>` at the top of the injected system prompt) and writes
-# a structured record at <ns>/dispatch/<sprint>/<tool_use_id>.json. Downstream
-# PreToolUse hooks (bash_guard, lock_guard) read this record to make
-# role-conditional decisions.
+# Resolves the dispatched role from tool_input.subagent_type (PRIMARY signal
+# — see DF-77 header note below) and writes a structured record at
+# <ns>/dispatch/<sprint>/<tool_use_id>.json. Downstream PreToolUse hooks
+# (bash_guard, lock_guard, coder_git_guard) read this record via
+# `current_role()` (_lib.sh) to make role-conditional decisions.
 #
-# Input:  PreToolUse JSON { tool_name, tool_use_id, tool_input.prompt, ... }
+# DF-77 (63/63 live dispatch records carried agent_role:"unknown" before this
+# fix): the PRIOR implementation derived role by grepping tool_input.prompt
+# for a `^# @<role>` header — but skills/shepherd/SKILL.md §Dispatch law
+# mandates "put the brief in `prompt`, NEVER inline-embed the agent body," so
+# that header lives in agents/<role>.md (loaded via subagent_type), never in
+# the prompt this hook can see. tool_input.subagent_type is the one role
+# signal the dispatch law GUARANTEES present: dispatch_guard.sh already
+# denies a flock dispatch missing it (DISPATCH-MISSING-SUBAGENT-TYPE). The
+# `# @<role>` prompt-header grep is kept as a SECONDARY fallback (covers a
+# hand-rolled dispatch that bypassed subagent_type), tried only when the
+# primary signal doesn't resolve.
+#
+# Input:  PreToolUse JSON { tool_name, tool_use_id, tool_input.{subagent_type,prompt}, ... }
 # Output: silent exit 0 (never blocks; pure side-effect).
 #
 # Schema written:
 #   {
 #     "tool_use_id":            "<from hook input>",
-#     "agent_role":             "engineer|critic|coder|auditor|worker|discovery|unknown",
+#     "agent_role":             "engineer|critic|coder|auditor|worker|discovery|conductor|unknown",
 #     "sprint":                 "<git branch at dispatch>",
 #     "dispatched_at":          <unix-ts>,
 #     "model":                  "<from tool_input.model>",
@@ -73,14 +86,32 @@ case "$tool" in Agent|Task) ;; *) exit 0 ;; esac
 tool_use_id=$(json_field "$input" '.tool_use_id')
 [[ -z "$tool_use_id" ]] && exit 0
 
+subagent_type=$(json_field "$input" '.tool_input.subagent_type')
 prompt=$(json_field "$input" '.tool_input.prompt')
 model=$(json_field "$input" '.tool_input.model')
 session=$(json_field "$input" '.session_id')
 
-# Parse the role from the first 100 lines of the prompt. The shepherd
-# dispatch convention is the agent body starts with `# @<role>` after the
-# YAML frontmatter. Match the first such header.
-role=$(printf '%s\n' "$prompt" | head -100 | grep -m1 -oE '^# @(engineer|critic|coder|auditor|worker|discovery)\b' | sed 's/^# @//' || true)
+# PRIMARY signal (DF-77 FIX 1): tool_input.subagent_type. The dispatch law
+# (skills/shepherd/SKILL.md §Dispatch law) makes "shepherd:<role>" mandatory
+# on every flock/conductor dispatch, and dispatch_guard.sh already denies a
+# dispatch missing it — so by the time this hook fires, a conforming
+# dispatch's role is sitting right here, never buried in a prompt the same
+# doctrine forbids the role header from ever appearing in.
+role=""
+case "$subagent_type" in
+  shepherd:engineer|shepherd:critic|shepherd:coder|shepherd:auditor|shepherd:worker|shepherd:discovery|shepherd:conductor)
+    role="${subagent_type#shepherd:}"
+    ;;
+esac
+
+# SECONDARY signal (fallback only): a `# @<role>` header in the first 100
+# lines of the prompt — covers a hand-rolled dispatch that skipped
+# subagent_type (dispatch_guard.sh would deny it under the doctrine above,
+# but this hook must still degrade gracefully for a dispatch it never saw
+# gated, e.g. a pre-guard installation or a guard misconfiguration).
+if [[ -z "$role" ]]; then
+  role=$(printf '%s\n' "$prompt" | head -100 | grep -m1 -oE '^# @(engineer|critic|coder|auditor|worker|discovery)\b' | sed 's/^# @//' || true)
+fi
 role="${role:-unknown}"
 
 sprint=$(current_sprint)

@@ -60,7 +60,17 @@ have hooks/scripts/coder_git_guard.sh 'CODER-GIT-WRITE'              "#187 coder
 have hooks/hooks.json 'coder_git_guard.sh'                           "#187 coder_git_guard.sh registered in hooks.json"
 have agents/coder.md 'CODER-GIT-WRITE'                               "#187 coder.md registers CODER-GIT-WRITE halt"
 have agents/coder.md 'NEVER run git at all'                          "#187 coder.md prohibits all git"
-have agents/coder.md '### Step 5 — Hand off \(no git\)'             "#187 coder.md Step 5 is no-git hand-off"
+# Step 5's heading grew a second parenthetical ("no git" -> "no git, no report
+# file") when the report-file convention was retired later this sprint (37
+# coder reports / 318 KB / ~46% of one run's reports/ dir, every one bypassed
+# because the central auditor re-verifies against live HEAD instead of trusting
+# a self-report — see agents/coder.md §Output discipline). An exact-string grep
+# over the full prose heading breaks on any editorial pass and asserts nothing
+# about behavior, so this anchors to the stable prefix and adds a separate
+# behavior assertion for the thing that actually matters: report-file writing
+# is forbidden.
+have agents/coder.md '### Step 5 — Hand off'                         "#187 coder.md retains a Step 5 hand-off heading (anchored to stable prefix, not full prose)"
+have agents/coder.md 'no report file'                                "#187 coder.md Step 5 hand-off forbids report-file writing (behavior, not heading text)"
 missing agents/coder.md 'Stage only your files.*Commit with the'    "#187 coder.md old commit Step 5 removed"
 have skills/shepherd/references/flock.md 'ZERO git'                  "#187 flock.md §@coder: coders run ZERO git"
 have skills/shepherd/references/flock.md 'the CONDUCTOR commits coder output' "#187 flock.md: conductor commits coder output"
@@ -78,7 +88,14 @@ echo "== #183 teammate registration + idle routing =="
 have skills/context/scripts/cmd_teammate.sh 'conductor\|shepherd:conductor\|engineer\|shepherd:engineer' "#183 register gate allows conductor + engineer"
 have skills/context/scripts/cmd_teammate.sh 'ON CONFLICT\(project_id, team_name, teammate_name\)'      "#183 register is an idempotent upsert"
 have commands/spawn.md 'Register teammates \(mandatory\)'                                                "#183 spawn path registers teammates before liveness"
-have commands/spawn.md 'shctx teammate register .* --type=engineer'                                      "#183 spawn registers the self-contained engineer teammate"
+# DF-12 (commit 1a0cf20, this sprint) moved the engineer's registration OUT of
+# spawn.md: root never holds the engineer's own $CLAUDE_SESSION_ID (same gap
+# the conductor's two-step split closes), so spawn.md now registers the lead
+# only and the engineer self-registers on its own first turn instead
+# (agents/engineer.md §Self-contained mode, `git log -p -S "type=engineer" --
+# commands/spawn.md agents/engineer.md`). The wiring moved, it was not
+# dropped — repoint the assertion at its real location.
+have agents/engineer.md 'shctx teammate register .* --type=engineer'                                     "#183→DF-12 engineer self-registers the self-contained teammate (moved from spawn.md)"
 have hooks/scripts/teammate_idle.sh "'\.agent_id'"                                                       "#183 idle hook reads .agent_id identity fallback"
 have hooks/scripts/teammate_idle.sh 'no live rows'                                                       "#183 idle hook suppresses flood when no spawn is live"
 

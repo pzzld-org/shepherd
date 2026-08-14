@@ -852,7 +852,15 @@ def _cmd_amend(rest: list[str]) -> int:
     typer.echo(f"plan amended: {plan}")
     typer.echo(f"  amendment #{len(amendments)}: {reason}")
     typer.echo(f"  {prior} -> {current}")
-    typer.echo("  'shctx plan verify' now passes; the proof records the amendment.")
+    # NOT an unconditional "verify now passes" claim: amend re-ties the hash
+    # and records the correction, but it never touches the `critic` block, so
+    # a proof the critic genuinely REJECTED stays rejected -- 'verify' is the
+    # one place that still enforces that, amended or not.
+    typer.echo(
+        "  hash re-tied to the plan's current bytes; the amendment is recorded. "
+        "'shctx plan verify' re-checks the critic verdict independently -- a plan "
+        "the critic REJECTED is still rejected after this."
+    )
     return 0
 
 

@@ -523,9 +523,66 @@ print(json.dumps({
 # ---------------------------------------------------------------------------
 
 # Given a tool_use_id, echo the agent role written by agent_invocation_tagger.sh.
-# Returns "unknown" if no dispatch record exists. Conductor invocations (no
-# Agent dispatch in progress) will always return "conductor" because no
-# matching record will be found AND the caller passes through to conductor.
+#
+# THREE outcomes, deliberately distinct (DF-77 FIX 2, #187 field incident —
+# was previously TWO outcomes that collapsed "no tool call in flight" and "a
+# tool call is in flight but its role can't be confirmed" into ONE value,
+# "conductor" — the tier that HOLDS lane commit/push rights the rest of the
+# flock does not. An unidentified caller was thereby PROMOTED into MORE
+# authority than an identified one, the opposite of every other guard's
+# posture in this repo):
+#   - tool_use_id empty            → "conductor". No tool call is even in
+#     flight (e.g. a CwdChanged event) — this genuinely IS the top-level
+#     session's own action, not an unresolved dispatch. Several consumers
+#     (cwd_changed.sh, conductor_write_guard.sh) depend on this EXACT value
+#     for exactly this case; do not touch it.
+#   - tool_use_id present, dispatch record found → the record's own
+#     `agent_role` (written by agent_invocation_tagger.sh from
+#     tool_input.subagent_type — DF-77 FIX 1).
+#   - tool_use_id present, NO matching record found → "unknown". This is the
+#     escalation this fix closes: previously fell through to "conductor" too,
+#     which is what let an unidentified caller (in practice: EVERY @coder
+#     dispatch, per the FIX-3 note below) inherit conductor's git-write tier.
+#     Every consumer must treat "unknown" as "could not confirm, NOT as safe
+#     as a positively-identified non-target role" — see coder_git_guard.sh for
+#     the worked example (warn-loud instead of silent-pass on a git write).
+#
+# DF-77 FIX 3, evidence trail (the correlation key this lookup depends on):
+# this function is called with the CURRENT tool call's OWN tool_use_id (e.g.
+# a coder's live `git commit` Bash call), but agent_invocation_tagger.sh wrote
+# the dispatch record under the DISPATCHING Agent()/Task() call's tool_use_id
+# — a DIFFERENT tool_use block, minted at a different (earlier) turn. Per the
+# Anthropic tool-use protocol every tool_use block gets a fresh, never-reused
+# id, so these two ids are STRUCTURALLY never equal — confirmed against this
+# session's own live dispatch tree (`.shepherd/dispatch/*/*.json` filenames
+# match each subagent's `<session>/subagents/agent-*.meta.json` `toolUseId`
+# field exactly, which is NEVER the id any tool call issued *by* that
+# subagent later carries). `session_id` does not substitute either: it is
+# IDENTICAL across an entire dispatch tree (root + every nested subagent
+# share one `session_id` — confirmed via this coder's own
+# `CLAUDE_CODE_SESSION_ID` env var matching the root session's transcript,
+# and via `.shepherd/logs/events-*.jsonl` `cache_usage` rows showing dozens of
+# concurrent `shepherd:coder`/`shepherd:auditor` dispatches under one shared
+# `session_id`), so it cannot disambiguate between concurrent sibling
+# dispatches in one wave. `agent_id` is Claude Code's documented per-subagent
+# identifier (used by this exact codebase on `SubagentStop` —
+# subagent_telemetry.sh — and `TeammateIdle` — teammate_idle.sh, both sourced
+# against https://code.claude.com/docs/en/hooks) and is the best-evidenced
+# candidate key, but whether `PreToolUse` ALSO carries it for a tool call
+# issued from inside an already-running subagent could NOT be confirmed here:
+# a live-capture attempt (instrumenting this hook to dump its own stdin, then
+# triggering a real Bash call from this exact dispatch) produced no payload —
+# this coder-dispatch harness does not route through the installed hook
+# pipeline the way an interactive session does. Closing this needs either a
+# live capture from an interactive session, or wiring the (currently
+# unregistered — see CHANGELOG "Deferred to v5.2.0+: SubagentStart hook
+# consumption") `SubagentStart` event, which fires once `agent_id` exists and
+# could re-key the record — both outside this step's file_scope (hooks.json
+# is not in [FILE-SCOPE]). Net effect: the tool_use_id lookup below still
+# runs (harmless — matches on the rare occasion a caller passes the SAME id
+# through, e.g. a test fixture or a future correlator), but production
+# @coder Bash calls should be assumed to resolve "unknown", not "coder",
+# until FIX 3 lands for real; consumers are written to that assumption.
 #
 # Usage: role=$(current_role "$tool_use_id" "$sprint")
 current_role() {
@@ -564,7 +621,11 @@ current_role() {
   elif [[ -n "$dispatch_file" ]]; then
     python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('agent_role','unknown'))" "$dispatch_file" 2>/dev/null || printf 'unknown'
   else
-    printf 'conductor'
+    # DF-77 FIX 2: a tool call WAS in flight (tool_use_id non-empty) but no
+    # dispatch record matched it — unresolved, NOT conductor. See the
+    # function-level comment above for the full three-way contract and why
+    # promoting this case to "conductor" was the #187 field defect.
+    printf 'unknown'
   fi
 }
 

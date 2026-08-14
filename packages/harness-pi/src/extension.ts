@@ -1,10 +1,19 @@
-// packages/harness-pi/src/extension.ts -- the Pi guard layer: a genuine second interpreter
-// of content/predicates/*.toml (decision 1, discovery-d1-harness.md), since Pi has no
-// hooks.json module at all ("hooks do not exist as a module, they are extensions" --
-// discovery-d1-harness.md's Pi probe, confirmed against primary docs in
-// discovery-harness-portability.md §2). Registers exactly ONE pi.on('tool_call', ...)
-// handler (content/RECONCILIATION.md's dedup grep target: "exactly one guard interpreter
-// per harness").
+// packages/harness-pi/src/extension.ts -- the Pi guard layer: registers exactly ONE
+// pi.on('tool_call', ...) handler (content/RECONCILIATION.md's dedup grep target: "exactly
+// one guard interpreter per harness"), since Pi has no hooks.json module at all ("hooks do
+// not exist as a module, they are extensions" -- discovery-d1-harness.md's Pi probe,
+// confirmed against primary docs in discovery-harness-portability.md §2).
+//
+// C1-pi-collapse: this file's own (role, action, context) DETECTION logic (below) is
+// unchanged and still lives here -- it is Pi-specific and has nowhere else to be. What moved
+// is the EVALUATION step: content/predicates/*.toml is no longer interpreted a second time
+// in-process (that was src/guard.ts + src/predicates.mjs, deleted this step, 242 lines); a
+// resolved check is now relayed to one long-lived `bin/shepherd guard serve` child process
+// via src/guard-client.ts, the SAME shared engine Claude/Codex's adapters already use
+// (services/cli/shepherd_cli/predicates.py). See src/guard-client.ts's own header for why
+// this relay is safe on Pi's `tool_call` boundary now (W10-B2-pi's synchronous-handler
+// premise did not hold -- src/pi-types.ts's header has the evidence) and for the measured
+// per-call cost.
 //
 // Role identity: Pi has no native per-role dispatch primitive (D1: "a role = a CLI
 // invocation"), so src/dispatch.mjs sets SHEPHERD_ROLE and SHEPHERD_SCOPE in the subprocess
@@ -13,13 +22,15 @@
 // rather than inventing a second env-var convention. FAILS CLOSED when SHEPHERD_ROLE is
 // unset: an unidentified session gets no write/git/dispatch capability through this guard,
 // never every capability by default -- an unenforceable-by-omission guard is exactly the
-// silent-non-enforcement defect this step's brief warns against.
+// silent-non-enforcement defect this step's brief warns against. The guard-serve relay
+// itself fails the same way: if the child never starts, dies, or answers garbage, every
+// write/edit/bash call is denied rather than silently let through (see below).
 //
-// NAMED GAP -- dedup-gate is NOT wired here, even though src/guard.ts implements and tests
-// it against its full corpus. A dedup-gate verdict needs a resolved *symbol name* plus a
-// registry hit (`shctx query dedup-check --name=<symbol>`, skills/context/SKILL.md), and the
-// write/edit tool_call event Pi actually delivers ({path, content} / {path, edits[]}, see
-// src/pi-types.ts) carries neither. Extracting "the one new public symbol this write
+// NAMED GAP -- dedup-gate is NOT wired here, even though the shared engine implements and
+// tests it against its full corpus. A dedup-gate verdict needs a resolved *symbol name* plus
+// a registry hit (`shctx query dedup-check --name=<symbol>`, skills/context/SKILL.md), and
+// the write/edit tool_call event Pi actually delivers ({path, content} / {path, edits[]},
+// see src/pi-types.ts) carries neither. Extracting "the one new public symbol this write
 // introduces" from raw file content is language-aware static analysis this guard layer does
 // not perform -- across every content language shepherd coders touch, that is a real,
 // separate piece of work, not a one-line addition. Emitting a wired handler that always
@@ -32,9 +43,19 @@
 // on Claude): a determined adversarial prompt could obfuscate a git/`pi` invocation past it.
 // It is real, tested enforcement against the corpus's shape of commands, not a no-op.
 
+import { dirname, join } from "node:path";
 import type { ExtensionAPI, ToolCallEvent, ToolCallEventResult } from "./pi-types.ts";
-import { evaluate, type GuardCheck, type RoleFact } from "./guard.ts";
-import { loadRoleFacts } from "./roles.mjs";
+import { GuardClient, type GuardCheck } from "./guard-client.ts";
+import { loadRoleFacts, ROLE_TIER } from "./roles.mjs";
+
+// Only `writeEligible` is needed client-side now: the `capabilities`-dependent halt-code
+// branch (DISCOVERY-WRITE-PATH vs a generic no-write-capability deny) moved server-side --
+// services/cli/shepherd_cli/predicates.py's `_write_boundary_halt_code` resolves it from the
+// SAME content/roles/*.md this file's own `loadRoleFacts(contentDir)` reads, so relaying
+// `write_eligible` in `context` (below) is sufficient; nothing here needs to know why.
+interface RoleFact {
+  writeEligible: boolean;
+}
 
 const GIT_WRITE_SUBCOMMANDS = new Set(["commit", "push"]);
 const GIT_INTEGRATE_SUBCOMMANDS = new Set(["rebase", "merge", "cherry-pick"]);
@@ -116,15 +137,56 @@ export function buildWriteBoundaryCheck(role: string, path: string, scope: strin
 }
 
 /**
- * @param contentDir absolute path to content/ (this step's file_scope.may_read).
+ * @param contentDir absolute path to content/ (this step's file_scope.may_read). `bin/shepherd`
+ *   is resolved as content/'s own sibling at the repo root -- contentDir is always
+ *   `<repo-root>/content` (this function's own contract above), so this never guesses at an
+ *   install layout the caller did not already commit to by passing contentDir in the first
+ *   place.
  */
-export default function shepherdGuardExtension(pi: ExtensionAPI, contentDir: string): void {
+export default async function shepherdGuardExtension(pi: ExtensionAPI, contentDir: string): Promise<void> {
   const roleFactsRaw = loadRoleFacts(contentDir);
   const roleFacts = new Map<string, RoleFact>(
-    Array.from(roleFactsRaw).map(([role, fact]) => [role, { writeEligible: fact.writeEligible, capabilities: fact.capabilities }])
+    Array.from(roleFactsRaw).map(([role, fact]) => [role, { writeEligible: fact.writeEligible }])
   );
 
-  pi.on("tool_call", (event: ToolCallEvent): ToolCallEventResult | undefined => {
+  let guardClient: GuardClient | undefined;
+  let spawnFailure = "";
+  try {
+    guardClient = await GuardClient.spawn(join(dirname(contentDir), "bin", "shepherd"), contentDir);
+  } catch (err) {
+    // Falls through to the fail-closed branch in `decide` below, exactly like an unset
+    // SHEPHERD_ROLE -- an engine that never came up must deny every write/edit/bash, never
+    // silently allow everything through for the rest of the session.
+    spawnFailure = String(err);
+  }
+
+  // Close the child on session teardown rather than orphan it -- `guard serve`'s own EOF
+  // contract (services/cli/shepherd_cli/commands/guard.py `run_serve`) exits cleanly the
+  // instant stdin closes.
+  pi.on("session_shutdown", () => guardClient?.close());
+
+  async function decide(check: GuardCheck): Promise<ToolCallEventResult | undefined> {
+    if (!guardClient) {
+      return { block: true, reason: `guard engine unavailable, failing closed: ${spawnFailure}` };
+    }
+    const verdict = await guardClient.evaluate(check);
+    if (!verdict.allow) return { block: true, reason: verdict.reason };
+    return undefined;
+  }
+
+  // git-custody's `role.tier` and dispatch-scope's `dispatcher_tier` rule subjects are read
+  // straight from `context` by the shared engine's "normalized" request shape (services/cli/
+  // shepherd_cli/predicates.py `_deny_if_role_is_implementer` / `_deny_if_dispatcher_is_*` --
+  // it auto-resolves a tier from `role` ONLY for the OTHER, raw-tool-call request shape this
+  // adapter does not use). The now-deleted src/guard.ts did this same `ROLE_TIER[role]`
+  // fallback resolution internally; losing it here would silently readmit exactly the
+  // CODER-GIT-WRITE/WRONG-TIER-DISPATCH gaps those predicates exist to close, so it is
+  // resolved here rather than assumed away as "the server will figure it out."
+  function tierOf(role: string): string {
+    return ROLE_TIER[role as keyof typeof ROLE_TIER] ?? "";
+  }
+
+  pi.on("tool_call", async (event: ToolCallEvent): Promise<ToolCallEventResult | undefined> => {
     const role = process.env.SHEPHERD_ROLE;
     if (!role) {
       if (event.toolName === "write" || event.toolName === "edit" || event.toolName === "bash") {
@@ -138,23 +200,19 @@ export default function shepherdGuardExtension(pi: ExtensionAPI, contentDir: str
       // write_eligible is a role fact, not a per-call one -- resolve it here rather than in
       // the pure builder above, which stays testable without a live roleFacts map.
       check.context.write_eligible = roleFacts.get(role)?.writeEligible ?? false;
-      const verdict = evaluate(check, roleFacts);
-      if (!verdict.allow) return { block: true, reason: verdict.reason };
-      return undefined;
+      return decide(check);
     }
 
     if (event.toolName === "bash") {
       const gitCheck = buildGitCustodyCheck(role, event.input.command, process.env.SHEPHERD_LANE_BRANCH);
       if (gitCheck) {
-        const verdict = evaluate(gitCheck, roleFacts);
-        if (!verdict.allow) return { block: true, reason: verdict.reason };
-        return undefined;
+        gitCheck.context.role_tier = tierOf(role);
+        return decide(gitCheck);
       }
       const dispatchCheck = buildDispatchScopeCheck(role, event.input.command);
       if (dispatchCheck) {
-        const verdict = evaluate(dispatchCheck, roleFacts);
-        if (!verdict.allow) return { block: true, reason: verdict.reason };
-        return undefined;
+        dispatchCheck.context.dispatcher_tier = tierOf(role);
+        return decide(dispatchCheck);
       }
     }
 

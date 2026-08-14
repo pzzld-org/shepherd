@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# shepherd hook — PreToolUse(Bash): @coder git-write guard (v6.3.0, #187).
+# shepherd hook — PreToolUse(Bash): @coder git-write guard (v6.3.0, #187;
+# role-resolution + fail-safe posture reworked DF-77).
 #
 # ENFORCES: git custody is NEVER the coder's. The coder writes files under its
 # [WORKTREE].Path and lists them in its report; STAGING, COMMITTING, rebasing,
@@ -38,7 +39,20 @@
 #
 # ROLE DETECTION: current_role() (hooks/scripts/_lib.sh) reads the dispatch
 # record agent_invocation_tagger.sh wrote — same mechanism bash_guard.sh uses
-# to gate @auditor / @discovery Bash. Non-coder turns fail open (pass).
+# to gate @auditor / @discovery Bash. A POSITIVELY-identified non-coder role
+# (auditor/discovery/engineer/critic/worker/conductor) fails open (silent
+# pass) — nothing to say. An UNRESOLVED role (current_role() returns
+# "unknown" — DF-77 FIX 2) is a DIFFERENT case and is handled separately
+# below: it can NEVER be safely denied here, because root's own direct git
+# commands resolve to "unknown" too (current_role()'s own DF-77 FIX 3 note,
+# _lib.sh) — a blanket deny on "unknown" would block root's legitimate git
+# alongside an unidentifiable coder's. Mirrors teammate_git_guard.sh's own
+# shape: never fail closed on the ABSENCE of a positive signal, only on one
+# that actually confirms the actor. Instead, a git WRITE under an unresolved
+# role gets a LOUD warn (visible additionalContext + a "warn" log_event row,
+# never silent) so the gap stays auditable instead of invisible — DF-77's own
+# root cause (`coder_git_guard.sh` denying nothing, silently, for 9 gates
+# running) was exactly a guard nobody could see was doing nothing.
 #
 # CAVEAT: heuristic pass over the command string, not a fully parsed argument
 # tree — the same acknowledged limitation teammate_git_guard.sh documents. The
@@ -72,13 +86,17 @@ TOOL_USE_ID="$(json_field "$PAYLOAD" '.tool_use_id' 2>/dev/null || true)"
 # --- is this a @coder dispatch? ------------------------------------------
 SPRINT="$(current_sprint)"
 ROLE="$(current_role "$TOOL_USE_ID" "$SPRINT" 2>/dev/null || echo unknown)"
-if [[ "$ROLE" != "coder" ]]; then
+# A POSITIVELY-identified non-coder role passes silently — nothing to say.
+# ROLE=="unknown" (DF-77 FIX 2) falls through instead: it still needs the
+# git-write scan below so an unresolved-role git write can be warned about
+# rather than passed as quietly as an ordinary confirmed-safe command.
+if [[ "$ROLE" != "coder" && "$ROLE" != "unknown" ]]; then
   pass_silent "coder_git_guard" "Bash" "$ROLE" "$SESSION"
 fi
 
 # --- fast-path: no git invocation at all ---------------------------------
 printf '%s' "$CMD" | grep -qE '(^|[^[:alnum:]_.-])git([[:space:]]|$)' 2>/dev/null || \
-  pass_silent "coder_git_guard" "Bash" "coder" "$SESSION"
+  pass_silent "coder_git_guard" "Bash" "$ROLE" "$SESSION"
 
 # Read-only git subcommands a coder MAY run (deny-by-default: anything not here
 # — including every write/mutating verb and the write forms of dual-mode verbs
@@ -165,8 +183,28 @@ if printf '%s' "$CMD" | grep -qE "$WRITE_PATTERN" 2>/dev/null; then
   BAD="${BAD:+$BAD, }git write command"
 fi
 
-[[ -z "$BAD" ]] && pass_silent "coder_git_guard" "Bash" "coder" "$SESSION"
+[[ -z "$BAD" ]] && pass_silent "coder_git_guard" "Bash" "$ROLE" "$SESSION"
 VERBS="$BAD"
+
+# --- ROLE=="unknown": warn LOUD, never deny (DF-77 FIX 2/3) ----------------
+# See the header comment: root's own direct git writes ALSO resolve to
+# "unknown" today (the tool_use_id correlation gap), so denying here would
+# block root's legitimate git alongside an unidentifiable coder's. Warning
+# instead keeps the gap visible/auditable rather than a silent no-op.
+if [[ "$ROLE" == "unknown" ]]; then
+  MSG="[shepherd] CODER-GIT-WRITE — role UNRESOLVED for a git write command."$'\n'
+  MSG+="  Session    : ${SESSION}"$'\n'
+  MSG+="  Command    : ${CMD:0:200}"$'\n'
+  MSG+="  Verb(s)    : ${VERBS}"$'\n'
+  MSG+="current_role() could not confirm this Bash call belongs to a @coder"$'\n'
+  MSG+="dispatch (nor positively confirm it is root's own) — see DF-77 FIX 3 in"$'\n'
+  MSG+="_lib.sh's current_role() header for the open correlation gap. NOT denied:"$'\n'
+  MSG+="root's own direct git writes resolve to the same \"unknown\" value today, so"$'\n'
+  MSG+="a blanket deny here would block root's legitimate git too. If this command"$'\n'
+  MSG+="actually came from a @coder dispatch, git custody was NOT enforced for it —"$'\n'
+  MSG+="see agents/coder.md + skills/shepherd/references/flock.md §@coder."
+  emit_context "$MSG" "coder_git_guard" "Bash" "unknown" "$SESSION"
+fi
 
 MSG="[shepherd] CODER-GIT-WRITE — @coder may not run git (read-only inspection only)."$'\n'
 MSG+="  Session    : ${SESSION}"$'\n'

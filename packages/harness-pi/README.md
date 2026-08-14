@@ -23,13 +23,19 @@
    `setModel()` is session-global, so per-role model pinning costs one `pi` subprocess per
    role, never a frontmatter flag. This module builds that subprocess's `argv`/`env`; it
    never spawns one.
-4. **Guard** (`src/predicates.mjs`, `src/guard.ts`, `src/extension.ts`) -- a jiti-loaded
-   TypeScript extension, default-exported as `(pi: ExtensionAPI) => void`, registering
-   `pi.on('tool_call', ...)`. Pi has no `hooks.json` module at all ("hooks do not exist as a
-   module, they are extensions" -- `discovery-d1-harness.md`'s Pi probe), so this is a
-   genuine second interpreter of `content/predicates/*.toml`, not a file copy, kept in
-   lockstep with the spec by replaying its own `[[example]]` corpus directly
-   (`test/guard-predicates.test.mjs`) rather than a hand-copied fixture list.
+4. **Guard** (`src/guard-client.ts`, `src/extension.ts`) -- a jiti-loaded TypeScript
+   extension, default-exported as `(pi: ExtensionAPI, contentDir: string) => Promise<void>`,
+   registering `pi.on('tool_call', ...)`. Pi has no `hooks.json` module at all ("hooks do not
+   exist as a module, they are extensions" -- `discovery-d1-harness.md`'s Pi probe), so this
+   handler is Pi's own enforcement point over `content/predicates/*.toml`. C1-pi-collapse
+   (post-DF-76/S2-guard-serve) retired the local second interpreter (`src/guard.ts` +
+   `src/predicates.mjs`) in favor of relaying every resolved `(role, action, context)` check
+   to one long-lived `bin/shepherd guard serve` child process -- the SAME shared engine
+   Claude/Codex's adapters already use (`services/cli/shepherd_cli/predicates.py`), so all
+   three harnesses can never silently diverge on a verdict. `test/guard-predicates.test.mjs`
+   still replays the full corpus, now against that live relay rather than a second
+   hand-written interpreter, and `test/extension-guard.test.mjs` drives the whole
+   `tool_call`/`session_shutdown` wiring end to end against it.
 
 ## `--tools` is a REPLACING allowlist
 
@@ -40,16 +46,24 @@ desired set -- never "built-ins minus a few" -- and separately reports which cap
 have no Pi tool at all (`PI_UNSUPPORTED_CAPABILITIES`), so a gap is visible, not silently
 dropped.
 
-## The guard layer is a genuine port, not a file copy
+## The guard layer relays to the shared engine, not a second interpreter
 
-`src/guard.ts` evaluates every rule in `content/predicates/{dedup-gate,dispatch-scope,
-git-custody,write-boundary}.toml` against a concrete `(role, action, context)` tuple.
-`src/extension.ts` wires three of the four into `pi.on('tool_call', ...)`, resolving role
-identity from `SHEPHERD_ROLE` (and declared write scope from `SHEPHERD_SCOPE`) -- the same
-two dispatch-envelope field names `skills/bridge/SKILL.md` already defines for cross-harness
-handoffs, reused here rather than a second env-var convention. It **fails closed**: an
-unidentified session (`SHEPHERD_ROLE` unset) gets no write/git/dispatch capability through
-this guard, never every capability by default.
+`src/extension.ts` detects three of `content/predicates/*.toml`'s four predicates
+(`dispatch-scope`, `git-custody`, `write-boundary`) out of a raw `bash`/`write`/`edit`
+`tool_call` event -- that DETECTION step (parsing a `git`/`pi` invocation out of a shell
+command string, resolving a write path against the dispatch's declared scope) is
+Pi-specific and stays in this file. The EVALUATION step relays the resolved `(predicate,
+role, action, context)` tuple to `src/guard-client.ts`'s `GuardClient`, which spawns `bin/
+shepherd guard serve` ONCE per session and answers each check over line-delimited JSON on
+stdio in well under a millisecond once warmed (see `src/guard-client.ts`'s own header for the
+full W10-B2-pi/C1-pi-collapse history and measurement). Role identity resolves from
+`SHEPHERD_ROLE` (and declared write scope from `SHEPHERD_SCOPE`) -- the same two
+dispatch-envelope field names `skills/bridge/SKILL.md` already defines for cross-harness
+handoffs, reused here rather than a second env-var convention. It **fails closed** at every
+layer: an unidentified session (`SHEPHERD_ROLE` unset) gets no write/git/dispatch capability
+through this guard, and a `guard serve` child that never starts, dies mid-session, or answers
+anything other than a clean verdict denies every subsequent write/edit/bash rather than
+silently letting it through -- never every capability by default.
 
 **Named gap -- `dedup-gate` is implemented and tested against its full corpus, but NOT wired
 into a `tool_call` handler.** A dedup-gate verdict needs a resolved *symbol name* plus a
@@ -82,7 +96,7 @@ is advisory" note.
 
 ## Node version
 
-`src/extension.ts`, `src/guard.ts`, and `src/pi-types.ts` are TypeScript, loaded directly by
+`src/extension.ts`, `src/guard-client.ts`, and `src/pi-types.ts` are TypeScript, loaded directly by
 Node's own type-stripping (no build step, matching how Pi itself loads extensions via jiti).
 Unflagged type-stripping is Node's default from 23.6.0; `npm test` here passes
 `--experimental-strip-types` explicitly (`package.json`'s `test` script) so the suite also
