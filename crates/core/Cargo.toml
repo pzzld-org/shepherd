@@ -22,6 +22,10 @@ crate-type = ["rlib"]
 name = "default"
 required-features = []
 
+[[test]]
+name = "run_state"
+required-features = ["std", "json"]
+
 [package.metadata.docs.rs]
 all-features = false
 features = ["full"]
