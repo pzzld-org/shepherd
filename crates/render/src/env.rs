@@ -187,8 +187,8 @@ mod tests {
             (
                 "boot-prompt.md.j2",
                 include_str!("../../../services/cli/shepherd_cli/templates/boot-prompt.md.j2"),
-                r#"{"base_commit": "abc1234", "carry_forward_issues": "-", "claude_md_path": "/repo/CLAUDE.md", "fanout_mode": "lane", "git_custody": "lane", "lane_index": "1_of_2", "lane_plan_path": ".shepherd/runs/v641-dev0/lanes/a/plan.md", "lead_effort": "ultracode", "model_pin": "sonnet", "parallel_index": 2, "peer_teammate_names": ["lane-a & b", "lane <c>", "lane's-d"], "plan_path": ".shepherd/runs/v641-dev0/plan.md", "plugin_root": "/plug", "prior_handoff_path": "-", "root_session_name": "shepherd-root @ sess-1", "run_dir": ".shepherd/runs/v641-dev0", "scope": "sprint", "seed_path": ".shepherd/runs/v641-dev0/seed.md", "team_id": "team-1", "toml_snapshot": "[models]\nlead = \"opus\"", "wave_index": "1_of_2", "worktree_path": "/repo/.worktrees/v641-dev0-lane-1"}"#,
-                "54d2fd3cc144c6c041a03ce88d9ffa468b2747acb70ce889c5dcad623d69064f",
+                r#"{"base_commit": "abc1234", "carry_forward_issues": "-", "claude_md_path": "/repo/CLAUDE.md", "fanout_mode": "lane", "git_custody": "lane", "lane_index": "1_of_2", "lane_plan_path": ".shepherd/runs/v641-dev0/lanes/a/plan.md", "lead_effort": "ultracode", "model_pin": "sonnet", "parallel_index": 2, "peer_teammate_names": ["lane-a & b", "lane <c>", "lane's-d"], "plan_path": ".shepherd/runs/v641-dev0/plan.md", "plugin_root": "/plug", "prior_handoff_path": "-", "root_session_name": "shepherd-root @ sess-1", "run_dir": ".shepherd/runs/v641-dev0", "scope": "sprint", "seed_path": ".shepherd/runs/v641-dev0/seed.md", "team_id": "team-1", "teammate_name": "shepherd-conductor-v641-dev0-a", "toml_snapshot": "[models]\nlead = \"opus\"", "wave_index": "1_of_2", "worktree_path": "/repo/.worktrees/v641-dev0-lane-1"}"#,
+                "300cdce72c0c25e4c24155fa64155c40212ef9923377db0359f00df9615883c6",
             ),
             (
                 "seed.md.j2",

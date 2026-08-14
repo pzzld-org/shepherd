@@ -16,11 +16,34 @@ export const meta = {
 // {
 //   repo:      "/abs/path/to/checkout",       // where coders work
 //   run:       "v645",                        // run id
-//   wave:      "W2",                          // wave label, used in report names
-//   plan:      "/abs/path/to/plan.md",         // steps carry their full spec here
-//   reports:   "/abs/path/to/reports",         // durable deliverable directory
+//   wave:      "W2",                          // wave label, folded into the central
+//                                              // auditor's report filename and into
+//                                              // every lane's dispatch label
+//   plan:      "/abs/path/to/plan.md",         // OPTIONAL. A pointer only — a step
+//                                              // is told to read it as its contract
+//                                              // ONLY when that step's specIn resolves
+//                                              // to "plan" (see steps[].specIn below).
+//                                              // Passing `plan` does NOT by itself mean
+//                                              // every step has a `§<id>` section in
+//                                              // it: waves have shipped with `plan` set
+//                                              // and every brief still fully inline —
+//                                              // set steps[].specIn: "inline" for those.
+//   reports:   "/abs/path/to/reports",         // durable deliverable directory, written
+//                                              // to ONCE by the central auditor. Coders
+//                                              // return CODER_RESULT data (schema below)
+//                                              // and write no file at all.
 //   steps: [                                   // file-disjoint; see the guard below
-//     { id: "W2-S1", model: "sonnet", brief: "...", scope: ["crates/render/src/env.rs"] }
+//     {
+//       id: "W2-S1", model: "sonnet", brief: "...", scope: ["crates/render/src/env.rs"],
+//       specIn: "inline",                      // OPTIONAL: "plan" | "inline". Default:
+//                                               // "plan" if `plan` is set, else "inline".
+//                                               // Set "inline" explicitly per-step when
+//                                               // `plan` is set but THIS step's spec was
+//                                               // not written into it — the coder is then
+//                                               // told plainly that `brief` above IS the
+//                                               // contract, instead of being pointed at a
+//                                               // `§<id>` section that doesn't exist.
+//     }
 //   ],
 //   verify: { brief: "...", model: "sonnet", commands: ["cargo test -p foo"] }
 // }
@@ -120,19 +143,34 @@ confirmation in your report so that verification is fast.`
 
 phase('Implement')
 
+// Brief-shape defect (fixed here): a `plan` path being SET never guaranteed the
+// named step had a `§<id>` section inside it — W8, W8R and W9 all passed briefs
+// fully inline while `plan` was set, and every coder independently rediscovered
+// "grep for §<id> returns zero hits" before deciding, on its own, whether that
+// was BRIEF-INVALID or a green light. Resolve it here, once, deterministically,
+// instead of leaving five coders to re-derive the same judgement per wave.
 const built = await parallel(
-  STEPS.map((s) => () =>
-    flockAgent(
+  STEPS.map((s) => () => {
+    const specIn = s.specIn === 'inline' || !a.plan ? 'inline' : 'plan'
+    const specBlock =
+      specIn === 'plan'
+        ? `Read the full step spec first — it is the contract, and this brief is only a pointer:
+  ${a.plan}  §${s.id}
+It carries [SKILLS], [CONTEXT-INVENTORY], [DO-NOT-DUPLICATE], [USER-STYLE],
+[FILE-SCOPE], [NON-GOALS] and [ACCEPTANCE]. Honor every one.`
+        : `No plan section backs this step — the brief below IS the complete contract.
+Do not spend a turn hunting for a \`§${s.id}\` section or halting on its
+absence for that reason alone; there is none to find.`
+    const scopeFallback =
+      specIn === 'plan' ? '  (see the plan)' : '  (not declared — the brief above is the contract)'
+    return flockAgent(
       `Implement step \`${s.id}\`.
 
 WORK IN: ${REPO}
-Read the full step spec first — it is the contract, and this brief is only a pointer:
-  ${a.plan || '(no plan path supplied)'}  §${s.id}
-It carries [SKILLS], [CONTEXT-INVENTORY], [DO-NOT-DUPLICATE], [USER-STYLE],
-[FILE-SCOPE], [NON-GOALS] and [ACCEPTANCE]. Honor every one.
+${specBlock}
 
 file_scope.exclusive (yours alone this wave; siblings hold the rest):
-${(s.scope || []).map((p) => `  ${p}`).join('\n') || '  (see the plan)'}
+${(s.scope || []).map((p) => `  ${p}`).join('\n') || scopeFallback}
 Writing outside that scope collides with a concurrent sibling.
 
 ${s.brief || ''}
@@ -151,7 +189,7 @@ the one input that makes verification fast.`,
         schema: CODER_RESULT,
       }
     )
-  )
+  })
 )
 
 const landed = built.filter(Boolean).length

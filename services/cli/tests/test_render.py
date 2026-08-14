@@ -177,8 +177,8 @@ def test_boot_prompt_stable_prefix_ordering(tmp_path: Path) -> None:
         "peer_teammate_names": [],
     }
     env = _env(tmp_path)
-    lane_a = dict(base_vars, lane_plan_path=".shepherd/runs/v641-dev0/lanes/a/plan.md", lane_index="1_of_2")
-    lane_b = dict(base_vars, lane_plan_path=".shepherd/runs/v641-dev0/lanes/b/plan.md", lane_index="2_of_2")
+    lane_a = dict(base_vars, lane_plan_path=".shepherd/runs/v641-dev0/lanes/a/plan.md", lane_index="1_of_2", teammate_name="shepherd-conductor-v641-dev0-a")
+    lane_b = dict(base_vars, lane_plan_path=".shepherd/runs/v641-dev0/lanes/b/plan.md", lane_index="2_of_2", teammate_name="shepherd-conductor-v641-dev0-b")
     out_a = run_cli(["render", "boot-prompt.md.j2", "--vars-json", str(_vars_file(tmp_path, lane_a))], env)
     vars_b = tmp_path / "vars-b.json"
     vars_b.write_text(json.dumps(lane_b))

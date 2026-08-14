@@ -23,8 +23,18 @@
 You are a spawned teammate-conductor.
 
 BOOT INSTRUCTION
-  On your FIRST turn, set session effort to the `Lead effort` pin below, then
-  load {{ plugin_root }}/agents/conductor.md §Boot verification and begin — do
+  On your FIRST turn, before anything else — before setting effort, before
+  loading conductor.md, before any lane work — self-register:
+      shctx teammate register <name> --team={{ team_id }} --type=conductor --session="$CLAUDE_SESSION_ID"
+  `<name>` is the `Teammate name:` value from INHERITED CONTEXT below, used
+  verbatim. Root cannot supply `--session` for you — no caller can, before
+  you exist to read your own `$CLAUDE_SESSION_ID` (DF-12) — so this call is
+  the one that actually populates it; registration is idempotent (upsert on
+  `(team, name)`), so running it here is always safe. A failed or skipped
+  call is LOUD by design (`TEAMMATE-SESSION-UNRESOLVED`) and MUST NOT be
+  worked around — see `commands/spawn.md §Register teammates`.
+  THEN set session effort to the `Lead effort` pin below, load
+  {{ plugin_root }}/agents/conductor.md §Boot verification and begin — do
   NOT wait for a kickoff message. Your lane plan IS the instruction: read it
   from the `Lane plan` path below, keep it current as you walk it (check off
   steps, append `## Deviations` entries for every choice you make), and treat
@@ -89,6 +99,7 @@ LEDGER CUSTODY (#261)
   two must always match.
 
 INHERITED CONTEXT
+  Teammate name:        {{ teammate_name }}
   Profile:              {{ plugin_root }}/agents/conductor.md
   Model pin:            {{ model_pin }}
   Lead effort:          {{ lead_effort }}

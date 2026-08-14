@@ -210,6 +210,7 @@ The vars — every inherited fact, so the teammate never re-asks main chat:
 ```
 root_session_name:    shepherd-root @ {main_chat_session_id}
 team_id:              {team_id}
+teammate_name:        shepherd-conductor-{sprint_slug}[-{lane_id}]   # exact Agent(name=) value; self-register uses it
 scope:                {sprint|patch|minor|version}
 fanout_mode:          {lane|sprint}       # lane-per-conductor (default) | concurrent sprints
 lane_index:           {i_of_L_w}          # lane mode only
@@ -312,26 +313,54 @@ The team forms on the first spawn; the channel is `SendMessage` plus the shared 
 
 ### Register teammates (mandatory)
 
-Immediately after the spawn instruction — BEFORE polling liveness — root writes each teammate's
-row into the canonical store, once per spawned teammate:
+Immediately after the spawn instruction — BEFORE polling liveness — root registers what it CAN
+into the canonical store:
 
 ```
 # First stamp THIS root session as the spawn lead (#223) so the coordinate-drive
 # Stop guard fires only for the real lead, never a concurrent bystander session:
 shctx teammate register-lead {team_id} --session={main_chat_session_id}
-shctx teammate register <name> --team={team_id} --type=conductor [--session={team_session}]
-# and, for the self-contained engineer teammate:
+# and, for the self-contained engineer teammate (KNOWN GAP, not this step's scope: root has no
+# more of the engineer's own session than a conductor's — DF-12 applies identically — so this
+# call ALSO hard-errors without --session; it needs the same self-register split this section
+# documents for the conductor, wired through agents/engineer.md, not here):
 shctx teammate register {engineer_name} --team={team_id} --type=engineer
 ```
 
+**Root does NOT register the teammate-conductor's own row — `--session` is REQUIRED and root
+does not have one to give it.** `shctx teammate register` HARD-ERRORS
+(`TEAMMATE-SESSION-UNRESOLVED`, exit 1) without `--session`; that is deliberate, not a gap to
+route around. Registration is a two-step handshake, split by who can supply what: root knows
+`name`/`team`/`type` but never a spawned teammate's session — the native Agent-spawn primitive
+returns `name@team-id`, never a session uuid (DF-12) — and the teammate cannot know its own
+session before it exists to read `$CLAUDE_SESSION_ID`. So the CONDUCTOR self-registers, on its
+own first turn, before any lane work
+(`services/cli/shepherd_cli/templates/boot-prompt.md.j2 §BOOT INSTRUCTION`):
+
+```
+shctx teammate register <name> --team={team_id} --type=conductor --session="$CLAUDE_SESSION_ID"
+```
+
+`<name>` is the exact string root spawned it with (`shepherd-conductor-{sprint_slug}[-{lane_id}]`,
+rendered as `Teammate name:` in its own boot prompt). Registration is idempotent (upsert on
+`(team, name)`), which is what makes the two-step split safe: the teammate's self-register is the
+FIRST successful write for its row, not a refresh of one root already made — root's own attempt
+never runs, because it structurally cannot supply the required field. **A registration failure
+here is LOUD by design (`TEAMMATE-SESSION-UNRESOLVED`) and MUST NOT be worked around** — never
+reintroduce a `${CLAUDE_SESSION_ID:-}` (or any other) fallback at root's own call site to force
+it to "succeed": that substitutes the CALLER's session for the SUBJECT's, which is exactly the
+W8-L1 defect (root's own identity gets stamped onto every teammate, inverting
+`TEAMMATE-GIT-WRITE`'s git-guard so root's OWN integration git ops get denied instead) — an
+active mis-identification, strictly worse than the missing row it replaces.
+
 This is the row the `TeammateIdle` hook (`hooks/scripts/teammate_idle.sh`) matches by NAME to flip
-idle status, and the row `shctx teammate liveness` reads. Native-Agent teammates boot fresh and do
-NOT self-register, so WITHOUT this step the `teammates` table stays empty: `liveness` returns
-nothing for live lanes and every `TeammateIdle` fires unmatched, flooding the lead with idle noise
-that masks real stalls (#183). Registration is idempotent (upsert on `(team, name)`), so a refresh
-or a teammate's own late self-register is safe. The `register-lead` line records THIS root session as the
-team's lead so `hooks/scripts/coordinate_drive_guard.sh` re-engages only the real lead on a passive-wait
-stop — never an unrelated concurrent session that merely shares the per-repo registry DB (#223).
+idle status, and the row `shctx teammate liveness` reads. WITHOUT the teammate's own self-register
+completing, its row carries no `session_id`: `liveness`/git-guard lookups keyed on `session_id`
+match nothing for that lane, and every `TeammateIdle` for it fires unmatched, flooding the lead
+with idle noise that masks real stalls (#183, sharpened by DF-71). The `register-lead` line
+records THIS root session as the team's lead so `hooks/scripts/coordinate_drive_guard.sh`
+re-engages only the real lead on a passive-wait stop — never an unrelated concurrent session that
+merely shares the per-repo registry DB (#223).
 
 **Record the run ledger (#242).** After registering, root ensures the run rows exist:
 `shepherd run init {run}` (only if `{run_dir}/run.json` is absent — the planter normally
