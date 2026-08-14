@@ -90,6 +90,9 @@ case "$sub" in
     project_id=$(shctx_project_id 2>/dev/null || echo "")
     closed=0; lane_failed=0
     if [[ -n "$project_id" ]] && shctx_sql "SELECT 1 FROM sqlite_master WHERE type='table' AND name='lane_closures';" | grep -q 1; then
+      # $branch is a bare CLI positional (`shctx sprint close <branch>`) — a
+      # git branch name may legally contain an apostrophe, and was
+      # interpolated raw with no escaping.
       while read -r lane; do
         [[ -n "$lane" ]] || continue
         if bash "$HERE/cmd_close-lane.sh" "$lane" --sprint="$branch" --status=clean >/dev/null 2>&1; then
@@ -97,7 +100,7 @@ case "$sub" in
         else
           lane_failed=$((lane_failed + 1))
         fi
-      done < <(shctx_sql "SELECT lane_id FROM lane_closures WHERE project_id='$project_id' AND sprint_branch='$branch' AND closed_at IS NULL ORDER BY lane_id;")
+      done < <(shctx_sql "SELECT lane_id FROM lane_closures WHERE project_id='$(esc "$project_id")' AND sprint_branch='$(esc "$branch")' AND closed_at IS NULL ORDER BY lane_id;")
     fi
     # 2. Handoff
     rc_h=0

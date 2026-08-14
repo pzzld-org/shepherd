@@ -59,14 +59,46 @@
 // `packages/harness-codex/src/dispatch-record.mjs`'s own `resolveRole` does (that module's
 // header names it "the proven template"): a three-way split BEFORE the engine is ever
 // consulted -- no marker (root, never dispatched) -> allow; marker + a resolved record ->
-// forward `role` to the engine for a real decision; marker + no record -> deny loudly (the
-// DF-75 shape). Unlike Codex, this adapter does NOT build a new tagging mechanism -- it reuses
-// the sibling DF-77 fix already on disk (`hooks/scripts/agent_invocation_tagger.sh` +
+// forward `role` to the engine for a real decision; marker + no record -> WARN loudly and
+// allow (see below -- this was DENY through v645's own first pass at this file, measured
+// live against a real, dispatch-active sprint to deny 100% of calls, root's included; fixed
+// here). Unlike Codex, this adapter does NOT build a new tagging mechanism -- it reuses the
+// sibling DF-77 fix already on disk (`hooks/scripts/agent_invocation_tagger.sh` +
 // `current_role()`, `hooks/scripts/_lib.sh`) by shelling out to it, so there is exactly one
 // `tool_use_id` -> dispatch-record correlation in this codebase, not two. `buildGuardDecision`
 // below is the pure decision core (injectable `resolveRoleFn`, matching
 // `packages/harness-codex/src/guard.mjs`'s own split, so it is unit-testable without a
 // subprocess); `hooks/guard-eval.mjs` is the thin stdio shell around it.
+//
+// MISSING-RECORD POSTURE, CORRECTED: the PRIOR version of this module denied a `missing-record`
+// resolution outright (`missingRecordDeniedVerdict`, DENY), justified in text as "mirrored from
+// `packages/harness-codex/src/dispatch-record.mjs`'s own three-way `resolveRole`" -- but that
+// mirroring does not hold for the ACTION, only the SHAPE. Codex's `missing-record` denies
+// safely because its correlation key, `agent_id`, is runtime-assigned once per spawned agent and
+// never appears on root's own unspawned calls -- a `missing-record` there really does mean "a
+// spawned agent went untagged," never "this might just be root." Claude's correlation key,
+// `tool_use_id`, is minted fresh per tool call (DF-77 FIX 3, still open, `_lib.sh`'s own
+// `current_role()` header) -- so `current_role()` returns the literal `"unknown"` for BOTH
+// root's own direct call AND an untraceable dispatched call, with NO signal here that tells them
+// apart. Denying on that ambiguity denies root. Measured live: a fresh `tool_use_id` against
+// this repo's own `.shepherd/dispatch/v6.4.5/` (64 tagged records, non-empty since this
+// sprint's first dispatch) resolves to `missing-record` for a PLAIN `git status`, every time --
+// the directory-presence tiebreak (`hasMarker`) answers "has this sprint dispatched anything,
+// ever," never "did THIS call come from a dispatch," so it is `true` for every call in every
+// real sprint, forever, and cannot break the tie it was built to break.
+//
+// This repo already resolved the identical ambiguity once, correctly, for git writes:
+// `hooks/scripts/coder_git_guard.sh`'s shipped DF-77 FIX 2 posture never denies an unresolved
+// role, because root's own git writes are mechanically indistinguishable from an unidentified
+// coder's -- it warns loudly (`additionalContext`, never `permissionDecision:"deny"`) so the gap
+// stays auditable instead of either silently open or wrongly closed. Two guards reading the same
+// unresolvable signal must not reach opposite verdicts -- `missing-record` now matches that
+// posture: `missingRecordWarnedVerdict` (below) returns a WARN, not a DENY, and
+// `hooks/guard-eval.mjs` lets the call through. This is not a narrower guarantee than Codex's --
+// it is the honest one for a correlation key that, today, cannot tell root from an untraceable
+// coder. It closes once DF-77 FIX 3 lands a real per-call correlation key; until then, a
+// resolved, non-`"unknown"` role reaching the engine (the common, correctly-identified case) is
+// unaffected -- only the genuinely unresolvable case changes.
 
 /**
  * The PreToolUse matcher this adapter's guard relay binds to. Deliberately every tool the
@@ -181,27 +213,31 @@ export function engineUnavailableVerdict(detail) {
 }
 
 /**
- * DF-75's own regression case, given its own specific, loud message rather than the engine's
- * generic "missing role" reason (which would not even be reached here -- this verdict is
- * built LOCALLY, before the engine is ever consulted, mirroring
- * `packages/harness-codex/src/guard.mjs`'s `missingRecordDeniedVerdict`): a `PreToolUse` call
- * whose sprint has SOME tagged dispatch record (a marker genuinely exists -- see `src/
- * dispatch-record.mjs`'s module header for what "marker" means on Claude's own wire shape),
- * yet none of those records correlate to THIS call's own `tool_use_id`. Deliberately never
- * invents a halt code (no `content/predicates/*.toml` `[[example]]` attests one for this
- * adapter-local, pre-engine case) -- mirrors Codex's own unset-marker-record denial, which
- * also carries no halt code.
+ * DF-75's own regression case, given its own specific, loud message rather than a silent pass:
+ * a `PreToolUse` call whose sprint has SOME tagged dispatch record (a marker genuinely exists --
+ * see `src/dispatch-record.mjs`'s module header for what "marker" means on Claude's own wire
+ * shape), yet none of those records correlate to THIS call's own `tool_use_id`. NOT a deny --
+ * see this module's header ("MISSING-RECORD POSTURE, CORRECTED") for why `tool_use_id`'s open
+ * correlation gap (DF-77 FIX 3) makes root's own call and an untraceable dispatched call
+ * genuinely indistinguishable here, and why `hooks/scripts/coder_git_guard.sh`'s shipped DF-77
+ * FIX 2 posture -- warn loudly, never deny, on the identical ambiguity -- is the one this
+ * verdict now matches. `additionalContext`, not `permissionDecision`, so the call proceeds
+ * (Claude's own convention -- see `hooks/scripts/_lib.sh`'s `emit_context`). Deliberately never
+ * invents a halt code: this is a warning, not an enforcement action.
  *
  * @param {string} toolUseId
  */
-export function missingRecordDeniedVerdict(toolUseId) {
+export function missingRecordWarnedVerdict(toolUseId) {
   return {
-    permissionDecision: "deny",
-    message:
-      `guard could not confirm the acting role -- this sprint has a tagged dispatch record, ` +
-      `but none matches tool_use_id \`${toolUseId}\`. This call's own \`Agent()\`/\`Task()\` ` +
-      "dispatch was never tagged (or its record is missing) -- DF-75 requires failing closed " +
-      "rather than allowing an unidentified dispatch to write.",
+    additionalContext:
+      `[shepherd] guard could not confirm the acting role for tool_use_id \`${toolUseId}\` -- ` +
+      "this sprint has tagged dispatch records, but none matches this call. NOT denied: " +
+      "the correlation key (tool_use_id, DF-77 FIX 3) is still open, so a resolved role of " +
+      `"unknown" here is indistinguishable from root's own untracked action -- denying would ` +
+      "block root's legitimate work alongside an unidentified dispatch (matches " +
+      "hooks/scripts/coder_git_guard.sh's own DF-77 FIX 2 posture for the identical ambiguity). " +
+      "If this call actually came from a dispatched agent, its role was NOT enforced by this " +
+      "relay -- see agents/coder.md + skills/shepherd/references/flock.md §@coder.",
   };
 }
 
@@ -225,11 +261,12 @@ export function roleResolutionUnavailableVerdict(detail) {
 /**
  * The pure decision core behind `hooks/guard-eval.mjs`'s `PreToolUse` handling. Resolves role
  * LOCALLY first (never touching the engine for the no-marker/missing-record cases -- see this
- * module's header), then either short-circuits allow/deny or hands back the exact request the
- * executable relay forwards to `shepherd guard eval` -- `payload` preserves the raw hook
- * payload verbatim (this adapter's own long-standing "forward the whole thing, plus
- * `harness`" convention -- see the module header on `stdin (JSON)`) with `role` added/
- * overwritten from the resolution, never trusted from the caller.
+ * module's header), then either short-circuits allow/warn (`missing-record` is a WARN-and-let-
+ * through, not a deny -- see the module header's "MISSING-RECORD POSTURE, CORRECTED") or hands
+ * back the exact request the executable relay forwards to `shepherd guard eval` -- `payload`
+ * preserves the raw hook payload verbatim (this adapter's own long-standing "forward the whole
+ * thing, plus `harness`" convention -- see the module header on `stdin (JSON)`) with `role`
+ * added/overwritten from the resolution, never trusted from the caller.
  *
  * @param {Record<string, unknown>} rawPayload the parsed `PreToolUse` hook JSON.
  * @param {(toolUseId: string, cwd?: string) => {kind: string, role?: string, toolUseId?: string, detail?: string}} resolveRoleFn

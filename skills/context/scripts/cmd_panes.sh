@@ -48,6 +48,8 @@ case "$sub" in
       --stale-mins=*) stale="${1#*=}";;
       *) echo "unknown flag: $1" >&2; exit 2;;
     esac; shift; done
+    # $threshold_ms lands bare (unquoted) in the SQL text below — validate.
+    [[ "$stale" =~ ^[0-9]+$ ]] || { echo "ERR: --stale-mins must be a non-negative integer (got '$stale')" >&2; exit 2; }
     threshold_ms=$((stale * 60 * 1000))
     # #200 backstop: if the self-heal could not add declared_state (read-only/locked
     # DB), degrade to a timing-only verdict rather than crash on the missing column.

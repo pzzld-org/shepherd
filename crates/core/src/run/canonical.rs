@@ -28,7 +28,7 @@
 //!   [`serde_json::Value`] tree instead of delegating to `serde_json`'s
 //!   writer at all. That also makes the sort-and-escape behavior exhaustively
 //!   testable in one place rather than split across a trait impl.
-#[cfg(not(feature = "std"))]
+#[cfg(feature = "alloc")]
 use alloc::{
     format,
     string::{String, ToString},

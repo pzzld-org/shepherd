@@ -62,8 +62,8 @@ if ! shctx_sql "SELECT 1 FROM sqlite_master WHERE type='table' AND name='index_f
 fi
 
 # SQL-escape the search expression.
-q_esc=$(printf '%s' "$text" | sed "s/'/''/g")
-pid_esc=$(printf '%s' "$project_id" | sed "s/'/''/g")
+q_esc=$(esc "$text")
+pid_esc=$(esc "$project_id")
 limit_n=$((limit + 0))
 
 run_symbols() {

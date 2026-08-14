@@ -22,6 +22,20 @@
 // guard-eval.mjs` relay and the REAL, live `services/cli/shepherd_cli/` engine, end to end,
 // each inside its own throwaway git repo (never the live shepherd monorepo's own dispatch
 // state, which this very sprint is actively writing to).
+//
+// DISPATCH-DIR POPULATION, DELIBERATE (the regression this file now gates): every prior
+// version of this file's integration section ran its FIRST, root-proving case
+// (`initRepo()`, fresh, zero dispatch records) against an EMPTY dispatch directory --
+// `hasMarker` false, `no-marker` allow. Every REAL sprint, from its first dispatch onward, has
+// a NON-EMPTY dispatch directory (this repo's own `.shepherd/dispatch/v6.4.5/` holds 64
+// records as of this fix) -- `hasMarker` true, `missing-record`, a DIFFERENT code path the
+// empty-sandbox case never exercised. That gap is exactly how the relay measured 100% deny on
+// a live repo while this file stayed green: the test manufactured the precondition (empty
+// dispatch dir) the runtime never supplies. Below, every case that exercises role resolution
+// runs against a dispatch directory SEEDED with several unrelated dispatch records FIRST
+// (`seedUnrelatedDispatchActivity`) -- the real state of a real sprint -- and the one
+// remaining empty-directory case is kept, but demoted to an explicitly labeled EDGE CASE that
+// proves nothing about root's safety on its own.
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -35,7 +49,7 @@ import {
   engineUnavailableVerdict,
   GUARD_MATCHER,
   interpretEngineResult,
-  missingRecordDeniedVerdict,
+  missingRecordWarnedVerdict,
   roleResolutionUnavailableVerdict,
 } from "../src/guard.mjs";
 
@@ -105,21 +119,30 @@ assert.equal(entry.matcher, GUARD_MATCHER);
 assert.equal(entry.hooks[0].type, "command");
 assert.match(entry.hooks[0].command, /guard-eval\.mjs$/);
 
-// --- missingRecordDeniedVerdict / roleResolutionUnavailableVerdict: pure coverage -------------
+// --- missingRecordWarnedVerdict / roleResolutionUnavailableVerdict: pure coverage -------------
+// WARN, not deny (see src/guard.mjs's "MISSING-RECORD POSTURE, CORRECTED"): no
+// `permissionDecision` key at all, so the call is not blocked -- only `additionalContext`,
+// matching hooks/scripts/_lib.sh's `emit_context` shape.
 
-const missingVerdict = missingRecordDeniedVerdict("abc123");
-assert.equal(missingVerdict.permissionDecision, "deny");
-assert.match(missingVerdict.message, /abc123/);
-assert.match(missingVerdict.message, /dispatch record/);
+const missingVerdict = missingRecordWarnedVerdict("abc123");
+assert.equal(missingVerdict.permissionDecision, undefined);
+assert.match(missingVerdict.additionalContext, /abc123/);
+assert.match(missingVerdict.additionalContext, /NOT denied/);
+assert.match(missingVerdict.additionalContext, /coder_git_guard\.sh/);
 
 const resolutionFailedVerdict = roleResolutionUnavailableVerdict("bash unavailable");
 assert.equal(resolutionFailedVerdict.permissionDecision, "deny");
 assert.match(resolutionFailedVerdict.message, /bash unavailable/);
 
 // --- buildGuardDecision: the pure three-way split, stubbed resolver (no subprocess) -----------
-// Proves the DECISION shape independent of how role gets resolved -- the live integration
-// section below proves the REAL resolver (src/dispatch-record.mjs) actually produces the
-// inputs this expects.
+// Proves the DECISION shape (which `kind` a given resolution maps to) independent of how role
+// actually gets resolved -- a TRANSLATION-shape test, legitimately stubbed: no claim here about
+// whether the REAL resolver ever produces "no-marker" over "missing-record" for a given
+// sandbox state, only "IF it produces X, buildGuardDecision maps it to Y." That claim -- what
+// the real resolver actually returns against a real sandbox -- is exactly what a stub cannot
+// prove and exactly what hid the empty-dispatch-dir defect this file's own header names; it is
+// proven only by the live integration section below, against the REAL resolver, the REAL
+// tagger, and a dispatch directory shaped like a real sprint's.
 
 assert.deepEqual(
   buildGuardDecision({ tool_use_id: "x", tool_name: "Bash", tool_input: { command: "git commit -m x" } }, () => ({ kind: "no-marker" })),
@@ -157,9 +180,11 @@ assert.deepEqual(stubbedRequest.payload, {
 
 // --- INTEGRATION: real dispatch records, real relay, real engine, no mocks --------------------
 //
-// One throwaway git repo, shared across the three cases below (mirrors `hooks/tests/
-// test_coder_git_guard.sh`'s own shared-repo pattern) so case 3 can genuinely observe case 2's
-// tagged dispatch record still sitting in the sprint's dispatch dir.
+// One throwaway git repo, shared across every case below except the explicitly-labeled
+// EMPTY-DIR EDGE CASE at the end (which needs its own, genuinely-never-dispatched repo --
+// sharing would defeat the point of that case). `seedUnrelatedDispatchActivity` runs FIRST,
+// before any assertion, so every role-resolution case below runs against a NON-EMPTY dispatch
+// dir -- the shape of a real sprint, per this file's own header.
 
 function sh(cmd, args, opts = {}) {
   const result = spawnSync(cmd, args, { encoding: "utf8", ...opts });
@@ -183,8 +208,8 @@ function initRepo() {
 
 // Runs the REAL agent_invocation_tagger.sh with a REALISTIC, dispatch-law-compliant
 // PreToolUse(Agent) payload -- `tool_input.subagent_type` is the only role signal it reads,
-// per DF-77 FIX 1 -- so the dispatch record consumed below is genuinely produced by the fix
-// under test, never hand-authored.
+// per DF-77 FIX 1 -- so every dispatch record below is genuinely produced by the fix under
+// test, never hand-authored.
 function tagDispatch(dir, toolUseId, subagentType) {
   const payload = JSON.stringify({
     session_id: "s",
@@ -193,6 +218,17 @@ function tagDispatch(dir, toolUseId, subagentType) {
     tool_input: { subagent_type: subagentType, model: "claude-sonnet-5", prompt: "do the work" },
   });
   sh("bash", [TAGGER], { cwd: dir, input: payload });
+}
+
+// Several REAL, tagged dispatch records for roles unrelated to whatever `tool_use_id` a later
+// case under test uses -- the exact shape of a real sprint's dispatch dir by the time a
+// coder's first tool call fires: SOME dispatch activity recorded, none of it correlating to a
+// call that was never itself tagged (this repo's own `.shepherd/dispatch/v6.4.5/` holds 64
+// such records right now).
+function seedUnrelatedDispatchActivity(dir) {
+  tagDispatch(dir, "seed-auditor-1", "shepherd:auditor");
+  tagDispatch(dir, "seed-discovery-1", "shepherd:discovery");
+  tagDispatch(dir, "seed-worker-1", "shepherd:worker");
 }
 
 // Spawns the REAL hooks/guard-eval.mjs exactly as hooks.json would (a child node process
@@ -204,13 +240,15 @@ function tagDispatch(dir, toolUseId, subagentType) {
 // spawned by the relay with `cwd` still the throwaway repo) resolves the real `content/
 // predicates/*.toml` corpus instead of walking up from the throwaway repo and finding none --
 // exactly the env var a live Claude Code plugin install always sets (`buildGuardHooksEntry()`
-// itself wires the relay in via `${CLAUDE_PLUGIN_ROOT}`), not a test-only shortcut.
-function runRelay(dir, toolUseId, command) {
+// itself wires the relay in via `${CLAUDE_PLUGIN_ROOT}`), not a test-only shortcut. Takes the
+// real `PreToolUse` tool name/input pair rather than assuming Bash -- the regression gate below
+// proves the fix on a plain read, a plain `Write`, AND a git write.
+function runRelay(dir, toolUseId, toolName, toolInput) {
   const payload = JSON.stringify({
     session_id: "s",
     hook_event_name: "PreToolUse",
-    tool_name: "Bash",
-    tool_input: { command },
+    tool_name: toolName,
+    tool_input: toolInput,
     tool_use_id: toolUseId,
   });
   const result = spawnSync(process.execPath, [RELAY], {
@@ -223,72 +261,76 @@ function runRelay(dir, toolUseId, command) {
   return result.stdout;
 }
 
+function parseVerdict(stdout, label) {
+  if (stdout.trim() === "") return {};
+  try {
+    return JSON.parse(stdout);
+  } catch (error) {
+    throw new Error(`guard-eval.mjs (${label}) printed non-JSON stdout: ${stdout} (${error.message})`);
+  }
+}
+
 const repo = initRepo();
-let rootStdout;
-let coderStdout;
-let untraceableStdout;
+let gateStdout;
 
 try {
-  // 1. ROOT'S OWN GIT OPERATION -- no dispatch record anywhere in this sprint at all yet. This
-  //    is the ONE case that would have taken the project down under the pre-fix relay (every
-  //    role-less request hit the engine's missing-role `unresolved` path and got denied,
-  //    unconditionally) -- assert it FIRST.
-  rootStdout = runRelay(repo, "root-git-1", "git commit -am 'root working directly'");
-  assert.equal(rootStdout.trim(), "", `root's own git write must NOT be denied, got: ${rootStdout}`);
+  seedUnrelatedDispatchActivity(repo);
 
-  // 2. a tagged coder's `git commit` IS denied, through the real relay against the live
-  //    `bin/shepherd guard eval` engine -- role comes from a REAL dispatch record, the verdict
-  //    from a REAL engine subprocess; a stubbed engine could not prove either fires at all.
+  // --- PRIMARY REGRESSION GATE ---------------------------------------------------------------
+  // A fresh `tool_use_id` matching NONE of the seeded records above, in a sandbox whose
+  // dispatch dir is genuinely non-empty (3 unrelated records just written) -- this step's
+  // brief's own opening measurement, replayed as a test: `hasMarker` true, `current_role()`
+  // resolves `"unknown"`, and the PRIOR relay denied both a plain `git status` and a plain
+  // `Write` unconditionally. Neither may be denied now -- this is the regression gate for the
+  // entire finding.
+  gateStdout = runRelay(repo, "regression-gate-bash", "Bash", { command: "git status" });
+  const gateBashVerdict = parseVerdict(gateStdout, "regression-gate-bash");
+  assert.equal(gateBashVerdict.permissionDecision, undefined, `plain 'git status' must NOT be denied, got: ${gateStdout}`);
+  assert.match(gateBashVerdict.additionalContext ?? "", /NOT denied/);
+  assert.match(gateBashVerdict.additionalContext ?? "", /regression-gate-bash/);
+
+  const gateWriteStdout = runRelay(repo, "regression-gate-write", "Write", { file_path: "/tmp/regression-gate-target" });
+  const gateWriteVerdict = parseVerdict(gateWriteStdout, "regression-gate-write");
+  assert.equal(gateWriteVerdict.permissionDecision, undefined, `plain 'Write' must NOT be denied, got: ${gateWriteStdout}`);
+  assert.match(gateWriteVerdict.additionalContext ?? "", /NOT denied/);
+
+  // A fresh, untraceable call attempting an actual git WRITE (not just a read) also only
+  // warns, never denies -- the behavior this fix deliberately changed from the PRIOR deny (see
+  // src/guard.mjs's "MISSING-RECORD POSTURE, CORRECTED"): the correlation gap (DF-77 FIX 3)
+  // means this ambiguity cannot be told apart from root's own git write, so it gets the same
+  // posture `hooks/scripts/coder_git_guard.sh` already ships for the identical ambiguity.
+  const gateGitWriteStdout = runRelay(repo, "regression-gate-git-write", "Bash", { command: "git commit -am 'untraceable'" });
+  const gateGitWriteVerdict = parseVerdict(gateGitWriteStdout, "regression-gate-git-write");
+  assert.equal(gateGitWriteVerdict.permissionDecision, undefined, `an untraceable git WRITE must NOT be denied (warn only), got: ${gateGitWriteStdout}`);
+  assert.match(gateGitWriteVerdict.additionalContext ?? "", /coder_git_guard\.sh/);
+
+  // --- a genuinely-tagged coder's git write IS still denied -------------------------------
+  // Role resolution succeeds (a REAL dispatch record correlates), so the real engine is
+  // consulted and denies it -- proves the fix did NOT weaken enforcement for the case DF-75
+  // actually resolves; only the genuinely-unresolvable case above changed.
   tagDispatch(repo, "coder1", "shepherd:coder");
-  coderStdout = runRelay(repo, "coder1", "git commit -am 'should be denied'");
-  let coderVerdict;
-  try {
-    coderVerdict = JSON.parse(coderStdout);
-  } catch (error) {
-    throw new Error(`guard-eval.mjs printed non-JSON stdout: ${coderStdout} (${error.message})`);
-  }
+  const coderStdout = runRelay(repo, "coder1", "Bash", { command: "git commit -am 'should be denied'" });
+  const coderVerdict = parseVerdict(coderStdout, "coder1");
   assert.equal(coderVerdict.permissionDecision, "deny", `expected a real engine deny, got: ${coderStdout}`);
   assert.match(coderVerdict.message, /git-custody/);
   assert.match(coderVerdict.message, /CODER-GIT-WRITE/);
 
-  // 3. a dispatched call with a marker but no record is denied loudly (the DF-75 shape): the
-  //    sprint's dispatch dir now holds coder1's tagged record from case 2 (a marker genuinely
-  //    exists), but THIS call's own tool_use_id was never tagged -- current_role() cannot
-  //    correlate it (the acknowledged DF-77 FIX 3 gap). Unlike case 1, there IS dispatch
-  //    activity in this sprint, so the ambiguity resolves to DENY, loudly, through
-  //    `missingRecordDeniedVerdict`, never a silent allow and never the engine (no engine
-  //    subprocess is spawned for this case at all -- the deny is entirely local).
-  untraceableStdout = runRelay(repo, "never-tagged-1", "git commit -am 'untraceable'");
-  let untraceableVerdict;
-  try {
-    untraceableVerdict = JSON.parse(untraceableStdout);
-  } catch (error) {
-    throw new Error(`guard-eval.mjs printed non-JSON stdout: ${untraceableStdout} (${error.message})`);
-  }
-  assert.equal(untraceableVerdict.permissionDecision, "deny");
-  assert.match(untraceableVerdict.message, /never-tagged-1/);
-  assert.match(untraceableVerdict.message, /dispatch record/);
-
-  // 4. REGRESSION: a genuinely-tagged `conductor` dispatch (a real dispatch record whose
-  //    `agent_role` happens to be the literal string `"conductor"`) must still reach the
-  //    engine, never fall into the `no-marker` allow bucket. `current_role()` prints that same
-  //    literal string for TWO different situations -- an empty `tool_use_id` (root, no tool
-  //    call in flight) AND a real, correctly-tagged conductor dispatch -- `resolveRole` tells
-  //    them apart by checking `toolUseId` itself, not the resolved string (see its own doc
-  //    comment). Proven with `git rebase` specifically (not `git commit`) because it is the
-  //    ONE command whose outcome actually DIFFERS between the two behaviors: a bare `vcs.write`
-  //    bypasses `git-custody.toml`'s branch-scope rule with no context to fire it either way
-  //    (case 1 and this case would look identical), but `vcs.integrate` (rebase/merge/
-  //    cherry-pick/worktree) is `deny_unless_root` -- a lane-lead is NOT root, so the real
-  //    engine denies it. `no-marker` would have silently allowed it instead.
+  // --- REGRESSION: a resolved, non-"unknown" role still reaches the engine ----------------
+  // A genuinely-tagged `conductor` dispatch (a real dispatch record whose `agent_role` happens
+  // to be the literal string `"conductor"`) must still reach the engine, never fall into the
+  // `no-marker`/`missing-record` allow-with-warn bucket. `current_role()` prints that same
+  // literal string for TWO different situations -- an empty `tool_use_id` (root, no tool call
+  // in flight) AND a real, correctly-tagged conductor dispatch -- `resolveRole` tells them
+  // apart by checking `toolUseId` itself, not the resolved string (see its own doc comment).
+  // Proven with `git rebase` specifically (not `git commit`) because it is the ONE command
+  // whose outcome actually DIFFERS between the two behaviors: a bare `vcs.write` bypasses
+  // `git-custody.toml`'s branch-scope rule with no context to fire it either way, but
+  // `vcs.integrate` (rebase/merge/cherry-pick/worktree) is `deny_unless_root` -- a lane-lead is
+  // NOT root, so the real engine denies it. Either allow-with-warn bucket would have let it
+  // through instead.
   tagDispatch(repo, "conductor1", "shepherd:conductor");
-  const conductorStdout = runRelay(repo, "conductor1", "git rebase main");
-  let conductorVerdict;
-  try {
-    conductorVerdict = JSON.parse(conductorStdout);
-  } catch (error) {
-    throw new Error(`guard-eval.mjs printed non-JSON stdout: ${conductorStdout} (${error.message})`);
-  }
+  const conductorStdout = runRelay(repo, "conductor1", "Bash", { command: "git rebase main" });
+  const conductorVerdict = parseVerdict(conductorStdout, "conductor1");
   assert.equal(
     conductorVerdict.permissionDecision,
     "deny",
@@ -299,15 +341,32 @@ try {
   rmSync(repo, { recursive: true, force: true });
 }
 
-console.log(`VERDICT root-allow (case 1) stdout: ${JSON.stringify(rootStdout.trim())}`);
-console.log(`VERDICT coder-deny (case 2) stdout: ${coderStdout.trim()}`);
-console.log(`VERDICT untraceable-deny (case 3) stdout: ${untraceableStdout.trim()}`);
+// --- EDGE CASE, explicitly labeled: a genuinely EMPTY dispatch dir --------------------------
+// Kept because the `no-marker` branch of the three-way split is real and worth covering, but
+// this is NOT the proof that root is safe in a real sprint -- see this file's own header for
+// why an empty-dispatch-dir sandbox is the wrong precondition to establish that. A fresh repo
+// with ZERO dispatch records ever written allows SILENTLY (no warning at all -- unlike every
+// populated-dir case above, which warns loudly).
+const emptyDirRepo = initRepo();
+try {
+  const emptyDirStdout = runRelay(emptyDirRepo, "edge-case-empty-dir", "Bash", { command: "git status" });
+  assert.equal(
+    emptyDirStdout.trim(),
+    "",
+    `an empty dispatch dir must allow silently (edge case only, not this fix's proof), got: ${emptyDirStdout}`
+  );
+} finally {
+  rmSync(emptyDirRepo, { recursive: true, force: true });
+}
+
+console.log(`VERDICT regression-gate (git status, populated dispatch dir) stdout: ${gateStdout.trim()}`);
 
 console.log(
-  "ok: interpretEngineResult/engineUnavailableVerdict/missingRecordDeniedVerdict/roleResolutionUnavailableVerdict cover " +
+  "ok: interpretEngineResult/engineUnavailableVerdict/missingRecordWarnedVerdict/roleResolutionUnavailableVerdict cover " +
     "allow, deny, unresolved, and every failure mode; buildGuardDecision's three-way split is proven both against a " +
-    "stubbed resolver AND, end to end through the real hooks/guard-eval.mjs relay, against real dispatch records and " +
-    "the real live engine -- root's own untraceable git write is NOT denied, a tagged coder's IS (real engine, " +
-    "CODER-GIT-WRITE), and an untraceable call inside an otherwise-active sprint is denied loudly without ever " +
-    "reaching the engine"
+    "stubbed resolver AND, end to end through the real hooks/guard-eval.mjs relay against a POPULATED dispatch dir " +
+    "shaped like a real sprint -- a fresh, untraceable tool_use_id's plain 'git status', plain 'Write', and even a " +
+    "git WRITE all warn and let the call through (never deny), a genuinely-tagged coder's git write IS still denied " +
+    "by the real engine, and a genuinely-tagged conductor's rebase still reaches the engine rather than falling " +
+    "into the allow-with-warn bucket; the empty-dispatch-dir case is kept only as an explicitly labeled edge case"
 );

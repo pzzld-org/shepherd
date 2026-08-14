@@ -95,16 +95,8 @@ now=$(shctx_now)
 # ---------------------------------------------------------------------------
 # SQL helpers
 # ---------------------------------------------------------------------------
-# esc: double every single quote so a value round-trips through SQL text-
-# literal interpolation intact (SQL escaping, not shell escaping). The bash
-# parameter-expansion form `${v//\'/\'\'}` does NOT do this on bash 3.2 — it
-# leaves a literal backslash in the output and the original quote unescaped,
-# so any free-text value (a note, a reason, a title) containing an apostrophe
-# produces malformed SQL (#285). Mirrors the proven-correct idiom already in
-# cmd_teammate.sh's esc() (sed "s/'/''/g"); duplicated here rather than
-# sourced because it belongs in the shared _lib.sh, which is a sibling's
-# scope this wave — see #285 follow-up to consolidate.
-esc() { printf '%s' "$1" | sed "s/'/''/g"; }
+# esc() is defined by _lib.sh (sourced above) — single shared idiom (GH #296
+# follow-up to #285; this file used to hand-roll its own copy here).
 _txt() {
   local v="${1:-}"
   [[ -z "$v" ]] && { printf 'NULL'; return; }

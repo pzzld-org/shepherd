@@ -29,8 +29,8 @@ case "$sub" in
     session="${CLAUDE_SESSION_ID:-unknown}"
     role="${role:-${CLAUDE_AGENT_ROLE:-unknown}}"
     ts="$(now_ms)"
-    safe_t="${target//\'/''}"
-    id=$(sqlite3 "$DB" "INSERT INTO deliverables (project_id, agent_session, agent_role, kind, target_ref, promised_at, status) VALUES ('$pid','$session','$role','$kind','$safe_t',$ts,'pending') RETURNING id;")
+    safe_t="$(esc "$target")"
+    id=$(sqlite3 "$DB" "INSERT INTO deliverables (project_id, agent_session, agent_role, kind, target_ref, promised_at, status) VALUES ('$(esc "$pid")','$(esc "$session")','$(esc "$role")','$(esc "$kind")','$safe_t',$ts,'pending') RETURNING id;")
     echo "$id"
     ;;
   complete)
@@ -44,6 +44,9 @@ case "$sub" in
       --since-mins=*) since="${1#*=}";;
       *) echo "unknown flag: $1" >&2; exit 2;;
     esac; shift; done
+    # $cutoff lands bare (unquoted) in the SQL text below — validate $since
+    # is a non-negative integer before it reaches arithmetic or SQL.
+    [[ "$since" =~ ^[0-9]+$ ]] || { echo "ERR: --since-mins must be a non-negative integer (got '$since')" >&2; exit 2; }
     cutoff=$(( $(now_ms) - since*60*1000 ))
     sqlite3 -header -column "$DB" "SELECT id, agent_role, kind, target_ref, promised_at FROM deliverables WHERE status='pending' AND promised_at < $cutoff ORDER BY promised_at;"
     ;;

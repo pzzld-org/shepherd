@@ -48,7 +48,7 @@
 // nothing else in the sprint is even correlatable. A non-empty dispatch dir means at least one
 // real `Agent()`/`Task()` dispatch WAS tagged somewhere in this sprint, so a marker genuinely
 // exists -- but none of the tagged records correlate to THIS call's own `tool_use_id`: the
-// DF-75 "marker present, no record" shape, mirrored from
+// DF-75 "marker present, no record" shape, SHAPED like
 // `packages/harness-codex/src/dispatch-record.mjs`'s own three-way `resolveRole` (`agentId`
 // falsy -> `no-marker`; `agentId` + record -> `resolved`; `agentId` + no record ->
 // `missing-record`) -- ported here as the same three outcomes, just keyed on `tool_use_id`
@@ -59,6 +59,22 @@
 // subagent could NOT be confirmed here" -- using it anyway would be inventing a second,
 // unverified correlation mechanism, exactly what this step's brief forbids ("do not invent a
 // second mechanism").
+//
+// WHERE THE SHAPES DIVERGE: `missing-record` is SHAPED like Codex's own outcome of the same
+// name, but is deliberately NOT handled the same way downstream (`src/guard.mjs`'s
+// `missingRecordWarnedVerdict`, a WARN, not Codex's `missingRecordDeniedVerdict`, a DENY) --
+// see that module's own "MISSING-RECORD POSTURE, CORRECTED" header for the full argument.
+// One paragraph of it belongs here too, because this is the module a future reader will reach
+// for first when asking "why does hasMarker exist at all": Codex's `agent_id` is assigned ONCE,
+// by the Codex runtime, at spawn time, and carried on every later call FROM that spawned agent
+// -- so an `agent_id` present with no matching record really does mean "a spawned agent went
+// untagged," and an `agent_id` absent really does mean "no spawn is in flight" (root).
+// `tool_use_id` has no such property: Claude mints a fresh one per tool call, so the id a
+// dispatching `Agent()` call itself carried can never be the id a LATER call from inside that
+// dispatch carries (DF-77 FIX 3, open). `hasMarker` therefore cannot answer "did THIS call come
+// from a dispatch" the way Codex's `agent_id` presence can -- it can only answer "has ANYTHING
+// been dispatched this sprint," which is true for the entire remainder of every real sprint
+// from its first dispatch onward. Treating that as grounds to deny is denying root.
 
 import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
@@ -126,10 +142,13 @@ export function resolveHookRole(toolUseId, cwd = process.cwd()) {
 /**
  * The three-way DF-75 split for Claude's own wire shape
  * (`packages/harness-codex/src/dispatch-record.mjs`'s `resolveRole` is the proven template
- * this mirrors, same return shape): an EMPTY `toolUseId` (no tool call in flight -- genuinely
- * root, `_lib.sh`'s own documented "conductor" case) always allows without consulting the
- * marker tiebreak; a resolved, non-`"unknown"` role hands back to the engine for real;
- * `"unknown"` defers to `hasMarker` (see module header for why).
+ * this mirrors -- same three-way SHAPE, same `kind` names; the ACTION each `kind` drives
+ * downstream is adapter-specific and deliberately diverges for `missing-record` -- see this
+ * module's header, "WHERE THE SHAPES DIVERGE"): an EMPTY `toolUseId` (no tool call in flight --
+ * genuinely root, `_lib.sh`'s own documented "conductor" case) always allows without consulting
+ * the marker tiebreak; a resolved, non-`"unknown"` role hands back to the engine for real;
+ * `"unknown"` defers to `hasMarker` (see module header for why) purely to shape the WARNING
+ * this now produces -- never to choose allow vs deny, which no longer differs between the two.
  *
  * Deliberately checks `toolUseId` itself for the "no tool call in flight" case, NOT the
  * string `current_role()` returned: `current_role()` prints the literal `"conductor"` in TWO

@@ -85,9 +85,10 @@ cmd_create() {
   project_id=$(shctx_project_id 2>/dev/null || echo "")
   local artifacts_count=0 mem_count=0 lock_count=0 open_issues=0 drift_risk=0
   if [[ -n "$project_id" ]]; then
-    artifacts_count=$(count_or_zero "SELECT COUNT(*) FROM artifacts WHERE project_id='$project_id';")
-    mem_count=$(count_or_zero       "SELECT COUNT(*) FROM mem_entries WHERE project_id='$project_id';")
-    lock_count=$(count_or_zero      "SELECT COUNT(*) FROM locks_history WHERE project_id='$project_id';")
+    local pid_esc; pid_esc="$(esc "$project_id")"
+    artifacts_count=$(count_or_zero "SELECT COUNT(*) FROM artifacts WHERE project_id='$pid_esc';")
+    mem_count=$(count_or_zero       "SELECT COUNT(*) FROM mem_entries WHERE project_id='$pid_esc';")
+    lock_count=$(count_or_zero      "SELECT COUNT(*) FROM locks_history WHERE project_id='$pid_esc';")
     open_issues=$(query_count open-issues)
     drift_risk=$(query_count drift-risk)
   fi

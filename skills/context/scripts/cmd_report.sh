@@ -30,7 +30,12 @@ case "$kind" in
     echo "# Discovery report — run \`$run\`"
     [[ -n "$sprint" ]] && echo "Sprint: \`$sprint\`"
     echo
-    sqlite3 -separator $'\x1f' "$DB" "SELECT section, title, body, sources FROM discovery_findings WHERE discovery_run='$run'$([ -n "$sprint" ] && echo " AND sprint_branch='$sprint'") ORDER BY section, created_at;" \
+    # GH #297: --run/--sprint (and --concern/--severity/--team below) were
+    # interpolated raw with zero escaping anywhere in this file — proven
+    # UNION-based exfiltration from any registry table via a crafted flag
+    # value. esc() every CLI-supplied filter before it lands in a WHERE.
+    run_esc="$(esc "$run")"; sprint_esc="$(esc "$sprint")"
+    sqlite3 -separator $'\x1f' "$DB" "SELECT section, title, body, sources FROM discovery_findings WHERE discovery_run='$run_esc'$([ -n "$sprint" ] && echo " AND sprint_branch='$sprint_esc'") ORDER BY section, created_at;" \
       | while IFS=$'\x1f' read -r section title body sources; do
           echo "## ${section:-General} — $title"
           echo
@@ -48,9 +53,9 @@ case "$kind" in
       *) echo "unknown flag: $1" >&2; exit 2;;
     esac; shift; done
     [[ -n "$sprint" ]] || { usage; exit 2; }
-    where="sprint_branch='$sprint'"
-    [[ -n "$concern" ]] && where="$where AND concern='$concern'"
-    [[ -n "$sev" ]]     && where="$where AND severity='$sev'"
+    where="sprint_branch='$(esc "$sprint")'"
+    [[ -n "$concern" ]] && where="$where AND concern='$(esc "$concern")'"
+    [[ -n "$sev" ]]     && where="$where AND severity='$(esc "$sev")'"
     echo "# Audit report — sprint \`$sprint\`"
     echo
     sqlite3 -separator $'\x1f' "$DB" "SELECT concern, severity, hypothesis, falsification, confidence, finding, gh_issue FROM audit_findings WHERE $where ORDER BY CASE severity WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 WHEN 'low' THEN 4 ELSE 5 END, created_at;" \
@@ -113,7 +118,7 @@ case "$kind" in
     echo "# Teammates"
     echo
     where="1=1"
-    [[ -n "$team" ]] && where="team_name='$team'"
+    [[ -n "$team" ]] && where="team_name='$(esc "$team")'"
     sqlite3 -separator $'\x1f' "$DB" "SELECT teammate_name, agent_type, status, last_seen_at FROM teammates WHERE $where ORDER BY spawned_at DESC;" \
       | while IFS=$'\x1f' read -r name type status seen; do
           echo "- **$name** ($type) — status: $status — last seen: $seen"

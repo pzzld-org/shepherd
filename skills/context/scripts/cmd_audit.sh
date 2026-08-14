@@ -44,10 +44,14 @@ if [[ "${1:-}" == "insert" ]]; then
   [[ -f "$DB" ]] || { echo "ERR: registry DB not found at $DB" >&2; exit 1; }
   pid="$(sqlite3 "$DB" "SELECT id FROM projects LIMIT 1;")"
   ts=$(($(date +%s) * 1000))
-  safe_hyp="${hypothesis//\'/''}"; safe_fal="${falsification//\'/''}"
-  safe_fin="${finding//\'/''}"; safe_ev="${evidence//\'/''}"
-  safe_sp="${sprint//\'/''}"
-  id=$(sqlite3 "$DB" "INSERT INTO audit_findings (project_id, sprint_branch, concern, severity, hypothesis, falsification, confidence, finding, evidence_refs, gh_issue, created_at) VALUES ('$pid', NULLIF('$safe_sp',''), '$concern', '$severity', '$safe_hyp', NULLIF('$safe_fal',''), NULLIF('$confidence',''), '$safe_fin', NULLIF('$safe_ev',''), NULLIF('$gh',''), $ts) RETURNING id;")
+  safe_hyp="$(esc "$hypothesis")"; safe_fal="$(esc "$falsification")"
+  safe_fin="$(esc "$finding")"; safe_ev="$(esc "$evidence")"
+  safe_sp="$(esc "$sprint")"
+  # $concern/$severity/$confidence/$gh were interpolated raw with no
+  # escaping at all — free-text CLI flags, not a validated enum here.
+  safe_concern="$(esc "$concern")"; safe_sev="$(esc "$severity")"
+  safe_conf="$(esc "$confidence")"; safe_gh="$(esc "$gh")"
+  id=$(sqlite3 "$DB" "INSERT INTO audit_findings (project_id, sprint_branch, concern, severity, hypothesis, falsification, confidence, finding, evidence_refs, gh_issue, created_at) VALUES ('$(esc "$pid")', NULLIF('$safe_sp',''), '$safe_concern', '$safe_sev', '$safe_hyp', NULLIF('$safe_fal',''), NULLIF('$safe_conf',''), '$safe_fin', NULLIF('$safe_ev',''), NULLIF('$safe_gh',''), $ts) RETURNING id;")
   echo "$id"
   exit 0
 fi

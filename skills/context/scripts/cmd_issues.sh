@@ -281,6 +281,7 @@ cmd_classify() {
   local drift_thresh=$(( now - drift_days * 86400 ))
 
   local project_id; project_id=$(shctx_project_id)
+  local project_id_esc; project_id_esc="$(esc "$project_id")"
 
   # Resolve the [ledger].non_issue_labels override ONCE (not per-row inside
   # the classify loop below) — see _non_issue_labels_from_toml(). A malformed
@@ -298,7 +299,7 @@ cmd_classify() {
   local rows
   rows=$(shctx_sql "SELECT number, title, state, labels, COALESCE(milestone,''), updated_at
     FROM index_issues
-    WHERE project_id='$project_id' AND state='open'
+    WHERE project_id='$project_id_esc' AND state='open'
     ORDER BY updated_at DESC;" 2>/dev/null || true)
 
   if [[ -z "$rows" ]]; then
@@ -432,10 +433,13 @@ cmd_list() {
   command -v sqlite3 >/dev/null || { echo "ERROR: sqlite3 required" >&2; exit 1; }
   local db; db="$(shctx_db_path)"
   [[ -f "$db" ]] || { echo "ERROR: no root.db" >&2; exit 1; }
+  # $limit lands bare (unquoted) in a LIMIT clause below — validate it as a
+  # bare integer rather than escape it (it is never quoted as a string).
+  [[ "$limit" =~ ^[0-9]+$ ]] || { echo "ERROR: --limit must be a non-negative integer (got '$limit')" >&2; exit 2; }
 
   local project_id; project_id=$(shctx_project_id)
-  local where="project_id='$project_id'"
-  [[ "$state" != "all" ]] && where+=" AND state='$state'"
+  local where="project_id='$(esc "$project_id")'"
+  [[ "$state" != "all" ]] && where+=" AND state='$(esc "$state")'"
 
   local rows
   rows=$(shctx_sql "SELECT number, title, state, COALESCE(milestone,'—'), labels, url

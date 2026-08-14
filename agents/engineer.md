@@ -81,9 +81,37 @@ shctx plan record-critique --plan <plan-path> --pre "$PRE" \
 
 Root's acceptance gate: `shctx plan verify --plan <plan-path>` — a stale/unedited proof FAILS `PLAN-UNEDITED` / `CRITIC-PROOF-STALE` / `PLAN-UNCRITIQUED` / `CRITIC-PROOF-MISSING`; no valid proof, no acceptance.
 
+## Capability self-report (`CAPABILITY-SELF-REPORT`, DF-64/DF-65)
+
+Runs on your FIRST turn, before anything else — BOTH classic and self-contained (`tools:` above is granted identically either way; this is orthogonal to the fan-out-vehicle `WORKFLOW-VEHICLE-PROBE` above, which only matters once you actually fan out, since classic engineer dispatches nothing at all). `agents/engineer.md:7` grants `Agent, Bash, Edit, Glob, Grep, Read, Skill, ToolSearch, Workflow, Write, SendMessage` — DF-E1 measured a live engineer teammate whose visible tool list carried NONE of `Workflow`/`Glob`/`Grep` despite the grant. Record the gap instead of letting it evaporate: write your OWN capability record, keyed by nothing but what you already know (your role name, the current sprint) — `agent_invocation_tagger.sh`'s PreToolUse-written record for your dispatch cannot be PATCHED reliably (`session_id` is not a usable key back to it: `commands/spawn.md §Register teammates` documents that no caller ever learns a teammate's own session uuid, and this run's own registry confirms it live — `sqlite3 .shepherd/shepherd.db "select session_id from teammates"` → every row empty, DF-12/DF-71):
+
+```bash
+role="engineer"; repo_root="$(git rev-parse --show-toplevel)"; sprint="$(git rev-parse --abbrev-ref HEAD)"
+declared_csv="$(awk '/^tools:[[:space:]]/ {sub(/^tools:[[:space:]]*/, ""); print; exit}' "$repo_root/agents/$role.md" \
+  | tr ',' '\n' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep -v '^$' | paste -sd, -)"
+observed_csv="<FILL IN — comma-joined list of every tool token literally visible to you THIS turn; an observation you make by looking, never derived, never ToolSearch'd>"
+dispatch_dir="$repo_root/.shepherd/dispatch/$sprint"; mkdir -p "$dispatch_dir"
+out="$dispatch_dir/selfreport-${role}-$(date +%s)-$$.json"
+if command -v jq >/dev/null 2>&1; then
+  jq -n --arg role "$role" --arg sprint "$sprint" --arg declared "$declared_csv" --arg observed "$observed_csv" --argjson ts "$(date +%s)" \
+    '{agent_role:$role, sprint:$sprint, declared_tools:($declared|split(",")|map(select(length>0))), declared_source:("agents/"+$role+".md#tools"), observed_tools:($observed|split(",")|map(select(length>0))), observed_at:$ts, observed_source:"self-report:turn-one"}' > "$out"
+else
+  python3 -c '
+import json, sys, time
+role, sprint, declared, observed = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+d = [t for t in declared.split(",") if t]; o = [t for t in observed.split(",") if t]
+json.dump({"agent_role": role, "sprint": sprint, "declared_tools": d,
+           "declared_source": "agents/%s.md#tools" % role, "observed_tools": o,
+           "observed_at": int(time.time()), "observed_source": "self-report:turn-one"}, open(sys.argv[5], "w"))
+' "$role" "$sprint" "$declared_csv" "$observed_csv" "$out"
+fi
+```
+
+`hooks/tests/lint_agent_capabilities.sh` reads every such record under `.shepherd/dispatch/<sprint>/` and HALTS on a real declared-vs-observed delta (DF-64: a declared tool your record shows absent; DF-65: an observed tool your record shows present but undeclared) — that gate is your durable audit trail, not this turn's problem to fix; your own turn does not wait on it. **One direction you DO act on immediately, this turn:** if `observed_csv` carries a tool your `tools:` line never granted AND that tool is mutating (`Edit`, `Write`, `NotebookEdit`, `MultiEdit`, `Artifact`, or any `*_write`/`*__apply_*`/`*__create_*`/`*__update_*`/`*__delete_*`/`*__merge_*`/`*__deploy_*` verb) — STOP, take no further write-shaped action this session, and `SendMessage(to: root, halt_code: "CAPABILITY-CONTAINMENT-BREACH", blocking: true)` naming the extra tool (DF-65's containment-breach measurement, taken against `@conductor` but binding for any role: an undeclared write grant means whatever mechanism was supposed to keep you inside your `tools:` allowlist already failed). A MISSING declared tool (e.g. `Glob`/`Grep`, DF-E1/DF-64/DF-68 measured absent across backends) is NOT a per-turn halt — it is today's already-documented platform shape (`skills/harness/SKILL.md §Tool presence`); record it in the self-report and keep working around it with `Bash`/`Read`, same as every wave so far. Skipping this turn-one report entirely is `CAPABILITY-SELF-REPORT` — the same code and requirement `agents/conductor.md §Lane walk` carries; defined there and here inline since you have no dedicated Halt codes section of your own (neither code is indexed at `skills/shepherd/references/escalation.md §Halt-code index` yet — that file is outside this instruction's scope; the definitions in `agents/conductor.md` and here are authoritative until a future wave indexes them centrally).
+
 ## Mandatory protocol
 
-1. Load skills above; read the seed at `{run_dir}/seed.md` end-to-end.
+1. **First, run the capability self-report** (§Capability self-report above) — then load skills above; read the seed at `{run_dir}/seed.md` end-to-end.
 2. Phase 0: classic consumes the root-run `[DISCOVERY-CONTEXT]` + `[INTRO-AUDIT-CONTEXT]`; self-contained runs its own wave (above); wave didn't fire (XS, or `[stage_graph.intro_wave].enabled = false`) → run the applicable mesh rows yourself. A co-timed seed (authored this session, commit at/near HEAD) needs only genuine-gap verification (targeted Read/Grep); the full drift-delta re-mesh applies only to a stale, patch-arc-ahead seed. Open-issue ledger sweep is critical either way; cite adaptation priors `prior:<mem_id>` (`shctx adapt priors`) — deferred-carry findings join the carry-forward checklist, never evaporate (`skills/adaptation/SKILL.md §Loop contract`). A seed-premise change classifies `SEED DRIFT — mechanical` (conductor amends + re-dispatches) or `SEED DRIFT — substantive` (engineer stops, operator decides); plan isn't written until the seed is amended.
 3. Brainstorm against the seed + mesh (`superpowers:brainstorming` when installed — the divergent-options pass is mandatory either way).
 4. Write the plan (`superpowers:writing-plans` when installed); every coder step carries all seven bracketed sections plus its `interfaces` block, stable-framing-first (`skills/shepherd/references/flock.md §Brief assembly`). Append the mandatory `## Proof of dispatch` footer plus an append-only `## Mid-sprint plan deviations` log — full schema: `skills/shepherd/references/pipeline.md §PLAN-GATE`. Run the §Self-review walk, then the PLAN-GATE quality-bar checklist, before delivery — a NO on any line is a half-plan.

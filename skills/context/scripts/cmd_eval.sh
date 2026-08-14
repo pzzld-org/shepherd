@@ -111,10 +111,15 @@ _cmd_run() {
   elif [[ -n "$sprint" && "$kind" == "reflection" ]]; then
     # Pull the stored reflection note for the sprint from the registry.
     local pid; pid="$(shctx_project_id)" || die "registry not initialized — run 'shctx init'" 4
-    local sp_esc="${sprint//\'/\'\'}"
+    # GH #296: `${sprint//\'/\'\'}` does NOT double a quote — inside double
+    # quotes the backslash on the replacement side survives literally, so an
+    # apostrophe becomes `\'\'` (4 raw chars) instead of `''`, and this file's
+    # own `eval run --record` path proved it crashes on ORDINARY judge
+    # rationale prose ("doesn't", "user's") — not just adversarial input.
+    local sp_esc; sp_esc="$(esc "$sprint")"
     local body
     body="$(shctx_sql "SELECT body FROM mem_entries
-                       WHERE project_id='$pid' AND kind='prior'
+                       WHERE project_id='$(esc "$pid")' AND kind='prior'
                          AND title='prior: reflection ($sp_esc)' LIMIT 1;")"
     [[ -n "$body" ]] || die "no reflection stored for '$sprint' (run: shctx adapt reflect --sprint=$sprint --note=…)" 2
     # body shape: "[reflection] sprint <branch>: <note>" — keep just the note.
@@ -156,14 +161,14 @@ _cmd_run() {
     local pid; pid="$(shctx_project_id)" || die "registry not initialized — run 'shctx init'" 4
     local id; id="$(shctx_uuid7)"
     local now; now="$(shctx_now)"
-    local k_esc="${kind//\'/\'\'}"
-    local sr_esc="${subject_ref//\'/\'\'}"
-    local m_esc="${usedmodel//\'/\'\'}"
-    local sc_esc="${scores//\'/\'\'}"
-    local ra_esc="${rationale//\'/\'\'}"
+    local k_esc; k_esc="$(esc "$kind")"
+    local sr_esc; sr_esc="$(esc "$subject_ref")"
+    local m_esc; m_esc="$(esc "$usedmodel")"
+    local sc_esc; sc_esc="$(esc "$scores")"
+    local ra_esc; ra_esc="$(esc "$rationale")"
     shctx_sql "INSERT INTO eval_runs
        (id,project_id,kind,subject_ref,score,threshold,passed,model,scores_json,rationale,created_at)
-       VALUES ('$id','$pid','$k_esc','$sr_esc',$overall,$thr,$passed_int,'$m_esc','$sc_esc','$ra_esc',$now);"
+       VALUES ('$id','$(esc "$pid")','$k_esc','$sr_esc',$overall,$thr,$passed_int,'$m_esc','$sc_esc','$ra_esc',$now);"
   fi
 
   # Render.
@@ -205,9 +210,9 @@ _cmd_report() {
   _has_eval_table || { [[ "$fmt" == json ]] && echo "[]" || echo "no evals yet (run: shctx eval run … --record)"; return 0; }
   local pid; pid="$(shctx_project_id 2>/dev/null || true)"
   [[ -n "$pid" ]] || { [[ "$fmt" == json ]] && echo "[]" || echo "no evals yet"; return 0; }
-  local where="WHERE project_id='$pid'"
-  [[ -n "$kind" ]]   && where="$where AND kind='${kind//\'/\'\'}'"
-  [[ -n "$sprint" ]] && where="$where AND IFNULL(subject_ref,'')='${sprint//\'/\'\'}'"
+  local where="WHERE project_id='$(esc "$pid")'"
+  [[ -n "$kind" ]]   && where="$where AND kind='$(esc "$kind")'"
+  [[ -n "$sprint" ]] && where="$where AND IFNULL(subject_ref,'')='$(esc "$sprint")'"
 
   case "$fmt" in
     json)
@@ -259,8 +264,8 @@ _cmd_list() {
   _has_eval_table || { [[ "$fmt" == json ]] && echo "[]" || echo "no evals yet"; return 0; }
   local pid; pid="$(shctx_project_id 2>/dev/null || true)"
   [[ -n "$pid" ]] || { [[ "$fmt" == json ]] && echo "[]" || echo "no evals yet"; return 0; }
-  local where="WHERE project_id='$pid'"
-  [[ -n "$kind" ]] && where="$where AND kind='${kind//\'/\'\'}'"
+  local where="WHERE project_id='$(esc "$pid")'"
+  [[ -n "$kind" ]] && where="$where AND kind='$(esc "$kind")'"
   if [[ "$fmt" == json ]]; then
     shctx_sql "SELECT COALESCE(json_group_array(json_object(
                  'id',id,'kind',kind,'subject_ref',subject_ref,'score',score,'threshold',threshold,

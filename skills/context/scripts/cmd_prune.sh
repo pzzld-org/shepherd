@@ -51,6 +51,13 @@ done
 [[ -n "$logs_days" ]]      || logs_days="$(cfg_section_get prune logs_days)";          [[ -n "$logs_days" ]]      || logs_days=60
 [[ -n "$dispatch_days" ]]  || dispatch_days="$(cfg_section_get prune dispatch_days)";   [[ -n "$dispatch_days" ]]  || dispatch_days=30
 [[ -n "$snapshots_keep" ]] || snapshots_keep="$(cfg_section_get prune snapshots_keep)"; [[ -n "$snapshots_keep" ]] || snapshots_keep=20
+# $logs_days lands bare (unquoted) inside a SQL WHERE clause below
+# ("ts < $now_s - $logs_days*86400") — a validating guard, not escaping, is
+# the correct fix for a bare-numeric site (a config/flag value that fails
+# this check is refused outright rather than ever reaching SQL text).
+for _n in "$logs_days" "$dispatch_days" "$snapshots_keep"; do
+  [[ "$_n" =~ ^[0-9]+$ ]] || { echo "ERROR: --logs-days/--dispatch-days/--snapshots-keep must be non-negative integers (got '$_n')" >&2; exit 2; }
+done
 
 wd="$(shctx_artifacts_root)"
 branch="$(current_sprint)"
@@ -137,7 +144,11 @@ db_present=0
 db_rows=""
 if [[ -f "$db" ]]; then
   db_present=1
-  cur_esc="${branch//\'/\'\'}"
+  # GH #296: `${branch//\'/\'\'}` does not double a quote (see esc() in
+  # _lib.sh for the full mechanism) — a real git branch name may contain an
+  # apostrophe (`git check-ref-format` allows it), so this broke on ordinary
+  # branch names, not just adversarial ones.
+  cur_esc="$(esc "$branch")"
   now_s="$(shctx_now)"
   count_pre() {   # <label> <table> <where> <criterion-desc>
     local label="$1" table="$2" where="$3" desc="$4" exists n

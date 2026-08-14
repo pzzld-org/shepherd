@@ -60,7 +60,6 @@ pub mod error;
 pub mod loader;
 #[cfg(feature = "json")]
 pub mod run;
-#[cfg(feature = "std")]
 pub mod settings;
 // module (inline)
 pub mod types {

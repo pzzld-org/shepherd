@@ -12,8 +12,10 @@ mkdir -p "$dst_dir"
 
 upsert_row() {
   local lang="$1" path="$2" uid; uid=$(shctx_uuid7)
+  # $lang is a bare CLI positional (`shctx style init <lang>`); $path is
+  # derived from it — both were interpolated raw with no escaping.
   shctx_sql "INSERT INTO styles (id,project_id,language,source_path,active,created_at,updated_at)
-             VALUES ('$uid','$project_id','$lang','$path',1,$now,$now)
+             VALUES ('$uid','$(esc "$project_id")','$(esc "$lang")','$(esc "$path")',1,$now,$now)
              ON CONFLICT(project_id,language) DO UPDATE SET source_path=excluded.source_path, updated_at=excluded.updated_at;"
 }
 

@@ -284,6 +284,27 @@ shctx_sql() {
   sqlite3 -bail "$(shctx_db_path)" "$@"
 }
 
+# esc: SQL-escape a value for safe interpolation into a single-quoted SQL text
+# literal — doubles every embedded single quote (the standard SQL string-
+# literal escape; NOT shell escaping). Single source of truth for every
+# scripts/*.sh call site that builds SQL by raw interpolation, so a broken
+# hand-rolled variant is never written again.
+#
+# The bash parameter-expansion form `${v//\'/\'\'}` looks equivalent but is
+# NOT: inside a double-quoted context the backslash on the REPLACEMENT side
+# survives literally (bash does not treat `\'` as an escape there), so one
+# apostrophe becomes the four raw characters `\'\'` instead of the two
+# SQLite wants (`''`) — a malformed statement, not a doubled quote. That
+# broken idiom was hand-rolled independently in cmd_adapt.sh, cmd_loop.sh,
+# dispatch_guard.sh, and (per GH #296's repo-wide sweep) 20 further sites
+# across 8 files; this file's OWN cmd_teammate.sh had the proven-correct
+# `sed "s/'/''/g"` form at line 24 the whole time, 282 lines above an
+# UNESCAPED raw-interpolation call site (GH #295) — a working implementation
+# and a vulnerable one in the same file. Consolidating here is the actual
+# fix: every caller sources `_lib.sh` already, so there is exactly one
+# place left to get this right (GH #296 follow-up to #285).
+esc() { printf '%s' "$1" | sed "s/'/''/g"; }
+
 # Now-epoch (seconds).
 shctx_now() { date +%s; }
 

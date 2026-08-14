@@ -30,9 +30,15 @@ for row in "${pkgs[@]}"; do
   manifest=${row##*$'\t'}
   pkg_dir=$(dirname "$manifest")
   rel_pkg=${pkg_dir#$(shctx_repo_root)/}
+  # File-path-derived values (same class of gap as #291's dirname finding —
+  # a path can legally contain an apostrophe) are escaped at each INSERT
+  # below via rel_pkg_esc/rel_esc rather than here, so a fresh $rel per file
+  # is always escaped alongside it.
+  rel_pkg_esc=$(esc "$rel_pkg")
 
   while IFS= read -r -d '' f; do
     rel=${f#$(shctx_repo_root)/}
+    rel_esc=$(esc "$rel")
     # v5.0.3: extended regex covers
     #   - `pub fn|struct|trait|enum|const|static|type|mod`
     #   - modifier sequences (`async`, `unsafe`, `const`, `extern "C"`)
@@ -91,12 +97,16 @@ for row in "${pkgs[@]}"; do
               continue
             fi
             kind="re-export"
-            sig=$(printf '%s' "$content" | sed -e 's/^[[:space:]]*//' -e "s/'/''/g")
+            sig=$(esc "$(printf '%s' "$content" | sed -e 's/^[[:space:]]*//')")
             hash=$(printf '%s' "$rel:$line:$sym" | shasum -a 256 | awk '{print $1}')
             uid=$(shctx_uuid7)
+            # $sym is regex-restricted to [A-Za-z_][A-Za-z0-9_]* (safe by
+            # construction); $vis can carry arbitrary text inside `pub(...)`
+            # (e.g. `pub(in some::path)`) so it is esc()'d like every other
+            # free-text field here.
             shctx_sql "INSERT INTO index_symbols
               (id, project_id, name, kind, package, file_path, line, visibility, signature, doc_summary, language, hash, refreshed_at)
-              VALUES ('$uid','$project_id','$sym','$kind','$rel_pkg','$rel',$line,'$vis','$sig',NULL,'rust','$hash',$now)
+              VALUES ('$uid','$(esc "$project_id")','$sym','$kind','$rel_pkg_esc','$rel_esc',$line,'$(esc "$vis")','$sig',NULL,'rust','$hash',$now)
               ON CONFLICT(project_id,name,package,kind) DO UPDATE SET
                 file_path=excluded.file_path, line=excluded.line,
                 visibility=excluded.visibility, signature=excluded.signature,
@@ -119,12 +129,12 @@ for row in "${pkgs[@]}"; do
       fi
 
       [[ -z "$sym" || -z "$kind" ]] && continue
-      sig=$(printf '%s' "$content" | sed -e 's/^[[:space:]]*//' -e "s/'/''/g")
+      sig=$(esc "$(printf '%s' "$content" | sed -e 's/^[[:space:]]*//')")
       hash=$(printf '%s' "$rel:$line:$sig" | shasum -a 256 | awk '{print $1}')
       uid=$(shctx_uuid7)
       shctx_sql "INSERT INTO index_symbols
         (id, project_id, name, kind, package, file_path, line, visibility, signature, doc_summary, language, hash, refreshed_at)
-        VALUES ('$uid','$project_id','$sym','$kind','$rel_pkg','$rel',$line,'$vis','$sig',NULL,'rust','$hash',$now)
+        VALUES ('$uid','$(esc "$project_id")','$sym','$kind','$rel_pkg_esc','$rel_esc',$line,'$(esc "$vis")','$sig',NULL,'rust','$hash',$now)
         ON CONFLICT(project_id,name,package,kind) DO UPDATE SET
           file_path=excluded.file_path, line=excluded.line,
           visibility=excluded.visibility, signature=excluded.signature,
@@ -134,5 +144,5 @@ for row in "${pkgs[@]}"; do
 done
 
 # Sweep stale rows (rust only) older than this run.
-shctx_sql "DELETE FROM index_symbols WHERE project_id='$project_id' AND language='rust' AND refreshed_at<$now;"
+shctx_sql "DELETE FROM index_symbols WHERE project_id='$(esc "$project_id")' AND language='rust' AND refreshed_at<$now;"
 echo "shctx refresh symbols: ok"

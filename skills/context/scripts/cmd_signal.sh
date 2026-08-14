@@ -52,8 +52,11 @@ case "$sub" in
     [[ -n "$pid" ]] || { echo "ERR: no project registered (run 'shctx init')" >&2; exit 1; }
     sender="${CLAUDE_TEAMMATE_NAME:-${SHEPHERD_SESSION_ID:-root}}"
     ts="$(now_ms)"
-    safe_payload="${payload//\'/''}"
-    id=$(sqlite3 "$DB" "INSERT INTO session_signals (project_id, sender, recipient, kind, payload, sent_at) VALUES ('$pid','$sender','$to','$kind','$safe_payload',$ts) RETURNING id;")
+    safe_payload="$(esc "$payload")"
+    # $to/$kind (free-text CLI flags) and $sender/$pid were interpolated raw
+    # with no escaping in THIS INSERT — inconsistent with `poll` below, which
+    # already escaped the same $kind value correctly.
+    id=$(sqlite3 "$DB" "INSERT INTO session_signals (project_id, sender, recipient, kind, payload, sent_at) VALUES ('$(esc "$pid")','$(esc "$sender")','$(esc "$to")','$(esc "$kind")','$safe_payload',$ts) RETURNING id;")
     echo "$id"
     ;;
   poll)
@@ -66,8 +69,8 @@ case "$sub" in
       *) echo "unknown flag: $1" >&2; exit 2;;
     esac; shift; done
     [[ -n "$as" ]] || { usage >&2; exit 2; }
-    where="recipient='${as//\'/''}' AND consumed_at IS NULL"
-    [[ -n "$kind" ]] && where="$where AND kind='${kind//\'/''}'"
+    where="recipient='$(esc "$as")' AND consumed_at IS NULL"
+    [[ -n "$kind" ]] && where="$where AND kind='$(esc "$kind")'"
     if [[ "$json" == "1" ]]; then
       sqlite3 -json "$DB" "SELECT * FROM session_signals WHERE $where ORDER BY sent_at;"
     else

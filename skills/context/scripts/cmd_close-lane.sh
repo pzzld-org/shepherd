@@ -105,13 +105,17 @@ else
   resolved_json=$(printf '%s\n' "${resolved[@]}" | jq -R . | jq -sc .)
 fi
 
-acc_esc=$(printf '%s' "$acceptance_log" | sed "s/'/''/g")
-sprint_esc=$(printf '%s' "$sprint_branch" | sed "s/'/''/g")
-lane_esc=$(printf '%s' "$lane_id" | sed "s/'/''/g")
+acc_esc=$(esc "$acceptance_log")
+sprint_esc=$(esc "$sprint_branch")
+lane_esc=$(esc "$lane_id")
+# $resolved_json is built from --issues= CLI-supplied issue numbers (via
+# `jq -R`, which JSON-escapes but does not SQL-escape) — esc() it too before
+# it lands in the VALUES literal below.
+resolved_json_esc=$(esc "$resolved_json")
 
 shctx_sql "INSERT INTO lane_closures
   (id, project_id, sprint_branch, lane_id, closed_at, resolved_issues, acceptance_log, status, notes)
-  VALUES ('$uid','$project_id','$sprint_esc','$lane_esc',$now,'$resolved_json',
+  VALUES ('$uid','$(esc "$project_id")','$sprint_esc','$lane_esc',$now,'$resolved_json_esc',
           ${acc_esc:+'$acc_esc'}${acc_esc:-NULL},'$status',NULL)
   ON CONFLICT(project_id, sprint_branch, lane_id) DO UPDATE SET
     closed_at=excluded.closed_at,
@@ -126,9 +130,9 @@ payload=$(jq -nc \
   --arg status "$status" \
   --argjson resolved "$resolved_json" \
   '{lane:$lane, sprint:$sprint, status:$status, resolved:$resolved}')
-payload_esc=$(printf '%s' "$payload" | sed "s/'/''/g")
+payload_esc=$(esc "$payload")
 shctx_sql "INSERT INTO logs_events (project_id, ts, level, source, event, payload, sprint_branch)
-           VALUES ('$project_id', $now, 'audit', 'close-lane', 'lane-closed', '$payload_esc', '$sprint_esc');"
+           VALUES ('$(esc "$project_id")', $now, 'audit', 'close-lane', 'lane-closed', '$payload_esc', '$sprint_esc');"
 
 # Emit the carry-forward markdown patch.
 echo "# carry-forward patch — lane \`$lane_id\` (sprint \`$sprint_branch\`)"

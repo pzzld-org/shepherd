@@ -27,12 +27,21 @@ f="$(shctx_skill_root)/queries/$name.sql"
 
 project_id=$(shctx_project_id)
 sql=$(cat "$f")
-sql=${sql//:project_id/\'$project_id\'}
+sql=${sql//:project_id/\'$(esc "$project_id")\'}
 i=0
 while [[ $i -lt ${#bind_keys[@]} ]]; do
   k=${bind_keys[$i]}
   v=${bind_vals[$i]}
-  v=${v//\'/''}
+  # BUG (found this wave): `v=${v//\'/''}` UNQUOTED — bash parses the
+  # unquoted `''` on the replacement side as an empty-string LITERAL (a pair
+  # of quote-toggle characters enclosing nothing), not as two literal
+  # apostrophes. The net effect was silent DATA CORRUPTION, not a doubled
+  # quote: every embedded `'` in a --key=val bind was simply DELETED
+  # ("test's value" -> "tests value") rather than SQL-escaped — which
+  # happened to avoid a malformed statement but violated the round-trip
+  # contract and is not the correct SQL escape. esc() (quoted, correct) fixes
+  # both problems at once.
+  v="$(esc "$v")"
   sql=${sql//:$k/\'$v\'}
   i=$((i + 1))
 done

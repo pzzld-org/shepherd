@@ -94,16 +94,8 @@ pid=$(shctx_project_id)
 now=$(shctx_now)
 
 # SQL literal helpers ---------------------------------------------------------
-# esc: double every single quote so a value round-trips through SQL text-
-# literal interpolation intact (SQL escaping, not shell escaping). The bash
-# parameter-expansion form `${v//\'/\'\'}` does NOT do this on bash 3.2 — it
-# leaves a literal backslash in the output and the original quote unescaped,
-# so any free-text value (a note, a reason, a title) containing an apostrophe
-# produces malformed SQL (#285). Mirrors the proven-correct idiom already in
-# cmd_teammate.sh's esc() (sed "s/'/''/g"); duplicated here rather than
-# sourced because it belongs in the shared _lib.sh, which is a sibling's
-# scope this wave — see #285 follow-up to consolidate.
-esc() { printf '%s' "$1" | sed "s/'/''/g"; }
+# esc() is defined by _lib.sh (sourced above) — single shared idiom (GH #296
+# follow-up to #285; this file used to hand-roll its own copy here).
 # _txt: quoted text literal, or NULL when empty (mirrors cmd_audit NULLIF intent).
 _txt() {
   local v="${1:-}"
@@ -144,8 +136,8 @@ _cmd_roll() {
 
   # Findings summary for this sprint (high/critical counts), stored as JSON.
   local hi cr findings findings_esc
-  hi=$(shctx_sql "SELECT count(*) FROM audit_findings WHERE project_id='$pid' AND sprint_branch='$sprint_esc' AND severity='high';")
-  cr=$(shctx_sql "SELECT count(*) FROM audit_findings WHERE project_id='$pid' AND sprint_branch='$sprint_esc' AND severity='critical';")
+  hi=$(shctx_sql "SELECT count(*) FROM audit_findings WHERE project_id='$(esc "$pid")' AND sprint_branch='$sprint_esc' AND severity='high';")
+  cr=$(shctx_sql "SELECT count(*) FROM audit_findings WHERE project_id='$(esc "$pid")' AND sprint_branch='$sprint_esc' AND severity='critical';")
   findings=$(jq -cn --argjson h "${hi:-0}" --argjson c "${cr:-0}" '{high:$h,critical:$c}')
   findings_esc="$(esc "$findings")"
 
@@ -153,7 +145,7 @@ _cmd_roll() {
   shctx_sql "INSERT OR REPLACE INTO sprint_metrics
                (project_id, sprint_branch, grade, sprint_size, lane_count, wave_count,
                 loc_add, loc_del, wall_minutes, api_calls, findings_json, created_at)
-             VALUES ('$pid', '$sprint_esc', $(_txt "$grade"), $(_txt "$size"),
+             VALUES ('$(esc "$pid")', '$sprint_esc', $(_txt "$grade"), $(_txt "$size"),
                      $(_num "$lanes" lanes), $(_num "$waves" waves),
                      $(_num "$loca" loc-add), $(_num "$locd" loc-del),
                      $(_num "$wall" wall-min), $(_num "$api" api),
@@ -162,7 +154,7 @@ _cmd_roll() {
   # 2) harvest HIGH/CRITICAL findings → mem_entries(kind='prior'), deduped by title
   local ids harvested=0 fid concern gist sev title title_esc dup body body_esc tags tags_esc mid
   ids=$(shctx_sql "SELECT id FROM audit_findings
-                   WHERE project_id='$pid' AND sprint_branch='$sprint_esc'
+                   WHERE project_id='$(esc "$pid")' AND sprint_branch='$sprint_esc'
                      AND severity IN ('high','critical') ORDER BY id;")
   for fid in $ids; do
     concern=$(shctx_sql "SELECT concern FROM audit_findings WHERE id=$fid;")
@@ -171,13 +163,13 @@ _cmd_roll() {
     gist=$(shctx_sql "SELECT replace(replace(substr(finding,1,240),char(10),' '),char(13),' ') FROM audit_findings WHERE id=$fid;")
     title="prior: ${concern}"
     title_esc="$(esc "$title")"
-    dup=$(shctx_sql "SELECT 1 FROM mem_entries WHERE project_id='$pid' AND kind='prior' AND title='$title_esc' LIMIT 1;")
+    dup=$(shctx_sql "SELECT 1 FROM mem_entries WHERE project_id='$(esc "$pid")' AND kind='prior' AND title='$title_esc' LIMIT 1;")
     # Recurrence: the concern already has a prior — refresh its last-seen
     # (updated_at) so decay never prunes a still-recurring lesson, then skip
     # the re-insert (dedup-by-title keeps the store bounded).
     if [[ -n "$dup" ]]; then
       shctx_sql "UPDATE mem_entries SET updated_at=$now
-                 WHERE project_id='$pid' AND kind='prior' AND title='$title_esc';"
+                 WHERE project_id='$(esc "$pid")' AND kind='prior' AND title='$title_esc';"
       continue
     fi
     body="[$sev] sprint $sprint: ${gist}"
@@ -186,7 +178,7 @@ _cmd_roll() {
     tags_esc="$(esc "$tags")"
     mid=$(shctx_uuid7)
     shctx_sql "INSERT INTO mem_entries (id,project_id,kind,title,body,tags,pinned,created_at,updated_at)
-               VALUES ('$mid','$pid','prior','$title_esc','$body_esc','$tags_esc',0,$now,$now);"
+               VALUES ('$mid','$(esc "$pid")','prior','$title_esc','$body_esc','$tags_esc',0,$now,$now);"
     harvested=$((harvested+1))
   done
 
@@ -213,19 +205,19 @@ _decay_priors() {
   [[ "$window" =~ ^[0-9]+$ ]] || window=6
   # Need ≥2 closes before a decay cadence is meaningful; otherwise no cutoff.
   local nsprints
-  nsprints=$(shctx_sql "SELECT count(*) FROM sprint_metrics WHERE project_id='$pid';")
+  nsprints=$(shctx_sql "SELECT count(*) FROM sprint_metrics WHERE project_id='$(esc "$pid")';")
   [[ "${nsprints:-0}" -ge 2 ]] || { printf '0'; return 0; }
   # Count closes strictly newer than each prior's last-seen; prune when that
   # count exceeds the window. Single correlated DELETE keeps it atomic.
   local n
   n=$(shctx_sql "SELECT count(*) FROM mem_entries m
-                 WHERE m.project_id='$pid' AND m.kind='prior' AND m.pinned=0
+                 WHERE m.project_id='$(esc "$pid")' AND m.kind='prior' AND m.pinned=0
                    AND (SELECT count(*) FROM sprint_metrics s
-                        WHERE s.project_id='$pid' AND s.created_at > m.updated_at) > $window;")
+                        WHERE s.project_id='$(esc "$pid")' AND s.created_at > m.updated_at) > $window;")
   shctx_sql "DELETE FROM mem_entries
-             WHERE project_id='$pid' AND kind='prior' AND pinned=0
+             WHERE project_id='$(esc "$pid")' AND kind='prior' AND pinned=0
                AND (SELECT count(*) FROM sprint_metrics s
-                    WHERE s.project_id='$pid' AND s.created_at > mem_entries.updated_at) > $window;"
+                    WHERE s.project_id='$(esc "$pid")' AND s.created_at > mem_entries.updated_at) > $window;"
   printf '%s' "${n:-0}"
 }
 
@@ -263,7 +255,7 @@ _cmd_reflect() {
   local tags tags_esc; tags=$(jq -cn '["reflection"]'); tags_esc="$(esc "$tags")"
 
   local dup; dup=$(shctx_sql "SELECT id FROM mem_entries
-                              WHERE project_id='$pid' AND kind='prior' AND title='$title_esc' LIMIT 1;")
+                              WHERE project_id='$(esc "$pid")' AND kind='prior' AND title='$title_esc' LIMIT 1;")
   if [[ -n "$dup" ]]; then
     # Preserve an existing pin: the normal close re-runs reflect WITHOUT --pin, so
     # a plain `pinned=$pin` would silently unpin a previously pinned reflection
@@ -273,7 +265,7 @@ _cmd_reflect() {
   else
     local mid; mid=$(shctx_uuid7)
     shctx_sql "INSERT INTO mem_entries (id,project_id,kind,title,body,tags,pinned,created_at,updated_at)
-               VALUES ('$mid','$pid','prior','$title_esc','$body_esc','$tags_esc',$pin,$now,$now);"
+               VALUES ('$mid','$(esc "$pid")','prior','$title_esc','$body_esc','$tags_esc',$pin,$now,$now);"
     echo "adapt reflect: stored reflection for $sprint (id $mid)"
   fi
 }
@@ -286,7 +278,7 @@ _emit_metrics() {
   local fmt="$1" row n awm aac alc ald
   row=$(shctx_sql "SELECT n, COALESCE(avg_wall_minutes,0), COALESCE(avg_api_calls,0),
                           COALESCE(avg_lane_count,0), COALESCE(avg_loc_delta,0)
-                   FROM v_sprint_metrics_avg WHERE project_id='$pid';")
+                   FROM v_sprint_metrics_avg WHERE project_id='$(esc "$pid")';")
   [[ -z "$row" ]] && return 0
   IFS='|' read -r n awm aac alc ald <<< "$row"
   [[ -z "$n" || "$n" == "0" ]] && return 0
@@ -304,19 +296,19 @@ _emit_metrics() {
 # Emit recent lesson priors (cap 10). No priors ⇒ emit nothing (omit-if-empty).
 _emit_lessons() {
   local fmt="$1" any
-  any=$(shctx_sql "SELECT 1 FROM mem_entries WHERE project_id='$pid' AND kind='prior' LIMIT 1;")
+  any=$(shctx_sql "SELECT 1 FROM mem_entries WHERE project_id='$(esc "$pid")' AND kind='prior' LIMIT 1;")
   [[ -z "$any" ]] && return 0
   case "$fmt" in
     json) shctx_sql "SELECT json_group_array(json_object('id',id,'title',title,'body',body,'tags',json(tags)))
                      FROM (SELECT id,title,body,tags FROM mem_entries
-                           WHERE project_id='$pid' AND kind='prior'
+                           WHERE project_id='$(esc "$pid")' AND kind='prior'
                            ORDER BY created_at DESC, id DESC LIMIT 10);" ;;
     md)  echo "### Priors / lessons carried forward"
          shctx_sql "SELECT '- **' || title || '** _(id: ' || id || ')_ — ' || body
-                    FROM mem_entries WHERE project_id='$pid' AND kind='prior'
+                    FROM mem_entries WHERE project_id='$(esc "$pid")' AND kind='prior'
                     ORDER BY created_at DESC, id DESC LIMIT 10;" ;;
     *)   shctx_sql "SELECT '[' || id || '] ' || title || ' — ' || body
-                    FROM mem_entries WHERE project_id='$pid' AND kind='prior'
+                    FROM mem_entries WHERE project_id='$(esc "$pid")' AND kind='prior'
                     ORDER BY created_at DESC, id DESC LIMIT 10;" ;;
   esac
 }
@@ -376,13 +368,13 @@ _cmd_report() {
                  'lanes',lane_count,'waves',wave_count,'loc_add',loc_add,
                  'loc_del',loc_del,'wall_minutes',wall_minutes,'api_calls',api_calls,
                  'findings',json(findings_json),'created_at',created_at))
-               FROM (SELECT * FROM sprint_metrics WHERE project_id='$pid'
+               FROM (SELECT * FROM sprint_metrics WHERE project_id='$(esc "$pid")'
                      ORDER BY created_at DESC, id DESC LIMIT 20);"
     return 0
   fi
 
   local count
-  count=$(shctx_sql "SELECT count(*) FROM sprint_metrics WHERE project_id='$pid';")
+  count=$(shctx_sql "SELECT count(*) FROM sprint_metrics WHERE project_id='$(esc "$pid")';")
   if [[ "${count:-0}" == "0" ]]; then
     echo "_(no sprint metrics recorded yet — first adaptation cycle lands at this sprint's close)_"
     return 0
@@ -400,7 +392,7 @@ _cmd_report() {
                   || ' | ' || COALESCE(CAST(wall_minutes AS INTEGER),'·')
                   || ' | ' || COALESCE(api_calls,'·')
                   || ' | ' || COALESCE(findings_json,'·') || ' |'
-             FROM sprint_metrics WHERE project_id='$pid'
+             FROM sprint_metrics WHERE project_id='$(esc "$pid")'
              ORDER BY created_at DESC, id DESC LIMIT 20;"
   echo
   _emit_metrics md
@@ -420,21 +412,21 @@ _emit_trends() {
   # The last 3 closes, newest first. Need exactly 3 to assess a 3-point trend.
   local n3
   n3=$(shctx_sql "SELECT count(*) FROM (SELECT 1 FROM sprint_metrics
-                  WHERE project_id='$pid' ORDER BY created_at DESC, id DESC LIMIT 3);")
+                  WHERE project_id='$(esc "$pid")' ORDER BY created_at DESC, id DESC LIMIT 3);")
   [[ "${n3:-0}" -ge 3 ]] || return 0
 
   # The 3 most-recent sprint branches (newest → oldest), as a CTE we can reuse.
   local last3="WITH last3 AS (
                  SELECT sprint_branch, grade, wall_minutes, api_calls, created_at, id,
                         ROW_NUMBER() OVER (ORDER BY created_at DESC, id DESC) AS rn
-                 FROM sprint_metrics WHERE project_id='$pid'
+                 FROM sprint_metrics WHERE project_id='$(esc "$pid")'
                  ORDER BY created_at DESC, id DESC LIMIT 3)"
 
   # (a) concern present as HIGH/CRITICAL in every one of the last-3 sprints.
   local concern
   concern=$(shctx_sql "$last3
                        SELECT af.concern FROM audit_findings af
-                       WHERE af.project_id='$pid' AND af.severity IN ('high','critical')
+                       WHERE af.project_id='$(esc "$pid")' AND af.severity IN ('high','critical')
                          AND af.sprint_branch IN (SELECT sprint_branch FROM last3)
                        GROUP BY af.concern
                        HAVING COUNT(DISTINCT af.sprint_branch) = 3
@@ -528,7 +520,7 @@ _emit_compile_telemetry() {
 
   local any
   any=$(shctx_sql "SELECT 1 FROM compile_runs
-                   WHERE project_id='$pid' AND sprint='$sprint_esc'
+                   WHERE project_id='$(esc "$pid")' AND sprint='$sprint_esc'
                      AND parse_error IS NULL
                    LIMIT 1;")
   [[ -n "$any" ]] || return 0
@@ -552,7 +544,7 @@ _emit_compile_telemetry() {
                  'degradation_causes',    degradation_causes
                ))
                FROM v_compile_runs_sprint
-               WHERE project_id='$pid' AND sprint='$sprint_esc'
+               WHERE project_id='$(esc "$pid")' AND sprint='$sprint_esc'
                ORDER BY segment;"
     return 0
   fi
@@ -589,7 +581,7 @@ _emit_compile_telemetry() {
                          END
             || ' |'
              FROM v_compile_runs_sprint
-             WHERE project_id='$pid' AND sprint='$sprint_esc'
+             WHERE project_id='$(esc "$pid")' AND sprint='$sprint_esc'
              ORDER BY segment;"
   echo
 
@@ -597,7 +589,7 @@ _emit_compile_telemetry() {
   local deg_count
   deg_count=$(shctx_sql "SELECT COALESCE(SUM(degradation_events),0)
                           FROM v_compile_runs_sprint
-                          WHERE project_id='$pid' AND sprint='$sprint_esc';")
+                          WHERE project_id='$(esc "$pid")' AND sprint='$sprint_esc';")
   if [[ "${deg_count:-0}" -gt 0 ]]; then
     echo "**Degradation events** (direct-dispatch fallback activated):"
     shctx_sql "SELECT '- **' || segment || '**: '
@@ -605,7 +597,7 @@ _emit_compile_telemetry() {
                    || ' — ' || COALESCE(recovered_events,0)
                    || '/' || degradation_events || ' recovered'
                FROM v_compile_runs_sprint
-               WHERE project_id='$pid' AND sprint='$sprint_esc'
+               WHERE project_id='$(esc "$pid")' AND sprint='$sprint_esc'
                  AND degradation_events > 0
                ORDER BY segment;"
     echo
@@ -626,7 +618,7 @@ _emit_recommend() {
   local row n awm aac alc
   row=$(shctx_sql "SELECT n, COALESCE(avg_wall_minutes,0), COALESCE(avg_api_calls,0),
                           COALESCE(avg_lane_count,0)
-                   FROM v_sprint_metrics_avg WHERE project_id='$pid';")
+                   FROM v_sprint_metrics_avg WHERE project_id='$(esc "$pid")';")
   if [[ -z "$row" ]]; then
     [[ "$fmt" == "json" ]] && jq -cn '{history:false,note:"no history yet, use defaults"}' \
       || echo "_(no history yet, use defaults)_"
@@ -655,7 +647,7 @@ _emit_recommend() {
   concerns=$(shctx_sql "SELECT group_concat(c, ', ') FROM (
                           SELECT DISTINCT json_extract(tags,'\$[0]') AS c
                           FROM mem_entries
-                          WHERE project_id='$pid' AND kind='prior'
+                          WHERE project_id='$(esc "$pid")' AND kind='prior'
                             AND json_extract(tags,'\$[0]') IS NOT NULL
                           ORDER BY updated_at DESC, id DESC LIMIT 5);")
 

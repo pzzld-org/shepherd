@@ -12,7 +12,7 @@
 //! (`json.dumps(doc, indent=2, sort_keys=True)`, `ensure_ascii=True` by
 //! default) against an equivalent document, not hand-written, so these are
 //! oracle-checked even without the corpus.
-#[cfg(not(feature = "std"))]
+#[cfg(feature = "alloc")]
 use alloc::{format, string::String, vec, vec::Vec};
 
 use super::{LaneState, RunState};

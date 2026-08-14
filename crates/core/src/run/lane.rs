@@ -4,10 +4,8 @@
     Contrib: @FL03
 */
 //! One lane's registration row inside `run.json`'s `lanes` array.
-#[cfg(not(feature = "std"))]
+#[cfg(feature = "alloc")]
 use alloc::{collections::BTreeMap, string::String};
-#[cfg(feature = "std")]
-use std::collections::BTreeMap;
 
 fn default_lane_state() -> String {
     String::from("pending")

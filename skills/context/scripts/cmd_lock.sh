@@ -34,8 +34,10 @@ case "$sub" in
     fi
     jq -nc --arg s "$SESS" --arg m "$MODE" --argjson p "$$" --argjson at "$now" \
       '{holder_session_id:$s, mode:$m, acquired_at:$at, pid:$p, children:[]}' > "$lock"
+    # $SESS (--session=) and $MODE (--mode=, no enum here) are free-text CLI
+    # flags and were interpolated raw with zero escaping.
     shctx_sql "INSERT INTO locks_history (project_id, session_id, mode, acquired_at)
-               VALUES ('$project_id', '$SESS', '$MODE', $now);"
+               VALUES ('$(esc "$project_id")', '$(esc "$SESS")', '$(esc "$MODE")', $now);"
     echo "lock: acquired ($SESS, $MODE)"
     ;;
   release)
@@ -48,14 +50,14 @@ case "$sub" in
       [[ -f "$lock" ]] || { echo "lock: free"; exit 0; }
       sess=$(jq -r .holder_session_id "$lock" 2>/dev/null || echo "")
       rm -f "$lock"
-      shctx_sql "UPDATE locks_history SET released_at=$now, released_by='force' WHERE session_id='$sess' AND released_at IS NULL;"
+      shctx_sql "UPDATE locks_history SET released_at=$now, released_by='force' WHERE session_id='$(esc "$sess")' AND released_at IS NULL;"
       echo "lock: released (force)"
       exit 0
     fi
     [[ -f "$lock" ]] || { echo "lock: free"; exit 0; }
     sess=$(jq -r .holder_session_id "$lock")
     rm -f "$lock"
-    shctx_sql "UPDATE locks_history SET released_at=$now, released_by='normal' WHERE session_id='$sess' AND released_at IS NULL;"
+    shctx_sql "UPDATE locks_history SET released_at=$now, released_by='normal' WHERE session_id='$(esc "$sess")' AND released_at IS NULL;"
     echo "lock: released"
     ;;
   reap)
@@ -64,7 +66,7 @@ case "$sub" in
     age_min=$(( (now - at) / 60 ))
     if ! kill -0 "$pid" 2>/dev/null || (( age_min > 60 )); then
       rm -f "$lock"
-      shctx_sql "UPDATE locks_history SET released_at=$now, released_by='reap' WHERE session_id='$sess' AND released_at IS NULL;"
+      shctx_sql "UPDATE locks_history SET released_at=$now, released_by='reap' WHERE session_id='$(esc "$sess")' AND released_at IS NULL;"
       echo "lock: reaped (pid=$pid, age=${age_min}m)"
     else
       echo "lock: held by live pid $pid (age ${age_min}m); not reaping"

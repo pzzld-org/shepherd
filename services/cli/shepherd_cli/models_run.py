@@ -46,6 +46,31 @@ Design rules (from the codex-shepherd port-back review):
   projection`` table (:func:`parse_declared_lane_ids`) as the independent
   source of what the run actually committed to shipping, so the gate has
   something to compare the ledger against besides the ledger itself.
+- **#294 lost-update race**: every mutator above is ``load_run()`` ->
+  in-memory mutate -> ``save_run()`` -- two independent entry points with
+  caller-controlled code running in between, no serialization. PROVEN:
+  two barrier-synchronized OS processes each ``load_run``, append a
+  distinct ``LaneState``, ``save_run`` -- both read the same pre-write
+  (empty) state, and the second writer's ``save_run`` silently
+  overwrote the first's, dropping a lane with no exception, no warning,
+  exit 0 on both. The atomic tempfile+rename in :func:`atomic_write_json`
+  protects a single writer against a CRASH; it does nothing for two
+  writers racing the same read-modify-write cycle.
+  :func:`load_run_with_migrations` now acquires a ``.run.json.lock``
+  sidecar advisory lock (``fcntl.flock`` -- portable across macOS and
+  Linux identically, unlike ``fcntl.lockf`` whose semantics differ) and
+  holds it across the caller's mutation; :func:`save_run` consumes that
+  held lock (or acquires its own, for a standalone write with no
+  preceding load in this process) around the atomic replace, then
+  releases it. A crashed holder is never fatal: ``flock`` is owned by
+  the open file description, not the process, so the kernel releases it
+  the instant every fd referencing it closes -- SIGKILL included -- and
+  the next acquire succeeds near-instantly with no timeout involved. A
+  bounded wait (:class:`RunLockTimeout`, 30s) only guards the different
+  case of a genuinely slow but still-LIVE holder, so a caller fails
+  loudly instead of hanging forever. See
+  ``services/cli/tests/test_run_concurrency.py`` for the reproduction
+  (two-process, N-process contention, and killed-holder recovery).
 
 CANONICAL RUN IDS (#P4, 2026-08-03 operator directive)
 =========================================================
@@ -72,6 +97,7 @@ not a replacement for it.
 from __future__ import annotations
 
 import datetime
+import fcntl
 import json
 import os
 import re
@@ -124,6 +150,18 @@ RUN_TRACKED_FILES: tuple[str, ...] = (
 
 class RunIdError(ValueError):
     """Raised for an identifier outside the closed ``[a-z0-9-]`` grammar."""
+
+
+class RunLockTimeout(TimeoutError):
+    """#294: a run's ``.run.json.lock`` advisory lock could not be acquired in time.
+
+    Distinguishes "another writer is genuinely mid-transaction and still
+    alive" (this) from a crashed holder, which never reaches this path at
+    all -- ``flock`` is released by the kernel the instant a crashed
+    process's file descriptors close (SIGKILL included), so the very
+    next acquire attempt after a crash succeeds immediately, with no
+    timeout involved.
+    """
 
 
 def validate_id(value: str, *, what: str = "id") -> str:
@@ -748,6 +786,167 @@ def run_state_path(run: str, workdir: str | None = None) -> str:
     return os.path.join(run_dir(run, workdir), "run.json")
 
 
+# --------------------------------------------------------------------------
+# #294 -- the read-modify-write lock. ``fcntl.flock`` (never ``fcntl.lockf``:
+# their semantics diverge across POSIX flavors, and this must behave
+# identically on macOS and Linux) taken on a ``.run.json.lock`` sidecar next
+# to the document it guards -- named to match the issue's own suggested
+# convention and this project's existing bash-side lock-file idiom
+# (``skills/context/scripts/cmd_lock.sh``), though the mechanism here is
+# kernel-arbitrated rather than that script's manual PID/age reap, which is
+# unnecessary once the OS itself guarantees crash release (see
+# :class:`RunLockTimeout`). The lock is never written to and never read for
+# content -- existence + an exclusive hold is the entire protocol.
+# --------------------------------------------------------------------------
+#: Worst-case wait for a contended lock still held by a LIVE writer before
+#: giving up loudly. Not the crash-recovery path -- see :class:`RunLockTimeout`.
+_LOCK_TIMEOUT_S = 30.0
+
+#: Poll interval while waiting for a contended lock.
+_LOCK_POLL_S = 0.02
+
+
+def _lock_sidecar_path(json_path: str) -> str:
+    """The advisory-lock sidecar path for one ``run.json``: ``.run.json.lock``."""
+    parent, name = os.path.split(json_path)
+    return os.path.join(parent, f".{name}.lock")
+
+
+def _acquire_lock(json_path: str, *, timeout: float = _LOCK_TIMEOUT_S) -> int:
+    """Blocking-with-timeout acquire of one run's exclusive advisory lock.
+
+    ``flock`` locks the OPEN FILE DESCRIPTION, not the path or the
+    process -- it survives a directory rename (:func:`_rename_run` reuses
+    the same fd across the move via the pending-lock handoff below) and
+    is released by the kernel the instant every fd referencing it closes,
+    including on ``SIGKILL``. That kernel guarantee is what makes a
+    crashed holder non-fatal; ``timeout`` only bounds how long this call
+    waits on a genuinely slow but LIVE holder before failing loudly
+    instead of hanging forever.
+
+    Args:
+        json_path: The ``run.json`` path being protected — the lock file
+            lives alongside it (:func:`_lock_sidecar_path`).
+        timeout: Seconds to wait for a contended lock before raising.
+
+    Returns:
+        The open, locked file descriptor. The caller owns it and must
+        eventually release it via :func:`_release_lock`.
+
+    Raises:
+        RunLockTimeout: Still held by another live writer after ``timeout``.
+    """
+    lock_path = _lock_sidecar_path(json_path)
+    os.makedirs(os.path.dirname(lock_path), exist_ok=True)
+    fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o644)
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return fd
+        except BlockingIOError:
+            if time.monotonic() >= deadline:
+                os.close(fd)
+                raise RunLockTimeout(
+                    f"timed out after {timeout}s waiting for the run lock at "
+                    f"{lock_path!r} (held by another live writer -- a crashed "
+                    "holder releases immediately, see RunLockTimeout)"
+                ) from None
+            time.sleep(_LOCK_POLL_S)
+
+
+def _release_lock(fd: int) -> None:
+    """Release + close a lock fd returned by :func:`_acquire_lock`."""
+    try:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
+
+
+#: The lock this PROCESS currently holds mid read-modify-write cycle, if
+#: any -- ``(json_path at acquire time, fd)``. Every CLI mutator's shape is
+#: exactly ``load_run() -> mutate in memory -> save_run()``
+#: (``commands/run.py``'s ``lane_add_cmd``/``lane_set_cmd``/
+#: ``wave_accept_cmd``/``set_cmd``/...), synchronous and single-threaded
+#: within one process -- this project's concurrency is cross-PROCESS (see
+#: the module docstring's #294 entry), never cross-thread -- so at most ONE
+#: such transaction is ever in flight per process, and this module-level
+#: slot is enough to carry the held lock from
+#: :func:`load_run_with_migrations`, across the caller's mutation code (in
+#: a different module), to :func:`save_run` — with neither function's
+#: signature changing.
+_pending_lock: tuple[str, int] | None = None
+
+
+def _begin_read_transaction(json_path: str) -> None:
+    """Acquire ``json_path``'s lock for the read half of load -> mutate -> save.
+
+    Releases any lock this process is still holding from an earlier,
+    never-saved :func:`load_run_with_migrations` call first (a read-only
+    command like ``run show`` invoked twice in one process) — otherwise a
+    second same-process acquire on the same inode would block on itself
+    forever, since ``flock`` grants no same-process reentrancy across
+    independently opened file descriptors.
+    """
+    global _pending_lock
+    if _pending_lock is not None:
+        _release_lock(_pending_lock[1])
+        _pending_lock = None
+    _pending_lock = (json_path, _acquire_lock(json_path))
+
+
+def _end_read_transaction() -> None:
+    """Drop a read transaction's lock without a save (the load itself failed)."""
+    global _pending_lock
+    if _pending_lock is not None:
+        _release_lock(_pending_lock[1])
+        _pending_lock = None
+
+
+def _same_lock_file(fd: int, json_path: str) -> bool:
+    """Does open ``fd`` refer to the SAME inode as ``json_path``'s lock sidecar?
+
+    Identity by ``(st_dev, st_ino)`` rather than trusting path equality —
+    a mid-transaction directory rename (:func:`_rename_run`) legitimately
+    changes the path while the open file description (and its lock) keep
+    referring to the identical file, now reachable only under the new
+    path.
+    """
+    try:
+        target = os.stat(_lock_sidecar_path(json_path))
+    except FileNotFoundError:
+        return False
+    held = os.fstat(fd)
+    return (held.st_dev, held.st_ino) == (target.st_dev, target.st_ino)
+
+
+def _consume_pending_lock(json_path: str) -> int:
+    """The fd to hold while :func:`save_run` writes ``json_path``.
+
+    Reuses this process's pending lock from a matching
+    :func:`load_run_with_migrations` call when one is open FOR THE SAME
+    FILE — verified by inode (:func:`_same_lock_file`), not path
+    equality, so a mid-transaction directory rename (:func:`_rename_run`,
+    where ``json_path`` at save time legitimately differs from the path
+    the lock was acquired under) still correctly reuses the moved lock.
+    A pending lock for a genuinely DIFFERENT file — e.g. a read-only
+    :func:`load_run_with_migrations` call this process never followed
+    with a save, before an unrelated ``save_run`` for some other run —
+    is released rather than misapplied to protect the wrong write, and a
+    fresh lock is acquired for ``json_path`` instead. Also the path taken
+    for a standalone write with no preceding load in this process at all
+    (``run init``'s first-ever write for a brand-new run).
+    """
+    global _pending_lock
+    if _pending_lock is not None:
+        _, fd = _pending_lock
+        _pending_lock = None
+        if _same_lock_file(fd, json_path):
+            return fd
+        _release_lock(fd)
+    return _acquire_lock(json_path)
+
+
 def atomic_write_json(path: str, payload: dict[str, object]) -> None:
     """Write JSON atomically: tempfile -> fsync -> replace -> fsync(dir).
 
@@ -889,18 +1088,39 @@ def load_run_with_migrations(run: str, workdir: str | None = None) -> tuple[RunS
         json.JSONDecodeError: The file is not valid JSON.
         pydantic.ValidationError: The (normalized) document still fails
             schema validation.
+
+    #294: on success, this holds ``run.json``'s advisory lock past return
+    -- it is the read half of the load -> mutate -> save critical section,
+    and :func:`save_run` is the only function that releases it (see
+    :data:`_pending_lock`). A run.json that does not exist yet is never
+    locked at all (the ``FileNotFoundError`` fast path is unchanged: no
+    lock file, no run directory, created as a side effect of a failed
+    read) — only an ALREADY-existing document is protected, since only a
+    mutator's read side needs the hold.
     """
     path = run_state_path(run, workdir)
-    with open(path, "r", encoding="utf-8") as handle:
-        raw = json.load(handle)
-    if not isinstance(raw, dict):
-        # Valid JSON, but not an object (e.g. a bare list/string/number) --
-        # not this function's shape to normalize; let pydantic reject it
-        # with its own "Input should be a valid dictionary" ValidationError
-        # rather than normalize_run_document crashing on a non-dict.
-        return RunState.model_validate(raw), []
-    normalized, applied = normalize_run_document(raw)
-    return RunState.model_validate(normalized), applied
+    locked = os.path.isfile(path)
+    if locked:
+        _begin_read_transaction(path)
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            raw = json.load(handle)
+        if not isinstance(raw, dict):
+            # Valid JSON, but not an object (e.g. a bare list/string/number) --
+            # not this function's shape to normalize; let pydantic reject it
+            # with its own "Input should be a valid dictionary" ValidationError
+            # rather than normalize_run_document crashing on a non-dict.
+            return RunState.model_validate(raw), []
+        normalized, applied = normalize_run_document(raw)
+        return RunState.model_validate(normalized), applied
+    except BaseException:
+        # No successful load means no subsequent save_run to release this
+        # -- drop it here so a caller that retries load_run in the same
+        # process (or simply calls it again, e.g. a read-only command run
+        # twice) never self-deadlocks on its own still-held lock.
+        if locked:
+            _end_read_transaction()
+        raise
 
 
 def load_run(run: str, workdir: str | None = None) -> RunState:
@@ -936,10 +1156,22 @@ def save_run(state: RunState, workdir: str | None = None) -> str:
 
     Returns:
         The path written.
+
+    #294: this is the write half + release point of the load -> mutate ->
+    save critical section. Reuses this process's still-open lock from a
+    matching :func:`load_run_with_migrations` call when one is pending
+    (the normal mutator shape), or acquires a fresh one for a standalone
+    write with no preceding load in this process (``run init``). Either
+    way the lock is held for the full :func:`atomic_write_json` call and
+    released unconditionally afterward, even on write failure.
     """
     state.updated_at = int(time.time())
     path = run_state_path(state.run, workdir)
-    atomic_write_json(path, state.model_dump(mode="json"))
+    fd = _consume_pending_lock(path)
+    try:
+        atomic_write_json(path, state.model_dump(mode="json"))
+    finally:
+        _release_lock(fd)
     return path
 
 
@@ -966,6 +1198,7 @@ __all__ = [
     "LaneState",
     "RunIdDerivationError",
     "RunIdError",
+    "RunLockTimeout",
     "RunState",
     "atomic_write_json",
     "derive_run_id",

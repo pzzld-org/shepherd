@@ -44,10 +44,8 @@
 //! reaches for `clap`, `anyhow`, `std::process`, or branches on [`crate::Harness`]
 //! — see `crates/core/src/lib.rs`'s `## The boundary` section and the
 //! `engine-boundary` CI job that enforces it.
-#[cfg(not(feature = "std"))]
+#[cfg(feature = "alloc")]
 use alloc::{collections::BTreeMap, string::String, vec::Vec};
-#[cfg(feature = "std")]
-use std::collections::BTreeMap;
 
 #[cfg(feature = "std")]
 mod atomic;

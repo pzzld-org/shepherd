@@ -55,8 +55,15 @@ else
   name=$(basename "$(shctx_repo_root)")
   scope_json=$(jq -nc --arg p "$(shctx_repo_root)" '[$p]')
   now=$(shctx_now)
+  # GH #291: $name is the repo directory's basename and $scope_json embeds
+  # the absolute repo path (via jq --arg, which JSON-escapes but does NOT
+  # SQL-escape) — both are attacker/environment-influenced (any checkout
+  # whose dirname carries an apostrophe, e.g. "repo test's dir") and were
+  # interpolated with ZERO escaping, proven to both break `shctx init`
+  # outright and allow arbitrary SQL execution (a crafted dirname closing
+  # the VALUES literal early and appending a second statement).
   shctx_sql "INSERT OR IGNORE INTO projects (id,name,scope,tags,created_at,updated_at)
-             VALUES ('$pid', '$name', '$scope_json', '[]', $now, $now);"
+             VALUES ('$pid', '$(esc "$name")', '$(esc "$scope_json")', '[]', $now, $now);"
   jq -nc --arg id "$pid" --argjson at "$(shctx_now)" \
     '{id:$id, scaffolded_at:$at}' > "$pidfile"
 fi

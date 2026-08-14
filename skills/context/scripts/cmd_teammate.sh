@@ -21,7 +21,7 @@ project_id() {
   # For now, use a literal default; cmd_init populated the row.
   sqlite3 "$DB" "SELECT id FROM projects LIMIT 1;"
 }
-esc() { printf '%s' "$1" | sed "s/'/''/g"; }
+# esc() is defined by _lib.sh (sourced above) — single shared idiom (GH #296).
 
 # Explicit declared_state enum (migration 0019). NULL/'' = undeclared → liveness
 # falls back to the last_seen_at timing heuristic. A declaration wins over timing.
@@ -154,7 +154,7 @@ case "$sub" in
     e_team="$(esc "$team")"; e_name="$(esc "$name")"; e_type="$(esc "$type")"
     e_session="$(esc "$session")"; e_pane="$(esc "$pane")"
     sqlite3 "$DB" "INSERT INTO teammates (id, project_id, team_name, teammate_name, agent_type, session_id, tmux_pane_id, spawned_at, last_seen_at, status)
-      VALUES ('$id','$pid','$e_team','$e_name','$e_type',NULLIF('$e_session',''),NULLIF('$e_pane',''),$ts,$ts,'booting')
+      VALUES ('$id','$(esc "$pid")','$e_team','$e_name','$e_type',NULLIF('$e_session',''),NULLIF('$e_pane',''),$ts,$ts,'booting')
       ON CONFLICT(project_id, team_name, teammate_name) DO UPDATE SET
         agent_type   = excluded.agent_type,
         session_id   = COALESCE(excluded.session_id, teammates.session_id),
@@ -162,7 +162,7 @@ case "$sub" in
         last_seen_at = excluded.last_seen_at,
         status       = CASE WHEN teammates.status IN ('retired','crashed') THEN 'booting' ELSE teammates.status END;"
     # Echo the canonical row id (existing on conflict, freshly inserted otherwise).
-    sqlite3 "$DB" "SELECT id FROM teammates WHERE project_id='$pid' AND team_name='$e_team' AND teammate_name='$e_name';"
+    sqlite3 "$DB" "SELECT id FROM teammates WHERE project_id='$(esc "$pid")' AND team_name='$e_team' AND teammate_name='$e_name';"
     ;;
   register-lead)
     # #223: record which session is the LEAD of a spawned team, so
@@ -181,7 +181,7 @@ case "$sub" in
     ts="$(now_ms)"
     e_team="$(esc "$team")"; e_session="$(esc "$session")"
     sqlite3 "$DB" "INSERT INTO spawn_leads (team_name, project_id, session_id, spawned_at)
-      VALUES ('$e_team','$pid','$e_session',$ts)
+      VALUES ('$e_team','$(esc "$pid")','$e_session',$ts)
       ON CONFLICT(team_name) DO UPDATE SET
         session_id  = excluded.session_id,
         spawned_at  = excluded.spawned_at;"
@@ -238,7 +238,10 @@ case "$sub" in
   status)
     name="${1:-}"; shift || true
     [[ -n "$name" ]] || { usage; exit 2; }
-    sqlite3 -json "$DB" "SELECT * FROM teammates WHERE teammate_name='$name' ORDER BY spawned_at DESC LIMIT 1;"
+    # GH #295: $name is a bare CLI positional, proven exploitable via
+    # `' OR '1'='1` (WHERE-bypass read of an arbitrary row) when interpolated
+    # raw — escape it exactly like every other subcommand in this file does.
+    sqlite3 -json "$DB" "SELECT * FROM teammates WHERE teammate_name='$(esc "$name")' ORDER BY spawned_at DESC LIMIT 1;"
     ;;
   liveness)
     stale=5
@@ -246,6 +249,11 @@ case "$sub" in
       --stale-mins=*) stale="${1#*=}";;
       *) echo "unknown flag: $1" >&2; exit 2;;
     esac; shift; done
+    # $threshold_ms lands bare (unquoted) in the SQL text below — a bare
+    # integer here is a validating-guard site, not an escaping one (esc()
+    # only protects quoted string literals). Reject anything non-numeric
+    # before it reaches arithmetic or SQL.
+    [[ "$stale" =~ ^[0-9]+$ ]] || { echo "ERR: --stale-mins must be a non-negative integer (got '$stale')" >&2; exit 2; }
     threshold_ms=$((stale * 60 * 1000))
     # An explicit declared_state (0019) wins over the last_seen_at timing heuristic:
     # in-progress is affirmatively alive (never presumed-crashed, no matter the
@@ -285,6 +293,7 @@ case "$sub" in
       *) echo "unknown flag: $1" >&2; exit 2;;
     esac; shift; done
     [[ "$confirm" == "1" ]] || { echo "refusing prune without --confirm" >&2; exit 2; }
+    [[ "$stale" =~ ^[0-9]+$ ]] || { echo "ERR: --stale-mins must be a non-negative integer (got '$stale')" >&2; exit 2; }
     where="1=1"
     [[ -n "$name" ]] && where="teammate_name='$(esc "$name")'"
     # --crashed matches the DERIVED presumed-crashed verdict `liveness` shows (#194),
@@ -303,7 +312,10 @@ case "$sub" in
   retire)
     name="${1:-}"; shift || true
     [[ -n "$name" ]] || { usage; exit 2; }
-    sqlite3 "$DB" "UPDATE teammates SET status='retired' WHERE teammate_name='$name';"
+    # GH #295: $name is a bare CLI positional, proven exploitable via
+    # `' OR '1'='1` (mass UPDATE — every row silently retired) when
+    # interpolated raw. Escape it, same as `status` above.
+    sqlite3 "$DB" "UPDATE teammates SET status='retired' WHERE teammate_name='$(esc "$name")';"
     ;;
   ""|help|--help|-h) usage;;
   *) echo "unknown subcommand: $sub" >&2; usage; exit 2;;

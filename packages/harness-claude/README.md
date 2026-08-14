@@ -55,9 +55,10 @@ only second one. `src/guard.mjs` is therefore deliberately not a predicate inter
 `hooks/guard-eval.mjs` is a thin PreToolUse relay that resolves `role` locally, then forwards
 the resolved request to `bin/shepherd guard eval` and translates the verdict back into
 Claude's own hook-output shape (`{"permissionDecision":"deny","message":"..."}` to block,
-silence to allow -- verified against this repo's own live `hooks/scripts/_lib.sh`). All
-decision logic (`buildGuardDecision`, `interpretEngineResult`, `engineUnavailableVerdict`,
-`missingRecordDeniedVerdict`, `roleResolutionUnavailableVerdict`) lives in `src/guard.mjs`,
+silence or `{"additionalContext":"..."}` to allow -- verified against this repo's own live
+`hooks/scripts/_lib.sh`'s `emit_deny`/`pass_silent`/`emit_context`). All decision logic
+(`buildGuardDecision`, `interpretEngineResult`, `engineUnavailableVerdict`,
+`missingRecordWarnedVerdict`, `roleResolutionUnavailableVerdict`) lives in `src/guard.mjs`,
 unit tested in `test/guard.test.mjs` with an explicit allow case, an explicit deny case, AND a
 live integration case that spawns the real engine (plan.md [ACCEPTANCE]'s cross-adapter
 requirement, proven at this adapter's own level since `packages/scripts/predicate-coverage.mjs`
@@ -69,41 +70,69 @@ scope).
 `hooks/hooks.json` live, that would have hit the engine's missing-role `unresolved` path for
 EVERY Write/Edit/Bash/Agent/Workflow call from EVERY role, including root's own git
 operations, and denied project-wide. `src/dispatch-record.mjs`'s `resolveRole` closes it with
-the same three-way split `packages/harness-codex/src/dispatch-record.mjs` established (that
-module's own header names itself "the proven template"), evaluated BEFORE the engine is ever
-consulted: no marker (root, never dispatched) -> allow; marker + a resolved dispatch record ->
-forward `role` to the engine for a real decision; marker + no record -> deny loudly (the
-DF-75 shape). Unlike Codex, this adapter does not build a new tagging mechanism -- Claude
-already has one, shipped by a sibling step in this same run (DF-77:
-`hooks/scripts/agent_invocation_tagger.sh` + `current_role()`,
-`hooks/scripts/_lib.sh`) -- so `resolveRole` shells out to that real hook library (one bash
-subprocess, sourcing `_lib.sh` and calling its own exported `current_sprint()` /
-`current_role()` / `resolve_namespace()` verbatim) rather than re-deriving the
-`tool_use_id` -> dispatch-record correlation a second time in JS. The one thing `current_role()`
-does not resolve on its own -- Claude's `PreToolUse` payload carries no verified per-caller
-identity field the way Codex's `agent_id` does, an acknowledged open gap (DF-77 FIX 3,
-`_lib.sh`'s own `current_role()` header) -- is broken with ONE narrow, additional signal
-`current_role()` never consults: whether this sprint's dispatch dir holds ANY tagged record at
-all, not a second `tool_use_id` correlation of its own. `test/guard.test.mjs`'s own
-integration section proves all three outcomes end to end, through the real relay, the real
-`agent_invocation_tagger.sh`, and (for the deny case) the real live engine -- never a
-hand-authored dispatch record or an injected `role` field.
+a three-way split SHAPED like `packages/harness-codex/src/dispatch-record.mjs`'s own (same
+three `kind`s), evaluated BEFORE the engine is ever consulted: no marker (root, never
+dispatched) -> allow; marker + a resolved dispatch record -> forward `role` to the engine for
+a real decision; marker + no record -> WARN loudly and let the call through (`missing-record`
+-- see below; this was DENY through an earlier pass at this file, corrected). Unlike Codex,
+this adapter does not build a new tagging mechanism -- Claude already has one, shipped by a
+sibling step in this same run (DF-77: `hooks/scripts/agent_invocation_tagger.sh` +
+`current_role()`, `hooks/scripts/_lib.sh`) -- so `resolveRole` shells out to that real hook
+library (one bash subprocess, sourcing `_lib.sh` and calling its own exported
+`current_sprint()` / `current_role()` / `resolve_namespace()` verbatim) rather than
+re-deriving the `tool_use_id` -> dispatch-record correlation a second time in JS. The one
+thing `current_role()` does not resolve on its own -- Claude's `PreToolUse` payload carries no
+verified per-caller identity field the way Codex's `agent_id` does, an acknowledged open gap
+(DF-77 FIX 3, `_lib.sh`'s own `current_role()` header) -- is only PARTLY broken by ONE narrow,
+additional signal `current_role()` never consults: whether this sprint's dispatch dir holds
+ANY tagged record at all. That signal answers "has this sprint dispatched anything, ever," not
+"did THIS call come from a dispatch" -- it is `true` for the whole remainder of every real
+sprint from its first dispatch onward, so it cannot tell root's own call apart from an
+untraceable dispatched one; it now shapes the WARNING message only, never the allow/deny
+choice (see `src/guard.mjs`'s "MISSING-RECORD POSTURE, CORRECTED"). `test/guard.test.mjs`'s
+own integration section proves all three outcomes end to end, through the real relay, the real
+`agent_invocation_tagger.sh`, and (for the deny case) the real live engine, against a dispatch
+directory SEEDED with several unrelated records first -- the shape of a real sprint, never an
+empty sandbox -- never a hand-authored dispatch record or an injected `role` field.
 
-**Is the relay safe to wire into `hooks/hooks.json` now?** Yes, for the finding as raised: the
-specific blast radius the W10 auditor named -- "every role, including root's own legitimate
-git operations, denied project-wide" -- is closed; `test/guard.test.mjs`'s case 1 proves
-root's own untraceable git write is NOT denied. One caveat, named rather than hidden: because
-`current_role()`'s own correlation gap (DF-77 FIX 3) is still open, this relay cannot always
-tell "root, mid-sprint" apart from "an untraceable dispatched call, mid-sprint" -- both
-resolve to `current_role()`'s literal `"unknown"`. This adapter's tiebreak (see above) resolves
-that narrow ambiguity toward DENY, not allow, whenever the CURRENT sprint has ANY tagged
-dispatch activity at all -- a stricter posture than `hooks/scripts/coder_git_guard.sh`'s own
-(which always warns, never denies, on `"unknown"`), and a real behavior difference an operator
-running `git` directly, by hand, DURING an active flock wave should expect: that command may
-now be denied loudly rather than silently passed. That is a deliberate, documented trade-off
-(deny-on-ambiguity beats allow-on-ambiguity for a security boundary) that fully closes shut
-once DF-77 FIX 3 lands a real per-caller correlation key -- not a reason to withhold wiring
-the finding it actually reports.
+**Is the relay safe to wire into `hooks/hooks.json` now?** Yes -- but that answer changed
+since this section was last written, and the change is the whole reason to re-read it: an
+earlier pass at this file answered "yes" here on the strength of an integration test whose
+FIRST case ran against a freshly-`git init`'d, zero-dispatch-record sandbox -- `hasMarker`
+false, `no-marker`, silent allow. That is NOT the shape of a real sprint. Measured against the
+REAL repo, with a REAL fresh `tool_use_id` (`toolu_01FRESHCALLxxxxxxxxxx`, the shape this
+session actually sends) and this sprint's own, genuinely non-empty
+`.shepherd/dispatch/v6.4.5/` (64 tagged records):
+
+```
+$ echo '{"session_id":"s1","tool_use_id":"toolu_01FRESHCALLxxxxxxxxxx","tool_name":"Bash","tool_input":{"command":"git status"}}' | node packages/harness-claude/hooks/guard-eval.mjs
+$ echo '{"session_id":"s1","tool_use_id":"toolu_01FRESHCALLxxxxxxxxxx","tool_name":"Write","tool_input":{"file_path":"/tmp/x"}}' | node packages/harness-claude/hooks/guard-eval.mjs
+```
+
+Before this fix, BOTH denied -- a plain `git status`, a plain `Write`, from a session
+indistinguishable from root's own -- 100% of live calls, unconditionally, for the entire
+remainder of any sprint that had ever dispatched once. Wiring that version into
+`hooks/hooks.json` would have taken down every tool call in the operator's own session, not
+just a coder's. After this fix, run against the same real repo, the same real command, the
+same fresh id: NEITHER denies (`additionalContext` warns instead, no `permissionDecision`
+key) -- verified live above, not in a sandbox. The specific blast radius the W10 auditor
+named, AND the "10th instance of the dominant defect class" this later fix closes, are both
+now closed against the actual runtime precondition, not a manufactured one.
+
+One caveat, named rather than hidden, and unchanged by this fix: `current_role()`'s own
+correlation gap (DF-77 FIX 3) is still open, so this relay still cannot tell "root, mid-sprint"
+apart from "an untraceable dispatched call, mid-sprint" -- both resolve to `current_role()`'s
+literal `"unknown"`. This adapter's posture for that ambiguity is now WARN-and-allow, matching
+`hooks/scripts/coder_git_guard.sh`'s own shipped DF-77 FIX 2 posture for the identical
+ambiguity (never deny an unresolved role) -- not a NEW gap this relay introduces, but the
+SAME accepted one already shipped elsewhere in this codebase for git writes specifically, now
+applied consistently across the wider Write/Edit/Bash/Agent/Workflow matcher this relay
+covers. Concretely: an untraceable dispatched call's write is NOT enforced by this relay until
+DF-77 FIX 3 lands a real per-call correlation key -- it warns, loudly, naming the gap, and lets
+the call through. A genuinely resolved role (the common case -- a coder's dispatch really was
+tagged) is unaffected and still reaches the real engine for a real decision, proven above.
+Wiring `hooks/hooks.json` itself remains root's call, out of this step's file scope regardless
+of this finding.
 
 **Engine exists, LIVE (DF-76 -- this note replaces a prior "named gap" that predates the
 engine)**: the engine is `services/cli/shepherd_cli/` (`commands/guard.py` + `predicates.py`),
@@ -191,7 +220,7 @@ node packages/harness-claude/test/reproducibility.test.mjs      # byte-identical
 node packages/harness-claude/test/model.test.mjs                # model_hint -> model:, vs agents/*.md
 node packages/harness-claude/test/finalize.test.mjs             # the pinned hand-tree diff
 node packages/harness-claude/test/materialize.test.mjs          # disk write, temp dir only
-node packages/harness-claude/test/guard.test.mjs                # allow/deny/unresolved + failure modes + live 3-way role-resolution matrix
+node packages/harness-claude/test/guard.test.mjs                # allow/deny/unresolved + failure modes + live 3-way role-resolution matrix (populated dispatch dir)
 node packages/harness-claude/test/run-state.test.mjs            # canonical JSON, golden byte match
 node packages/harness-claude/test/advance-run.mjs <run-id>       # release-gate C.4 (needs a real run.json)
 ```

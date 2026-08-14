@@ -66,9 +66,11 @@ if [[ "$sub" == "insert" ]]; then
   [[ -f "$DB" ]] || { echo "ERR: registry DB not found at $DB" >&2; exit 1; }
   pid="$(sqlite3 "$DB" "SELECT id FROM projects LIMIT 1;")"
   ts=$(($(date +%s) * 1000))
-  safe_title="${title//\'/''}"; safe_body="${body//\'/''}"
-  safe_sec="${section//\'/''}"; safe_src="${sources//\'/''}"; safe_sp="${sprint//\'/''}"
-  id=$(sqlite3 "$DB" "INSERT INTO discovery_findings (project_id, sprint_branch, discovery_run, section, title, body, sources, created_at) VALUES ('$pid', NULLIF('$safe_sp',''), '$run', NULLIF('$safe_sec',''), '$safe_title', '$safe_body', NULLIF('$safe_src',''), $ts) RETURNING id;")
+  safe_title="$(esc "$title")"; safe_body="$(esc "$body")"
+  safe_sec="$(esc "$section")"; safe_src="$(esc "$sources")"; safe_sp="$(esc "$sprint")"
+  # $run was the one field in this insert with no escaping at all.
+  safe_run="$(esc "$run")"
+  id=$(sqlite3 "$DB" "INSERT INTO discovery_findings (project_id, sprint_branch, discovery_run, section, title, body, sources, created_at) VALUES ('$(esc "$pid")', NULLIF('$safe_sp',''), '$safe_run', NULLIF('$safe_sec',''), '$safe_title', '$safe_body', NULLIF('$safe_src',''), $ts) RETURNING id;")
   echo "$id"
   exit 0
 fi

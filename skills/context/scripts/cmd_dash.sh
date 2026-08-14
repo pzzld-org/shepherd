@@ -46,7 +46,8 @@ fi
 schema="$(shctx_sql 'SELECT MAX(version) FROM schema_versions;' 2>/dev/null || echo '?')"
 lock="$(shctx_lock_path)"; lockstate="free"; [[ -f "$lock" ]] && lockstate="HELD"
 printf 'SPRINT      schema=v%s  lock=%s\n' "${schema:-?}" "$lockstate"
-obj="$(shctx_sql "SELECT COALESCE(substr(replace(replace(objective,char(10),' '),char(13),' '),1,76),'') FROM focus WHERE sprint='$branch' LIMIT 1;" 2>/dev/null || true)"
+branch_esc="$(esc "$branch")"
+obj="$(shctx_sql "SELECT COALESCE(substr(replace(replace(objective,char(10),' '),char(13),' '),1,76),'') FROM focus WHERE sprint='$branch_esc' LIMIT 1;" 2>/dev/null || true)"
 [[ -n "$obj" ]] && printf 'FOCUS       %s…\n' "$obj"
 
 # GRAPH: delegate to the graph-status renderer when stage-graph state exists.
@@ -106,14 +107,15 @@ fi
 # latest lesson. Cheap reads only (the full trend scan lives in the SessionStart
 # banner + close report); makes the loop visible at the same glance as lanes.
 apid="$(shctx_project_id 2>/dev/null || true)"
+apid_esc="$(esc "$apid")"
 if [[ -n "$apid" ]]; then
-  arow="$(shctx_sql "SELECT n||'|'||CAST(ROUND(COALESCE(avg_lane_count,0)) AS INTEGER)||'|'||CAST(ROUND(COALESCE(avg_wall_minutes,0)) AS INTEGER) FROM v_sprint_metrics_avg WHERE project_id='$apid';" 2>/dev/null || true)"
-  pri="$(shctx_sql "SELECT count(*) FROM mem_entries WHERE project_id='$apid' AND kind='prior';" 2>/dev/null || echo 0)"
+  arow="$(shctx_sql "SELECT n||'|'||CAST(ROUND(COALESCE(avg_lane_count,0)) AS INTEGER)||'|'||CAST(ROUND(COALESCE(avg_wall_minutes,0)) AS INTEGER) FROM v_sprint_metrics_avg WHERE project_id='$apid_esc';" 2>/dev/null || true)"
+  pri="$(shctx_sql "SELECT count(*) FROM mem_entries WHERE project_id='$apid_esc' AND kind='prior';" 2>/dev/null || echo 0)"
   an="${arow%%|*}"
   if [[ -n "$an" && "$an" != "0" ]]; then
     IFS='|' read -r an al aw <<< "$arow"
     printf 'ADAPT       %s sprint(s)  lanes~%s  wall~%sm  priors=%s\n' "$an" "$al" "$aw" "${pri:-0}"
-    lesson="$(shctx_sql "SELECT substr(replace(title,'prior: ',''),1,58) FROM mem_entries WHERE project_id='$apid' AND kind='prior' ORDER BY created_at DESC, id DESC LIMIT 1;" 2>/dev/null || true)"
+    lesson="$(shctx_sql "SELECT substr(replace(title,'prior: ',''),1,58) FROM mem_entries WHERE project_id='$apid_esc' AND kind='prior' ORDER BY created_at DESC, id DESC LIMIT 1;" 2>/dev/null || true)"
     [[ -n "$lesson" ]] && printf '              latest: %s\n' "$lesson"
   elif [[ "${pri:-0}" -gt 0 ]]; then
     printf 'ADAPT       priors=%s (no sprint metrics yet)\n' "$pri"
@@ -126,9 +128,9 @@ fi
 # Omit-if-empty: only surfaces once something has been `shctx eval … --record`ed.
 if [[ -n "${apid:-}" ]] && [[ -n "$(shctx_sql "SELECT 1 FROM sqlite_master WHERE type='table' AND name='eval_runs' LIMIT 1;" 2>/dev/null || true)" ]]; then
   erow="$(shctx_sql "SELECT kind||' '||COALESCE(subject_ref,'·')||' '||score||'/'||threshold||' '||CASE passed WHEN 1 THEN 'PASS' ELSE 'FAIL' END
-                     FROM v_eval_latest WHERE project_id='$apid' ORDER BY created_at DESC, id DESC LIMIT 1;" 2>/dev/null || true)"
+                     FROM v_eval_latest WHERE project_id='$apid_esc' ORDER BY created_at DESC, id DESC LIMIT 1;" 2>/dev/null || true)"
   if [[ -n "$erow" ]]; then
-    ecount="$(shctx_sql "SELECT count(*) FROM v_eval_latest WHERE project_id='$apid';" 2>/dev/null || echo 0)"
+    ecount="$(shctx_sql "SELECT count(*) FROM v_eval_latest WHERE project_id='$apid_esc';" 2>/dev/null || echo 0)"
     printf 'EVAL        latest: %s  (%s scored)\n' "$erow" "$ecount"
   fi
 fi

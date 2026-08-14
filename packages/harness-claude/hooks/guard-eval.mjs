@@ -16,9 +16,13 @@
 // `spawnSync` call's `{error,status}`/`JSON.parse(stdout)` used to produce, so the two branches
 // below are unchanged in shape, only in what feeds them. All decision logic still lives in
 // `src/guard.mjs` (`buildGuardDecision` / `interpretEngineResult` / `engineUnavailableVerdict` /
-// `missingRecordDeniedVerdict` / `roleResolutionUnavailableVerdict`) so it stays unit testable
+// `missingRecordWarnedVerdict` / `roleResolutionUnavailableVerdict`) so it stays unit testable
 // without spawning a process -- this file is intentionally the thinnest possible wrapper around
 // that logic plus stdin/stdout/transport plumbing.
+//
+// `missing-record` prints a WARN (`additionalContext`) and falls through to `return 0` with no
+// `permissionDecision` key -- Claude's own "allow, stay silent-of-blocking" shape -- rather than
+// denying. See `src/guard.mjs`'s module header ("MISSING-RECORD POSTURE, CORRECTED") for why.
 
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -28,7 +32,7 @@ import {
   buildGuardDecision,
   engineUnavailableVerdict,
   interpretEngineResult,
-  missingRecordDeniedVerdict,
+  missingRecordWarnedVerdict,
   roleResolutionUnavailableVerdict,
 } from "../src/guard.mjs";
 import { defaultSocketPath } from "../src/guard-serve-broker.mjs";
@@ -60,7 +64,9 @@ async function main() {
   const decision = buildGuardDecision(input, resolveRole);
   if (decision.kind === "allow") return 0;
   if (decision.kind === "missing-record") {
-    console.log(JSON.stringify(missingRecordDeniedVerdict(decision.toolUseId)));
+    // WARN, not deny -- src/guard.mjs's "MISSING-RECORD POSTURE, CORRECTED". The call
+    // proceeds; `additionalContext` only informs, it never blocks.
+    console.log(JSON.stringify(missingRecordWarnedVerdict(decision.toolUseId)));
     return 0;
   }
   if (decision.kind === "resolution-failed") {
