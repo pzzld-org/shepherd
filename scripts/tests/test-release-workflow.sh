@@ -4,7 +4,30 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 
 workflow='.github/workflows/release.yml'
+packed_probe='scripts/test-packed-plugin.sh'
 ruby -e 'require "yaml"; YAML.load_file(ARGV.fetch(0)); puts "ok: release workflow parses"' "$workflow"
+
+for forbidden in \
+  'python3 scripts/version-bump.py bump' \
+  'git checkout -b "$PATCH" "$GITHUB_SHA"' \
+  'git push -u origin "$PATCH"' \
+  'gh pr create' \
+  'git push origin --delete' \
+  'gh issue edit'; do
+  if rg -Fq "$forbidden" "$workflow"; then
+    printf 'release workflow must hand post-publication gitflow to gitflow.yml: %s\n' \
+      "$forbidden" >&2
+    exit 1
+  fi
+done
+if rg -n 'tar -tzf .*\\|.*grep -q' "$packed_probe"; then
+  printf 'packed-plugin probe must drain GNU tar before filtering its listing\n' >&2
+  exit 1
+fi
+if rg -n "<<'PY'" "$workflow" || rg -Fq 'python3 - "$maximum" "$floor"' "$workflow"; then
+  printf 'release workflow must use the tested glibc helper, not an inline heredoc\n' >&2
+  exit 1
+fi
 
 python3 - <<'PY'
 from pathlib import Path
@@ -34,19 +57,7 @@ if [[ "$sha_checkout_count" -ne 4 ]]; then
     "$sha_checkout_count" >&2
   exit 1
 fi
-rg -Fq 'git checkout -b "$PATCH" "$GITHUB_SHA"' "$workflow"
-if rg -Fq 'git checkout -b "$PATCH" "origin/${CURRENT_REF}"' "$workflow"; then
-  printf 'next patch branch must start from the immutable release commit\n' >&2
-  exit 1
-fi
 rg -Fq 'python3 scripts/version-bump.py check --root . --version "$current"' "$workflow"
-rg -Fq 'python3 scripts/version-bump.py bump' "$workflow"
-rg -Fq 'tail -n +2 "$bump_output" > "$changed_paths"' "$workflow"
-rg -Fq 'git add -- "${version_paths[@]}"' "$workflow"
-if rg -Fq '.claude-plugin/marketplace.json' "$workflow"; then
-  printf 'release workflow must not recreate the retired marketplace manifest\n' >&2
-  exit 1
-fi
 if rg -q 'jq --arg v|sed -i\.bak' "$workflow"; then
   printf 'release workflow must delegate version authority to version-bump.py\n' >&2
   exit 1
@@ -75,7 +86,6 @@ done
 rg -Fq 'wasm32-wasip2' "$workflow"
 rg -Fq 'scripts/test-component-node.sh' "$workflow"
 rg -Fq 'scripts/test-packed-plugin.sh' "$workflow"
-rg -Fq 'scripts/tests/test-claude-plugin-release.sh' "$workflow"
 rg -Fq 'node packages/scripts/check-package-boundary.mjs' "$workflow"
 for adapter_test in \
   'node packages/harness-claude/test.mjs' \
@@ -86,10 +96,9 @@ for adapter_test in \
 done
 rg -Fq 'node "$probe"' scripts/tests/test-package-boundary.sh
 rg -Fq 'scripts/tests/test-release-distribution-license.sh' scripts/gate.sh
-rg -Fq 'scripts/build-claude-plugin-release.sh dist' "$workflow"
 rg -Fq 'cargo build --locked --release --package shepherd-cli' "$workflow"
 rg -Fq 'cargo zigbuild --locked --release --package shepherd-cli --target "${TARGET}.2.17"' "$workflow"
-rg -Fq 'assert_glibc_floor "$binary" 2.17' "$workflow"
+rg -Fq 'scripts/assert-glibc-floor.py 2.17' "$workflow"
 rg -Fq 'RuntimeInformation]::OSArchitecture' scripts/install-shepherd.ps1
 if rg -Fq 'RuntimeInformation]::ProcessArchitecture' scripts/install-shepherd.ps1; then
   printf 'Windows installer must select the OS architecture, not the emulated process architecture\n' >&2
@@ -128,11 +137,15 @@ if rg -Fq 'gh release upload' "$workflow"; then
   exit 1
 fi
 rg -Fq 'sha256sum' scripts/verify-release-assets.sh
-rg -Fq '((${#release_files[@]} == 34))' "$workflow"
+rg -Fq '((${#release_files[@]} == 32))' "$workflow"
 rg -Fq 'ASSET_LIST="${ASSET_DIR}.txt"' "$workflow"
 rg -Fq 'scripts/verify-release-assets.sh "$ASSET_DIR" "$ASSET_LIST" "$VERSION"' "$workflow"
 rg -Fq 'scripts/verify-release-distribution.sh "$ASSET_DIR" "$VERSION"' "$workflow"
-rg -Fq 'expected exactly 34 files (17 assets and 17 sidecars)' scripts/verify-release-assets.sh
+rg -Fq 'expected exactly 32 files (16 assets and 16 sidecars)' scripts/verify-release-assets.sh
+if rg -n '== 34|17 assets|17 checksum' "$workflow" scripts/verify-release-assets.sh; then
+  printf 'release workflow retains the removed Claude ZIP asset inventory\n' >&2
+  exit 1
+fi
 if rg -Fq '$ASSET_DIR/assets.txt' "$workflow"; then
   printf 'release workflow must not enumerate a manifest inside its asset directory\n' >&2
   exit 1
@@ -145,4 +158,7 @@ for release_test in \
   test-release-workflow.sh; do
   rg -Fq "$release_test" scripts/gate.sh
 done
+bash scripts/tests/test-packed-plugin-portability.sh
+bash scripts/tests/test-glibc-floor.sh
+bash scripts/tests/test-gitflow-workflow.sh
 printf 'ok: release workflow declares native matrix, component/adapters, locked builds, and verified upload\n'

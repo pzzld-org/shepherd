@@ -110,15 +110,32 @@ fn sha256_hex(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::render_with_manifest;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::time::{SystemTime, UNIX_EPOCH};
 
-    /// One process-unique scratch template path per fixture label, so
-    /// parallel `cargo test` threads inside this binary never collide on
-    /// the same file. Each test removes its own path once done with it.
+    static SCRATCH_TEMPLATE_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+    /// One collision-resistant scratch template path per fixture label, so
+    /// parallel `cargo test` threads do not collide on the same file. Each
+    /// test removes its own path once done with it.
     fn scratch_template_path(label: &str) -> std::path::PathBuf {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or(0);
+        let nonce = SCRATCH_TEMPLATE_COUNTER.fetch_add(1, Ordering::Relaxed);
         std::env::temp_dir().join(format!(
-            "shepherd-render-manifest-{label}-{}.md.j2",
-            std::process::id()
+            "shepherd-render-manifest-{label}-{stamp:x}-{nonce}.md.j2"
         ))
+    }
+
+    #[test]
+    fn scratch_template_paths_are_distinct() {
+        assert_ne!(
+            scratch_template_path("same-label"),
+            scratch_template_path("same-label"),
+            "each fixture reservation must receive its own path"
+        );
     }
 
     /// `cargo test -p shepherd-render manifest::tests::digests_reproduce`

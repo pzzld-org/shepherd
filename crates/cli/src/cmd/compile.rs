@@ -1,12 +1,18 @@
 //! Canonical content compilation and owned-tree materialization.
 
 use std::{
-    collections::{BTreeMap, BTreeSet},
     io::{self, Write},
-    path::{Component, Path, PathBuf},
+    path::PathBuf,
+};
+
+#[cfg(unix)]
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::{Component, Path},
 };
 
 use serde::{Deserialize, Serialize};
+#[cfg(unix)]
 use sha2::{Digest, Sha256};
 use shepherd::compiler::{
     EmittedFile, EmittedKind, EmittedRole, EmittedTree, HarnessProfile, compile,
@@ -17,9 +23,12 @@ use crate::{
     interface::CliError,
 };
 
-const MANIFEST_NAME: &str = ".shepherd-generated.json";
 const MANIFEST_SCHEMA: &str = "shepherd.compiled-tree/2";
+#[cfg(unix)]
+const MANIFEST_NAME: &str = ".shepherd-generated.json";
+#[cfg(unix)]
 const LEGACY_MANIFEST_SCHEMA: &str = "shepherd.compiled-tree/1";
+#[cfg(unix)]
 const MAX_MANIFEST_BYTES: usize = 4 * 1_048_576;
 
 #[derive(
@@ -151,6 +160,7 @@ impl GeneratedManifest {
         }
     }
 
+    #[cfg(unix)]
     fn validate(&self) -> Result<(), CliError> {
         if !matches!(
             self.schema.as_str(),
@@ -278,6 +288,7 @@ fn write_manifest_stdout(manifest: &GeneratedManifest) -> Result<(), CliError> {
         .map_err(|error| CliError::message(format!("cannot write stdout: {error}")))
 }
 
+#[cfg(unix)]
 fn validate_relative(value: &str) -> Result<(), CliError> {
     if value.is_empty()
         || value.len() > 4_096
@@ -294,6 +305,7 @@ fn validate_relative(value: &str) -> Result<(), CliError> {
     Ok(())
 }
 
+#[cfg(unix)]
 fn validate_optional_manifest_token(
     field: &str,
     value: Option<&str>,
@@ -305,6 +317,7 @@ fn validate_optional_manifest_token(
     }
 }
 
+#[cfg(unix)]
 fn validate_manifest_token(field: &str, value: &str, max: usize) -> Result<(), CliError> {
     if value.is_empty()
         || value.len() > max
@@ -319,6 +332,7 @@ fn validate_manifest_token(field: &str, value: &str, max: usize) -> Result<(), C
     Ok(())
 }
 
+#[cfg(unix)]
 fn validate_manifest_text(field: &str, value: &str, max: usize) -> Result<(), CliError> {
     if value.trim().is_empty() || value.len() > max || value.contains(['\0', '\r']) {
         return Err(CliError::message(format!(
@@ -328,6 +342,7 @@ fn validate_manifest_text(field: &str, value: &str, max: usize) -> Result<(), Cl
     Ok(())
 }
 
+#[cfg(unix)]
 fn sha256(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);
     let mut output = String::with_capacity(64);

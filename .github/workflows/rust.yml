@@ -254,6 +254,8 @@ jobs:
     name: feature matrix
     needs: resolve
     runs-on: ubuntu-latest
+    env:
+      WASM_TOOLS_VERSION: "1.254.0"
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -276,6 +278,8 @@ jobs:
         with:
           cache: false
           target: wasm32-unknown-unknown
+      - name: Setup wasm-tools
+        run: cargo install wasm-tools --version "${WASM_TOOLS_VERSION}" --locked
       # sqlite-wasm-rs compiles SQLite from C to wasm, which needs a clang with
       # a WebAssembly backend. Ubuntu's has one; Apple's system clang does not.
       - name: Setup clang

@@ -172,6 +172,8 @@ def version_rules(current: SemVer, next_version: SemVer) -> tuple[TextRule, ...]
         _whole("packages/harness-codex/package.json", current, next_version, 2),
         _whole("packages/harness-pi/package.json", current, next_version, 2),
         _whole(".claude-plugin/plugin.json", current, next_version, 2),
+        _whole("plugins/shepherd/.claude-plugin/plugin.json", current, next_version, 2),
+        _whole(".claude-plugin/marketplace.json", current, next_version, 3),
         _whole("packages/harness-pi/shepherd.pi.json", current, next_version, 1),
         _literal(
             "README.md",
@@ -215,29 +217,15 @@ def version_rules(current: SemVer, next_version: SemVer) -> tuple[TextRule, ...]
             "$env:SHEPHERD_VERSION = '{version}'",
             "README PowerShell installer version",
         ),
-        TextRule(
-            "README.md",
-            f"shepherd-claude-plugin-{current}.zip",
-            f"shepherd-claude-plugin-{next_version}.zip",
-            2,
-            "README Claude release ZIP",
-        ),
-        _literal(
-            "README.md",
-            current,
-            next_version,
-            "releases/download/v{version}/shepherd-claude-plugin-",
-            "README Claude release tag",
-        ),
         _whole("docs/configuration.md", current, next_version, 1),
         _whole("docs/customization.md", current, next_version, 1),
-        _whole("docs/integration.md", current, next_version, 6),
+        _whole("docs/integration.md", current, next_version, 2),
         _whole("content/RECONCILIATION.md", current, next_version, 1),
         _whole("crates/compiler/README.md", current, next_version, 1),
         _whole("crates/component/README.md", current, next_version, 1),
         _whole("crates/sdk/README.md", current, next_version, 1),
         _whole("packages/component-runtime/README.md", current, next_version, 1),
-        _whole("packages/harness-claude/README.md", current, next_version, 5),
+        _whole("packages/harness-claude/README.md", current, next_version, 1),
         _whole("packages/harness-codex/README.md", current, next_version, 1),
         _whole("packages/harness-pi/README.md", current, next_version, 1),
         _whole("packages/harness-pi/src/extension.mjs", current, next_version, 1),
@@ -312,7 +300,7 @@ def version_rules(current: SemVer, next_version: SemVer) -> tuple[TextRule, ...]
             "'export fl03:shepherd/engine@{version};'",
             "CI WIT assertion",
         ),
-        _whole("scripts/test-packed-plugin.sh", current, next_version, 13),
+        _whole("scripts/test-packed-plugin.sh", current, next_version, 10),
         TextRule(
             "scripts/tests/test-release-installers.sh",
             str(next_version),
@@ -328,8 +316,8 @@ def version_rules(current: SemVer, next_version: SemVer) -> tuple[TextRule, ...]
             2,
             "asset wrong-version negative control",
         ),
-        _whole("scripts/tests/test-release-assets.sh", current, next_version, 16),
-        _whole("scripts/tests/test-release-distribution-license.sh", current, next_version, 8),
+        _whole("scripts/tests/test-release-assets.sh", current, next_version, 15),
+        _whole("scripts/tests/test-release-distribution-license.sh", current, next_version, 7),
         _whole("packages/scripts/check-package-boundary.mjs", current, next_version, 3),
         _whole("scripts/verify-release-assets.sh", current, next_version, 1),
     ]
@@ -569,9 +557,16 @@ def _validate_npm(contents: Mapping[str, str], version: SemVer, errors: list[str
 
 def _validate_plugin(contents: Mapping[str, str], version: SemVer, errors: list[str]) -> None:
     contract = f"fl03:shepherd@{version}"
+    canonical_plugin = contents[".claude-plugin/plugin.json"]
+    carrier_plugin = contents["plugins/shepherd/.claude-plugin/plugin.json"]
+    if carrier_plugin != canonical_plugin:
+        errors.append(
+            "plugins/shepherd/.claude-plugin/plugin.json: must be byte-identical to "
+            ".claude-plugin/plugin.json"
+        )
     plugin = _parse_json(
         ".claude-plugin/plugin.json",
-        contents[".claude-plugin/plugin.json"],
+        canonical_plugin,
         errors,
     )
     if plugin is not None:

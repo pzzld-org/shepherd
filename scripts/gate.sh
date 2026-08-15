@@ -16,7 +16,7 @@
 #   scripts/gate.sh fast     no compilation. formatting + workspace invariants.
 #   scripts/gate.sh full     fast + clippy + tests + the feature matrix.
 #   scripts/gate.sh wasm     the WASI execution suite (needs wasi-sdk, wasmtime).
-#   scripts/gate.sh all      full + wasm.
+#   scripts/gate.sh all      full + Windows cfg cross-check + wasm.
 #
 # Default is `full`. Every tier is safe to run on a dirty tree; nothing here
 # writes to the repository.
@@ -44,6 +44,7 @@ step() {
 # No compilation. This is what runs on every commit.
 gate_fast() {
   step "rustfmt" cargo fmt --all --check
+  step "engine boundary negative controls" bash .github/scripts/boundary-selftest.sh
   step "npm adapter dependency rules are falsifiable" node packages/scripts/check-deps.mjs --self-test
   step "npm adapter dependency rules" node packages/scripts/check-deps.mjs
   # The invariants are checked for falsifiability first: a validator with a
@@ -196,8 +197,9 @@ gate_wasm() {
   step "Claude adapter package suite" node packages/harness-claude/test.mjs
   step "Codex adapter package suite" node packages/harness-codex/test.mjs
   step "Pi adapter package suite" node packages/harness-pi/test.mjs
-  step "build and validate the self-contained Claude plugin ZIP" \
-    bash scripts/tests/test-claude-plugin-release.sh
+  step "install the Claude marketplace plugin from source" \
+    bash scripts/tests/test-claude-marketplace.sh
+  step "clean packed harness distribution" bash scripts/test-packed-plugin.sh
 
   # wasm32-wasip1 proves behaviour. Building only proves the C cross-compile;
   # these tests EXECUTE under wasmtime, and one of them opens a file-backed
@@ -216,6 +218,7 @@ case "${TIER}" in
   wasm) gate_wasm ;;
   all)
     gate_full
+    step "Windows CLI cfg boundary" env RUSTFLAGS="-D warnings" cargo check --locked -p shepherd-cli --target x86_64-pc-windows-msvc --no-default-features --features std
     gate_wasm
     ;;
   *)

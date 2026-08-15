@@ -1,0 +1,317 @@
+name: gitflow
+
+# Post-publication branch and project housekeeping. This workflow consumes a
+# completed release workflow, verifies that its published tag and release still
+# resolve to the exact release commit, then cuts and bumps the next patch line.
+
+concurrency:
+  cancel-in-progress: false
+  group: ${{ github.workflow }}-${{ github.event.workflow_run.id || inputs.release_run_id }}
+
+on:
+  workflow_run:
+    workflows: ["release"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      release_run_id:
+        description: Completed successful release workflow run to hand off
+        required: true
+        type: string
+
+jobs:
+  gitflow:
+    name: Post-publication gitflow handoff
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Checkout default branch for release tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          ref: ${{ github.event.repository.default_branch }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          persist-credentials: true
+
+      - name: Verify published release custody
+        id: release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_RUN_ID: ${{ github.event.workflow_run.id || inputs.release_run_id }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_RUN_ID" =~ ^[0-9]+$ ]] || {
+            printf 'release run id must be numeric, got %q\n' "$RELEASE_RUN_ID" >&2
+            exit 1
+          }
+
+          run_json=$(gh run view "$RELEASE_RUN_ID" --json conclusion,headSha,headBranch,workflowName,status)
+          skip_automatic_or_fail() {
+            local message="$1"
+            if [[ "$EVENT_NAME" == workflow_run ]]; then
+              printf 'proceed=false\n' >> "$GITHUB_OUTPUT"
+              printf '::notice::%s; automatic gitflow handoff is a no-op.\n' "$message"
+              exit 0
+            fi
+            printf '%s\n' "$message" >&2
+            exit 1
+          }
+          [[ "$(jq -r '.workflowName' <<<"$run_json")" == release ]] || {
+            printf 'run %s is not the release workflow\n' "$RELEASE_RUN_ID" >&2
+            exit 1
+          }
+          [[ "$(jq -r '.status' <<<"$run_json")" == completed ]] || {
+            printf 'release run %s is not completed\n' "$RELEASE_RUN_ID" >&2
+            exit 1
+          }
+          [[ "$(jq -r '.conclusion' <<<"$run_json")" == success ]] || {
+            printf 'release run %s did not succeed\n' "$RELEASE_RUN_ID" >&2
+            exit 1
+          }
+          [[ "$(jq -r '.headBranch' <<<"$run_json")" == "$DEFAULT_BRANCH" ]] ||
+            skip_automatic_or_fail "release run ${RELEASE_RUN_ID} did not build the default branch"
+
+          RELEASE_SHA=$(jq -r '.headSha' <<<"$run_json")
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+            printf 'release run %s returned an invalid head SHA\n' "$RELEASE_RUN_ID" >&2
+            exit 1
+          }
+          git cat-file -e "${RELEASE_SHA}^{commit}"
+
+          SUBJECT=$(git show -s --format=%s "$RELEASE_SHA")
+          if [[ "$SUBJECT" =~ ^(release:[[:space:]]+)?v([0-9]+\.[0-9]+\.[0-9]+)([[:space:]:]|$) ]]; then
+            SUBJECT_VERSION="${BASH_REMATCH[2]}"
+          else
+            skip_automatic_or_fail "release run ${RELEASE_RUN_ID} is not a release commit"
+          fi
+          plugin_json=$(git show "${RELEASE_SHA}:.claude-plugin/plugin.json" 2>/dev/null) ||
+            skip_automatic_or_fail "release commit ${RELEASE_SHA} has no plugin manifest"
+          CURRENT=$(jq -r '.version' <<<"$plugin_json")
+          [[ "$CURRENT" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] ||
+            skip_automatic_or_fail "release commit ${RELEASE_SHA} has invalid plugin version ${CURRENT}"
+          [[ "$SUBJECT_VERSION" == "$CURRENT" ]] ||
+            skip_automatic_or_fail "release commit ${RELEASE_SHA} subject version ${SUBJECT_VERSION} does not match plugin version ${CURRENT}"
+          TAG="v${CURRENT}"
+
+          remote_peeled=$(git ls-remote --tags origin "refs/tags/${TAG}^{}" | awk 'NR == 1 { print $1 }')
+          remote_direct=$(git ls-remote --tags origin "refs/tags/${TAG}" | awk 'NR == 1 { print $1 }')
+          remote_target="${remote_peeled:-$remote_direct}"
+          [[ "$remote_target" == "$RELEASE_SHA" ]] || {
+            printf 'tag %s resolves to %s, expected release SHA %s\n' "$TAG" "$remote_target" "$RELEASE_SHA" >&2
+            exit 1
+          }
+
+          if ! release_state=$(gh release view "$TAG" --json isDraft,isPrerelease,tagName 2>/dev/null); then
+            skip_automatic_or_fail "published release ${TAG} is unavailable"
+          fi
+          [[ "$(jq -r '.tagName' <<<"$release_state")" == "$TAG" ]] || {
+            printf 'GitHub release tag mismatch for %s\n' "$TAG" >&2
+            exit 1
+          }
+          [[ "$(jq -r '.isDraft' <<<"$release_state")" == false ]] || {
+            skip_automatic_or_fail "published release ${TAG} is still a draft"
+          }
+          [[ "$(jq -r '.isPrerelease' <<<"$release_state")" == false ]] || {
+            printf 'GitHub release %s is unexpectedly a prerelease\n' "$TAG" >&2
+            exit 1
+          }
+
+          IFS=. read -r X Y Z <<<"$CURRENT"
+          if [ "$Z" -lt 9 ]; then
+            NX=$X
+            NY=$Y
+            NZ=$((Z + 1))
+            SHIFT=patch
+          elif [ "$Y" -lt 9 ]; then
+            NX=$X
+            NY=$((Y + 1))
+            NZ=0
+            SHIFT=minor
+          else
+            NX=$((X + 1))
+            NY=0
+            NZ=0
+            SHIFT=major
+          fi
+          NEXT="${NX}.${NY}.${NZ}"
+          {
+            printf 'proceed=true\n'
+            printf 'release_sha=%s\n' "$RELEASE_SHA"
+            printf 'current=%s\n' "$CURRENT"
+            printf 'next=%s\n' "$NEXT"
+            printf 'shift=%s\n' "$SHIFT"
+            printf 'tag=%s\n' "$TAG"
+            printf 'patch_branch=v%s\n' "$NEXT"
+            printf 'old_milestone=%s\n' "$TAG"
+            printf 'new_milestone=v%s\n' "$NEXT"
+          } >> "$GITHUB_OUTPUT"
+          printf 'Verified published %s at %s; next patch is v%s (%s shift).\n' \
+            "$TAG" "$RELEASE_SHA" "$NEXT" "$SHIFT"
+
+      - name: Configure git identity
+        if: steps.release.outputs.proceed == 'true'
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+      - name: Cut next patch branch from the released SHA and bump refs
+        if: steps.release.outputs.proceed == 'true'
+        env:
+          RELEASE_SHA: ${{ steps.release.outputs.release_sha }}
+          CURRENT: ${{ steps.release.outputs.current }}
+          NEXT: ${{ steps.release.outputs.next }}
+          PATCH: ${{ steps.release.outputs.patch_branch }}
+        run: |
+          set -euo pipefail
+          git checkout --detach "$RELEASE_SHA"
+          if git ls-remote --exit-code --heads origin "$PATCH" >/dev/null 2>&1; then
+            git fetch origin "$PATCH"
+            git merge-base --is-ancestor "$RELEASE_SHA" "origin/$PATCH" || {
+              printf 'existing branch %s does not descend from release SHA %s\n' "$PATCH" "$RELEASE_SHA" >&2
+              exit 1
+            }
+            git checkout -B "$PATCH" "origin/$PATCH"
+          else
+            git checkout -b "$PATCH" "$RELEASE_SHA"
+          fi
+
+          changed_paths="${RUNNER_TEMP}/shepherd-version-bump-paths.txt"
+          : > "$changed_paths"
+          if python3 scripts/version-bump.py check --root . --version "$NEXT" >/dev/null 2>&1; then
+            echo "Branch $PATCH already has one coherent v${NEXT} authority set."
+          else
+            python3 scripts/version-bump.py check --root . --version "$CURRENT"
+            bump_output="${RUNNER_TEMP}/shepherd-version-bump-output.txt"
+            python3 scripts/version-bump.py bump \
+              --root . --current "$CURRENT" --next "$NEXT" | tee "$bump_output"
+            tail -n +2 "$bump_output" > "$changed_paths"
+          fi
+          python3 scripts/version-bump.py check --root . --version "$NEXT"
+
+      - name: Commit and push next patch branch with version bump
+        if: steps.release.outputs.proceed == 'true'
+        env:
+          RELEASE_SHA: ${{ steps.release.outputs.release_sha }}
+          CURRENT: ${{ steps.release.outputs.current }}
+          NEXT: ${{ steps.release.outputs.next }}
+          PATCH: ${{ steps.release.outputs.patch_branch }}
+        run: |
+          set -euo pipefail
+          changed_paths="${RUNNER_TEMP}/shepherd-version-bump-paths.txt"
+          if [[ -s "$changed_paths" ]]; then
+            mapfile -t version_paths < "$changed_paths"
+            git add -- "${version_paths[@]}"
+          fi
+          if git diff --cached --quiet; then
+            echo "No version changes to commit (idempotent re-run?)."
+          else
+            git commit -m "chore(${PATCH}/version): bump plugin ${CURRENT} → ${NEXT}"
+          fi
+          git push -u origin "$PATCH"
+
+      - name: Open draft PR for the next patch line
+        if: steps.release.outputs.proceed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PATCH: ${{ steps.release.outputs.patch_branch }}
+          NEXT: ${{ steps.release.outputs.next }}
+        run: |
+          set -euo pipefail
+          if gh pr view "$PATCH" --json number >/dev/null 2>&1; then
+            echo "Draft PR for $PATCH already exists; skipping."
+          else
+            gh pr create --base "${{ github.event.repository.default_branch }}" --head "$PATCH" --draft \
+              --title "release: v${NEXT}" \
+              --body "Draft PR — accumulates dev.0..dev.9 of v${NEXT}. Generated by .github/workflows/gitflow.yml."
+          fi
+
+      - name: Sweep proven orphan dev branches of closing patch
+        if: steps.release.outputs.proceed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CURRENT: ${{ steps.release.outputs.current }}
+          RELEASE_SHA: ${{ steps.release.outputs.release_sha }}
+        run: |
+          set -euo pipefail
+          for SPRINT in 0 1 2 3 4 5 6 7 8 9; do
+            BRANCH="v${CURRENT}-dev.${SPRINT}"
+            if ! REMOTE_TIP=$(git ls-remote --heads origin "refs/heads/${BRANCH}" | awk 'NR == 1 { print $1 }'); then
+              printf '::warning::Retaining %s: could not resolve its origin tip\n' "$BRANCH"
+              continue
+            fi
+            if [[ -z "$REMOTE_TIP" ]]; then
+              continue
+            fi
+            if [[ ! "$REMOTE_TIP" =~ ^[0-9a-f]{40}$ ]]; then
+              printf '::warning::Retaining %s: origin returned invalid remote tip %q\n' "$BRANCH" "$REMOTE_TIP"
+              continue
+            fi
+            if ! git fetch --no-tags origin "refs/heads/${BRANCH}:refs/remotes/origin/${BRANCH}"; then
+              printf '::warning::Retaining %s: could not fetch remote tip %s for ancestry proof\n' "$BRANCH" "$REMOTE_TIP"
+              continue
+            fi
+            FETCHED_TIP=$(git rev-parse "refs/remotes/origin/${BRANCH}")
+            if [[ "$FETCHED_TIP" != "$REMOTE_TIP" ]]; then
+              printf '::warning::Retaining %s: remote tip changed from %s to %s during proof\n' "$BRANCH" "$REMOTE_TIP" "$FETCHED_TIP"
+              continue
+            fi
+
+            proven=false
+            if git merge-base --is-ancestor "$REMOTE_TIP" "$RELEASE_SHA"; then
+              proven=true
+            elif merged_pr_heads=$(gh pr list --state merged --head "$BRANCH" --json headRefOid --jq '.[].headRefOid'); then
+              if grep -Fxq "$REMOTE_TIP" <<<"$merged_pr_heads"; then
+                proven=true
+              fi
+            else
+              printf '::warning::Retaining %s: could not inspect merged PR heads for tip %s\n' "$BRANCH" "$REMOTE_TIP"
+            fi
+
+            if [[ "$proven" != true ]]; then
+              printf '::warning::Retaining %s at %s: tip is neither released ancestry nor a merged PR head\n' "$BRANCH" "$REMOTE_TIP"
+              continue
+            fi
+            if git push --force-with-lease="refs/heads/${BRANCH}:${REMOTE_TIP}" origin ":refs/heads/${BRANCH}"; then
+              printf 'Deleted proven orphan %s at %s from origin\n' "$BRANCH" "$REMOTE_TIP"
+            else
+              printf '::warning::Retaining %s: remote tip changed before deletion\n' "$BRANCH"
+            fi
+          done
+          git fetch --prune origin
+
+      - name: Roll open issues to the next milestone
+        if: steps.release.outputs.proceed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OLD: ${{ steps.release.outputs.old_milestone }}
+          NEW: ${{ steps.release.outputs.new_milestone }}
+        run: |
+          set -euo pipefail
+          existing=$(gh api "repos/${GITHUB_REPOSITORY}/milestones?state=open" --jq '.[].title')
+          if ! echo "$existing" | grep -qx "$NEW"; then
+            gh api "repos/${GITHUB_REPOSITORY}/milestones" \
+              -f title="$NEW" -f state=open >/dev/null
+            echo "Created milestone $NEW"
+          fi
+          all=$(gh api "repos/${GITHUB_REPOSITORY}/milestones?state=all" --jq '.[].title')
+          if echo "$all" | grep -qx "$OLD"; then
+            while read -r N; do
+              [ -z "$N" ] && continue
+              gh issue edit "$N" --milestone "$NEW"
+              echo "Moved #$N to milestone $NEW"
+            done < <(gh issue list --milestone "$OLD" --state open \
+              --json number --jq '.[].number')
+          else
+            echo "Milestone $OLD not found; nothing to roll."
+          fi

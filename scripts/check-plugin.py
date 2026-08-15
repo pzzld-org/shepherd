@@ -39,6 +39,11 @@ ROOT = Path(__file__).resolve().parent.parent
 # reference, `${CLAUDE_PLUGIN_ROOT}` is "the plugin's installation directory",
 # i.e. the ROOT -- relocating hooks.json does NOT re-base the paths inside it.
 COMPONENT_DIRS = ("agents", "skills", "hooks")
+CARRIER_LINKS = {
+    "hooks/hooks.json": "../../../hooks/hooks.json",
+    "agents": "../../agents",
+    "skills": "../../skills",
+}
 
 PLUGIN_ROOT_REF = re.compile(r"\$\{CLAUDE_PLUGIN_ROOT\}/([^\"'\s)\\]+)")
 
@@ -191,6 +196,45 @@ def rule_generated_skills_are_thin(root: Path) -> list[str]:
     return bad
 
 
+def rule_thin_carrier_projects_canonical_content(root: Path) -> list[str]:
+    """The marketplace carrier keeps one manifest projection and three links.
+
+    Claude's strict marketplace validator requires a regular manifest, while
+    the loader dereferences within-marketplace links for the remaining plugin
+    content. The manifest must therefore stay byte-identical to the canonical
+    root manifest and the carrier must not acquire a Node/npm bootstrap.
+    """
+    carrier = root / "plugins" / "shepherd"
+    canonical_manifest = root / ".claude-plugin" / "plugin.json"
+    carrier_manifest = carrier / ".claude-plugin" / "plugin.json"
+    bad = []
+    if not carrier_manifest.is_file() or carrier_manifest.is_symlink():
+        bad.append("plugins/shepherd/.claude-plugin/plugin.json must be a regular file")
+    elif not canonical_manifest.is_file():
+        bad.append(".claude-plugin/plugin.json is missing")
+    elif carrier_manifest.read_bytes() != canonical_manifest.read_bytes():
+        bad.append(
+            "plugins/shepherd/.claude-plugin/plugin.json must be byte-identical to "
+            ".claude-plugin/plugin.json"
+        )
+
+    for relative, target in CARRIER_LINKS.items():
+        path = carrier / relative
+        if not path.is_symlink():
+            bad.append(f"plugins/shepherd/{relative} must be a canonical symlink")
+            continue
+        if path.readlink().as_posix() != target:
+            bad.append(f"plugins/shepherd/{relative} must link to {target}")
+            continue
+        if not path.resolve().is_relative_to(root.resolve()):
+            bad.append(f"plugins/shepherd/{relative} escapes the repository")
+
+    for forbidden in ("package.json", "package-lock.json", "node_modules"):
+        if (carrier / forbidden).exists():
+            bad.append(f"plugins/shepherd/{forbidden} is forbidden in the thin carrier")
+    return bad
+
+
 def rule_configured_gates_resolve(root: Path) -> list[str]:
     """Paths named by `.shepherd/shepherd.toml` gate commands exist.
 
@@ -232,6 +276,7 @@ RULES = [
     rule_plugin_root_refs_resolve,
     rule_skills_are_shaped_correctly,
     rule_generated_skills_are_thin,
+    rule_thin_carrier_projects_canonical_content,
     rule_configured_gates_resolve,
 ]
 
@@ -284,6 +329,15 @@ def self_test(root: Path) -> int:
         (tmp / "hooks" / "hooks.json").write_text('{"hooks":{}}')
         (tmp / "skills" / "demo").mkdir()
         (tmp / "skills" / "demo" / "SKILL.md").write_text("# demo")
+        carrier = tmp / "plugins" / "shepherd"
+        (carrier / ".claude-plugin").mkdir(parents=True)
+        (carrier / ".claude-plugin" / "plugin.json").write_bytes(
+            (tmp / ".claude-plugin" / "plugin.json").read_bytes()
+        )
+        (carrier / "hooks").mkdir()
+        (carrier / "hooks" / "hooks.json").symlink_to("../../../hooks/hooks.json")
+        (carrier / "agents").symlink_to("../../agents")
+        (carrier / "skills").symlink_to("../../skills")
         mutate(tmp)
         return tmp
 
@@ -313,6 +367,11 @@ def self_test(root: Path) -> int:
         (tmp / "skills" / "demo" / "references").mkdir()
         (tmp / "skills" / "demo" / "references" / "doctrine.md").write_text("duplicate")
 
+    def carrier_manifest_drift(tmp: Path) -> None:
+        (tmp / "plugins" / "shepherd" / ".claude-plugin" / "plugin.json").write_text(
+            '{"name":"drifted"}'
+        )
+
     def broken_gate(tmp: Path) -> None:
         (tmp / ".shepherd").mkdir()
         (tmp / ".shepherd" / "shepherd.toml").write_text(
@@ -327,6 +386,7 @@ def self_test(root: Path) -> int:
         (rule_plugin_root_refs_resolve, stale_plugin_root_ref),
         (rule_skills_are_shaped_correctly, skill_without_body),
         (rule_generated_skills_are_thin, duplicate_skill_authority),
+        (rule_thin_carrier_projects_canonical_content, carrier_manifest_drift),
         (rule_configured_gates_resolve, broken_gate),
     ]
 

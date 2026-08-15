@@ -1432,10 +1432,7 @@ fn default_snapshot_dir() -> PathBuf {
         .map(|duration| duration.as_nanos())
         .unwrap_or(0);
     let nonce = SNAPSHOT_COUNTER.fetch_add(1, Ordering::Relaxed);
-    std::env::temp_dir().join(format!(
-        "shepherd-layout-v5-{}-{stamp:x}-{nonce}",
-        std::process::id()
-    ))
+    std::env::temp_dir().join(format!("shepherd-layout-v5-{stamp:x}-{nonce}"))
 }
 
 fn io(path: &Path, source: std::io::Error) -> LayoutError {

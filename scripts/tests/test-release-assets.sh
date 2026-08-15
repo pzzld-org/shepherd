@@ -41,8 +41,7 @@ for name in \
   fl03-component-runtime-6.4.5.tgz \
   fl03-harness-claude-6.4.5.tgz \
   fl03-harness-codex-6.4.5.tgz \
-  fl03-harness-pi-6.4.5.tgz \
-  shepherd-claude-plugin-6.4.5.zip; do
+  fl03-harness-pi-6.4.5.tgz; do
   printf 'fixture %s\n' "$name" > "$asset_dir/$name"
 done
 for asset in "$asset_dir"/*; do
@@ -51,7 +50,7 @@ done
 
 asset_list="$tmp_dir/release-files.txt"
 "$verifier" "$asset_dir" "$asset_list" 6.4.5
-[[ $(wc -l < "$asset_list" | tr -d ' ') == 34 ]] || fail 'expected 34 publishable files'
+[[ $(wc -l < "$asset_list" | tr -d ' ') == 32 ]] || fail 'expected 32 publishable files'
 rg -Fxq "$asset_dir/shepherd-6.4.5-aarch64-apple-darwin.tar.gz" "$asset_list"
 rg -Fxq "$asset_dir/shepherd-6.4.5-aarch64-apple-darwin.tar.gz.sha256" "$asset_list"
 

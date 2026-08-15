@@ -23,56 +23,17 @@ TELEMETRY = "telemetry-only"
 ALLOWED = {THIN, TELEMETRY}
 
 METADATA: dict[str, dict[str, Any]] = {
-    "packages/harness-claude/hooks/dispatch-lifecycle.mjs": {
+    "crates/cli/src/cmd/claude_hook.rs": {
         "classification": THIN,
         "native_coverage": "full",
-        "native_surface": ["Component lifecycle provider", "shepherd dispatch"],
-    },
-    "packages/harness-claude/hooks/guard-eval.mjs": {
-        "classification": THIN,
-        "native_coverage": "full",
-        "native_surface": ["Component guard provider", "shepherd guard eval"],
-    },
-    "hooks/scripts/seed_preflight_check.sh": {
-        "classification": THIN,
-        "native_coverage": "full",
-        "native_surface": ["shepherd seed verify <path>"],
-    },
-    "hooks/scripts/agent_insight_capture.sh": {
-        "classification": TELEMETRY,
-        "native_coverage": "partial",
-        "native_surface": ["shepherd insights"],
-    },
-    "hooks/scripts/bash_post.sh": {
-        "classification": TELEMETRY,
-        "native_coverage": "partial",
-        "native_surface": ["shepherd doctor"],
-    },
-    "hooks/scripts/cwd_changed.sh": {
-        "classification": TELEMETRY,
-        "native_coverage": "none",
-        "native_surface": [],
-    },
-    "hooks/scripts/discovery_capture.sh": {
-        "classification": TELEMETRY,
-        "native_coverage": "partial",
-        "native_surface": ["shepherd discovery"],
-    },
-    "hooks/scripts/precompact_snapshot.sh": {
-        "classification": TELEMETRY,
-        "native_coverage": "partial",
-        "native_surface": ["shepherd run", "shepherd status"],
-    },
-    "hooks/scripts/subagent_telemetry.sh": {
-        "classification": TELEMETRY,
-        "native_coverage": "partial",
-        "native_surface": ["shepherd status", "shepherd doctor"],
+        "native_surface": ["shepherd claude-hook", "shepherd dispatch", "shepherd guard"],
     },
 }
 
-TARGET_RE = re.compile(
-    r"(?P<target>(?:hooks/scripts|packages/harness-claude/hooks)/\S+)"
-)
+TARGET_RE = re.compile(r"(?P<target>(?:hooks/scripts|packages/harness-claude/hooks)/\S+)")
+NATIVE_CLAUDE_HOOK_COMMAND = "shepherd"
+NATIVE_CLAUDE_HOOK_ARGS = ["claude-hook"]
+NATIVE_CLAUDE_HOOK_SOURCE = "crates/cli/src/cmd/claude_hook.rs"
 FORBIDDEN = {
     "retired_cli": re.compile(r"\bshctx\b"),
     "retired_python_cli": re.compile(r"services/cli"),
@@ -111,12 +72,16 @@ def registrations(root: Path) -> tuple[dict[str, list[dict[str, str]]], list[str
                 hook_type = hook.get("type")
                 if hook_type == "command":
                     command = hook["command"]
-                    match = TARGET_RE.search(command)
-                    if match is None:
+                    args = hook.get("args")
+                    if command == NATIVE_CLAUDE_HOOK_COMMAND and args == NATIVE_CLAUDE_HOOK_ARGS:
+                        target = NATIVE_CLAUDE_HOOK_SOURCE
+                    else:
+                        match = TARGET_RE.search(command)
+                        target = match.group("target") if match is not None else None
+                    if target is None:
                         raise ValueError(
-                            f"registered command has no audited hook target: {command}"
+                            f"registered command has no audited hook target: {command} {args}"
                         )
-                    target = match.group("target")
                     commands.setdefault(target, []).append(
                         {"event": event, "matcher": matcher, "command": command}
                     )
@@ -232,7 +197,7 @@ def self_test() -> int:
                                         "type": "command",
                                         "command": f"{plugin_root}/hooks/scripts/telemetry.sh",
                                     },
-                                    {"type": "agent", "prompt": "legacy policy"},
+                        {"type": "agent", "prompt": "legacy policy"},
                                 ]
                             }
                         ]
@@ -249,6 +214,8 @@ def self_test() -> int:
             "emit_deny nope\nsqlite3 db 'UPDATE state SET x=1'\n",
             encoding="utf-8",
         )
+        (root / "crates/cli/src/cmd").mkdir(parents=True)
+        (root / NATIVE_CLAUDE_HOOK_SOURCE).write_text("shctx\npython3 -c pass\n", encoding="utf-8")
         previous = dict(METADATA)
         METADATA.update(
             {

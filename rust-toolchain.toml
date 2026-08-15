@@ -15,5 +15,6 @@ targets = [
   "wasm32-unknown-unknown",
   "wasm32-wasip1",
   "wasm32-wasip2",
+  "x86_64-pc-windows-msvc",
 ]
 profile = "minimal"

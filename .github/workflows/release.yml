@@ -6,9 +6,9 @@ name: release
 # The extracted version is cross-checked against .claude-plugin/plugin.json;
 # non-release pushes to main are skipped cleanly.
 #
-# Flow: v*.*.* → main → release & tag vCURRENT → compute v*.*.*+1 → bump version
-#       refs → commit & push to the new vNEXT branch → open draft PR vNEXT → main
-#       → orphan sweep → milestone roll.
+# Flow: v*.*.* → main → build and verify immutable assets → tag and publish vCURRENT.
+# Post-publication branch/version/PR housekeeping runs in gitflow.yml after this
+# workflow completes successfully and verifies the published release custody.
 #
 # The merge into main IS the release event — there is NO separate "release PR
 # vCURRENT → main" step (that PR is the one that just merged). Branch protection
@@ -146,21 +146,7 @@ jobs:
         run: |
           set -euo pipefail
           binary="target/${TARGET}/release/shepherd"
-          assert_glibc_floor() {
-            local executable="$1" floor="$2" maximum
-            maximum=$(readelf --version-info "$executable" \
-              | sed -nE 's/.*Name: GLIBC_([0-9]+\.[0-9]+).*/\1/p' \
-              | sort -V | tail -n 1)
-            [[ -n "$maximum" ]] || { printf 'no GLIBC symbol versions found in %s\n' "$executable" >&2; return 1; }
-            python3 - "$maximum" "$floor" <<'PY'
-            import sys
-            maximum = tuple(map(int, sys.argv[1].split('.')))
-            floor = tuple(map(int, sys.argv[2].split('.')))
-            if maximum > floor:
-                raise SystemExit(f"requires GLIBC_{sys.argv[1]}, exceeds supported GLIBC_{sys.argv[2]}")
-            PY
-          }
-          assert_glibc_floor "$binary" 2.17
+          readelf --version-info "$binary" | python3 scripts/assert-glibc-floor.py 2.17
       - name: Package Unix archive and SHA-256 sidecars
         if: runner.os != 'Windows'
         shell: bash
@@ -321,7 +307,6 @@ jobs:
           node packages/harness-pi/test.mjs
           node packages/scripts/check-package-boundary.mjs
           bash scripts/test-packed-plugin.sh
-          bash scripts/tests/test-claude-plugin-release.sh
       - name: Stage Wasm component and npm adapter tarballs
         shell: bash
         env:
@@ -370,8 +355,6 @@ jobs:
               sha256sum "$asset" > "${asset}.sha256"
             done
           )
-          SHEPHERD_COMPONENT_NODE_ROOT="$PWD" SHEPHERD_COMPONENT_WASM="$wasm" \
-            scripts/build-claude-plugin-release.sh dist
       - name: Verify component and npm release asset sidecars
         shell: bash
         run: |
@@ -391,14 +374,12 @@ jobs:
           retention-days: 1
 
   release:
-    name: Patch release pipeline
+    name: Publish verified release
     needs: [release-metadata, build-native-assets, build-component-assets]
     if: needs.release-metadata.outputs.proceed == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      pull-requests: write
-      issues: write
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -443,30 +424,17 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
 
-      - name: Compute current + next version triple (mod-10 cascade)
+      - name: Resolve current release version
         if: steps.detect.outputs.proceed == 'true'
         id: ver
         run: |
           set -euo pipefail
           CURRENT=$(jq -r '.version' .claude-plugin/plugin.json)
-          IFS=. read -r X Y Z <<<"$CURRENT"
-
-          if   [ "$Z" -lt 9 ]; then NX=$X;        NY=$Y;        NZ=$((Z+1)); SHIFT=patch
-          elif [ "$Y" -lt 9 ]; then NX=$X;        NY=$((Y+1)); NZ=0;        SHIFT=minor
-          else                      NX=$((X+1)); NY=0;         NZ=0;        SHIFT=major
-          fi
-          NEXT="${NX}.${NY}.${NZ}"
-
           {
             echo "current=$CURRENT"
-            echo "next=$NEXT"
-            echo "shift=$SHIFT"
             echo "tag=v${CURRENT}"
-            echo "patch_branch=v${NEXT}"
-            echo "old_milestone=v${CURRENT}"
-            echo "new_milestone=v${NEXT}"
           } >> "$GITHUB_OUTPUT"
-          echo "Releasing v${CURRENT}; next patch v${NEXT} (${SHIFT} shift)."
+          echo "Releasing v${CURRENT}."
 
       - name: Extract release notes from CHANGELOG.md
         if: steps.detect.outputs.proceed == 'true'
@@ -524,7 +492,7 @@ jobs:
           scripts/verify-release-assets.sh "$ASSET_DIR" "$ASSET_LIST" "$VERSION"
           scripts/verify-release-distribution.sh "$ASSET_DIR" "$VERSION"
           mapfile -t release_files < "$ASSET_LIST"
-          ((${#release_files[@]} == 34))
+          ((${#release_files[@]} == 32))
 
       # ─── Patch close: tag + GitHub release ─────────────────────────────────
       - name: Tag the verified release commit
@@ -571,7 +539,7 @@ jobs:
         run: |
           set -euo pipefail
           mapfile -t release_files < "$ASSET_LIST"
-          ((${#release_files[@]} == 34)) || { echo 'missing verified release files' >&2; exit 1; }
+          ((${#release_files[@]} == 32)) || { echo 'missing verified release files' >&2; exit 1; }
           if gh release view "$TAG" >/dev/null 2>&1; then
             release_state=$(gh release view "$TAG" --json isDraft,isPrerelease,tagName)
             [ "$(jq -r '.tagName' <<<"$release_state")" = "$TAG" ]
@@ -607,7 +575,7 @@ jobs:
         run: |
           set -euo pipefail
           mapfile -t release_files < "$ASSET_LIST"
-          ((${#release_files[@]} == 34)) || { echo 'missing verified release files' >&2; exit 1; }
+          ((${#release_files[@]} == 32)) || { echo 'missing verified release files' >&2; exit 1; }
           if gh release view "$TAG" >/dev/null 2>&1; then
             release_state=$(gh release view "$TAG" --json isDraft,isPrerelease,tagName)
             [ "$(jq -r '.tagName' <<<"$release_state")" = "$TAG" ]
@@ -628,121 +596,4 @@ jobs:
             fi
           else
             gh release create "$TAG" --verify-tag --target "$GITHUB_SHA" --title "$TAG" --generate-notes "${release_files[@]}"
-          fi
-
-      # ─── Next patch: cut from current patch branch + bump every authority ───
-      - name: Cut next patch branch + bump all version refs
-        if: steps.detect.outputs.proceed == 'true'
-        env:
-          CURRENT: ${{ steps.ver.outputs.current }}
-          NEXT: ${{ steps.ver.outputs.next }}
-          PATCH: ${{ steps.ver.outputs.patch_branch }}
-        run: |
-          set -euo pipefail
-          if git ls-remote --exit-code --heads origin "$PATCH" >/dev/null 2>&1; then
-            echo "Branch $PATCH already on origin; reusing (partial prior run)."
-            git fetch origin "$PATCH"
-            git checkout -B "$PATCH" "origin/$PATCH"
-          else
-            # Cut the next patch branch from the immutable release commit. A
-            # later push to main while assets build must not change its base.
-            git checkout -b "$PATCH" "$GITHUB_SHA"
-          fi
-
-          changed_paths="${RUNNER_TEMP}/shepherd-version-bump-paths.txt"
-          : > "$changed_paths"
-          if python3 scripts/version-bump.py check --root . --version "$NEXT" >/dev/null 2>&1; then
-            echo "Branch $PATCH already has one coherent v${NEXT} authority set."
-          else
-            python3 scripts/version-bump.py check --root . --version "$CURRENT"
-            bump_output="${RUNNER_TEMP}/shepherd-version-bump-output.txt"
-            python3 scripts/version-bump.py bump \
-              --root . --current "$CURRENT" --next "$NEXT" | tee "$bump_output"
-            tail -n +2 "$bump_output" > "$changed_paths"
-          fi
-          python3 scripts/version-bump.py check --root . --version "$NEXT"
-
-      - name: Commit + push next patch branch with version bump
-        if: steps.detect.outputs.proceed == 'true'
-        env:
-          CURRENT: ${{ steps.ver.outputs.current }}
-          NEXT: ${{ steps.ver.outputs.next }}
-          PATCH: ${{ steps.ver.outputs.patch_branch }}
-        run: |
-          set -euo pipefail
-          # Stage only the deterministic tool's exact changed-path list. Never
-          # use git add -A; unrelated runner files must not ride this commit.
-          changed_paths="${RUNNER_TEMP}/shepherd-version-bump-paths.txt"
-          if [[ -s "$changed_paths" ]]; then
-            mapfile -t version_paths < "$changed_paths"
-            git add -- "${version_paths[@]}"
-          fi
-          if git diff --cached --quiet; then
-            echo "No version changes to commit (idempotent re-run?)."
-          else
-            git commit -m "chore(${PATCH}/version): bump plugin ${CURRENT} → ${NEXT}"
-          fi
-          git push -u origin "$PATCH"
-
-      - name: Open draft PR vNEXT → main
-        if: steps.detect.outputs.proceed == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PATCH: ${{ steps.ver.outputs.patch_branch }}
-          NEXT: ${{ steps.ver.outputs.next }}
-        run: |
-          set -euo pipefail
-          if gh pr view "$PATCH" --json number >/dev/null 2>&1; then
-            echo "Draft PR for $PATCH already exists; skipping."
-          else
-            gh pr create --base "${{ github.event.repository.default_branch }}" --head "$PATCH" --draft \
-              --title "release: v${NEXT}" \
-              --body "Draft PR — accumulates dev.0..dev.9 of v${NEXT}. Generated by .github/workflows/release.yml."
-          fi
-
-      # ─── Housekeeping: orphan sweep + milestone roll ───────────────────────
-      - name: Sweep orphan dev branches of closing patch
-        if: steps.detect.outputs.proceed == 'true'
-        env:
-          CURRENT: ${{ steps.ver.outputs.current }}
-        run: |
-          set -euo pipefail
-          for SPRINT in 0 1 2 3 4 5 6 7 8 9; do
-            BRANCH="v${CURRENT}-dev.${SPRINT}"
-            git push origin --delete "$BRANCH" 2>/dev/null \
-              && echo "Deleted $BRANCH from origin" \
-              || true
-          done
-          git fetch --prune origin
-
-      - name: Roll open issues to new milestone
-        if: steps.detect.outputs.proceed == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          OLD: ${{ steps.ver.outputs.old_milestone }}
-          NEW: ${{ steps.ver.outputs.new_milestone }}
-        run: |
-          set -euo pipefail
-          # Ensure the new milestone exists
-          existing=$(gh api "repos/${GITHUB_REPOSITORY}/milestones?state=open" \
-            --jq '.[].title' || echo "")
-          if ! echo "$existing" | grep -qx "$NEW"; then
-            gh api "repos/${GITHUB_REPOSITORY}/milestones" \
-              -f title="$NEW" -f state=open >/dev/null
-            echo "Created milestone $NEW"
-          fi
-          # Move every open issue from $OLD → $NEW (skip cleanly if $OLD is absent)
-          all=$(gh api "repos/${GITHUB_REPOSITORY}/milestones?state=all" \
-            --jq '.[].title' || echo "")
-          if echo "$all" | grep -qx "$OLD"; then
-            gh issue list --milestone "$OLD" --state open \
-              --json number --jq '.[].number' \
-              | while read -r N; do
-                  [ -z "$N" ] && continue
-                  gh issue edit "$N" --milestone "$NEW" \
-                    && echo "Moved #$N to milestone $NEW" \
-                    || echo "::warning::Failed to move #$N"
-                done
-          else
-            echo "Milestone $OLD not found; nothing to roll."
           fi

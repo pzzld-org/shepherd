@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# v6.4.5: Claude registration delegates policy to the native component only.
+# Claude registration delegates lifecycle and policy to one native Rust command.
 
 set -euo pipefail
 
@@ -64,21 +64,18 @@ else
   fail "registered commands contain no secondary CLI or relay policy"
 fi
 
-expected_targets=$'hooks/scripts/agent_insight_capture.sh\nhooks/scripts/bash_post.sh\nhooks/scripts/cwd_changed.sh\nhooks/scripts/discovery_capture.sh\nhooks/scripts/precompact_snapshot.sh\nhooks/scripts/seed_preflight_check.sh\nhooks/scripts/subagent_telemetry.sh\npackages/harness-claude/hooks/dispatch-lifecycle.mjs\npackages/harness-claude/hooks/guard-eval.mjs'
-actual_targets="$(
-  jq -r '.. | objects | select(.type? == "command") | .command? // empty' "$CONFIG" \
-    | sed -nE 's#.*((hooks/scripts|packages/harness-claude/hooks)/[A-Za-z0-9_.-]+\.(sh|mjs)).*#\1#p' \
-    | sort -u
-)"
-if [[ "$actual_targets" == "$expected_targets" ]]; then
-  pass "registry has exactly three native adapters and six telemetry adapters"
+if jq -e '
+  [.. | objects | select(.type? == "command")]
+  | length == 4
+  and all(.[]; .command == "shepherd" and .args == ["claude-hook"])
+' "$CONFIG" >/dev/null; then
+  pass "registry has exactly four exec-form native CLI adapters"
 else
-  fail "registry has exactly three native adapters and six telemetry adapters"
-  printf '        actual targets:\n%s\n' "$actual_targets" >&2
+  fail "registry has exactly four exec-form native CLI adapters"
 fi
 
 if strict="$(python3 "$AUDIT" --strict 2>&1)" \
-   && [[ "$strict" == *'3 thin, 6 telemetry, 0 independent, 0 nondeterministic'* ]]; then
+   && [[ "$strict" == *'1 thin, 0 telemetry, 0 independent, 0 nondeterministic'* ]]; then
   pass "strict authority inventory is green"
 else
   fail "strict authority inventory is green"

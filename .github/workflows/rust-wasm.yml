@@ -39,12 +39,16 @@ on:
       - "package.json"
       - "package-lock.json"
       - "scripts/test-component-node.sh"
-      - "scripts/build-claude-plugin-release.sh"
-      - "scripts/tests/test-claude-plugin-release.sh"
       - "packages/scripts/test-component-node.mjs"
       - ".cargo/config.toml"
       - "rust-toolchain.toml"
       - ".github/workflows/rust-wasm.yml"
+      - ".claude-plugin/**"
+      - "plugins/shepherd/**"
+      - "hooks/hooks.json"
+      - "agents/**"
+      - "skills/**"
+      - "scripts/tests/test-claude-marketplace.sh"
   push:
     branches:
       - main
@@ -61,12 +65,16 @@ on:
       - "package.json"
       - "package-lock.json"
       - "scripts/test-component-node.sh"
-      - "scripts/build-claude-plugin-release.sh"
-      - "scripts/tests/test-claude-plugin-release.sh"
       - "packages/scripts/test-component-node.mjs"
       - ".cargo/config.toml"
       - "rust-toolchain.toml"
       - ".github/workflows/rust-wasm.yml"
+      - ".claude-plugin/**"
+      - "plugins/shepherd/**"
+      - "hooks/hooks.json"
+      - "agents/**"
+      - "skills/**"
+      - "scripts/tests/test-claude-marketplace.sh"
   repository_dispatch:
     types: [wasm, rust-wasm]
   workflow_dispatch:
@@ -268,7 +276,7 @@ jobs:
           node packages/harness-pi/test.mjs
           node packages/scripts/check-package-boundary.mjs
           bash scripts/test-packed-plugin.sh
-          bash scripts/tests/test-claude-plugin-release.sh
+          bash scripts/tests/test-claude-marketplace.sh
       # THE POINT OF THIS JOB. `.cargo/config.toml` sets the runner to
       # `wasmtime --dir=. --dir=/tmp`, so these tests do not merely compile --
       # they execute, and one of them opens a real file-backed database, closes

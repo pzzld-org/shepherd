@@ -8,6 +8,11 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 **The first sprint run as a genuine dogfood, and the plugin's own failures became most of the work. Root drove `/shepherd:spawn` on this repo with two lanes and roughly twenty coders; forty defects surfaced against the framework itself, nine of them became Wave-0 steps that were never in the seed, and the single most expensive one killed ten coders for ~610k tokens before a line was written. Four separate mechanisms turned out to look like verification and not be: a wiring test that greps prose, a `[gates.extra]` block that never executes, an acceptance predicate that passes vacuously, and a version-match test left red across a release. The through-line of every fix below is the same — prove the check can fail.**
 
+### Release recovery and publication
+
+- **Claude distribution and hooks now ship from the repository source.** The normal persistent Claude marketplace install from repository source is verified; native `shepherd claude-hook` covers all four Claude events, with `PreToolUse` and `SubagentStop` fail-closed. The Claude ZIP runtime was removed.
+- **Release publication is limited to verified assets, the tag, and publication.** The gitflow workflow owns the post-publication `vNEXT` branch, version bump, PR, and milestone. Fresh-runner recovery gates cover `wasm-tools`, Windows `cfg`, and GNU libc 2.17 compatibility.
+
 ### Fixed — the toolchain stops lying
 
 - **`lint` counts violations, not violation kinds.** It reported six stale run directories and printed `FAIL (1 violation(s))`. `scripts/check-plugin.sh` is renamed to `.py` — it was always Python wearing a shell extension, which is misleading to anyone grepping for bash; `gate.sh` and `.github/workflows/rust.yml` follow. That rename had three reference sites across two lanes' scopes and one owned by nobody, and no structural check found any of them.

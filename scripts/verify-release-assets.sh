@@ -39,7 +39,6 @@ expected=(
   "shepherd-${version}-x86_64-apple-darwin.tar.gz"
   "shepherd-${version}-x86_64-pc-windows-msvc.zip"
   "shepherd-${version}-x86_64-unknown-linux-gnu.tar.gz"
-  "shepherd-claude-plugin-${version}.zip"
   'shepherd-aarch64-apple-darwin.tar.gz'
   'shepherd-aarch64-unknown-linux-gnu.tar.gz'
   "shepherd-component-${version}-wasm32-wasip2.tar.gz"
@@ -50,8 +49,8 @@ expected=(
 )
 
 entry_count=$(find "$asset_dir" -mindepth 1 -maxdepth 1 -type f | wc -l | tr -d ' ')
-[[ "$entry_count" -eq 34 ]] \
-  || fail "expected exactly 34 files (17 assets and 17 sidecars), found $entry_count"
+[[ "$entry_count" -eq 32 ]] \
+  || fail "expected exactly 32 files (16 assets and 16 sidecars), found $entry_count"
 
 verify_checksum() {
   local asset="$1" check="$2" line_count line declared named actual
@@ -86,7 +85,7 @@ for name in "${expected[@]}"; do
   verify_checksum "$asset" "$check"
   release_files+=("$asset" "$check")
 done
-[[ ${#release_files[@]} -eq 34 ]] || fail 'internal release inventory mismatch'
+[[ ${#release_files[@]} -eq 32 ]] || fail 'internal release inventory mismatch'
 
 temporary=$(mktemp "$list_parent/.shepherd-release-files.XXXXXX")
 cleanup() { [[ -n "${temporary:-}" ]] && rm -f "$temporary"; }
@@ -95,4 +94,4 @@ printf '%s\n' "${release_files[@]}" | LC_ALL=C sort > "$temporary"
 mv -f "$temporary" "$asset_list"
 temporary=''
 trap - EXIT
-printf 'verified 17 exact release assets and 17 checksum sidecars\n'
+printf 'verified 16 exact release assets and 16 checksum sidecars\n'
