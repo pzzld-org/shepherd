@@ -29,12 +29,12 @@ WITH_TARGETS=0
 failures=0
 checked=0
 
-check() {
+run_checked() {
   local label="${1}"
   shift
   checked=$((checked + 1))
   printf '  %-58s' "${label}"
-  if output=$(cargo check "$@" --quiet 2>&1); then
+  if output=$("$@" 2>&1); then
     printf 'ok\n'
   else
     printf 'FAILED\n'
@@ -43,54 +43,60 @@ check() {
   fi
 }
 
+check_cargo() {
+  local label="${1}"
+  shift
+  run_checked "${label}" cargo check "$@" --quiet
+}
+
 echo "== engine: the no_std floor and the capability flags =="
 # Content compilation is a pure allocation-only layer. Check every advertised
 # floor independently so embedding it in a WASM component cannot silently
 # acquire host I/O through the umbrella SDK.
-check "compiler --no-default-features --features alloc" \
+check_cargo "compiler --no-default-features --features alloc" \
   -p shepherd-compiler --no-default-features --features alloc
-check "compiler --no-default-features --features std" \
+check_cargo "compiler --no-default-features --features std" \
   -p shepherd-compiler --no-default-features --features std
-check "compiler --no-default-features --features wasm" \
+check_cargo "compiler --no-default-features --features wasm" \
   -p shepherd-compiler --no-default-features --features wasm
-check "compiler --features full" -p shepherd-compiler --features full
+check_cargo "compiler --features full" -p shepherd-compiler --features full
 
 # The engine's `alloc` flag is the common floor every embedding layer must
 # preserve. It has its own rows because its feature graph is larger.
 # `alloc` is the floor an embedder without a filesystem builds against. If this
 # stops compiling, `no_std` support has been lost, not merely untested.
-check "core --no-default-features --features alloc" \
+check_cargo "core --no-default-features --features alloc" \
   -p shepherd-core --no-default-features --features alloc
-check "core --no-default-features --features std" \
+check_cargo "core --no-default-features --features std" \
   -p shepherd-core --no-default-features --features std
 for ff in chrono config json parse schema tracing uuid; do
-  check "core --no-default-features --features ${ff}" \
+  check_cargo "core --no-default-features --features ${ff}" \
     -p shepherd-core --no-default-features --features "${ff}"
 done
-check "core --features full" -p shepherd-core --features full
+check_cargo "core --features full" -p shepherd-core --features full
 
 echo
 echo "== umbrella: each capability alone, then together =="
 # Each capability is checked in isolation because the weak (`?/`) fan-out is
 # only correct if enabling `json` does NOT conjure the registry. A combined
 # check cannot tell the difference.
-check "sdk --no-default-features --features alloc" \
+check_cargo "sdk --no-default-features --features alloc" \
   -p shepherd --no-default-features --features alloc
-check "sdk --no-default-features --features compiler" \
+check_cargo "sdk --no-default-features --features compiler" \
   -p shepherd --no-default-features --features compiler
 for ff in config json parse schema registry render tracing; do
-  check "sdk --no-default-features --features std,${ff}" \
+  check_cargo "sdk --no-default-features --features std,${ff}" \
     -p shepherd --no-default-features --features "std,${ff}"
 done
-check "sdk --features full" -p shepherd --features full
+check_cargo "sdk --features full" -p shepherd --features full
 
 echo
 echo "== members: standalone, and the binary =="
-check "registry --features full" -p shepherd-registry --features full
-check "render  --features full" -p shepherd-render --features full
-check "component --features full" -p shepherd-component --features full
-check "cli --all-targets" -p shepherd-cli --all-targets
-check "cli --features full --all-targets" -p shepherd-cli --features full --all-targets
+check_cargo "registry --features full" -p shepherd-registry --features full
+check_cargo "render  --features full" -p shepherd-render --features full
+check_cargo "component --features full" -p shepherd-component --features full
+check_cargo "cli --all-targets" -p shepherd-cli --all-targets
+check_cargo "cli --features full --all-targets" -p shepherd-cli --features full --all-targets
 
 if [[ "${WITH_TARGETS}" == "1" ]]; then
   echo
@@ -110,9 +116,9 @@ if [[ "${WITH_TARGETS}" == "1" ]]; then
     fi
   done
 
-  check "core   -> wasm32-unknown-unknown" \
+  check_cargo "core   -> wasm32-unknown-unknown" \
     -p shepherd-core --target wasm32-unknown-unknown --no-default-features --features wasm
-  check "compiler -> wasm32-unknown-unknown" \
+  check_cargo "compiler -> wasm32-unknown-unknown" \
     -p shepherd-compiler --target wasm32-unknown-unknown --no-default-features --features wasm
   # `cargo check` does not promise to leave a linkable component artifact.
   # Build this leg so the validation and WIT extraction below inspect the
@@ -134,27 +140,28 @@ if [[ "${WITH_TARGETS}" == "1" ]]; then
   if command -v wasm-tools >/dev/null 2>&1; then
     component_artifact="target/wasm32-wasip2/debug/shepherd_component.wasm"
     component_wit="target/wasm32-wasip2/debug/shepherd.wit"
-    check "component validate -> wasm32-wasip2" \
+    run_checked "component validate -> wasm32-wasip2" \
       wasm-tools validate "${component_artifact}"
     extract_component_wit() {
+      local source_package='package fl03:shepherd@6.4.5;'
       wasm-tools component wit "${component_artifact}" > "${component_wit}"
       test -s "${component_wit}"
-      grep -Fq 'package fl03:shepherd@6.4.5;' "${component_wit}"
+      grep -Fq "${source_package%;} {" "${component_wit}"
     }
-    check "component extract WIT -> wasm32-wasip2" extract_component_wit
+    run_checked "component extract WIT -> wasm32-wasip2" extract_component_wit
   else
     checked=$((checked + 1))
     failures=$((failures + 1))
     printf '  %-58sFAILED\n' "wasm-tools required for component validation"
     printf '      wasm-tools is required; install it before --targets\n'
   fi
-  check "sdk    -> wasm32-unknown-unknown" \
+  check_cargo "sdk    -> wasm32-unknown-unknown" \
     -p shepherd --target wasm32-unknown-unknown --no-default-features --features wasm
   # The registry is the interesting one: rusqlite picks its backend by target
   # cfg, so this is what proves `sqlite-wasm` is wired to the right one.
-  check "registry -> wasm32-unknown-unknown" \
+  check_cargo "registry -> wasm32-unknown-unknown" \
     -p shepherd-registry --target wasm32-unknown-unknown --no-default-features --features wasm
-  check "render -> wasm32-unknown-unknown" \
+  check_cargo "render -> wasm32-unknown-unknown" \
     -p shepherd-render --target wasm32-unknown-unknown --no-default-features --features wasm
 fi
 

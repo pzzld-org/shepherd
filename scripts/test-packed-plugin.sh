@@ -54,7 +54,8 @@ done
 
 install="$tmp_dir/install"
 mkdir -p "$install"
-npm install --prefix "$install" --ignore-scripts --offline --no-save \
+npm_config_cache="$tmp_dir/npm-cache" \
+  npm install --prefix "$install" --ignore-scripts --no-audit --no-fund --no-save \
   "$tarballs/fl03-component-runtime-6.4.5.tgz" \
   "$tarballs/fl03-harness-claude-6.4.5.tgz" \
   "$tarballs/fl03-harness-codex-6.4.5.tgz" \

@@ -123,6 +123,75 @@ check_absent "WASI registry API tests never call unsupported process id" "${REGI
 
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "${tmp_dir}"' EXIT
+
+# Exercise the feature-matrix dispatcher with real shell commands and a fake
+# tool boundary. The fake cargo deliberately rejects the two non-Cargo
+# commands so this fails if `check-features.sh` accidentally prepends
+# `cargo check` to either one.
+feature_bin="${tmp_dir}/feature-bin"
+mkdir -p "${feature_bin}"
+cat >"${feature_bin}/cargo" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "${FEATURE_TEST_CARGO_LOG}"
+case " ${*} " in
+  *" wasm-tools "*|*" extract_component_wit "*)
+    printf 'cargo: unexpected non-Cargo command: %s\n' "$*" >&2
+    exit 2
+    ;;
+esac
+if [ "${1:-}" = "build" ]; then
+  mkdir -p "${FEATURE_TEST_ROOT}/target/wasm32-wasip2/debug"
+fi
+EOF
+cat >"${feature_bin}/wasm-tools" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "${FEATURE_TEST_WASM_TOOLS_LOG}"
+case "${1:-}:${2:-}" in
+  validate:*)
+    ;;
+  component:wit)
+    printf '%s\n' \
+      'package root:component;' \
+      'world root {' \
+      "  export fl03:shepherd/engine@${FEATURE_TEST_COMPONENT_VERSION};" \
+      '}' \
+      "package fl03:shepherd@${FEATURE_TEST_COMPONENT_VERSION} {" \
+      '}'
+    ;;
+  *)
+    printf 'unexpected wasm-tools command: %s\n' "$*" >&2
+    exit 2
+    ;;
+esac
+EOF
+chmod +x "${feature_bin}/cargo" "${feature_bin}/wasm-tools"
+
+export FEATURE_TEST_ROOT="${ROOT}"
+export FEATURE_TEST_CARGO_LOG="${tmp_dir}/feature-cargo.log"
+export FEATURE_TEST_WASM_TOOLS_LOG="${tmp_dir}/feature-wasm-tools.log"
+FEATURE_TEST_COMPONENT_VERSION="$(sed -n 's/^package fl03:shepherd@\([^;]*\);$/\1/p' "${WIT}")"
+export FEATURE_TEST_COMPONENT_VERSION
+if PATH="${feature_bin}:/usr/bin:/bin" bash "${FEATURES}" --targets >"${tmp_dir}/features.out" 2>&1; then
+  printf '  PASS  feature matrix dispatches component inspection outside cargo\n'
+else
+  printf '  FAIL  feature matrix dispatches component inspection outside cargo\n'
+  sed 's/^/        /' "${tmp_dir}/features.out"
+  failures=$((failures + 1))
+fi
+if grep -Fqx -- 'validate target/wasm32-wasip2/debug/shepherd_component.wasm' "${FEATURE_TEST_WASM_TOOLS_LOG}" \
+  && grep -Fqx -- 'component wit target/wasm32-wasip2/debug/shepherd_component.wasm' "${FEATURE_TEST_WASM_TOOLS_LOG}"; then
+  printf '  PASS  feature matrix invokes both wasm-tools operations directly\n'
+else
+  printf '  FAIL  feature matrix invokes both wasm-tools operations directly\n'
+  failures=$((failures + 1))
+fi
+if grep -Eq -- '(^| )wasm-tools( |$)|(^| )extract_component_wit( |$)' "${FEATURE_TEST_CARGO_LOG}"; then
+  printf '  FAIL  feature matrix never leaks non-Cargo commands into cargo check\n'
+  failures=$((failures + 1))
+else
+  printf '  PASS  feature matrix never leaks non-Cargo commands into cargo check\n'
+fi
+
 fake_bin="${tmp_dir}/bin"
 fake_sdk="${tmp_dir}/wasi-sdk"
 mkdir -p "${fake_bin}" "${fake_sdk}/bin"
