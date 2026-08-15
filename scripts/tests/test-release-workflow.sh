@@ -106,8 +106,12 @@ if rg -Fq 'RuntimeInformation]::ProcessArchitecture' scripts/install-shepherd.ps
 fi
 rg -Fq 'actual=$("$binary" --version)' "$workflow"
 rg -Fq 'expected="shepherd-cli ${VERSION}"' "$workflow"
-rg -Fq 'tar --format ustar --uid 0 --gid 0 --uname root --gname root' "$workflow"
-rg -Fq 'gzip -n' "$workflow"
+[[ $(rg -Fc 'scripts/create-release-tar.sh' "$workflow") -eq 2 ]]
+[[ $(rg -Fc 'TZ=UTC find' "$workflow") -eq 2 ]]
+if rg -Fq -- '--uid 0' "$workflow" || rg -Fq -- '--gid 0' "$workflow"; then
+  printf 'release workflow must not use BSD-only tar ownership flags\n' >&2
+  exit 1
+fi
 rg -Fq "LastWriteTimeUtc = [DateTime]'1980-01-01T00:00:00Z'" "$workflow"
 rg -Fq 'function New-DeterministicZip' "$workflow"
 rg -Fq 'CreateEntry($relative, [System.IO.Compression.CompressionLevel]::Optimal)' "$workflow"

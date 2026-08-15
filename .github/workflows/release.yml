@@ -165,7 +165,7 @@ jobs:
           fi
           scripts/stage-distribution-legal.sh "$staging" --scope native --target "$TARGET"
           chmod 0755 "$staging/shepherd"
-          find "$staging" -type f -exec touch -t 198001010000 {} +
+          TZ=UTC find "$staging" -type f -exec touch -t 198001010000 {} +
           legal_entries=()
           while IFS= read -r entry; do
             legal_entries+=("$entry")
@@ -176,10 +176,9 @@ jobs:
           ((${#legal_entries[@]} > 0))
           versioned="shepherd-${VERSION}-${TARGET}.tar.gz"
           stable="shepherd-${TARGET}.tar.gz"
-          COPYFILE_DISABLE=1 LC_ALL=C \
-            tar --format ustar --uid 0 --gid 0 --uname root --gname root \
-              -C "$staging" -cf - LICENSE THIRD_PARTY_NOTICES.md "${legal_entries[@]}" shepherd \
-            | gzip -n > "dist/${versioned}"
+          scripts/create-release-tar.sh \
+            "$staging" "dist/${versioned}" \
+            LICENSE THIRD_PARTY_NOTICES.md "${legal_entries[@]}" shepherd
           cp "dist/${versioned}" "dist/${stable}"
           (
             cd dist
@@ -320,7 +319,7 @@ jobs:
           mkdir -p "$component_stage"
           cp "$wasm" "$component_stage/shepherd-component.wasm"
           scripts/stage-distribution-legal.sh "$component_stage"
-          find "$component_stage" -type f -exec touch -t 198001010000 {} +
+          TZ=UTC find "$component_stage" -type f -exec touch -t 198001010000 {} +
           component_legal_entries=()
           while IFS= read -r entry; do
             component_legal_entries+=("$entry")
@@ -332,9 +331,9 @@ jobs:
           for asset in \
             "shepherd-component-${VERSION}-wasm32-wasip2.tar.gz" \
             'shepherd-component-wasm32-wasip2.tar.gz'; do
-            LC_ALL=C tar --format ustar --uid 0 --gid 0 --uname root --gname root \
-              -C "$component_stage" -cf - LICENSE THIRD_PARTY_NOTICES.md "${component_legal_entries[@]}" shepherd-component.wasm \
-              | gzip -n > "dist/${asset}"
+            scripts/create-release-tar.sh \
+              "$component_stage" "dist/${asset}" \
+              LICENSE THIRD_PARTY_NOTICES.md "${component_legal_entries[@]}" shepherd-component.wasm
           done
           for package in component-runtime harness-claude harness-codex harness-pi; do
             cp -R "packages/${package}" "stage/packages/${package}"

@@ -61,6 +61,7 @@ gate_fast() {
   step "release installers" bash scripts/tests/test-release-installers.sh
   step "PowerShell installer contract" bash scripts/tests/test-release-installer-powershell-contract.sh
   step "release distribution legal material" bash scripts/tests/test-release-distribution-license.sh
+  step "portable deterministic release tar" bash scripts/tests/test-release-tar-portability.sh
   step "release workflow contract" bash scripts/tests/test-release-workflow.sh
   step "release version authority is falsifiable" python3 scripts/tests/test-version-bump.py
   check_release_version() {
