@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const contract = JSON.parse(readFileSync(join(fileURLToPath(new URL("..", import.meta.url)), "shepherd.pi.json"), "utf8"));
-assert.equal(contract.contract, "fl03:shepherd@6.4.5");
+assert.equal(contract.contract, "fl03:shepherd@6.4.6");
 assert.equal(contract.provider.failClosedWhenAbsent, true);
 assert.deepEqual(contract.provider.requiredMethods, ["capabilities", "spawn", "resume", "stop"]);
 assert.deepEqual(contract.component.requiredExports, [

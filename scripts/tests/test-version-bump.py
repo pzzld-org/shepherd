@@ -87,7 +87,7 @@ def seed_fixture(root: Path) -> None:
         root,
         "package.json",
         {
-            "name": "shepherd-workspace",
+            "name": "@pzzld/shepherd-workspace",
             "version": CURRENT,
             "private": True,
             "workspaces": ["packages/*"],
@@ -95,23 +95,23 @@ def seed_fixture(root: Path) -> None:
     )
     package_manifests = {
         "component-runtime": {
-            "name": "@fl03/component-runtime",
+            "name": "@pzzld/component-runtime",
             "version": CURRENT,
         },
         "harness-claude": {
-            "name": "@fl03/harness-claude",
+            "name": "@pzzld/pi-claude",
             "version": CURRENT,
-            "dependencies": {"@fl03/component-runtime": CURRENT},
+            "dependencies": {"@pzzld/component-runtime": CURRENT},
         },
         "harness-codex": {
-            "name": "@fl03/harness-codex",
+            "name": "@pzzld/pi-codex",
             "version": CURRENT,
-            "dependencies": {"@fl03/component-runtime": CURRENT},
+            "dependencies": {"@pzzld/component-runtime": CURRENT},
         },
         "harness-pi": {
-            "name": "@fl03/harness-pi",
+            "name": "@pzzld/pi-shepherd",
             "version": CURRENT,
-            "dependencies": {"@fl03/component-runtime": CURRENT},
+            "dependencies": {"@pzzld/component-runtime": CURRENT},
         },
     }
     for directory, manifest in package_manifests.items():
@@ -121,33 +121,35 @@ def seed_fixture(root: Path) -> None:
         root,
         "package-lock.json",
         {
-            "name": "shepherd-workspace",
+            "name": "@pzzld/shepherd-workspace",
             "version": CURRENT,
             "lockfileVersion": 3,
             "packages": {
-                "": {"name": "shepherd-workspace", "version": CURRENT},
+                "": {"name": "@pzzld/shepherd-workspace", "version": CURRENT},
                 "packages/component-runtime": {
-                    "name": "@fl03/component-runtime",
+                    "name": "@pzzld/component-runtime",
                     "version": CURRENT,
                 },
                 "packages/harness-claude": {
-                    "name": "@fl03/harness-claude",
+                    "name": "@pzzld/pi-claude",
                     "version": CURRENT,
-                    "dependencies": {"@fl03/component-runtime": CURRENT},
+                    "dependencies": {"@pzzld/component-runtime": CURRENT},
                 },
                 "packages/harness-codex": {
-                    "name": "@fl03/harness-codex",
+                    "name": "@pzzld/pi-codex",
                     "version": CURRENT,
-                    "dependencies": {"@fl03/component-runtime": CURRENT},
+                    "dependencies": {"@pzzld/component-runtime": CURRENT},
                 },
                 "packages/harness-pi": {
-                    "name": "@fl03/harness-pi",
+                    "name": "@pzzld/pi-shepherd",
                     "version": CURRENT,
-                    "dependencies": {"@fl03/component-runtime": CURRENT},
+                    "dependencies": {"@pzzld/component-runtime": CURRENT},
                 },
             },
         },
     )
+    write(root, "bun.lock", repeated_version(7))
+
     write_json(
         root,
         ".claude-plugin/plugin.json",
@@ -266,7 +268,6 @@ The command families are owned by the Rust CLI in v{CURRENT}:
         "scripts/verify-release-assets.sh": 1,
         "scripts/check-cargo-distribution.py": 1,
         "scripts/tests/test-cargo-distribution.py": 1,
-        "scripts/tests/test-cargo-publish.py": 6,
     }
     for relative, count in whole_file_counts.items():
         write(root, relative, repeated_version(count))
@@ -344,7 +345,7 @@ class VersionBumpTests(unittest.TestCase):
             self.assertEqual(package_lock["packages"]["packages/harness-pi"]["version"], NEXT)
             self.assertEqual(
                 package_lock["packages"]["packages/harness-pi"]["dependencies"][
-                    "@fl03/component-runtime"
+                    "@pzzld/component-runtime"
                 ],
                 NEXT,
             )

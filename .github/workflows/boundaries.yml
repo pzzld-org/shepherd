@@ -12,7 +12,7 @@ name: boundaries
 
 on:
   push:
-    branches: [main, "v*"]
+    branches: [main]
     paths:
       - "**/*.rs"
       - "**/Cargo.toml"

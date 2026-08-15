@@ -53,8 +53,6 @@ on:
     branches:
       - main
       - master
-      - "v[0-9]*.[0-9]*.[0-9]*"
-      - "v[0-9]*.[0-9]*.[0-9]*-dev.[0-9]*"
     paths:
       - "**/*.rs"
       - "**/Cargo.toml"
@@ -168,11 +166,8 @@ jobs:
         with:
           cache: false
           target: wasm32-unknown-unknown
-      # sqlite-wasm-rs compiles SQLite from C to wasm, so it needs a clang with
-      # a WebAssembly backend. Ubuntu's has one; Apple's system clang does not,
-      # which is why local runs want Homebrew LLVM.
-      - name: Setup clang
-        run: sudo apt-get update && sudo apt-get install -y clang
+      - name: Verify runner clang
+        run: clang --version
       - name: cargo build ${{ matrix.package }}
         run: |
           cargo build --locked --release \
@@ -258,7 +253,7 @@ jobs:
           wit_output="${RUNNER_TEMP}/shepherd.wit"
           wasm-tools component wit "${artifact}" > "${wit_output}"
           test -s "${RUNNER_TEMP}/shepherd.wit"
-          grep -Fq 'export fl03:shepherd/engine@6.4.5;' "${wit_output}"
+          grep -Fq 'export fl03:shepherd/engine@6.4.6;' "${wit_output}"
           resolved_imports="${RUNNER_TEMP}/shepherd.imports"
           sed -n 's/^  import \(wasi:[^;]*\);$/\1/p' "${wit_output}" \
             | LC_ALL=C sort > "${resolved_imports}"

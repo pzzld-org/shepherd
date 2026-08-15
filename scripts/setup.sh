@@ -14,7 +14,7 @@
 #
 # So it is one command, it is idempotent, and it prints what it changed.
 #
-#   scripts/setup.sh           toolchain, targets, tools, hooks
+#   scripts/setup.sh           toolchain, targets, tools, optional hooks
 #   scripts/setup.sh --wasm    the above, plus wasi-sdk for the WASI suite
 #   scripts/setup.sh --check   report what is missing, change nothing
 set -euo pipefail
@@ -106,7 +106,7 @@ else
   git config core.hooksPath .githooks
   did "core.hooksPath = .githooks"
 fi
-for hook in pre-commit commit-msg pre-push; do
+for hook in commit-msg pre-push; do
   if [ -x ".githooks/${hook}" ]; then
     ok "${hook} executable"
   elif [ "${CHECK_ONLY}" = "1" ]; then

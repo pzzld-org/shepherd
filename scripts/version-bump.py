@@ -46,10 +46,10 @@ INTERNAL_CARGO_DEPENDENCIES = {
 INTERNAL_CARGO_PACKAGE_ALIASES = {"shepherd": "shepherd-sdk"}
 
 NPM_PACKAGES = {
-    "packages/component-runtime/package.json": "@fl03/component-runtime",
-    "packages/harness-claude/package.json": "@fl03/harness-claude",
-    "packages/harness-codex/package.json": "@fl03/harness-codex",
-    "packages/harness-pi/package.json": "@fl03/harness-pi",
+    "packages/component-runtime/package.json": "@pzzld/component-runtime",
+    "packages/harness-claude/package.json": "@pzzld/pi-claude",
+    "packages/harness-codex/package.json": "@pzzld/pi-codex",
+    "packages/harness-pi/package.json": "@pzzld/pi-shepherd",
 }
 
 ADAPTER_PACKAGE_PATHS = tuple(
@@ -169,6 +169,7 @@ def version_rules(current: SemVer, next_version: SemVer) -> tuple[TextRule, ...]
         _whole("Cargo.lock", current, next_version, 7),
         _whole("package.json", current, next_version, 1),
         _whole("package-lock.json", current, next_version, 9),
+        _whole("bun.lock", current, next_version, 7),
         _whole("packages/component-runtime/package.json", current, next_version, 1),
         _whole("packages/harness-claude/package.json", current, next_version, 2),
         _whole("packages/harness-codex/package.json", current, next_version, 2),
@@ -298,7 +299,6 @@ def version_rules(current: SemVer, next_version: SemVer) -> tuple[TextRule, ...]
         _whole("scripts/check-workspace.sh", current, next_version, 2),
         _whole("scripts/check-cargo-distribution.py", current, next_version, 1),
         _whole("scripts/tests/test-cargo-distribution.py", current, next_version, 1),
-        _whole("scripts/tests/test-cargo-publish.py", current, next_version, 6),
         _literal(
             "scripts/gate.sh",
             current,
@@ -518,7 +518,7 @@ def _validate_cargo(contents: Mapping[str, str], version: SemVer, errors: list[s
 def _validate_npm(contents: Mapping[str, str], version: SemVer, errors: list[str]) -> None:
     root = _parse_json("package.json", contents["package.json"], errors)
     if root is not None:
-        _expect(root, ("name",), "shepherd-workspace", "package.json", errors)
+        _expect(root, ("name",), "@pzzld/shepherd-workspace", "package.json", errors)
         _expect(root, ("version",), str(version), "package.json", errors)
         _expect(root, ("workspaces",), ["packages/*"], "package.json", errors)
 
@@ -531,7 +531,7 @@ def _validate_npm(contents: Mapping[str, str], version: SemVer, errors: list[str
         if relative in ADAPTER_PACKAGE_PATHS:
             _expect(
                 manifest,
-                ("dependencies", "@fl03/component-runtime"),
+                ("dependencies", "@pzzld/component-runtime"),
                 str(version),
                 relative,
                 errors,
@@ -539,7 +539,7 @@ def _validate_npm(contents: Mapping[str, str], version: SemVer, errors: list[str
 
     package_lock = _parse_json("package-lock.json", contents["package-lock.json"], errors)
     if package_lock is not None:
-        _expect(package_lock, ("name",), "shepherd-workspace", "package-lock.json", errors)
+        _expect(package_lock, ("name",), "@pzzld/shepherd-workspace", "package-lock.json", errors)
         _expect(package_lock, ("version",), str(version), "package-lock.json", errors)
         _expect(
             package_lock,
@@ -567,7 +567,7 @@ def _validate_npm(contents: Mapping[str, str], version: SemVer, errors: list[str
             if relative in ADAPTER_PACKAGE_PATHS:
                 _expect(
                     package_lock,
-                    ("packages", package_path, "dependencies", "@fl03/component-runtime"),
+                    ("packages", package_path, "dependencies", "@pzzld/component-runtime"),
                     str(version),
                     "package-lock.json",
                     errors,

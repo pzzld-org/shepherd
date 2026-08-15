@@ -27,8 +27,8 @@ function pathExists(packageDir, relativePath) {
 
 function manifestViolations(manifest, packageDir) {
   const violations = [];
-  if (typeof manifest.name !== "string" || !manifest.name.startsWith("@fl03/")) {
-    violations.push("package name must use the @fl03/ namespace");
+  if (typeof manifest.name !== "string" || !manifest.name.startsWith("@pzzld/")) {
+    violations.push("package name must use the @pzzld/ namespace");
   }
   if (!/^\d+\.\d+\.\d+$/.test(manifest.version ?? "")) {
     violations.push("package version must be an exact semver");
@@ -121,20 +121,20 @@ function selfTest() {
   );
   const fixtureDir = "/tmp/package-boundary-fixture";
   const clean = {
-    name: "@fl03/fixture",
-    version: "6.4.5",
+    name: "@pzzld/fixture",
+    version: "6.4.6",
     description: "fixture",
     type: "module",
-    dependencies: { "@fl03/core": "6.4.5" },
+    dependencies: { "@pzzld/core": "6.4.6" },
   };
   assertSelfTest(manifestViolations(clean, fixtureDir).length === 1, "README absence is detected");
   const privateManifest = { ...clean, private: true };
   assertSelfTest(manifestViolations(privateManifest, fixtureDir).includes("private=true prevents a registry clean install"), "private packages are blocked");
-  const workspaceManifest = { ...clean, dependencies: { "@fl03/core": "workspace:*" } };
+  const workspaceManifest = { ...clean, dependencies: { "@pzzld/core": "workspace:*" } };
   assertSelfTest(manifestViolations(workspaceManifest, fixtureDir).some((item) => item.includes("workspace-local reference")), "workspace references are blocked");
   const secondCli = { ...clean, bin: { other: "bin/other.mjs" } };
   assertSelfTest(manifestViolations(secondCli, fixtureDir).some((item) => item.includes("second CLI")), "secondary package CLIs are blocked");
-  const invalidVersion = { ...clean, version: "^6.4.5" };
+  const invalidVersion = { ...clean, version: "^6.4.6" };
   assertSelfTest(manifestViolations(invalidVersion, fixtureDir).some((item) => item.includes("exact semver")), "non-exact versions are blocked");
   console.log("ok: package boundary self-test");
 }

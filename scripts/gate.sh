@@ -44,6 +44,7 @@ step() {
 # No compilation. This is what runs on every commit.
 gate_fast() {
   step "rustfmt" cargo fmt --all --check
+  step "Git hooks are non-blocking" bash scripts/tests/test-git-hooks.sh
   step "engine boundary negative controls" bash .github/scripts/boundary-selftest.sh
   step "npm adapter dependency rules are falsifiable" node packages/scripts/check-deps.mjs --self-test
   step "npm adapter dependency rules" node packages/scripts/check-deps.mjs
@@ -194,7 +195,7 @@ gate_wasm() {
     local resolved_import_count
     wasm-tools component wit "${artifact}" > "${wit_output}"
     test -s "${wit_output}"
-    grep -Fq 'export fl03:shepherd/engine@6.4.5;' "${wit_output}"
+    grep -Fq 'export fl03:shepherd/engine@6.4.6;' "${wit_output}"
     sed -n 's/^  import \(wasi:[^;]*\);$/\1/p' "${wit_output}" \
       | LC_ALL=C sort > "${resolved_imports}"
     resolved_import_count=$(wc -l < "${resolved_imports}" | tr -d ' ')

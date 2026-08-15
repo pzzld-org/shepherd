@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Verify the complete v6.4.5 release payload before GitHub publication.
+# Verify the complete v6.4.6 release payload before GitHub publication.
 set -euo pipefail
 
 fail() {
@@ -30,10 +30,10 @@ bad_entry=$(find "$asset_dir" -mindepth 1 -maxdepth 1 ! -type f -print -quit)
 [[ -z "$bad_entry" ]] || fail "asset directory contains a non-regular entry: $bad_entry"
 
 expected=(
-  "fl03-component-runtime-${version}.tgz"
-  "fl03-harness-claude-${version}.tgz"
-  "fl03-harness-codex-${version}.tgz"
-  "fl03-harness-pi-${version}.tgz"
+  "pzzld-component-runtime-${version}.tgz"
+  "pzzld-pi-claude-${version}.tgz"
+  "pzzld-pi-codex-${version}.tgz"
+  "pzzld-pi-shepherd-${version}.tgz"
   "shepherd-${version}-aarch64-apple-darwin.tar.gz"
   "shepherd-${version}-aarch64-unknown-linux-gnu.tar.gz"
   "shepherd-${version}-x86_64-apple-darwin.tar.gz"

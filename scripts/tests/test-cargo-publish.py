@@ -18,6 +18,7 @@ from types import SimpleNamespace
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts/cargo-publish.py"
 VERSION = "6.4" + ".5"
+NEXT_VERSION = "6.4" + ".6"
 
 
 def publisher_module():
@@ -73,7 +74,7 @@ class CargoPublishTests(unittest.TestCase):
 
     def test_plan_is_the_exact_dependency_order(self) -> None:
         result = subprocess.run(
-            ["python3", str(SCRIPT), "plan", "--version", "6.4.5", "--json"],
+            ["python3", str(SCRIPT), "plan", "--version", NEXT_VERSION, "--json"],
             check=False,
             capture_output=True,
             text=True,
@@ -102,7 +103,7 @@ class CargoPublishTests(unittest.TestCase):
                     str(SCRIPT),
                     "status",
                     "--version",
-                    "6.4.5",
+                    NEXT_VERSION,
                     "--state",
                     str(state),
                 ],
@@ -272,13 +273,13 @@ class CargoPublishTests(unittest.TestCase):
             def do_GET(self) -> None:
                 requests.append(self.path)
                 accepts.append(self.headers.get("Accept"))
-                if self.path.endswith(f"/{VERSION}"):
+                if self.path.endswith(f"/{NEXT_VERSION}"):
                     name = self.path.split("/")[4]
                     body = name.encode()
                     body = json.dumps(
                         {
                             "version": {
-                                "num": VERSION,
+                                "num": NEXT_VERSION,
                                 "checksum": hashlib.sha256(body).hexdigest(),
                             }
                         }
@@ -308,7 +309,7 @@ class CargoPublishTests(unittest.TestCase):
             crates = {}
             for wave_index, wave in enumerate(waves, 1):
                 for name in wave:
-                    artifact = root / f"{name}-6.4.5.crate"
+                    artifact = root / f"{name}-{NEXT_VERSION}.crate"
                     artifact.write_bytes(name.encode())
                     crates[name] = {
                         "artifact": str(artifact),
@@ -322,7 +323,7 @@ class CargoPublishTests(unittest.TestCase):
                 json.dumps(
                     {
                         "schema_version": 1,
-                        "version": "6.4.5",
+                        "version": NEXT_VERSION,
                         "source_head": subprocess.check_output(
                             ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
                         ).strip(),
@@ -342,7 +343,7 @@ class CargoPublishTests(unittest.TestCase):
                         str(SCRIPT),
                         "publish",
                         "--version",
-                        "6.4.5",
+                        NEXT_VERSION,
                         "--state",
                         str(state),
                         "--registry-api",
@@ -368,14 +369,14 @@ class CargoPublishTests(unittest.TestCase):
                 path
                 for name in names
                 for path in (
-                    f"/api/v1/crates/{name}/6.4.5",
-                    f"/api/v1/crates/{name}/{VERSION}/download",
+                    f"/api/v1/crates/{name}/{NEXT_VERSION}",
+                    f"/api/v1/crates/{name}/{NEXT_VERSION}/download",
                     f"/archive/{name}",
                 )
             ]
             self.assertEqual(requests, expected)
             for index, path in enumerate(requests):
-                if path.endswith(f"/{VERSION}"):
+                if path.endswith(f"/{NEXT_VERSION}"):
                     self.assertEqual(accepts[index], "application/json")
                 else:
                     self.assertEqual(accepts[index], "application/octet-stream")

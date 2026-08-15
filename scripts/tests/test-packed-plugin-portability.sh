@@ -130,7 +130,7 @@ registry_port=$(<"$port_file")
 
 cat > "$fixture/packages/component-runtime/package.json" <<EOF
 {
-  "name": "@fl03/component-runtime",
+  "name": "@pzzld/component-runtime",
   "version": "$version",
   "type": "module",
   "dependencies": {
@@ -139,13 +139,18 @@ cat > "$fixture/packages/component-runtime/package.json" <<EOF
 }
 EOF
 for package in claude codex pi; do
+  case "$package" in
+    claude) published='pi-claude' ;;
+    codex) published='pi-codex' ;;
+    pi) published='pi-shepherd' ;;
+  esac
   cat > "$fixture/packages/harness-$package/package.json" <<EOF
 {
-  "name": "@fl03/harness-$package",
+  "name": "@pzzld/$published",
   "version": "$version",
   "type": "module",
   "dependencies": {
-    "@fl03/component-runtime": "$version"
+    "@pzzld/component-runtime": "$version"
   }
 }
 EOF

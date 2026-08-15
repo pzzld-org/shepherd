@@ -32,7 +32,7 @@ class LicenseTextTests(unittest.TestCase):
             root = Path(temp)
             (root / "package-lock.json").write_text(json.dumps({
                 "packages": {
-                    "packages/adapter": {"name": "@fl03/adapter", "dependencies": {"shipped": "1.0.0"}},
+                    "packages/adapter": {"name": "@pzzld/adapter", "dependencies": {"shipped": "1.0.0"}},
                     "node_modules/shipped": {"name": "shipped", "version": "1.0.0"},
                 }
             }))
@@ -40,7 +40,7 @@ class LicenseTextTests(unittest.TestCase):
             try:
                 NOTICES.ROOT = root
                 with self.assertRaisesRegex(RuntimeError, "dependency source is unavailable"):
-                    NOTICES.node_rows(["@fl03/adapter"], root)
+                    NOTICES.node_rows(["@pzzld/adapter"], root)
             finally:
                 NOTICES.ROOT = original_root
 
@@ -71,7 +71,7 @@ class ClosureTests(unittest.TestCase):
             "packages": {
                 "": {"devDependencies": {"build-tool": "1.0.0"}},
                 "packages/component-runtime": {
-                    "name": "@fl03/component-runtime",
+                    "name": "@pzzld/component-runtime",
                     "dependencies": {"runtime-dependency": "1.0.0"},
                 },
                 "node_modules/runtime-dependency": {
@@ -90,7 +90,7 @@ class ClosureTests(unittest.TestCase):
                 "node_modules/build-tool": {"name": "build-tool", "version": "1.0.0"},
             }
         }
-        selected = NOTICES.node_closure(lock, ["@fl03/component-runtime"])
+        selected = NOTICES.node_closure(lock, ["@pzzld/component-runtime"])
         self.assertEqual(selected, ["node_modules/runtime-dependency"])
 
 
