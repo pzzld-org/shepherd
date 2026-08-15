@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The release payload is intentionally fixed at 17 assets. License material
+# The release payload is intentionally fixed at 16 assets. License material
 # therefore belongs inside each archive, never as an unverified extra upload.
 set -euo pipefail
 
@@ -42,7 +42,6 @@ fi
 workflow='.github/workflows/release.yml'
 rg -Fq 'scripts/stage-distribution-legal.sh "$staging"' "$workflow"
 rg -Fq 'scripts/stage-distribution-legal.sh stage' "$workflow"
-rg -Fq 'scripts/stage-distribution-legal.sh "$plugin_root"' scripts/build-claude-plugin-release.sh
 
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/shepherd-release-license.XXXXXX")
 trap 'find "$closure_dir" "$tmp_dir" -depth -delete' EXIT
@@ -79,7 +78,6 @@ cp -R "$payload/THIRD_PARTY_LICENSES" "$payload/package/"
 for package in component-runtime harness-claude harness-codex harness-pi; do
   tar -C "$payload" -czf "$assets/fl03-${package}-6.4.5.tgz" package
 done
-(cd "$payload" && zip -qr "$assets/shepherd-claude-plugin-6.4.5.zip" LICENSE THIRD_PARTY_NOTICES.md THIRD_PARTY_LICENSES)
 scripts/verify-release-distribution.sh "$assets" 6.4.5
 
 cp -R "$assets" "$tmp_dir/tampered"

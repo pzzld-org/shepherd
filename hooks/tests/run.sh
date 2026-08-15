@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Fast deterministic suite for the retained Claude host adapters.
+# Fast deterministic suite for the native Claude marketplace hook carrier.
 
 set -euo pipefail
 
@@ -9,17 +9,7 @@ tests=(
   test_registered_hook_authority.sh
   test_legacy_policy_retirement.sh
   test_registered_hooks_no_python.sh
-  test_config_precedence.sh
-  test_resolve_namespace.sh
-  test_run_scoped_hook_state.sh
-  test_bash_post_ledger.sh
-  test_cwd_changed_telemetry.sh
-  test_run_scoped_capture.sh
-  test_subagent_telemetry.sh
-  test_compaction_run_scope.sh
-  test_seed_preflight_check.sh
   test_hotfix_vehicle_guard.sh
-  test_dups_write_guard.sh
   test_exec_bits.sh
 )
 

@@ -1,6 +1,9 @@
 //! Bounded, canonical resume context from the primary run and registry.
 
-use std::{io::Read, path::Path};
+use std::path::Path;
+
+#[cfg(unix)]
+use std::io::Read;
 
 use shepherd::{
     dispatch::{
@@ -400,6 +403,7 @@ impl Source {
     }
 }
 
+#[cfg(unix)]
 fn safe_parts(relative: &str) -> Result<Vec<&str>, String> {
     if relative.is_empty()
         || relative.len() > 4_096
@@ -419,6 +423,7 @@ fn safe_parts(relative: &str) -> Result<Vec<&str>, String> {
     Ok(parts)
 }
 
+#[cfg(unix)]
 fn is_checkpoint_name(name: &str) -> bool {
     name.starts_with("precompact-")
         && name.ends_with(".json")

@@ -150,6 +150,12 @@ else
   broken "config-I/O gate accepts the real tree (false positive: ${real_hits})"
 fi
 
+if grep -Fq '.github/scripts/boundary-selftest.sh' scripts/gate.sh; then
+  ok "local aggregate gate executes the boundary negative control"
+else
+  broken "local aggregate gate executes the boundary negative control"
+fi
+
 echo
 if [ "${FAILURES}" -gt 0 ]; then
   echo "::error::${FAILURES} boundary gate(s) have no working negative control."

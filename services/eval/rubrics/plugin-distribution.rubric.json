@@ -7,7 +7,7 @@
     {
       "key": "artifact_closure",
       "weight": 3,
-      "desc": "Ships a self-contained release artifact with the generated JavaScript binding, component and core Wasm, and locked runtime dependency, without relying on repository-only files or committing generated output."
+      "desc": "Installs the normal ./plugins/shepherd thin marketplace carrier, dereferenced into a native-only cache with no generated JavaScript, Wasm, Node/npm, or archive runtime dependency."
     },
     {
       "key": "authority_boundary",
@@ -17,13 +17,13 @@
     {
       "key": "install_truth",
       "weight": 2,
-      "desc": "States the actual Claude source limitation, uses a supported ZIP loading boundary, names session-only behavior, and does not claim a GitHub release asset is a persistent marketplace source."
+      "desc": "Uses Claude's supported normal marketplace installation, explains its byte-identical manifest projection, canonical-content symlinks, and native shepherd PATH prerequisite, and does not claim a ZIP or session-only loader is required."
     },
     {
       "key": "release_evidence",
       "weight": 2,
-      "desc": "Requires a deterministic archive name and checksum, reproducibility, safe archive paths, strict manifest validation, exact component inventory, and a real extracted-hook probe using the adjacent runtime."
+      "desc": "Requires strict dereferenced-carrier validation, an isolated normal install, cache inspection for dereferenced links and no Node/npm artifacts, exec-form native hook inventory, and a real native hook probe."
     }
   ],
-  "guidance": "Reward an artifact that is runnable from clean extracted bytes and truthful about Claude loading semantics. Penalize source-checkout fallback, committed generated binaries, network fetches during guarded calls, unverified archives, marketplace claims a release ZIP cannot satisfy, and inclusion of legacy behavioral authorities."
+  "guidance": "Reward a normal thin-carrier marketplace installation that invokes the installed native CLI directly. Penalize archive-only loading, committed generated plugin runtimes, duplicated authored carrier content, network fetches during guarded calls, shell or Node hook authorities, and unverified marketplace claims."
 }

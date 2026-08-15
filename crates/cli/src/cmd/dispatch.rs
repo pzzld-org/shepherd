@@ -1,7 +1,9 @@
 //! Native JSON boundary for dispatch lifecycle and identity operations.
 
-use std::io::Read;
 use std::path::Path;
+
+#[cfg(unix)]
+use std::io::Read;
 
 use serde::de::DeserializeOwned;
 use shepherd::dispatch::ProjectId;
@@ -151,7 +153,7 @@ fn service_error(error: crate::DispatchServiceError) -> CliError {
     CliError::message(error.to_string())
 }
 
-fn read_project_id(path: &Path) -> Result<ProjectId, CliError> {
+pub(crate) fn read_project_id(path: &Path) -> Result<ProjectId, CliError> {
     let bytes = read_regular_nofollow(path, MAX_REQUEST_BYTES)?;
     let document: serde_json::Value = serde_json::from_slice(&bytes).map_err(|error| {
         CliError::message(format!(

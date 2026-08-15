@@ -168,7 +168,7 @@ impl GuardCmd {
     }
 }
 
-fn load_engine(content_dir: Option<PathBuf>) -> Result<GuardEngine, CliError> {
+pub(crate) fn load_engine(content_dir: Option<PathBuf>) -> Result<GuardEngine, CliError> {
     let override_dir = content_dir.or_else(|| {
         std::env::var_os("SHEPHERD_CONTENT_DIR")
             .filter(|value| !value.is_empty())

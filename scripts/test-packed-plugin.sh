@@ -40,12 +40,16 @@ test -f "$tarballs/fl03-component-runtime-6.4.5.tgz"
 test -f "$tarballs/fl03-harness-claude-6.4.5.tgz"
 test -f "$tarballs/fl03-harness-codex-6.4.5.tgz"
 test -f "$tarballs/fl03-harness-pi-6.4.5.tgz"
-tar -tzf "$tarballs/fl03-component-runtime-6.4.5.tgz" | grep -q 'package/runtime/shepherd-component.js'
-tar -tzf "$tarballs/fl03-component-runtime-6.4.5.tgz" | grep -q 'package/runtime/shepherd-component.wasm'
+component_listing="$tmp_dir/component-runtime.list"
+tar -tzf "$tarballs/fl03-component-runtime-6.4.5.tgz" > "$component_listing"
+grep -Fq 'package/runtime/shepherd-component.js' "$component_listing"
+grep -Fq 'package/runtime/shepherd-component.wasm' "$component_listing"
 for package in component-runtime harness-claude harness-codex harness-pi; do
-  tar -tzf "$tarballs/fl03-${package}-6.4.5.tgz" | grep -qx 'package/LICENSE'
-  tar -tzf "$tarballs/fl03-${package}-6.4.5.tgz" | grep -qx 'package/THIRD_PARTY_NOTICES.md'
-  tar -tzf "$tarballs/fl03-${package}-6.4.5.tgz" | grep -Eq '^package/THIRD_PARTY_LICENSES/[0-9a-f]{64}\.txt$'
+  listing="$tmp_dir/${package}.list"
+  tar -tzf "$tarballs/fl03-${package}-6.4.5.tgz" > "$listing"
+  grep -Fxq 'package/LICENSE' "$listing"
+  grep -Fxq 'package/THIRD_PARTY_NOTICES.md' "$listing"
+  grep -Eq '^package/THIRD_PARTY_LICENSES/[0-9a-f]{64}\.txt$' "$listing"
 done
 
 install="$tmp_dir/install"

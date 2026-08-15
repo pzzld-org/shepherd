@@ -7,24 +7,23 @@ language or domain mechanics. These boundaries are the portability contract.
 ## The component boundary
 
 ```text
-Claude hooks   Codex hooks   Pi extension + SubagentProvider
-      \\             |                 /
-       \\            |                /
-        thin host adapters
-                 |
-   @fl03/component-runtime
-                 |
-       fl03:shepherd@6.4.5
-       Rust WebAssembly component
-                 |
-   identity, guard, lifecycle, response,
-   compiler, registry-facing native contracts
+Claude hooks → shepherd claude-hook → native Rust core ─────┐
+                                                             │
+Codex hooks ─┐                                               │
+             ├→ thin host adapters → @fl03/component-runtime│
+Pi extension ┘                         → fl03:shepherd@6.4.5│
+                                           WebAssembly component
+                                                             │
+                        identity, guard, lifecycle, response,
+                        compiler, registry-facing typed Rust contracts
 ```
 
-The component receives typed records and returns typed records. It does not
-inspect a harness's private directory, parse a host's policy file, discover a
-process, or write an arbitrary path. Native Rust owns those host operations
-behind explicit interfaces.
+Claude's `claude-hook` path bypasses the Component Model and invokes the native
+Rust core directly. The Codex and Pi adapters send typed records through the
+Component and receive typed records in return. Neither path inspects a
+harness's private directory, parses a host policy file, discovers a process,
+or writes an arbitrary path; Native Rust owns those host operations behind
+explicit interfaces.
 
 Project identity is deliberately not supplied by a harness. The one native
 CLI derives the primary repository, project ID, active run, and descriptor-safe
@@ -46,30 +45,26 @@ role inference, or filesystem materializers.
 
 ### Claude Code
 
-`@fl03/harness-claude` translates Claude hook envelopes. It uses the component
-for identity, guard decisions, lifecycle plans, response validation, and
-canonical emission. Missing or invalid component runtime fails closed. Claude
-Code's Agent Teams capability is host functionality, not a Shepherd policy
-engine.
+The normal Claude marketplace plugin invokes the native `shepherd claude-hook`
+command directly. That one Rust command owns identity normalization, lifecycle
+planning and persistence, and guard evaluation. Missing identity, lifecycle,
+or project facts fail closed at PreToolUse. Claude Code's Agent Teams capability
+is host functionality, not a Shepherd policy engine.
 
-The source repository intentionally does not contain generated JavaScript or
-Wasm. Claude marketplace GitHub sources can only copy repository content and
-cannot select a generated GitHub release ZIP, so v6.4.5 does not claim that a
-repository-source marketplace install is runnable. The production artifact is
-the complete, bundled `shepherd-claude-plugin-6.4.5.zip` release asset, not a
-self-contained runtime: it needs Node.js 20 or newer to host the intentional
-WebAssembly Component Model adapter and the native `shepherd` executable on
-`PATH` (or an explicit `SHEPHERD_NATIVE_BIN`). Load it for one session with:
+Install the native `shepherd` executable on `PATH`, then install the plugin
+normally from the GitHub marketplace source:
 
 ```sh
-claude --plugin-url \
-  https://github.com/FL03/shepherd/releases/download/v6.4.5/shepherd-claude-plugin-6.4.5.zip
+claude plugin marketplace add FL03/shepherd
+claude plugin install shepherd@shepherd --scope user
 ```
 
-For checksum-first use, download the adjacent `.sha256` sidecar, verify the ZIP,
-and pass the local archive to `claude --plugin-dir`. Both Claude flags are
-session-only. The native `shepherd` executable must already resolve from
-`PATH`, or `SHEPHERD_NATIVE_BIN` must name it explicitly.
+The catalog uses Claude's normal relative `./plugins/shepherd` source entry.
+That thin carrier holds a byte-identical projection of the canonical manifest
+and links to canonical hooks, agents, and skills, which Claude dereferences
+into its installed cache. There is no plugin ZIP, generated JavaScript runtime,
+Node prerequisite, duplicate authored plugin content, or session-only loader
+in the supported Claude installation path.
 
 ### Codex
 
@@ -178,14 +173,16 @@ The durable integration checks are:
 ```sh
 bash scripts/test-component-node.sh
 bash scripts/test-packed-plugin.sh
-bash scripts/tests/test-claude-plugin-release.sh
+bash scripts/tests/test-claude-marketplace.sh
 node packages/scripts/check-package-boundary.mjs
 node packages/scripts/check-deps.mjs
 ```
 
 The packed test must load the installed tarballs, not repository source paths.
-The Claude release test separately loads the extracted release ZIP with no
-repository runtime or dependency fallback.
+The Claude marketplace test strictly validates a dereferenced carrier fixture,
+installs the actual thin carrier in an isolated home/configuration, confirms
+the cache contains no escaping symlinks or Node/npm artifacts, and invokes its
+native hook contract.
 
 ## See also
 

@@ -159,6 +159,31 @@ def seed_fixture(root: Path) -> None:
     )
     write_json(
         root,
+        "plugins/shepherd/.claude-plugin/plugin.json",
+        {
+            "name": "shepherd",
+            "version": CURRENT,
+            "description": f"one fl03:shepherd@{CURRENT} component",
+        },
+    )
+    write_json(
+        root,
+        ".claude-plugin/marketplace.json",
+        {
+            "name": "shepherd",
+            "version": CURRENT,
+            "description": f"one fl03:shepherd@{CURRENT} source plugin",
+            "plugins": [
+                {
+                    "name": "shepherd",
+                    "version": CURRENT,
+                    "source": "./plugins/shepherd",
+                }
+            ],
+        },
+    )
+    write_json(
+        root,
         "packages/harness-pi/shepherd.pi.json",
         {"schema": "shepherd.pi-adapter/1", "contract": f"fl03:shepherd@{CURRENT}"},
     )
@@ -173,8 +198,7 @@ https://raw.githubusercontent.com/FL03/shepherd/v{CURRENT}/scripts/install-sheph
 SHEPHERD_VERSION={CURRENT} bash /tmp/install-shepherd.sh
 https://raw.githubusercontent.com/FL03/shepherd/v{CURRENT}/scripts/install-shepherd.ps1
 $env:SHEPHERD_VERSION = '{CURRENT}'
-`shepherd-claude-plugin-{CURRENT}.zip` is the release archive.
-https://github.com/FL03/shepherd/releases/download/v{CURRENT}/shepherd-claude-plugin-{CURRENT}.zip
+Claude installs the thin marketplace carrier normally.
 
 For an existing pre-v{CURRENT} namespace, preserve the migration threshold.
 The command families are owned by the Rust CLI in v{CURRENT}:
@@ -216,17 +240,17 @@ The command families are owned by the Rust CLI in v{CURRENT}:
     whole_file_counts = {
         "docs/configuration.md": 1,
         "docs/customization.md": 1,
-        "docs/integration.md": 6,
+        "docs/integration.md": 2,
         "content/RECONCILIATION.md": 1,
         "crates/compiler/README.md": 1,
         "crates/component/README.md": 1,
         "crates/sdk/README.md": 1,
         "packages/component-runtime/README.md": 1,
-        "packages/harness-claude/README.md": 5,
+        "packages/harness-claude/README.md": 1,
         "packages/harness-codex/README.md": 1,
         "packages/harness-pi/README.md": 1,
-        "scripts/test-packed-plugin.sh": 13,
-        "scripts/tests/test-release-distribution-license.sh": 8,
+        "scripts/test-packed-plugin.sh": 10,
+        "scripts/tests/test-release-distribution-license.sh": 7,
         "packages/scripts/check-package-boundary.mjs": 3,
         "scripts/verify-release-assets.sh": 1,
     }
@@ -240,7 +264,7 @@ The command families are owned by the Rust CLI in v{CURRENT}:
     write(
         root,
         "scripts/tests/test-release-assets.sh",
-        repeated_version(16) + "\n".join(f"negative-{index}={NEXT}" for index in range(2)) + "\n",
+        repeated_version(15) + "\n".join(f"negative-{index}={NEXT}" for index in range(2)) + "\n",
     )
 
     write(
@@ -294,8 +318,7 @@ class VersionBumpTests(unittest.TestCase):
 
             readme = (root / "README.md").read_text(encoding="utf-8")
             self.assertIn(f"# Shepherd v{NEXT}", readme)
-            self.assertIn(f"shepherd-claude-plugin-{NEXT}.zip", readme)
-            self.assertIn(f"releases/download/v{NEXT}/", readme)
+            self.assertIn("thin marketplace carrier", readme)
             self.assertIn(f"pre-v{CURRENT} namespace", readme)
             self.assertIn(f"owned by the Rust CLI in v{CURRENT}", readme)
             history = (root / "conformance/cases/history/case.json").read_text()
@@ -311,6 +334,32 @@ class VersionBumpTests(unittest.TestCase):
                 ],
                 NEXT,
             )
+            self.assertEqual(
+                (root / ".claude-plugin/plugin.json").read_bytes(),
+                (root / "plugins/shepherd/.claude-plugin/plugin.json").read_bytes(),
+            )
+
+    def test_carrier_manifest_drift_refuses_without_partial_write(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="shepherd-version-carrier-drift-") as temporary:
+            root = Path(temporary)
+            seed_fixture(root)
+            carrier = root / "plugins/shepherd/.claude-plugin/plugin.json"
+            carrier.write_text('{"name":"shepherd","version":"6.4.5"}\n', encoding="utf-8")
+            before = snapshot(root)
+
+            result = self.run_tool(
+                root,
+                "bump",
+                "--current",
+                CURRENT,
+                "--next",
+                NEXT,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("plugins/shepherd/.claude-plugin/plugin.json", result.stderr)
+            self.assertIn("byte-identical", result.stderr)
+            self.assertEqual(snapshot(root), before)
 
     def test_stale_surface_refuses_without_partial_write(self) -> None:
         with tempfile.TemporaryDirectory(prefix="shepherd-version-stale-") as temporary:

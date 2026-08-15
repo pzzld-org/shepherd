@@ -28,11 +28,25 @@ if rg -n '(session_venv|shepherd-venv-ensure|poetry)' \
 fi
 
 transport="$ROOT/packages/component-runtime/src/native-transport.mjs"
-dispatch_lifecycle="$ROOT/packages/harness-claude/hooks/dispatch-lifecycle.mjs"
+claude_hook="$ROOT/crates/cli/src/cmd/claude_hook.rs"
 test -f "$transport"
-rg -q 'packages/harness-claude/hooks/dispatch-lifecycle.mjs' "$ROOT/hooks/hooks.json"
-rg -q 'invokeNativeDispatch' "$dispatch_lifecycle"
-rg -q 'nativeShepherdBin\(\)' "$dispatch_lifecycle"
+test -f "$claude_hook"
+python3 - "$ROOT/hooks/hooks.json" <<'PY'
+import json
+import sys
+
+manifest = json.load(open(sys.argv[1]))
+hooks = [
+    hook
+    for groups in manifest["hooks"].values()
+    for group in groups
+    for hook in group["hooks"]
+]
+assert hooks and all(hook == {"type": "command", "command": "shepherd", "args": ["claude-hook"]} for hook in hooks)
+PY
+rg -q 'plan_lifecycle' "$claude_hook"
+rg -q 'DispatchService::with_context' "$claude_hook"
+rg -q 'GuardValue::from' "$claude_hook"
 
 # Published adapters resolve one native CLI contract: an explicit
 # SHEPHERD_NATIVE_BIN wins, otherwise the bare `shepherd` command is handed to
@@ -40,7 +54,7 @@ rg -q 'nativeShepherdBin\(\)' "$dispatch_lifecycle"
 # published lifecycle.
 rg -q 'SHEPHERD_NATIVE_BIN' "$transport"
 rg -q '[:?] "shepherd"' "$transport"
-if rg -n 'repositoryRoot|join\([^)]*bin[^)]*shepherd|/bin/shepherd' "$dispatch_lifecycle" "$transport"; then
+if rg -n 'repositoryRoot|join\([^)]*bin[^)]*shepherd|/bin/shepherd' "$transport"; then
   printf '%s\n' 'published native transport contains a checkout-specific CLI path' >&2
   exit 1
 fi

@@ -230,28 +230,35 @@ artifact names do not repeat the run or date prefix. `run.json` is written by
 | Codex | `@fl03/harness-codex` | Hook envelopes and lifecycle events only. |
 | Pi | `@fl03/harness-pi` | Requires a `SubagentProvider`-compatible extension such as `pi-subagents`; absent or unready providers fail closed. |
 
-All three adapters load the adjacent `@fl03/component-runtime` package. The
-generated ESM bindings and `.wasm` file are staged during release or embedding;
-they are not hand-authored or committed. `SHEPHERD_COMPONENT_MODULE` is a
-controlled test/embedding override, not a production discovery mechanism.
+The npm embedding adapters load the adjacent `@fl03/component-runtime` package.
+The normal Claude marketplace plugin is different: it invokes `shepherd
+claude-hook` directly. Generated ESM bindings and `.wasm` files are staged for
+component/npm embedding, not hand-authored or committed. `SHEPHERD_COMPONENT_MODULE`
+is a controlled test/embedding override, not a production discovery mechanism.
 
-Claude's production plugin is the complete, bundled
-`shepherd-claude-plugin-6.4.5.zip` release asset, not a self-contained runtime.
-It bundles the generated Component Model runtime but intentionally uses Node.js
-20 or newer to execute that model and requires the native `shepherd` executable
-on `PATH` (or an explicit `SHEPHERD_NATIVE_BIN`). A GitHub-source marketplace
-entry cannot select that generated asset, so the source repository is not
-advertised as an installable Claude marketplace plugin. After meeting those
-prerequisites, load the archive for one Claude session:
+Claude's production plugin is a normal marketplace installation through the
+thin `plugins/shepherd` carrier. Its four Claude hooks use the installed native
+`shepherd` executable directly. The Rust CLI owns identity normalization,
+lifecycle dispatch, and fail-closed
+guard evaluation. The Claude plugin has no ZIP payload, Node runtime, generated
+Component Model carrier, or plugin-local compatibility launcher. Install the
+native CLI first and ensure `shepherd` is on `PATH` before starting Claude.
+
+For a persistent user installation, add the GitHub-hosted catalog and install
+the thin carrier:
 
 ```sh
-claude --plugin-url \
-  https://github.com/FL03/shepherd/releases/download/v6.4.5/shepherd-claude-plugin-6.4.5.zip
+claude plugin marketplace add FL03/shepherd
+claude plugin install shepherd@shepherd --scope user
 ```
 
-For checksum-first use, download the ZIP and its `.sha256` sidecar, verify it,
-then pass the local ZIP to `claude --plugin-dir`. Both flags are session-only;
-they do not create a persistent marketplace installation.
+The marketplace catalog uses the standard relative `./plugins/shepherd` source
+entry. The carrier holds a byte-identical projection of the canonical manifest
+and links to canonical hooks, agents, and skills; Claude dereferences those
+within-marketplace links into its installed cache. It contains no duplicate
+authored plugin content, package manifest, lockfile, or Node bootstrap. No
+`--plugin-url`, `--plugin-dir`, release ZIP, or session-only loader is part of
+the supported installation path.
 
 Cross-harness resume uses the typed identity, lifecycle, dispatch, response,
 and run-artifact contracts. Adapters must not infer role, policy, or run state

@@ -27,10 +27,17 @@ while IFS= read -r line; do
     printf '  FAIL  %s is git-mode %s (must be 100755 — invoked by path)\n' "$path" "$mode"
     fails=$((fails+1))
   fi
-done < <(git ls-files --stage -- \
-  'hooks/scripts/*.sh' \
-  'scripts/*.sh' \
-  'scripts/loc-count.py' 2>/dev/null)
+done < <(
+  git ls-files --stage -- hooks/scripts scripts scripts/loc-count.py 2>/dev/null \
+    | awk -F '\t' '
+        {
+          parts = split($2, path, "/")
+        }
+        parts == 3 && path[1] == "hooks" && path[2] == "scripts" && path[3] ~ /\.sh$/ { print; next }
+        parts == 2 && path[1] == "scripts" && path[2] ~ /\.sh$/ { print; next }
+        $2 == "scripts/loc-count.py" { print }
+      '
+)
 
 if [[ "$checked" -eq 0 ]]; then
   echo "  FAIL  exec-bits: no path-invoked scripts matched — pathspec drift?" >&2

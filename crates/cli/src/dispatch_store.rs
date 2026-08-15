@@ -1,18 +1,23 @@
 //! Primary-run dispatch persistence with descriptor-relative path confinement.
 
-use std::fs::File;
-use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
-use shepherd::{
-    RunState,
-    dispatch::{
-        AgentId, DispatchError, DispatchRecord, DispatchStart, IdentityError, IdentityResolution,
-        NativeIdentity, RootSessionBinding, RunId, SessionId, StopRequest, resolve_native_identity,
-    },
+#[cfg(unix)]
+use std::{
+    fs::File,
+    io::{Read, Write},
+    sync::atomic::{AtomicU64, Ordering},
+    time::{Instant, SystemTime, UNIX_EPOCH},
 };
+
+use shepherd::dispatch::{
+    AgentId, DispatchError, DispatchRecord, DispatchStart, IdentityError, IdentityResolution,
+    NativeIdentity, RootSessionBinding, RunId, SessionId, StopRequest, resolve_native_identity,
+};
+
+#[cfg(unix)]
+use shepherd::RunState;
 
 pub type DispatchStoreResult<T> = core::result::Result<T, DispatchStoreError>;
 
@@ -57,6 +62,7 @@ pub enum DispatchStoreError {
 }
 
 impl DispatchStoreError {
+    #[cfg(unix)]
     fn io(operation: &'static str, path: PathBuf, source: impl Into<std::io::Error>) -> Self {
         Self::Io {
             operation,
@@ -194,6 +200,7 @@ impl DispatchStore {
         platform::resume(self, &active, source_agent_id, input)
     }
 
+    #[cfg(unix)]
     fn record_path(&self, run: &RunId, agent_id: &AgentId) -> PathBuf {
         self.runs_root
             .join(run.as_str())
@@ -201,6 +208,7 @@ impl DispatchStore {
             .join(format!("{}.json", agent_id.as_str()))
     }
 
+    #[cfg(unix)]
     fn root_binding_path(&self, run: &RunId, session_id: &SessionId) -> PathBuf {
         self.runs_root
             .join(run.as_str())
@@ -209,6 +217,7 @@ impl DispatchStore {
     }
 }
 
+#[cfg(unix)]
 fn root_binding_name(session_id: &SessionId) -> String {
     format!(".root-session.{}.json", session_id.as_str())
 }

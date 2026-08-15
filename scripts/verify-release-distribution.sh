@@ -89,9 +89,4 @@ for package in component-runtime harness-claude harness-codex harness-pi; do
   check_legal_material "$destination/package"
   test -f "$destination/package/package.json" || fail "missing package.json in $package tarball"
 done
-destination="$tmp_dir/claude.d"
-extract_zip "$asset_dir/shepherd-claude-plugin-${version}.zip" "$destination"
-# The Claude plugin has many intentional top-level content paths. Check its
-# legal subtree without applying the native archive's top-level restriction.
-check_legal_material "$destination"
-printf 'verified legal material inside 17 exact release assets\n'
+printf 'verified legal material inside 16 exact release assets\n'

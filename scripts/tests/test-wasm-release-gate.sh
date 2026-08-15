@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 WORKFLOW="${ROOT}/.github/workflows/rust-wasm.yml"
+RUST_WORKFLOW="${ROOT}/.github/workflows/rust.yml"
 FEATURES="${ROOT}/scripts/check-features.sh"
 GATE="${ROOT}/scripts/gate.sh"
 TOOLCHAIN="${ROOT}/rust-toolchain.toml"
@@ -39,6 +40,51 @@ check_absent() {
   fi
 }
 
+check_exactly_once() {
+  local label="$1"
+  local file="$2"
+  local needle="$3"
+  local count
+  count=$(grep -Fxc -- "${needle}" "${file}" || true)
+  if [ "${count}" -eq 1 ]; then
+    printf '  PASS  %s\n' "${label}"
+  else
+    printf '  FAIL  %s\n' "${label}"
+    printf '        expected one %s in %s, found %s\n' "${needle}" "${file}" "${count}"
+    failures=$((failures + 1))
+  fi
+}
+
+check_job_contains() {
+  local label="$1"
+  local workflow="$2"
+  local start_job="$3"
+  local end_job="$4"
+  local needle="$5"
+  if sed -n "/^  ${start_job}:/,/^  ${end_job}:/p" "${workflow}" | grep -Fq -- "${needle}"; then
+    printf '  PASS  %s\n' "${label}"
+  else
+    printf '  FAIL  %s\n' "${label}"
+    printf '        missing %s in %s job of %s\n' "${needle}" "${start_job}" "${workflow}"
+    failures=$((failures + 1))
+  fi
+}
+
+check_trigger_paths_contains() {
+  local label="$1"
+  local workflow="$2"
+  local trigger="$3"
+  local end_trigger="$4"
+  local needle="$5"
+  if sed -n "/^  ${trigger}:/,/^  ${end_trigger}:/p" "${workflow}" | grep -Fq -- "${needle}"; then
+    printf '  PASS  %s\n' "${label}"
+  else
+    printf '  FAIL  %s\n' "${label}"
+    printf '        missing %s in %s trigger paths of %s\n' "${needle}" "${trigger}" "${workflow}"
+    failures=$((failures + 1))
+  fi
+}
+
 check_contains "workflow validates extracted WIT bytes" "${WORKFLOW}" 'test -s "${RUNNER_TEMP}/shepherd.wit"'
 check_contains "feature matrix validates the component" "${FEATURES}" 'wasm-tools validate'
 check_contains "feature matrix extracts non-empty WIT" "${FEATURES}" 'wasm-tools component wit'
@@ -46,13 +92,25 @@ check_contains "local wasm gate validates extracted WIT bytes" "${GATE}" 'test -
 check_contains "local wasm gate validates the resolved component export" "${GATE}" "grep -Fq 'export fl03:shepherd/engine@"
 check_contains "workflow validates the resolved component export" "${WORKFLOW}" "grep -Fq 'export fl03:shepherd/engine@"
 check_contains "toolchain installs wasip2" "${TOOLCHAIN}" 'wasm32-wasip2'
+check_contains "toolchain installs Windows cfg target" "${TOOLCHAIN}" 'x86_64-pc-windows-msvc'
 check_contains "setup installs wasip2" "${SETUP}" 'wasm32-wasip2'
 check_contains "setup pins wasm-tools version" "${SETUP}" 'WASM_TOOLS_VERSION="1.254.0"'
 check_contains "setup installs pinned wasm-tools" "${SETUP}" 'cargo install wasm-tools --version "${WASM_TOOLS_VERSION}" --locked --quiet'
 check_contains "workflow pins wasm-tools version" "${WORKFLOW}" 'WASM_TOOLS_VERSION: "1.254.0"'
 check_contains "workflow installs pinned wasm-tools" "${WORKFLOW}" 'cargo install wasm-tools --version "${WASM_TOOLS_VERSION}" --locked'
+check_job_contains "feature matrix pins wasm-tools version" "${RUST_WORKFLOW}" "features" "msrv" 'WASM_TOOLS_VERSION: "1.254.0"'
+check_job_contains "feature matrix installs pinned wasm-tools" "${RUST_WORKFLOW}" "features" "msrv" 'cargo install wasm-tools --version "${WASM_TOOLS_VERSION}" --locked'
 check_contains "local wasm gate validates exact import count" "${GATE}" 'resolved_import_count'
+check_contains "local wasm gate runs the packed distribution probe" "${GATE}" 'scripts/test-packed-plugin.sh'
+check_exactly_once "WASM workflow runs the Claude marketplace carrier once" "${WORKFLOW}" '          bash scripts/tests/test-claude-marketplace.sh'
+for path in ".claude-plugin/**" "plugins/shepherd/**" "hooks/hooks.json" "agents/**" "skills/**" "scripts/tests/test-claude-marketplace.sh"; do
+  check_trigger_paths_contains "PR trigger watches ${path}" "${WORKFLOW}" "pull_request" "push" "      - \"${path}\""
+  check_trigger_paths_contains "push trigger watches ${path}" "${WORKFLOW}" "push" "repository_dispatch" "      - \"${path}\""
+done
+check_contains "aggregate gate cross-checks Windows cfg" "${GATE}" 'x86_64-pc-windows-msvc --no-default-features --features std'
 check_contains "workflow validates exact import count" "${WORKFLOW}" 'resolved_import_count'
+check_absent "WASM workflow excludes retired Claude release builder" "${WORKFLOW}" 'scripts/build-claude-plugin-release.sh'
+check_absent "WASM workflow excludes retired Claude release test" "${WORKFLOW}" 'scripts/tests/test-claude-plugin-release.sh'
 check_contains "WIT exports canonical compile" "${WIT}" 'compile-canonical: func'
 check_contains "WIT exports canonical guard" "${WIT}" 'guard-eval-canonical: func'
 check_contains "WASI registry tests reserve process-safe database paths" "${REGISTRY_MIGRATE}" '.create_new(true)'

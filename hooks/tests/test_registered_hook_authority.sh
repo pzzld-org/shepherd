@@ -16,7 +16,7 @@ else
 fi
 
 if check_out="$(python3 "$AUDIT" --check 2>&1)"; then
-  if [[ "$check_out" == *'3 thin, 6 telemetry, 0 independent, 0 nondeterministic'* ]]; then
+  if [[ "$check_out" == *'1 thin, 0 telemetry, 0 independent, 0 nondeterministic'* ]]; then
     pass "registered-hooks-match-machine-readable-inventory"
   else
     fail "registered-hooks-match-machine-readable-inventory"
@@ -32,13 +32,12 @@ if python3 -c '
 import json, sys
 inventory = json.load(sys.stdin)
 assert inventory["schema"] == "shepherd.hook-authority-inventory/1"
-assert len(inventory["entries"]) == 9
+assert len(inventory["entries"]) == 1
 assert all(not item["forbidden_source_findings"] for item in inventory["entries"])
 assert inventory["counts"]["independent deterministic policy/state authority"] == 0
 assert inventory["counts"]["nondeterministic-policy"] == 0
-assert {item["classification"] for item in inventory["entries"]} <= {
+assert {item["classification"] for item in inventory["entries"]} == {
     "thin component/native adapter",
-    "telemetry-only",
 }
 assert all("workflow_model" not in item["target"] for item in inventory["entries"])
 assert all(item["registration_kind"] == "command" for item in inventory["entries"])
@@ -49,10 +48,10 @@ else
 fi
 
 if strict_out="$(python3 "$AUDIT" --strict 2>&1)" \
-   && [[ "$strict_out" == *'3 thin, 6 telemetry, 0 independent, 0 nondeterministic'* ]]; then
-  pass "strict-gate-allows-only-thin-native-adapters-and-telemetry"
+   && [[ "$strict_out" == *'1 thin, 0 telemetry, 0 independent, 0 nondeterministic'* ]]; then
+  pass "strict-gate-allows-only-native-cli-hook-adapter"
 else
-  fail "strict-gate-allows-only-thin-native-adapters-and-telemetry"
+  fail "strict-gate-allows-only-native-cli-hook-adapter"
   printf '        %s\n' "${strict_out:-no output}" >&2
 fi
 
