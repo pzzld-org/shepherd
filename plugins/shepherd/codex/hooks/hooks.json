@@ -1,0 +1,30 @@
+{
+  "description": "Codex native identity and shared Rust guard transport wiring.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "shepherd codex-hook",
+            "timeout": 5,
+            "statusMessage": "Binding primary Shepherd session identity"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "^(apply_patch|Bash)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "shepherd codex-hook",
+            "timeout": 5,
+            "statusMessage": "Checking Shepherd guard predicates"
+          }
+        ]
+      }
+    ]
+  }
+}

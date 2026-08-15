@@ -5,3 +5,7 @@ shell scripts, and old compatibility launchers from the source checkout.
 Call `claude --plugin-url` a permanent marketplace installation. If the
 manifest parses, publish without an isolated normal install, cached-root
 inspection, or a real native hook probe.
+
+Assume Codex dereferences the Claude carrier symlinks because `plugin add`
+reports success. Reuse Claude's separate `args` field or call `claude-hook` from
+Codex, and skip checking whether skills and hooks reached the installed cache.

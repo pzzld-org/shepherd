@@ -81,14 +81,14 @@ echo "== umbrella: each capability alone, then together =="
 # only correct if enabling `json` does NOT conjure the registry. A combined
 # check cannot tell the difference.
 check_cargo "sdk --no-default-features --features alloc" \
-  -p shepherd --no-default-features --features alloc
+  -p shepherd-sdk --no-default-features --features alloc
 check_cargo "sdk --no-default-features --features compiler" \
-  -p shepherd --no-default-features --features compiler
+  -p shepherd-sdk --no-default-features --features compiler
 for ff in config json parse schema registry render tracing; do
   check_cargo "sdk --no-default-features --features std,${ff}" \
-    -p shepherd --no-default-features --features "std,${ff}"
+    -p shepherd-sdk --no-default-features --features "std,${ff}"
 done
-check_cargo "sdk --features full" -p shepherd --features full
+check_cargo "sdk --features full" -p shepherd-sdk --features full
 
 echo
 echo "== members: standalone, and the binary =="
@@ -156,7 +156,7 @@ if [[ "${WITH_TARGETS}" == "1" ]]; then
     printf '      wasm-tools is required; install it before --targets\n'
   fi
   check_cargo "sdk    -> wasm32-unknown-unknown" \
-    -p shepherd --target wasm32-unknown-unknown --no-default-features --features wasm
+    -p shepherd-sdk --target wasm32-unknown-unknown --no-default-features --features wasm
   # The registry is the interesting one: rusqlite picks its backend by target
   # cfg, so this is what proves `sqlite-wasm` is wired to the right one.
   check_cargo "registry -> wasm32-unknown-unknown" \

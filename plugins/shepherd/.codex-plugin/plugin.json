@@ -1,0 +1,20 @@
+{
+  "name": "shepherd",
+  "version": "6.4.5",
+  "description": "Harness-neutral sprint execution and governance through one native Shepherd CLI.",
+  "keywords": [
+    "shepherd",
+    "orchestration",
+    "governance",
+    "codex"
+  ],
+  "skills": "./codex/skills/",
+  "hooks": "./codex/hooks/hooks.json",
+  "interface": {
+    "displayName": "Shepherd",
+    "shortDescription": "Native sprint execution and governance for Codex",
+    "developerName": "FL03",
+    "category": "development",
+    "websiteURL": "https://github.com/FL03/shepherd"
+  }
+}

@@ -41,7 +41,7 @@ def repeated_version(count: int) -> str:
 
 def seed_fixture(root: Path) -> None:
     internal = (
-        "shepherd = { default-features = false, path = \"crates/sdk\", version = \"6.4.5\" }\n"
+        "shepherd = { default-features = false, package = \"shepherd-sdk\", path = \"crates/sdk\", version = \"6.4.5\" }\n"
         "shepherd-core = { default-features = false, path = \"crates/core\", "
         "version = \"6.4.5\" }\n"
         "shepherd-compiler = { default-features = false, path = \"crates/compiler\", "
@@ -65,7 +65,7 @@ def seed_fixture(root: Path) -> None:
     lock_packages = "\n".join(
         f'[[package]]\nname = "{name}"\nversion = "{CURRENT}"\n'
         for name in (
-            "shepherd",
+            "shepherd-sdk",
             "shepherd-cli",
             "shepherd-compiler",
             "shepherd-component",
@@ -76,7 +76,7 @@ def seed_fixture(root: Path) -> None:
     )
     write(root, "Cargo.lock", f"version = 4\n\n{lock_packages}")
     for crate in CRATES:
-        package_name = "shepherd" if crate == "sdk" else f"shepherd-{crate}"
+        package_name = "shepherd-sdk" if crate == "sdk" else f"shepherd-{crate}"
         write(
             root,
             f"crates/{crate}/Cargo.toml",
@@ -168,6 +168,16 @@ def seed_fixture(root: Path) -> None:
     )
     write_json(
         root,
+        "plugins/shepherd/.codex-plugin/plugin.json",
+        {
+            "name": "shepherd",
+            "version": CURRENT,
+            "skills": "./codex/skills/",
+            "hooks": "./codex/hooks/hooks.json",
+        },
+    )
+    write_json(
+        root,
         ".claude-plugin/marketplace.json",
         {
             "name": "shepherd",
@@ -199,6 +209,7 @@ SHEPHERD_VERSION={CURRENT} bash /tmp/install-shepherd.sh
 https://raw.githubusercontent.com/FL03/shepherd/v{CURRENT}/scripts/install-shepherd.ps1
 $env:SHEPHERD_VERSION = '{CURRENT}'
 Claude installs the thin marketplace carrier normally.
+codex plugin marketplace add FL03/shepherd --ref v{CURRENT}
 
 For an existing pre-v{CURRENT} namespace, preserve the migration threshold.
 The command families are owned by the Rust CLI in v{CURRENT}:
@@ -240,7 +251,7 @@ The command families are owned by the Rust CLI in v{CURRENT}:
     whole_file_counts = {
         "docs/configuration.md": 1,
         "docs/customization.md": 1,
-        "docs/integration.md": 2,
+        "docs/integration.md": 3,
         "content/RECONCILIATION.md": 1,
         "crates/compiler/README.md": 1,
         "crates/component/README.md": 1,
@@ -253,6 +264,9 @@ The command families are owned by the Rust CLI in v{CURRENT}:
         "scripts/tests/test-release-distribution-license.sh": 7,
         "packages/scripts/check-package-boundary.mjs": 3,
         "scripts/verify-release-assets.sh": 1,
+        "scripts/check-cargo-distribution.py": 1,
+        "scripts/tests/test-cargo-distribution.py": 1,
+        "scripts/tests/test-cargo-publish.py": 6,
     }
     for relative, count in whole_file_counts.items():
         write(root, relative, repeated_version(count))
@@ -338,6 +352,10 @@ class VersionBumpTests(unittest.TestCase):
                 (root / ".claude-plugin/plugin.json").read_bytes(),
                 (root / "plugins/shepherd/.claude-plugin/plugin.json").read_bytes(),
             )
+            codex = json.loads(
+                (root / "plugins/shepherd/.codex-plugin/plugin.json").read_text()
+            )
+            self.assertEqual(codex["version"], NEXT)
 
     def test_carrier_manifest_drift_refuses_without_partial_write(self) -> None:
         with tempfile.TemporaryDirectory(prefix="shepherd-version-carrier-drift-") as temporary:

@@ -1,0 +1,5 @@
+Publish the CLI first and let Cargo find whichever shepherd crate is available.
+`cargo package --list` is enough. Binstall can guess the GitHub filename and
+silently compile if the archive is missing. Put the registry token on the
+command line, retry failed versions without comparing bytes, and create the
+GitHub tag before checking whether dependent crates reached crates.io.

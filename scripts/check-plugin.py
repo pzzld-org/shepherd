@@ -44,6 +44,8 @@ CARRIER_LINKS = {
     "agents": "../../agents",
     "skills": "../../skills",
 }
+CODEX_MARKETPLACE = Path(".agents/plugins/marketplace.json")
+CODEX_CARRIER = Path("plugins/shepherd/codex")
 
 PLUGIN_ROOT_REF = re.compile(r"\$\{CLAUDE_PLUGIN_ROOT\}/([^\"'\s)\\]+)")
 
@@ -235,6 +237,65 @@ def rule_thin_carrier_projects_canonical_content(root: Path) -> list[str]:
     return bad
 
 
+def rule_codex_carrier_is_regular_and_canonical(root: Path) -> list[str]:
+    """Codex copies regular files only, so its projection must close without links."""
+    bad = []
+    marketplace_path = root / CODEX_MARKETPLACE
+    carrier = root / "plugins" / "shepherd"
+    manifest_path = carrier / ".codex-plugin" / "plugin.json"
+    if not marketplace_path.is_file():
+        return [f"{CODEX_MARKETPLACE} is missing"]
+    marketplace = json.loads(marketplace_path.read_text())
+    expected_source = {"source": "local", "path": "./plugins/shepherd"}
+    plugins = marketplace.get("plugins", [])
+    if len(plugins) != 1 or plugins[0].get("source") != expected_source:
+        bad.append(f"{CODEX_MARKETPLACE} must expose one local ./plugins/shepherd source")
+    if not manifest_path.is_file() or manifest_path.is_symlink():
+        bad.append("plugins/shepherd/.codex-plugin/plugin.json must be a regular file")
+        return bad
+    manifest = json.loads(manifest_path.read_text())
+    canonical = json.loads((root / ".claude-plugin" / "plugin.json").read_text())
+    if manifest.get("version") != canonical.get("version"):
+        bad.append("Claude and Codex plugin manifest versions must match")
+    if manifest.get("skills") != "./codex/skills/":
+        bad.append("Codex manifest skills must be ./codex/skills/")
+    if manifest.get("hooks") != "./codex/hooks/hooks.json":
+        bad.append("Codex manifest hooks must be ./codex/hooks/hooks.json")
+    codex_root = root / CODEX_CARRIER
+    if not codex_root.is_dir():
+        return [*bad, f"{CODEX_CARRIER} is missing"]
+    for path in codex_root.rglob("*"):
+        if path.is_symlink():
+            bad.append(f"{path.relative_to(root)} must be a regular Codex carrier entry")
+    source_skills = sorted((root / "skills").glob("*/SKILL.md"))
+    carrier_skills = sorted((codex_root / "skills").glob("*/SKILL.md"))
+    if [path.parent.name for path in source_skills] != [
+        path.parent.name for path in carrier_skills
+    ]:
+        bad.append("Codex skill inventory must match the canonical root skills")
+    else:
+        for source, projected in zip(source_skills, carrier_skills, strict=True):
+            if source.read_bytes() != projected.read_bytes():
+                bad.append(f"{projected.relative_to(root)} differs from {source.relative_to(root)}")
+    hooks_path = codex_root / "hooks" / "hooks.json"
+    if not hooks_path.is_file() or hooks_path.is_symlink():
+        bad.append("plugins/shepherd/codex/hooks/hooks.json must be a regular file")
+    else:
+        hooks = json.loads(hooks_path.read_text()).get("hooks", {})
+        handlers = [
+            hook
+            for groups in hooks.values()
+            for group in groups
+            for hook in group.get("hooks", [])
+        ]
+        if not handlers or any(
+            hook.get("command") != "shepherd codex-hook" or "args" in hook
+            for hook in handlers
+        ):
+            bad.append("every Codex hook must invoke the native `shepherd codex-hook` command")
+    return bad
+
+
 def rule_configured_gates_resolve(root: Path) -> list[str]:
     """Paths named by `.shepherd/shepherd.toml` gate commands exist.
 
@@ -277,6 +338,7 @@ RULES = [
     rule_skills_are_shaped_correctly,
     rule_generated_skills_are_thin,
     rule_thin_carrier_projects_canonical_content,
+    rule_codex_carrier_is_regular_and_canonical,
     rule_configured_gates_resolve,
 ]
 
@@ -338,6 +400,21 @@ def self_test(root: Path) -> int:
         (carrier / "hooks" / "hooks.json").symlink_to("../../../hooks/hooks.json")
         (carrier / "agents").symlink_to("../../agents")
         (carrier / "skills").symlink_to("../../skills")
+        (tmp / ".agents" / "plugins").mkdir(parents=True)
+        (tmp / CODEX_MARKETPLACE).write_text(
+            '{"name":"shepherd","plugins":[{"name":"shepherd","source":{"source":"local","path":"./plugins/shepherd"}}]}'
+        )
+        (carrier / ".codex-plugin").mkdir()
+        (carrier / ".codex-plugin" / "plugin.json").write_text(
+            '{"name":"shepherd","skills":"./codex/skills/","hooks":"./codex/hooks/hooks.json"}'
+        )
+        codex = tmp / CODEX_CARRIER
+        (codex / "skills" / "demo").mkdir(parents=True)
+        (codex / "skills" / "demo" / "SKILL.md").write_text("# demo")
+        (codex / "hooks").mkdir()
+        (codex / "hooks" / "hooks.json").write_text(
+            '{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"shepherd codex-hook"}]}]}}'
+        )
         mutate(tmp)
         return tmp
 
@@ -372,6 +449,9 @@ def self_test(root: Path) -> int:
             '{"name":"drifted"}'
         )
 
+    def codex_carrier_drift(tmp: Path) -> None:
+        (tmp / CODEX_CARRIER / "skills" / "demo" / "SKILL.md").write_text("drift")
+
     def broken_gate(tmp: Path) -> None:
         (tmp / ".shepherd").mkdir()
         (tmp / ".shepherd" / "shepherd.toml").write_text(
@@ -387,6 +467,7 @@ def self_test(root: Path) -> int:
         (rule_skills_are_shaped_correctly, skill_without_body),
         (rule_generated_skills_are_thin, duplicate_skill_authority),
         (rule_thin_carrier_projects_canonical_content, carrier_manifest_drift),
+        (rule_codex_carrier_is_regular_and_canonical, codex_carrier_drift),
         (rule_configured_gates_resolve, broken_gate),
     ]
 

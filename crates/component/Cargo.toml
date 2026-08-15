@@ -1,6 +1,7 @@
 [package]
 description = "The WebAssembly component-model boundary for the harness-neutral Shepherd engine and content compiler."
 name = "shepherd-component"
+publish = false
 
 authors.workspace = true
 categories.workspace = true

@@ -37,7 +37,7 @@ version = "6.4.5"
 # from each member's own `[features]` graph instead.
 [workspace.dependencies]
 # sdk — the umbrella every consumer links
-shepherd = { default-features = false, path = "crates/sdk", version = "6.4.5" }
+shepherd = { default-features = false, package = "shepherd-sdk", path = "crates/sdk", version = "6.4.5" }
 # members, in dependency order
 shepherd-core = { default-features = false, path = "crates/core", version = "6.4.5" }
 shepherd-compiler = { default-features = false, path = "crates/compiler", version = "6.4.5" }

@@ -56,6 +56,16 @@ version = "v{{version}}"
 no-dev-version = true
 tag-name = "v{{version}}"
 
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/shepherd-{ version }-{ target }.tar.gz"
+bin-dir = "{ bin }{ binary-ext }"
+pkg-fmt = "tgz"
+disabled-strategies = ["quick-install", "compile"]
+
+[package.metadata.binstall.overrides.x86_64-pc-windows-msvc]
+pkg-url = "{ repo }/releases/download/v{ version }/shepherd-{ version }-{ target }.zip"
+pkg-fmt = "zip"
+
 [dependencies]
 # sdk — the umbrella, and the only route to the engine. A binary pins the
 # capabilities it needs here rather than exposing them as its own flags: the

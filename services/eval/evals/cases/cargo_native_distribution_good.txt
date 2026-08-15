@@ -1,0 +1,9 @@
+Publish shepherd-core and shepherd-compiler first, then registry and render,
+then shepherd-sdk, then shepherd-cli. The SDK package keeps `[lib] name =
+"shepherd"`, and dependants alias package shepherd-sdk under key shepherd.
+Generate and verify the compiler package corpus byte-for-byte, then compile the
+unpacked crates. Cargo Binstall uses only versioned Shepherd archives and has
+quick-install and compile disabled. Before every resume, download the exact
+published crate and compare it with the prepared SHA-256. Pass the token only
+through Cargo's environment, require explicit confirmation, and create the
+GitHub release only after every crate is visible and equal.

@@ -1,0 +1,29 @@
+{
+  "kind": "cargo-native-distribution",
+  "subject": "A Cargo-native Shepherd release and recovery decision.",
+  "scale": 5,
+  "threshold": 85,
+  "dimensions": [
+    {
+      "key": "package_identity",
+      "weight": 2,
+      "desc": "Publishes shepherd-sdk while preserving the shepherd Rust crate/import, publishes the six-crate dependency closure in order, and excludes shepherd-component."
+    },
+    {
+      "key": "package_closure",
+      "weight": 3,
+      "desc": "Compiles unpacked crate artifacts and ships a byte-exact generated compiler corpus without checkout-relative production inputs."
+    },
+    {
+      "key": "binstall_truth",
+      "weight": 2,
+      "desc": "Maps every supported target to immutable versioned Shepherd archives with a root binary and forbids compile or quick-install fallback."
+    },
+    {
+      "key": "transaction_recovery",
+      "weight": 3,
+      "desc": "Records local crate checksums, compares existing immutable registry bytes, resumes dependency waves, requires explicit confirmation, and publishes GitHub only after crates are visible."
+    }
+  ],
+  "guidance": "Penalize package-list-only evidence, the unrelated shepherd package, checkout-relative includes, filename heuristics, silent Binstall fallback, unverified retries, credential arguments, and GitHub-first publication."
+}

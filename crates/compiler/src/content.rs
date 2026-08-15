@@ -111,6 +111,15 @@ pub fn embedded_guard_sources() -> (EmbeddedSources, EmbeddedSources) {
     (embedded::EMBEDDED_PREDICATES, embedded::EMBEDDED_ROLES)
 }
 
+/// Return the canonical handoff template embedded from generated package content.
+#[must_use]
+pub fn embedded_handoff_template() -> &'static str {
+    embedded::EMBEDDED_TEMPLATES
+        .iter()
+        .find_map(|(path, raw)| (*path == "content/templates/handoff.md").then_some(*raw))
+        .expect("generated package content must contain content/templates/handoff.md")
+}
+
 #[derive(Clone, Copy)]
 enum ChildKind {
     MarkdownFile,

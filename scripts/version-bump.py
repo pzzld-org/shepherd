@@ -31,7 +31,7 @@ CRATE_MANIFESTS = {
     "crates/core/Cargo.toml": "shepherd-core",
     "crates/registry/Cargo.toml": "shepherd-registry",
     "crates/render/Cargo.toml": "shepherd-render",
-    "crates/sdk/Cargo.toml": "shepherd",
+    "crates/sdk/Cargo.toml": "shepherd-sdk",
 }
 
 INTERNAL_CARGO_DEPENDENCIES = {
@@ -42,6 +42,8 @@ INTERNAL_CARGO_DEPENDENCIES = {
     "shepherd-registry": "crates/registry",
     "shepherd-render": "crates/render",
 }
+
+INTERNAL_CARGO_PACKAGE_ALIASES = {"shepherd": "shepherd-sdk"}
 
 NPM_PACKAGES = {
     "packages/component-runtime/package.json": "@fl03/component-runtime",
@@ -173,6 +175,7 @@ def version_rules(current: SemVer, next_version: SemVer) -> tuple[TextRule, ...]
         _whole("packages/harness-pi/package.json", current, next_version, 2),
         _whole(".claude-plugin/plugin.json", current, next_version, 2),
         _whole("plugins/shepherd/.claude-plugin/plugin.json", current, next_version, 2),
+        _whole("plugins/shepherd/.codex-plugin/plugin.json", current, next_version, 1),
         _whole(".claude-plugin/marketplace.json", current, next_version, 3),
         _whole("packages/harness-pi/shepherd.pi.json", current, next_version, 1),
         _literal(
@@ -217,9 +220,16 @@ def version_rules(current: SemVer, next_version: SemVer) -> tuple[TextRule, ...]
             "$env:SHEPHERD_VERSION = '{version}'",
             "README PowerShell installer version",
         ),
+        _literal(
+            "README.md",
+            current,
+            next_version,
+            "codex plugin marketplace add FL03/shepherd --ref v{version}",
+            "README Codex marketplace release ref",
+        ),
         _whole("docs/configuration.md", current, next_version, 1),
         _whole("docs/customization.md", current, next_version, 1),
-        _whole("docs/integration.md", current, next_version, 2),
+        _whole("docs/integration.md", current, next_version, 3),
         _whole("content/RECONCILIATION.md", current, next_version, 1),
         _whole("crates/compiler/README.md", current, next_version, 1),
         _whole("crates/component/README.md", current, next_version, 1),
@@ -286,6 +296,9 @@ def version_rules(current: SemVer, next_version: SemVer) -> tuple[TextRule, ...]
             "feature-gate WIT assertion",
         ),
         _whole("scripts/check-workspace.sh", current, next_version, 2),
+        _whole("scripts/check-cargo-distribution.py", current, next_version, 1),
+        _whole("scripts/tests/test-cargo-distribution.py", current, next_version, 1),
+        _whole("scripts/tests/test-cargo-publish.py", current, next_version, 6),
         _literal(
             "scripts/gate.sh",
             current,
@@ -461,6 +474,12 @@ def _validate_cargo(contents: Mapping[str, str], version: SemVer, errors: list[s
                         f"Cargo.toml: workspace.dependencies.{name}.version must be "
                         f"{str(version)!r}, found {dependency.get('version')!r}"
                     )
+                expected_package = INTERNAL_CARGO_PACKAGE_ALIASES.get(name)
+                if expected_package is not None and dependency.get("package") != expected_package:
+                    errors.append(
+                        f"Cargo.toml: workspace.dependencies.{name}.package must be "
+                        f"{expected_package!r}, found {dependency.get('package')!r}"
+                    )
 
     for relative, expected_name in CRATE_MANIFESTS.items():
         manifest = _parse_toml(relative, contents[relative], errors)
@@ -578,6 +597,14 @@ def _validate_plugin(contents: Mapping[str, str], version: SemVer, errors: list[
                 ".claude-plugin/plugin.json: description must contain exactly one "
                 f"{contract!r} contract"
             )
+
+    codex_path = "plugins/shepherd/.codex-plugin/plugin.json"
+    codex = _parse_json(codex_path, contents[codex_path], errors)
+    if codex is not None:
+        _expect(codex, ("name",), "shepherd", codex_path, errors)
+        _expect(codex, ("version",), str(version), codex_path, errors)
+        _expect(codex, ("skills",), "./codex/skills/", codex_path, errors)
+        _expect(codex, ("hooks",), "./codex/hooks/hooks.json", codex_path, errors)
 
     pi_contract = _parse_json(
         "packages/harness-pi/shepherd.pi.json",

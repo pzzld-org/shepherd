@@ -1,0 +1,64 @@
+{
+  "actions": {
+    "Swatinem/rust-cache": {
+      "selector": "latest-release",
+      "sha": "6323deb102c322ba6fcbdcafc7e3dddab59af2b6",
+      "tag": "v2.9.2"
+    },
+    "actions-rust-lang/setup-rust-toolchain": {
+      "selector": "latest-release",
+      "sha": "166cdcfd11aee3cb47222f9ddb555ce30ddb9659",
+      "tag": "v1.17.0"
+    },
+    "actions/cache": {
+      "selector": "latest-release",
+      "sha": "55cc8345863c7cc4c66a329aec7e433d2d1c52a9",
+      "tag": "v6.1.0"
+    },
+    "actions/checkout": {
+      "selector": "latest-release",
+      "sha": "3d3c42e5aac5ba805825da76410c181273ba90b1",
+      "tag": "v7.0.1"
+    },
+    "actions/download-artifact": {
+      "selector": "latest-release",
+      "sha": "3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
+      "tag": "v8.0.1"
+    },
+    "actions/upload-artifact": {
+      "selector": "latest-release",
+      "sha": "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+      "tag": "v7.0.1"
+    },
+    "anthropics/claude-code-action": {
+      "channel": "v1",
+      "selector": "highest-stable-tag-plus-channel",
+      "sha": "9d7150bc8a3dae8149739a88019d192b579ad90c",
+      "tag": "v1.0.193"
+    },
+    "github/codeql-action": {
+      "channel": "v4",
+      "selector": "highest-stable-tag-in-supported-major",
+      "sha": "ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd",
+      "tag": "v4.37.7"
+    },
+    "mlugg/setup-zig": {
+      "selector": "latest-release",
+      "sha": "d1434d08867e3ee9daa34448df10607b98908d29",
+      "tag": "v2.2.1"
+    },
+    "mozilla-actions/sccache-action": {
+      "selector": "latest-release",
+      "sha": "fc920bf0ec8de6ee65d409111f7ec508035751ba",
+      "tag": "v0.0.11"
+    },
+    "taiki-e/install-action": {
+      "selector": "latest-release",
+      "sha": "b27e114ddbae5cc01df19a22cf70a124d5177567",
+      "tag": "v2.86.0"
+    }
+  },
+  "refresh_by": "2026-08-29T17:43:49Z",
+  "schema": 1,
+  "verified_at": "2026-08-15T17:43:49Z"
+}

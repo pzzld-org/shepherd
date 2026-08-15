@@ -367,7 +367,10 @@ try {
     [System.IO.Directory]::CreateDirectory($danglingInstall) | Out-Null
     $danglingDestination = Join-Path $danglingInstall 'shepherd.exe'
     $missingTarget = Join-Path $temporary 'dangling-link-destination/missing.exe'
+    [System.IO.File]::WriteAllText($missingTarget, 'dangling link target')
     New-Item -ItemType SymbolicLink -Path $danglingDestination -Target $missingTarget | Out-Null
+    [System.IO.File]::Delete($missingTarget)
+    Assert-True (-not [System.IO.File]::Exists($missingTarget)) 'dangling-link fixture target was not removed'
     $env:SHEPHERD_INSTALL_DIR = $danglingInstall
     Expect-Failure { & $installer | Out-Null } 'force treated a dangling destination symbolic link as a file'
     $danglingAttributes = [System.IO.File]::GetAttributes($danglingDestination)
