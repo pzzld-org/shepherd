@@ -43,12 +43,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@v7 # v7
       - name: Setup the Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
+        uses: actions-rust-lang/setup-rust-toolchain@v1 # v1
         with:
-          targets: wasm32-unknown-unknown
-      - uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+          target: wasm32-unknown-unknown
+      - uses: swatinem/rust-cache@v2# v2
 
       # 0. The three grep-based gates below only enforce anything as long as
       #    their regex can still fail. That property used to live in a prose
@@ -173,7 +173,7 @@ jobs:
       - name: the engine parses configuration but does not go looking for it
         run: |
           set -euo pipefail
-          forbidden='config::Environment|Environment::with_prefix|File::with_name|File::from\(|add_source\(config::File::from\(' 
+          forbidden='config::Environment|Environment::with_prefix|File::with_name|File::from\(|add_source\(config::File::from\('
           hits=$(grep -rnE "${forbidden}" \
                    crates/core/src crates/registry/src crates/render/src crates/sdk/lib.rs \
                    | grep -vE '^[^:]+:[0-9]+:[[:space:]]*(//|\*|/\*)' || true)
