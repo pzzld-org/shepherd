@@ -79,14 +79,180 @@ function Assert-Checksum([string]$Archive, [string]$ChecksumFile) {
     if ($actual -cne $declared) { Fail 'SHA-256 checksum verification failed' }
 }
 
-function Publish-Binary([string]$Ready, [string]$Destination, [bool]$Force) {
-    if (Test-Path -LiteralPath $Destination) {
-        if (-not $Force) { Fail "refusing to replace existing '$Destination'; set SHEPHERD_FORCE=1" }
-        # File.Replace performs an atomic replacement when both files are in the
-        # destination directory, which the caller guarantees.
-        [System.IO.File]::Replace($Ready, $Destination, $null)
-    } else {
-        [System.IO.File]::Move($Ready, $Destination)
+function Get-PathAttributes([string]$Path) {
+    try {
+        return [System.IO.File]::GetAttributes($Path)
+    } catch [System.IO.FileNotFoundException] {
+        return $null
+    } catch [System.IO.DirectoryNotFoundException] {
+        return $null
+    }
+}
+
+function Assert-RegularPath([string]$Path, [System.IO.FileAttributes]$Attributes) {
+    if (($Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+        Fail "refusing to treat reparse point '$Path' as a file"
+    }
+    if (($Attributes -band [System.IO.FileAttributes]::Directory) -ne 0) {
+        Fail "refusing to treat directory '$Path' as a file"
+    }
+}
+
+function Restore-ReplacementFailure(
+    [string]$Ready,
+    [string]$Destination,
+    [string]$Backup,
+    [string]$OldHash,
+    [string]$ReadyHash,
+    [scriptblock]$MoveOperation = $null
+) {
+    $destinationAttributes = Get-PathAttributes -Path $Destination
+    $backupAttributes = Get-PathAttributes -Path $Backup
+
+    # When both names exist, ReplaceFileW's partial result is ambiguous. Keep
+    # both invocation-owned recovery files and do not infer ownership merely
+    # because Destination happens to name a regular file.
+    if ($null -ne $destinationAttributes -and $null -ne $backupAttributes) {
+        return 'destination-and-backup-preserved'
+    }
+
+    if ($null -ne $destinationAttributes) {
+        Assert-RegularPath -Path $Destination -Attributes $destinationAttributes
+        $destinationHash = (Get-FileHash -LiteralPath $Destination -Algorithm SHA256).Hash
+        if ($destinationHash -ceq $OldHash) { return 'destination-old' }
+        if ($destinationHash -ceq $ReadyHash) { return 'destination-new' }
+        return 'destination-unproven'
+    }
+
+    if ($null -ne $backupAttributes) {
+        Assert-RegularPath -Path $Backup -Attributes $backupAttributes
+        $backupHash = (Get-FileHash -LiteralPath $Backup -Algorithm SHA256).Hash
+        if ($backupHash -cne $OldHash) {
+            Fail "replacement backup '$Backup' does not match the pre-replacement destination"
+        }
+        if ($null -eq $MoveOperation) {
+            [System.IO.File]::Move($Backup, $Destination)
+        } else {
+            & $MoveOperation $Backup $Destination
+        }
+        return 'backup-restored'
+    }
+
+    $readyAttributes = Get-PathAttributes -Path $Ready
+    if ($null -ne $readyAttributes) {
+        Assert-RegularPath -Path $Ready -Attributes $readyAttributes
+        $actualReadyHash = (Get-FileHash -LiteralPath $Ready -Algorithm SHA256).Hash
+        if ($actualReadyHash -cne $ReadyHash) {
+            Fail "staged recovery binary '$Ready' changed during replacement"
+        }
+        if ($null -eq $MoveOperation) {
+            [System.IO.File]::Move($Ready, $Destination)
+        } else {
+            & $MoveOperation $Ready $Destination
+        }
+        return 'ready-restored'
+    }
+
+    Fail "atomic replacement removed '$Destination' and left no recovery file"
+}
+
+function Publish-Binary(
+    [string]$Ready,
+    [string]$Destination,
+    [bool]$Force,
+    [scriptblock]$ReplaceOperation = $null,
+    [scriptblock]$MoveOperation = $null,
+    [scriptblock]$DeleteOperation = $null
+) {
+    $readyDisposition = 'delete'
+    $backupDisposition = 'preserve'
+    $backup = $null
+    try {
+        $attributes = Get-PathAttributes -Path $Destination
+        if ($null -ne $attributes) {
+            Assert-RegularPath -Path $Destination -Attributes $attributes
+            if (-not $Force) { Fail "refusing to replace existing '$Destination'; set SHEPHERD_FORCE=1" }
+            $readyAttributes = Get-PathAttributes -Path $Ready
+            if ($null -eq $readyAttributes) { Fail "staged binary disappeared before replacing '$Destination'" }
+            Assert-RegularPath -Path $Ready -Attributes $readyAttributes
+            $oldHash = (Get-FileHash -LiteralPath $Destination -Algorithm SHA256).Hash
+            $readyHash = (Get-FileHash -LiteralPath $Ready -Algorithm SHA256).Hash
+            $backup = Join-Path (Split-Path -Parent $Destination) ('.shepherd.' + [guid]::NewGuid().ToString('N') + '.backup.exe')
+            $replaceFailed = $false
+            try {
+                # File.Replace atomically installs Ready while retaining the old
+                # destination at a unique path on the same volume. ReplaceFileW can
+                # fail after moving one of its inputs, so the catch restores a file
+                # at Destination before the staged Ready file may be cleaned up.
+                if ($null -eq $ReplaceOperation) {
+                    [System.IO.File]::Replace($Ready, $Destination, $backup)
+                } else {
+                    & $ReplaceOperation $Ready $Destination $backup
+                }
+                $backupDisposition = 'delete'
+            } catch {
+                $replaceFailed = $true
+                $replacementError = $_
+                try {
+                    $recoveryDisposition = Restore-ReplacementFailure -Ready $Ready -Destination $Destination -Backup $backup `
+                        -OldHash $oldHash -ReadyHash $readyHash -MoveOperation $MoveOperation
+                    switch ($recoveryDisposition) {
+                        'destination-old' { }
+                        'destination-new' { }
+                        'backup-restored' { }
+                        'ready-restored' { }
+                        'destination-and-backup-preserved' { $readyDisposition = 'preserve' }
+                        'destination-unproven' { $readyDisposition = 'preserve' }
+                        default {
+                            $readyDisposition = 'preserve'
+                            $recoveryDisposition = "invalid-disposition:$recoveryDisposition"
+                        }
+                    }
+                } catch {
+                    $recoveryError = $_
+                    $readyDisposition = 'preserve'
+                    $recoveryDisposition = "recovery-failed:$($recoveryError.Exception.Message)"
+                }
+
+                $preservedPaths = @()
+                if ($readyDisposition -ceq 'preserve' -and $null -ne (Get-PathAttributes -Path $Ready)) {
+                    $preservedPaths += "'$Ready'"
+                }
+                if ($backupDisposition -ceq 'preserve' -and $null -ne (Get-PathAttributes -Path $backup)) {
+                    $preservedPaths += "'$backup'"
+                }
+                $preservedDescription = if ($preservedPaths.Count -eq 0) { 'none' } else { $preservedPaths -join ', ' }
+                Fail "atomic replacement failed: $($replacementError.Exception.Message); recovery disposition '$recoveryDisposition'; preserved recovery paths: $preservedDescription"
+            } finally {
+                if ($backupDisposition -ceq 'delete' -and -not $replaceFailed) {
+                    try {
+                        $backupAttributes = Get-PathAttributes -Path $backup
+                        if ($null -ne $backupAttributes) {
+                            Assert-RegularPath -Path $backup -Attributes $backupAttributes
+                            if ($null -eq $DeleteOperation) {
+                                [System.IO.File]::Delete($backup)
+                            } else {
+                                & $DeleteOperation $backup
+                            }
+                        }
+                    } catch {
+                        Write-Warning "installed '$Destination' but could not remove replacement backup; preserved backup at '$backup': $($_.Exception.Message)"
+                    }
+                }
+            }
+        } else {
+            if ($null -eq $MoveOperation) {
+                [System.IO.File]::Move($Ready, $Destination)
+            } else {
+                & $MoveOperation $Ready $Destination
+            }
+        }
+    } finally {
+        if ($readyDisposition -ceq 'delete' -and [System.IO.File]::Exists($Ready)) {
+            $readyAttributes = Get-PathAttributes -Path $Ready
+            Assert-RegularPath -Path $Ready -Attributes $readyAttributes
+            [System.IO.File]::Delete($Ready)
+        }
     }
 }
 
@@ -145,9 +311,6 @@ try {
     [System.IO.Directory]::CreateDirectory($installDir) | Out-Null
     $ready = Join-Path $installDir ('.shepherd.' + [guid]::NewGuid().ToString('N') + '.ready.exe')
     [System.IO.File]::Move($binaryEntry[0].FullName, $ready)
-    if ((Test-Path -LiteralPath $destination) -and -not $force) {
-        Fail "refusing to replace concurrently created '$destination'"
-    }
     Publish-Binary -Ready $ready -Destination $destination -Force $force
     Write-Output "installed $(Get-Asset) to $destination"
 } finally {
