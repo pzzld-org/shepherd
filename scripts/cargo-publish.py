@@ -34,6 +34,7 @@ PACKAGE_DIRS = {
     "shepherd-cli": "crates/cli",
 }
 SEMVER = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+")
+USER_AGENT = "shepherd-cargo-publish/1"
 
 
 class PublishError(Exception):
@@ -156,33 +157,118 @@ def prepare(args: argparse.Namespace) -> None:
     print(f"prepared {len(crates)} immutable crates in {args.state}")
 
 
-def download_crate(api: str, name: str, version: str) -> bytes | None:
-    url = f"{api.rstrip('/')}/api/v1/crates/{name}/{version}/download"
-    request = urllib.request.Request(url, headers={"User-Agent": "shepherd-cargo-publish/1"})
+def crate_metadata(api: str, name: str, version: str) -> dict | None:
+    """Return authoritative crates.io metadata, or None for an absent version."""
+    url = f"{api.rstrip('/')}/api/v1/crates/{name}/{version}"
+    request = urllib.request.Request(
+        url,
+        headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
+    )
     try:
         with urllib.request.urlopen(request, timeout=30) as response:
-            return response.read()
+            try:
+                value = json.loads(response.read())
+            except (UnicodeDecodeError, json.JSONDecodeError) as error:
+                raise PublishError(
+                    f"registry metadata was not valid JSON for {name}@{version}"
+                ) from error
+            if not isinstance(value, dict):
+                raise PublishError(
+                    f"registry metadata was not an object for {name}@{version}"
+                )
+            return value
     except urllib.error.HTTPError as error:
         if error.code == 404:
+            error.close()
             return None
-        raise PublishError(f"registry query failed for {name}@{version}: HTTP {error.code}") from error
+        error.close()
+        raise PublishError(
+            f"registry query failed for {name}@{version}: HTTP {error.code}"
+        ) from error
     except OSError as error:
         raise PublishError(f"registry query failed for {name}@{version}: {error}") from error
+
+
+def metadata_checksum(metadata: dict, name: str, version: str) -> str:
+    version_data = metadata.get("version")
+    if not isinstance(version_data, dict) or version_data.get("num") != version:
+        raise PublishError(f"registry metadata has no exact version for {name}@{version}")
+    checksum = version_data.get("checksum")
+    if not isinstance(checksum, str) or not re.fullmatch(r"[0-9a-f]{64}", checksum):
+        raise PublishError(f"registry metadata has no valid checksum for {name}@{version}")
+    return checksum
+
+
+def download_crate(api: str, name: str, version: str) -> bytes:
+    """Download the actual crate bytes, following the registry's binary redirect."""
+    url = f"{api.rstrip('/')}/api/v1/crates/{name}/{version}/download"
+    request = urllib.request.Request(
+        url,
+        headers={"User-Agent": USER_AGENT, "Accept": "application/octet-stream"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            body = response.read()
+            content_type = response.headers.get_content_type()
+            if content_type == "application/json":
+                raise PublishError(
+                    f"registry archive response was a JSON envelope, not crate bytes "
+                    f"for {name}@{version}"
+                )
+            if body.lstrip().startswith(b"{"):
+                try:
+                    envelope = json.loads(body)
+                except (UnicodeDecodeError, json.JSONDecodeError):
+                    envelope = None
+                if isinstance(envelope, dict) and isinstance(envelope.get("url"), str):
+                    raise PublishError(
+                        f"registry archive response was a JSON envelope, not crate bytes "
+                        f"for {name}@{version}"
+                    )
+            if not body:
+                raise PublishError(f"registry archive was empty for {name}@{version}")
+            return body
+    except urllib.error.HTTPError as error:
+        error.close()
+        raise PublishError(
+            f"registry archive download failed for {name}@{version}: HTTP {error.code}"
+        ) from error
+    except OSError as error:
+        raise PublishError(
+            f"registry archive download failed for {name}@{version}: {error}"
+        ) from error
+
+
+def verify_archive_bytes(raw: bytes, expected: str, *, name: str, version: str, phase: str) -> str:
+    actual = hashlib.sha256(raw).hexdigest()
+    if actual != expected:
+        raise PublishError(
+            f"{phase} archive checksum mismatch for {name}@{version}: "
+            f"expected {expected}, found {actual}"
+        )
+    return actual
 
 
 def wait_for_checksum(args: argparse.Namespace, name: str, expected: str) -> str:
     deadline = time.monotonic() + args.timeout
     delay = 1.0
     while True:
-        raw = download_crate(args.registry_api, name, args.version)
-        if raw is not None:
-            actual = hashlib.sha256(raw).hexdigest()
-            if actual != expected:
+        metadata = crate_metadata(args.registry_api, name, args.version)
+        if metadata is not None:
+            published = metadata_checksum(metadata, name, args.version)
+            if published != expected:
                 raise PublishError(
                     f"published checksum mismatch for {name}@{args.version}: "
-                    f"expected {expected}, found {actual}"
+                    f"expected {expected}, found {published}"
                 )
-            return actual
+            raw = download_crate(args.registry_api, name, args.version)
+            return verify_archive_bytes(
+                raw,
+                expected,
+                name=name,
+                version=args.version,
+                phase="published",
+            )
         if time.monotonic() >= deadline:
             raise PublishError(f"timed out waiting for {name}@{args.version}")
         time.sleep(delay)
@@ -206,12 +292,24 @@ def publish(args: argparse.Namespace) -> None:
             expected = str(receipt["local_sha256"])
             if not artifact.is_file() or sha256(artifact) != expected:
                 raise PublishError(f"prepared artifact drifted: {artifact}")
-            existing = download_crate(args.registry_api, name, args.version)
+            existing = crate_metadata(args.registry_api, name, args.version)
             if existing is None:
                 run(["cargo", "publish", "--locked", "--package", name])
-            elif hashlib.sha256(existing).hexdigest() != expected:
-                raise PublishError(f"existing immutable crate differs: {name}@{args.version}")
-            receipt["published_sha256"] = wait_for_checksum(args, name, expected)
+                receipt["published_sha256"] = wait_for_checksum(args, name, expected)
+            else:
+                published = metadata_checksum(existing, name, args.version)
+                if published != expected:
+                    raise PublishError(
+                        f"existing immutable crate differs: {name}@{args.version}: "
+                        f"expected {expected}, found {published}"
+                    )
+                receipt["published_sha256"] = verify_archive_bytes(
+                    download_crate(args.registry_api, name, args.version),
+                    expected,
+                    name=name,
+                    version=args.version,
+                    phase="existing",
+                )
             receipt["status"] = "published"
             atomic_json(args.state, state)
             print(f"verified {name}@{args.version} {expected}")
