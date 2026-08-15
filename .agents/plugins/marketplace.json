@@ -1,0 +1,20 @@
+{
+  "name": "shepherd",
+  "interface": {
+    "displayName": "Shepherd"
+  },
+  "plugins": [
+    {
+      "name": "shepherd",
+      "source": {
+        "source": "local",
+        "path": "./plugins/shepherd"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "development"
+    }
+  ]
+}

@@ -21,7 +21,6 @@ use crate::{
     interface::{CliError, CliGlobals},
 };
 
-const HANDOFF_TEMPLATE: &str = include_str!("../../../../content/templates/handoff.md");
 const HANDOFF_FILE: &str = "handoff.md";
 
 const TABLES: [&str; 13] = [
@@ -413,7 +412,7 @@ fn render_handoff(context: &ExecutionContext, branch: &str) -> Result<String, Cl
     });
     let environment = shepherd::render::env::build();
     environment
-        .template_from_str(HANDOFF_TEMPLATE)
+        .template_from_str(shepherd::compiler::content::embedded_handoff_template())
         .map_err(|error| CliError::message(format!("cannot compile handoff template: {error}")))?
         .render(values)
         .map_err(|error| CliError::message(format!("cannot render handoff template: {error}")))

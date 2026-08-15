@@ -39,7 +39,20 @@ filesystem.
 
 ## Install the one native CLI
 
-Release installers select the host asset, verify its SHA-256 sidecar before
+Install the prebuilt native executable through Cargo Binstall:
+
+```sh
+cargo binstall shepherd-cli
+```
+
+Or build the published crate from source with Cargo:
+
+```sh
+cargo install shepherd-cli --locked
+```
+
+The checksum-first release installers below remain the fallback for hosts
+without Cargo Binstall. They select the host asset, verify its SHA-256 sidecar before
 extraction, require the executable plus `LICENSE`, `THIRD_PARTY_NOTICES.md`,
 and hash-addressed `THIRD_PARTY_LICENSES/` texts, and refuse to replace an
 existing installation unless `SHEPHERD_FORCE=1` is set. GNU/Linux assets are
@@ -227,12 +240,13 @@ artifact names do not repeat the run or date prefix. `run.json` is written by
 | Harness | Package | Constraint |
 | --- | --- | --- |
 | Claude Code | `@fl03/harness-claude` | Hook envelopes and lifecycle events only. |
-| Codex | `@fl03/harness-codex` | Hook envelopes and lifecycle events only. |
+| Codex | `@fl03/harness-codex` | Embedding adapter translates typed lifecycle envelopes; the regular marketplace carrier registers SessionStart and guarded PreToolUse only. |
 | Pi | `@fl03/harness-pi` | Requires a `SubagentProvider`-compatible extension such as `pi-subagents`; absent or unready providers fail closed. |
 
 The npm embedding adapters load the adjacent `@fl03/component-runtime` package.
-The normal Claude marketplace plugin is different: it invokes `shepherd
-claude-hook` directly. Generated ESM bindings and `.wasm` files are staged for
+The normal Claude and Codex marketplace plugins are different: they invoke
+`shepherd claude-hook` and `shepherd codex-hook` directly. Generated ESM
+bindings and `.wasm` files are staged for
 component/npm embedding, not hand-authored or committed. `SHEPHERD_COMPONENT_MODULE`
 is a controlled test/embedding override, not a production discovery mechanism.
 
@@ -259,6 +273,17 @@ within-marketplace links into its installed cache. It contains no duplicate
 authored plugin content, package manifest, lockfile, or Node bootstrap. No
 `--plugin-url`, `--plugin-dir`, release ZIP, or session-only loader is part of
 the supported installation path.
+
+Codex installs the same repository source through its canonical marketplace:
+
+```sh
+codex plugin marketplace add FL03/shepherd --ref v6.4.5
+codex plugin add shepherd@shepherd
+```
+
+Codex does not dereference source-carrier symlinks. Its manifest selects the
+generated, byte-gated regular files under `plugins/shepherd/codex/`. That cache
+remains native-only and invokes `shepherd codex-hook` without Node, npm, or Wasm.
 
 Cross-harness resume uses the typed identity, lifecycle, dispatch, response,
 and run-artifact contracts. Adapters must not infer role, policy, or run state

@@ -36,6 +36,10 @@ for argument in "$@"; do
       printf 'portable tar regression: rejected BSD-only option %s\n' "$argument" >&2
       exit 64
       ;;
+    --owner=0|--group=0)
+      printf 'portable tar regression: rejected compact ownership option %s\n' "$argument" >&2
+      exit 64
+      ;;
     --exclude=payload)
       if ((options_terminated == 0)); then
         printf 'portable tar regression: option-shaped entry reached tar without --\n' >&2

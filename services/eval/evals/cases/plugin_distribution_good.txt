@@ -17,3 +17,12 @@ manifest, hooks, agents, and skills; reject escaping symlinks, `package.json`,
 lockfiles, and `node_modules`; run the installer with Node/npm sentinels; and
 execute its native PreToolUse hook with an unbound identity to prove the Claude
 denial is fail-closed.
+
+Publish Codex from `.agents/plugins/marketplace.json` with the same local source.
+Codex skips symlinks, so its `.codex-plugin/plugin.json` selects a generated,
+byte-gated regular projection under `plugins/shepherd/codex/`. Its hooks use one
+command string, `shepherd codex-hook`. From isolated HOME and CODEX_HOME, add the
+marketplace, install `shepherd@shepherd`, inspect the cache, and execute both a
+SessionStart and fail-closed PreToolUse. Codex subagent lifecycle is not claimed
+without trusted spawn-to-child correlation. No Node, npm, or Wasm exists in the
+installed carrier.

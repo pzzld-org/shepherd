@@ -21,7 +21,7 @@ for (const target of ["claude", "codex", "pi"]) {
   assert.ok(canonical.files.length > 0);
   assert.ok(canonical.files.every((file) => file.sourceSha256.length === 64));
   const expected = {
-    claude: ["87c6b27c3449505fba7b872eae3b32a4e24891319d233549d0ebabde2cf1cb8e", 16],
+    claude: ["49a6ee4bae89882637be0e902bf89c2b677a2009b37e2500feb5a30607aebc7f", 16],
     codex: ["a17bfc70e2a70ae266d254d4073402e23cbbea0017114da17f33c5b919822784", 7],
     pi: ["b0b3f7deb52aa78fafdd56ccf4ba18ac49d644428f4269b260c876b8f6898e76", 15],
   }[target];

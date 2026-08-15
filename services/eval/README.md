@@ -73,6 +73,9 @@ shape so a malformed rubric fails loudly instead of scoring garbage.
   cross-harness resume. The `plugin-distribution` pair exercises self-contained
   Component runtime packaging, one-authority carrier selection, truthful Claude
   ZIP loading semantics, and release evidence.
+  The `cargo-native-distribution` pair exercises package/import identity,
+  unpacked package closure, metadata-only Binstall, immutable checksums, and
+  dependency-ordered publication recovery.
   Run before ship and nightly, not on every commit.
 
 ## Boundary

@@ -8,19 +8,19 @@ language or domain mechanics. These boundaries are the portability contract.
 
 ```text
 Claude hooks → shepherd claude-hook → native Rust core ─────┐
+Codex hooks  → shepherd codex-hook  → native Rust core ─────┤
                                                              │
-Codex hooks ─┐                                               │
-             ├→ thin host adapters → @fl03/component-runtime│
-Pi extension ┘                         → fl03:shepherd@6.4.5│
+Pi extension → thin host adapter → @fl03/component-runtime  │
+                                  → fl03:shepherd@6.4.5     │
                                            WebAssembly component
                                                              │
                         identity, guard, lifecycle, response,
                         compiler, registry-facing typed Rust contracts
 ```
 
-Claude's `claude-hook` path bypasses the Component Model and invokes the native
-Rust core directly. The Codex and Pi adapters send typed records through the
-Component and receive typed records in return. Neither path inspects a
+Claude and Codex marketplace hooks bypass the Component Model and invoke the
+native Rust core directly. The npm Codex adapter and Pi adapter send typed
+records through the Component and receive typed records in return. Neither path inspects a
 harness's private directory, parses a host policy file, discovers a process,
 or writes an arbitrary path; Native Rust owns those host operations behind
 explicit interfaces.
@@ -68,9 +68,22 @@ in the supported Claude installation path.
 
 ### Codex
 
-`@fl03/harness-codex` translates Codex hook and lifecycle envelopes into the
-same typed records. It does not ship an apply/materialize executable and does
-not import Claude's private hooks.
+The normal repository marketplace invokes `shepherd codex-hook` directly for
+`SessionStart` and guarded `PreToolUse`. It does not register Codex's native
+subagent lifecycle events: the host envelope does not provide a trusted
+correlation from the parent spawn request to the child session identity. The
+CLI reports those events as unsupported rather than fabricating a dispatch.
+Its `.codex-plugin/plugin.json` selects a byte-gated regular-file projection
+because Codex does not copy source symlinks. Install it with:
+
+```sh
+codex plugin marketplace add FL03/shepherd --ref v6.4.5
+codex plugin add shepherd@shepherd
+```
+
+The cache contains no Node, npm, Wasm, or source-checkout dependency.
+`@fl03/harness-codex` remains the Component-backed npm embedding adapter; it
+does not own this marketplace path or import Claude's private hooks.
 
 ### Pi
 
@@ -140,9 +153,11 @@ guard corpus, run ledger, or context store. Resume reads the canonical run
 artifacts and verifies identity before accepting a continuation. The Component
 validates every native request and response as one typed exchange before an
 adapter consumes it. A valid-schema response for another run, session, agent,
-tool call, role, lane, or resume source is rejected. Claude and Codex translate
-an actual `SubagentStart` carrying `source_agent_id` into typed resume and inject
-only the bounded, validated context bundle returned by native Rust.
+tool call, role, lane, or resume source is rejected. Claude translates an
+actual `SubagentStart` carrying `source_agent_id` into typed resume and injects
+only the bounded, validated context bundle returned by native Rust. Codex's
+regular marketplace carrier does not register subagent lifecycle hooks until
+the host exposes a trusted correlation contract.
 
 ## Host capability limits
 
@@ -151,7 +166,7 @@ Adapters must report host limitations instead of guessing:
 | Host | Shepherd assumption | Degradation |
 | --- | --- | --- |
 | Claude Code | Hooks and Agent Teams may be available. | If a hook or identity correlation is unavailable, the adapter reports the limitation and preserves its documented fail-closed posture. |
-| Codex | Hook envelopes expose native agent identity and lifecycle events. | Missing identity or lifecycle facts produce a blocked or unresolved typed result, never a fabricated role. |
+| Codex | The regular marketplace carrier supports SessionStart and guarded PreToolUse. | Native subagent lifecycle hooks are not registered because the host does not expose a trusted spawn-to-child correlation; direct lifecycle inputs are rejected, never fabricated into a role. |
 | Pi | A ready `SubagentProvider` is supplied by the host extension. | Missing provider, method, or readiness blocks mutation operations. |
 
 Host-specific limits belong in adapter diagnostics and run evidence. They do

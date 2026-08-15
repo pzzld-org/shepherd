@@ -4,7 +4,7 @@ The umbrella SDK. Every consumer links this crate; nothing links a member crate 
 
 ```toml
 [dependencies]
-shepherd = { version = "6.4.5", features = ["json", "registry"] }
+shepherd = { package = "shepherd-sdk", version = "6.4.5", features = ["json", "registry"] }
 ```
 
 ## Why an umbrella

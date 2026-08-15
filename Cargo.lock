@@ -704,16 +704,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "shepherd"
-version = "6.4.5"
-dependencies = [
- "shepherd-compiler",
- "shepherd-core",
- "shepherd-registry",
- "shepherd-render",
-]
-
-[[package]]
 name = "shepherd-cli"
 version = "6.4.5"
 dependencies = [
@@ -727,7 +717,7 @@ dependencies = [
  "serde-saphyr",
  "serde_json",
  "sha2",
- "shepherd",
+ "shepherd-sdk",
  "thiserror",
  "toml",
  "tracing",
@@ -750,7 +740,7 @@ name = "shepherd-component"
 version = "6.4.5"
 dependencies = [
  "serde_json",
- "shepherd",
+ "shepherd-sdk",
  "wit-bindgen",
 ]
 
@@ -794,6 +784,16 @@ dependencies = [
  "shepherd-core",
  "thiserror",
  "tracing",
+]
+
+[[package]]
+name = "shepherd-sdk"
+version = "6.4.5"
+dependencies = [
+ "shepherd-compiler",
+ "shepherd-core",
+ "shepherd-registry",
+ "shepherd-render",
 ]
 
 [[package]]

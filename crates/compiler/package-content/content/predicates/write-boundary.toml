@@ -1,0 +1,78 @@
+# write-boundary — governs whether a role may perform a filesystem write at all,
+# and if so, where. Interpreted identically by a Rust engine and Pi's TS guard layer
+# (skills/shepherd/references/flock.md §Write boundaries is the Claude-side enforcement
+# of this same predicate via PreToolUse hooks; this file is the harness-neutral source).
+#
+# See content/RECONCILIATION.md §`write_eligible` — a hard fact, not a convention (Hazard 1):
+# a role with write_eligible = false has NO general write capability, full stop, regardless
+# of any narrow report-path exception it may hold — Codex's `explorer` primitive enforces
+# exactly this at the harness level, and this file's `role-write-eligibility` rule is the
+# input a compiler reads to select `explorer` vs `worker` for that role.
+
+[predicate]
+id = "write-boundary"
+version = 1
+description = "A filesystem write is denied unless the acting role is write_eligible AND the target path falls inside that role's declared write scope for the current dispatch."
+
+[[rule]]
+id = "role-write-eligibility"
+description = "fs.write is denied outright when the role's content/roles/<role>.md declares write_eligible: false."
+subject = "role.write_eligible"
+action = "fs.write"
+effect = "deny_if_false"
+
+[[rule]]
+id = "path-in-declared-scope"
+description = "Even a write_eligible = true role's write is denied when the target path falls outside the write_scope this specific dispatch's brief declares (a general write grant is not a blanket grant — the brief's file scope narrows it per dispatch)."
+subject = "dispatch.write_scope"
+action = "fs.write"
+effect = "deny_if_path_outside_scope"
+
+[[example]]
+name = "coder-writes-inside-declared-file-scope"
+kind = "allow"
+role = "coder"
+action = "fs.write"
+path = "content/roles/coder.md"
+context = { write_eligible = true, path_in_dispatch_write_scope = true }
+result = "allow"
+
+[[example]]
+name = "coder-writes-outside-declared-file-scope"
+kind = "deny"
+role = "coder"
+action = "fs.write"
+path = "hooks/scripts/coder_git_guard.sh"
+context = { write_eligible = true, path_in_dispatch_write_scope = false }
+result = "deny"
+halt_code = "SCOPE OVERFLOW"
+
+[[example]]
+name = "discovery-writes-its-one-declared-output-path"
+kind = "allow"
+role = "discovery"
+action = "fs.write"
+path = "{run_dir}/reports/discovery-d1-harness.md"
+context = { write_eligible = false, path_in_dispatch_write_scope = true }
+result = "allow"
+note = "write_eligible = false plus a narrow report-write scope is one fact, not a contradiction — see RECONCILIATION.md §write_eligible."
+
+[[example]]
+name = "discovery-writes-outside-its-declared-output-path"
+kind = "deny"
+role = "discovery"
+action = "fs.write"
+path = "skills/adaptation/SKILL.md"
+context = { write_eligible = false, path_in_dispatch_write_scope = false }
+result = "deny"
+halt_code = "DISCOVERY-WRITE-PATH"
+
+[[example]]
+name = "critic-attempts-any-write"
+kind = "deny"
+role = "critic"
+action = "fs.write"
+path = "{run_dir}/reports/critic-note.md"
+context = { write_eligible = false, path_in_dispatch_write_scope = false }
+result = "deny"
+note = "critic carries no write capability at all — not even a narrow report-path exception; content/roles/critic.md write_scope = none."

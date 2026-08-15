@@ -6,6 +6,7 @@ use std::{
 
 use shepherd::{
     GuardEngine, GuardError, GuardValue, Verdict,
+    compiler::content::embedded_guard_sources,
     guard::{PredicateExample, parse_predicate_toml, parse_role_markdown},
 };
 
@@ -18,64 +19,6 @@ const MAX_GUARD_LINE_BYTES: usize = 1_048_576;
 const REQUEST_TOO_LARGE_MESSAGE: &str = "guard protocol line exceeds 1048576-byte limit";
 const EVAL_REQUEST_TOO_LARGE_MESSAGE: &str = "guard request exceeds 1048576-byte limit";
 const INVALID_REQUEST_ID_MESSAGE: &str = "request envelope field `request_id` must be 1-128 ASCII letters, digits, `.`, `-`, `_`, or `:`";
-
-const EMBEDDED_PREDICATE_SOURCES: &[(&str, &str)] = &[
-    (
-        "dedup-gate.toml",
-        include_str!("../../../../content/predicates/dedup-gate.toml"),
-    ),
-    (
-        "dispatch-scope.toml",
-        include_str!("../../../../content/predicates/dispatch-scope.toml"),
-    ),
-    (
-        "git-custody.toml",
-        include_str!("../../../../content/predicates/git-custody.toml"),
-    ),
-    (
-        "write-boundary.toml",
-        include_str!("../../../../content/predicates/write-boundary.toml"),
-    ),
-];
-
-const EMBEDDED_ROLE_SOURCES: &[(&str, &str)] = &[
-    (
-        "auditor.md",
-        include_str!("../../../../content/roles/auditor.md"),
-    ),
-    (
-        "coder.md",
-        include_str!("../../../../content/roles/coder.md"),
-    ),
-    (
-        "conductor.md",
-        include_str!("../../../../content/roles/conductor.md"),
-    ),
-    (
-        "critic.md",
-        include_str!("../../../../content/roles/critic.md"),
-    ),
-    (
-        "discovery.md",
-        include_str!("../../../../content/roles/discovery.md"),
-    ),
-    (
-        "engineer.md",
-        include_str!("../../../../content/roles/engineer.md"),
-    ),
-    (
-        "planter.md",
-        include_str!("../../../../content/roles/planter.md"),
-    ),
-    (
-        "shepherd.md",
-        include_str!("../../../../content/roles/shepherd.md"),
-    ),
-    (
-        "worker.md",
-        include_str!("../../../../content/roles/worker.md"),
-    ),
-];
 
 #[derive(
     Clone,
@@ -181,12 +124,13 @@ pub(crate) fn load_engine(content_dir: Option<PathBuf>) -> Result<GuardEngine, C
 }
 
 fn load_embedded_engine() -> Result<GuardEngine, CliError> {
-    let predicates = EMBEDDED_PREDICATE_SOURCES
+    let (predicate_sources, role_sources) = embedded_guard_sources();
+    let predicates = predicate_sources
         .iter()
         .map(|(name, contents)| parse_predicate_toml(name, contents))
         .collect::<Result<Vec<_>, _>>()
         .map_err(engine_error)?;
-    let roles = EMBEDDED_ROLE_SOURCES
+    let roles = role_sources
         .iter()
         .map(|(name, contents)| parse_role_markdown(name, contents))
         .collect::<Result<Vec<_>, _>>()
@@ -563,19 +507,20 @@ fn run_explain(args: ExplainArgs) -> Result<(), CliError> {
 mod tests {
     use std::{fs, path::Path};
 
-    use super::{EMBEDDED_PREDICATE_SOURCES, EMBEDDED_ROLE_SOURCES};
+    use shepherd::compiler::content::embedded_guard_sources;
 
     #[test]
     fn embedded_guard_inventory_exactly_matches_the_canonical_source_tree() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../content");
+        let (predicates, roles) = embedded_guard_sources();
         assert_eq!(
             source_names(&root.join("predicates"), "toml"),
-            embedded_names(EMBEDDED_PREDICATE_SOURCES),
+            embedded_names(predicates),
             "additions and removals must update the standalone binary's embedded predicate inventory"
         );
         assert_eq!(
             source_names(&root.join("roles"), "md"),
-            embedded_names(EMBEDDED_ROLE_SOURCES),
+            embedded_names(roles),
             "additions and removals must update the standalone binary's embedded role inventory"
         );
     }
@@ -599,7 +544,13 @@ mod tests {
     fn embedded_names(sources: &[(&str, &str)]) -> Vec<String> {
         let mut names = sources
             .iter()
-            .map(|(name, _)| (*name).to_owned())
+            .map(|(name, _)| {
+                Path::new(name)
+                    .file_name()
+                    .and_then(|value| value.to_str())
+                    .expect("embedded content filename is UTF-8")
+                    .to_owned()
+            })
             .collect::<Vec<_>>();
         names.sort();
         names

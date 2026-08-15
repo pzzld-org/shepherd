@@ -33,7 +33,8 @@ ROOT = Path(__file__).resolve().parent.parent
 
 # The umbrella and the binary are the two crates with special standing; every
 # other member is a capability library reached through the umbrella.
-UMBRELLA = "shepherd"
+UMBRELLA = "shepherd-sdk"
+UMBRELLA_DEPENDENCY = "shepherd"
 BINARY = "shepherd-cli"
 COMPONENT = "shepherd-component"
 
@@ -141,8 +142,17 @@ def rule_libraries_reachable_from_umbrella(root: Path, crates: dict[str, dict]) 
     if umbrella is None:
         return [f"the umbrella crate `{UMBRELLA}` is missing from crates/"]
 
-    declared = set(umbrella.get("dependencies", {}))
     bad = []
+    if umbrella.get("lib", {}).get("name") != UMBRELLA_DEPENDENCY:
+        bad.append(f"{UMBRELLA}: `[lib].name` must be `{UMBRELLA_DEPENDENCY}`")
+    alias = load(root / "Cargo.toml").get("workspace", {}).get("dependencies", {}).get(
+        UMBRELLA_DEPENDENCY, {}
+    )
+    if alias.get("package") != UMBRELLA:
+        bad.append(
+            f"workspace dependency `{UMBRELLA_DEPENDENCY}` must alias package `{UMBRELLA}`"
+        )
+    declared = set(umbrella.get("dependencies", {}))
     for name in crates:
         if name in (UMBRELLA, BINARY, COMPONENT):
             continue
@@ -166,7 +176,7 @@ def rule_binary_routes_through_umbrella(root: Path, crates: dict[str, dict]) -> 
     for dep in binary.get("dependencies", {}):
         if dep.startswith("shepherd-"):
             bad.append(
-                f"{BINARY}: depends on `{dep}` directly; adapters must route through `{UMBRELLA}`"
+                f"{BINARY}: depends on `{dep}` directly; adapters must route through `{UMBRELLA_DEPENDENCY}`"
             )
     return bad
 
@@ -221,7 +231,7 @@ def rule_members_in_feature_matrix(root: Path, crates: dict[str, dict]) -> list[
     body = script.read_text()
     bad = []
     for name in crates:
-        short = name.removeprefix("shepherd-") if name != UMBRELLA else "sdk"
+        short = name.removeprefix("shepherd-")
         if not re.search(rf"-p\s+{re.escape(name)}\b", body):
             bad.append(
                 f"{name}: no `-p {name}` invocation in scripts/check-features.sh "
@@ -241,6 +251,8 @@ def rule_component_contract(root: Path, crates: dict[str, dict]) -> list[str]:
     if component is None:
         return [f"the component crate `{COMPONENT}` is missing"]
     bad = []
+    if component.get("package", {}).get("publish") is not False:
+        bad.append(f"{COMPONENT}: must set `publish = false`")
     metadata = component.get("package", {}).get("metadata", {}).get("component", {})
     if metadata.get("package") != "fl03:shepherd":
         bad.append(f"{COMPONENT}: package metadata must set component package to `fl03:shepherd`")
@@ -332,7 +344,7 @@ def run(root: Path) -> int:
 
 FIXTURES = {
     rule_lints_inherited: {
-        "shepherd": {"package": {"name": "shepherd"}, "__dir__": Path("/nonexistent")},
+        "shepherd-sdk": {"package": {"name": "shepherd-sdk"}, "__dir__": Path("/nonexistent")},
     },
     rule_version_inherited: {
         "shepherd-core": {
@@ -354,7 +366,12 @@ FIXTURES = {
         },
     },
     rule_libraries_reachable_from_umbrella: {
-        "shepherd": {"package": {"name": "shepherd"}, "dependencies": {}, "__dir__": Path("/x")},
+        "shepherd-sdk": {
+            "package": {"name": "shepherd-sdk"},
+            "lib": {},
+            "dependencies": {},
+            "__dir__": Path("/x"),
+        },
         "shepherd-orphan": {"package": {"name": "shepherd-orphan"}, "__dir__": Path("/x")},
     },
     rule_binary_routes_through_umbrella: {

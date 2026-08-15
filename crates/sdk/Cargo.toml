@@ -1,7 +1,7 @@
 [package]
 build = "build.rs"
 description = "Sprint orchestration and governance for AI coding agents: the umbrella SDK re-exporting the shepherd engine, registry, and render layers."
-name = "shepherd"
+name = "shepherd-sdk"
 readme = "README.md"
 
 authors.workspace = true
@@ -16,6 +16,7 @@ version.workspace = true
 
 [lib]
 bench = true
+name = "shepherd"
 path = "lib.rs"
 
 [[test]]

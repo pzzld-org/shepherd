@@ -38,7 +38,7 @@ trap 'rm -f "$temporary"' EXIT
 # owner normalization avoids the BSD-only --uid/--gid/--uname/--gname flags
 # while preserving byte-reproducible ustar headers on every release runner.
 COPYFILE_DISABLE=1 LC_ALL=C \
-  tar --format=ustar --owner=0 --group=0 --numeric-owner \
+  tar --format=ustar --owner 0 --group 0 --numeric-owner \
     -C "$source_dir" -cf - -- "$@" \
   | gzip -n > "$temporary"
 

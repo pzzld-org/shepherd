@@ -29,27 +29,7 @@ if rg -n "<<'PY'" "$workflow" || rg -Fq 'python3 - "$maximum" "$floor"' "$workfl
   exit 1
 fi
 
-python3 - <<'PY'
-from pathlib import Path
-import re
-
-failures = []
-for path in sorted(Path(".github/workflows").glob("*.y*ml")):
-    for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-        match = re.match(r"^\s*(?:-\s*)?uses:\s*([^\s#]+)", line)
-        if not match:
-            continue
-        action = match.group(1)
-        if action.startswith("./"):
-            continue
-        reference = action.rsplit("@", 1)[-1] if "@" in action else ""
-        if not re.fullmatch(r"[0-9a-f]{40}", reference):
-            failures.append(f"{path}:{line_number}: {action}")
-
-if failures:
-    raise SystemExit("mutable GitHub Action references:\n" + "\n".join(failures))
-print("ok: every external GitHub Action is pinned to a full commit SHA")
-PY
+python3 scripts/check-github-actions.py
 
 sha_checkout_count=$(rg -Fc 'ref: ${{ github.sha }}' "$workflow")
 if [[ "$sha_checkout_count" -ne 4 ]]; then
@@ -123,17 +103,6 @@ if rg -Fq 'Compress-Archive' "$workflow"; then
 fi
 rg -Fq 'scripts/tests/test-release-installer-windows.ps1' "$workflow"
 rg -Fq 'npm ci --ignore-scripts' "$workflow"
-for action in \
-  'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7' \
-  'actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1' \
-  'actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2' \
-  'actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0'; do
-  rg -Fq "$action" "$workflow"
-done
-if rg -n 'uses:[[:space:]]+[^[:space:]#]+@v[0-9]' "$workflow"; then
-  printf 'release actions must use immutable full commit SHAs\n' >&2
-  exit 1
-fi
 rg -Fq 'gh release create' "$workflow"
 rg -Fq -- '--verify-tag' "$workflow"
 if rg -Fq 'gh release upload' "$workflow"; then

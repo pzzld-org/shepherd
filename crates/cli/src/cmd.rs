@@ -7,6 +7,7 @@
 pub use self::prelude::*;
 
 pub mod claude_hook;
+pub mod codex_hook;
 pub mod compile;
 pub mod dispatch;
 pub mod guard;
@@ -22,9 +23,12 @@ pub mod wave_f_knowledge;
 pub mod wave_g_coordination;
 pub mod wave_h_execution;
 
+mod native_hook;
+
 pub(crate) mod prelude {
     pub use super::ShepherdCommand;
     pub use super::claude_hook::ClaudeHookCmd;
+    pub use super::codex_hook::CodexHookCmd;
     pub use super::compile::CompileCmd;
     pub use super::dispatch::DispatchCmd;
     pub use super::guard::GuardCmd;
@@ -70,6 +74,8 @@ pub enum ShepherdCommand {
     Compile(CompileCmd),
     /// Translate Claude Code hook envelopes through the canonical native engine.
     ClaudeHook(ClaudeHookCmd),
+    /// Translate Codex hook envelopes through the canonical native engine.
+    CodexHook(CodexHookCmd),
     /// Close one canonical run lane through the typed run ledger.
     CloseLane(WaveDCloseLaneCmd),
     /// Inspect or initialize the canonical typed project configuration.
@@ -152,6 +158,7 @@ impl ShepherdCommand {
             Self::Audit(command) => command.run(globals),
             Self::Compile(command) => command.run(),
             Self::ClaudeHook(command) => command.run(globals),
+            Self::CodexHook(command) => command.run(globals),
             Self::CloseLane(command) => command.run(globals),
             Self::Config(command) => command.run(globals),
             Self::Dispatch(command) => command.run(globals),

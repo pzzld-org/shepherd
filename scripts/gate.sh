@@ -51,6 +51,10 @@ gate_fast() {
   # typo'd key name passes everything forever and is worse than no validator.
   step "workspace invariants are falsifiable" ./scripts/check-workspace.sh --self-test
   step "workspace invariants" ./scripts/check-workspace.sh
+  step "compiler package projection is falsifiable" python3 scripts/tests/test-generate-compiler-package-content.py
+  step "Cargo distribution contract" python3 scripts/tests/test-cargo-distribution.py
+  step "Cargo distribution inventory" python3 scripts/check-cargo-distribution.py
+  step "Cargo publisher recovery contract" python3 scripts/tests/test-cargo-publish.py
   step "WASM release boundary is falsifiable" bash scripts/tests/test-wasm-release-gate.sh
   step "component Node boundary is falsifiable" bash scripts/tests/test-component-node-gate.sh
   step "package distribution boundary is falsifiable" bash scripts/tests/test-package-boundary.sh
@@ -62,6 +66,8 @@ gate_fast() {
   step "PowerShell installer contract" bash scripts/tests/test-release-installer-powershell-contract.sh
   step "release distribution legal material" bash scripts/tests/test-release-distribution-license.sh
   step "portable deterministic release tar" bash scripts/tests/test-release-tar-portability.sh
+  step "GitHub Action pin checker is falsifiable" python3 scripts/tests/test-check-github-actions.py
+  step "GitHub Action pins" python3 scripts/check-github-actions.py
   step "release workflow contract" bash scripts/tests/test-release-workflow.sh
   step "release version authority is falsifiable" python3 scripts/tests/test-version-bump.py
   check_release_version() {
@@ -75,11 +81,13 @@ gate_fast() {
   # so it cannot be the thing that catches this.
   step "plugin contract is falsifiable" ./scripts/check-plugin.py --self-test
   step "plugin contract" ./scripts/check-plugin.py
+  step "Codex regular carrier projection" python3 scripts/generate-codex-carrier.py --check
 }
 
 # ---------------------------------------------------------------- full --- #
 gate_full() {
   gate_fast
+  step "cold Cargo Binstall metadata fixture" python3 scripts/tests/test-cargo-binstall-local.py
   step "clippy (default)" env RUSTFLAGS="-D warnings" cargo clippy --workspace --all-targets --locked
   step "clippy (full)" env RUSTFLAGS="-D warnings" cargo clippy --workspace --all-targets --locked --features full
   step "tests" cargo test --workspace --locked
@@ -169,7 +177,7 @@ gate_wasm() {
   fi
 
   # wasm32-unknown-unknown proves reach: no OS, no C toolchain, no filesystem.
-  for pkg in shepherd-core shepherd-compiler shepherd shepherd-registry shepherd-render; do
+  for pkg in shepherd-core shepherd-compiler shepherd-sdk shepherd-registry shepherd-render; do
     step "build ${pkg} -> wasm32-unknown-unknown" \
       cargo build --locked --release --package "${pkg}" \
       --target wasm32-unknown-unknown --no-default-features --features wasm
@@ -200,6 +208,8 @@ gate_wasm() {
   step "Pi adapter package suite" node packages/harness-pi/test.mjs
   step "install the Claude marketplace plugin from source" \
     bash scripts/tests/test-claude-marketplace.sh
+  step "install the Codex marketplace plugin from source" \
+    bash scripts/tests/test-codex-marketplace.sh
   step "clean packed harness distribution" bash scripts/test-packed-plugin.sh
 
   # wasm32-wasip1 proves behaviour. Building only proves the C cross-compile;

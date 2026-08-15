@@ -3,7 +3,7 @@
   "contract_note": "Claude preserves canonical description while replacing model_hint with model. Codex includes final model/profile tables. Pi prompt bytes remain host-native while role launch metadata is carried separately by the WIT and CLI manifests.",
   "targets": {
     "claude": {
-      "tree_digest": "87c6b27c3449505fba7b872eae3b32a4e24891319d233549d0ebabde2cf1cb8e",
+      "tree_digest": "49a6ee4bae89882637be0e902bf89c2b677a2009b37e2500feb5a30607aebc7f",
       "files": {
         "agents/auditor.md": [2446, "d8089b8e952025d665dcfd75b4c4130f8ec8f6334155ab8856c2ec95b8bcfd96"],
         "agents/coder.md": [2899, "e4e3764dc21530feea2349a05ebec68fa88facc2112268899790108499cc9d3f"],
@@ -17,7 +17,7 @@
         "skills/adaptation/SKILL.md": [2700, "6f0b602cd985f5ff8e4baa2895e4fd418a8f324a0faf94cee8cec2f002a7e322"],
         "skills/bridge/SKILL.md": [2088, "727eacf3f5d39126960cd9a3d3f3f503e8917412a653c6ea20423bc9aed1bddd"],
         "skills/context/SKILL.md": [2952, "8aad1b251b255e15f00437004caf49ded0295bb85a1057ef3a01790b43db392d"],
-        "skills/harness/SKILL.md": [1996, "388cb2ccc39b2028412e472097ffbaf2cf22d837b0fc880817c732ce20f5fa6b"],
+        "skills/harness/SKILL.md": [1995, "f79079b2cd2edd8ce3484af2b209b9373703a24437880bae755301e46a999658"],
         "skills/motivation/SKILL.md": [2315, "db72c1be317d95fa897702d66a8cc4b19adf1e551984061f060cfae627ba3908"],
         "skills/shepherd/SKILL.md": [1951, "9c482279a9e9bea5f1ade26bcd24232db27059a84b91f75d97166f5650e4d6e0"],
         "skills/thinking/SKILL.md": [2111, "464768041f6f32bc14cec18ba0d428e0a60b86ba45f652e1cb0cd3956245bf81"]
