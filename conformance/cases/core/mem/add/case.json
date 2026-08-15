@@ -1,0 +1,12 @@
+{
+  "suite": "core",
+  "kind": "mutating",
+  "requires_git": true,
+  "description": "mem add creates one typed registry entry and returns its UUIDv7-shaped identifier.",
+  "args": ["mem", "add", "--title", "Conformance note", "--kind", "note", "--body", "body", "--tags", "[\"core\"]"],
+  "db_fixture": "full_schema",
+  "seed_sql": [
+    "INSERT INTO projects (id, name, created_at, updated_at) VALUES ('proj-mem', 'mem fixture', 0, 0);"
+  ],
+  "capture_files": []
+}

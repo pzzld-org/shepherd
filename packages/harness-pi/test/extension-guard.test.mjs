@@ -1,0 +1,105 @@
+import assert from "node:assert/strict";
+import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import shepherdGuardExtension from "../src/extension.mjs";
+
+const fixtureDir = mkdtempSync(join(tmpdir(), "shepherd-pi-extension-"));
+const dispatcher = join(fixtureDir, "shepherd-native.mjs");
+const dispatchLog = join(fixtureDir, "operations.log");
+writeFileSync(dispatcher, `#!/usr/bin/env node
+import { appendFileSync } from "node:fs";
+let input = "";
+process.stdin.on("data", chunk => input += chunk);
+process.stdin.on("end", () => {
+  const operation = process.argv[3];
+  appendFileSync(${JSON.stringify(dispatchLog)}, operation + "\\n");
+  const request = JSON.parse(input);
+  if (operation === "resolve") {
+    const malformed = process.env.SHEPHERD_PI_TEST_MALFORMED === "1";
+    const path = request.tool_input?.path ?? "docs/report.md";
+    process.stdout.write(JSON.stringify({
+      schema: malformed ? "host-invented" : "shepherd.identity-resolution/1",
+      project_id: "0192f6e8-7b2c-7abc-8def-0123456789ab",
+      run: "v645",
+      harness: "pi",
+      agent_id: null,
+      agent_type: null,
+      role: "shepherd",
+      lane: null,
+      session_id: process.env.SHEPHERD_PI_TEST_RESOLVE_SESSION ?? request.session_id,
+      write_scope: ["**"],
+      capabilities: null,
+      tool_use_id: process.env.SHEPHERD_PI_TEST_RESOLVE_TOOL ?? request.tool_use_id,
+      mode: "execution",
+      write_paths: [path],
+      path_in_write_scope: true,
+    }));
+    return;
+  }
+  process.stdout.write(JSON.stringify({
+    schema: "shepherd.root-session/1",
+    project_id: "0192f6e8-7b2c-7abc-8def-0123456789ab",
+    run: "v645",
+    harness: "pi",
+    session_id: request.session_id,
+    role: request.role_carrier,
+    mode: request.mode,
+    bound_at: 1,
+    expires_at: 86400001,
+  }));
+});
+`);
+chmodSync(dispatcher, 0o755);
+process.env.SHEPHERD_NATIVE_BIN = dispatcher;
+
+const handlers = {};
+const pi = { on(event, handler) { handlers[event] = handler; } };
+const context = {
+  cwd: process.cwd(),
+  sessionManager: { getSessionId: () => "pi-root-session-1" },
+};
+await shepherdGuardExtension(pi, {
+  componentModule: process.env.SHEPHERD_COMPONENT_MODULE,
+  // These legacy-looking values are intentionally hostile. Production must
+  // ignore them: native bind/resolve are the only authority paths.
+  bindRootIdentity: async () => { throw new Error("host-invented bind authority was used"); },
+  resolveIdentity: async () => { throw new Error("host-invented resolve authority was used"); },
+});
+
+await handlers.session_start({ type: "session_start", reason: "startup" }, context);
+assert.equal(await handlers.tool_call({
+  type: "tool_call", toolCallId: "pi-tool-1", toolName: "write",
+  input: { path: "docs/report.md", content: "x" },
+}, context), undefined);
+
+process.env.SHEPHERD_PI_TEST_MALFORMED = "1";
+assert.equal((await handlers.tool_call({
+  type: "tool_call", toolCallId: "pi-tool-malformed", toolName: "write",
+  input: { path: "docs/report.md", content: "x" },
+}, context)).block, true, "malformed native resolution must fail closed before guard evaluation");
+delete process.env.SHEPHERD_PI_TEST_MALFORMED;
+
+process.env.SHEPHERD_PI_TEST_RESOLVE_SESSION = "another-pi-session";
+const wrongSession = await handlers.tool_call({
+  type: "tool_call", toolCallId: "pi-tool-wrong-session", toolName: "write",
+  input: { path: "docs/report.md", content: "x" },
+}, context);
+assert.equal(wrongSession.block, true, "a valid native resolve for another session must fail exchange correlation");
+delete process.env.SHEPHERD_PI_TEST_RESOLVE_SESSION;
+
+process.env.SHEPHERD_PI_TEST_RESOLVE_TOOL = "another-pi-tool";
+const wrongTool = await handlers.tool_call({
+  type: "tool_call", toolCallId: "pi-tool-wrong-tool", toolName: "write",
+  input: { path: "docs/report.md", content: "x" },
+}, context);
+assert.equal(wrongTool.block, true, "a valid native resolve for another tool call must fail exchange correlation");
+delete process.env.SHEPHERD_PI_TEST_RESOLVE_TOOL;
+
+const missingContext = await handlers.tool_call({
+  type: "tool_call", toolCallId: "pi-tool-no-context", toolName: "edit", input: { path: "x", edits: [] },
+});
+assert.equal(missingContext.block, true);
+assert.deepEqual(readFileSync(dispatchLog, "utf8").trim().split("\n"), ["bind-root", "resolve", "resolve", "resolve", "resolve"]);
+console.log("ok: Pi guard uses native bind/resolve, correlates exact exchanges, and fails closed");

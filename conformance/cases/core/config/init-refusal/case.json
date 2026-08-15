@@ -1,0 +1,10 @@
+{
+  "suite": "core",
+  "kind": "pure",
+  "authority": "native-v6.4.5",
+  "intentional_difference": "native config initialization requires explicit confirmation before writing the canonical layout-v5 document",
+  "requires_git": true,
+  "description": "config init refuses an unconfirmed write",
+  "args": ["config", "init"],
+  "db_fixture": "none"
+}

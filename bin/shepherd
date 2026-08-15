@@ -1,93 +1,47 @@
 #!/usr/bin/env bash
-# bin/shepherd -- the single canonical entrypoint for the shepherd CLI.
+# Compatibility launcher for the one canonical native shepherd executable.
 #
-# One entrypoint, one CLI. Prefers `poetry run` inside services/cli/ (dev + CI
-# use this path directly); falls back to `python3 -m shepherd_cli` on
-# PYTHONPATH when poetry is absent (an end user relying on the venv that
-# bin/shepherd-venv-ensure maintains, or a minimal image). The Python package
-# is the sole owner of CLI logic -- the loose skills/context/scripts/cmd_*.sh
-# shell layer is retired behind this surface.
-#
-# #266 -- NEVER exec into an UNPROVISIONED venv. `poetry env info --executable`
-# CREATES the venv when none exists and prints the interpreter path for the
-# empty result. On a fresh install/upgrade that meant this wrapper built an
-# empty venv and immediately ran the CLI inside it, so every `shepherd` command
-# died with `ModuleNotFoundError: No module named 'typer'` -- a traceback that
-# points at a dependency rather than at "the venv was never provisioned". It
-# was not self-correcting either: once the empty directory existed,
-# bin/shepherd-venv-ensure's `[ -d "$VENV_DIR" ]` test considered the venv
-# present, so it never installed. Every later call failed identically until
-# someone ran `poetry install` by hand -- and it surfaced mid-`/shepherd:spawn`,
-# where the documented recovery (hand-assembling the boot prompt) is the
-# cache-hostile shape #243 exists to prevent.
-#
-# So: probe, self-heal once, and fail with an actionable message. The probe is
-# filesystem-only -- no interpreter start on the hot path.
-set -eu -o pipefail
+# This file deliberately owns only deterministic binary location selection.
+# It never starts an interpreter, package manager, or legacy command script.
+set -euo pipefail
 
-# Resolve the plugin root: prefer ${CLAUDE_PLUGIN_ROOT} (set by Claude Code when
-# the plugin is installed); otherwise derive it from this script's own location
-# so `bin/shepherd` also works run directly from a repo clone.
-if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ]; then
-  ROOT="$CLAUDE_PLUGIN_ROOT"
-else
-  SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  ROOT="$(dirname "$SELF")"
-fi
-
-CLI_DIR="$ROOT/services/cli"
-
-# Is the venv holding this interpreter actually provisioned?
-#
-# Filesystem probe only: this runs before EVERY shepherd invocation, and
-# starting a Python interpreter just to `import typer` would tax the hot path
-# to answer a question a `stat` can answer. Two independent signals, either
-# sufficient:
-#   1. the `shepherd` console script -- written by `poetry install` and
-#      conspicuously absent on an unprovisioned venv (#266's own transcript
-#      shows poetry warning about exactly that), and
-#   2. `typer` in site-packages -- covers a `--no-root` install, where the
-#      dependencies are present but the console script is not.
-venv_provisioned() {
-  local vpy="$1" vdir
-  vdir="$(dirname "$(dirname "$vpy")")"   # .../.venv/bin/python -> .../.venv
-  [ -x "$vdir/bin/shepherd" ] && return 0
-  compgen -G "$vdir/lib/python*/site-packages/typer" >/dev/null 2>&1 && return 0
-  compgen -G "$vdir/Lib/site-packages/typer" >/dev/null 2>&1 && return 0
-  return 1
+resolve_executable() {
+  local path="$1" target directory
+  while [[ -L "$path" ]]; do
+    target="$(readlink "$path")" || return 1
+    if [[ "$target" = /* ]]; then
+      path="$target"
+    else
+      path="$(dirname "$path")/$target"
+    fi
+  done
+  directory="$(cd "$(dirname "$path")" && pwd -P)" || return 1
+  printf '%s/%s\n' "$directory" "$(basename "$path")"
 }
 
-# `poetry -C <dir> run` executes the command with its OWN cwd set to <dir>,
-# so every relative path argument would resolve against services/cli/ instead
-# of the caller's directory (`shepherd seed verify my.seed.md` from a repo
-# became "no such file"). Resolve the venv interpreter and exec it directly,
-# preserving the caller's cwd. Falls back to `poetry run` only when the venv
-# path cannot be resolved.
-if command -v poetry >/dev/null 2>&1; then
-  VENV_PY="$(poetry -C "$CLI_DIR" env info --executable 2>/dev/null || true)"
-  if [ -n "$VENV_PY" ] && [ -x "$VENV_PY" ]; then
-    if ! venv_provisioned "$VENV_PY"; then
-      # Self-heal once. Progress goes to stderr so it never corrupts a caller
-      # parsing stdout (`shepherd ... --json` is consumed by hooks and agents).
-      echo "shepherd: CLI venv is not provisioned -- installing dependencies (one time)..." >&2
-      poetry -C "$CLI_DIR" install >&2 || true
-      # Re-resolve: `install` may have built a different env than the probe saw.
-      VENV_PY="$(poetry -C "$CLI_DIR" env info --executable 2>/dev/null || echo "$VENV_PY")"
-    fi
-    if [ -n "$VENV_PY" ] && [ -x "$VENV_PY" ] && venv_provisioned "$VENV_PY"; then
-      exec env PYTHONPATH="$CLI_DIR${PYTHONPATH:+:$PYTHONPATH}" "$VENV_PY" -m shepherd_cli "$@"
-    fi
-    # Name the actual problem and the exact recovery, rather than execing into
-    # a broken venv and letting an import error stand in for the diagnosis.
-    echo "shepherd: CLI venv at $CLI_DIR/.venv is missing its dependencies and could not" >&2
-    echo "         be provisioned automatically. Recover with:" >&2
-    echo "" >&2
-    echo "           cd $CLI_DIR && poetry install" >&2
-    echo "" >&2
-    echo "         (\`shepherd doctor\` reports this as the cli/venv check. See GH #266.)" >&2
-    exit 1
+if [[ -n "${SHEPHERD_NATIVE_BIN:-}" ]]; then
+  candidate="$SHEPHERD_NATIVE_BIN"
+else
+  root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+  launcher="$(resolve_executable "${BASH_SOURCE[0]}")"
+  candidate="$root/target/release/shepherd"
+  if [[ ! -x "$candidate" ]]; then
+    candidate="$root/target/debug/shepherd"
   fi
-  exec poetry -C "$CLI_DIR" run shepherd "$@"
+  if [[ ! -x "$candidate" ]]; then
+    installed="$(command -v shepherd 2>/dev/null || true)"
+    if [[ -n "$installed" && -x "$installed" ]] \
+      && [[ "$(resolve_executable "$installed")" != "$launcher" ]]; then
+      candidate="$installed"
+    fi
+  fi
 fi
 
-exec env PYTHONPATH="$CLI_DIR${PYTHONPATH:+:$PYTHONPATH}" python3 -m shepherd_cli "$@"
+if [[ ! -x "$candidate" ]]; then
+  printf '%s\n' 'shepherd: native binary unavailable.' >&2
+  printf '%s\n' "shepherd: expected executable at $candidate." >&2
+  printf '%s\n' 'shepherd: install the native shepherd release or set SHEPHERD_NATIVE_BIN to its executable path.' >&2
+  exit 127
+fi
+
+exec "$candidate" "$@"

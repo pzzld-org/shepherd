@@ -1,0 +1,1 @@
+ERROR: init is mutating; re-run with --confirm

@@ -1,0 +1,14 @@
+{
+  "agent_type": "conductor",
+  "declared_state": "idle",
+  "id": "t1",
+  "last_seen_at": <TS>,
+  "metadata": "{\"role\":\"worker\"}",
+  "project_id": "project-g",
+  "session_id": "sess-a",
+  "spawned_at": <TS>,
+  "status": "active",
+  "team_name": "team-a",
+  "teammate_name": "lane-a",
+  "tmux_pane_id": "%pane-a"
+}

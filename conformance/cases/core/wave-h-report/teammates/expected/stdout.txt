@@ -1,0 +1,8 @@
+[
+  {
+    "teammate_name": "luna",
+    "agent_type": "worker",
+    "status": "active",
+    "last_seen_at": <TS>
+  }
+]

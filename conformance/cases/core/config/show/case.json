@@ -1,0 +1,10 @@
+{
+  "suite": "core",
+  "kind": "pure",
+  "authority": "native-v6.4.5",
+  "intentional_difference": "native config show emits the resolved typed schema as JSON rather than legacy raw TOML source text",
+  "requires_git": true,
+  "description": "config show renders the resolved typed configuration",
+  "args": ["config", "show"],
+  "db_fixture": "none"
+}

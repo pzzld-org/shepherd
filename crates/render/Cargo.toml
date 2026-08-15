@@ -1,0 +1,133 @@
+[package]
+build = "build.rs"
+description = "The shepherd render layer: template resolution, deterministic rendering, and the provenance manifest that pins every emitted artifact."
+name = "shepherd-render"
+
+authors.workspace = true
+categories.workspace = true
+edition.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+license.workspace = true
+readme = "README.md"
+repository.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[lib]
+bench = false
+crate-type = ["rlib"]
+
+[[test]]
+name = "default"
+required-features = []
+
+[package.metadata.docs.rs]
+all-features = false
+features = ["full"]
+rustc-args = ["--cfg", "docsrs"]
+version = "v{{version}}"
+
+[package.metadata.release]
+no-dev-version = true
+tag-name = "v{{version}}"
+
+[dependencies]
+# engine
+shepherd-core = { workspace = true }
+# templating
+# `preserve_order` is deliberately OFF: without it minijinja backs maps with a
+# BTreeMap, so iteration is sorted and therefore reproducible. Turning it on
+# swaps in insertion order, which makes `output_sha256` depend on the order the
+# caller happened to build its context. That is the determinism contract.
+minijinja = { features = [
+  "builtins",
+  "macros",
+  "multi_template",
+  "serde",
+], workspace = true }
+# hashing — template_sha256, vars_sha256 and output_sha256 must reproduce
+sha2 = { workspace = true }
+# errors
+thiserror = { workspace = true }
+# serialization
+serde = { optional = true, workspace = true }
+serde_json = { optional = true, workspace = true }
+# tracing
+tracing = { optional = true, workspace = true }
+
+[features]
+default = [
+  "std",
+]
+
+full = [
+  "default",
+  "json",
+  "tracing",
+]
+
+# ********* [FF] Flags *********
+# `minijinja/json` is required so the negative control in `filters::tests`
+# has minijinja's BUILTIN `tojson` to diverge against -- minijinja's own
+# `builtins` feature (enabled unconditionally above) only reserves the
+# builtin-filter registration slot; the `tojson` filter body itself compiles
+# only under minijinja's OWN `json` feature (minijinja-2.24.0
+# `src/defaults.rs:129-132`), a namespace independent of this crate's `json`
+# feature. Without this line, `minijinja::Environment::new()` has NO
+# `tojson` filter at all under any feature leg of this crate -- see
+# `env.rs`'s module docs.
+json = [
+  "alloc",
+  "dep:serde",
+  "dep:serde_json",
+  "minijinja/json",
+  "shepherd-core/json",
+]
+
+# ********* [FF] Targets *********
+native = ["full"]
+
+nightly = [
+  "shepherd-core/nightly",
+]
+
+wasi = [
+  "json",
+  "std",
+]
+
+wasm = [
+  "json",
+  "std",
+]
+
+# ********* [FF] Standard Library *********
+alloc = [
+  "serde?/alloc",
+  "serde_json?/alloc",
+  "sha2/alloc",
+  "shepherd-core/alloc",
+]
+
+# NOTE: `sha2` 0.11 has no `std` feature — the RustCrypto 0.11 line replaced it
+# with `alloc` plus `oid`. Referencing `sha2/std` here resolves to a hard
+# dependency-resolution error, not a warning.
+std = [
+  "alloc",
+  "minijinja/std_collections",
+  "serde?/std",
+  "serde_json?/std",
+  "shepherd-core/std",
+  "thiserror/std",
+  "tracing?/std",
+]
+
+# ********* [FF] Deps *********
+tracing = [
+  "dep:tracing",
+  "shepherd-core/tracing",
+]
+
+[lints]
+workspace = true

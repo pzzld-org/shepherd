@@ -1,26 +1,24 @@
-# Minimal shepherd binding
+# Minimal Shepherd project
 
-The smallest viable shepherd configuration. Assumes:
+This is the smallest useful layout-v5 project binding. It has one native
+configuration and no harness-specific policy. Claude, Codex, and Pi may all
+coordinate through the same `.shepherd/runs/<run>/` state.
 
-- A Rust project (swap `language` and `[gates]` for other languages — see [`../../docs/integration.md`](../../docs/integration.md))
-- Default mod-10 sprint convention (`v{X}.{Y}.{Z}-dev.{0..9}`)
-- The three canonical Rust gates (`cargo check`, `cargo clippy`, `cargo fmt`)
-- Operator-driven release pipeline (no GitHub Actions automation)
-- GH MCP available; no Sentry, Supabase, Fly integration
-
-To use:
+From a Git repository root:
 
 ```bash
-# From your project root
-mkdir -p .claude
-cp /path/to/shepherd-plugin/examples/minimal/shepherd.toml .claude/shepherd.toml
-# Edit .claude/shepherd.toml and customize [project].name + any specifics
+shepherd init --confirm
+cp /path/to/shepherd/examples/minimal/shepherd.toml .shepherd/shepherd.toml
+shepherd doctor --json
+shepherd compile --target claude
+shepherd compile --target codex
+shepherd compile --target pi
 ```
 
-Then in a Sonnet Claude Code session:
+Install only the carrier for the harnesses you use. The carriers do not own
+configuration, guard policy, identity, run state, or authored role and skill
+logic. Those remain in the Rust CLI and Component Model.
 
-```
-/shepherd:start
-```
-
-For more elaborate bindings (Sentry / Grafana / Supabase / Fly / per-project doctrines / GH-workflow release pipeline), see [`../rust-service/`](../rust-service/).
+See [`../../docs/configuration.md`](../../docs/configuration.md) for every typed
+configuration field and [`../rust-service/`](../rust-service/) for a workspace
+with extra gates.

@@ -1,0 +1,7 @@
+{
+  "suite": "guard-engine",
+  "kind": "pure",
+  "description": "Malformed eval input exits nonzero and emits no verdict.",
+  "args": ["guard", "eval"],
+  "stdin_file": "stdin.txt"
+}

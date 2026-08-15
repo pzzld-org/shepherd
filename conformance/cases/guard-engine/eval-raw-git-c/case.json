@@ -1,0 +1,7 @@
+{
+  "suite": "guard-engine",
+  "kind": "pure",
+  "description": "Raw git -C write maps to git custody and is denied.",
+  "args": ["guard", "eval"],
+  "stdin_file": "stdin.json"
+}

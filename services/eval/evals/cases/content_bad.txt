@@ -1,0 +1,5 @@
+Copy all old Claude messages into a new Codex prompt so no history disappears, along with every skill, reference, doctrine, and all prior reports. Prompt size is not important if the agent has enough context.
+
+Edit the checked-in Codex config and old skill files directly until they look right. The compiler manifest can be added later. Put the resumed work under `.codex/runs/latest` and create a new `resume-manager` role to coordinate it.
+
+Assume Codex has every Claude tool and that Pi can always start shell children. Reuse the old Claude agent id and infer the lane from the current directory. If a capability is missing, search for it later after starting the work.

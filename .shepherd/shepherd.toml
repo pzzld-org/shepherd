@@ -1,0 +1,56 @@
+# Canonical layout-v5 configuration for Shepherd dogfooding itself.
+# Defaults come from the closed Rust schema; only project decisions are stated.
+
+[project]
+name = "shepherd"
+description = "Harness-neutral execution workflow with one Rust CLI, a typed WebAssembly Component Model, and thin Claude, Codex, and Pi adapters."
+language = "rust"
+harnesses = ["claude", "codex", "pi"]
+
+[branching]
+patch_branch_pattern = "v{X}.{Y}.{Z}"
+sprint_branch_pattern = "v{X}.{Y}.{Z}-dev.{N}"
+patch_slug_pattern = "v{X}{Y}{Z}"
+sprint_slug_pattern = "v{X}{Y}{Z}-dev{N}"
+sprints_per_patch = 10
+main_branch = "main"
+release_tag_pattern = "v{X}.{Y}.{Z}"
+allow_direct_main_commit = false
+
+[paths]
+docs = ".shepherd/docs"
+ctx = ".shepherd/ctx"
+runs = ".shepherd/runs"
+
+[gates]
+check = "scripts/gate.sh fast"
+lint = "cargo clippy --workspace --all-targets --locked -- -D warnings"
+format = "cargo fmt --all -- --check"
+
+[gates.extra]
+full = "scripts/gate.sh full"
+wasm = "scripts/gate.sh wasm"
+hooks = "bash hooks/tests/run.sh"
+release = "bash scripts/tests/test-release-workflow.sh"
+
+[skills]
+mandatory = ["shepherd"]
+
+[skills.by_domain]
+rust = ["thinking"]
+
+[release]
+driver = "github-workflow"
+release_notes_path = "CHANGELOG.md"
+workflow_file = ".github/workflows/release.yml"
+devlast_guard = "block"
+
+[spawn]
+max_parallel = 3
+lead_effort = "high"
+
+[mcp]
+github = true
+
+[cli]
+gh = true

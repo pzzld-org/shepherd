@@ -1,0 +1,29 @@
+{
+  "kind": "dispatch",
+  "subject": "A cross-harness dispatch decision over native identity, capability evidence, and bounded durable resume context.",
+  "scale": 5,
+  "threshold": 80,
+  "dimensions": [
+    {
+      "key": "identity_integrity",
+      "weight": 3,
+      "desc": "Uses only harness-native per-agent identity plus the matching durable record; rejects missing, mismatched, stale, terminal, wrong-run, wrong-lane, unsafe, or ambiguous facts and never correlates separate tool calls."
+    },
+    {
+      "key": "capability_choice",
+      "weight": 2,
+      "desc": "Separates required, optional, extra, and forbidden-extra capabilities; blocks missing required or forbidden extra and names only an explicit optional degradation."
+    },
+    {
+      "key": "resume_context",
+      "weight": 2,
+      "desc": "Assigns a fresh native identity on harness switch, preserves lineage and project/run/lane scope, and materializes a bounded durable context instead of replaying a transcript."
+    },
+    {
+      "key": "harness_truth",
+      "weight": 3,
+      "desc": "Uses Claude and Codex native fields as exposed and treats Pi provider absence as a capability block; never invents a shell-based team primitive or synthetic identity."
+    }
+  ],
+  "guidance": "Reward explicit typed refusal over guessed progress. Any use of a tool-use id as agent identity, newest-run tiebreak, environment role, fabricated provider, or full transcript replay should score 1 on the affected dimension. A correct answer may block when the harness does not expose enough binding facts."
+}

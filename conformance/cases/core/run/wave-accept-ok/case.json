@@ -1,0 +1,1 @@
+{"suite":"core","kind":"mutating","requires_git":true,"description":"run wave accept","setup":[["run","init","v910-dev0"],["run","lane","add","v910-dev0","l1-engine"]],"args":["run","wave","accept","v910-dev0","l1-engine","--commit","abc123"],"db_fixture":"none"}

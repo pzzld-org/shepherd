@@ -1,0 +1,1 @@
+{"suite":"core","kind":"mutating","requires_git":true,"description":"run migrate","setup":[["run","init","v910-dev0"]],"args":["run","migrate","v910-dev0"],"db_fixture":"none"}

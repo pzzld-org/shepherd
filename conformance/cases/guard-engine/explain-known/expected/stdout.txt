@@ -1,0 +1,12 @@
+dedup-gate (v1) -- A write introducing a public symbol identical to one already present in the registry's corpus is denied unless the dispatch brief explicitly justifies the addition.
+
+Rules:
+  [no-hit-allows] action=fs.write effect=allow_if_no_hit
+    A symbol absent from the corpus at or above the similarity threshold writes through cleanly.
+  [hit-requires-justification] action=fs.write effect=deny_if_hit_without_justification
+    A symbol matching an existing one at or above the block threshold is denied UNLESS the dispatch carries an explicit justification block naming why this is a genuine new symbol, not a duplicate.
+
+Examples:
+  [allow] coder-writes-a-genuinely-new-symbol -> allow
+  [deny] coder-writes-an-already-existing-public-symbol -> deny halt_code=DEDUP-HIT
+  [allow] coder-writes-a-near-duplicate-with-justification -> allow

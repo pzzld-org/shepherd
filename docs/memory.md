@@ -1,53 +1,76 @@
-# Memory — the registry vs. Claude Code's native memory
+# Memory and context
 
-Two questions this sprint asked: is `/shepherd:context` a naming conflict, and do
-Claude Code's newer native-memory features make shepherd's own memory layer
-unnecessary? Short answers: the rename already shipped, and no — the registry
-stays, because the two systems cover different work.
+Shepherd separates durable structured state from host-native prose memory. The
+separation is what lets Claude, Codex, and Pi resume the same run without
+copying one harness's private files into another.
 
-## Naming: resolved
+## Shepherd-owned context
 
-- The command is **`/shepherd:ctx`** (`commands/ctx.md`), not `/shepherd:context`.
-- The skill is **`shepherd-context`** (`skills/context/SKILL.md` frontmatter `name:`).
-- Claude Code's `/context` is a **slash command**, not a tool name, and plugin
-  commands are namespaced under `shepherd:` — so there is no hard collision.
-  Reserved tool names (Agent, Workflow, Read, …) are all avoided.
+The project namespace has two related stores:
 
-## What native memory covers
+- `.shepherd/ctx/` is the canonical cross-run context artifact root.
+- `.shepherd/shepherd.db` is the typed registry used for searchable records,
+  identity, liveness, locks, duplicate declarations, and recorded results.
 
-Claude Code now ships native memory (docs: `code.claude.com/docs/en/memory`):
+Run-specific facts live under `.shepherd/runs/<run>/`. A run's seed, plan,
+lane plans, dispatch records, reports, audits, handoff, and close evidence must
+not be copied into a global notes directory. Cross-run documentation belongs
+directly under the flat `.shepherd/docs/` root.
 
-- **`CLAUDE.md`** hierarchy (`~/.claude/CLAUDE.md` user, project, local) — always
-  loaded, human-authored instructions.
-- **Auto memory** at `~/.claude/projects/<project>/memory/` (`MEMORY.md` index +
-  topic files, `/memory` to toggle) — Claude's own learnings across sessions.
-- **Per-subagent memory** via the `memory: user|project|local` frontmatter field.
+The user namespace at `~/.shepherd/` holds only direct `shepherd*.toml` default
+candidates. It is not a second project run ledger, context root, profile store,
+or template store. The native resolver keeps project and user roots distinct;
+project templates stay project-owned under `.shepherd/templates/`.
 
-This is best-effort prose notes for future sessions: build commands, debugging
-insights, preferences. It persists across `/clear` and `/resume`.
+## What the registry provides
 
-## Why the SQLite registry stays
+The registry is deterministic and queryable. It is used for facts that must be
+available outside a model turn:
 
-`/shepherd:ctx` (`.shepherd/shepherd.db`) is a **queryable relational store**, not
-notes. It does what native memory structurally cannot:
+| Structured Shepherd state | Why it is not just prose |
+| --- | --- |
+| Run and lane lifecycle | Commands must validate transitions and ownership. |
+| Dispatch identity and resume | A later harness must verify the same identity key. |
+| Teammate liveness and coordination locks | Hooks and operators need current state without a model response. |
+| Duplicate declarations and symbol/artifact search | Gates need repeatable queries. |
+| Recorded evaluation and issue views | Results need stable schemas and exit behavior. |
 
-| Registry (`shctx`) | Native memory |
-| :--- | :--- |
-| FTS5 symbol + artifact search, dedup by name/shape | Prose recall |
-| GitHub issue/PR/release cache, event log | — |
-| Teammate liveness, locks, focus record, Stage-Graph state | — |
-| Adaptation priors as typed rows (`adapt roll`/`priors`) | Freeform learnings |
-| Read/written by hooks and the CLI, outside a model turn | Model-authored only |
+The native `mem`, `query`, `search`, `insights`, and `export` command families
+read these typed records. They do not invoke a second interpreter or judge.
 
-The DEDUP-GATE, the carry-forward ledger, liveness, and the Stage-Graph walk all
-need structured queries and out-of-turn writes. Native memory cannot back any of
-them. So the registry is retained.
+## Host-native memory
 
-## Where they compose
+Claude Code, Codex, and Pi may each have their own user or project memory
+features. Those are useful for preferences and prose lessons, but they are not
+Shepherd authority. A host-native note cannot authorize a run transition, change
+a guard policy, or replace a dispatch record.
 
-Native memory is the better home for the **lesson/doctrine layer** that is prose
-by nature. Shepherd's adaptation loop (`skills/adaptation/SKILL.md`) already keeps
-typed priors in the DB for sizing and dedup; a project's user-wide doctrines and
-durable learnings can additionally live in `~/.claude/CLAUDE.md` or native auto
-memory so they ride along in every session without a registry read. The two are
-complementary: structured state in the registry, prose context in native memory.
+When a host memory contains a reusable lesson, promote the stable contract to a
+project doctrine or a bounded content source. Keep the live run decision in the
+run artifact that produced it.
+
+## Context selection and budgets
+
+Resume assembles a bounded context from the canonical run and registry facts.
+It prefers the seed, current plan, active lane evidence, recent dispatch state,
+and the latest handoff, then truncates lower-priority prose before it crosses
+the native context budget. The component/compiler uses the same versioned
+UAX #29 measurement rules for roles, skills, and references.
+
+Keep context useful:
+
+- record one fact once and link to it rather than restating it;
+- put run decisions in the run directory, not in a global doctrine;
+- put durable cross-run lessons in `ctx/` or a flat `docs/` document;
+- keep role and skill files under their hard word and byte ceilings;
+- keep host-specific observations in adapter diagnostics, not in the core.
+
+## Safe resume
+
+Resume is accepted only when the canonical run id, harness identity, dispatch
+binding, and artifact paths validate together. A missing or ambiguous identity
+is unresolved or blocked according to the typed contract. It must not silently
+fall back to a guessed role, guessed run, or host-local memory file.
+
+See [Integration](integration.md) for the cross-harness contract and
+[Configuration](configuration.md) for namespace ownership.

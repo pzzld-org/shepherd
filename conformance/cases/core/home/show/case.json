@@ -1,0 +1,10 @@
+{
+  "suite": "core",
+  "kind": "pure",
+  "authority": "native-v6.4.5",
+  "intentional_difference": "native home show reports only the canonical user configuration namespace and no unread profile/template roots",
+  "requires_git": true,
+  "description": "home show is read-only",
+  "args": ["home", "show"],
+  "db_fixture": "none"
+}

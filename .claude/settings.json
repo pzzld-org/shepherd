@@ -1,4 +1,7 @@
 {
+  "env": {
+    "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": "2"
+  },
   "enabledPlugins": {
     "plugin-dev@claude-plugins-official": true
   },

@@ -1,7 +1,7 @@
 {
   "name": "shepherd",
-  "version": "6.4.4",
-  "description": "Sprint-by-sprint version-cycle conductor. Six-agent flock (engineer, critic, coder, auditor, worker, discovery) on a three-section pipeline (INTRODUCTION → BODY → CLOSE), with hardened hooks, hypothesis-driven audits, and a per-project SQLite context registry. Project-agnostic — branch topology, gates, paths, and ledger discipline configured via shepherd.toml at the repo root.",
+  "version": "6.4.5",
+  "description": "Harness-neutral sprint execution and governance powered by one Rust CLI and the typed fl03:shepherd@6.4.5 WebAssembly Component Model. Thin Claude Code, Codex, and Pi adapters share identity, guard, lifecycle, context, and run artifacts without parallel command authorities.",
   "author": {
     "name": "FL03",
     "email": "joe@pzzld.org",
@@ -19,6 +19,10 @@
     "version-cycle",
     "release-pipeline",
     "code-review",
-    "audit"
+    "audit",
+    "rust",
+    "webassembly",
+    "codex",
+    "pi"
   ]
 }

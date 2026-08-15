@@ -1,0 +1,43 @@
+[package]
+description = "The WebAssembly component-model boundary for the harness-neutral Shepherd engine and content compiler."
+name = "shepherd-component"
+
+authors.workspace = true
+categories.workspace = true
+edition.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+license.workspace = true
+readme = "README.md"
+repository.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[lib]
+bench = false
+crate-type = ["cdylib", "rlib"]
+
+[package.metadata.docs.rs]
+all-features = false
+features = ["full"]
+rustc-args = ["--cfg", "docsrs"]
+version = "v{{version}}"
+
+[package.metadata.release]
+no-dev-version = true
+tag-name = "v{{version}}"
+
+[package.metadata.component]
+package = "fl03:shepherd"
+
+[dependencies]
+shepherd = { features = ["compiler", "json", "parse", "std"], workspace = true }
+serde_json = { workspace = true }
+wit-bindgen = { features = ["std"], workspace = true }
+
+[features]
+default = []
+full = []
+
+[lints]
+workspace = true

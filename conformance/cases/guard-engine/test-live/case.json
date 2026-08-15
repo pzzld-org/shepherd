@@ -1,0 +1,6 @@
+{
+  "suite": "guard-engine",
+  "kind": "pure",
+  "description": "The complete live predicate corpus passes.",
+  "args": ["guard", "test"]
+}

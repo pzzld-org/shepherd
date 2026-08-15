@@ -1,0 +1,14 @@
+{
+  "primary_root": "<SCRATCH>/cwd",
+  "namespace": "<SCRATCH>/cwd/.shepherd",
+  "docs": "<SCRATCH>/cwd/.shepherd/docs",
+  "ctx": "<SCRATCH>/cwd/.shepherd/ctx",
+  "runs": "<SCRATCH>/cwd/.shepherd/runs",
+  "registry": "<SCRATCH>/cwd/.shepherd/shepherd.db",
+  "config_sources": [
+    "<SCRATCH>/cwd/.shepherd/shepherd.toml"
+  ],
+  "registry_schema": 21,
+  "findings": [],
+  "ok": true
+}

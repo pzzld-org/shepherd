@@ -1,0 +1,42 @@
+{
+  "schema": "shepherd-migrate-v5",
+  "scope": "project",
+  "manifest": {
+    "schema": "layout-v5",
+    "scope": "Project",
+    "namespace": "<SCRATCH>/cwd/.shepherd",
+    "entries": [
+      {
+        "source": "<SCRATCH>/cwd/.shepherd/profiles/rust/style.md",
+        "destination": "",
+        "classification": "retired-unread-authority",
+        "owner": "project",
+        "provenance": "snapshot-removed retired profiles content with no native resolver",
+        "byte_size": 109,
+        "sha256": "26565996cbfcac5b0453178eada383253a797bf7d5146f2172404e111fe6fc6d",
+        "action": "RemoveFile"
+      },
+      {
+        "source": "<SCRATCH>/cwd/.shepherd/profiles/rust",
+        "destination": "",
+        "classification": "retired-directory",
+        "owner": "project",
+        "provenance": "retired project profiles root",
+        "byte_size": 0,
+        "sha256": "",
+        "action": "RemoveDirectory"
+      },
+      {
+        "source": "<SCRATCH>/cwd/.shepherd/profiles",
+        "destination": "",
+        "classification": "retired-directory",
+        "owner": "project",
+        "provenance": "retired project profiles root",
+        "byte_size": 0,
+        "sha256": "",
+        "action": "RemoveDirectory"
+      }
+    ]
+  },
+  "execution": null
+}

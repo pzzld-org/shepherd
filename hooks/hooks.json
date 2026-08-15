@@ -5,56 +5,18 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/session_open.sh"
-          },
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/focus_rehydrate.sh"
-          },
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/session_venv.sh",
-            "timeout": 60
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/packages/harness-claude/hooks/dispatch-lifecycle.mjs"
           }
         ]
       }
     ],
     "PreToolUse": [
       {
-        "matcher": "Bash|Edit|Write|Read|Grep|Glob|Agent|Task|Skill|ToolSearch|SendMessage|WebFetch|WebSearch|NotebookEdit",
+        "matcher": "Write|Edit|Bash|Agent|Workflow",
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/teammate_heartbeat.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/bash_guard.sh"
-          },
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/teammate_git_guard.sh"
-          },
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/coder_git_guard.sh"
-          },
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/worktree_teardown_guard.sh"
-          },
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/release_trigger_guard.sh"
-          },
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/conductor_write_guard.sh"
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/packages/harness-claude/hooks/guard-eval.mjs"
           }
         ]
       },
@@ -63,87 +25,17 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/lock_guard.sh"
-          },
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/dedup_write_guard.sh"
-          },
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/dups_write_guard.sh"
-          },
-          {
-            "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/seed_preflight_check.sh"
-          },
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/conductor_write_guard.sh"
           }
         ]
-      },
+      }
+    ],
+    "SubagentStart": [
       {
-        "matcher": "Edit",
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/lock_guard.sh"
-          },
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/dedup_write_guard.sh"
-          },
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/dups_write_guard.sh"
-          },
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/conductor_write_guard.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Agent",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/agent_invocation_tagger.sh"
-          },
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/dispatch_guard.sh"
-          },
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/hotfix_vehicle_guard.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Task",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/agent_invocation_tagger.sh"
-          },
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/dispatch_guard.sh"
-          },
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/hotfix_vehicle_guard.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Workflow",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/workflow_model_guard.sh"
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/packages/harness-claude/hooks/dispatch-lifecycle.mjs"
           }
         ]
       }
@@ -151,6 +43,10 @@
     "SubagentStop": [
       {
         "hooks": [
+          {
+            "type": "command",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/packages/harness-claude/hooks/dispatch-lifecycle.mjs"
+          },
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/subagent_telemetry.sh"
@@ -169,7 +65,7 @@
         ]
       },
       {
-        "matcher": "Agent",
+        "matcher": "Agent|Task",
         "hooks": [
           {
             "type": "command",
@@ -178,93 +74,6 @@
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/discovery_capture.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Task",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/agent_insight_capture.sh"
-          },
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/discovery_capture.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Edit|Write",
-        "hooks": [
-          {
-            "type": "agent",
-            "if": "Edit(*.plan.md)",
-            "prompt": "Phase 0 mesh verification (shepherd issue #23). The just-edited file is a sprint plan. (1) Read tool_input.file_path. (2) Read the file. (3) Grep for 'landed in tree' / 'confirmed at' / 'in tree:' phrasing paired with a file path + symbol reference. (4) For each claim, run: git merge-base HEAD origin/main (fallback origin/master, HEAD~20) to get base; then git log --oneline <base>..HEAD -- <referenced-file>. If the referenced symbol does not appear in any commit message or diff for that file, mark unverified. (5) Respond {\"ok\": true} if all claims verified, or if no 'landed in tree' claims found, or if sprint base cannot be resolved. Otherwise {\"ok\": false, \"reason\": \"Phase 0 mesh: N claim(s) unverified vs sprint git log: <list>. False 'landed' claims propagate to next session as ground truth (issue #23). Verify each landed claim with git log <base>..HEAD -- <file> before writing the plan.\"}. Max 10 tool calls. Be terse.",
-            "timeout": 90
-          },
-          {
-            "type": "agent",
-            "if": "Write(*.plan.md)",
-            "prompt": "Phase 0 mesh verification (shepherd issue #23). A new sprint plan was just written. (1) Read tool_input.file_path. (2) Read the file. (3) Grep for 'landed in tree' / 'confirmed at' / 'in tree:' phrasing paired with a file path + symbol reference. (4) For each claim, run: git merge-base HEAD origin/main (fallback origin/master, HEAD~20) to get base; then git log --oneline <base>..HEAD -- <referenced-file>. If the referenced symbol does not appear in any commit message or diff for that file, mark unverified. (5) Respond {\"ok\": true} if all claims verified, or if no 'landed in tree' claims found, or if sprint base cannot be resolved. Otherwise {\"ok\": false, \"reason\": \"Phase 0 mesh: N claim(s) unverified vs sprint git log: <list>. False 'landed' claims propagate to next session as ground truth (issue #23). Verify each landed claim with git log <base>..HEAD -- <file> before writing the plan.\"}. Max 10 tool calls. Be terse.",
-            "timeout": 90
-          },
-          {
-            "type": "agent",
-            "if": "Edit(*/runs/*/plan.md)",
-            "prompt": "Phase 0 mesh verification (shepherd issue #23; v6.4.1 run-scoped plan at runs/{run}/plan.md — same contract as the *.plan.md matcher). The just-edited file is a sprint plan. (1) Read tool_input.file_path. (2) Read the file. (3) Grep for 'landed in tree' / 'confirmed at' / 'in tree:' phrasing paired with a file path + symbol reference. (4) For each claim, run: git merge-base HEAD origin/main (fallback origin/master, HEAD~20) to get base; then git log --oneline <base>..HEAD -- <referenced-file>. If the referenced symbol does not appear in any commit message or diff for that file, mark unverified. (5) Respond {\"ok\": true} if all claims verified, or if no 'landed in tree' claims found, or if sprint base cannot be resolved. Otherwise {\"ok\": false, \"reason\": \"Phase 0 mesh: N claim(s) unverified vs sprint git log: <list>. False 'landed' claims propagate to next session as ground truth (issue #23). Verify each landed claim with git log <base>..HEAD -- <file> before writing the plan.\"}. Max 10 tool calls. Be terse.",
-            "timeout": 90
-          },
-          {
-            "type": "agent",
-            "if": "Write(*/runs/*/plan.md)",
-            "prompt": "Phase 0 mesh verification (shepherd issue #23; v6.4.1 run-scoped plan at runs/{run}/plan.md — same contract as the *.plan.md matcher). A new sprint plan was just written. (1) Read tool_input.file_path. (2) Read the file. (3) Grep for 'landed in tree' / 'confirmed at' / 'in tree:' phrasing paired with a file path + symbol reference. (4) For each claim, run: git merge-base HEAD origin/main (fallback origin/master, HEAD~20) to get base; then git log --oneline <base>..HEAD -- <referenced-file>. If the referenced symbol does not appear in any commit message or diff for that file, mark unverified. (5) Respond {\"ok\": true} if all claims verified, or if no 'landed in tree' claims found, or if sprint base cannot be resolved. Otherwise {\"ok\": false, \"reason\": \"Phase 0 mesh: N claim(s) unverified vs sprint git log: <list>. False 'landed' claims propagate to next session as ground truth (issue #23). Verify each landed claim with git log <base>..HEAD -- <file> before writing the plan.\"}. Max 10 tool calls. Be terse.",
-            "timeout": 90
-          },
-          {
-            "type": "agent",
-            "if": "Edit(*/runs/*/lanes/*/plan.md)",
-            "prompt": "Lane-plan claim verification (shepherd issue #23 class; v6.4.1 conductor-owned lane plan at runs/{run}/lanes/{lane}/plan.md). The just-edited file is a lane plan. (1) Read tool_input.file_path. (2) Read the file. (3) Grep for 'landed in tree' / 'confirmed at' / 'in tree:' phrasing paired with a file path + symbol reference. (4) For each claim, run: git merge-base HEAD origin/main (fallback origin/master, HEAD~20) to get base; then git log --oneline <base>..HEAD -- <referenced-file>. If the referenced symbol does not appear in any commit message or diff for that file, mark unverified. (5) Respond {\"ok\": true} if all claims verified, or if no 'landed in tree' claims found, or if sprint base cannot be resolved. Otherwise {\"ok\": false, \"reason\": \"Lane-plan mesh: N claim(s) unverified vs sprint git log: <list>. False 'landed' claims propagate as ground truth (issue #23). Verify each landed claim with git log <base>..HEAD -- <file> before writing the lane plan.\"}. Max 10 tool calls. Be terse.",
-            "timeout": 90
-          },
-          {
-            "type": "agent",
-            "if": "Write(*/runs/*/lanes/*/plan.md)",
-            "prompt": "Lane-plan claim verification (shepherd issue #23 class; v6.4.1 conductor-owned lane plan at runs/{run}/lanes/{lane}/plan.md). A new lane plan was just written. (1) Read tool_input.file_path. (2) Read the file. (3) Grep for 'landed in tree' / 'confirmed at' / 'in tree:' phrasing paired with a file path + symbol reference. (4) For each claim, run: git merge-base HEAD origin/main (fallback origin/master, HEAD~20) to get base; then git log --oneline <base>..HEAD -- <referenced-file>. If the referenced symbol does not appear in any commit message or diff for that file, mark unverified. (5) Respond {\"ok\": true} if all claims verified, or if no 'landed in tree' claims found, or if sprint base cannot be resolved. Otherwise {\"ok\": false, \"reason\": \"Lane-plan mesh: N claim(s) unverified vs sprint git log: <list>. False 'landed' claims propagate as ground truth (issue #23). Verify each landed claim with git log <base>..HEAD -- <file> before writing the lane plan.\"}. Max 10 tool calls. Be terse.",
-            "timeout": 90
-          }
-        ]
-      }
-    ],
-    "TeammateIdle": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/teammate_idle.sh"
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/coordinate_drive_guard.sh"
-          },
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/deliverable_check.sh"
-          },
-          {
-            "type": "agent",
-            "prompt": "Wave-gate cherry-pick verification (shepherd issue #21). Fast-path: (1) Run: git branch 2>/dev/null | grep -c '^  agent-' || echo 0. If 0, respond {\"ok\": true} immediately and use no further tools. Heavy path (only if agent-* branches exist): (2) Get sprint branch via git rev-parse --abbrev-ref HEAD. (3) For each agent-* branch: run git rev-list --right-only --count \"<sprint>...<branch>\" 2>/dev/null. Collect branches whose count > 0 (stray commits not in sprint). (4) If none stray, respond {\"ok\": true}. (5) Else respond {\"ok\": false, \"reason\": \"WAVE-GATE: N agent branch(es) have unique commits not in <sprint>: <list of branch:count>. Cherry-pick onto sprint before closing the wave (issue #21). Silent data-loss risk if next session inherits 'complete' from plan/handoff while commits remain orphaned.\"}. Max 5 tool calls. Default to ok=true on any error. Be terse.",
-            "timeout": 30
-          },
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/close_finalize_check.sh"
           }
         ]
       }
@@ -279,56 +88,12 @@
         ]
       }
     ],
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/user_prompt_submit.sh"
-          },
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/focus_rehydrate.sh"
-          }
-        ]
-      }
-    ],
     "PreCompact": [
       {
         "hooks": [
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/precompact_snapshot.sh"
-          }
-        ]
-      }
-    ],
-    "WorktreeCreate": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/worktree_lifecycle.sh"
-          }
-        ]
-      }
-    ],
-    "WorktreeRemove": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/worktree_lifecycle.sh"
-          }
-        ]
-      }
-    ],
-    "SessionEnd": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/tmux_pane_cleanup.sh"
           }
         ]
       }

@@ -1,0 +1,2 @@
+not-json
+{"protocol":"shepherd/1","request_id":"conformance-1","op":"guard.eval","payload":{"role":"coder","tool_name":"Bash","tool_input":{"command":"git status"}}}

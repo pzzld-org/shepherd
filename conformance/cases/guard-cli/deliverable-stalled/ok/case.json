@@ -1,0 +1,13 @@
+{
+  "suite": "guard-cli",
+  "kind": "pure",
+  "description": "Native shepherd deliverable stalled reads one pending deliverable from the canonical registry inside an isolated git project.",
+  "args": ["deliverable", "stalled", "--since-mins=10"],
+  "db_fixture": "full_schema",
+  "requires_git": true,
+  "seed_sql": [
+    "INSERT INTO projects (id, name, created_at, updated_at) VALUES ('proj-conformance', 'conformance-probe', 0, 0);",
+    "INSERT INTO deliverables (project_id, agent_session, agent_role, kind, target_ref, promised_at, status) VALUES ('proj-conformance', 'sess-conformance', '@coder', 'code', 'W0-S9', 1000, 'pending');"
+  ],
+  "capture_files": []
+}

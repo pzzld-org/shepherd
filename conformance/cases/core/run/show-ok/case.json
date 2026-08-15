@@ -1,0 +1,1 @@
+{"suite":"core","kind":"pure","requires_git":true,"description":"run show","setup":[["run","init","v910-dev0"]],"args":["run","show","v910-dev0"],"db_fixture":"none"}

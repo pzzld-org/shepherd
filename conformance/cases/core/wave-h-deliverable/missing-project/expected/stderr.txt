@@ -1,0 +1,1 @@
+ERROR: no project registered in the canonical registry; initialize project identity before promising deliverables

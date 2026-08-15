@@ -1,0 +1,9 @@
+{
+  "suite": "guard-cli",
+  "kind": "pure",
+  "description": "hooks/scripts/seed_preflight_check.sh -- shepherd seed verify \"$tmp\", against a clean seed file. Success path: 0 hard failures, exit 0.",
+  "args": ["seed", "verify", "good.seed.md"],
+  "input_files": {"good.seed.md": "good.seed.md"},
+  "db_fixture": "none",
+  "capture_files": []
+}

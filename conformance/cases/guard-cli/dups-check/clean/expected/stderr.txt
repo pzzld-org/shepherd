@@ -1,0 +1,1 @@
+ERROR: dups check --stdin is unavailable: stdin-to-file identity is not descriptor-safe; provide a canonical regular path

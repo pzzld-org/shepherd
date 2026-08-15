@@ -1,0 +1,9 @@
+{
+  "suite": "guard-cli",
+  "kind": "pure",
+  "requires_git": true,
+  "description": "Native shepherd status against a workdir with no registry returns its explicit canonical shepherd init instruction without self-healing.",
+  "args": ["status"],
+  "db_fixture": "none",
+  "capture_files": []
+}

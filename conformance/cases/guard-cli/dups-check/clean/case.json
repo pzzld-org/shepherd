@@ -1,0 +1,9 @@
+{
+  "suite": "guard-cli",
+  "kind": "pure",
+  "description": "Native shepherd refuses the retired stdin-to-file duplicate check because stdin has no descriptor-safe canonical file identity.",
+  "args": ["dups", "check", "--stdin", "--as", "new_struct.rs", "--json"],
+  "stdin_file": "stdin.rs",
+  "db_fixture": "none",
+  "capture_files": []
+}

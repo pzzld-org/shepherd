@@ -1,0 +1,166 @@
+[package]
+build = "build.rs"
+description = "The shepherd registry: the SQLite schema, migration runner, and query surface that every harness reads directly."
+name = "shepherd-registry"
+
+authors.workspace = true
+categories.workspace = true
+edition.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+license.workspace = true
+readme = "README.md"
+repository.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[lib]
+bench = false
+crate-type = ["rlib"]
+
+[[test]]
+name = "default"
+required-features = ["bundled"]
+
+[[test]]
+name = "registry"
+required-features = ["bundled", "std"]
+
+[[test]]
+name = "layout"
+required-features = ["layout"]
+
+[package.metadata.docs.rs]
+all-features = false
+features = ["full"]
+rustc-args = ["--cfg", "docsrs"]
+version = "v{{version}}"
+
+[package.metadata.release]
+no-dev-version = true
+tag-name = "v{{version}}"
+
+[dependencies]
+# engine
+shepherd-core = { workspace = true }
+# database
+# `cache` is pinned here rather than exposed as a flag: it is in rusqlite's own
+# defaults, the registry relies on prepared-statement reuse, and dropping it is
+# a silent performance regression, not a capability choice.
+rusqlite = { features = ["cache"], workspace = true }
+# hashing — schema_versions.checksum is the SHA-256 hex digest of the exact
+# migration file bytes.
+sha2 = { workspace = true }
+# errors
+thiserror = { workspace = true }
+# serialization
+serde = { optional = true, workspace = true }
+serde_json = { optional = true, workspace = true }
+# tracing
+tracing = { optional = true, workspace = true }
+
+[features]
+default = [
+  "bundled",
+  "layout",
+  "std",
+]
+
+full = [
+  "default",
+  "json",
+  "tracing",
+]
+
+layout = [
+  "std",
+  "dep:serde",
+  "dep:serde_json",
+  "serde/std",
+  "serde_json/std",
+]
+
+# ********* [FF] Flags *********
+json = [
+  "alloc",
+  "dep:serde",
+  "dep:serde_json",
+  "shepherd-core/json",
+]
+
+# ********* [FF] Targets *********
+native = ["full"]
+
+nightly = [
+  "shepherd-core/nightly",
+]
+
+# NOTE: the two wasm targets need *different* SQLite backends, and rusqlite 0.40
+# picks between them by target cfg, not by feature. `libsqlite3-sys` is a hard
+# dependency on every target except `cfg(all(target_family="wasm",
+# target_os="unknown"))`, where it becomes optional and `sqlite-wasm-rs` takes
+# over behind `ffi-sqlite-wasm-rs`.
+#
+#   wasm32-unknown-unknown -> `sqlite-wasm`, and `bundled` must stay OFF:
+#       there is no C sysroot, and the pure-wasm backend is the whole point.
+#       Verified against 0.40: a 2.07MB module with fts5, json_valid and the
+#       unicode61 tokenizer compiled in.
+#   wasm32-wasip1          -> `bundled` + `wasi-vfs`, and `sqlite-wasm` is
+#       unavailable: target_os is "wasi", not "unknown", so rusqlite still
+#       requires libsqlite3-sys and the VFS shim is layered over that C build.
+#
+# Apple's system clang has no wasm backend; use LLVM's for either.
+wasi = [
+  "bundled",
+  "json",
+  "std",
+  "wasi-vfs",
+]
+
+wasm = [
+  "json",
+  "sqlite-wasm",
+  "std",
+]
+
+# ********* [FF] Standard Library *********
+alloc = [
+  "serde?/alloc",
+  "serde_json?/alloc",
+  "sha2/alloc",
+  "shepherd-core/alloc",
+]
+
+# NOTE: `sha2` 0.11 has no `std` feature — the RustCrypto 0.11 line replaced it
+# with `alloc` plus `oid`. Referencing `sha2/std` here resolves to a hard
+# dependency-resolution error, not a warning (see crates/render/Cargo.toml,
+# which hit this first).
+std = [
+  "alloc",
+  "serde?/std",
+  "serde_json?/std",
+  "shepherd-core/std",
+  "thiserror/std",
+  "tracing?/std",
+]
+
+# ********* [FF] Deps *********
+bundled = [
+  "rusqlite/bundled",
+]
+
+sqlite-wasm = [
+  "rusqlite/ffi-sqlite-wasm-rs",
+]
+
+tracing = [
+  "dep:tracing",
+  "shepherd-core/tracing",
+]
+
+wasi-vfs = [
+  "rusqlite/wasm32-wasi-vfs",
+]
+
+[lints]
+workspace = true

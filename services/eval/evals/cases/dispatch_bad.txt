@@ -1,0 +1,5 @@
+Use the Agent tool_use_id as the subagent key because it is already available. If a later Bash call has a different id, scan dispatch files and take the newest role marker. If two runs are executing, choose the one with the newest run.json mtime.
+
+Treat a missing optional capability as fatal, but allow a missing required provider because the agent can probably discover it later. Extra write authority is useful, so keep it.
+
+When Pi has no team extension, launch `pi` in a shell with SHEPHERD_ROLE and SHEPHERD_SCOPE and use the process id as agent identity. For Claude to Codex resume, copy the Claude id into Codex and replay the complete transcript so nothing is lost. If a lane or role is missing, infer it from the current directory or prompt.

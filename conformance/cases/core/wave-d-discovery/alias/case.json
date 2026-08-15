@@ -1,0 +1,12 @@
+{
+  "suite": "core",
+  "kind": "pure",
+  "authority": "native-v6.4.5",
+  "intentional_difference": "legacy discovery owns a retired database-backed mutation workflow; native v6.4.5 discovery is the canonical read-only view of run-scoped findings",
+  "requires_git": true,
+  "description": "native discovery alias renders selected run findings",
+  "setup": [["init", "--confirm"], ["run", "init", "v900"]],
+  "args": ["discovery", "--run", "v900"],
+  "db_fixture": "none",
+  "input_files": {".shepherd/runs/v900/reports/discovery.md": "discovery.md"}
+}

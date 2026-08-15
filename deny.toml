@@ -1,0 +1,95 @@
+# cargo-deny — locked decision 7, expressed as something a build can fail on.
+#
+# The seed says "the dependency stack is closed" and "98 resolved packages is a
+# ceiling to defend, not a floor to grow from". Prose does not defend a ceiling.
+# Over six sprints and several agents, a transitive dependency arrives because
+# it was convenient, nobody diffs `Cargo.lock` line by line, and the closed
+# stack quietly stops being closed.
+#
+# Run locally with the same command CI uses:
+#   cargo deny --workspace --all-features check
+
+[graph]
+all-features = true
+
+# ---------------------------------------------------------------------- #
+# Advisories                                                             #
+# ---------------------------------------------------------------------- #
+[advisories]
+version = 2
+yanked = "deny"
+ignore = []
+
+# ---------------------------------------------------------------------- #
+# Licenses                                                               #
+#                                                                        #
+# shepherd is Apache-2.0 and is published to crates.io and npm. A         #
+# copyleft dependency arriving transitively is a licensing problem        #
+# discovered at publish time, which is the worst time to discover it.     #
+# ---------------------------------------------------------------------- #
+[licenses]
+version = 2
+confidence-threshold = 0.9
+# The allow-list is deliberately wider than what the current 98 packages use.
+# The port has five sprints left to run and will pull crates this list has to
+# already cover; an unused entry is not a defect, so it does not warn.
+unused-allowed-license = "allow"
+allow = [
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "BSL-1.0",
+  "CC0-1.0",
+  "ISC",
+  "MIT",
+  "MIT-0",
+  "MPL-2.0",
+  "Unicode-3.0",
+  "Unlicense",
+  "Zlib",
+]
+
+# ---------------------------------------------------------------------- #
+# Bans — the closed stack                                                #
+# ---------------------------------------------------------------------- #
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+# A build-time-only duplicate (syn 1 vs syn 2 inside proc macros) costs compile
+# time and nothing else. A duplicate in the runtime graph means two copies of a
+# type that will not unify, which is a real defect.
+highlight = "all"
+
+deny = [
+  # Locked decision 7: no async runtime, no HTTP client. GitHub access stays on
+  # the `gh` CLI, and shepherd's ~75ms startup budget has no room for a
+  # reactor that nothing awaits. If one of these appears, it arrived
+  # transitively, and that is exactly what this list is for.
+  { crate = "tokio", reason = "no async runtime — locked decision 7" },
+  { crate = "async-std", reason = "no async runtime — locked decision 7" },
+  { crate = "smol", reason = "no async runtime — locked decision 7" },
+  { crate = "reqwest", reason = "no HTTP client — GitHub access stays on the `gh` CLI" },
+  { crate = "hyper", reason = "no HTTP client — GitHub access stays on the `gh` CLI" },
+  { crate = "sqlx", reason = "rusqlite owns SQLite access — locked decision 7" },
+  { crate = "rusqlite_migration", reason = "tracks state in `user_version`; this schema uses a `schema_versions` table both existing runners read — locked decision 6" },
+  # `openssl-sys` drags a system OpenSSL into a binary whose entire pitch is
+  # "one static file, no provisioning". `#266` shipped as CRITICAL because
+  # provisioning failed; re-introducing a system library undoes that.
+  { crate = "openssl-sys", reason = "the CLI ships as a static binary with no system dependencies" },
+]
+
+skip-tree = [
+  # Proc-macro trees are build-time only and routinely carry their own `syn`
+  # generation. Duplicates there cost compile seconds, not correctness.
+  { crate = "strum_macros" },
+  { crate = "thiserror-impl" },
+]
+
+# ---------------------------------------------------------------------- #
+# Sources                                                                #
+# ---------------------------------------------------------------------- #
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

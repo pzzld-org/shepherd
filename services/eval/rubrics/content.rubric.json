@@ -1,0 +1,29 @@
+{
+  "kind": "content",
+  "subject": "A Shepherd content-compilation and cross-harness routing decision over canonical roles, skills, bounded prompt context, and durable resume artifacts.",
+  "scale": 5,
+  "threshold": 80,
+  "dimensions": [
+    {
+      "key": "minimum_context",
+      "weight": 2,
+      "desc": "Selects only the role, skill, reference, and durable artifact needed for the request; names a bounded budget and avoids loading a sprint manual or transcript."
+    },
+    {
+      "key": "invariant_preservation",
+      "weight": 3,
+      "desc": "Preserves canonical content authority, hard prompt budgets, generated-file provenance, and the no-hand-edit rule without weakening or omitting a required invariant."
+    },
+    {
+      "key": "routing_truth",
+      "weight": 2,
+      "desc": "Routes work through only the nine canonical roles and layout-v5 run artifacts; does not invent a role, directory, capability, or carrier unsupported by the selected harness."
+    },
+    {
+      "key": "resume_and_degradation",
+      "weight": 3,
+      "desc": "Uses native capability evidence, blocks missing required provider support, and resumes from fresh bounded project/run/lane-scoped artifacts instead of replaying a transcript."
+    }
+  ],
+  "guidance": "Reward explicit minimal selections and typed blocks. Penalize extra context, prompt-budget exceptions without a manifest, hand editing generated carriers, invented roles or directories, environment guesses, fabricated Pi subagents, and transcript replay. A correct response may stop when a required native capability is absent."
+}

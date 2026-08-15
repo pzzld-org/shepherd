@@ -1,0 +1,8 @@
+# Append-only audit ledger: union-merge so a lane branch merge can never
+# drop a sibling lane's verdict rows (#261).
+.shepherd/runs/*/auditor-verdicts.txt merge=union
+
+# These files are named by the SHA-256 of their exact upstream bytes. Treat
+# them as binary so Git never rewrites line endings or flags an upstream
+# license's whitespace as authored source drift.
+THIRD_PARTY_LICENSES/*.txt binary

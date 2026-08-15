@@ -1,0 +1,7 @@
+{
+  "suite": "guard-engine",
+  "kind": "pure",
+  "description": "Normalized duplicate hit returns the attested deny and halt code.",
+  "args": ["guard", "eval"],
+  "stdin_file": "stdin.json"
+}

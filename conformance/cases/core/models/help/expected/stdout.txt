@@ -1,0 +1,13 @@
+shepherd models <resolve|show> [args]
+
+  resolve <role>        Echo the portable model hint for one role.
+  resolve <role> --harness <claude|codex|pi>
+                        Resolve the hint through the compiler's canonical
+                        harness profile.
+                        Roles: root planter engineer conductor critic
+                               discovery coder auditor worker
+  show [--md|--json]    Print the full resolved 9-role hint table + source.
+
+The [models] block in .shepherd/shepherd.toml is the one project map. Unset
+roles use portable defaults: root = inherit-caller; planter/engineer =
+reasoning-high; all other roles = standard. See docs/configuration.md §models.

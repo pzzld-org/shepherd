@@ -1,0 +1,8 @@
+{
+  "suite": "guard-cli",
+  "kind": "pure",
+  "description": "Native shepherd dups check invoked without its canonical file argument returns the stable native usage error.",
+  "args": ["dups", "check", "--json"],
+  "db_fixture": "none",
+  "capture_files": []
+}

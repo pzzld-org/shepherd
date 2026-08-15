@@ -1,0 +1,8 @@
+{
+  "suite": "guard-cli",
+  "kind": "pure",
+  "description": "Native shepherd keeps teammate heartbeat absent: the retained hook writes its heartbeat directly and the public CLI rejects this nonexistent command with clap exit 2.",
+  "args": ["teammate", "heartbeat", "some-teammate", "--note=idle"],
+  "db_fixture": "none",
+  "capture_files": []
+}

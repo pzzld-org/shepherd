@@ -1,0 +1,1 @@
+ERROR: zero content/predicates/*.toml examples loaded -- refusing to report a green suite

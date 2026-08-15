@@ -1,0 +1,698 @@
+use shepherd_component::{Component, bindings::exports::fl03::shepherd::engine as wit};
+
+#[test]
+fn canonical_profile_is_available_through_the_component_boundary() {
+    let profile = <Component as wit::Guest>::canonical_profile(wit::Target::Codex);
+    assert_eq!(profile.target, wit::Target::Codex);
+    assert_eq!(profile.max_concurrent_children, 3);
+}
+
+#[test]
+fn canonical_compilation_binds_the_host_to_a_canonical_target_profile() {
+    for target in [wit::Target::Claude, wit::Target::Codex, wit::Target::Pi] {
+        let tree = <Component as wit::Guest>::compile_canonical(target).expect("canonical compile");
+        assert_eq!(tree.target, target);
+        assert_eq!(tree.roles.len(), 9);
+        assert!(tree.files.iter().all(|file| file.source_sha256.len() == 64));
+        assert_eq!(tree.digest.len(), 64);
+    }
+}
+
+#[test]
+fn canonical_compile_uses_the_embedded_authored_corpus() {
+    let tree = <Component as wit::Guest>::compile_canonical(wit::Target::Codex)
+        .expect("canonical content compiles");
+    assert_eq!(tree.target, wit::Target::Codex);
+    assert_eq!(tree.roles.len(), 9);
+    assert_eq!(tree.files.len(), 7);
+    assert!(
+        tree.files
+            .iter()
+            .any(|file| file.path == "shepherd.codex.toml")
+    );
+    assert_eq!(
+        tree.digest,
+        "a17bfc70e2a70ae266d254d4073402e23cbbea0017114da17f33c5b919822784"
+    );
+}
+
+#[test]
+fn canonical_guard_uses_the_embedded_predicate_and_role_corpus() {
+    let verdict = <Component as wit::Guest>::guard_eval_canonical(
+        "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"printf safe\"}}".into(),
+    )
+    .expect("embedded guard corpus");
+    assert!(matches!(verdict, wit::GuardVerdict::Allow));
+
+    let denied = <Component as wit::Guest>::guard_eval_canonical(
+        "{\"tool_name\":\"Agent\",\"role\":\"conductor\",\"tool_input\":{\"target_role\":\"engineer\"}}".into(),
+    )
+    .expect("embedded guard corpus");
+    let wit::GuardVerdict::Deny(denied) = denied else {
+        panic!("expected a typed deny verdict");
+    };
+    assert_eq!(denied.predicate, "dispatch-scope");
+    assert_eq!(
+        denied.rule,
+        "plan-authorship-and-gating-are-root-tier-exclusive"
+    );
+    assert_eq!(denied.halt_code.as_deref(), Some("WRONG-TIER-DISPATCH"));
+    assert!(!denied.reason.is_empty());
+
+    let error = <Component as wit::Guest>::guard_eval_canonical("{".into())
+        .expect_err("malformed JSON must return a typed engine error");
+    assert_eq!(error.code, "json");
+    assert!(error.message.contains("malformed JSON"));
+}
+
+#[test]
+fn wit_contract_metadata_matches_the_component_package() {
+    let wit = include_str!("../wit/shepherd.wit");
+    assert!(wit.contains("package fl03:shepherd@6.4.5;"));
+    assert!(wit.contains("world shepherd-core"));
+    for function in [
+        "canonical-profile",
+        "measure",
+        "compile-canonical",
+        "guard-eval-canonical",
+        "validate-native-exchange",
+        "validate-native-response",
+    ] {
+        assert!(wit.contains(function), "WIT function {function} is missing");
+    }
+    assert!(!wit.contains("compile: func"));
+    assert!(!wit.contains("record role-input"));
+    assert!(!wit.contains("record skill-input"));
+    assert!(wit.contains("record harness-profile"));
+    assert!(wit.contains(
+        "compile-canonical: func(target: target) -> result<emitted-tree, engine-error>;"
+    ));
+    assert!(!wit.contains("guard-eval: func"));
+
+    let manifest = include_str!("../Cargo.toml");
+    assert!(!manifest.contains("std = []"));
+}
+
+fn identity(harness: wit::Target, event: wit::NativeEvent) -> wit::IdentityInput {
+    wit::IdentityInput {
+        harness,
+        event,
+        session_id: "session-a".into(),
+        agent_id: Some("agent-a".into()),
+        agent_type: Some(if harness == wit::Target::Claude {
+            "engineer".into()
+        } else {
+            "shepherd:engineer".into()
+        }),
+        tool_use_id: Some("tool-1".into()),
+        model: Some("model-a".into()),
+        provider_version: Some("provider-1".into()),
+    }
+}
+
+#[test]
+fn typed_identity_normalization_is_harness_neutral_for_all_three_adapters() {
+    for harness in [wit::Target::Claude, wit::Target::Codex, wit::Target::Pi] {
+        let normalized = <Component as wit::Guest>::normalize_identity(identity(
+            harness,
+            wit::NativeEvent::SubagentStart,
+        ))
+        .expect("typed identity normalization");
+        assert_eq!(normalized.harness, harness);
+        assert_eq!(
+            normalized.role_carrier.as_deref(),
+            Some("shepherd:engineer")
+        );
+        assert_eq!(normalized.tool_use_id.as_deref(), Some("tool-1"));
+        assert_eq!(
+            normalized.identity_key,
+            format!("{}\0session-a\0agent-a", harness_name(harness))
+        );
+    }
+}
+
+#[test]
+fn typed_identity_rejects_partial_agent_identity() {
+    let mut input = identity(wit::Target::Pi, wit::NativeEvent::SubagentStart);
+    input.agent_type = None;
+    let error = <Component as wit::Guest>::normalize_identity(input)
+        .expect_err("partial identity must be rejected");
+    assert_eq!(error.code, "dispatch");
+}
+
+fn ready_binding() -> wit::DispatchBinding {
+    wit::DispatchBinding {
+        run: Some("v645".into()),
+        role: Some("engineer".into()),
+        lane: Some("l1".into()),
+        parent_agent_id: Some("parent-a".into()),
+        write_scope: vec!["crates/**".into()],
+        model: Some("model-a".into()),
+        observed_capabilities: vec![
+            "read".into(),
+            "search".into(),
+            "shell".into(),
+            "write".into(),
+            "skill-load".into(),
+            "dispatch".into(),
+            "message-peer".into(),
+            "subagent-provider".into(),
+        ],
+        capability_source: "native-extension".into(),
+        harness_version: "1.0".into(),
+        provider_version: Some("1.0".into()),
+        lease_ms: 60_000,
+        expected_revision: 1,
+        result_artifact: None,
+        source_agent_id: None,
+        mode: "execution".into(),
+        tool_name: None,
+        tool_input: None,
+    }
+}
+
+#[test]
+fn typed_lifecycle_plans_start_resolve_stop_and_resume() {
+    let start_identity = <Component as wit::Guest>::normalize_identity(identity(
+        wit::Target::Codex,
+        wit::NativeEvent::SubagentStart,
+    ))
+    .expect("start identity");
+    let start =
+        <Component as wit::Guest>::plan_lifecycle(start_identity.clone(), Some(ready_binding()))
+            .expect("start plan");
+    assert!(matches!(
+        start,
+        wit::DispatchPlan::Request(wit::DispatchRequest::Start(_))
+    ));
+
+    let resolve_identity = <Component as wit::Guest>::normalize_identity(identity(
+        wit::Target::Codex,
+        wit::NativeEvent::PreToolUse,
+    ))
+    .expect("resolve identity");
+    let resolve =
+        <Component as wit::Guest>::plan_lifecycle(resolve_identity, Some(ready_binding()))
+            .expect("resolve plan");
+    let wit::DispatchPlan::Request(wit::DispatchRequest::Resolve(resolve)) = resolve else {
+        panic!("expected resolve request");
+    };
+    assert_eq!(resolve.tool_use_id.as_deref(), Some("tool-1"));
+
+    let stop_identity = <Component as wit::Guest>::normalize_identity(identity(
+        wit::Target::Codex,
+        wit::NativeEvent::SubagentStop,
+    ))
+    .expect("stop identity");
+    let stop = <Component as wit::Guest>::plan_lifecycle(stop_identity, Some(ready_binding()))
+        .expect("stop plan");
+    assert!(matches!(
+        stop,
+        wit::DispatchPlan::Request(wit::DispatchRequest::Stop(_))
+    ));
+
+    let mut resume_binding = ready_binding();
+    resume_binding.source_agent_id = Some("agent-old".into());
+    let resume_identity = <Component as wit::Guest>::normalize_identity(identity(
+        wit::Target::Pi,
+        wit::NativeEvent::SubagentResume,
+    ))
+    .expect("resume identity");
+    let resume = <Component as wit::Guest>::plan_lifecycle(resume_identity, Some(resume_binding))
+        .expect("resume plan");
+    assert!(matches!(
+        resume,
+        wit::DispatchPlan::Request(wit::DispatchRequest::Resume(_))
+    ));
+}
+
+#[test]
+fn typed_provider_report_distinguishes_absent_and_not_ready() {
+    let absent = <Component as wit::Guest>::evaluate_provider(
+        "engineer".into(),
+        wit::CapabilityProbe {
+            observed: vec![],
+            source: "pi-extension".into(),
+            harness_version: "1.0".into(),
+            provider_version: None,
+        },
+    )
+    .expect("provider report");
+    assert_eq!(absent.readiness, wit::CapabilityReadiness::Blocked);
+    assert!(
+        absent
+            .missing_required
+            .iter()
+            .any(|value| value == "subagent-provider")
+    );
+
+    let degraded = <Component as wit::Guest>::evaluate_provider(
+        "engineer".into(),
+        wit::CapabilityProbe {
+            observed: vec![
+                "read".into(),
+                "search".into(),
+                "shell".into(),
+                "write".into(),
+                "skill-load".into(),
+                "dispatch".into(),
+                "message-peer".into(),
+                "subagent-provider".into(),
+            ],
+            source: "pi-extension".into(),
+            harness_version: "1.0".into(),
+            provider_version: Some("1.0".into()),
+        },
+    )
+    .expect("provider report");
+    assert_eq!(degraded.readiness, wit::CapabilityReadiness::Degraded);
+}
+
+fn harness_name(harness: wit::Target) -> &'static str {
+    match harness {
+        wit::Target::Claude => "claude",
+        wit::Target::Codex => "codex",
+        wit::Target::Pi => "pi",
+    }
+}
+
+#[test]
+fn typed_claude_identity_mismatch_is_rejected_and_tool_correlation_is_audit_only() {
+    let mut mismatch = identity(wit::Target::Claude, wit::NativeEvent::SubagentStart);
+    mismatch.agent_type = Some("coder".into());
+    let error = <Component as wit::Guest>::normalize_identity(mismatch)
+        .and_then(|identity| {
+            <Component as wit::Guest>::plan_lifecycle(identity, Some(ready_binding()))
+        })
+        .expect_err("Claude role mismatch must be rejected by Rust core");
+    assert_eq!(error.code, "identity-mismatch");
+
+    let first = <Component as wit::Guest>::normalize_identity(identity(
+        wit::Target::Claude,
+        wit::NativeEvent::PreToolUse,
+    ))
+    .expect("first tool event");
+    let mut second_input = identity(wit::Target::Claude, wit::NativeEvent::PostToolUse);
+    second_input.tool_use_id = Some("tool-2".into());
+    let second =
+        <Component as wit::Guest>::normalize_identity(second_input).expect("second tool event");
+    assert_eq!(first.identity_key, second.identity_key);
+    assert_ne!(first.tool_use_id, second.tool_use_id);
+}
+
+#[test]
+fn typed_response_validation_rejects_scope_and_role_mismatch() {
+    let valid = wit::ResponseFacts {
+        schema: "shepherd.identity-resolution/1".into(),
+        project_id: "0192f6e8-7b2c-7abc-8def-0123456789ab".into(),
+        run: "v645".into(),
+        harness: wit::Target::Pi,
+        agent_id: Some("agent-a".into()),
+        agent_type: Some("shepherd:engineer".into()),
+        role: "engineer".into(),
+        lane: Some("l1".into()),
+        session_id: "session-a".into(),
+        write_scope: vec!["crates/**".into()],
+        capabilities: None,
+        tool_use_id: Some("tool-1".into()),
+        mode: Some("execution".into()),
+        write_paths: vec!["crates/core/src/lib.rs".into()],
+        path_in_write_scope: Some(true),
+    };
+    <Component as wit::Guest>::validate_response(valid.clone()).expect("valid response facts");
+
+    let mut mismatch = valid;
+    mismatch.harness = wit::Target::Claude;
+    mismatch.agent_type = Some("coder".into());
+    let error = <Component as wit::Guest>::validate_response(mismatch)
+        .expect_err("Claude response role mismatch");
+    assert_eq!(error.code, "identity-mismatch");
+
+    let mut scope_mismatch = wit::ResponseFacts {
+        schema: "shepherd.identity-resolution/1".into(),
+        project_id: "0192f6e8-7b2c-7abc-8def-0123456789ab".into(),
+        run: "v645".into(),
+        harness: wit::Target::Pi,
+        agent_id: None,
+        agent_type: None,
+        role: "shepherd".into(),
+        lane: None,
+        session_id: "session-a".into(),
+        write_scope: vec!["crates/**".into()],
+        capabilities: None,
+        tool_use_id: None,
+        mode: Some("execution".into()),
+        write_paths: vec!["README.md".into()],
+        path_in_write_scope: Some(true),
+    };
+    let error = <Component as wit::Guest>::validate_response(scope_mismatch.clone())
+        .expect_err("scope fact mismatch");
+    assert_eq!(error.code, "invalid-response");
+    scope_mismatch.path_in_write_scope = Some(false);
+    <Component as wit::Guest>::validate_response(scope_mismatch).expect("corrected scope fact");
+}
+
+fn lifecycle_capabilities(probed_at: i64) -> wit::CapabilityReport {
+    let mut report = <Component as wit::Guest>::evaluate_provider(
+        "engineer".into(),
+        wit::CapabilityProbe {
+            observed: vec![
+                "read".into(),
+                "search".into(),
+                "shell".into(),
+                "write".into(),
+                "skill-load".into(),
+                "dispatch".into(),
+                "message-peer".into(),
+                "subagent-provider".into(),
+            ],
+            source: "native-extension".into(),
+            harness_version: "1.0".into(),
+            provider_version: Some("1.0".into()),
+        },
+    )
+    .expect("fixture capability report");
+    report.probed_at = probed_at;
+    report
+}
+
+fn lifecycle_record(state: wit::DispatchState) -> wit::DispatchRecord {
+    let stopped = state == wit::DispatchState::Stopped;
+    wit::DispatchRecord {
+        schema: "shepherd.dispatch/3".into(),
+        revision: if stopped { 2 } else { 1 },
+        project_id: "0192f6e8-7b2c-7abc-8def-0123456789ab".into(),
+        run: "v645".into(),
+        harness: wit::Target::Pi,
+        agent_id: "agent-a".into(),
+        agent_type: "shepherd:engineer".into(),
+        role: "engineer".into(),
+        lane: Some("l1".into()),
+        parent_agent_id: Some("parent-a".into()),
+        session_id: "session-a".into(),
+        write_scope: vec!["crates/**".into()],
+        model: Some("model-a".into()),
+        capabilities: lifecycle_capabilities(17),
+        state,
+        started_at: 1,
+        lease_expires_at: 60_001,
+        stopped_at: stopped.then_some(2),
+        result_artifact: None,
+        resumes_agent_id: None,
+    }
+}
+
+fn lifecycle_start_request() -> wit::StartRequest {
+    wit::StartRequest {
+        run: Some("v645".into()),
+        harness: wit::Target::Pi,
+        agent_id: "agent-a".into(),
+        agent_type: "shepherd:engineer".into(),
+        role_carrier: "shepherd:engineer".into(),
+        lane: Some("l1".into()),
+        parent_agent_id: Some("parent-a".into()),
+        session_id: "session-a".into(),
+        write_scope: vec!["crates/**".into()],
+        model: Some("model-a".into()),
+        observed_capabilities: vec![
+            "read".into(),
+            "search".into(),
+            "shell".into(),
+            "write".into(),
+            "skill-load".into(),
+            "dispatch".into(),
+            "message-peer".into(),
+            "subagent-provider".into(),
+        ],
+        capability_source: "native-extension".into(),
+        harness_version: "1.0".into(),
+        provider_version: Some("1.0".into()),
+        lease_ms: 60_000,
+    }
+}
+
+#[test]
+fn typed_native_lifecycle_validation_rejects_wrong_shape_schema_state_and_context_totals() {
+    let binding = wit::RootSessionBinding {
+        schema: "shepherd.root-session/1".into(),
+        project_id: "0192f6e8-7b2c-7abc-8def-0123456789ab".into(),
+        run: "v645".into(),
+        harness: wit::Target::Codex,
+        session_id: "session-a".into(),
+        role: "shepherd".into(),
+        mode: "execution".into(),
+        bound_at: 1,
+        expires_at: 60_001,
+    };
+    <Component as wit::Guest>::validate_native_response(
+        wit::NativeLifecycleOperation::BindRoot,
+        wit::NativeLifecycleResponse::BindRoot(binding.clone()),
+    )
+    .expect("valid root response");
+
+    let wrong_operation = <Component as wit::Guest>::validate_native_response(
+        wit::NativeLifecycleOperation::Start,
+        wit::NativeLifecycleResponse::BindRoot(binding.clone()),
+    )
+    .expect_err("root binding cannot satisfy a start request");
+    assert_eq!(wrong_operation.code, "invalid-response");
+
+    let mut wrong_schema = binding;
+    wrong_schema.schema = "wrong".into();
+    assert!(
+        <Component as wit::Guest>::validate_native_response(
+            wit::NativeLifecycleOperation::BindRoot,
+            wit::NativeLifecycleResponse::BindRoot(wrong_schema),
+        )
+        .is_err()
+    );
+
+    let active = lifecycle_record(wit::DispatchState::Active);
+    <Component as wit::Guest>::validate_native_response(
+        wit::NativeLifecycleOperation::Start,
+        wit::NativeLifecycleResponse::Start(active.clone()),
+    )
+    .expect("active start response");
+    assert!(
+        <Component as wit::Guest>::validate_native_response(
+            wit::NativeLifecycleOperation::Stop,
+            wit::NativeLifecycleResponse::Stop(active.clone()),
+        )
+        .is_err()
+    );
+    <Component as wit::Guest>::validate_native_response(
+        wit::NativeLifecycleOperation::Stop,
+        wit::NativeLifecycleResponse::Stop(lifecycle_record(wit::DispatchState::Stopped)),
+    )
+    .expect("stopped response");
+
+    let entry = wit::ContextEntry {
+        id: "context-a".into(),
+        project_id: active.project_id.clone(),
+        run: active.run.clone(),
+        lane: active.lane.clone(),
+        provenance: "checkpoint".into(),
+        freshness: 1,
+        words: 3,
+        tokens: 4,
+        priority: 1,
+        content: "bounded context".into(),
+    };
+    let malformed_resume = wit::ResumeContextResponse {
+        schema: "shepherd.resume-context/1".into(),
+        dispatch_record: active.clone(),
+        context: wit::ContextBundle {
+            entries: vec![entry.clone()],
+            words: 2,
+            tokens: 4,
+        },
+    };
+    assert!(
+        <Component as wit::Guest>::validate_native_response(
+            wit::NativeLifecycleOperation::Resume,
+            wit::NativeLifecycleResponse::Resume(malformed_resume),
+        )
+        .is_err()
+    );
+
+    <Component as wit::Guest>::validate_native_response(
+        wit::NativeLifecycleOperation::Resume,
+        wit::NativeLifecycleResponse::Resume(wit::ResumeContextResponse {
+            schema: "shepherd.resume-context/1".into(),
+            dispatch_record: active,
+            context: wit::ContextBundle {
+                entries: vec![entry],
+                words: 3,
+                tokens: 4,
+            },
+        }),
+    )
+    .expect("bounded resume response");
+}
+
+#[test]
+fn typed_native_exchange_correlates_every_lifecycle_response_to_its_request() {
+    let root_request = wit::DispatchRequest::BindRoot(wit::BindRootRequest {
+        run: Some("v645".into()),
+        harness: wit::Target::Codex,
+        session_id: "session-a".into(),
+        role_carrier: "shepherd:shepherd".into(),
+        mode: "execution".into(),
+        lease_ms: 60_000,
+    });
+    let root_response = wit::NativeLifecycleResponse::BindRoot(wit::RootSessionBinding {
+        schema: "shepherd.root-session/1".into(),
+        project_id: "0192f6e8-7b2c-7abc-8def-0123456789ab".into(),
+        run: "v645".into(),
+        harness: wit::Target::Codex,
+        session_id: "session-a".into(),
+        role: "shepherd".into(),
+        mode: "execution".into(),
+        bound_at: 1,
+        expires_at: 60_001,
+    });
+    <Component as wit::Guest>::validate_native_exchange(root_request, root_response)
+        .expect("root exchange");
+
+    let start_request = lifecycle_start_request();
+    let active = lifecycle_record(wit::DispatchState::Active);
+    <Component as wit::Guest>::validate_native_exchange(
+        wit::DispatchRequest::Start(start_request.clone()),
+        wit::NativeLifecycleResponse::Start(active.clone()),
+    )
+    .expect("start exchange");
+    let mut wrong_agent = active.clone();
+    wrong_agent.agent_id = "agent-b".into();
+    assert!(
+        <Component as wit::Guest>::validate_native_exchange(
+            wit::DispatchRequest::Start(start_request.clone()),
+            wit::NativeLifecycleResponse::Start(wrong_agent),
+        )
+        .is_err()
+    );
+    let mut wrong_session = active.clone();
+    wrong_session.session_id = "session-b".into();
+    assert!(
+        <Component as wit::Guest>::validate_native_exchange(
+            wit::DispatchRequest::Start(start_request.clone()),
+            wit::NativeLifecycleResponse::Start(wrong_session),
+        )
+        .is_err()
+    );
+    let mut wrong_run = active.clone();
+    wrong_run.run = "v646".into();
+    assert!(
+        <Component as wit::Guest>::validate_native_exchange(
+            wit::DispatchRequest::Start(start_request.clone()),
+            wit::NativeLifecycleResponse::Start(wrong_run),
+        )
+        .is_err()
+    );
+
+    let resolve_request = wit::DispatchRequest::Resolve(wit::ResolveRequest {
+        run: Some("v645".into()),
+        harness: wit::Target::Pi,
+        agent_id: Some("agent-a".into()),
+        agent_type: Some("shepherd:engineer".into()),
+        role_carrier: Some("shepherd:engineer".into()),
+        lane: Some("l1".into()),
+        session_id: "session-a".into(),
+        tool_use_id: Some("tool-a".into()),
+        tool_name: None,
+        tool_input: None,
+    });
+    let resolve_response = wit::ResponseFacts {
+        schema: "shepherd.identity-resolution/1".into(),
+        project_id: "0192f6e8-7b2c-7abc-8def-0123456789ab".into(),
+        run: "v645".into(),
+        harness: wit::Target::Pi,
+        agent_id: Some("agent-a".into()),
+        agent_type: Some("shepherd:engineer".into()),
+        role: "engineer".into(),
+        lane: Some("l1".into()),
+        session_id: "session-a".into(),
+        write_scope: vec!["crates/**".into()],
+        capabilities: None,
+        tool_use_id: Some("tool-a".into()),
+        mode: Some("execution".into()),
+        write_paths: vec![],
+        path_in_write_scope: None,
+    };
+    <Component as wit::Guest>::validate_native_exchange(
+        resolve_request.clone(),
+        wit::NativeLifecycleResponse::Resolve(resolve_response.clone()),
+    )
+    .expect("resolve exchange");
+    let mut wrong_tool = resolve_response;
+    wrong_tool.tool_use_id = Some("tool-b".into());
+    assert!(
+        <Component as wit::Guest>::validate_native_exchange(
+            resolve_request,
+            wit::NativeLifecycleResponse::Resolve(wrong_tool),
+        )
+        .is_err()
+    );
+
+    let stop_request = wit::DispatchRequest::Stop(wit::StopRequest {
+        run: Some("v645".into()),
+        harness: wit::Target::Pi,
+        agent_id: "agent-a".into(),
+        agent_type: "shepherd:engineer".into(),
+        role_carrier: Some("shepherd:engineer".into()),
+        lane: Some("l1".into()),
+        session_id: "session-a".into(),
+        expected_revision: 1,
+        result_artifact: None,
+    });
+    <Component as wit::Guest>::validate_native_exchange(
+        stop_request,
+        wit::NativeLifecycleResponse::Stop(lifecycle_record(wit::DispatchState::Stopped)),
+    )
+    .expect("stop exchange");
+
+    let entry = wit::ContextEntry {
+        id: "context-a".into(),
+        project_id: active.project_id.clone(),
+        run: active.run.clone(),
+        lane: active.lane.clone(),
+        provenance: "checkpoint".into(),
+        freshness: 1,
+        words: 3,
+        tokens: 4,
+        priority: 1,
+        content: "bounded context".into(),
+    };
+    let mut resumed = active.clone();
+    resumed.resumes_agent_id = Some("source-a".into());
+    let resume_request = wit::DispatchRequest::Resume(wit::ResumeRequest {
+        source_agent_id: "source-a".into(),
+        next: lifecycle_start_request(),
+    });
+    let resume_response = wit::NativeLifecycleResponse::Resume(wit::ResumeContextResponse {
+        schema: "shepherd.resume-context/1".into(),
+        dispatch_record: resumed.clone(),
+        context: wit::ContextBundle {
+            entries: vec![entry],
+            words: 3,
+            tokens: 4,
+        },
+    });
+    <Component as wit::Guest>::validate_native_exchange(resume_request.clone(), resume_response)
+        .expect("resume exchange");
+    resumed.resumes_agent_id = Some("source-b".into());
+    assert!(
+        <Component as wit::Guest>::validate_native_exchange(
+            resume_request,
+            wit::NativeLifecycleResponse::Resume(wit::ResumeContextResponse {
+                schema: "shepherd.resume-context/1".into(),
+                dispatch_record: resumed,
+                context: wit::ContextBundle {
+                    entries: vec![],
+                    words: 0,
+                    tokens: 0,
+                },
+            }),
+        )
+        .is_err()
+    );
+}

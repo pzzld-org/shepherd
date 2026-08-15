@@ -1,0 +1,8 @@
+{
+  "suite": "core",
+  "kind": "pure",
+  "requires_git": true,
+  "description": "config path reports the canonical project configuration candidate",
+  "args": ["config", "path"],
+  "db_fixture": "none"
+}

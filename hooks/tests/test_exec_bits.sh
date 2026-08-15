@@ -3,7 +3,7 @@
 # shipped-as-100644 class (v6.1.3).
 #
 # WHY: Claude Code invokes hook scripts by PATH (the `command` in hooks.json),
-# and `shctx` dispatches its cmd_*.sh by PATH. Both require the git-tracked
+# and each packaged shell adapter runs by PATH. Both require the git-tracked
 # executable bit (100755). But the smoke harness runs scripts via `bash <file>`
 # (mode-agnostic), so a script committed as 100644 passes every other test yet
 # fails the real invocation — a script shipped 100644 is broken for real
@@ -29,8 +29,6 @@ while IFS= read -r line; do
   fi
 done < <(git ls-files --stage -- \
   'hooks/scripts/*.sh' \
-  'skills/context/scripts/*.sh' \
-  'skills/context/scripts/shctx' \
   'scripts/*.sh' \
   'scripts/loc-count.py' 2>/dev/null)
 

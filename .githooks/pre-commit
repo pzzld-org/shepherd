@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# pre-commit — the fast gate.
+#
+# CLAUDE.md draws the line precisely: gate tests are deterministic, local, free,
+# and under two seconds, and they run on every commit. That budget is what makes
+# the hook survivable; a hook that compiles the workspace gets bypassed with
+# `--no-verify` by the third commit of a sprint, and a bypassed hook is worse
+# than no hook because everyone believes it ran.
+#
+# So this tier does no compilation:
+#   - rustfmt, which is the single most common source of a red CI on work that
+#     was otherwise finished
+#   - the workspace invariants, which are pure manifest parsing
+#
+# Everything that compiles lives in `pre-push`. See scripts/gate.sh.
+#
+# NOT ENABLED BY DEFAULT. Nothing here runs until someone sets
+#   git config core.hooksPath .githooks
+# which is LOCAL config and cannot be committed. `scripts/setup.sh` does it.
+#
+# ESCAPE HATCH. `SHEPHERD_SKIP_GATE=1 git commit ...` skips this deliberately
+# and visibly, which is better than `--no-verify` — that also disables
+# commit-msg and any future hook, silently. CLAUDE.md bans `--no-verify`
+# outright; this exists so there is a legitimate alternative when you genuinely
+# need to commit a known-broken tree mid-rebase.
+set -euo pipefail
+
+if [ "${SHEPHERD_SKIP_GATE:-0}" = "1" ]; then
+  printf 'pre-commit: skipped via SHEPHERD_SKIP_GATE=1\n' >&2
+  exit 0
+fi
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+GATE="${REPO_ROOT}/scripts/gate.sh"
+
+[ -x "${GATE}" ] || exit 0
+
+# Only pay the cost when Rust or the manifests actually moved. A docs-only or
+# seed-only commit has nothing for this tier to check.
+if ! git diff --cached --name-only --diff-filter=ACMR \
+  | grep -qE '\.rs$|Cargo\.(toml|lock)$|^scripts/check-|^(agents|commands|skills|hooks)/|^\.claude-plugin/'; then
+  exit 0
+fi
+
+if ! "${GATE}" fast; then
+  cat >&2 <<'MSG'
+
+pre-commit: the fast gate failed.
+
+Fix the underlying issue rather than bypassing the hook — CLAUDE.md bans
+`--no-verify`. Most failures here are formatting:
+
+    cargo fmt --all
+
+If you genuinely need to commit a broken tree (mid-rebase, for example):
+
+    SHEPHERD_SKIP_GATE=1 git commit ...
+
+MSG
+  exit 1
+fi

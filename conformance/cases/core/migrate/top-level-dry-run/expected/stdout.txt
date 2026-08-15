@@ -1,0 +1,32 @@
+{
+  "schema": "shepherd-migrate-v5",
+  "scope": "project",
+  "manifest": {
+    "schema": "layout-v5",
+    "scope": "Project",
+    "namespace": "<SCRATCH>/cwd/.shepherd",
+    "entries": [
+      {
+        "source": "<SCRATCH>/cwd/.shepherd/docs/specs/legacy.md",
+        "destination": "<SCRATCH>/cwd/.shepherd/docs/legacy.md",
+        "classification": "cross-run",
+        "owner": "project",
+        "provenance": "flattened docs descendant",
+        "byte_size": 23,
+        "sha256": "851af3a6eb3199d546d09506a2a897c9f05b1f4b18c1c8ce51fec2aa558b054d",
+        "action": "Move"
+      },
+      {
+        "source": "<SCRATCH>/cwd/.shepherd/docs/specs",
+        "destination": "<SCRATCH>/cwd/.shepherd/docs",
+        "classification": "retired-directory",
+        "owner": "project",
+        "provenance": "flat namespace",
+        "byte_size": 0,
+        "sha256": "",
+        "action": "RemoveDirectory"
+      }
+    ]
+  },
+  "execution": null
+}

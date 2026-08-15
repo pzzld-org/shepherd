@@ -1,0 +1,8 @@
+{
+  "manifest": {
+    "output_sha256": "8717fa2b102ed54d53332db8bae8d439b5af1e9a46e5e63f9c8b4bff1d6cdf5d",
+    "template_sha256": "ebf931871314b202a2ad75fbc04b321e3c8b190f3f91d2d98b48a60430580970",
+    "vars_sha256": "04a20cf9bc16158c20dd46a35a3d85d7a6e43d37348be66820f4c7d9d08cb10a"
+  },
+  "text": "Hello, Shepherd!\n"
+}

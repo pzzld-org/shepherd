@@ -1,0 +1,12 @@
+{
+  "suite": "core",
+  "kind": "pure",
+  "authority": "native-v6.4.5",
+  "intentional_difference": "native report teammates is a direct typed registry projection; --stale-mins remains accepted for legacy command compatibility while liveness policy belongs to the dedicated teammate command",
+  "requires_git": true,
+  "description": "native report teammates filters a typed team roster",
+  "args": ["report", "teammates", "--team", "core", "--json"],
+  "db_fixture": "full_schema",
+  "seed_sql": ["INSERT INTO projects (id, name, created_at, updated_at) VALUES ('project-h', 'wave h', 0, 0);", "INSERT INTO teammates (id, project_id, team_name, teammate_name, agent_type, session_id, tmux_pane_id, spawned_at, last_seen_at, status, metadata) VALUES ('t1', 'project-h', 'core', 'luna', 'worker', 's1', '', 1, 2, 'active', '{}');"],
+  "capture_files": []
+}

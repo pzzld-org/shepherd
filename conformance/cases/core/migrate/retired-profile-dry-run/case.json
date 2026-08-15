@@ -1,0 +1,13 @@
+{
+  "suite": "core",
+  "kind": "pure",
+  "authority": "native-v6.4.5",
+  "intentional_difference": "layout-v5 snapshot-retires unread filesystem style profiles and never recreates a profiles destination",
+  "requires_git": true,
+  "description": "project migration dry-run explicitly retires a legacy profile file",
+  "args": ["migrate", "--layout", "v5", "--scope", "project"],
+  "input_files": {
+    ".shepherd/profiles/rust/style.md": "style.md"
+  },
+  "db_fixture": "none"
+}

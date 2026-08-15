@@ -1,0 +1,10 @@
+{
+  "suite": "core",
+  "kind": "mutating",
+  "authority": "native-v6.4.5",
+  "intentional_difference": "native home init creates only the separately-owned user namespace, not unread profile/template roots or runtime bootstrap state",
+  "requires_git": true,
+  "description": "home init confirms the canonical config-only user-home namespace",
+  "args": ["home", "init", "--confirm"],
+  "db_fixture": "none"
+}

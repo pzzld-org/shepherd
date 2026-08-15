@@ -1,0 +1,12 @@
+{
+  "suite": "core",
+  "kind": "pure",
+  "authority": "native-v6.4.5",
+  "intentional_difference": "native classify retains deterministic label and milestone precedence but requires an explicit sprint instead of querying an ambient git branch or a retired project file",
+  "requires_git": true,
+  "description": "native issue classifier buckets open critical issues",
+  "args": ["issues", "classify", "--json"],
+  "db_fixture": "full_schema",
+  "seed_sql": ["INSERT INTO projects (id, name, created_at, updated_at) VALUES ('project-h', 'wave h', 0, 0);", "INSERT INTO index_issues (id, project_id, source, number, title, state, labels, milestone, assignees, body, url, created_at, updated_at, refreshed_at) VALUES ('issue-7', 'project-h', 'fixture', 7, 'Critical regression', 'open', '[\"critical\"]', NULL, '[]', '', 'https://example.test/7', 1, 1, 1);"],
+  "capture_files": []
+}

@@ -1,0 +1,10 @@
+{
+  "id": "mem-one",
+  "kind": "note",
+  "title": "title",
+  "body": "body",
+  "tags": "[]",
+  "pinned": 0,
+  "created_at": <TS>,
+  "updated_at": <TS>
+}

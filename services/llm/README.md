@@ -33,11 +33,10 @@ SHEPHERD_LLM_MOCK=<file>       # complete returns the file contents verbatim
 SHEPHERD_LLM_MOCK_TEXT=<str>   # … or this inline string
 ```
 
-Either short-circuits the claude call entirely. This is what lets downstream gate
-tests (services/eval, `shctx eval`) assert the harness around the model —
-prompt-building, score math, threshold verdict, DB recording — deterministically,
-for free, in under two seconds. The latent part (the model's judgement) is mocked;
-everything deterministic is tested for real.
+Either short-circuits the Claude call entirely. This lets the eval service test
+prompt building, score math, threshold verdicts, and error handling
+deterministically, for free, in under two seconds. The latent judgement is
+mocked; everything deterministic is tested for real.
 
 ## Config
 

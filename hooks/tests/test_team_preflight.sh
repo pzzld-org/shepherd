@@ -11,7 +11,7 @@
 # relationship to the session id (`37a86c89-…` -> `session-376146fb`), so an
 # operator cannot recognize their own team, and a lead-only directory is
 # indistinguishable by inspection from an abandoned husk. Running the documented
-# remedy (/shepherd:cleanup) then deletes it, and every later spawn dies with
+# remedy then deletes it, and every later spawn dies with
 # `team file for "session-XXXX" not found` — five conductor spawns at once, in
 # the report.
 #
@@ -143,24 +143,6 @@ if [[ "$flag_rc" == "2" ]]; then
   pass "unknown flag is a usage error (exit 2), not a silent default"
 else
   fail "unknown flag exits 2" "rc=$flag_rc"
-fi
-
-# ---------------------------------------------------------------------------
-# 8. Doctrine wiring: spawn.md must run the script, and cleanup.md must forbid
-#    touching the harness's team files — the half that made #267 unrecoverable.
-# ---------------------------------------------------------------------------
-total=$((total+1))
-if grep -q 'scripts/team-preflight.sh' "$ROOT/commands/spawn.md"; then
-  pass "spawn.md Check 3 runs team-preflight.sh"
-else
-  fail "spawn.md wiring" "Check 3 still eyeballs the teams directory"
-fi
-
-total=$((total+1))
-if grep -qF 'NEVER touch `~/.claude/teams/`' "$ROOT/commands/cleanup.md"; then
-  pass "cleanup.md forbids touching harness team files"
-else
-  fail "cleanup.md guard" "cleanup may still prune the session's own team file"
 fi
 
 echo "—— $((total-fails))/$total passed ——"

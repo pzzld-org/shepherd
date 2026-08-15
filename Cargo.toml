@@ -1,0 +1,155 @@
+[workspace]
+default-members = [
+  "crates/cli",
+  "crates/sdk",
+]
+exclude = [
+]
+members = [
+  "crates/*"
+]
+resolver = "3"
+
+[workspace.package]
+authors = [
+  "FL03 <joe@pzzld.org>",
+  "Scattered-Systems LLC <support@scsys.io>",
+]
+categories = ["command-line-utilities", "development-tools"]
+description = "Sprint orchestration and governance for AI coding agents — the canonical engine and CLI behind the shepherd plugin."
+edition = "2024"
+homepage = "https://github.com/FL03/shepherd/wiki"
+keywords = ["agent", "orchestration", "sprint", "cli", "plugin"]
+license = "Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/FL03/shepherd.git"
+rust-version = "1.96.0"
+version = "6.4.5"
+
+# ********* Dependencies *********
+#
+# RULE: this table pins versions and the features that are *universal* to every
+# consumer. It never pins a feature that implies `std`, an allocator, or a
+# runtime, because a feature enabled here cannot be turned off downstream --
+# and a `no_std` or wasm flag that silently resolves to `std` anyway is worse
+# than no flag at all. `derive` is universal (a proc-macro, not a runtime
+# surface); `std`, `clock`, `alloc` and `use_std` are not, and are wired weakly
+# from each member's own `[features]` graph instead.
+[workspace.dependencies]
+# sdk — the umbrella every consumer links
+shepherd = { default-features = false, path = "crates/sdk", version = "6.4.5" }
+# members, in dependency order
+shepherd-core = { default-features = false, path = "crates/core", version = "6.4.5" }
+shepherd-compiler = { default-features = false, path = "crates/compiler", version = "6.4.5" }
+shepherd-registry = { default-features = false, path = "crates/registry", version = "6.4.5" }
+shepherd-render = { default-features = false, path = "crates/render", version = "6.4.5" }
+# bin
+shepherd-cli = { default-features = false, path = "crates/cli", version = "6.4.5" }
+
+# cli
+clap = { default-features = false, features = ["derive"], version = "4" }
+# databases
+rusqlite = { default-features = false, version = "0.40" }
+# config -- `toml` plus serde is sufficient because the engine receives
+# already-read strings and owns its own fixed precedence/merge policy.
+schemars = { default-features = false, features = ["derive"], version = "1" }
+toml = { default-features = false, features = ["parse", "serde"], version = "1.1" }
+# parsing — structured text only (slugs, brief headers, seed blocks)
+nom = { default-features = false, version = "8" }
+# shell-style path expansion for deterministic file-scope validation
+glob = { default-features = false, version = "0.3.4" }
+# Unicode Standard Annex #29 word boundaries for deterministic prompt budgets.
+unicode-segmentation = { default-features = false, version = "1.13.3" }
+# templating
+minijinja = { default-features = false, version = "2" }
+# hashing
+sha2 = { default-features = false, version = "0.11" }
+# serialization
+serde = { default-features = false, features = ["derive"], version = "1" }
+serde_json = { default-features = false, version = "1" }
+serde-saphyr = { default-features = false, features = ["deserialize"], version = "1.0.1" }
+# macros & utils
+strum = { default-features = false, features = ["derive"], version = "0.28" }
+# error handling
+anyhow = { default-features = false, version = "1" }
+thiserror = { default-features = false, version = "2" }
+# identifiers — project.json carries a UUIDv7 project id
+uuid = { default-features = false, features = ["v7"], version = "1" }
+# time — run.json updated_at must round-trip int, float and ISO8601
+chrono = { default-features = false, version = "0.4" }
+# tracing
+tracing = { default-features = false, features = ["attributes"], version = "0.1" }
+tracing-subscriber = { default-features = false, features = ["env-filter", "fmt"], version = "0.3" }
+# descriptor-relative filesystem operations for race-safe CLI publication
+rustix = { default-features = false, features = ["fs"], version = "1" }
+# WebAssembly component-model bindings over the pure SDK surface.
+wit-bindgen = { default-features = false, features = ["macros", "realloc"], version = "0.60.0" }
+# benchmarks
+criterion = { version = "0.7" }
+
+# ********* Lints *********
+#
+# Declared once and inherited by every member via `[lints] workspace = true`.
+# A new crate that forgets that line is caught by `scripts/check-workspace.sh`,
+# because the failure mode is silent: the crate simply lints looser than the
+# rest of the workspace and nobody notices until its code is the exception.
+#
+# Deliberately modest. CI runs with `RUSTFLAGS: -D warnings`, so every `warn`
+# here is a hard failure — a pedantic set would spend the sprint's budget on
+# style churn instead of the port. Tightening this is a deliberate decision,
+# not a drive-by.
+[workspace.lints.rust]
+# The engine is data structures and pure functions. Nothing here needs `unsafe`,
+# and the day something claims to, that is a conversation and not a diff.
+# `deny` rather than `forbid` so a justified exception stays *possible* with an
+# explicit, reviewable `#[allow]`.
+unsafe_code = "deny"
+# A `pub` item that no public path reaches is either dead or a missing
+# re-export. In a five-crate workspace behind an umbrella, it is usually the
+# second, and it is exactly the kind of drift that makes an SDK feel arbitrary.
+unreachable_pub = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+# A byte-exact port cannot afford silent numeric surprises.
+cast_possible_truncation = "warn"
+cast_sign_loss = "warn"
+
+# ********* Profiles *********
+[profile.dev]
+codegen-units = 256
+debug = true
+debug-assertions = true
+incremental = true
+lto = false
+opt-level = 1
+overflow-checks = true
+rpath = false
+strip = false
+
+[profile.release]
+codegen-units = 16
+debug = false
+debug-assertions = false
+incremental = false
+lto = "fat"
+opt-level = 2
+overflow-checks = false
+panic = "unwind"
+rpath = false
+strip = true
+
+[profile.docker]
+codegen-units = 4
+inherits = "release"
+lto = "thin"
+
+[profile.wasm-dev]
+inherits = "dev"
+opt-level = 1
+strip = true
+
+[profile.wasm-release]
+inherits = "release"
+opt-level = "z"
+strip = true

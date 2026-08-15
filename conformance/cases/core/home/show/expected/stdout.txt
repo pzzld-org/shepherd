@@ -1,0 +1,1 @@
+home: <SCRATCH>/cwd/.shepherd-user

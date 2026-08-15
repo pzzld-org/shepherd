@@ -1,0 +1,2 @@
+  warn  file_scope present but no entries parsed — verify paths manually (unrecognized YAML shape)
+OK: 0 hard failures, 1 warning(s)

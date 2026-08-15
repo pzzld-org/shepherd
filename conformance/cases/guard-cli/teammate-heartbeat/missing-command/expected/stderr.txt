@@ -1,0 +1,5 @@
+error: unrecognized subcommand 'heartbeat'
+
+Usage: shepherd teammate <COMMAND>
+
+For more information, try '--help'.

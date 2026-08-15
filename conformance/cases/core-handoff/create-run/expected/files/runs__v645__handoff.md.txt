@@ -1,0 +1,41 @@
+# Sprint handoff — v6.4.5
+
+| Field | Value |
+|---|---|
+| Branch | `v6.4.5` |
+| Date | <DATE> |
+| Session | <UUID> |
+
+## North star
+
+> [FILL IN]
+
+## What landed
+
+Last commits on `v6.4.5`:
+
+```
+(no commits)
+```
+
+## Sprint metrics
+
+| Metric | Value |
+|---|---|
+| Artifacts (created/modified) | 1 |
+| Memory entries written | 1 |
+| Lock acquisitions | 1 |
+| Open issues (registry view) | 1 |
+| Drift-risk items (registry view) | 1 |
+
+## Carry-forwards
+
+[FILL IN]
+
+## Recommended next sprint focus
+
+[FILL IN]
+
+## Files of interest
+
+[FILL IN]

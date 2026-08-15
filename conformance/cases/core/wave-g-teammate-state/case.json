@@ -1,0 +1,14 @@
+{
+  "suite": "core",
+  "kind": "mutating",
+  "authority": "native-v6.4.5",
+  "intentional_difference": "native teammate state validates a fixed state vocabulary and persists the declaration in the typed registry",
+  "requires_git": true,
+  "description": "teammate state sets a valid declaration",
+  "args": ["teammate", "state", "lane-a", "--set", "in-progress"],
+  "db_fixture": "full_schema",
+  "seed_sql": [
+    "INSERT INTO projects (id, name, created_at, updated_at) VALUES ('project-g', 'wave g fixture', 0, 0);",
+    "INSERT INTO teammates (id, project_id, team_name, teammate_name, agent_type, session_id, spawned_at, last_seen_at, status, declared_state) VALUES ('t1', 'project-g', 'team-a', 'lane-a', 'conductor', 'sess-a', 0, 0, 'active', NULL);"
+  ]
+}

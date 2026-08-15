@@ -1,0 +1,164 @@
+[package]
+default-run = "shepherd"
+description = "The canonical shepherd command-line interface over the per-project registry, run artifacts, and sprint pipeline."
+name = "shepherd-cli"
+
+authors.workspace = true
+categories.workspace = true
+edition.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+license.workspace = true
+readme = "README.md"
+repository.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[lib]
+bench = false
+
+[[bin]]
+name = "shepherd"
+path = "bin/cli.rs"
+doc = false
+
+[[test]]
+name = "run_store"
+required-features = ["std"]
+
+[[test]]
+name = "dispatch_store"
+required-features = ["std"]
+
+[[test]]
+name = "dispatch_service"
+required-features = ["std"]
+
+[[test]]
+name = "dispatch_cli"
+required-features = ["std"]
+
+[[test]]
+name = "content_compiler"
+required-features = ["std"]
+
+[[test]]
+name = "compile_cli"
+required-features = ["std"]
+
+[package.metadata.docs.rs]
+all-features = false
+features = ["full"]
+rustc-args = ["--cfg", "docsrs"]
+version = "v{{version}}"
+
+[package.metadata.release]
+no-dev-version = true
+tag-name = "v{{version}}"
+
+[dependencies]
+# sdk — the umbrella, and the only route to the engine. A binary pins the
+# capabilities it needs here rather than exposing them as its own flags: the
+# CLI's feature surface is about *delivery* (which SQLite, which target), and
+# the SDK's is about *capability*. Mixing the two is how a binary ends up
+# shipping a build that cannot open its own database.
+shepherd = { features = [
+  "config",
+  "compiler",
+  "json",
+  "parse",
+  "registry",
+  "render",
+  "schema",
+  "tracing",
+], workspace = true }
+# cli
+clap = { features = ["cargo", "env", "error-context", "help", "usage"], workspace = true }
+# errors — contextual strings are an application concern, so `anyhow` is
+# allowed on this side of the boundary and forbidden on the other
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+# serialize
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde-saphyr = { workspace = true }
+sha2 = { workspace = true }
+toml = { workspace = true }
+glob = { workspace = true }
+rusqlite = { workspace = true }
+uuid = { features = ["std"], workspace = true }
+chrono = { features = ["std"], workspace = true }
+# tracing — the binary is the only place a subscriber may be installed
+tracing = { features = ["log"], workspace = true }
+tracing-subscriber = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+rustix = { features = ["std", "process"], workspace = true }
+
+[features]
+default = [
+  "bundled",
+  "std",
+]
+
+full = [
+  "default",
+  "shepherd/full",
+]
+
+# ********* [FF] Targets *********
+native = ["full"]
+
+nightly = [
+  "shepherd/nightly",
+]
+
+# NOTE: the two wasm targets take different SQLite backends. See the rationale
+# on `shepherd-registry`'s flags; the short form is that `wasm32-unknown-unknown`
+# must NOT enable `bundled` and `wasm32-wasip1` must.
+wasi = [
+  "bundled",
+  "shepherd/wasi",
+  "std",
+  "wasi-vfs",
+]
+
+wasm = [
+  "shepherd/wasm",
+  "sqlite-wasm",
+  "std",
+]
+
+# ********* [FF] Standard Library *********
+alloc = [
+  "serde/alloc",
+  "serde_json/alloc",
+  "shepherd/alloc",
+]
+
+std = [
+  "alloc",
+  "anyhow/std",
+  "clap/std",
+  "serde/std",
+  "serde_json/std",
+  "shepherd/std",
+  "thiserror/std",
+  "tracing/std",
+]
+
+# ********* [FF] Deps *********
+bundled = [
+  "shepherd/bundled",
+]
+
+sqlite-wasm = [
+  "shepherd/sqlite-wasm",
+]
+
+wasi-vfs = [
+  "shepherd/wasi-vfs",
+]
+
+[lints]
+workspace = true

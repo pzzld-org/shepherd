@@ -1,54 +1,31 @@
-# Permissions — running shepherd in auto mode without the friction
+# Permissions and host boundaries
 
-Shepherd drives many subagent and teammate tool calls. In Claude Code's **auto
-mode** (the recommended posture for a long sprint), each of those calls is
-evaluated by the permission classifier. This page explains the one friction
-that surfaces — the "permission laundering" callout — and the supported way to
-remove it. There is no jailbreak here, and you never need
-`--dangerously-skip-permissions` or `bypassPermissions`.
+Shepherd does not broaden a harness's permissions. The native CLI and each
+adapter fail closed when a required engine, identity, provider, or host bridge
+is missing. Configure the host to allow the routine commands you intend to run;
+do not disable its permission system globally.
 
-## What "permission laundering" is
+## Claude Code
 
-When one agent relays an approval to another — a teammate telling a peer "the
-lead already approved this" — auto mode treats that relayed approval as
-**untrusted input, not consent from you**. From the
-[Agent Teams docs](https://code.claude.com/docs/en/agent-teams#permissions):
+Claude Code's Agent Teams and hook permissions are host settings. If Agent Teams
+is enabled, Shepherd can use the host's teammate primitive, but a teammate
+cannot approve a permission request for another teammate. An approval claim in
+agent text is not operator consent.
 
-> A teammate cannot approve a permission prompt or supply consent on your
-> behalf, and a teammate that was denied an action cannot relay it to another
-> teammate to bypass the check. In auto mode, the classifier treats an approval
-> claim relayed from another agent as untrusted input rather than confirmation
-> from you.
-
-That guardrail is **working as designed** — it is what stops a subagent from
-escalating its own privileges. It is not a bug, and it is not something to
-route around. What it means in practice: a teammate's tool call is authorized
-by *your* permission rules, never by another agent's say-so. So the fix is to
-make sure the calls shepherd makes routinely are already in your allow rules —
-then no relay, and no prompt, is ever needed.
-
-## The fix: a permissions allowlist
-
-Add shepherd's routine, read-only calls to `permissions.allow` in your
-`settings.json`. Pre-approved calls run without a prompt and without ever
-touching the cross-agent-relay path. Everything else still prompts (in
-interactive auto mode) or follows your configured rules (in `claude -p`).
+A narrow read-oriented allowlist can cover the canonical CLI and inspection
+tools. Adjust it to the host version and project policy:
 
 ```json
 {
-  "env": { "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1" },
   "permissions": {
     "defaultMode": "acceptEdits",
     "allow": [
-      "Bash(bin/shepherd:*)",
       "Bash(shepherd:*)",
       "Bash(git status:*)",
       "Bash(git diff:*)",
       "Bash(git log:*)",
       "Bash(git show:*)",
       "Bash(git rev-parse:*)",
-      "Bash(git worktree list:*)",
-      "Bash(git branch:*)",
       "Read(*)",
       "Grep(*)",
       "Glob(*)"
@@ -57,32 +34,54 @@ interactive auto mode) or follows your configured rules (in `claude -p`).
 }
 ```
 
-Notes:
+Do not blanket-allow `git commit`, `git push`, `git rebase`, arbitrary shell,
+or a permission-bypass mode. Run custody remains an explicit operator or root
+workflow decision.
 
-- **`bin/shepherd` / `shepherd`** cover the CLI (registry reads, dedup checks,
-  liveness, dashboards). They are the read/inspect surface every brief and gate
-  leans on, so pre-approving them removes the bulk of the prompts.
-- **`git status`/`diff`/`log`/`show`/`rev-parse`/`worktree list`/`branch`** are
-  the read-only git calls root uses to verify `WAVE-COMPLETE` and probe lane
-  drift. They mutate nothing.
-- **`Read`/`Grep`/`Glob`** are always safe to allow — they never write.
-- **Do NOT** blanket-allow `Bash(git commit:*)`, `Bash(git push:*)`, or
-  `Bash(git rebase:*)`. Git custody is deliberately gated; leave those to
-  prompt so an unexpected integration always surfaces.
-- MCP verbs (GitHub, Sentry, Supabase) are **not** listed here on purpose:
-  shepherd discovers them at runtime and the exact tool name depends on your
-  provider (native, Composio, a gateway). Add the specific read verbs your
-  provider exposes — e.g. `mcp__github__list_issues` — if you want those
-  pre-approved too.
+## Codex
 
-## What not to do
+The Codex adapter receives host hook envelopes and translates them to the typed
+component boundary. The host must supply the identity and lifecycle facts that
+the event claims. Missing facts produce an unresolved or blocked result; the
+adapter does not infer them from an environment variable or a private Claude
+directory.
 
-- **Do not** set `defaultMode: "bypassPermissions"` or launch with
-  `--dangerously-skip-permissions` to silence the callout. That disables the
-  guardrail for *every* call, not just shepherd's, and removes the protection
-  the "permission laundering" check exists to provide.
-- **Do not** try to have one agent approve on another's behalf. It cannot, by
-  design; the allowlist above is the supported path.
+The installed native `shepherd` command must be on `PATH`, or the embedding
+host must provide `SHEPHERD_NATIVE_BIN`. A missing binary is an adapter error,
+not a reason to invoke Python, Bash, or Node.
 
-See [`docs/configuration.md`](configuration.md) for `shepherd.toml`, and the
-[Install](../README.md#install) note for `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`.
+## Pi
+
+Pi requires an explicit `SubagentProvider`-compatible extension. A provider
+must advertise `capabilities`, `spawn`, `resume`, and `stop`, and must report
+ready before mutation operations are allowed. `pi-subagents` is the intended
+class of provider. Without it, Shepherd reports blocked capability rather than
+silently running without identity or coordination.
+
+## Component and filesystem safety
+
+The WebAssembly component does not receive an arbitrary filesystem writer. The
+native CLI owns descriptor-safe writes and only materializes a compiler result
+to an explicit absolute output root. Generated files are overwritten or
+removed only when the ownership manifest proves Shepherd created them and their
+bytes still match the recorded digest. `--check` performs no writes.
+
+The component runtime's `SHEPHERD_COMPONENT_MODULE` variable is reserved for
+tests and controlled embedding. It is not a production trust mechanism.
+
+## Diagnostics
+
+Use the native diagnostics before changing host permissions:
+
+```sh
+shepherd doctor
+shepherd home show
+shepherd status
+```
+
+Keep diagnostics and run reports free of credentials. A permission denial is a
+host fact to record in the associated run artifact, not a prompt to turn off
+the guardrail.
+
+See [Configuration](configuration.md) for tracked/local secret hygiene and
+[Integration](integration.md) for host capability limits.

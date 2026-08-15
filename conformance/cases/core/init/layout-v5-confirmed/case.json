@@ -1,0 +1,11 @@
+{
+  "suite": "core",
+  "kind": "mutating",
+  "authority": "native-v6.4.5",
+  "intentional_difference": "native init requires explicit confirmation and creates only typed layout-v5 roots; Poetry, virtualenv, legacy refresh, and retired namespace scaffolds are removed",
+  "requires_git": true,
+  "description": "init --confirm materializes the canonical layout-v5 project namespace",
+  "args": ["init", "--confirm"],
+  "db_fixture": "none",
+  "capture_files": ["shepherd.toml"]
+}

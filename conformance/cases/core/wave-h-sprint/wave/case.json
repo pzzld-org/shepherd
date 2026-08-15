@@ -1,0 +1,12 @@
+{
+  "suite": "core",
+  "kind": "mutating",
+  "authority": "native-v6.4.5",
+  "intentional_difference": "legacy sprint wave refreshed external indexes; native sprint wave begins one explicitly named registered lane under the run lock, with no ambient branch or network dependency",
+  "requires_git": true,
+  "description": "native sprint wave transitions a pending lane to in-progress",
+  "setup": [["init", "--confirm"], ["run", "init", "v900"], ["run", "lane", "add", "v900", "l1-engine"], ["sprint", "open", "--run", "v900"]],
+  "args": ["sprint", "wave", "--run", "v900", "l1-engine"],
+  "db_fixture": "none",
+  "capture_files": ["runs/v900/run.json"]
+}

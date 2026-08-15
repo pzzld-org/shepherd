@@ -1,0 +1,3 @@
+error: invalid value 'not-a-number' for '--since-mins <SINCE_MINS>': invalid digit found in string
+
+For more information, try '--help'.

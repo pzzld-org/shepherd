@@ -1,0 +1,8 @@
+{
+  "suite": "core",
+  "kind": "pure",
+  "description": "models resolve with no role preserves the legacy usage error and exit status 2.",
+  "args": ["models", "resolve"],
+  "db_fixture": "none",
+  "capture_files": []
+}

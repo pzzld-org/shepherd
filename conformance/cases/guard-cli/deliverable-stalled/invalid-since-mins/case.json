@@ -1,0 +1,8 @@
+{
+  "suite": "guard-cli",
+  "kind": "pure",
+  "description": "Native shepherd rejects a non-integer --since-mins through clap before repository or registry discovery, with stable exit 2.",
+  "args": ["deliverable", "stalled", "--since-mins=not-a-number"],
+  "db_fixture": "none",
+  "capture_files": []
+}

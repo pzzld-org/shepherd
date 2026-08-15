@@ -1,0 +1,7 @@
+{
+  "output_sha256": "8db0f2035f99cf92762680b98ff809fc6b6b906e52b39e3caee78f9c75944819",
+  "template": "lane-plan.md.j2",
+  "template_path": "/Users/jo3/.claude/plugins/cache/shepherd/shepherd/6.4.4/services/cli/shepherd_cli/templates/lane-plan.md.j2",
+  "template_sha256": "878aa3c34574008b7cccc613810b65902e1b0ab8dc2cf26259aca82bf7b84eba",
+  "vars_sha256": "226f36a48cde2c1322e4a4e204993b1e4673713654e6d6c9a6671f087bd2f197"
+}

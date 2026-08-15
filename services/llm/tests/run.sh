@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # services/llm/tests/run.sh — gate lane for the LLM service.
-# Deterministic, free, <2s: every test runs in MOCK mode (no real claude call).
+# Deterministic, free, <2s: tests use mock responses or a local fake binary;
+# they never invoke Claude or another hosted inference endpoint.
 set -eu -o pipefail
 cd "$(dirname "$0")"
 shopt -s nullglob

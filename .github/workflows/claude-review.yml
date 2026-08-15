@@ -44,11 +44,11 @@ jobs:
       pull-requests: write
       id-token: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 1
 
-      - uses: anthropics/claude-code-action@v1
+      - uses: anthropics/claude-code-action@9d7150bc8a3dae8149739a88019d192b579ad90c # v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           prompt: |
@@ -60,21 +60,28 @@ jobs:
             live agent behavior, so review for OPERATIONAL impact, not just
             code quality:
 
-            1. Contract coherence — agents/, commands/, and skills/ must
-               agree: a path, halt code, payload field, or tier rule stated
-               in one file may not contradict another. Flag any drift the
-               diff introduces between doctrine files.
-            2. Artifact-schema discipline — every artifact path must follow
-               skills/context/references/naming-conventions.md (the
-               canonical schema: .shepherd/runs/{run}/ layout, ownership
-               table, id grammar). Flag hardcoded paths that bypass it.
+            1. Contract coherence — the Rust CLI/core/registry crates, the
+               active component and harness adapters, content/ role and
+               predicate declarations, and conformance/ fixtures must agree.
+               A path, halt code, payload field, or tier rule stated in one
+               surface may not contradict another. Flag drift introduced by
+               the diff.
+            2. Artifact-schema discipline — artifact and namespace behavior
+               must agree with crates/registry/src/layout.rs,
+               crates/core/src/loader.rs, README.md, docs/configuration.md,
+               and the conformance/cases/core/ layout-v5 fixtures. Flag
+               hardcoded paths that bypass the project .shepherd/runs/{run}
+               schema, ownership rules, or identifier grammar.
             3. Determinism boundary — same-input-same-output work belongs in
-               services/cli (tested Python), never in latent prose. Flag new
-               prose procedures that should be CLI commands, and any
-               timestamp/UUID injected into rendered artifact bodies.
+               crates/cli, crates/core, crates/registry, crates/compiler, or
+               conformance/ tests, never in latent prose. Flag new prose
+               procedures that should be native commands or typed engine
+               behavior, and any timestamp/UUID injected into rendered
+               artifact bodies.
             4. Tests in the same diff — a behavior change without a test
-               (services/cli/tests, hooks/tests) is a finding. Gate tests
-               must stay deterministic and offline.
+               (crates/*/tests, conformance/tests, packages/*/test, or
+               hooks/tests as applicable) is a finding. Gate tests must stay
+               deterministic and offline.
             5. Lane/tier safety — dispatch-law changes (who may spawn, who
                may write, git custody) get extra scrutiny: name the failure
                a violated invariant would cause mid-sprint.

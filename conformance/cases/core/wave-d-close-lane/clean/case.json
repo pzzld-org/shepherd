@@ -1,0 +1,16 @@
+{
+  "suite": "core",
+  "kind": "mutating",
+  "authority": "native-v6.4.5",
+  "intentional_difference": "legacy close-lane mutates retired registry tables and probes GitHub issue state; native v6.4.5 closes one registered lane in the descriptor-safe canonical run ledger with no network or external process",
+  "requires_git": true,
+  "description": "native clean close transitions a registered lane to complete",
+  "setup": [
+    ["init", "--confirm"],
+    ["run", "init", "v900"],
+    ["run", "lane", "add", "v900", "l1-engine"]
+  ],
+  "args": ["close-lane", "--run", "v900", "l1-engine", "--status", "clean"],
+  "db_fixture": "none",
+  "capture_files": ["runs/v900/run.json"]
+}

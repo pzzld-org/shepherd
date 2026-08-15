@@ -1,0 +1,16 @@
+{
+  "name": "@fl03/harness-claude",
+  "version": "6.4.5",
+  "description": "Thin Claude Code adapter for native per-agent identity, lifecycle dispatch, and the shared Rust guard engine.",
+  "type": "module",
+  "scripts": {
+    "test": "node test.mjs"
+  },
+  "dependencies": {
+    "@fl03/component-runtime": "6.4.5"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "Apache-2.0"
+}

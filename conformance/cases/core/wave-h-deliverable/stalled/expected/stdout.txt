@@ -1,0 +1,9 @@
+[
+  {
+    "agent_role": "worker",
+    "id": 1,
+    "kind": "test",
+    "promised_at": <TS>,
+    "target_ref": "crates/cli"
+  }
+]

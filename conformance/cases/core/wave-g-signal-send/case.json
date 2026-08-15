@@ -1,0 +1,14 @@
+{
+  "suite": "core",
+  "kind": "mutating",
+  "authority": "native-v6.4.5",
+  "intentional_difference": "native signal send writes a bounded JSON payload through the project-scoped typed registry and returns its inserted row id",
+  "requires_git": true,
+  "description": "signal send inserts one deterministic registry row",
+  "args": ["signal", "send", "--to", "session-b", "--kind", "seed-ready"],
+  "stdin_file": "stdin.json",
+  "db_fixture": "full_schema",
+  "seed_sql": [
+    "INSERT INTO projects (id, name, created_at, updated_at) VALUES ('project-g', 'wave g fixture', 0, 0);"
+  ]
+}

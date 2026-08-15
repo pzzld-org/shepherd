@@ -1,0 +1,28 @@
+{
+  "rust-analyzer.cargo.autoreload": true,
+  "rust-analyzer.cargo.features": [
+    "default",
+    "full"
+  ],
+  "rust-analyzer.checkOnSave": true,
+  "rust-analyzer.check.features": [
+    "default",
+    "full"
+  ],
+  "rust-analyzer.runnables.test.overrideCommand": [
+    "cargo",
+    "nextest",
+    "run",
+    "--no-fail-fast",
+    "--package",
+    "${package}",
+    "${target_arg}",
+    "${target}",
+    "--",
+    "${test_name}",
+    "${exact}",
+    "${include_ignored}"
+  ],
+  "svg.preview.background": "transparent",
+  "nixEnvSelector.suggestion": false
+}

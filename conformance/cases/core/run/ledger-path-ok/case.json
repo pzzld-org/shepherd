@@ -1,0 +1,1 @@
+{"suite":"core","kind":"pure","requires_git":true,"description":"run ledger path","setup":[["run","init","v910-dev0"]],"args":["run","ledger","path","v910-dev0"],"db_fixture":"none"}

@@ -1,139 +1,60 @@
-# Example shepherd configuration — a multi-crate Rust service.
-#
-# A fully-fleshed-out binding (compare with ../minimal/shepherd.toml). It models
-# a common real-world topology: a workspace with an HTTP `service-node` binary and
-# a background `service-worker` binary, each gated under its own feature profile.
-# Drop-in install: cp this file to <repo-root>/.claude/shepherd.toml
-#
-# See ../../docs/configuration.md for the schema.
+# Layout-v5 configuration for a multi-crate Rust service.
+# Copy to .shepherd/shepherd.toml.
 
 [project]
-name        = "rust-service"
-language    = "rust"
-description = "Multi-crate Rust service — HTTP node + background worker over a shared core."
+name = "rust-service"
+description = "Multi-crate Rust service with native, Wasm, and adapter gates."
+language = "rust"
+harnesses = ["claude", "codex", "pi"]
 
 [branching]
-patch_branch_pattern  = "v{X}.{Y}.{Z}"
+patch_branch_pattern = "v{X}.{Y}.{Z}"
 sprint_branch_pattern = "v{X}.{Y}.{Z}-dev.{N}"
-# Filesystem-slug forms (v5.1.1+) — dots collapsed for filename safety.
-patch_slug_pattern    = "v{X}{Y}{Z}"
-sprint_slug_pattern   = "v{X}{Y}{Z}-dev{N}"
-sprints_per_patch     = 10
-main_branch           = "main"
-release_tag_pattern   = "v{X}.{Y}.{Z}"
+patch_slug_pattern = "v{X}{Y}{Z}"
+sprint_slug_pattern = "v{X}{Y}{Z}-dev{N}"
+sprints_per_patch = 10
+main_branch = "main"
+release_tag_pattern = "v{X}.{Y}.{Z}"
 allow_direct_main_commit = false
 
-[gates]
-# Three canonical cargo gates, run in sequence between coder waves and at sprint
-# close. Empty string = skip the gate.
-check  = "cargo check --workspace --features full"
-lint   = "cargo clippy --workspace --features full -- -D warnings"
-format = "cargo fmt --all"
-
-# Supplementary gates that exercise per-binary build profiles. These DO matter —
-# `--workspace --features full` does NOT activate the node/worker [[bin]]
-# required-features, so a workspace-green build can still ship a broken binary.
-extra = [
-    { name = "node-serve",   cmd = "cargo check -p service-node --features serve,native" },
-    { name = "worker-serve", cmd = "cargo check -p service-worker --features serve" },
-    # Field-shape dedup census — fails the wave/close if a renamed-shadow duplicate
-    # lands beside an orphaned canonical (shctx dups, #157). See [dups] below.
-    { name = "shape-dedup",  cmd = "shctx dups scan --fail-on foundation-blocking" },
-]
-
-target_clean_threshold_gb = 20
-
-[dups]
-# Field-shape similar-struct detection (shctx dups, #157). Catches a second type
-# for an existing concept defined under a DIFFERENT name — the duplicate that
-# compiles green and slips every name-keyed gate. The PreToolUse hook surfaces a
-# shape match to the coder at authoring time; the [gates].extra entry above makes
-# a foundation-blocking shadow fail the sprint. See docs/configuration.md §[dups]
-# and skills/context/SKILL.md §Dedup. Keys are dups_*-prefixed (cfg_get is section-agnostic).
-dups_hook        = "warn"     # off | warn (default) | block — block denies a ≥dups_block match
-dups_threshold   = 0.7        # cluster/check similarity floor (0..1)
-dups_block       = 0.85       # hook block threshold
-dups_name_weight = 0.5        # field-NAME Jaccard weight vs typed-pair Jaccard
-dups_min_fields  = 2          # ignore shapes below N fields (markers / 1-field noise)
-# dups_registry  = ".shepherd/dups-registry.json"   # concept→canonical pins + DO-NOT-MERGE allow-list
-
 [paths]
-# This example uses the legacy .artifacts/ namespace (a project initialized before
-# v5.0.0). These paths must match the active shctx namespace (`shctx doctor` reports
-# a conflict if they diverge). New projects should use .shepherd/ (the v5.0.0+ default).
-plans   = ".artifacts/plans"
-reports = ".artifacts/reports"
-docs    = ".artifacts/docs"
-ctx     = ".artifacts/ctx"
+docs = ".shepherd/docs"
+ctx = ".shepherd/ctx"
+runs = ".shepherd/runs"
+
+[gates]
+check = "cargo check --workspace --all-features --locked"
+lint = "cargo clippy --workspace --all-targets --all-features --locked -- -D warnings"
+format = "cargo fmt --all -- --check"
+
+[gates.extra]
+test = "cargo test --workspace --all-features --locked"
+wasm = "cargo build --locked -p shepherd-component --target wasm32-wasip2 --release"
+adapters = "bash scripts/test-adapters-component.sh"
 
 [skills]
-mandatory = ["code-style"]
+mandatory = ["shepherd"]
 
 [skills.by_domain]
-rust       = ["rust"]
-wasm       = ["webassembly"]
-supabase   = ["supabase:supabase"]
-claude_api = ["claude-api"]
+rust = ["thinking"]
+wasm = ["thinking"]
 
 [skills.detection]
-rust       = ["**/*.rs"]
-wasm       = ["cmp/**", "**/*.wit"]
-supabase   = ["**/supabase/**", "**/migrations/**.sql"]
-claude_api = ["clients/rsclaude/**", "**/anthropic/**"]
-
-[mcp]
-github   = true
-sentry   = true
-supabase = true
-grafana  = false
-
-[cli]
-fly    = true
-gh     = true
-docker = true
-just   = false
-make   = false
-
-[ledger]
-phase_0_full_ledger      = true
-classify_into            = ["blocking-this-sprint", "labeled-non-issue", "tracking-future", "drift-risk"]
-non_issue_labels         = ["wontfix", "tracking-future", "design-question", "rfc"]
-carry_forward_file       = "{paths.docs}/v{X}.{Y}.{Z}-carry-forwards.md"
-chronic_threshold_patches = 2
+rust = ["**/*.rs"]
+wasm = ["**/*.wit", "crates/component/**"]
 
 [release]
-driver             = "github-workflow"
-release_notes_path = "{paths.docs}/v{X}.{Y}.{Z}-release-notes.md"
-workflow_file      = ".github/workflows/release.yml"
+driver = "github-workflow"
+release_notes_path = "CHANGELOG.md"
+workflow_file = ".github/workflows/release.yml"
+devlast_guard = "block"
 
-[memory]
-project_memory    = "~/.claude/projects/<your-project>/memory"
-project_doctrines = ".claude/doctrines"
+[spawn]
+max_parallel = 3
+lead_effort = "high"
 
-[hooks]
-on_every_dispatch = ["code-style"]
-on_conductor_only = []
-on_engineer_only  = ["workflow"]
-on_planter_only   = []
+[mcp]
+github = true
 
-[compaction]
-# Snapshot drive-state before every compaction event (on by default).
-# The PreCompact hook writes state.json cursor + focus digest into
-# <namespace>/snapshots/ so the orchestrator can rehydrate after compaction.
-# Never blocks compaction. Prunes old snapshots to snapshot_retention count.
-precompact_snapshot = "on"   # on (default) | off
-snapshot_retention  = 5      # keep N most-recent snapshots
-
-[focus]
-# Re-inject the latest snapshot as additionalContext post-compaction so the
-# orchestrator resumes its drive without manual re-orientation.
-# Drain-once; runaway-bounded. Controls both SessionStart(compact) and
-# UserPromptSubmit fallback paths.
-rehydrate        = "on"   # on (default) | off
-loop_max_default = 8      # default max_iterations for FOCUS-LOOP (Pattern 6)
-# FOCUS-HEARTBEAT (v6.2.2) — re-anchor to the objective + self-drift-check on a
-# cadence WITHIN a long active stretch (catches the orchestrator wandering off-task).
-# heartbeat_interval is the deterministic leg (native /loop clock); heartbeat_actions
-# is a soft best-effort self-prompt. Unrelated to teammate-liveness heartbeats.
-heartbeat_interval = ""   # "" (off) | duration e.g. "45m" — deterministic wall-clock re-anchor via native /loop
-heartbeat_actions  = 20   # soft self-prompt: re-anchor after ~N actions (0 disables)
+[cli]
+gh = true

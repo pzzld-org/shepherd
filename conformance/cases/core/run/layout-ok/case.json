@@ -1,0 +1,1 @@
+{"suite":"core","kind":"pure","authority":"native-v6.4.5","intentional_difference":"layout-v5 creates only the canonical lanes tree and never recreates retired graph/dispatch/reports/audits placeholders","requires_git":true,"description":"run layout","setup":[["run","init","v910-dev0"]],"args":["run","layout","v910-dev0","--json"],"db_fixture":"none"}
