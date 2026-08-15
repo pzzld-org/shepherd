@@ -23,7 +23,7 @@ keywords = ["agent", "orchestration", "sprint", "cli", "plugin"]
 license = "Apache-2.0"
 readme = "README.md"
 repository = "https://github.com/FL03/shepherd.git"
-rust-version = "1.96.0"
+rust-version = "1.97.0"
 version = "6.4.6"
 
 # ********* Dependencies *********

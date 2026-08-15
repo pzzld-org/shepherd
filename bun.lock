@@ -10,31 +10,31 @@
       },
     },
     "packages/component-runtime": {
-      "name": "@fl03/component-runtime",
-      "version": "6.4.5",
+      "name": "@pzzld/component-runtime",
+      "version": "6.4.6",
       "dependencies": {
         "@bytecodealliance/preview2-shim": "0.20.1",
       },
     },
     "packages/harness-claude": {
-      "name": "@fl03/harness-claude",
-      "version": "6.4.5",
+      "name": "@pzzld/pi-claude",
+      "version": "6.4.6",
       "dependencies": {
-        "@fl03/component-runtime": "6.4.5",
+        "@pzzld/component-runtime": "6.4.6",
       },
     },
     "packages/harness-codex": {
-      "name": "@fl03/harness-codex",
-      "version": "6.4.5",
+      "name": "@pzzld/pi-codex",
+      "version": "6.4.6",
       "dependencies": {
-        "@fl03/component-runtime": "6.4.5",
+        "@pzzld/component-runtime": "6.4.6",
       },
     },
     "packages/harness-pi": {
-      "name": "@fl03/harness-pi",
-      "version": "6.4.5",
+      "name": "@pzzld/pi-shepherd",
+      "version": "6.4.6",
       "dependencies": {
-        "@fl03/component-runtime": "6.4.5",
+        "@pzzld/component-runtime": "6.4.6",
       },
     },
   },
@@ -96,14 +96,6 @@
     "@emnapi/runtime": ["@emnapi/runtime@1.11.1", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-vgj7R3y3Wgx24IQaGPA/R6YFXLHVMOZ0uVEyIQPaWs+rd1AzfEMXlAC22FYwO1XkKR6NPsq7mUandH8oIRdZFw=="],
 
     "@emnapi/wasi-threads": ["@emnapi/wasi-threads@1.2.2", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-c95qOXkHdydNKhscBTebqEC1CVAZpyqOfVfBzQ1qgzyl3gfeldUjIggDbIZgDKsHLgnsM+igH7TJ/eAasaVuMA=="],
-
-    "@fl03/component-runtime": ["@fl03/component-runtime@workspace:packages/component-runtime"],
-
-    "@fl03/harness-claude": ["@fl03/harness-claude@workspace:packages/harness-claude"],
-
-    "@fl03/harness-codex": ["@fl03/harness-codex@workspace:packages/harness-codex"],
-
-    "@fl03/harness-pi": ["@fl03/harness-pi@workspace:packages/harness-pi"],
 
     "@napi-rs/lzma": ["@napi-rs/lzma@1.5.1", "", { "optionalDependencies": { "@napi-rs/lzma-android-arm-eabi": "1.5.1", "@napi-rs/lzma-android-arm64": "1.5.1", "@napi-rs/lzma-darwin-arm64": "1.5.1", "@napi-rs/lzma-darwin-x64": "1.5.1", "@napi-rs/lzma-freebsd-x64": "1.5.1", "@napi-rs/lzma-linux-arm-gnueabihf": "1.5.1", "@napi-rs/lzma-linux-arm64-gnu": "1.5.1", "@napi-rs/lzma-linux-arm64-musl": "1.5.1", "@napi-rs/lzma-linux-ppc64-gnu": "1.5.1", "@napi-rs/lzma-linux-riscv64-gnu": "1.5.1", "@napi-rs/lzma-linux-s390x-gnu": "1.5.1", "@napi-rs/lzma-linux-x64-gnu": "1.5.1", "@napi-rs/lzma-linux-x64-musl": "1.5.1", "@napi-rs/lzma-wasm32-wasi": "1.5.1", "@napi-rs/lzma-win32-arm64-msvc": "1.5.1", "@napi-rs/lzma-win32-ia32-msvc": "1.5.1", "@napi-rs/lzma-win32-x64-msvc": "1.5.1" } }, "sha512-sgOZ89+y8cDbY+3WbzR8CtIhCuFRWotZ9/2PjPVDJHz6np5KFTAev0DrwiyTJTgFsCRDhfGlbmhMgyhHbWdZ6g=="],
 
@@ -214,6 +206,14 @@
     "@oxc-parser/binding-win32-x64-msvc": ["@oxc-parser/binding-win32-x64-msvc@0.76.0", "", { "os": "win32", "cpu": "x64" }, "sha512-0jLzzmnu8/mqNhKBnNS2lFUbPEzRdj5ReiZwHGHpjma0+ullmmwP2AqSEqx3ssHDK9CpcEMdKOK2LsbCfhHKIA=="],
 
     "@oxc-project/types": ["@oxc-project/types@0.144.0", "", {}, "sha512-nuhZIOLuI6TFQ32I/WnUx+SCPY7SdSKwgnFHydAuoS1+Z4BRcaP+RRJmGzl9lw+0OFF7UmaESf7KQRXaNLHypg=="],
+
+    "@pzzld/component-runtime": ["@pzzld/component-runtime@workspace:packages/component-runtime"],
+
+    "@pzzld/pi-claude": ["@pzzld/pi-claude@workspace:packages/harness-claude"],
+
+    "@pzzld/pi-codex": ["@pzzld/pi-codex@workspace:packages/harness-codex"],
+
+    "@pzzld/pi-shepherd": ["@pzzld/pi-shepherd@workspace:packages/harness-pi"],
 
     "@rolldown/binding-android-arm64": ["@rolldown/binding-android-arm64@1.2.4", "", { "os": "android", "cpu": "arm64" }, "sha512-jHC2cnyKz5xU2fhECtFl8OZ83cYNt13GZQD+0uMJ/X3o+ijmd56okHhTUwxVSHPx1IRVIJEZ1/1pPzeLCU6XKA=="],
 
