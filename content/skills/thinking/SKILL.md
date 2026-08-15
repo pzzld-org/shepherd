@@ -1,5 +1,6 @@
 ---
 name: thinking
+description: "Decompose large, ambiguous, or blocked work into independent, testable units with explicit assumptions and ownership. Use before planning or dispatching work that cannot be solved safely as one step."
 source: skills/thinking/SKILL.md
 portability: cross-harness
 ---

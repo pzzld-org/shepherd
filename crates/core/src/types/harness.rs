@@ -32,6 +32,8 @@
 #[strum(ascii_case_insensitive, serialize_all = "snake_case")]
 #[non_exhaustive]
 pub enum Harness {
+    #[strum(to_string = "claude", serialize = "claude_code")]
+    #[cfg_attr(feature = "serde", serde(rename = "claude", alias = "claude_code"))]
     ClaudeCode,
     Codex,
     Pi,

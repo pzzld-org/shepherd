@@ -35,6 +35,15 @@ ROOT = Path(__file__).resolve().parent.parent
 # other member is a capability library reached through the umbrella.
 UMBRELLA = "shepherd"
 BINARY = "shepherd-cli"
+COMPONENT = "shepherd-component"
+
+RETIRED_NAMESPACE_IGNORE = re.compile(
+    r"^(?:\*\*/)?(?:"
+    r"(?:logs|tmp)(?:/|\*|$)|"
+    r"\.artifacts(?:/|$)|"
+    r"\.shepherd/(?:root\.db|tmp|temp|logs|cache|memory|dispatch|discoveries|insights|pauses|snapshots|uploads)(?:/|\*|$)"
+    r")"
+)
 
 
 class Failure(Exception):
@@ -135,7 +144,7 @@ def rule_libraries_reachable_from_umbrella(root: Path, crates: dict[str, dict]) 
     declared = set(umbrella.get("dependencies", {}))
     bad = []
     for name in crates:
-        if name in (UMBRELLA, BINARY):
+        if name in (UMBRELLA, BINARY, COMPONENT):
             continue
         if name not in declared:
             bad.append(f"{name}: not a dependency of the `{UMBRELLA}` umbrella")
@@ -221,6 +230,55 @@ def rule_members_in_feature_matrix(root: Path, crates: dict[str, dict]) -> list[
     return bad
 
 
+def rule_component_contract(root: Path, crates: dict[str, dict]) -> list[str]:
+    """The WASI Preview 2 component has a checked WIT package boundary.
+
+    A component crate that merely compiles a raw wasm module is not enough for
+    hosts: the package metadata, WIT source, and contract tests must travel
+    together so release tooling can validate and extract the interface.
+    """
+    component = crates.get(COMPONENT)
+    if component is None:
+        return [f"the component crate `{COMPONENT}` is missing"]
+    bad = []
+    metadata = component.get("package", {}).get("metadata", {}).get("component", {})
+    if metadata.get("package") != "fl03:shepherd":
+        bad.append(f"{COMPONENT}: package metadata must set component package to `fl03:shepherd`")
+    directory = component["__dir__"]
+    wit = directory / "wit" / "shepherd.wit"
+    if not wit.is_file():
+        bad.append(f"{COMPONENT}: missing wit/shepherd.wit")
+    elif "package fl03:shepherd@6.4.5;" not in wit.read_text():
+        bad.append(f"{COMPONENT}: WIT package/version does not match the workspace")
+    tests = directory / "tests" / "component.rs"
+    if not tests.is_file():
+        bad.append(f"{COMPONENT}: missing component contract tests")
+    return bad
+
+
+def rule_retired_namespaces_are_visible(root: Path, crates: dict[str, dict]) -> list[str]:
+    """Git must expose every reintroduced retired Shepherd namespace.
+
+    Ignoring a retired root makes a duplicate authority invisible to both the
+    operator and the layout migration. Canonical registry files and transient
+    state below `.shepherd/runs/<run>` remain separately allowlisted.
+    """
+    ignore = root / ".gitignore"
+    if not ignore.is_file():
+        return [".gitignore is missing"]
+
+    bad = []
+    for line_number, raw in enumerate(ignore.read_text(encoding="utf-8").splitlines(), 1):
+        pattern = raw.strip()
+        if not pattern or pattern.startswith(("#", "!")):
+            continue
+        if RETIRED_NAMESPACE_IGNORE.match(pattern):
+            bad.append(
+                f".gitignore:{line_number}: retired namespace must stay visible: {pattern}"
+            )
+    return bad
+
+
 RULES = [
     rule_lints_inherited,
     rule_version_inherited,
@@ -231,6 +289,8 @@ RULES = [
     rule_one_binary,
     rule_workspace_deps_are_ungated,
     rule_members_in_feature_matrix,
+    rule_component_contract,
+    rule_retired_namespaces_are_visible,
 ]
 
 
@@ -314,6 +374,12 @@ FIXTURES = {
     rule_members_in_feature_matrix: {
         "shepherd-nowhere": {"package": {"name": "shepherd-nowhere"}, "__dir__": Path("/x")},
     },
+    rule_component_contract: {
+        "shepherd-component": {
+            "package": {"name": "shepherd-component", "metadata": {}},
+            "__dir__": Path("/nonexistent"),
+        },
+    },
 }
 
 
@@ -341,6 +407,18 @@ def self_test(root: Path) -> int:
         )
         label = "workspace deps are ungated"
         if rule_workspace_deps_are_ungated(broken, {}):
+            print(f"  {label:<44} fails as designed")
+        else:
+            print(f"  {label:<44} DID NOT FAIL on a broken fixture")
+            failures += 1
+
+    with tempfile.TemporaryDirectory() as tmp:
+        broken = Path(tmp)
+        (broken / ".gitignore").write_text(
+            ".shepherd/cache/\n**/.artifacts/logs/\n**/logs/\n**/tmp/\n", encoding="utf-8"
+        )
+        label = "retired namespaces are visible"
+        if len(rule_retired_namespaces_are_visible(broken, {})) == 4:
             print(f"  {label:<44} fails as designed")
         else:
             print(f"  {label:<44} DID NOT FAIL on a broken fixture")

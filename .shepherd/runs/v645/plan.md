@@ -2198,6 +2198,16 @@ cache-warm fan-out *within* a lane is already cheap.
 | `L4-conformance` | W0-S1, W0-S3, W0-S4, W0-S9, W0-S10, W0-S14, W4-S2, W4-S7 | `conformance/`, `scripts/`, `services/cli/`, `.shepherd/runs/*/run.json`, `CHANGELOG.md`, `README.md`, `.claude-plugin/plugin.json` | L1, L2, L3, L5 |
 | `L5-harness` | W0-S2, W0-S5, W0-S6, W0-S7, W0-S8, W0-S11, W0-S12, W0-S13, W0-S15, W4-S1, W4-S3, W4-S4, W4-S5, W4-S6 | `packages/`, `content/`, `agents/`, `commands/`, `skills/`, `hooks/`, `bin/`, `.github/workflows/` | L1, L2, L3, L4 |
 
+### Execution amendment: reactive `l6-guards` ledger row
+
+During Wave 1, root created `l6-guards` as a reactive recovery lane over guard files that
+this projection assigns to `L5-harness`. That violated the constant-five ownership model;
+it did not establish a sixth permanent file authority. The row remains in `run.json` and
+its lane plan remains under `lanes/l6-guards/` as execution provenance. Its accepted work
+is re-attributed to `L5-harness` for close accounting, exactly as the lane plan records.
+Future runs must preserve the static five-lane ownership rule or amend their projection
+before dispatch rather than relying on serialized overlap.
+
 **Cargo concurrency cap: 2.** Only `L1-engine` and `L2-registry` may hold a
 `CARGO_TARGET_DIR=target/.lanes/<lane-slug>` simultaneously. `L3-surface` builds only at
 its wave gate, against the shared warm `target/`. `L4` and `L5` do not build Rust at all.

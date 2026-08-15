@@ -1,6 +1,6 @@
 {
   "kind": "reflection",
-  "subject": "A conductor's one-line close reflection — a Reflexion lesson of the form 'what I would do differently next sprint', stored by `shctx adapt reflect`.",
+  "subject": "A conductor's one-line close reflection: one evidence-backed change to make in the next sprint.",
   "scale": 5,
   "threshold": 60,
   "dimensions": [

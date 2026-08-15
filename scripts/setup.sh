@@ -23,6 +23,7 @@ cd "$(dirname "${0}")/.."
 
 WITH_WASM=0
 CHECK_ONLY=0
+WASM_TOOLS_VERSION="1.254.0"
 for arg in "$@"; do
   case "${arg}" in
     --wasm) WITH_WASM=1 ;;
@@ -64,7 +65,7 @@ if need rustup; then
   else
     ok "rustup present"
   fi
-  for target in wasm32-unknown-unknown wasm32-wasip1; do
+  for target in wasm32-unknown-unknown wasm32-wasip1 wasm32-wasip2; do
     if rustup target list --installed 2>/dev/null | grep -qx "${target}"; then
       ok "target ${target}"
     elif [ "${CHECK_ONLY}" = "1" ]; then
@@ -129,6 +130,19 @@ if [ "${WITH_WASM}" = "1" ]; then
     printf '  installing wasmtime-cli ...\n'
     cargo install wasmtime-cli --locked --quiet
     did "wasmtime"
+  fi
+
+  # wasm-tools validates the Component Model artifact and extracts its WIT
+  # contract in scripts/gate.sh wasm. Pin the CLI to the matching 0.254.0
+  # WebAssembly tooling stack so a fresh clone is reproducible.
+  if need wasm-tools && [ "$(wasm-tools --version 2>/dev/null)" = "wasm-tools ${WASM_TOOLS_VERSION}" ]; then
+    ok "wasm-tools ${WASM_TOOLS_VERSION}"
+  elif [ "${CHECK_ONLY}" = "1" ]; then
+    gap "wasm-tools  (cargo install wasm-tools --version ${WASM_TOOLS_VERSION} --locked)"
+  else
+    printf '  installing wasm-tools %s ...\n' "${WASM_TOOLS_VERSION}"
+    cargo install wasm-tools --version "${WASM_TOOLS_VERSION}" --locked --quiet
+    did "wasm-tools ${WASM_TOOLS_VERSION}"
   fi
 
   # wasi-sdk supplies the clang and sysroot that cross-compile SQLite's C to

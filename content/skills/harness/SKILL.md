@@ -1,5 +1,6 @@
 ---
 name: harness
+description: "Operate Claude-specific agent teams, workflows, tool discovery, messaging, and wakeups. Use only on Claude when native multi-agent mechanics or capability probing are required."
 source: skills/harness/SKILL.md
 portability: claude-only
 ---

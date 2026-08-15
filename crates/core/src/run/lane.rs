@@ -13,8 +13,8 @@ fn default_lane_state() -> String {
 
 /// One lane's registration + boundary-merge ledger row.
 ///
-/// Mirrors `models_run.py`'s `LaneState`: same fields, same defaults, same
-/// `extra = "allow"` round-trip guarantee (#247) — a lane document written
+/// Uses the canonical lane fields, defaults, and unknown-key round-trip
+/// guarantee: a lane document written
 /// by a different shepherd implementation, or a future version of this one,
 /// keeps whatever fields this struct does not name through a load -> store
 /// cycle instead of losing them.
@@ -33,10 +33,9 @@ pub struct LaneState {
     /// This lane's git branch, `""` until one is cut.
     #[serde(default)]
     pub branch: String,
-    /// The lane's lifecycle state. `LANE_STATES` in the Python reference
-    /// names a closed vocabulary (`pending`, `in-progress`, `complete`,
-    /// `error`) but, like [`crate::run::RunState::status`], is not enforced
-    /// as a closed type here for the same round-trip reason.
+    /// The lane's lifecycle state. The native CLI validates the closed
+    /// vocabulary (`pending`, `in-progress`, `complete`, `error`) at its
+    /// mutation boundary; the data-transfer type stays forward-compatible.
     #[serde(default = "default_lane_state")]
     pub state: String,
     /// The #242 boundary-merge ledger: the commit a `WAVE-COMPLETE`

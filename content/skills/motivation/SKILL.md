@@ -1,34 +1,26 @@
 ---
 name: motivation
+description: "Maintain durable focus, drive, loops, and outcome tracking across long-running Shepherd work. Use when work must continue through waits, compaction, monitoring, or repeated progress checks."
 source: skills/motivation/SKILL.md
-portability: unverified  # loop/state CONCEPT is harness-neutral; Claude-specific wake primitives are abstracted to schedule-wakeup below; Codex-side counterpart not independently probed this pass — RECONCILIATION.md §Residual
+portability: cross-harness
 ---
 
 # motivation — focus, drive, loops, outcomes
 
-Time, for a machine, is irrelevant — only outcomes are. This skill states the durable
-focus/drive state model and loop discipline any lead role runs, independent of which
-harness's own wake/schedule primitive implements it (`schedule-wakeup` in the capability
-vocabulary, `RECONCILIATION.md`).
+Outcomes, not elapsed time, govern work. This defines the durable focus record and bounded
+drive loop independently of the harness wake primitive.
 
 ## Focus record
 
-A durable north-star record survives context compaction: an objective, the plan-graph
-cursor, the current ready set of work, open obligations, and hold-true invariants — keyed
-per run, and per lane for a lane-executor lead's own slice. On a long stretch with no
-external wake, the record is what lets a resumed session re-anchor to *where it was and
-what outcome it was chasing*, not just restart from nothing.
+A run, and each active lane, records its objective, graph cursor, ready work, obligations,
+and invariants. Resume loads that record and the smallest referenced artifacts instead of
+replaying a transcript.
 
 ## Drive contract
 
-Once a run's leads are confirmed live, the top-level lead ENTERS an active drive loop as
-its default mode until close — dispatching subordinate work is the start of active
-coordination, never a hand-off to wait passively. The cycle, every wake: **act** (drain the
-message queue, route by escalation code, release the next gate on a verified completion
-signal, prune an idle subordinate); **probe** (sweep liveness and diff subordinate state
-for drift, re-anchor the focus record); **yield** (one status line, never a busy-wait spin
-and never an operator prompt outside the small enumerated set of legitimate stop points).
-Passive-waiting at a dispatch boundary with no real question pending is never legitimate.
+After leads are live, root drives until close. Every wake: **act** on events and verified
+completion, **probe** liveness and drift, update focus, then **yield** one status line.
+Never busy-wait, passively abandon a dispatch, or prompt the operator without a real stop.
 
 ## Loop discipline
 

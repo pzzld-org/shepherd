@@ -22,6 +22,30 @@ name = "shepherd"
 path = "bin/cli.rs"
 doc = false
 
+[[test]]
+name = "run_store"
+required-features = ["std"]
+
+[[test]]
+name = "dispatch_store"
+required-features = ["std"]
+
+[[test]]
+name = "dispatch_service"
+required-features = ["std"]
+
+[[test]]
+name = "dispatch_cli"
+required-features = ["std"]
+
+[[test]]
+name = "content_compiler"
+required-features = ["std"]
+
+[[test]]
+name = "compile_cli"
+required-features = ["std"]
+
 [package.metadata.docs.rs]
 all-features = false
 features = ["full"]
@@ -39,6 +63,8 @@ tag-name = "v{{version}}"
 # the SDK's is about *capability*. Mixing the two is how a binary ends up
 # shipping a build that cannot open its own database.
 shepherd = { features = [
+  "config",
+  "compiler",
   "json",
   "parse",
   "registry",
@@ -47,9 +73,7 @@ shepherd = { features = [
   "tracing",
 ], workspace = true }
 # cli
-clap = { features = ["cargo", "env"], workspace = true }
-# config — the six-tier precedence chain lives here, not in the engine
-config = { workspace = true }
+clap = { features = ["cargo", "env", "error-context", "help", "usage"], workspace = true }
 # errors — contextual strings are an application concern, so `anyhow` is
 # allowed on this side of the boundary and forbidden on the other
 anyhow = { workspace = true }
@@ -57,9 +81,19 @@ thiserror = { workspace = true }
 # serialize
 serde = { workspace = true }
 serde_json = { workspace = true }
+serde-saphyr = { workspace = true }
+sha2 = { workspace = true }
+toml = { workspace = true }
+glob = { workspace = true }
+rusqlite = { workspace = true }
+uuid = { features = ["std"], workspace = true }
+chrono = { features = ["std"], workspace = true }
 # tracing — the binary is the only place a subscriber may be installed
 tracing = { features = ["log"], workspace = true }
 tracing-subscriber = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+rustix = { features = ["std", "process"], workspace = true }
 
 [features]
 default = [

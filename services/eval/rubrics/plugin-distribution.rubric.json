@@ -1,0 +1,29 @@
+{
+  "kind": "plugin-distribution",
+  "subject": "A Claude plugin distribution decision for a generated WebAssembly Component runtime and one native Shepherd CLI.",
+  "scale": 5,
+  "threshold": 80,
+  "dimensions": [
+    {
+      "key": "artifact_closure",
+      "weight": 3,
+      "desc": "Ships a self-contained release artifact with the generated JavaScript binding, component and core Wasm, and locked runtime dependency, without relying on repository-only files or committing generated output."
+    },
+    {
+      "key": "authority_boundary",
+      "weight": 3,
+      "desc": "Includes only canonical compiler-owned roles and skills plus thin host hooks; excludes hand-authored command doctrine and retired Python, Bash, Node, or shctx command authorities."
+    },
+    {
+      "key": "install_truth",
+      "weight": 2,
+      "desc": "States the actual Claude source limitation, uses a supported ZIP loading boundary, names session-only behavior, and does not claim a GitHub release asset is a persistent marketplace source."
+    },
+    {
+      "key": "release_evidence",
+      "weight": 2,
+      "desc": "Requires a deterministic archive name and checksum, reproducibility, safe archive paths, strict manifest validation, exact component inventory, and a real extracted-hook probe using the adjacent runtime."
+    }
+  ],
+  "guidance": "Reward an artifact that is runnable from clean extracted bytes and truthful about Claude loading semantics. Penalize source-checkout fallback, committed generated binaries, network fetches during guarded calls, unverified archives, marketplace claims a release ZIP cannot satisfy, and inclusion of legacy behavioral authorities."
+}

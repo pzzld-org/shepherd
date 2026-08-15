@@ -1,1 +1,1 @@
-ERROR: no DB at <SCRATCH>/cwd/.shepherd/shepherd.db — run 'shctx init'
+ERROR: no DB at <SCRATCH>/cwd/.shepherd/shepherd.db — run 'shepherd init'

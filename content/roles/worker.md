@@ -1,5 +1,6 @@
 ---
 role: worker
+description: "Execute a bounded non-code deliverable that fits no narrower role. Use for monitoring, batch reconciliation, cleanup, or structured synthesis with a fixed output."
 source: agents/worker.md
 model_hint: standard
 write_eligible: true

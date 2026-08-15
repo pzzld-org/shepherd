@@ -1,5 +1,6 @@
 ---
 role: discovery
+description: "Research external primary sources and produce one bounded run-scoped report. Use for documentation, release notes, web evidence, or capability discovery."
 source: agents/discovery.md
 model_hint: standard
 write_eligible: false

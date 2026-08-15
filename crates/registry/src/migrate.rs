@@ -5,20 +5,14 @@
 //! Applies the registry's 21 schema files -- `0001_init.sql` (the baseline,
 //! at the schema-dir TOP LEVEL) plus the 20 files under `migrations/`
 //! (`0002`-`0021`) -- against a [`rusqlite::Connection`], reading and
-//! writing `schema_versions`, never `PRAGMA user_version` (decision 6:
-//! `rusqlite_migration` tracks state in `user_version`, which neither the
-//! existing bash (`cmd_migrate.sh`) nor Python
-//! (`shepherd_cli.commands.migrate`) runner would ever see).
+//! writing `schema_versions`, never `PRAGMA user_version`.
+//! `rusqlite_migration` tracks state in `user_version`, which is not the
+//! shipped registry contract.
 //!
-//! All 21 files are vendored verbatim under `migrate/sql/` at build time
-//! (`include_str!`) rather than read from `skills/context/schema/` at
-//! runtime, for two reasons: a published `rlib` cannot `include_str!`
-//! outside its own package root (`cargo package` only bundles files under
-//! the crate directory), and a self-contained crate should not need the
-//! monorepo layout on disk to build. [`tests::vendored_copies_match_source`]
-//! is the standing drift check -- it fails the day `skills/context/schema/**`
-//! changes without the vendored copy being updated to match, so "verbatim"
-//! stays true after this landed, not just at the moment it was written.
+//! All 21 files live under `migrate/sql/` and are embedded with `include_str!`.
+//! This crate is the sole registry-schema authority: no skill, adapter, or
+//! language-specific CLI carries a second copy. The closed sequence test pins
+//! the count, ordering, filename/version agreement, and nonempty contents.
 mod embedded;
 mod runner;
 
@@ -26,11 +20,15 @@ pub use self::runner::apply_all;
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicU64, Ordering};
+
     use rusqlite::Connection;
 
     use super::apply_all;
     use super::embedded;
     use super::runner::dump_sqlite_master;
+
+    static NEXT_DB: AtomicU64 = AtomicU64::new(0);
 
     /// A fresh, file-backed database (never `:memory:` -- `0001_init.sql`
     /// sets `PRAGMA journal_mode = WAL`, and WAL behaves differently on an
@@ -39,11 +37,30 @@ mod tests {
     /// file-backed-probe pattern already). WAL leaves `-wal`/`-shm`
     /// sidecars; all three are cleared before AND after so a previous
     /// failure cannot make a later run pass by reading stale state, and two
-    /// tests never share a filename (`cargo test` runs unit tests in
-    /// parallel by default).
+    /// tests and independent test processes never share a filename (`cargo
+    /// test` and Shepherd's multi-agent development flow can run the same
+    /// binary concurrently).
     fn fresh_db(name: &str) -> (Connection, std::path::PathBuf) {
-        let path = std::path::PathBuf::from(format!("shepherd-registry-migrate-{name}.db"));
-        cleanup(&path);
+        let path = loop {
+            let ordinal = NEXT_DB.fetch_add(1, Ordering::Relaxed);
+            let candidate =
+                std::path::PathBuf::from(format!("shepherd-registry-migrate-{name}-{ordinal}.db"));
+            match std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&candidate)
+            {
+                Ok(reservation) => {
+                    drop(reservation);
+                    break candidate;
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(error) => panic!(
+                    "reserve file-backed test database {}: {error}",
+                    candidate.display()
+                ),
+            }
+        };
         let conn = Connection::open(&path).expect("open a file-backed database");
         (conn, path)
     }
@@ -54,15 +71,30 @@ mod tests {
         }
     }
 
-    /// The frozen Python capture this crate's runner must reproduce
-    /// byte-for-byte. `conformance/cases/schema/**` does not exist in this
-    /// tree; the ONE `sqlite_master` capture in the whole corpus is this
-    /// one, taken against a `full_schema` fixture (case.json:
+    #[test]
+    fn fresh_databases_with_the_same_label_never_share_a_path() {
+        let (first, first_path) = fresh_db("parallel-process-proof");
+        let (second, second_path) = fresh_db("parallel-process-proof");
+        drop(first);
+        drop(second);
+        cleanup(&first_path);
+        cleanup(&second_path);
+
+        assert_ne!(
+            first_path, second_path,
+            "independent test processes must never collide on a fixed database path"
+        );
+    }
+
+    /// The frozen schema fingerprint this crate's runner must reproduce
+    /// byte-for-byte. It is taken against a `full_schema` fixture (case.json:
     /// `db_fixture: "full_schema"`, `capture_sqlite_master: true`) -- see
     /// the lane plan's Deviations log for the full reasoning.
-    fn frozen_sqlite_master_path() -> std::path::PathBuf {
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../conformance/cases/guard-cli/status/ok/expected/sqlite_master.txt")
+    fn frozen_sqlite_master() -> &'static str {
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../conformance/cases/guard-cli/status/ok/expected/sqlite_master.txt"
+        ))
     }
 
     #[test]
@@ -98,7 +130,7 @@ mod tests {
         cleanup(&path);
     }
 
-    /// The realistic production call shape: `shctx init` applies ONLY
+    /// The historical compatibility call shape applied ONLY
     /// `0001_init.sql` (W0-S2's preflight scaffold), and a later `apply_all`
     /// call must gap-fill the remaining 20 without erroring or re-applying
     /// version 1.
@@ -106,7 +138,7 @@ mod tests {
     fn gap_fills_after_init_only() {
         let (conn, path) = fresh_db("gap-fill-after-init");
         conn.execute_batch(embedded::INIT_SQL)
-            .expect("apply only the baseline, simulating `shctx init`");
+            .expect("apply only the baseline, simulating legacy initialization");
         let count: u32 = conn
             .query_row("SELECT COUNT(*) FROM schema_versions", [], |row| row.get(0))
             .expect("count schema_versions rows");
@@ -274,16 +306,14 @@ mod tests {
     }
 
     /// The order-normalized `sqlite_master` dump this runner produces must
-    /// be byte-identical to the frozen Python capture.
+    /// be byte-identical to the frozen schema fingerprint.
     #[test]
-    fn sqlite_master_matches_the_frozen_python_capture() {
+    fn sqlite_master_matches_the_frozen_schema_fingerprint() {
         let (conn, path) = fresh_db("sqlite-master-parity");
         apply_all(&conn).expect("apply the full schema");
         let actual = dump_sqlite_master(&conn).expect("dump sqlite_master");
 
-        let expected_path = frozen_sqlite_master_path();
-        let expected = std::fs::read_to_string(&expected_path)
-            .unwrap_or_else(|e| panic!("read frozen fixture {}: {e}", expected_path.display()));
+        let expected = frozen_sqlite_master();
 
         if actual != expected {
             let first_diff = actual
@@ -292,19 +322,16 @@ mod tests {
                 .enumerate()
                 .find(|(_, (a, e))| a != e)
                 .map(|(i, (a, e))| {
-                    format!("first differing line {i}:\n  rust:   {a}\n  python: {e}")
+                    format!("first differing line {i}:\n  actual:   {a}\n  expected: {e}")
                 })
                 .unwrap_or_else(|| {
                     format!(
-                        "line counts differ: rust={} python={}",
+                        "line counts differ: actual={} expected={}",
                         actual.lines().count(),
                         expected.lines().count()
                     )
                 });
-            panic!(
-                "sqlite_master dump diverged from the frozen Python capture at {}\n{first_diff}",
-                expected_path.display()
-            );
+            panic!("sqlite_master dump diverged from the frozen conformance fixture\n{first_diff}");
         }
 
         drop(conn);
@@ -323,8 +350,7 @@ mod tests {
             .expect("apply only the baseline");
         // Deliberately skip every migrations/*.sql -- the dump must differ.
         let actual = dump_sqlite_master(&conn).expect("dump sqlite_master");
-        let expected =
-            std::fs::read_to_string(frozen_sqlite_master_path()).expect("read frozen fixture");
+        let expected = frozen_sqlite_master();
         assert_ne!(
             actual, expected,
             "a database missing 20 migrations must not match the full-schema fixture"
@@ -333,41 +359,49 @@ mod tests {
         cleanup(&path);
     }
 
-    /// Standing drift check: the vendored copies under `migrate/sql/` must
-    /// stay byte-identical to their source of truth at
-    /// `skills/context/schema/**`. That tree is `must_not_touch`/read-only
-    /// for this crate -- the SQL is the contract, ported verbatim, never
-    /// edited -- so this test is the only thing that would catch a future
-    /// edit to the source drifting away from the vendored copy this crate
-    /// actually compiles against.
+    /// Registry SQL has one source under this crate. Reintroducing a copy in a
+    /// skill would make the shipped schema depend on which tree a maintainer
+    /// happened to edit.
     #[test]
-    fn vendored_copies_match_source() {
+    fn registry_schema_has_no_second_skill_copy() {
         let repo_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
         let source_root = repo_root.join("skills/context/schema");
-
-        let mut pairs: Vec<(std::path::PathBuf, &str)> =
-            vec![(source_root.join("0001_init.sql"), embedded::INIT_SQL)];
-        for migration in embedded::MIGRATIONS {
-            pairs.push((
-                source_root.join("migrations").join(migration.filename),
-                migration.sql,
-            ));
+        let mut pending = vec![source_root];
+        let mut files = Vec::new();
+        while let Some(directory) = pending.pop() {
+            let Ok(entries) = std::fs::read_dir(directory) else {
+                continue;
+            };
+            for entry in entries {
+                let path = entry.expect("read retired skill schema entry").path();
+                if path.is_dir() {
+                    pending.push(path);
+                } else {
+                    files.push(path);
+                }
+            }
         }
-
-        assert_eq!(
-            pairs.len(),
-            21,
-            "21 vendored files expected (0001_init.sql + 20 under migrations/)"
+        assert!(
+            files.is_empty(),
+            "registry schema must live only in crates/registry/src/migrate/sql; found {files:?}"
         );
+    }
 
-        for (source_path, vendored_sql) in pairs {
-            let source_sql = std::fs::read_to_string(&source_path)
-                .unwrap_or_else(|e| panic!("read source-of-truth {}: {e}", source_path.display()));
-            assert_eq!(
-                vendored_sql,
-                source_sql,
-                "vendored copy drifted from {} -- re-copy it verbatim, never edit either side by hand",
-                source_path.display()
+    #[test]
+    fn embedded_migration_sequence_is_closed_and_contiguous() {
+        assert_eq!(embedded::MIGRATIONS.len(), 20);
+        for (offset, migration) in embedded::MIGRATIONS.iter().enumerate() {
+            let expected = u32::try_from(offset).expect("migration offset fits") + 2;
+            assert_eq!(migration.version, expected);
+            assert!(
+                migration.filename.starts_with(&format!("{expected:04}_")),
+                "migration {} has a filename that disagrees with its version",
+                migration.filename
+            );
+            assert!(
+                !migration.sql.trim().is_empty(),
+                "migration {} must embed nonempty SQL",
+                migration.filename
             );
         }
     }

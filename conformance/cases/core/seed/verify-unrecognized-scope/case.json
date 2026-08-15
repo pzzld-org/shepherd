@@ -1,0 +1,9 @@
+{
+  "suite": "core",
+  "kind": "pure",
+  "description": "seed verify warns instead of silently skipping an unrecognized file_scope shape",
+  "args": ["seed", "verify", "scope.seed.md"],
+  "input_files": {"scope.seed.md": "scope.seed.md"},
+  "db_fixture": "none",
+  "capture_files": []
+}

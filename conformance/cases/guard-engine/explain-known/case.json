@@ -1,0 +1,6 @@
+{
+  "suite": "guard-engine",
+  "kind": "pure",
+  "description": "Explain renders the predicate rules and examples.",
+  "args": ["guard", "explain", "dedup-gate"]
+}

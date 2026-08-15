@@ -1,1 +1,1 @@
-ERROR: usage: shctx dups check <file> | --stdin --as <path>
+ERROR: usage: dups check <file>

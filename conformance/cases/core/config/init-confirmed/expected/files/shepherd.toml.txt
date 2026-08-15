@@ -1,0 +1,2 @@
+# Shepherd layout-v5 project configuration.
+# Defaults are supplied by the typed schema.

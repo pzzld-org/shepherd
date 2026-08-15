@@ -55,7 +55,11 @@ compile_error! {
 extern crate alloc;
 
 // modules (public)
+#[cfg(feature = "json")]
+pub mod dispatch;
 pub mod error;
+#[cfg(feature = "parse")]
+pub mod guard;
 #[cfg(all(feature = "config", feature = "std"))]
 pub mod loader;
 #[cfg(feature = "json")]
@@ -77,6 +81,12 @@ pub mod types {
 // re-exports
 #[cfg(feature = "json")]
 #[doc(inline)]
+pub use self::dispatch::{DispatchRecord, DispatchState, Role};
+#[cfg(feature = "parse")]
+#[doc(inline)]
+pub use self::guard::{Decision, GuardEngine, GuardError, GuardValue, Verdict};
+#[cfg(feature = "json")]
+#[doc(inline)]
 pub use self::run::RunState;
 #[cfg(feature = "std")]
 #[doc(inline)]
@@ -89,8 +99,12 @@ pub use self::{
 // prelude
 #[doc(hidden)]
 pub mod prelude {
+    #[cfg(feature = "json")]
+    pub use crate::dispatch::*;
     #[allow(unused_imports)]
     pub use crate::error::*;
+    #[cfg(feature = "parse")]
+    pub use crate::guard::*;
     #[cfg(feature = "json")]
     pub use crate::run::*;
     #[cfg(feature = "std")]

@@ -1,0 +1,1 @@
+ERROR: config init is mutating; re-run with --confirm

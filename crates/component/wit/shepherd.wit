@@ -1,0 +1,374 @@
+package fl03:shepherd@6.4.5;
+
+interface engine {
+  enum target {
+    claude,
+    codex,
+    pi,
+  }
+
+  record capability-tools {
+    capability: string,
+    tools: list<string>,
+  }
+
+  record model-resolution {
+    hint: string,
+    model: option<string>,
+    profile: option<string>,
+    reasoning-effort: option<string>,
+  }
+
+  record harness-profile {
+    target: target,
+    max-concurrent-children: u32,
+    tools-by-capability: list<capability-tools>,
+    unsupported-capabilities: list<string>,
+    model-by-hint: list<model-resolution>,
+  }
+
+  enum emitted-kind {
+    role,
+    skill,
+    config,
+  }
+
+  record measurement {
+    lines: u64,
+    words: u64,
+    utf8-bytes: u64,
+    prompt-tokens: u64,
+  }
+
+  record emitted-file {
+    path: string,
+    kind: emitted-kind,
+    content: string,
+    source-path: string,
+    source-sha256: string,
+    content-sha256: string,
+    measurement: measurement,
+  }
+
+  record emitted-role {
+    role: string,
+    carrier-path: string,
+    description: string,
+    model: option<string>,
+    profile: option<string>,
+    reasoning-effort: option<string>,
+    tools: list<string>,
+    unsupported-capabilities: list<string>,
+    capabilities: list<string>,
+    write-eligible: bool,
+    dispatchable: bool,
+    write-scope: string,
+  }
+
+  record emitted-tree {
+    target: target,
+    roles: list<emitted-role>,
+    files: list<emitted-file>,
+    digest: string,
+    tokenizer-version: string,
+  }
+
+  record guard-deny {
+    predicate: string,
+    rule: string,
+    halt-code: option<string>,
+    reason: string,
+  }
+
+  record guard-unresolved {
+    reason: string,
+    missing: list<string>,
+  }
+
+  variant native-event {
+    session-start,
+    subagent-start,
+    subagent-resume,
+    subagent-stop,
+    pre-tool-use,
+    post-tool-use,
+    other-event(string),
+  }
+
+  record identity-input {
+    harness: target,
+    event: native-event,
+    session-id: string,
+    agent-id: option<string>,
+    agent-type: option<string>,
+    tool-use-id: option<string>,
+    model: option<string>,
+    provider-version: option<string>,
+  }
+
+  record normalized-identity {
+    harness: target,
+    event: native-event,
+    session-id: string,
+    agent-id: option<string>,
+    agent-type: option<string>,
+    role-carrier: option<string>,
+    tool-use-id: option<string>,
+    model: option<string>,
+    provider-version: option<string>,
+    identity-key: string,
+  }
+
+  record tool-input {
+    command: option<string>,
+    target-role: option<string>,
+    path: option<string>,
+    operation: option<string>,
+  }
+
+  record dispatch-binding {
+    run: option<string>,
+    role: option<string>,
+    lane: option<string>,
+    parent-agent-id: option<string>,
+    write-scope: list<string>,
+    model: option<string>,
+    observed-capabilities: list<string>,
+    capability-source: string,
+    harness-version: string,
+    provider-version: option<string>,
+    lease-ms: u64,
+    expected-revision: u64,
+    result-artifact: option<string>,
+    source-agent-id: option<string>,
+    mode: string,
+    tool-name: option<string>,
+    tool-input: option<tool-input>,
+  }
+
+  enum capability-readiness {
+    ready,
+    degraded,
+    blocked,
+  }
+
+  record capability-probe {
+    observed: list<string>,
+    source: string,
+    harness-version: string,
+    provider-version: option<string>,
+  }
+
+  record capability-report {
+    declared: list<string>,
+    observed: list<string>,
+    present: list<string>,
+    missing: list<string>,
+    missing-required: list<string>,
+    missing-optional: list<string>,
+    extra: list<string>,
+    forbidden-extra: list<string>,
+    source: string,
+    harness-version: string,
+    provider-version: option<string>,
+    probed-at: s64,
+    readiness: capability-readiness,
+  }
+
+  record bind-root-request {
+    run: option<string>,
+    harness: target,
+    session-id: string,
+    role-carrier: string,
+    mode: string,
+    lease-ms: u64,
+  }
+
+  record start-request {
+    run: option<string>,
+    harness: target,
+    agent-id: string,
+    agent-type: string,
+    role-carrier: string,
+    lane: option<string>,
+    parent-agent-id: option<string>,
+    session-id: string,
+    write-scope: list<string>,
+    model: option<string>,
+    observed-capabilities: list<string>,
+    capability-source: string,
+    harness-version: string,
+    provider-version: option<string>,
+    lease-ms: u64,
+  }
+
+  record resolve-request {
+    run: option<string>,
+    harness: target,
+    agent-id: option<string>,
+    agent-type: option<string>,
+    role-carrier: option<string>,
+    lane: option<string>,
+    session-id: string,
+    tool-use-id: option<string>,
+    tool-name: option<string>,
+    tool-input: option<tool-input>,
+  }
+
+  record stop-request {
+    run: option<string>,
+    harness: target,
+    agent-id: string,
+    agent-type: string,
+    role-carrier: option<string>,
+    lane: option<string>,
+    session-id: string,
+    expected-revision: u64,
+    result-artifact: option<string>,
+  }
+
+  record resume-request {
+    source-agent-id: string,
+    next: start-request,
+  }
+
+  variant dispatch-request {
+    bind-root(bind-root-request),
+    start(start-request),
+    resolve(resolve-request),
+    stop(stop-request),
+    resume(resume-request),
+  }
+
+  variant dispatch-plan {
+    request(dispatch-request),
+    ignored,
+    blocked(engine-error),
+  }
+
+  record response-facts {
+    schema: string,
+    project-id: string,
+    run: string,
+    harness: target,
+    agent-id: option<string>,
+    agent-type: option<string>,
+    role: string,
+    lane: option<string>,
+    session-id: string,
+    write-scope: list<string>,
+    capabilities: option<capability-report>,
+    tool-use-id: option<string>,
+    mode: option<string>,
+    write-paths: list<string>,
+    path-in-write-scope: option<bool>,
+  }
+
+  enum dispatch-state {
+    active,
+    capability-blocked,
+    stopped,
+  }
+
+  record root-session-binding {
+    schema: string,
+    project-id: string,
+    run: string,
+    harness: target,
+    session-id: string,
+    role: string,
+    mode: string,
+    bound-at: s64,
+    expires-at: s64,
+  }
+
+  record dispatch-record {
+    schema: string,
+    revision: u64,
+    project-id: string,
+    run: string,
+    harness: target,
+    agent-id: string,
+    agent-type: string,
+    role: string,
+    lane: option<string>,
+    parent-agent-id: option<string>,
+    session-id: string,
+    write-scope: list<string>,
+    model: option<string>,
+    capabilities: capability-report,
+    state: dispatch-state,
+    started-at: s64,
+    lease-expires-at: s64,
+    stopped-at: option<s64>,
+    result-artifact: option<string>,
+    resumes-agent-id: option<string>,
+  }
+
+  record context-entry {
+    id: string,
+    project-id: string,
+    run: string,
+    lane: option<string>,
+    provenance: string,
+    freshness: s64,
+    words: u64,
+    tokens: u64,
+    priority: s32,
+    content: string,
+  }
+
+  record context-bundle {
+    entries: list<context-entry>,
+    words: u64,
+    tokens: u64,
+  }
+
+  record resume-context-response {
+    schema: string,
+    dispatch-record: dispatch-record,
+    context: context-bundle,
+  }
+
+  enum native-lifecycle-operation {
+    bind-root,
+    start,
+    resolve,
+    stop,
+    resume,
+  }
+
+  variant native-lifecycle-response {
+    bind-root(root-session-binding),
+    start(dispatch-record),
+    resolve(response-facts),
+    stop(dispatch-record),
+    resume(resume-context-response),
+  }
+
+  variant guard-verdict {
+    allow,
+    deny(guard-deny),
+    unresolved(guard-unresolved),
+  }
+
+  record engine-error {
+    code: string,
+    message: string,
+  }
+
+  canonical-profile: func(target: target) -> harness-profile;
+  compile-canonical: func(target: target) -> result<emitted-tree, engine-error>;
+  measure: func(text: string) -> measurement;
+  guard-eval-canonical: func(request-json: string) -> result<guard-verdict, engine-error>;
+  normalize-identity: func(input: identity-input) -> result<normalized-identity, engine-error>;
+  plan-lifecycle: func(identity: normalized-identity, binding: option<dispatch-binding>) -> result<dispatch-plan, engine-error>;
+  validate-response: func(response: response-facts) -> result<_, engine-error>;
+  validate-native-response: func(operation: native-lifecycle-operation, response: native-lifecycle-response) -> result<_, engine-error>;
+  validate-native-exchange: func(request: dispatch-request, response: native-lifecycle-response) -> result<_, engine-error>;
+  evaluate-provider: func(role: string, probe: capability-probe) -> result<capability-report, engine-error>;
+}
+
+world shepherd-core {
+  export engine;
+}

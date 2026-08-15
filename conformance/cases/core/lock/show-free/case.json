@@ -1,0 +1,10 @@
+{
+  "suite": "core",
+  "kind": "pure",
+  "authority": "native-v6.4.5",
+  "intentional_difference": "native lock reads only the canonical layout-v5 registry lock and never resolves legacy workdir or shell state",
+  "requires_git": true,
+  "description": "lock show defaults to a read-only free result",
+  "args": ["lock", "show"],
+  "db_fixture": "none"
+}

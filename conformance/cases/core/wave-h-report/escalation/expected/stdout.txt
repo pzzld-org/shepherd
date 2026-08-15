@@ -1,0 +1,9 @@
+[
+  {
+    "id": 1,
+    "role": "reviewer",
+    "phase": "verify",
+    "question": "Is output safe?",
+    "raised_at": 42
+  }
+]

@@ -1,0 +1,13 @@
+{
+  "suite": "core",
+  "kind": "pure",
+  "description": "seed verify accepts shell bracket ranges and preserves parent-relative path components",
+  "args": ["seed", "verify", "scope.seed.md"],
+  "input_files": {
+    "scope.seed.md": "scope.seed.md",
+    "../shared/b.rs": "b.rs"
+  },
+  "db_fixture": "none",
+  "capture_files": [],
+  "requires_git": true
+}

@@ -61,6 +61,11 @@ extern crate alloc;
 #[doc(inline)]
 pub use shepherd_core::*;
 
+/// Canonical content compilation and prompt-budget measurement.
+#[cfg(feature = "compiler")]
+#[doc(inline)]
+pub use shepherd_compiler as compiler;
+
 /// The SQLite registry: schema, migration runner, and query surface.
 #[cfg(feature = "registry")]
 #[doc(inline)]

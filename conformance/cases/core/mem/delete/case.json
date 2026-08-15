@@ -1,0 +1,14 @@
+{
+  "suite": "core",
+  "kind": "mutating",
+  "requires_git": true,
+  "description": "mem delete is the rm alias and removes only the matching project row.",
+  "setup": [["mem", "delete", "mem-one"]],
+  "args": ["mem", "show", "mem-one", "--json"],
+  "db_fixture": "full_schema",
+  "seed_sql": [
+    "INSERT INTO projects (id, name, created_at, updated_at) VALUES ('proj-mem', 'mem fixture', 0, 0);",
+    "INSERT INTO mem_entries (id, project_id, kind, title, body, tags, pinned, created_at, updated_at) VALUES ('mem-one', 'proj-mem', 'note', 'title', 'body', '[]', 1, 100, 100);"
+  ],
+  "capture_files": []
+}

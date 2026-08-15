@@ -1,7 +1,7 @@
 {
   "suite": "guard-cli",
   "kind": "pure",
-  "description": "DISCOVERED BUG (see coder-W0-S9 report, not fixed per NON-GOALS): hooks/scripts/teammate_idle.sh:57-58 calls `bin/shepherd teammate heartbeat \"$TEAMMATE\" --note='idle'`, but services/cli/shepherd_cli/commands/teammate.py registers only liveness/status/state -- there is no `heartbeat` @app.command(). This case freezes the CLI's ACTUAL current behavior (a Click/Typer 'no such command' usage error) as the golden oracle, since that -- not a hypothetical success path -- is the contract a Rust port must reproduce. The calling hook silently swallows this failure via `2>/dev/null || true`.",
+  "description": "Native shepherd keeps teammate heartbeat absent: the retained hook writes its heartbeat directly and the public CLI rejects this nonexistent command with clap exit 2.",
   "args": ["teammate", "heartbeat", "some-teammate", "--note=idle"],
   "db_fixture": "none",
   "capture_files": []

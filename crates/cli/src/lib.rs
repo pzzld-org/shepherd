@@ -28,10 +28,33 @@ pub use shepherd;
 
 // modules (public)
 pub mod cmd;
+pub mod content_compiler;
+pub mod context;
+mod dispatch_scope;
+mod dispatch_service;
+mod dispatch_store;
 mod interface;
+pub mod migrate;
+mod resume_context;
+mod run_store;
 // re-exports
 #[doc(inline)]
-pub use self::interface::ShepherdCli;
+pub use self::context::{
+    Clock, ContextEnvironment, ContextError, ContextHost, ContextInputs, ExecutionContext,
+    IdentifierSource, IoBoundary, OutputFormat, RuntimeBindings, SystemEnvironment, SystemHost,
+};
+#[doc(inline)]
+pub use self::dispatch_service::{
+    BindRootDispatchRequest, DispatchResolution, DispatchService, DispatchServiceError,
+    DispatchServiceResult, ResolveDispatchRequest, ResumeDispatchRequest, ResumeDispatchResponse,
+    StartDispatchRequest, StopDispatchRequest,
+};
+#[doc(inline)]
+pub use self::dispatch_store::{DispatchStore, DispatchStoreError, DispatchStoreResult};
+#[doc(inline)]
+pub use self::interface::{CliError, ShepherdCli};
+#[doc(inline)]
+pub use self::run_store::{RunStore, RunStoreError, RunStoreResult};
 #[doc(inline)]
 pub use shepherd::{Harness, ShepherdConfig, error, settings, types};
 // prelude

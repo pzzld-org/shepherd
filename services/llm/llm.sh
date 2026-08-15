@@ -83,16 +83,26 @@ _emit_mock_if_set() {
 }
 
 # ── timeout watchdog (portable: macOS has no timeout/gtimeout) ────────────────
-# Runs claude in the background, writes a sentinel before SIGTERM so the caller
-# can distinguish a timeout (exit 3) from a real claude error (exit 4). The
-# watchdog's `sleep` only ever runs in a real (non-mock) call, so gate tests stay
-# instant.
+# Runs claude in the background and polls it from this shell. Do not implement
+# the deadline as a background `sleep`: that process inherits stdout when the
+# service is called inside command substitution and can keep the caller blocked
+# for the full timeout after claude has already exited.
+_stop_process_group() {
+  local pgid="$1" ticks=0
+  kill -TERM -- "-$pgid" 2>/dev/null || true
+  while kill -0 -- "-$pgid" 2>/dev/null && (( ticks < 60 )); do
+    sleep 0.05
+    ticks=$((ticks + 1))
+  done
+  kill -KILL -- "-$pgid" 2>/dev/null || true
+}
+
 _complete_via_claude() {
   local secs="$1" model="$2" promptfile="$3" systemfile="$4"
   command -v "$BIN" >/dev/null 2>&1 || die "claude binary not found: $BIN (set SHEPHERD_LLM_BIN)" 4
 
   local td; td="$(mktemp -d 2>/dev/null || mktemp -d -t shepllm)"
-  local outf="$td/out" errf="$td/err" killed="$td/killed"
+  local outf="$td/out" errf="$td/err"
 
   local args
   args=( -p --output-format text --model "$model" )
@@ -100,23 +110,40 @@ _complete_via_claude() {
     args=( "${args[@]}" --append-system-prompt "$(cat "$systemfile")" )
   fi
 
+  # Monitor mode gives each background job its own process group on Bash 3.2+
+  # (macOS and Linux). The CLI and every descendant therefore share a group we
+  # can terminate without signaling this service or its caller.
+  local monitor_was_on=0
+  case "$-" in *m*) monitor_was_on=1 ;; esac
+  set -m
   "$BIN" "${args[@]}" < "$promptfile" >"$outf" 2>"$errf" &
   local cpid=$!
-  ( sleep "$secs"
-    if kill -0 "$cpid" 2>/dev/null; then
-      : > "$killed"
-      kill -TERM "$cpid" 2>/dev/null || true
-      sleep 3
-      kill -KILL "$cpid" 2>/dev/null || true
-    fi ) &
-  local wpid=$!
+  (( monitor_was_on )) || set +m
+
+  # Count completed 50ms polling intervals. Integer wall clocks can cross a
+  # second boundary immediately after launch and fire a one-second deadline
+  # early; interval counting never expires before the requested duration.
+  local ticks=0 max_ticks=$((secs * 20)) timed_out=0
+  while kill -0 "$cpid" 2>/dev/null; do
+    if (( ticks >= max_ticks )); then
+      timed_out=1
+      _stop_process_group "$cpid"
+      break
+    fi
+    sleep 0.05
+    ticks=$((ticks + 1))
+  done
 
   local rc=0
   wait "$cpid" 2>/dev/null || rc=$?
-  kill "$wpid" 2>/dev/null || true
-  wait "$wpid" 2>/dev/null || true
 
-  if [[ -f "$killed" ]]; then
+  # A wrapper may exit after spawning a worker. The invocation owns that whole
+  # tree even on the success path, so never leave group descendants behind.
+  if kill -0 -- "-$cpid" 2>/dev/null; then
+    _stop_process_group "$cpid"
+  fi
+
+  if (( timed_out )); then
     rm -rf "$td"
     die "completion timed out after ${secs}s" 3
   fi
@@ -130,7 +157,7 @@ _complete_via_claude() {
 }
 
 cmd_complete() {
-  local promptfile="" prompt="" systemfile="" system="" model="$DEFAULT_MODEL" secs="$DEFAULT_TIMEOUT" use_stdin=0
+  local promptfile="" prompt="" systemfile="" system="" model="$DEFAULT_MODEL" secs="$DEFAULT_TIMEOUT"
   local a
   for a in "$@"; do
     case "$a" in
@@ -140,7 +167,7 @@ cmd_complete() {
       --system=*)      system="${a#--system=}" ;;
       --model=*)       model="${a#--model=}" ;;
       --timeout=*)     secs="${a#--timeout=}" ;;
-      -)               use_stdin=1 ;;
+      -)               : ;;
       -h|--help)       usage; exit 0 ;;
       *) die "unknown arg: $a" 2 ;;
     esac

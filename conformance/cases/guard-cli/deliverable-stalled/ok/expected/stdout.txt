@@ -1,2 +1,1 @@
-id  agent_role  kind  target_ref  promised_at
-1   @coder      code  W0-S9       1000
+1  @coder  code  W0-S9  1000

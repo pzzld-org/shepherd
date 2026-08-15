@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""conformance/runner.py -- the ``--impl=python`` execution path for run.sh.
+"""conformance/runner.py -- shared versioned-contract runner.
 
 Not invoked directly (``run.sh`` resolves the venv interpreter and always
 calls this by absolute path); kept as a thin argparse wrapper so
@@ -30,8 +30,10 @@ def main(argv: list[str]) -> int:
         0 on success (or ``--count``, unconditionally); 1 if any case
         failed verification, or if ``--suite`` matched zero cases.
     """
-    parser = argparse.ArgumentParser(description="Run the shepherd CLI conformance corpus against --impl=python.")
+    parser = argparse.ArgumentParser(description="Run the shepherd CLI conformance corpus against one implementation.")
     parser.add_argument("--cases-dir", required=True, help="Corpus root (conformance/cases).")
+    parser.add_argument("--impl", choices=("rust",), required=True)
+    parser.add_argument("--rust-bin", default=None, help="Built Rust shepherd binary (required for --impl=rust).")
     parser.add_argument("--suite", default=None, help="Only run cases tagged with this suite.")
     parser.add_argument("--count", action="store_true", help="Print the (suite-filtered) case count and exit.")
     parser.add_argument(
@@ -43,6 +45,7 @@ def main(argv: list[str]) -> int:
 
     cases_dir = Path(args.cases_dir)
     cases = harness.discover_cases(cases_dir, args.suite)
+    rust_bin = Path(args.rust_bin).resolve() if args.rust_bin else None
 
     if args.count:
         print(len(cases))
@@ -53,14 +56,21 @@ def main(argv: list[str]) -> int:
         return 1
 
     if args.record:
-        for case in cases:
-            harness.record_case(case)
-            print(f"RECORDED  {case.case_id}")
+        if args.impl == "rust" and rust_bin is None:
+            print("conformance: --impl=rust --record requires --rust-bin", file=sys.stderr)
+            return 2
+        try:
+            for case in cases:
+                harness.record_case(case, impl=args.impl, rust_bin=rust_bin)
+                print(f"RECORDED  {case.case_id}")
+        except (OSError, RuntimeError, ValueError) as error:
+            print(f"conformance: record refused: {error}", file=sys.stderr)
+            return 2
         return 0
 
     failures = 0
     for case in cases:
-        verdict = harness.verify_case(case)
+        verdict = harness.verify_case(case, impl=args.impl, rust_bin=rust_bin)
         if verdict.passed:
             print(f"PASS  {case.case_id}")
         else:

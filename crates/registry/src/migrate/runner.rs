@@ -2,11 +2,9 @@
     Appellation: runner <module>
     Contrib: @FL03
 */
-//! The migration runner: reads and writes `schema_versions`, never `PRAGMA
-//! user_version` (decision 6 -- both existing bash (`cmd_migrate.sh`) and
-//! Python (`shepherd_cli.commands.migrate`) runners already read
-//! `schema_versions`, and `rusqlite_migration` tracks state in
-//! `user_version` instead, which neither of them would ever see).
+//! The canonical migration runner reads and writes `schema_versions`, never
+//! `PRAGMA user_version`. The shipped schema owns that table, and every native
+//! registry open observes the same version ledger.
 
 use std::collections::HashSet;
 use std::fmt::Write as _;
@@ -19,11 +17,9 @@ use super::embedded::{INIT_SQL, MIGRATIONS};
 use crate::error::{Error, Result};
 
 /// sqlite error substrings meaning "a sibling process already applied this
-/// DDL" rather than a real failure -- mirrors
-/// `services/cli/shepherd_cli/commands/migrate.py`'s
-/// `_TOLERATED_ERROR_MARKERS` exactly, so a concurrent `shctx init` +
-/// `apply_all` race degrades the same way the Python runner's does, instead
-/// of surfacing as a hard failure.
+/// DDL" rather than a real failure. These are the two SQLite diagnostics the
+/// runner admits when another native process wins the same migration race;
+/// every other diagnostic remains a hard failure.
 const TOLERATED_ERROR_MARKERS: [&str; 2] = ["duplicate column", "already exists"];
 
 /// Applies every pending schema migration against `conn` and returns the
@@ -56,7 +52,7 @@ const TOLERATED_ERROR_MARKERS: [&str; 2] = ["duplicate column", "already exists"
 /// Returns [`Error::Migration`] naming the exact file and underlying SQLite
 /// message on the FIRST hard failure -- anything other than the two
 /// tolerated markers above -- and stops there without attempting the
-/// remaining migrations, mirroring `cmd_migrate.sh`'s `set -e` abort.
+/// remaining migrations.
 pub fn apply_all(conn: &Connection) -> Result<u32> {
     if !schema_versions_exists(conn)? {
         conn.execute_batch(INIT_SQL)
@@ -64,6 +60,15 @@ pub fn apply_all(conn: &Connection) -> Result<u32> {
                 version: 1,
                 message: format!("0001_init.sql: {source}"),
             })?;
+    }
+
+    let supported = MIGRATIONS.last().map_or(1, |migration| migration.version);
+    let found = read_current_version(conn)?;
+    if found > supported {
+        return Err(Error::SchemaAhead {
+            found: i64::from(found),
+            supported: i64::from(supported),
+        });
     }
 
     let mut known = known_versions(conn)?;
@@ -194,14 +199,8 @@ fn record_version(conn: &Connection, version: u32, checksum: String) -> Result<(
     Ok(())
 }
 
-/// A lowercase hex sha256 digest of `bytes`, matching
-/// `services/cli/shepherd_cli/commands/migrate.py`'s
-/// `hashlib.sha256(sql_text.encode("utf-8")).hexdigest()`. Not asserted
-/// against `sqlite_master` (row DATA never appears there, only DDL text),
-/// but the Python ORM mirror (`models.py`: `checksum =
-/// fields.CharField(max_length=64)`) pins the column to a real sha256 hex
-/// digest's length, so this computes a real one rather than a cheaper
-/// non-cryptographic stand-in.
+/// A lowercase SHA-256 digest of the exact migration bytes stored in the
+/// `schema_versions.checksum` column.
 fn checksum_hex(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);
     let mut out = String::with_capacity(digest.len() * 2);

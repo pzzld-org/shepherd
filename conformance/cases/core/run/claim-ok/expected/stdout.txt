@@ -1,0 +1,7 @@
+{
+  "lane_count": 0,
+  "path": "<SCRATCH>/cwd/.shepherd/runs/v910-dev0/run.json",
+  "run": "v910-dev0",
+  "schema_version": 1,
+  "status": "planted"
+}

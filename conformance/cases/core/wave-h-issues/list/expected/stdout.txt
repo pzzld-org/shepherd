@@ -1,0 +1,13 @@
+[
+  {
+    "labels": [
+      "bug"
+    ],
+    "milestone": null,
+    "number": 8,
+    "state": "open",
+    "title": "Open regression",
+    "updated_at": <TS>,
+    "url": "https://example.test/8"
+  }
+]

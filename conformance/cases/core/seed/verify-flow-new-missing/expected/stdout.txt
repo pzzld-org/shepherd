@@ -1,0 +1,2 @@
+  HARD  file_scope path does not resolve and is not marked (NEW): src/missing.rs
+FAIL: 1 hard failure(s), 0 warning(s)

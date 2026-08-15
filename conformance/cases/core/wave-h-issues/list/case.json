@@ -1,0 +1,12 @@
+{
+  "suite": "core",
+  "kind": "pure",
+  "authority": "native-v6.4.5",
+  "intentional_difference": "native issue list reads only the typed index cache and takes an explicit state filter, avoiding the legacy project-file and ambient branch resolution chain",
+  "requires_git": true,
+  "description": "native issue list projects cached open issues",
+  "args": ["issues", "list", "--state", "open", "--json"],
+  "db_fixture": "full_schema",
+  "seed_sql": ["INSERT INTO projects (id, name, created_at, updated_at) VALUES ('project-h', 'wave h', 0, 0);", "INSERT INTO index_issues (id, project_id, source, number, title, state, labels, milestone, assignees, body, url, created_at, updated_at, refreshed_at) VALUES ('issue-8', 'project-h', 'fixture', 8, 'Open regression', 'open', '[\"bug\"]', NULL, '[]', '', 'https://example.test/8', 1, 1, 1);"],
+  "capture_files": []
+}

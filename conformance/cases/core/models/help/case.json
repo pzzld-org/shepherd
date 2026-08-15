@@ -1,0 +1,8 @@
+{
+  "suite": "core",
+  "kind": "pure",
+  "description": "models help is a side-effect-free native usage contract with portable hints and one shepherd CLI spelling.",
+  "args": ["models", "help"],
+  "db_fixture": "none",
+  "capture_files": []
+}

@@ -1,20 +1,15 @@
-"""conformance/lib/harness.py -- the byte-exact behavioral-oracle engine (W0-S9, #281).
+"""conformance/lib/harness.py -- the byte-exact behavioral contract engine.
 
-Freezes the CURRENT Python CLI's (``services/cli/shepherd_cli``) observable
-behavior into a stored, content-addressed corpus (``conformance/cases/**``)
-so a future implementation (the Rust port, W1-W3) can be graded against it
-byte-for-byte instead of by eyeball. Deterministic space, not latent space
+Every case freezes the canonical Rust CLI. The former Python and Bash
+implementations were migration oracles only and are intentionally absent from
+the release tree. Deterministic space, not latent space
 (``conformance/NORMALIZATION.md``): every case is a script plus stored bytes.
 
-Invocation convention mirrors ``services/cli/tests/conftest.py``'s
-``run_cli``/``cli_env`` exactly (module docstring there: "every test drives
-the real CLI ... as a fresh subprocess"), with one addition -- this harness
-ALWAYS points ``SHEPHERD_WORKDIR``/``SHCTX_DB`` at a fresh, per-case
-``tempfile.TemporaryDirectory`` rather than a pytest ``tmp_path`` fixture, so
-it also runs standalone from ``conformance/run.sh`` outside pytest. A case
-never touches this repo's real ``.shepherd/`` state: ``resolve_repo_root()``
-degrades to the scratch cwd itself (not a git repo), and every
-``SHEPHERD_WORKDIR``/``SHCTX_DB`` override is explicit -- never inherited.
+The harness runs every case in a fresh ``tempfile.TemporaryDirectory`` rather
+than a pytest ``tmp_path`` fixture, so it also runs standalone from
+``conformance/run.sh`` outside pytest. It pins ``SHEPHERD_HOME`` to a separate
+scratch user tier and strips every retired override. A case therefore cannot
+read this checkout's project state or the operator's real ``~/.shepherd``.
 
 PURE vs MUTATING (plan.md W0-S9, action 3): both kinds run in an isolated
 scratch dir (always the safe default for a harness), but the label records
@@ -41,20 +36,16 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 # --------------------------------------------------------------------------
-# Fixed locations, mirroring services/cli/tests/conftest.py's REPO_ROOT/
-# CLI_ROOT/PY resolution (issue #198 contract) -- derived from this file's
-# own position so the harness runs from any clone, worktree, or CI checkout.
+# Fixed locations derived from this file's own position so the harness runs
+# from any clone, worktree, or CI checkout.
 # --------------------------------------------------------------------------
 CONFORMANCE_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = CONFORMANCE_ROOT.parent
-CLI_ROOT = REPO_ROOT / "services" / "cli"
-PY = str(CLI_ROOT / ".venv" / "bin" / "python")
-SCHEMA_DIR = REPO_ROOT / "skills" / "context" / "schema"
+SCHEMA_DIR = REPO_ROOT / "crates" / "registry" / "src" / "migrate" / "sql"
 SCHEMA_BASE_SQL = SCHEMA_DIR / "0001_init.sql"
 MIGRATIONS_DIR = SCHEMA_DIR / "migrations"
 
-#: Mirrors services/cli/tests/conftest.py's ``_STRIP_ENV_KEYS`` verbatim --
-#: every shepherd-specific override a case controls explicitly must never
+#: Every shepherd-specific override a case controls explicitly must never
 #: leak in from whatever happens to be set in the host environment this
 #: harness runs in (NORMALIZATION.md "env leakage").
 _STRIP_ENV_KEYS = (
@@ -78,6 +69,10 @@ _TS_FIELD_RE = re.compile(
 )
 #: NORMALIZATION.md "UUIDs": RFC-4122 textual form, case-insensitive.
 _UUID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+#: The handoff template owns one local-calendar field. Match the complete
+#: Markdown table row rather than every date-shaped string so branch names,
+#: commit subjects, and authored prose remain byte-significant.
+_HANDOFF_DATE_RE = re.compile(r"(?m)^\| Date \| \d{4}-\d{2}-\d{2} \|$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,6 +117,9 @@ class Case:
             2 FTS5 external-content tables tokenized
             ``unicode61 remove_diacritics 2`` -- verified empirically against
             a freshly-built schema DB while authoring this corpus).
+        authority: The frozen contract authority. It must be
+            ``native-v6.4.5``. Legacy authority values are rejected so a
+            deleted implementation cannot become a hidden recording path.
     """
 
     case_id: str
@@ -137,6 +135,8 @@ class Case:
     input_files: dict[str, str]
     capture_files: list[str]
     capture_sqlite_master: bool
+    requires_git: bool
+    authority: str
 
     @property
     def expected_dir(self) -> Path:
@@ -203,6 +203,9 @@ def load_case(case_json_path: Path, cases_dir: Path) -> Case:
     }
     stdin_file = data.get("stdin_file")
     stdin = (case_dir / stdin_file).read_text() if stdin_file else None
+    authority = data.get("authority", "native-v6.4.5")
+    if authority != "native-v6.4.5":
+        raise ValueError(f"{case_json_path}: only native-v6.4.5 authority is supported")
     return Case(
         case_id=case_dir.relative_to(cases_dir).as_posix(),
         case_dir=case_dir,
@@ -217,6 +220,8 @@ def load_case(case_json_path: Path, cases_dir: Path) -> Case:
         input_files=input_files,
         capture_files=data.get("capture_files", []),
         capture_sqlite_master=data.get("capture_sqlite_master", False),
+        requires_git=data.get("requires_git", False),
+        authority=authority,
     )
 
 
@@ -227,8 +232,8 @@ def load_case(case_json_path: Path, cases_dir: Path) -> Case:
 def build_schema_db(db_path: Path) -> None:
     """Apply ``0001_init.sql`` then every ``migrations/*.sql``, in sorted order.
 
-    Mirrors ``services/cli/tests/conftest.py``'s ``build_full_schema_db``
-    exactly, INCLUDING its ``schema_versions`` bookkeeping: a migration file
+    Applies the shipped schema and migration files exactly, INCLUDING its
+    ``schema_versions`` bookkeeping: a migration file
     (unlike ``0001_init.sql``) never self-inserts its own ``schema_versions``
     row, so this function does it after each successful apply. Skipping
     that step leaves ``schema_versions`` short even though every table
@@ -311,10 +316,15 @@ def normalize(text: str, *, scratch: Path) -> str:
         ``text`` with every NORMALIZATION.md rule applied.
     """
     out = text
+    # macOS exposes `/var` through a `/private/var` canonical path. Native
+    # ExecutionContext deliberately canonicalizes its primary root, while the
+    # Python oracle preserves the tempfile spelling; both name one fixture.
+    out = out.replace(f"/private{scratch}", "<SCRATCH>")
     out = out.replace(str(scratch), "<SCRATCH>")
     out = out.replace(str(REPO_ROOT), "<REPO_ROOT>")
     out = _UUID_RE.sub("<UUID>", out)
     out = _TS_FIELD_RE.sub(lambda m: f'"{m.group(1)}": <TS>', out)
+    out = _HANDOFF_DATE_RE.sub("| Date | <DATE> |", out)
     hostname = socket.gethostname()
     if hostname and hostname in out:
         out = out.replace(hostname, "<HOSTNAME>")
@@ -327,10 +337,11 @@ def normalize(text: str, *, scratch: Path) -> str:
 def _build_env(cwd_dir: Path, workdir: Path, db_path: Path) -> dict[str, str]:
     """The isolated environment every case runs under.
 
-    Mirrors ``conftest.py``'s ``cli_env()``: strip every shepherd override
-    the host environment might carry, then rebuild explicitly so nothing
-    leaks in and nothing this invocation does can touch the real repo's
-    ``.shepherd/`` state. Pins ``LC_ALL``/``TZ`` per NORMALIZATION.md
+    Strip every Shepherd override the host environment might carry, then pin
+    the one supported user-tier override to a path inside the scratch fixture.
+    ``workdir`` and ``db_path`` are accepted for call-site clarity; the native
+    CLI derives those project paths from ``cwd_dir`` and does not honor the
+    retired environment variables. Pins ``LC_ALL``/``TZ`` per NORMALIZATION.md
     "locale" rather than normalizing locale-dependent output after the
     fact -- pinning at the source is strictly more reliable than scrubbing
     downstream.
@@ -338,27 +349,31 @@ def _build_env(cwd_dir: Path, workdir: Path, db_path: Path) -> dict[str, str]:
     env = dict(os.environ)
     for key in _STRIP_ENV_KEYS:
         env.pop(key, None)
-    env["PYTHONPATH"] = str(CLI_ROOT)
     env["CLAUDE_PLUGIN_ROOT"] = str(REPO_ROOT)
-    env["SHEPHERD_WORKDIR"] = str(workdir)
-    env["SHCTX_DB"] = str(db_path)
+    env["SHEPHERD_HOME"] = str(cwd_dir / ".shepherd-user")
     env["LC_ALL"] = "C"
     env["TZ"] = "UTC"
     return env
 
 
-def _run_cli(args: list[str], *, stdin: str | None, env: dict[str, str], cwd: Path) -> subprocess.CompletedProcess[str]:
-    """Run ``${PY} -m shepherd_cli <args>`` as a real subprocess.
+def _run_cli(
+    args: list[str],
+    *,
+    impl: str,
+    rust_bin: Path | None,
+    stdin: str | None,
+    env: dict[str, str],
+    cwd: Path,
+) -> subprocess.CompletedProcess[str]:
+    """Run the canonical Rust CLI as a subprocess."""
+    if impl != "rust":
+        raise ValueError("the conformance harness is Rust-only")
+    if rust_bin is None or not rust_bin.is_file():
+        raise RuntimeError(f"Rust implementation binary is missing: {rust_bin}")
+    command = [str(rust_bin), *args]
 
-    Bash/CLI parity note: this is the exact invocation shape
-    ``services/cli/tests/conftest.py``'s own ``run_cli()`` uses, and the
-    one every guard script's ``bin/shepherd`` wrapper ultimately reaches
-    (``bin/shepherd`` prefers ``poetry run`` but falls back to this same
-    ``python3 -m shepherd_cli`` shape on ``PYTHONPATH`` -- see its own
-    header comment).
-    """
     return subprocess.run(
-        [PY, "-m", "shepherd_cli", *args],
+        command,
         input=stdin,
         env=env,
         cwd=str(cwd),
@@ -368,7 +383,7 @@ def _run_cli(args: list[str], *, stdin: str | None, env: dict[str, str], cwd: Pa
     )
 
 
-def run_case(case: Case) -> CaseResult:
+def run_case(case: Case, *, impl: str = "rust", rust_bin: Path | None = None) -> CaseResult:
     """Execute one case end to end in a fresh, isolated scratch dir.
 
     Args:
@@ -384,6 +399,19 @@ def run_case(case: Case) -> CaseResult:
         cwd_dir.mkdir(parents=True)
         workdir.mkdir(parents=True)
         db_path = workdir / "shepherd.db"
+
+        if case.requires_git:
+            initialized = subprocess.run(
+                ["git", "init", "--quiet"],
+                cwd=str(cwd_dir),
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if initialized.returncode != 0:
+                raise RuntimeError(
+                    f"{case.case_id}: cannot initialize isolated git fixture: {initialized.stderr.strip()}"
+                )
 
         for relpath, content in case.input_files.items():
             target = cwd_dir / relpath
@@ -406,14 +434,28 @@ def run_case(case: Case) -> CaseResult:
         env = _build_env(cwd_dir, workdir, db_path)
 
         for setup_args in case.setup:
-            setup_proc = _run_cli(setup_args, stdin=None, env=env, cwd=cwd_dir)
+            setup_proc = _run_cli(
+                setup_args,
+                impl=impl,
+                rust_bin=rust_bin,
+                stdin=None,
+                env=env,
+                cwd=cwd_dir,
+            )
             if setup_proc.returncode != 0:
                 raise RuntimeError(
                     f"{case.case_id}: setup step {setup_args!r} exited "
                     f"{setup_proc.returncode} (stderr: {setup_proc.stderr!r}) -- fixture is broken, not a case result"
                 )
 
-        proc = _run_cli(case.args, stdin=case.stdin, env=env, cwd=cwd_dir)
+        proc = _run_cli(
+            case.args,
+            impl=impl,
+            rust_bin=rust_bin,
+            stdin=case.stdin,
+            env=env,
+            cwd=cwd_dir,
+        )
 
         files: dict[str, str] = {}
         for relpath in case.capture_files:
@@ -443,7 +485,12 @@ def _file_key(relpath: str) -> str:
     return relpath.replace("/", "__")
 
 
-def record_case(case: Case) -> CaseResult:
+def record_case(
+    case: Case,
+    *,
+    impl: str = "rust",
+    rust_bin: Path | None = None,
+) -> CaseResult:
     """Run ``case`` live and (re)write its ``expected/`` directory from the result.
 
     Author-time only -- never called by ``run.sh``'s own acceptance paths
@@ -452,7 +499,9 @@ def record_case(case: Case) -> CaseResult:
     case. This is the ONE place that decides what "correct" means for a
     case; everything else compares against what it wrote.
     """
-    result = run_case(case)
+    if case.authority != "native-v6.4.5" or impl != "rust":
+        raise ValueError(f"{case.case_id}: conformance recording is Rust-only")
+    result = run_case(case, impl=impl, rust_bin=rust_bin)
     expected = case.expected_dir
     expected.mkdir(parents=True, exist_ok=True)
     (expected / "exit_code").write_text(f"{result.exit_code}\n")
@@ -468,7 +517,7 @@ def record_case(case: Case) -> CaseResult:
     return result
 
 
-def verify_case(case: Case) -> Verdict:
+def verify_case(case: Case, *, impl: str = "rust", rust_bin: Path | None = None) -> Verdict:
     """Run ``case`` live and diff the result against its stored ``expected/`` bytes.
 
     Args:
@@ -480,7 +529,10 @@ def verify_case(case: Case) -> Verdict:
         file, and the sqlite_master dump (when applicable) all match
         exactly.
     """
-    result = run_case(case)
+    try:
+        result = run_case(case, impl=impl, rust_bin=rust_bin)
+    except (OSError, RuntimeError, subprocess.SubprocessError, ValueError) as error:
+        return Verdict(case=case, passed=False, diffs=[f"execution error: {error}"])
     expected = case.expected_dir
     diffs: list[str] = []
 

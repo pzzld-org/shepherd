@@ -13,15 +13,15 @@
 #                                 exit code. Same scores in ⇒ same verdict out.
 #
 # Pure + stateless: reads a rubric + an input, returns a verdict. It does not
-# touch a DB. `shctx eval` is the shepherd-side glue that resolves subjects from
-# the registry and records verdicts; this service stays a clean function so it is
-# trivially testable with a mocked judge (SHEPHERD_LLM_MOCK).
+# touch a DB. The native CLI inspects recorded results but never invokes a model;
+# this service stays a clean function so it is trivially testable with a mocked
+# judge (SHEPHERD_LLM_MOCK).
 #
 # ── Contract ────────────────────────────────────────────────────────────────
 #   eval.sh run --kind=K [--input-file=F | --input=TXT | -] \
 #               [--threshold=N] [--model=ALIAS] [--timeout=SEC] [--json|--md|--text]
 #       Score the input against rubrics/K.rubric.json. Default format: text.
-#       --json prints ONLY the machine verdict (what `shctx eval` records).
+#       --json prints ONLY the machine verdict.
 #   eval.sh rubrics            List available rubric kinds.
 #   eval.sh show <kind>        Print a rubric.
 #   eval.sh help

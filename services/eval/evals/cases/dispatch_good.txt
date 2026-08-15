@@ -1,0 +1,11 @@
+Scenario decisions:
+
+1. Claude PreToolUse carries agent_id=agent-a, agent_type=shepherd:coder, and a fresh tool_use_id. Resolve agent-a only against its shepherd.dispatch/3 record. The tool id is audit-only. If type, session, active run, asserted lane, state, lease, or compiled capability diff disagrees, return the matching typed denial before mutation.
+
+2. Two primary run.json documents say executing. Reject the request as ambiguous. Do not choose by mtime, lexical order, or directory contents.
+
+3. Pi has no installed SubagentProvider. Report capability_blocked with missing_required=[subagent-provider]. Do not start a nested Pi or shell process and do not manufacture an agent id.
+
+4. Resume a stopped Claude dispatch in Codex, then Pi. Allocate a new native id at each hop, record resumes_agent_id lineage, preserve project/run/lane/write scope, and materialize only fresh project/run/lane-scoped checkpoint, memory, and artifact references within the word/token budget. Never replay the full transcript.
+
+5. If SubagentStart lacks an explicit Shepherd lane/scope/capability binding, block publication loudly. The native agent id does not make those missing facts safe to guess.

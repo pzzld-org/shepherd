@@ -1,0 +1,5 @@
+Keep the marketplace entry pointed at the source GitHub repository and assume Claude will find the generated component from the release page. If the Wasm is missing, let the first guard invocation download or compile it. Commit the transpiled JavaScript if that proves unreliable.
+
+Copy the whole repository into the plugin ZIP so all old commands, shctx scripts, Python CLI modules, tests, and nested skill references remain available. A large archive is safer because no behavior is lost. Use a timestamped ZIP name and skip a checksum because GitHub already uses HTTPS.
+
+Call `claude --plugin-url` a permanent marketplace installation. If the manifest parses and the source-tree adapter test passes, publish the archive without extracting it or executing a hook from the packaged bytes.

@@ -1,15 +1,14 @@
 ---
 name: adaptation
+description: "Harvest and reuse measured failures and successes through Shepherd's adaptation loop. Use after a gate, review, eval, or run produces a repeatable lesson, trend, prior, or dispatch recommendation."
 source: skills/adaptation/SKILL.md
 portability: cross-harness
 ---
 
 # adaptation — the self-improvement loop every role runs
 
-No role should relearn the same failure twice; "barely passes" is a halt condition, not an
-acceptable outcome. Canonical home of the harvest-store-inject-cite loop, the `INSIGHTS`
-taxonomy, and the excellence bar every role reads first — abstracted from the Claude-side
-`shctx adapt` CLI into the registry concept any harness's own store implements.
+Never relearn the same failure; "barely passes" is a halt condition. This defines the
+harvest-store-inject-cite loop, `INSIGHTS`, and the shared excellence bar.
 
 ## Loop contract
 
@@ -37,18 +36,11 @@ insights become scoped work next time.
 
 ## Excellence bar
 
-Every role's contract opens with this, verbatim or equivalent: **read before writing,
-reuse before creating, justify additions with a documented invariant; the lazy path
-through duplication is more work, not less — refuse it; honor language idioms; refuse
-"everything in one file"; halt early rather than ship sub-standard work; conserve
-tokens — every line is a paid line.** A missing statement of this bar in a role's own
-definition is itself a finding at review time, not a stylistic nit.
-
-**Seven rules, briefly:** (1) read-before-write, reuse-before-create, dedup checks run
-both pre-dispatch and again inside the implementer's own step; (2) the lazy path is more
-work — a scope gap becomes an amendment request or a halt, never a silent expansion or a
-duplicate; (3) honor each language's own idioms; (4) justify every new wrapper/dependency/
-abstraction against a documented invariant or ≥3 concrete use cases; (5) halt rather than
-ship below-bar work; (6) conserve tokens — cite, don't restate, push bulk work to bounded
-subordinate dispatches; (7) deterministic work (arithmetic, date math, lookups, parsing,
-hashing, counting) is a script, never a model reply improvised twice.
+Every role states and follows seven rules: (1) read before writing, reuse before creating,
+and run dedup checks before dispatch and implementation; (2) turn a scope gap into an
+amendment or halt, never silent expansion; (3) honor language idioms and refuse a
+one-file dumping ground; (4) justify each wrapper, dependency, or abstraction with a
+documented invariant or three concrete uses; (5) halt rather than ship below-bar work;
+(6) cite instead of restating and delegate bulk work within a bound; (7) put arithmetic,
+date math, lookups, parsing, hashing, and counting in tested deterministic code. Missing
+this bar from a role contract is a review finding.

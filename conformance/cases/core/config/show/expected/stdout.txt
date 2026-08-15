@@ -1,0 +1,174 @@
+{
+  "project": {
+    "name": null,
+    "language": "rust",
+    "description": "",
+    "harnesses": []
+  },
+  "branching": {
+    "patch_branch_pattern": "v{X}.{Y}.{Z}",
+    "sprint_branch_pattern": "v{X}.{Y}.{Z}-dev.{N}",
+    "patch_slug_pattern": "v{X}{Y}{Z}",
+    "sprint_slug_pattern": "v{X}{Y}{Z}-dev{N}",
+    "sprints_per_patch": 10,
+    "main_branch": "main",
+    "release_tag_pattern": "v{X}.{Y}.{Z}",
+    "allow_direct_main_commit": false
+  },
+  "paths": {
+    "docs": ".shepherd/docs",
+    "ctx": ".shepherd/ctx",
+    "runs": ".shepherd/runs"
+  },
+  "gates": {
+    "check": "",
+    "lint": "",
+    "format": "",
+    "extra": [],
+    "target_clean_threshold_gb": 20,
+    "subtract_paths": []
+  },
+  "dups": {
+    "dups_threshold": 0.7,
+    "dups_block": 0.85,
+    "dups_name_weight": 0.5,
+    "dups_min_fields": 2,
+    "dups_hook": "warn",
+    "dups_registry": "dups-registry.json"
+  },
+  "skills": {
+    "mandatory": [
+      "code-style"
+    ],
+    "by_domain": {},
+    "detection": {}
+  },
+  "mcp": {},
+  "cli": {},
+  "ledger": {
+    "phase_0_full_ledger": true,
+    "classify_into": [
+      "blocking-this-sprint",
+      "labeled-non-issue",
+      "tracking-future",
+      "drift-risk"
+    ],
+    "non_issue_labels": [
+      "wontfix",
+      "tracking-future",
+      "design-question",
+      "rfc"
+    ],
+    "carry_forward_file": "{paths.docs}/v{X}.{Y}.{Z}-carry-forwards.md",
+    "chronic_threshold_patches": 2
+  },
+  "release": {
+    "driver": "github-workflow",
+    "release_notes_path": "{paths.docs}/v{X}.{Y}.{Z}-release-notes.md",
+    "workflow_file": ".github/workflows/release.yml",
+    "devlast_guard": "block"
+  },
+  "tmux": {
+    "pane_cleanup": "on"
+  },
+  "context": {
+    "auto_refresh": [
+      "on-sprint-open"
+    ],
+    "announce_cli_path": "on",
+    "announce_core_doctrine": "on",
+    "announce_adaptation": "on",
+    "refresh": {
+      "ttl_minutes": 30
+    },
+    "lock": {
+      "stale_after_minutes": 120
+    },
+    "naming": {
+      "strict": false,
+      "extra_patterns": [],
+      "ignore_paths": []
+    }
+  },
+  "hooks": {
+    "on_every_dispatch": [
+      "code-style"
+    ],
+    "on_conductor_only": [],
+    "on_engineer_only": [
+      "workflow"
+    ],
+    "on_planter_only": [],
+    "quiet_warnings": false,
+    "flag_handrolled_fanout": true,
+    "workflow_model_guard": "block",
+    "teammate_heartbeat": "on"
+  },
+  "spawn": {
+    "coordinate_drive_guard": "block",
+    "wave_ack_timeout_sec": 60,
+    "cross_dep_timeout_sec": 300,
+    "max_parallel": 4,
+    "dashboard_cadence": "3m",
+    "staged_timeout_minutes": 90,
+    "lead_effort": "ultracode",
+    "stale_sweep_minutes": 60
+  },
+  "autorun": {
+    "min_grade": "B",
+    "on_grade_floor": "abort",
+    "inter_sprint_pause": "brief"
+  },
+  "compaction": {
+    "precompact_snapshot": "on",
+    "snapshot_retention": 5
+  },
+  "focus": {
+    "rehydrate": "on",
+    "heartbeat_actions": 20,
+    "heartbeat_interval": "",
+    "loop_max_default": 8
+  },
+  "close": {
+    "autonomous_sentinel": "off"
+  },
+  "eval": {
+    "eval_judge_model": "",
+    "eval_on_close": "off"
+  },
+  "models": {
+    "root": "inherit-caller",
+    "planter": "reasoning-high",
+    "engineer": "reasoning-high",
+    "conductor": "standard",
+    "critic": "standard",
+    "discovery": "standard",
+    "coder": "standard",
+    "auditor": "standard",
+    "worker": "standard"
+  },
+  "prune": {
+    "logs_days": 60,
+    "dispatch_days": 30,
+    "snapshots_keep": 20,
+    "findings_sprints": 6
+  },
+  "seed": {
+    "seed_gate": "block"
+  },
+  "preflight": {
+    "auto_invoke": "doctor"
+  },
+  "stage_graph": {
+    "default_wave_count": 2,
+    "hotfix_max_iterations": 3,
+    "walk_trace_enabled": true,
+    "intro_wave": {
+      "enabled": true,
+      "default_discoveries": [],
+      "default_intro_auditors": [],
+      "disable_for_tshirt": [],
+      "parallel_max": 5
+    }
+  }
+}

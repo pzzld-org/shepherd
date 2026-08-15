@@ -3,23 +3,21 @@
     Created At: 2026.08.13:00:00:00
     Contrib: @FL03
 */
-//! Recursively-sorted, ASCII-only JSON text — the byte-exact match for
-//! `models_run.py:627`'s `json.dump(payload, indent=2, sort_keys=True)`.
+//! Recursively sorted, ASCII-only JSON text for the canonical `run.json` wire.
 //!
 //! Two properties `serde_json`'s own pretty printer does not give for free,
-//! and both matter for a byte-exact port:
+//! and both matter for a byte-exact cross-language contract:
 //!
 //! - **Recursive sort.** A derived `Serialize` impl visits fields in
 //!   declaration order; `#[serde(flatten)]` merges `extra` in afterward,
-//!   sorted only within itself. Neither interleaves the way Python's
-//!   `sort_keys=True` interleaves every key at a level, named field or not.
+//!   sorted only within itself. Neither interleaves every named and unknown
+//!   key at a level.
 //!   Routing through [`serde_json::to_value`] first fixes this as a side
 //!   effect of `serde_json::Map`'s storage: with the `preserve_order` cargo
 //!   feature off — checked in `crates/core/Cargo.toml`; this workspace never
 //!   turns it on — `Map<String, Value>` iterates in sorted key order, at
 //!   every nesting level, recursively, for free.
-//! - **ASCII-only output.** Python's `json.dump` defaults to
-//!   `ensure_ascii=True`: every codepoint above `U+007F` is written as
+//! - **ASCII-only output.** Every codepoint above `U+007F` is written as
 //!   `\uXXXX`, astral codepoints as a UTF-16 surrogate pair. `serde_json`
 //!   writes UTF-8 straight through. There is no `Formatter` hook for this
 //!   that is safely usable under this crate's `alloc`-only floor (the
@@ -36,8 +34,8 @@ use alloc::{
 
 use serde_json::Value;
 
-/// Serialize `value` the way `models_run.py:627` serializes `run.json`:
-/// recursively sorted keys, 2-space indent, ASCII-only.
+/// Serialize `value` as canonical `run.json`: recursively sorted keys,
+/// 2-space indent, ASCII-only.
 ///
 /// Internal: the fallible half. [`crate::run::RunState::to_canonical_json`]
 /// wraps this to match its documented infallible signature; see that
@@ -56,7 +54,7 @@ where
     Ok(out)
 }
 
-/// 2 spaces per indent level, matching Python's `indent=2`.
+/// Two spaces per indent level, as pinned by the wire contract.
 fn push_indent(out: &mut String, depth: usize) {
     for _ in 0..depth {
         out.push_str("  ");
@@ -67,14 +65,13 @@ fn write_value(value: &Value, depth: usize, out: &mut String) {
     match value {
         Value::Null => out.push_str("null"),
         Value::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
-        // `Number::to_string` matches Python's integer repr for every value
-        // this domain actually carries (`schema_version`, `updated_at`, and
+        // `Number::to_string` is the pinned integer representation for every
+        // value this domain carries (`schema_version`, `updated_at`, and
         // any integer-valued field a foreign implementation's `extra` bag
         // contributes). Byte-exact float formatting is not chased here: no
         // field this crate declares is a float, and the two encoders' float
-        // reprs (Rust's ryu vs Python's `repr`) are not guaranteed identical
-        // on every value -- a real but out-of-scope gap for a struct with no
-        // float fields of its own.
+        // float formatting is not part of this contract because the typed
+        // state declares no float fields.
         Value::Number(n) => out.push_str(&n.to_string()),
         Value::String(s) => write_json_string(s, out),
         Value::Array(items) => write_array(items, depth, out),
@@ -128,7 +125,7 @@ fn write_object(map: &serde_json::Map<String, Value>, depth: usize, out: &mut St
     out.push('}');
 }
 
-/// JSON-quote `s` the way Python's `json.dump(..., ensure_ascii=True)` does:
+/// JSON-quote `s` using the contract's ASCII-only escaping:
 /// the standard `"`/`\`/control-character escapes (identical between the two
 /// encoders -- both follow the same JSON spec table), plus every codepoint
 /// above `U+007F` written as `\uXXXX` (a UTF-16 surrogate pair above

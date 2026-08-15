@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 // packages/harness-claude/test.mjs -- runs every packages/harness-claude/test/*.test.mjs
-// file (each also directly runnable on its own), mirroring
-// packages/compiler/test.mjs's own runner exactly rather than reinventing one.
+// file (each also directly runnable on its own).
 // `test/advance-run.mjs` is deliberately NOT `*.test.mjs` -- it is release-gate criterion
 // C.4's standalone CLI script (plan.md W4-S4 Action 4), invoked by name with an argv, not
 // auto-discovered here.

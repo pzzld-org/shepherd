@@ -1,0 +1,12 @@
+{
+  "suite": "core",
+  "kind": "pure",
+  "authority": "native-v6.4.5",
+  "intentional_difference": "legacy render resolves templates through legacy project and user precedence and supports ambient vars files; native v6.4.5 accepts only project-owned templates and inline typed variables",
+  "requires_git": true,
+  "description": "native render emits text and deterministic provenance",
+  "setup": [["init", "--confirm"]],
+  "args": ["render", "greeting", "--vars-json", "{\"greeting\":\"Hello\"}", "--var", "name=Shepherd", "--json"],
+  "db_fixture": "none",
+  "input_files": {".shepherd/templates/greeting.j2": "greeting.j2"}
+}

@@ -3,202 +3,391 @@
     Created At: 2026.08.12:17:30:00
     Contrib: @FL03
 */
-//! Configuration precedence, and layering over caller-supplied contents.
+//! Pure configuration precedence, validation, and layering.
 //!
-//! ## Why this is in the engine and not the CLI
-//!
-//! The obvious split puts the schema here and *all* loading in `shepherd-cli`.
-//! That split is wrong, and it is wrong in the same way the Python
-//! implementation was wrong: it makes the second consumer reimplement policy.
-//!
-//! The precedence chain is not a detail. It is ten candidate files across four
-//! tiers, ordered, parameterised by harness, with a legacy tier honoured
-//! indefinitely — and the order it is written in is the *reverse* of the order
-//! a layering library applies. A Node adapter that reimplements that gets a
-//! silent bug: a config file quietly ignored, with no error anywhere. Locked
-//! decision 2 already names this failure mode for guard predicates ("a
-//! predicate expressed as code in two languages is a defect"); the precedence
-//! chain is the same shape of thing.
-//!
-//! ## What is policy and what is I/O
-//!
-//! The engine owns **which** files matter and **in what order**. The adapter
-//! owns **reading** them.
-//!
-//! - [`candidates`] is a pure function. It computes paths and touches nothing.
-//! - [`layer`] takes `(path, contents)` pairs the caller has already read and
-//!   folds them in priority order.
-//!
-//! So `config` appears here only through [`config::File::from_str`], which
-//! parses a `&str`. `config::File::with_name` and `config::Environment` reach
-//! the filesystem and the process environment, and both stay on the adapter
-//! side of the boundary. The `engine-boundary` CI job enforces that
-//! distinction by name rather than trusting this paragraph.
-use alloc::vec::Vec;
+//! This module never reads a file, an environment variable, or a git process.
+//! Hosts provide already-read `(path, contents)` pairs in the same
+//! highest-priority-first order returned by [`candidates`].
+
+use alloc::{
+    string::{String, ToString},
+    vec::Vec,
+};
 use std::path::{Path, PathBuf};
 
-use crate::error::{Error, Result};
-use crate::settings::ShepherdConfig;
-use crate::types::Harness;
+use crate::{Error, Result, settings::ShepherdConfig, types::Harness};
 
-/// Which layer a candidate belongs to, highest authority first.
-///
-/// The tier is carried rather than inferred so a consumer can report *why* a
-/// value won, which is the question anyone debugging configuration actually
-/// has.
+/// The only ordinary-runtime configuration tiers.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-#[non_exhaustive]
 pub enum ConfigTier {
-    /// `<namespace>/shepherd*.toml` — the project's own configuration.
     Project,
-    /// `<repo>/.claude/shepherd*.toml` — pre-v6.4.2 layout, honoured
-    /// indefinitely. Dropping it silently un-configures existing projects.
-    LegacyProject,
-    /// `$SHEPHERD_HOME/shepherd*.toml` — the operator's defaults.
     User,
-    /// `$XDG_CONFIG_HOME/shepherd.toml` — pre-v6.4.2 user global.
-    LegacyUser,
 }
 
-/// One candidate configuration file.
+/// One possible configuration file, without an existence check.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct ConfigCandidate {
-    /// Where the file would be, if it exists. The engine does not check.
     pub path: PathBuf,
-    /// The layer this candidate belongs to.
     pub tier: ConfigTier,
 }
 
-/// The inputs the precedence chain is computed from.
-///
-/// Every field is supplied by the caller. The engine does not resolve a repo
-/// root, read `$HOME`, or consult the environment — those are host questions,
-/// and an embedder without a filesystem still needs the ordering.
+/// Pure inputs to the canonical candidate policy.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct ConfigContext {
-    /// The resolved project namespace, e.g. `<repo>/.shepherd`.
-    pub namespace: PathBuf,
-    /// The repository root, for the legacy `.claude/` tier.
-    pub repo_root: PathBuf,
-    /// `$SHEPHERD_HOME`, or `$HOME/.shepherd`.
-    pub user_home: PathBuf,
-    /// `$XDG_CONFIG_HOME`, or `$HOME/.config`.
-    pub xdg_config_home: PathBuf,
-    /// The active harness, when there is one.
-    ///
-    /// This is a **value the engine carries, not a branch it takes**: it only
-    /// ever becomes part of a filename. No behaviour here differs by harness.
+    pub primary_root: PathBuf,
+    pub user_home: Option<PathBuf>,
     pub harness: Option<Harness>,
 }
 
-/// The candidate configuration files, **highest priority first**.
+/// One layer that contributed to a resolved configuration.
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct ConfigSource {
+    pub path: PathBuf,
+}
+
+/// A resolved configuration and its highest-priority-first provenance.
+#[derive(Clone, Debug, PartialEq)]
+pub struct LoadedConfig {
+    pub config: ShepherdConfig,
+    pub sources: Vec<ConfigSource>,
+}
+
+/// The validation policy used while resolving configuration layers.
 ///
-/// This reproduces `_lib.sh:shctx_config_files()` exactly, including the
-/// harness-specific slot inside each of the two non-legacy tiers and the
-/// legacy tiers that follow them. Ten entries with a harness, eight without.
+/// Ordinary commands use [`LoadMode::Strict`]. Layout-v5 migration is the
+/// only compatibility boundary: it recognizes a closed, typed set of retired
+/// keys, removes those keys before the ordinary schema is decoded, and leaves
+/// every other typo or unknown field to the strict schema.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum LoadMode {
+    #[default]
+    Strict,
+    LayoutV5Migration,
+}
+
+/// Return the canonical candidates, highest priority first.
 ///
-/// Note the direction. The list is highest-authority-first, which is how a
-/// human reasons about precedence and how the bash implementation printed it.
-/// [`layer`] reverses it internally, because layering libraries apply *later*
-/// sources with *higher* priority. Getting that inversion wrong produces a
-/// configuration that loads without error and is exactly backwards, which is
-/// the single best reason for this function to exist once rather than once per
-/// adapter.
+/// There are six candidates with a harness and four without one when a user
+/// home is available. A missing optional user home produces only the project
+/// candidates. Legacy `.claude`, `.artifacts`, and XDG paths are migration
+/// inputs and never enter this function.
 pub fn candidates(cx: &ConfigContext) -> Vec<ConfigCandidate> {
-    let mut out = Vec::with_capacity(10);
-
-    let mut push = |path: PathBuf, tier: ConfigTier| out.push(ConfigCandidate { path, tier });
-
-    // project layer (highest): local -> harness -> base
-    push(
-        cx.namespace.join("shepherd.local.toml"),
-        ConfigTier::Project,
-    );
-    if let Some(harness) = cx.harness {
-        push(
-            cx.namespace.join(alloc::format!("shepherd.{harness}.toml")),
-            ConfigTier::Project,
-        );
+    let namespace = cx.primary_root.join(".shepherd");
+    let capacity = if cx.harness.is_some() { 6 } else { 4 };
+    let mut out = Vec::with_capacity(capacity);
+    push_tier(&mut out, &namespace, ConfigTier::Project, cx.harness);
+    if let Some(user_home) = &cx.user_home
+        && user_home != &namespace
+    {
+        push_tier(&mut out, user_home, ConfigTier::User, cx.harness);
     }
-    push(cx.namespace.join("shepherd.toml"), ConfigTier::Project);
-
-    // legacy project layer -- pre-v6.4.2, honoured indefinitely
-    let legacy = cx.repo_root.join(".claude");
-    push(
-        legacy.join("shepherd.local.toml"),
-        ConfigTier::LegacyProject,
-    );
-    push(legacy.join("shepherd.toml"), ConfigTier::LegacyProject);
-
-    // user layer (defaults): local -> harness -> base
-    push(cx.user_home.join("shepherd.local.toml"), ConfigTier::User);
-    if let Some(harness) = cx.harness {
-        push(
-            cx.user_home.join(alloc::format!("shepherd.{harness}.toml")),
-            ConfigTier::User,
-        );
-    }
-    push(cx.user_home.join("shepherd.toml"), ConfigTier::User);
-
-    // legacy user global
-    push(
-        cx.xdg_config_home.join("shepherd.toml"),
-        ConfigTier::LegacyUser,
-    );
-
     out
 }
 
-/// Fold configuration layers into a [`ShepherdConfig`].
+fn push_tier(
+    out: &mut Vec<ConfigCandidate>,
+    root: &Path,
+    tier: ConfigTier,
+    harness: Option<Harness>,
+) {
+    out.push(ConfigCandidate {
+        path: root.join("shepherd.local.toml"),
+        tier,
+    });
+    if let Some(harness) = harness {
+        out.push(ConfigCandidate {
+            path: root.join(alloc::format!("shepherd.{harness}.toml")),
+            tier,
+        });
+    }
+    out.push(ConfigCandidate {
+        path: root.join("shepherd.toml"),
+        tier,
+    });
+}
+
+/// Validate and merge caller-supplied layers, highest priority first.
+pub fn load<'a, I>(layers: I) -> Result<LoadedConfig>
+where
+    I: IntoIterator<Item = (&'a Path, &'a str)>,
+{
+    load_with_mode(layers, LoadMode::Strict)
+}
+
+/// Validate and merge layers for a layout-v5 migration only.
 ///
-/// `layers` are `(path, contents)` pairs in the **same order [`candidates`]
-/// returns them**: highest priority first. The caller has already decided which
-/// candidates exist and read them; missing files are simply absent from the
-/// iterator.
-///
-/// The path is carried only so a parse failure can name the file that caused
-/// it. Nothing here opens it.
+/// This remains one TOML parse and the normal [`ShepherdConfig`] schema. The
+/// compatibility mode only removes retired values that it has first verified
+/// against their historical types. All ordinary commands must use [`load`].
+pub fn load_for_layout_v5_migration<'a, I>(layers: I) -> Result<LoadedConfig>
+where
+    I: IntoIterator<Item = (&'a Path, &'a str)>,
+{
+    load_with_mode(layers, LoadMode::LayoutV5Migration)
+}
+
+/// Validate and merge caller-supplied layers under one explicit policy.
+pub fn load_with_mode<'a, I>(layers: I, mode: LoadMode) -> Result<LoadedConfig>
+where
+    I: IntoIterator<Item = (&'a Path, &'a str)>,
+{
+    let ordered: Vec<(&Path, &str)> = layers.into_iter().collect();
+    let mut parsed = Vec::with_capacity(ordered.len());
+
+    for (path, contents) in &ordered {
+        parsed.push(parse_layer(path, contents, mode)?);
+    }
+
+    let mut merged = toml::Value::Table(toml::Table::new());
+    for value in parsed.into_iter().rev() {
+        merge_value(&mut merged, value);
+    }
+
+    let config = deserialize(
+        ordered.first().map_or(Path::new("<defaults>"), |v| v.0),
+        merged,
+    )?;
+    Ok(LoadedConfig {
+        config,
+        sources: ordered
+            .into_iter()
+            .map(|(path, _)| ConfigSource {
+                path: path.to_path_buf(),
+            })
+            .collect(),
+    })
+}
+
+/// Compatibility convenience returning only the resolved value.
 pub fn layer<'a, I>(layers: I) -> Result<ShepherdConfig>
 where
     I: IntoIterator<Item = (&'a Path, &'a str)>,
 {
-    // Collect so the order can be reversed. `config` applies sources in the
-    // order they are added, with later sources winning, so the lowest-priority
-    // layer must be added first. This single `.rev()` is the reason the whole
-    // function is worth centralising.
-    let ordered: Vec<(&Path, &str)> = layers.into_iter().collect();
-
-    let mut builder = config::Config::builder();
-    for (path, contents) in ordered.into_iter().rev() {
-        builder = builder
-            .add_source(config::File::from_str(contents, config::FileFormat::Toml).required(true));
-        // Bind the path into the error only if this source is the one that
-        // fails, which `config` reports at build time rather than add time.
-        let _ = path;
-    }
-
-    let built = builder
-        .build()
-        .map_err(|error| Error::Config(alloc::format!("{error}")))?;
-
-    built
-        .try_deserialize()
-        .map_err(|error| Error::Config(alloc::format!("{error}")))
+    load(layers).map(|loaded| loaded.config)
 }
 
-/// Parse a single layer, naming the file when it fails.
-///
-/// [`layer`] reports a `config`-level error that does not always identify which
-/// of several in-memory sources was malformed. When a caller wants per-file
-/// diagnostics — and a CLI should — it validates each candidate through this
-/// first.
-pub fn validate(path: &Path, contents: &str) -> Result<()> {
-    config::Config::builder()
-        .add_source(config::File::from_str(contents, config::FileFormat::Toml).required(true))
-        .build()
-        .map(|_| ())
-        .map_err(|error| Error::Config(alloc::format!("{}: {error}", path.display())))
+/// Validate a single candidate without touching the filesystem.
+pub fn validate(path: &Path, contents: &str) -> Result {
+    parse_layer(path, contents, LoadMode::Strict).map(|_| ())
+}
+
+fn parse_layer(path: &Path, contents: &str, mode: LoadMode) -> Result<toml::Value> {
+    let mut value: toml::Value = toml::from_str(contents).map_err(|error| {
+        Error::config(alloc::format!("{}: {}", path.display(), error.message()))
+    })?;
+    if mode == LoadMode::LayoutV5Migration {
+        strip_retired_layout_v5(path, &mut value)?;
+    }
+    validate_gate_entries(path, &value)?;
+    deserialize(path, value.clone())?;
+    Ok(value)
+}
+
+fn strip_retired_layout_v5(path: &Path, value: &mut toml::Value) -> Result {
+    let Some(root) = value.as_table_mut() else {
+        return Ok(());
+    };
+
+    if let Some(paths) = root.get_mut("paths").and_then(toml::Value::as_table_mut) {
+        remove_legacy_string(path, paths, "paths", "plans")?;
+        remove_legacy_string(path, paths, "paths", "reports")?;
+    }
+
+    if let Some(memory) = root.remove("memory") {
+        validate_retired_memory(path, memory)?;
+    }
+
+    if let Some(context) = root.get_mut("context").and_then(toml::Value::as_table_mut) {
+        remove_legacy_bool(path, context, "context", "enabled")?;
+        for field in ["db_path", "lock_path", "project_id_path"] {
+            remove_legacy_string(path, context, "context", field)?;
+        }
+        remove_legacy_string(path, context, "context", "announce_shctx_path")?;
+    }
+    Ok(())
+}
+
+fn validate_retired_memory(path: &Path, memory: toml::Value) -> Result {
+    let Some(memory) = memory.as_table() else {
+        return Err(config_error(path, "memory", "expected a table"));
+    };
+    for field in memory.keys() {
+        if field != "project_memory" && field != "project_doctrines" {
+            return Err(config_error(
+                path,
+                &alloc::format!("memory.{field}"),
+                "unknown legacy key",
+            ));
+        }
+    }
+    for field in ["project_memory", "project_doctrines"] {
+        match memory.get(field) {
+            Some(toml::Value::String(_)) => {}
+            Some(_) => {
+                return Err(config_error(
+                    path,
+                    &alloc::format!("memory.{field}"),
+                    "expected a string",
+                ));
+            }
+            None => {
+                return Err(config_error(
+                    path,
+                    &alloc::format!("memory.{field}"),
+                    "required legacy key is missing",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn remove_legacy_string(
+    path: &Path,
+    table: &mut toml::Table,
+    section: &str,
+    field: &str,
+) -> Result {
+    let Some(value) = table.remove(field) else {
+        return Ok(());
+    };
+    if value.is_str() {
+        Ok(())
+    } else {
+        Err(config_error(
+            path,
+            &alloc::format!("{section}.{field}"),
+            "expected a string",
+        ))
+    }
+}
+
+fn remove_legacy_bool(path: &Path, table: &mut toml::Table, section: &str, field: &str) -> Result {
+    let Some(value) = table.remove(field) else {
+        return Ok(());
+    };
+    if value.is_bool() {
+        Ok(())
+    } else {
+        Err(config_error(
+            path,
+            &alloc::format!("{section}.{field}"),
+            "expected a boolean",
+        ))
+    }
+}
+
+fn config_error(path: &Path, key: &str, message: &str) -> Error {
+    Error::config(alloc::format!("{}: {key}: {message}", path.display()))
+}
+
+fn validate_gate_entries(path: &Path, value: &toml::Value) -> Result {
+    let Some(extra) = value.get("gates").and_then(|gates| gates.get("extra")) else {
+        return Ok(());
+    };
+
+    if let Some(map) = extra.as_table() {
+        for (name, command) in map {
+            if !command.is_str() {
+                return Err(Error::config(alloc::format!(
+                    "{}: gates.extra.{name}: expected a string",
+                    path.display()
+                )));
+            }
+        }
+        return Ok(());
+    }
+
+    let Some(entries) = extra.as_array() else {
+        return Ok(());
+    };
+
+    for entry in entries {
+        let Some(table) = entry.as_table() else {
+            continue;
+        };
+        for field in ["name", "cmd"] {
+            if !table.contains_key(field) {
+                return Err(Error::config(alloc::format!(
+                    "{}: gates.extra.{field}: required field is missing",
+                    path.display()
+                )));
+            }
+            if !table.get(field).is_some_and(toml::Value::is_str) {
+                return Err(Error::config(alloc::format!(
+                    "{}: gates.extra.{field}: expected a string",
+                    path.display()
+                )));
+            }
+        }
+        for field in table.keys() {
+            if field != "name" && field != "cmd" {
+                return Err(Error::config(alloc::format!(
+                    "{}: gates.extra.{field}: unknown key",
+                    path.display()
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn deserialize(path: &Path, value: toml::Value) -> Result<ShepherdConfig> {
+    let config: ShepherdConfig = value.try_into().map_err(|error: toml::de::Error| {
+        Error::config(alloc::format!("{}: {}", path.display(), diagnostic(&error)))
+    })?;
+    config.validate().map_err(|error| {
+        let message = match error {
+            Error::Config(message) => message,
+            other => other.to_string(),
+        };
+        Error::config(alloc::format!("{}: {message}", path.display()))
+    })?;
+    Ok(config)
+}
+
+fn diagnostic(error: &toml::de::Error) -> String {
+    let rendered = error.to_string();
+    let path = rendered.lines().find_map(|line| {
+        line.strip_prefix("in `")
+            .and_then(|line| line.strip_suffix('`'))
+    });
+    let message = error.message();
+    let unknown = message
+        .strip_prefix("unknown field `")
+        .and_then(|rest| rest.split_once('`').map(|(field, _)| field));
+
+    match (path, unknown) {
+        (Some(parent), Some(field)) if !parent.is_empty() => {
+            alloc::format!("{parent}.{field}: {message}")
+        }
+        (_, Some(field)) => alloc::format!("{field}: {message}"),
+        (Some(path), None) if !path.is_empty() => alloc::format!("{path}: {message}"),
+        _ => message.to_string(),
+    }
+}
+
+fn merge_value(base: &mut toml::Value, overlay: toml::Value) {
+    match (base, overlay) {
+        (toml::Value::Table(base), toml::Value::Table(overlay)) => {
+            for (key, value) in overlay {
+                if let Some(existing) = base.get_mut(&key) {
+                    merge_value(existing, value);
+                } else {
+                    base.insert(key, value);
+                }
+            }
+        }
+        (base, overlay) => *base = overlay,
+    }
+}
+
+/// Render the complete schema as deterministic compact JSON.
+#[cfg(all(feature = "schema", feature = "json"))]
+pub fn schema_json() -> Result<String> {
+    serde_json::to_string(&schemars::schema_for!(ShepherdConfig))
+        .map_err(|error| Error::Serialization(error.to_string()))
 }

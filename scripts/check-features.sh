@@ -44,6 +44,19 @@ check() {
 }
 
 echo "== engine: the no_std floor and the capability flags =="
+# Content compilation is a pure allocation-only layer. Check every advertised
+# floor independently so embedding it in a WASM component cannot silently
+# acquire host I/O through the umbrella SDK.
+check "compiler --no-default-features --features alloc" \
+  -p shepherd-compiler --no-default-features --features alloc
+check "compiler --no-default-features --features std" \
+  -p shepherd-compiler --no-default-features --features std
+check "compiler --no-default-features --features wasm" \
+  -p shepherd-compiler --no-default-features --features wasm
+check "compiler --features full" -p shepherd-compiler --features full
+
+# The engine's `alloc` flag is the common floor every embedding layer must
+# preserve. It has its own rows because its feature graph is larger.
 # `alloc` is the floor an embedder without a filesystem builds against. If this
 # stops compiling, `no_std` support has been lost, not merely untested.
 check "core --no-default-features --features alloc" \
@@ -63,6 +76,8 @@ echo "== umbrella: each capability alone, then together =="
 # check cannot tell the difference.
 check "sdk --no-default-features --features alloc" \
   -p shepherd --no-default-features --features alloc
+check "sdk --no-default-features --features compiler" \
+  -p shepherd --no-default-features --features compiler
 for ff in config json parse schema registry render tracing; do
   check "sdk --no-default-features --features std,${ff}" \
     -p shepherd --no-default-features --features "std,${ff}"
@@ -73,6 +88,7 @@ echo
 echo "== members: standalone, and the binary =="
 check "registry --features full" -p shepherd-registry --features full
 check "render  --features full" -p shepherd-render --features full
+check "component --features full" -p shepherd-component --features full
 check "cli --all-targets" -p shepherd-cli --all-targets
 check "cli --features full --all-targets" -p shepherd-cli --features full --all-targets
 
@@ -96,6 +112,42 @@ if [[ "${WITH_TARGETS}" == "1" ]]; then
 
   check "core   -> wasm32-unknown-unknown" \
     -p shepherd-core --target wasm32-unknown-unknown --no-default-features --features wasm
+  check "compiler -> wasm32-unknown-unknown" \
+    -p shepherd-compiler --target wasm32-unknown-unknown --no-default-features --features wasm
+  # `cargo check` does not promise to leave a linkable component artifact.
+  # Build this leg so the validation and WIT extraction below inspect the
+  # exact binary a release job would distribute.
+  check_build() {
+    checked=$((checked + 1))
+    printf '  %-58s' "${1}"
+    shift
+    if output=$(cargo build "$@" --quiet 2>&1); then
+      printf 'ok\n'
+    else
+      printf 'FAILED\n'
+      printf '%s\n' "${output}" | sed 's/^/      /'
+      failures=$((failures + 1))
+    fi
+  }
+  check_build "component -> wasm32-wasip2" \
+    -p shepherd-component --target wasm32-wasip2 --features full
+  if command -v wasm-tools >/dev/null 2>&1; then
+    component_artifact="target/wasm32-wasip2/debug/shepherd_component.wasm"
+    component_wit="target/wasm32-wasip2/debug/shepherd.wit"
+    check "component validate -> wasm32-wasip2" \
+      wasm-tools validate "${component_artifact}"
+    extract_component_wit() {
+      wasm-tools component wit "${component_artifact}" > "${component_wit}"
+      test -s "${component_wit}"
+      grep -Fq 'package fl03:shepherd@6.4.5;' "${component_wit}"
+    }
+    check "component extract WIT -> wasm32-wasip2" extract_component_wit
+  else
+    checked=$((checked + 1))
+    failures=$((failures + 1))
+    printf '  %-58sFAILED\n' "wasm-tools required for component validation"
+    printf '      wasm-tools is required; install it before --targets\n'
+  fi
   check "sdk    -> wasm32-unknown-unknown" \
     -p shepherd --target wasm32-unknown-unknown --no-default-features --features wasm
   # The registry is the interesting one: rusqlite picks its backend by target

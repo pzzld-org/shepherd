@@ -1,14 +1,15 @@
 ---
 name: context
+description: "Read or update Shepherd's project registry and bounded context. Use for memory, focus, locks, search, dedup, project knowledge, or selecting the smallest durable context needed for a task."
 source: skills/context/SKILL.md
-portability: unverified  # registry CONCEPT is harness-neutral; Claude's shctx CLI/DB specifics are abstracted below; Codex-side counterpart not independently probed this pass — RECONCILIATION.md §Residual
+portability: cross-harness
 ---
 
 # context — the per-project registry
 
-A per-project registry backs dedup detection, GitHub/issue-tracker state caching,
-telemetry, and locks. Abstracted here from Claude's own `shctx` CLI + SQLite file into the
-registry CONCEPT any harness implements with its own local store.
+A per-project registry backs dedup detection, issue-tracker state caching, telemetry, and
+locks. The canonical Rust `shepherd` CLI owns the store; Claude, Codex, and Pi reach the
+same typed state through their thin Component Model adapters.
 
 ## Canonical state model
 

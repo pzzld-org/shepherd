@@ -1,0 +1,2 @@
+initialized layout-v5 namespace: <SCRATCH>/cwd/.shepherd
+registry: <SCRATCH>/cwd/.shepherd/shepherd.db

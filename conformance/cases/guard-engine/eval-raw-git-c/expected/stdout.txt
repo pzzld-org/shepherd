@@ -1,0 +1,1 @@
+{"decision": "deny", "predicate": "git-custody", "rule": "implementer-never-writes-git", "halt_code": "CODER-GIT-WRITE", "reason": "A role dispatched to implement one file-disjoint scope (coder) never performs any version-control write, under any circumstance \u2014 custody sits one tier up, always."}

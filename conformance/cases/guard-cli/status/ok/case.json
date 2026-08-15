@@ -1,6 +1,7 @@
 {
   "suite": "guard-cli",
   "kind": "pure",
+  "requires_git": true,
   "description": "hooks/scripts/user_prompt_submit.sh:102 -- \"${PLUGIN_ROOT}/bin/shepherd\" status (bare, no subcommand), against a freshly-migrated fixture DB. Success path: schema version + table counts + staleness + lock-state text report, exit 0. Also captures an order-normalized sqlite_master dump (the registry parity surface: 45 tables, 14 views, 68 indexes, 7 triggers, 19 tables carrying a json_valid CHECK, 2 FTS5 external-content tables tokenized unicode61 remove_diacritics 2 -- verified empirically while authoring this corpus).",
   "args": ["status"],
   "db_fixture": "full_schema",

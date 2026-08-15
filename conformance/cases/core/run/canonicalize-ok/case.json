@@ -1,0 +1,1 @@
+{"suite":"core","kind":"mutating","requires_git":true,"description":"run canonicalize","setup":[["run","init","v910-dev0-codex","--force"]],"args":["run","canonicalize","v910-dev0-codex"],"db_fixture":"none"}

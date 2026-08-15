@@ -1,26 +1,14 @@
 #!/usr/bin/env bash
-# conformance/run.sh -- byte-exact behavioral-oracle runner for the shepherd
-# CLI (W0-S9, #281). Freezes the CURRENT Python CLI's observable behavior
-# (services/cli/shepherd_cli) into conformance/cases/**, so the Rust port
-# (W1-W3) can be graded against it instead of by eyeball.
+# conformance/run.sh -- byte-exact versioned-contract runner for shepherd.
+# Every case freezes the canonical Rust CLI. The release must replay the
+# complete corpus byte-for-byte without a legacy implementation.
 #
 # Usage:
-#   conformance/run.sh --impl=<python|rust> [--suite=<name>]
-#   conformance/run.sh --impl=<python|rust> --count [--suite=<name>]
-#   conformance/run.sh --impl=<python|rust> --verify-checksum
+#   conformance/run.sh --impl=rust [--suite=<name>]
+#   conformance/run.sh --impl=rust --count [--suite=<name>]
+#   conformance/run.sh --impl=rust --verify-checksum
 #
-# --impl=python drives the corpus against the REAL Python CLI via
-#   ${PY} -m shepherd_cli ... (conformance/lib/harness.py; the same
-#   invocation shape services/cli/tests/conftest.py's run_cli() uses, and
-#   the one bin/shepherd's own python3-fallback path reaches).
-# --impl=rust is a REAL BUT EMPTY lane: no Rust port exists yet (W1-W3
-#   build it) -- the corpus (and any --suite filter) always resolves to 0
-#   implemented cases today, and this branch FAILS CLOSED (exit 1) rather
-#   than reporting a false green: an acceptance predicate written against
-#   `--impl=rust` must be falsifiable, and zero cases run is zero
-#   verification, not a pass (#10, DF-59). `--impl=rust --count` stays
-#   informational -- exit 0, prints "0" -- since it reports a case count,
-#   not a pass/fail verdict.
+# --impl=rust builds the native binary once, then replays the versioned cases.
 # --suite=<name> filters the corpus to cases tagged with that suite in
 #   their case.json (see conformance/cases/**/case.json). --suite=guard-cli
 #   is the MUST-FIX-BEFORE-DISPATCH suite (critic pass 2, HIGH): the five
@@ -34,11 +22,10 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$HERE/.." && pwd)"
-CLI_ROOT="$REPO_ROOT/services/cli"
-PY="$CLI_ROOT/.venv/bin/python"
+RUNNER_PY="$(command -v python3 2>/dev/null || true)"
 
 usage() {
-  printf 'usage: %s --impl=<python|rust> [--suite=<name>] [--count] [--verify-checksum]\n' "$(basename "$0")"
+  printf 'usage: %s --impl=rust [--suite=<name>] [--count] [--verify-checksum]\n' "$(basename "$0")"
 }
 
 impl=""
@@ -64,12 +51,12 @@ for arg in "$@"; do
 done
 
 if [[ -z "$impl" ]]; then
-  printf 'run.sh: --impl=<python|rust> is required\n' >&2
+  printf 'run.sh: --impl=rust is required\n' >&2
   usage >&2
   exit 2
 fi
-if [[ "$impl" != "python" && "$impl" != "rust" ]]; then
-  printf 'run.sh: unknown --impl=%s (want python|rust)\n' "$impl" >&2
+if [[ "$impl" != "rust" ]]; then
+  printf 'run.sh: unknown --impl=%s (want rust)\n' "$impl" >&2
   exit 2
 fi
 
@@ -91,34 +78,25 @@ if [[ "$mode" == "verify-checksum" ]]; then
   exit 0
 fi
 
-if [[ "$impl" == "rust" ]]; then
-  # No Rust port exists yet (W1-W3 build it) -- real-but-empty lane per
-  # plan.md W0-S9 action 5. `--count` stays informational (exit 0): it
-  # reports a case count, not a verdict. The run path (no --count) FAILS
-  # CLOSED: zero implemented cases means zero verification happened, so
-  # exit 1 rather than the false-green exit 0 this stub used to return
-  # unconditionally (#10, DF-59) -- a predicate re-run against this branch
-  # must be able to observe a failure, or it isn't a gate.
-  if [[ "$mode" == "count" ]]; then
-    printf '0\n'
-    exit 0
-  fi
-  if [[ -n "$suite" ]]; then
-    printf 'conformance --impl=rust: FAIL -- 0 cases implemented for --suite=%s (Rust port not yet built -- W1-W3)\n' "$suite" >&2
-  else
-    printf 'conformance --impl=rust: FAIL -- 0 cases implemented (Rust port not yet built -- W1-W3)\n' >&2
-  fi
+if [[ -z "$RUNNER_PY" || ! -x "$RUNNER_PY" ]]; then
+  printf 'run.sh: Python 3 is required for the conformance harness\n' >&2
   exit 1
 fi
 
-# impl == python from here on.
-if [[ ! -x "$PY" ]]; then
-  printf 'run.sh: CLI venv missing at %s -- run bin/shepherd-venv-ensure first\n' "$PY" >&2
-  exit 1
-fi
-
-runner_args=(--cases-dir "$HERE/cases")
+runner_args=(--cases-dir "$HERE/cases" --impl "$impl")
 [[ -n "$suite" ]] && runner_args+=(--suite "$suite")
 [[ "$mode" == "count" ]] && runner_args+=(--count)
 
-exec "$PY" "$HERE/runner.py" "${runner_args[@]}"
+if [[ "$impl" == "rust" && "$mode" != "count" ]]; then
+  cargo build --quiet --locked --manifest-path "$REPO_ROOT/Cargo.toml" -p shepherd-cli --bin shepherd
+  target_dir="${CARGO_TARGET_DIR:-$REPO_ROOT/target}"
+  [[ "$target_dir" = /* ]] || target_dir="$REPO_ROOT/$target_dir"
+  rust_bin="$target_dir/debug/shepherd"
+  if [[ ! -x "$rust_bin" ]]; then
+    printf 'run.sh: Rust binary missing after build: %s\n' "$rust_bin" >&2
+    exit 1
+  fi
+  runner_args+=(--rust-bin "$rust_bin")
+fi
+
+exec "$RUNNER_PY" "$HERE/runner.py" "${runner_args[@]}"

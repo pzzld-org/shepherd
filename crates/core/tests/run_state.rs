@@ -2,7 +2,7 @@
     Appellation: run_state <test>
     Contrib: @FL03
 */
-//! Golden-byte tests for `run.json` against the Python oracle (`models_run.py`).
+//! Golden-byte tests for the canonical native `run.json` contract.
 //!
 //! Integration tests: these exercise only the public API, so they live here and
 //! not inside `src/`. The four `atomic_io` cases that remain inline in
@@ -22,43 +22,8 @@ use shepherd_core::run::{LaneState, RunState};
 /// the named ones; the nested one sorts inside its own object) and
 /// round-trip preservation of fields this struct does not declare.
 ///
-/// Golden text independently produced by:
-/// ```python
-/// json.dumps({
-///     "schema_version": 1, "run": "v900-dev0", "kind": "sprint",
-///     "branch": "v9.0.0-dev.0", "base": "main", "seed": "", "plan": "",
-///     "status": "planted", "updated_at": 1786621458,
-///     "lanes": [{
-///         "id": "l1-engine", "plan": "lanes/l1-engine/plan.md",
-///         "worktree": "", "branch": "", "state": "pending",
-///         "accepted_commit": None, "merged": False, "updated_at": 0,
-///         "nested_unknown": {"z": 1, "a": 2},
-///     }],
-///     "custom_future_field": {"b": 2, "a": 1},
-/// }, indent=2, sort_keys=True)
-/// ```
-/// A `run.json` shaped like a real one (`.shepherd/runs/v645/run.json`, with
-/// its lane list trimmed to one row), plus a top-level unknown field and a
-/// nested unknown field inside the lane -- proving BOTH invariants at once:
-/// recursive sort (the top-level unknown key interleaves alphabetically with
-/// the named ones; the nested one sorts inside its own object) and
-/// round-trip preservation of fields this struct does not declare.
-///
-/// Golden text independently produced by:
-/// ```python
-/// json.dumps({
-///     "schema_version": 1, "run": "v900-dev0", "kind": "sprint",
-///     "branch": "v9.0.0-dev.0", "base": "main", "seed": "", "plan": "",
-///     "status": "planted", "updated_at": 1786621458,
-///     "lanes": [{
-///         "id": "l1-engine", "plan": "lanes/l1-engine/plan.md",
-///         "worktree": "", "branch": "", "state": "pending",
-///         "accepted_commit": None, "merged": False, "updated_at": 0,
-///         "nested_unknown": {"z": 1, "a": 2},
-///     }],
-///     "custom_future_field": {"b": 2, "a": 1},
-/// }, indent=2, sort_keys=True)
-/// ```
+/// The literal below pins those bytes directly; changing the encoder requires
+/// an intentional versioned-contract update.
 const GOLDEN_WITH_UNKNOWN_KEYS: &str = r#"{
   "base": "main",
   "branch": "v9.0.0-dev.0",
@@ -145,7 +110,7 @@ fn unknown_keys_round_trip() {
     assert_eq!(
         state.to_canonical_json(),
         GOLDEN_WITH_UNKNOWN_KEYS,
-        "canonical output must match the Python oracle byte-for-byte"
+        "canonical output must match the pinned run-state bytes"
     );
 
     // And the other direction: re-parsing the canonical text this struct
@@ -218,19 +183,14 @@ fn keys_are_recursively_sorted_even_with_no_unknown_keys() {
     );
 }
 
-/// Python's `json.dump` defaults to `ensure_ascii=True`: every codepoint
-/// above `U+007F` is written as `\uXXXX`, astral codepoints as a UTF-16
-/// surrogate pair. `serde_json` does not do this by default, which is
-/// exactly the gap `crate::run::canonical` closes by hand. Covers a 2-byte
+/// The pinned run-state wire contract writes every codepoint above `U+007F`
+/// as `\uXXXX` and astral codepoints as a UTF-16 surrogate pair. `serde_json`
+/// does not do this by default, which is exactly the gap
+/// `crate::run::canonical` closes by hand. Covers a 2-byte
 /// UTF-8 codepoint (`é`), a 3-byte one (`☕`), an astral 4-byte one needing a
 /// surrogate pair (`🎉`), and the standard `\n`/`\t`/`\"`/`\\` escapes.
-///
-/// Golden text independently produced by:
-/// ```python
-/// json.dumps("café ☕ \U0001f389 line1\nline2\ttab \"quote\" back\\slash")
-/// ```
 #[test]
-fn non_ascii_and_control_characters_escape_like_python() {
+fn non_ascii_and_control_characters_use_pinned_wire_escapes() {
     let mut state = minimal_state();
     state.extra.insert(
         "note".into(),
@@ -248,15 +208,15 @@ fn non_ascii_and_control_characters_escape_like_python() {
     );
     assert!(
         text.is_ascii(),
-        "canonical output must be pure ASCII, matching ensure_ascii=True; got: {text}"
+        "canonical output must be pure ASCII; got: {text}"
     );
 }
 
 /// A document carrying only the one required field must load with every
-/// other field at the Python reference's default -- not fail, and not
-/// silently substitute a DIFFERENT default.
+/// other field at the run-state contract's default, not fail or silently
+/// substitute a different default.
 #[test]
-fn defaults_match_the_python_reference() {
+fn defaults_match_the_run_state_contract() {
     let state = minimal_state();
     assert_eq!(state.schema_version, 1);
     assert_eq!(state.run, "v1");

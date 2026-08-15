@@ -1,0 +1,9 @@
+{
+  "suite": "core",
+  "kind": "pure",
+  "description": "seed verify preserves canonical deliverable failure and warning order",
+  "args": ["seed", "verify", "canonical.seed.md"],
+  "input_files": {"canonical.seed.md": "canonical.seed.md"},
+  "db_fixture": "none",
+  "capture_files": []
+}

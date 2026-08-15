@@ -1,0 +1,7 @@
+{
+  "suite": "guard-engine",
+  "kind": "pure",
+  "description": "Missing normalized role returns unresolved rather than allow or engine failure.",
+  "args": ["guard", "eval"],
+  "stdin_file": "stdin.json"
+}

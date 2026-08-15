@@ -1,0 +1,7 @@
+{
+  "suite": "guard-engine",
+  "kind": "pure",
+  "description": "An empty predicate corpus cannot report a green suite.",
+  "args": ["guard", "test", "--content-dir", "empty-content"],
+  "input_files": {"empty-content/keep.txt": "keep.txt"}
+}

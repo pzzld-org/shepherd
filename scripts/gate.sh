@@ -44,10 +44,30 @@ step() {
 # No compilation. This is what runs on every commit.
 gate_fast() {
   step "rustfmt" cargo fmt --all --check
+  step "npm adapter dependency rules are falsifiable" node packages/scripts/check-deps.mjs --self-test
+  step "npm adapter dependency rules" node packages/scripts/check-deps.mjs
   # The invariants are checked for falsifiability first: a validator with a
   # typo'd key name passes everything forever and is worse than no validator.
   step "workspace invariants are falsifiable" ./scripts/check-workspace.sh --self-test
   step "workspace invariants" ./scripts/check-workspace.sh
+  step "WASM release boundary is falsifiable" bash scripts/tests/test-wasm-release-gate.sh
+  step "component Node boundary is falsifiable" bash scripts/tests/test-component-node-gate.sh
+  step "package distribution boundary is falsifiable" bash scripts/tests/test-package-boundary.sh
+  step "generated carrier authority" bash scripts/tests/test-generated-carrier-authority.sh
+  step "native CLI authority inventory is falsifiable" python3 scripts/check-cli-authority.py --self-test
+  step "native CLI authority inventory" python3 scripts/check-cli-authority.py
+  step "release asset inventory" bash scripts/tests/test-release-assets.sh
+  step "release installers" bash scripts/tests/test-release-installers.sh
+  step "PowerShell installer contract" bash scripts/tests/test-release-installer-powershell-contract.sh
+  step "release distribution legal material" bash scripts/tests/test-release-distribution-license.sh
+  step "release workflow contract" bash scripts/tests/test-release-workflow.sh
+  step "release version authority is falsifiable" python3 scripts/tests/test-version-bump.py
+  check_release_version() {
+    local version
+    version=$(python3 -c 'import json; print(json.load(open(".claude-plugin/plugin.json"))["version"])')
+    python3 scripts/version-bump.py check --root . --version "$version"
+  }
+  step "release version authority" check_release_version
   # The plugin layout is an interface contract with the harness. `claude plugin
   # validate` passes clean on a tree whose hooks all point at deleted scripts,
   # so it cannot be the thing that catches this.
@@ -61,6 +81,33 @@ gate_full() {
   step "clippy (default)" env RUSTFLAGS="-D warnings" cargo clippy --workspace --all-targets --locked
   step "clippy (full)" env RUSTFLAGS="-D warnings" cargo clippy --workspace --all-targets --locked --features full
   step "tests" cargo test --workspace --locked
+  step "build typed component for adapter package suites" \
+    cargo build --locked --release --package shepherd-component --target wasm32-wasip2
+  step "component runtime package suite" \
+    node --test packages/component-runtime/test/*.test.mjs
+  step "Claude adapter package suite" node packages/harness-claude/test.mjs
+  step "Codex adapter package suite" node packages/harness-codex/test.mjs
+  step "Pi adapter package suite" node packages/harness-pi/test.mjs
+  step "canonical Claude carrier is compiler-owned" \
+    cargo run --quiet --locked -p shepherd-cli -- \
+    compile --target claude --out "$PWD" --check
+  compile_ephemeral_carriers() {
+    local stage status=0
+    stage=$(mktemp -d "${TMPDIR:-/tmp}/shepherd-carriers.XXXXXX")
+    cargo run --quiet --locked -p shepherd-cli -- \
+      compile --target codex --out "$stage/codex" || status=$?
+    if [[ "$status" -eq 0 ]]; then
+      cargo run --quiet --locked -p shepherd-cli -- \
+        compile --target pi --out "$stage/pi" || status=$?
+    fi
+    if [[ "$status" -eq 0 ]]; then
+      grep -Fq '"target": "codex"' "$stage/codex/.shepherd-generated.json" || status=1
+      grep -Fq '"target": "pi"' "$stage/pi/.shepherd-generated.json" || status=1
+    fi
+    find "$stage" -depth -delete
+    return "$status"
+  }
+  step "canonical Codex and Pi carriers compile from Rust" compile_ephemeral_carriers
   # `cargo check --workspace` builds exactly one feature combination; this is
   # what covers the rest. See the header of scripts/check-features.sh.
   step "feature matrix" ./scripts/check-features.sh
@@ -76,6 +123,7 @@ gate_full() {
 # opt-in locally and always-on in CI (.github/workflows/rust-wasm.yml).
 gate_wasm() {
   local missing=0
+  local wasm_tools_version="1.254.0"
 
   # wasm32-unknown-unknown needs a clang with a WebAssembly backend, because
   # `sqlite-wasm-rs` compiles SQLite from C. Apple's system clang has no wasm
@@ -103,25 +151,59 @@ gate_wasm() {
   fi
 
   command -v wasmtime >/dev/null 2>&1 || { printf 'wasmtime not on PATH\n'; missing=1; }
+  command -v wasm-tools >/dev/null 2>&1 || { printf 'wasm-tools not on PATH\n'; missing=1; }
+  if command -v wasm-tools >/dev/null 2>&1 \
+    && [ "$(wasm-tools --version 2>/dev/null)" != "wasm-tools ${wasm_tools_version}" ]; then
+    printf 'wasm-tools %s required\n' "${wasm_tools_version}"
+    missing=1
+  fi
   [ -n "${WASI_SDK_PATH:-}" ] && [ -x "${WASI_SDK_PATH}/bin/clang" ] || {
     printf 'WASI_SDK_PATH unset or not a wasi-sdk install\n'
     missing=1
   }
   if [ "${missing}" = "1" ]; then
-    printf '\n\033[33m==> wasm SKIPPED\033[0m (run scripts/setup.sh --wasm)\n'
-    return 0
+    printf '\n\033[31m==> wasm BLOCKED\033[0m (run scripts/setup.sh --wasm)\n'
+    return 1
   fi
 
   # wasm32-unknown-unknown proves reach: no OS, no C toolchain, no filesystem.
-  for pkg in shepherd-core shepherd shepherd-registry shepherd-render; do
+  for pkg in shepherd-core shepherd-compiler shepherd shepherd-registry shepherd-render; do
     step "build ${pkg} -> wasm32-unknown-unknown" \
       cargo build --locked --release --package "${pkg}" \
       --target wasm32-unknown-unknown --no-default-features --features wasm
   done
 
+  step "build Shepherd WIT component (wasip2)" \
+    cargo build --locked --release --package shepherd-component --target wasm32-wasip2
+  step "validate Shepherd WIT component" \
+    wasm-tools validate target/wasm32-wasip2/release/shepherd_component.wasm
+  extract_component_wit() {
+    local artifact="target/wasm32-wasip2/release/shepherd_component.wasm"
+    local wit_output="target/wasm32-wasip2/release/shepherd.wit"
+    local resolved_imports="${wit_output}.imports"
+    local resolved_import_count
+    wasm-tools component wit "${artifact}" > "${wit_output}"
+    test -s "${wit_output}"
+    grep -Fq 'export fl03:shepherd/engine@6.4.5;' "${wit_output}"
+    sed -n 's/^  import \(wasi:[^;]*\);$/\1/p' "${wit_output}" \
+      | LC_ALL=C sort > "${resolved_imports}"
+    resolved_import_count=$(wc -l < "${resolved_imports}" | tr -d ' ')
+    test "${resolved_import_count}" -eq 14
+    diff -u crates/component/wit/resolved-imports.txt "${resolved_imports}"
+  }
+  step "extract Shepherd WIT contract" extract_component_wit
+  step "call Shepherd component from Node through jco" bash scripts/test-component-node.sh
+  step "Claude adapter package suite" node packages/harness-claude/test.mjs
+  step "Codex adapter package suite" node packages/harness-codex/test.mjs
+  step "Pi adapter package suite" node packages/harness-pi/test.mjs
+  step "build and validate the self-contained Claude plugin ZIP" \
+    bash scripts/tests/test-claude-plugin-release.sh
+
   # wasm32-wasip1 proves behaviour. Building only proves the C cross-compile;
-  # these tests EXECUTE under wasmtime, and one of them opens a WAL database as
-  # a real file and reads a row back through the WASI VFS. That is the property
+  # these tests EXECUTE under wasmtime, and one of them opens a file-backed
+  # database and reads a row back through the WASI VFS. SQLite correctly falls
+  # back from requested WAL to delete journaling on WASI, whose VFS has no WAL
+  # shared-memory locking. Real file persistence is the property
   # wasm32-unknown-unknown cannot satisfy in Node.
   step "execute registry gate tests under wasmtime (wasip1)" \
     cargo test --locked --package shepherd-registry \

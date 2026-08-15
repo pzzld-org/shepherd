@@ -34,17 +34,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 # Discovery is by convention at the plugin ROOT. `plugin.json` may override
-# `skills`/`hooks`/`commands`/`agents` with explicit paths, but note the trap
+# `skills`/`hooks`/`agents` with explicit paths, but note the trap
 # that makes an override a poor substitute for the convention: per the plugin
 # reference, `${CLAUDE_PLUGIN_ROOT}` is "the plugin's installation directory",
 # i.e. the ROOT -- relocating hooks.json does NOT re-base the paths inside it.
-COMPONENT_DIRS = ("agents", "commands", "skills", "hooks")
+COMPONENT_DIRS = ("agents", "skills", "hooks")
 
 PLUGIN_ROOT_REF = re.compile(r"\$\{CLAUDE_PLUGIN_ROOT\}/([^\"'\s)\\]+)")
 
 
 def rule_component_dirs_are_at_the_root(root: Path) -> list[str]:
-    """`agents/`, `commands/`, `skills/` and `hooks/` live at the plugin root.
+    """`agents/`, `skills/` and `hooks/` live at the plugin root.
 
     A component directory elsewhere is not discovered, and nothing says so.
     """
@@ -61,6 +61,15 @@ def rule_component_dirs_are_at_the_root(root: Path) -> list[str]:
             f'"{name}" override — it will not be discovered'
         )
     return bad
+
+
+def rule_retired_command_surface_is_absent(root: Path) -> list[str]:
+    """Slash-command wrappers may not recreate a second workflow authority."""
+    commands = root / "commands"
+    if not commands.is_dir():
+        return []
+    files = sorted(path.relative_to(root).as_posix() for path in commands.rglob("*") if path.is_file())
+    return [f"{path} recreates the retired slash-command authority" for path in files]
 
 
 def rule_hooks_json_is_discoverable(root: Path) -> list[str]:
@@ -155,6 +164,33 @@ def rule_skills_are_shaped_correctly(root: Path) -> list[str]:
     return bad
 
 
+def rule_generated_skills_are_thin(root: Path) -> list[str]:
+    """Root skill carriers contain one generated entrypoint and no doctrine copy.
+
+    Authored skill content lives under ``content/`` and the Rust compiler emits
+    the harness carrier. Extra references, schemas, scripts, or examples here
+    silently create a second authority and expand every installed plugin.
+    """
+    skills = root / "skills"
+    if not skills.is_dir():
+        return ["skills/ is missing"]
+    bad = []
+    for child in sorted(skills.iterdir()):
+        if not child.is_dir():
+            continue
+        extras = sorted(
+            path.relative_to(child).as_posix()
+            for path in child.rglob("*")
+            if path.is_file() and path.name != "SKILL.md"
+        )
+        for extra in extras:
+            bad.append(
+                f"skills/{child.name}/{extra} is a second carrier authority; "
+                "root skills may contain only SKILL.md"
+            )
+    return bad
+
+
 def rule_configured_gates_resolve(root: Path) -> list[str]:
     """Paths named by `.shepherd/shepherd.toml` gate commands exist.
 
@@ -190,10 +226,12 @@ def rule_configured_gates_resolve(root: Path) -> list[str]:
 
 RULES = [
     rule_component_dirs_are_at_the_root,
+    rule_retired_command_surface_is_absent,
     rule_hooks_json_is_discoverable,
     rule_hook_commands_resolve,
     rule_plugin_root_refs_resolve,
     rule_skills_are_shaped_correctly,
+    rule_generated_skills_are_thin,
     rule_configured_gates_resolve,
 ]
 
@@ -260,12 +298,20 @@ def self_test(root: Path) -> int:
             '{"PreToolUse":[{"command":"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/gone.sh"}]}'
         )
 
+    def duplicate_command_authority(tmp: Path) -> None:
+        (tmp / "commands").mkdir()
+        (tmp / "commands" / "start.md").write_text("duplicate workflow")
+
     def skill_without_body(tmp: Path) -> None:
         (tmp / "skills" / "empty").mkdir()
 
     def stale_plugin_root_ref(tmp: Path) -> None:
         (tmp / "agents").mkdir(exist_ok=True)
         (tmp / "agents" / "a.md").write_text("run ${CLAUDE_PLUGIN_ROOT}/skills/gone/SKILL.md")
+
+    def duplicate_skill_authority(tmp: Path) -> None:
+        (tmp / "skills" / "demo" / "references").mkdir()
+        (tmp / "skills" / "demo" / "references" / "doctrine.md").write_text("duplicate")
 
     def broken_gate(tmp: Path) -> None:
         (tmp / ".shepherd").mkdir()
@@ -275,10 +321,12 @@ def self_test(root: Path) -> int:
 
     cases = [
         (rule_component_dirs_are_at_the_root, broken_move),
+        (rule_retired_command_surface_is_absent, duplicate_command_authority),
         (rule_hooks_json_is_discoverable, broken_move),
         (rule_hook_commands_resolve, dangling_hook),
         (rule_plugin_root_refs_resolve, stale_plugin_root_ref),
         (rule_skills_are_shaped_correctly, skill_without_body),
+        (rule_generated_skills_are_thin, duplicate_skill_authority),
         (rule_configured_gates_resolve, broken_gate),
     ]
 

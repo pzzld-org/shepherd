@@ -1,0 +1,1 @@
+ERROR: worktree unavailable: native git worktree host seam is not enabled; arguments=["list"]

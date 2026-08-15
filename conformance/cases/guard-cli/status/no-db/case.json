@@ -1,7 +1,8 @@
 {
   "suite": "guard-cli",
   "kind": "pure",
-  "description": "shepherd status (bare) against a workdir with no shepherd.db at all -- status.py's own explicit pre-check (\"ERROR: no DB at {path} -- run 'shctx init'\"), exit 1, before any db.lifespan() self-heal path runs.",
+  "requires_git": true,
+  "description": "Native shepherd status against a workdir with no registry returns its explicit canonical shepherd init instruction without self-healing.",
   "args": ["status"],
   "db_fixture": "none",
   "capture_files": []

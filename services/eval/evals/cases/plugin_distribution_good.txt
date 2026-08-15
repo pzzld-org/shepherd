@@ -1,0 +1,7 @@
+Release v6.4.5 as `shepherd-claude-plugin-6.4.5.zip` plus its SHA-256 sidecar. Build the wasip2 component from locked Rust sources, transpile it with locked jco, and stage the generated JavaScript, component Wasm, core Wasm, and pinned Preview 2 shim into a clean plugin root. Do not write generated output into the checkout.
+
+The ZIP contains only `.claude-plugin/plugin.json`, notices, the nine compiler-owned Claude roles, the seven compiler-owned skills, the thin Claude lifecycle and guard hooks, and their adjacent Component runtime. It excludes `commands/`, `services/cli`, `bin`, Bash/Python implementations, and legacy context scripts. The native `shepherd` executable must resolve from PATH or the explicit embedding override.
+
+Do not advertise the source repository as a runnable GitHub marketplace plugin: Claude marketplace sources cannot select a generated GitHub release ZIP. Document `claude --plugin-url <release-zip>` and checksum-first `claude --plugin-dir <verified-local-zip>` accurately as session-only loading.
+
+Before publication, build twice and byte-compare both ZIPs and sidecars, reject unsafe archive paths and unexpected inventory, verify the checksum, validate the extracted plugin strictly, ask Claude for the ZIP's component inventory, and execute the extracted guard hook without a repository runtime or node_modules fallback.

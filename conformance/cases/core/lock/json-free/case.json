@@ -1,0 +1,11 @@
+{
+  "suite": "core",
+  "kind": "pure",
+  "authority": "native-v6.4.5",
+  "intentional_difference": "native lock JSON reports the typed canonical lock shape",
+  "requires_git": true,
+  "description": "lock show JSON is deterministic when the lock is free",
+  "args": ["lock", "show", "--json"],
+  "db_fixture": "none",
+  "capture_files": []
+}

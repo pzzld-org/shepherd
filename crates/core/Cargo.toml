@@ -23,6 +23,18 @@ name = "default"
 required-features = []
 
 [[test]]
+name = "guard"
+required-features = ["std", "parse", "json"]
+
+[[test]]
+name = "dispatch"
+required-features = ["std", "json"]
+
+[[test]]
+name = "portable_dispatch"
+required-features = ["std", "json"]
+
+[[test]]
 name = "run_state"
 required-features = ["std", "json"]
 
@@ -43,11 +55,9 @@ thiserror = { workspace = true }
 strum = { workspace = true }
 # parsing — the run-id and branch grammars are engine rules, not CLI rules
 nom = { optional = true, workspace = true }
-# configuration layering — the PRECEDENCE CHAIN is engine policy, so the string
-# -parsing half of `config` lives here. The filesystem and environment halves
-# (`File::with_name`, `Environment`) stay on the adapter side; see src/loader.rs
-# and the `engine-boundary` job that enforces the split by name.
-config = { optional = true, workspace = true }
+# configuration layering parses only already-read TOML strings. Filesystem and
+# environment discovery stay on the adapter side; see src/loader.rs.
+toml = { optional = true, workspace = true }
 # schema generation — feeds the config key universe the validator checks
 schemars = { optional = true, workspace = true }
 # serialization
@@ -78,7 +88,7 @@ full = [
 
 # ********* [FF] Flags *********
 config = [
-  "dep:config",
+  "dep:toml",
   "json",
   "std",
 ]
@@ -92,6 +102,7 @@ json = [
 parse = [
   "alloc",
   "dep:nom",
+  "dep:toml",
 ]
 
 schema = [
@@ -145,6 +156,7 @@ std = [
   "serde_json?/std",
   "strum/std",
   "thiserror/std",
+  "toml?/std",
   "tracing?/std",
 ]
 

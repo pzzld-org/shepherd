@@ -1,0 +1,16 @@
+[
+  {
+    "bucket": "blocking-this-sprint",
+    "issue": {
+      "labels": [
+        "critical"
+      ],
+      "milestone": null,
+      "number": 7,
+      "state": "open",
+      "title": "Critical regression",
+      "updated_at": <TS>,
+      "url": "https://example.test/7"
+    }
+  }
+]

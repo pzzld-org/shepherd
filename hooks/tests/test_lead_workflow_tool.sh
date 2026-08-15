@@ -8,7 +8,7 @@
 # #263 makes the grant LIVE wherever it is held: root drives Dynamic Workflows
 # directly, AND a teammate-@conductor / self-contained @engineer now compiles
 # its OWN Dynamic Workflow for its gate-free fan-out too, once a
-# `WORKFLOW-VEHICLE-PROBE` (skills/shepherd/references/pipeline.md §Lane law)
+# `WORKFLOW-VEHICLE-PROBE` (skills/shepherd/SKILL.md)
 # confirms `Workflow` is present in its own visible tool list. The v6.3.9-era
 # "Workflow is denied inside a subagent" reading is RETIRED as the standing
 # instruction (#263) — shipping the grant in-tree stops the release pipeline

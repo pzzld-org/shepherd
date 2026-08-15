@@ -1,0 +1,157 @@
+{
+  "schema_version": 2,
+  "purpose": "Frozen, duplicate-free inventory of every route formerly exposed by the retired Python Typer and Bash shctx implementations. Native routes are owned by the Rust CLI; retired routes remain listed as explicit non-implementations.",
+  "intentional_native_differences": {
+    "config": [
+      "typed configuration is resolved through the one Rust schema; dotted reads and structured output never invoke the retired raw Python parser",
+      "configuration creation is descriptor-safe, no-clobber, and requires explicit confirmation"
+    ],
+    "coordination": [
+      "signal and teammate routes use project-scoped typed registry state, bounded input, deterministic ordering, and no tmux, inbox, shell, or harness-private fallback"
+    ],
+    "doctor": [
+      "health checks are read-only, emit a typed text or JSON report, and do not bootstrap Poetry, virtualenvs, or retired namespace state"
+    ],
+    "home": [
+      "the separately-owned user home contains only direct canonical shepherd configuration candidates and mutation requires explicit confirmation"
+    ],
+    "init": [
+      "native init requires explicit confirmation and creates only typed layout-v5 project state without Poetry, virtualenv, refresh, or retired directory scaffolds"
+    ],
+    "seed": [
+      "usage names the one public shepherd CLI instead of the retired shctx dispatcher",
+      "input is bounded to 1048576 bytes and read failures fail closed",
+      "shell-style path globs preserve ranges, parent components, hidden-file rules, and dangling directory entries without invoking Bash"
+    ],
+    "handoff": [
+      "canonical artifacts are read from runs/<run>/handoff.md; docs/handoffs is legacy read-only input during migration"
+    ],
+    "knowledge": [
+      "query exposes a fixed typed allowlist and search uses bounded canonical-registry FTS; neither route accepts shell substitutions, arbitrary SQL files, or unbounded input"
+    ],
+    "locks": [
+      "native lock operations use the canonical project lock and typed registry history, validate a closed mode vocabulary, and reap only a holder proven dead by the native PID probe"
+    ],
+    "migration": [
+      "native migration is a descriptor-safe layout-v5 plan or explicitly confirmed snapshot-backed rewrite; dry-run never mutates legacy inputs"
+    ],
+    "planning and reports": [
+      "audit, discovery, close-lane, render, and report leaves consume canonical run or typed-registry state without retired roots, subprocesses, network calls, or a second report authority"
+    ],
+    "sprint execution": [
+      "ready and lint validate canonical typed state in-process; sprint transitions are locked run-ledger updates and never hide refresh, git, worktree, or cleanup subprocesses",
+      "deliverables and issues are project-scoped because the typed registry schema has no run_id field; the CLI does not invent one in an unrelated column"
+    ],
+    "run layout": [
+      "layout-v5 creates only the canonical lanes tree and does not recreate retired graph/dispatch/reports/audits placeholders"
+    ],
+    "run wave pending": [
+      "exit 6 includes a deterministic stderr reason instead of failing silently"
+    ]
+  },
+  "python_typer": {
+    "former_entrypoint": "services/cli/shepherd_cli/app.py",
+    "expected_strict_leaf_count": 106,
+    "native": [
+      "audit",
+      "close-lane",
+      "config",
+      "deliverable complete",
+      "deliverable promise",
+      "deliverable stalled",
+      "discovery",
+      "doctor",
+      "guard eval",
+      "guard explain",
+      "guard serve",
+      "guard test",
+      "handoff",
+      "home init",
+      "home show",
+      "home which",
+      "init",
+      "issues",
+      "lint",
+      "lock acquire",
+      "lock reap",
+      "lock release",
+      "lock show",
+      "mem add",
+      "mem delete",
+      "mem list",
+      "mem pin",
+      "mem rm",
+      "mem search",
+      "mem show",
+      "mem unpin",
+      "models help",
+      "models resolve",
+      "models show",
+      "migrate",
+      "query",
+      "ready",
+      "render",
+      "report audit",
+      "report close",
+      "report discovery",
+      "report escalation",
+      "report help",
+      "report teammates",
+      "run canonicalize",
+      "run claim",
+      "run init",
+      "run lane add",
+      "run lane set",
+      "run layout",
+      "run ledger check",
+      "run ledger path",
+      "run list",
+      "run migrate",
+      "run rename",
+      "run set",
+      "run show",
+      "run wave accept",
+      "run wave merged",
+      "run wave pending",
+      "run wave verify",
+      "seed",
+      "search",
+      "signal poll",
+      "signal send",
+      "sprint close",
+      "sprint help",
+      "sprint open",
+      "sprint wave",
+      "status",
+      "teammate liveness",
+      "teammate state",
+      "teammate status"
+    ],
+    "retired": [
+      "adapt reflect", "adapt recommend", "adapt report", "adapt roll", "adapt priors",
+      "dash",
+      "dups", "eval", "export", "graph",
+      "inject", "insights",
+      "loop close", "loop focus show", "loop focus upsert", "loop init", "loop list", "loop native-cmd", "loop record", "loop status",
+      "panes capture", "panes dash", "panes help", "panes prune", "panes status", "panes tail",
+      "plan", "prune", "refresh", "release",
+      "style", "sync", "worktree"
+    ]
+  },
+  "bash_shctx": {
+    "former_entrypoint": "skills/context/scripts/shctx",
+    "expected_dispatch_group_count": 40,
+    "retired": [
+      "adapt", "audit", "close-lane", "config", "dash", "deliverable", "discovery", "doctor", "dups", "eval",
+      "export", "graph", "handoff", "init", "inject", "insights", "issues", "lint", "lock", "loop", "mem",
+      "migrate", "models", "panes", "plan", "prune", "query", "ready", "refresh", "release", "report", "search",
+      "seed", "signal", "sprint", "status", "style", "sync", "teammate", "worktree"
+    ]
+  },
+  "retirement_contract": {
+    "public_launcher": "bin/shepherd",
+    "launcher_policy": "exec the native binary only; no interpreter, package manager, or legacy command fallback",
+    "retired_roots": ["services/cli", "skills/context/scripts"],
+    "oracle_policy": "former implementation roots are absent from the release tree; expected bytes and this route inventory are the only retained migration evidence"
+  }
+}

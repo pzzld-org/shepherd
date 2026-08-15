@@ -1,5 +1,6 @@
 ---
 role: engineer
+description: "Turn an approved seed into a complete, file-disjoint sprint plan and coordinate its critic gate. Use for plan authorship, not production implementation."
 source: agents/engineer.md
 model_hint: reasoning-high
 dispatchable: true

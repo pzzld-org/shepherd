@@ -1,14 +1,13 @@
 {
   "name": "@fl03/harness-claude",
   "version": "6.4.5",
-  "private": true,
-  "description": "Claude Code adapter: consumes @fl03/compiler's `claude` emission target (agents/*.md, skills/*/SKILL.md; content/ has no commands/ or hooks.json source yet, see README) and resolves it onto Claude's concrete mechanisms -- model_hint -> model:, a PreToolUse guard relay to the shared Rust predicate engine, and declared dispatch ceilings. Implemented in Wave 4 (W4-S4).",
+  "description": "Thin Claude Code adapter for native per-agent identity, lifecycle dispatch, and the shared Rust guard engine.",
   "type": "module",
   "scripts": {
     "test": "node test.mjs"
   },
   "dependencies": {
-    "@fl03/compiler": "6.4.5"
+    "@fl03/component-runtime": "6.4.5"
   },
   "engines": {
     "node": ">=20"

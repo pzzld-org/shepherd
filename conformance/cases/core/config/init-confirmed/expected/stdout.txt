@@ -1,0 +1,1 @@
+initialized config: <SCRATCH>/cwd/.shepherd/shepherd.toml

@@ -1,0 +1,5 @@
+  HARD  1 deliverable block(s) carry a priority but no **GH:** anchor (seed-anchored-by-issues.md)
+  warn  Phase 0 mesh has 2 row(s) (< 8 recommended)
+  warn  no deliverable ranked CRITICAL or HIGH — confirm this sprint earns a slot
+  warn  frontmatter missing 'milestone:' (engineer + critic parse it)
+FAIL: 1 hard failure(s), 3 warning(s)

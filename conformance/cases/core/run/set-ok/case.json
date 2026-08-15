@@ -1,0 +1,1 @@
+{"suite":"core","kind":"mutating","requires_git":true,"description":"run set","setup":[["run","init","v910-dev0"]],"args":["run","set","v910-dev0","--status","executing"],"db_fixture":"none"}

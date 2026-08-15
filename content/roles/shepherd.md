@@ -1,5 +1,6 @@
 ---
 role: shepherd
+description: "Orchestrate a complete sprint across the nine-role flock, durable artifacts, gates, and cross-harness resume. Use only for the top-level root session."
 source: agents/shepherd.md
 model_hint: inherit-caller
 write_eligible: true

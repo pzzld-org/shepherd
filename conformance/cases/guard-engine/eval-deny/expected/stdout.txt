@@ -1,0 +1,1 @@
+{"decision": "deny", "predicate": "dedup-gate", "rule": "hit-requires-justification", "halt_code": "DEDUP-HIT", "reason": "A symbol matching an existing one at or above the block threshold is denied UNLESS the dispatch carries an explicit justification block naming why this is a genuine new symbol, not a duplicate."}

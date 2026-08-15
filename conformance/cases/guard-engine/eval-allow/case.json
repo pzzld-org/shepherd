@@ -1,0 +1,7 @@
+{
+  "suite": "guard-engine",
+  "kind": "pure",
+  "description": "Raw read-only git call returns a clean allow verdict.",
+  "args": ["guard", "eval"],
+  "stdin_file": "stdin.json"
+}

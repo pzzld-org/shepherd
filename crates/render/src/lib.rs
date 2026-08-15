@@ -10,9 +10,9 @@
 //! ## Why this is a crate and not a module
 //!
 //! Rendering is the one place shepherd emits bytes that another tool later
-//! diffs. `render.py`'s manifest pins `template_sha256`, `vars_sha256` and
-//! `output_sha256`, and the conformance oracle asserts all three reproduce
-//! byte-identically across implementations. Holding that in its own crate lets
+//! diffs. Its manifest pins `template_sha256`, `vars_sha256` and
+//! `output_sha256`, and the tests assert all three reproduce byte-identically.
+//! Holding that in its own crate lets
 //! the property be tested without a database, a config loader, or a terminal --
 //! and keeps a template engine out of [`shepherd_core`].
 //!

@@ -22,6 +22,14 @@ crate-type = ["rlib"]
 name = "default"
 required-features = ["bundled"]
 
+[[test]]
+name = "registry"
+required-features = ["bundled", "std"]
+
+[[test]]
+name = "layout"
+required-features = ["layout"]
+
 [package.metadata.docs.rs]
 all-features = false
 features = ["full"]
@@ -40,9 +48,8 @@ shepherd-core = { workspace = true }
 # defaults, the registry relies on prepared-statement reuse, and dropping it is
 # a silent performance regression, not a capability choice.
 rusqlite = { features = ["cache"], workspace = true }
-# hashing — schema_versions.checksum is a sha256 hex digest of the migration
-# file's bytes, matching services/cli/shepherd_cli/commands/migrate.py's
-# `hashlib.sha256(sql_text.encode("utf-8")).hexdigest()` exactly.
+# hashing — schema_versions.checksum is the SHA-256 hex digest of the exact
+# migration file bytes.
 sha2 = { workspace = true }
 # errors
 thiserror = { workspace = true }
@@ -55,6 +62,7 @@ tracing = { optional = true, workspace = true }
 [features]
 default = [
   "bundled",
+  "layout",
   "std",
 ]
 
@@ -62,6 +70,14 @@ full = [
   "default",
   "json",
   "tracing",
+]
+
+layout = [
+  "std",
+  "dep:serde",
+  "dep:serde_json",
+  "serde/std",
+  "serde_json/std",
 ]
 
 # ********* [FF] Flags *********

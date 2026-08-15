@@ -1,16 +1,36 @@
 ---
 name: thinking
-description: |
-  Decomposes any large or ambiguous problem into solvable units. Use before dispatch, when planning an attack on a mountain-sized task, or to frame a problem before delegating it.
+description: "Decompose large, ambiguous, or blocked work into independent, testable units with explicit assumptions and ownership. Use before planning or dispatching work that cannot be solved safely as one step."
 ---
 
-Yes, here it is folks. A hand written skill dictating the art of thought.
+# thinking — decomposing a large or ambiguous problem into solvable units
 
-### PROBLEM SOLVING
-EVERY MOTHERFUCKING PROBLEM, NO MATTER HOW LARGE, IS SIMPLY A UNIQUE COMBINATION OF SMALLER ONES. THAT IS ENGINEERING 101. THERE IS NO MOUNTAIN TO MOVE, JUST 1 BILLION PEBBLES. ONCE WE AGREE HERE, YOU WILL THEREFORE UNDERSTAND THAT EVERY PROBLEM IS SOLVABLE. IF YOU DON'T BELIEVE THIS, YOU ARE NOT READY TO WORK HERE. YOU WILL ALSO THEREFORE INTUITIVELY COME TO UNDERSTAND THAT TO MOVE 1 BILLION PEBBLES, YOU MUST FIRST MOVE 1. IF YOU CANNOT MOVE 1, YOU CANNOT MOVE 1 BILLION. IF YOU CANNOT MOVE 1, YOU ARE NOT READY TO WORK HERE. BUT HERE IS WHERE THIS TRULY MANIFESTS, WHEN WE LOOK AT WORK: IF EVERY PEBBLE IS ONE, SPECIFIC TASK OR SET OF TASKS TAKEN TO ACHIEVE A SPECIFIC OUTCOME, THEN RATHER THEN MOVING THE ENTIRE MOUNTAIN YOURSELF, RELY ON YOUR SUBAGENTS, TEAMMATES, AND HARNESS AN ORCHESTRAL ELEGANCE ONLY EVER ACHIEVED IN THE HIGHEST REACHES OF ABSTRACTION ITSELF. A TRUE SHEPHERD. EVEN A COMPLETE PLAN CANNOT ACCOUNT FOR EVERY SINGLE POSSIBILITY THAT MAY ARISE WITHIN THE COURSE OF EXECUTION, REDOS ARE INEVITABLE, BUT THE TRUE ART OF ENGINEERING IS IN THE ABILITY TO RECOGNIZE WHEN A REDO IS REQUIRED, AND TO EXECUTE IT WITH ELEGANCE AND PRECISION. THIS IS THE ESSENCE OF ENGINEERING EXCELLENCE.
+Carried through with no stripping needed: the source contains zero references to any
+concrete tool, and the discipline it states is already harness-neutral — decomposition,
+stated assumptions, and delegation to subordinate execution units are concepts every
+harness in `RECONCILIATION.md` shares, only the dispatch mechanism differs per harness.
 
-### BREAKING IT DOWN
-1. You cannot solve what you cannot name. Translation: if you cannot define the problem then you don't have the capacity to find the solution to it.
-2. State any assumptions, clearly. A common practice in engineering, however, there are always assumptions one will inevitably need to make when solving every *real* problem since there will always be something unknowable, a sort of mystic probability clause embedded into the very nature of the universe.
-3. Think in shapes: once you have stated the problem and your assumptions, it is often beneficial to generate a topological representation of the problem space ensuring we have sufficiently captured the nature of the situation.
-4. Solve the problem: while there is no technical sequence of steps I could ever dictate to you that would actually be able to imbue you with some innate understanding of *every* problem and it's solution, I can promise that by "setting the stage" and taking a moment to consider our *environment* can be the difference between life and death.
+## Problem solving
+
+Every problem, no matter how large, is a unique combination of smaller ones — there is no
+mountain to move, only many small pieces. If that premise doesn't hold, the work isn't
+ready to start. To move all of them, move one first; if the smallest unit can't be moved,
+the largest one can't either. At the working-agent scale: each unit is one concrete task
+toward a specific outcome, and rather than moving the whole mountain alone, lean on
+subordinate execution units and whatever fan-out the running harness provides. Even a
+complete plan can't anticipate every possibility execution will surface — a redo is
+inevitable sometimes; the actual skill is recognizing when one is needed and executing it
+precisely, not avoiding the need for one.
+
+## Breaking it down
+
+1. **Name it before solving it.** A problem that can't be stated precisely can't be solved
+   precisely either.
+2. **State assumptions explicitly.** Every real problem carries something unknowable; name
+   what's being assumed rather than letting it hide.
+3. **Think in shapes.** Once the problem and its assumptions are stated, a structural
+   sketch of the problem space is often the fastest way to confirm it's been captured
+   fully, not just described.
+4. **Solve it.** No fixed sequence covers every problem, but taking the moment to consider
+   the actual environment first is usually the difference between a real fix and a
+   plausible-looking one.

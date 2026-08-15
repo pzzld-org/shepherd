@@ -1,93 +1,89 @@
 # Customization
 
-Beyond `shepherd.toml`, shepherd has three customization surfaces:
-
-1. **Project doctrines** — DRIFT rules specific to your project, loaded into every flock dispatch
-2. **Custom branch / release model** — non-mod-10 sprint counts, alt release pipelines, monorepo splits
-3. **Custom flock briefs** — additional bracketed sections in coder briefs beyond the canonical seven
+Shepherd's engine, WIT contract, guard corpus, and layout are release-owned.
+Customize a project through its canonical configuration and authored content,
+not by forking an adapter or adding a command implementation.
 
 ## Project doctrines
 
-Framework rules (language-agnostic, version-locked to the shepherd release) live across
-`skills/shepherd/`, `skills/adaptation/`, `skills/motivation/`, `skills/harness/`, and
-`skills/context/`. Your project will accumulate its own doctrines that DRIFT beyond that set —
-examples: a region-restricted service's Fly-region pin, a mandatory `WriteOnlyClient` wrapper for
-schema writes, a required `X-Request-Id` trace header, a paired-property-test rule for any code
-touching user balances.
+Project-only rules belong to the project. A common layout is:
 
-These are NOT framework rules and do NOT belong under `skills/`. They belong in your project's
-`.claude/doctrines/`:
-
-```
-your-project/.claude/doctrines/
-├── geo-block-law.md
-├── wallet-balance-invariants.md
-└── header-contract.md
+```text
+your-project/
+  .claude/doctrines/             # project-owned source, if Claude is used
+    security.md
+    data-invariants.md
+  .shepherd/shepherd.toml
 ```
 
-Configure shepherd to load them:
+Keep each doctrine bounded and avoid copying the same rule into `content/roles`,
+`content/skills`, and a run brief. The native content compiler enforces the
+per-surface limits; the project owns the meaning. The old `[memory]` table is a
+layout-migration input only and is not a v6.4.5 configuration surface.
+
+Do not place project doctrine in `~/.shepherd` unless it is intentionally a
+user-wide default. Do not place run-specific decisions in a cross-run doctrine.
+Seeds, plans, findings, and handoffs belong under `.shepherd/runs/<run>/`.
+
+## Branch and release model
+
+The `[branching]` table controls project branch and slug patterns. The defaults
+are suitable for a patch branch with sprint branches beneath it:
 
 ```toml
-[memory]
-project_doctrines = ".claude/doctrines"
+[branching]
+patch_branch_pattern = "v{X}.{Y}.{Z}"
+sprint_branch_pattern = "v{X}.{Y}.{Z}-dev.{N}"
+patch_slug_pattern = "v{X}{Y}{Z}"
+sprint_slug_pattern = "v{X}{Y}{Z}-dev{N}"
+sprints_per_patch = 10
+main_branch = "main"
+release_tag_pattern = "v{X}.{Y}.{Z}"
+allow_direct_main_commit = false
 ```
 
-The conductor reads `project_doctrines/*.md` at every `/shepherd:*` invocation and injects them as
-a preamble into every flock-agent dispatch. Format them like the worked example at
-`examples/rust-service/doctrines/`. Project doctrines are first-class: the auditor's
-`completeness` concern verifies they were honored, exactly like framework rules.
+Changing this table changes naming and lifecycle expectations. Keep the run
+slug grammar stable within a sprint so every harness can resume the same
+directory.
 
-## Custom branch / release model
+## Skills and project templates
 
-Framework defaults: 10 sprints per patch, patch `v{X}.{Y}.{Z}`, sprint `v{X}.{Y}.{Z}-dev.{N}`,
-squash-to-main on `dev.{last}` close. All of `[branching]` is configurable — any pattern
-containing `{X}{Y}{Z}` / `{N}` works: 5-sprint patches (`sprint-{N}`, `sprints_per_patch = 5`),
-calendar-versioned releases (`release/{X}.{Y}`, `sprints_per_patch = 7`), monorepo per-package
-(one `shepherd.toml` per package directory, run shepherd from inside each), or trunk-based with no
-patch branches (`patch_branch_pattern = "main"`, `sprints_per_patch = 0` — every sprint is a
-feature branch off main, the `dev.{last}`-rollover step is skipped). See
-`docs/configuration.md §[branching]` for the full key list.
+Use `[skills.mandatory]`, `[skills.by_domain]`, and `[skills.detection]` to
+compose local skills. A skill should explain one repeatable method and point to
+a reference for detail. Project-owned render templates may live under
+`.shepherd/templates/`; the native `render` command never falls back to a user
+template directory.
 
-## Custom flock briefs
+Filesystem style profiles are retired. They had no native reader and created a
+second policy authority beside `content/` and the configured skill set. Put a
+repeatable language method in one bounded skill, gate it through `[gates]`, and
+keep project-only explanatory prose in the flat `.shepherd/docs/` root.
 
-The canonical coder brief has seven bracketed headers: `[SKILLS]`, `[CONTEXT-INVENTORY]`,
-`[DO-NOT-DUPLICATE]`, `[USER-STYLE]`, `[FILE-SCOPE]`, `[NON-GOALS]`, `[ACCEPTANCE]`. To add project
-sections (e.g. `[PERFORMANCE-BUDGET]`, `[SECURITY-CHECKLIST]`), extend
-`.claude/doctrines/coder-brief-extensions.md`:
+## Harness-specific additions
 
-```markdown
-In addition to the canonical seven, every coder brief MUST include:
-[PERFORMANCE-BUDGET]
-- Maximum allocations per call: {N}
-```
+Claude, Codex, and Pi may have host-specific metadata, but it must remain at the
+adapter boundary:
 
-The conductor reads this at session-open and the engineer's plan output includes the extra
-sections. The Brief-Validity Checklist (`skills/shepherd/references/flock.md §Brief assembly`) is
-operator-extensible — add a checkbox per new section.
+- Claude hook response names stay in `@fl03/harness-claude`.
+- Codex hook response names stay in `@fl03/harness-codex`.
+- Pi provider discovery stays in `@fl03/harness-pi` and its
+  `shepherd.pi.json` contract.
 
-## Custom audit concerns
+The component receives typed, host-neutral records. Do not add a harness branch
+to guard policy, content parsing, identity normalization, or run-state logic.
 
-Default concerns: `code-quality`, `data-flow`, `dependency-topology`, `datastore-state`,
-`completeness`. Add project-specific concerns (e.g. `security`, `performance`, `compliance`) in
-`.claude/doctrines/audit-concerns.md`; the conductor's auditor-swarm dispatch picks them up.
+## Adding a language or domain
 
-## Custom planter inputs
+1. Add or install a focused skill.
+2. Add its domain mapping and file patterns in project configuration.
+3. Keep the language-specific gate commands in `[gates]`.
+4. Run `shepherd compile --check` and the native gate.
 
-The planter's Phase 0 mesh has 12 default rows (`agents/planter.md`). Add project-specific rows
-(e.g. a custom production-state check, open compliance findings) in
-`.claude/doctrines/planter-mesh-extensions.md`.
-
-## Order of operations
-
-1. Author `shepherd.toml` from `examples/<closest-fit>/shepherd.toml`
-2. Tune `[branching]`, `[gates]`, `[paths]` to match the project
-3. Configure `[skills]` and `[skills.detection]` to attach the right skills
-4. Author project doctrines in `.claude/doctrines/` over the first 2-3 sprints — do not front-load them
-5. Codify recurring patterns as project doctrines as they emerge
+The core language enum supports Rust, Python, TypeScript, Go, mixed, and
+Markdown projects. Adding a skill does not require a new CLI or a new compiler.
 
 ## See also
 
-- [`docs/configuration.md`](configuration.md) — the full schema
-- [`docs/integration.md`](integration.md) — composition with per-language skills
-- [`examples/rust-service/shepherd.toml`](../examples/rust-service/shepherd.toml) — concrete working example
-- [`examples/rust-service/doctrines/`](../examples/rust-service/doctrines/) — project-doctrine examples
+- [Configuration](configuration.md) for the typed schema and layout-v5 paths.
+- [Integration](integration.md) for adapter boundaries.
+- [Root README](../README.md) for compile and verification commands.

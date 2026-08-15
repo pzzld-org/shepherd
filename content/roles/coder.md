@@ -1,5 +1,6 @@
 ---
 role: coder
+description: "Implement one file-scoped, test-driven change and report exact evidence. Use only for production code or configuration edits after a reviewed brief defines ownership."
 source: agents/coder.md
 model_hint: standard
 write_eligible: true

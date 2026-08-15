@@ -2,13 +2,17 @@
   "name": "shepherd-workspace",
   "version": "6.4.5",
   "private": true,
-  "description": "npm workspace root for the shepherd content compiler and the three harness adapters (packages/*). Not published itself -- the Rust workspace at Cargo.toml (crates/*, `[workspace.package].version`) is the single source of truth every package.json version here tracks.",
+  "description": "npm workspace root for the generated Shepherd Component runtime and three thin harness adapters. Not published itself; the Rust workspace version is the single authority every package.json tracks.",
   "workspaces": [
     "packages/*"
   ],
   "engines": {
     "node": ">=20",
     "npm": ">=10.3.0"
+  },
+  "devDependencies": {
+    "@babel/parser": "7.29.8",
+    "@bytecodealliance/jco": "1.28.1"
   },
   "license": "Apache-2.0",
   "repository": {

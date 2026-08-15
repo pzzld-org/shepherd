@@ -1,5 +1,6 @@
 ---
 role: auditor
+description: "Review landed work or gate a wave with evidence-backed findings and no production edits. Use for post-hoc audits, adversarial verification, and PASS or REDO decisions."
 source: agents/auditor.md
 model_hint: standard
 write_eligible: false

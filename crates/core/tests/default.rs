@@ -33,10 +33,7 @@ fn harness_is_a_closed_value_set() {
     use strum::{EnumCount, VariantNames};
 
     assert_eq!(Harness::COUNT, 4);
-    assert_eq!(
-        Harness::VARIANTS,
-        ["claude_code", "codex", "pi", "prime_agent"]
-    );
+    assert_eq!(Harness::VARIANTS, ["claude", "codex", "pi", "prime_agent"]);
 }
 
 /// The wire form is snake_case in both directions, and parsing is
@@ -51,8 +48,22 @@ fn harness_round_trips_through_its_wire_form() {
         assert_eq!(parsed.to_string(), *variant);
     }
 
+    assert_eq!(Harness::from_str("CLAUDE").unwrap(), Harness::ClaudeCode);
     assert_eq!(
-        Harness::from_str("CLAUDE_CODE").expect("parsing is ascii-case-insensitive"),
-        Harness::ClaudeCode
+        Harness::from_str("CLAUDE_CODE").expect("the pre-v6.4.5 wire alias stays readable"),
+        Harness::ClaudeCode,
+    );
+}
+
+#[cfg(feature = "json")]
+#[test]
+fn harness_json_writes_the_canonical_name_and_reads_the_legacy_alias() {
+    assert_eq!(
+        serde_json::to_string(&Harness::ClaudeCode).expect("serialize harness"),
+        r#""claude""#,
+    );
+    assert_eq!(
+        serde_json::from_str::<Harness>(r#""claude_code""#).expect("read legacy alias"),
+        Harness::ClaudeCode,
     );
 }

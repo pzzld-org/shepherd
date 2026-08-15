@@ -9,10 +9,11 @@
 # target, that check is something they can only ever see fail in CI. Listing it
 # here means `scripts/check-features.sh --targets` works on a clean checkout.
 [toolchain]
-channel = "stable"
+channel = "1.96.0"
 components = ["clippy", "rustfmt"]
 targets = [
   "wasm32-unknown-unknown",
   "wasm32-wasip1",
+  "wasm32-wasip2",
 ]
 profile = "minimal"

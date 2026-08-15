@@ -1,0 +1,62 @@
+[package]
+description = "Pure, deterministic Shepherd content compiler and prompt-budget engine."
+name = "shepherd-compiler"
+
+authors.workspace = true
+categories.workspace = true
+edition.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+build = "build.rs"
+
+[lib]
+bench = false
+crate-type = ["rlib"]
+path = "src/lib.rs"
+
+[[test]]
+name = "budget"
+path = "tests/budget.rs"
+
+[[test]]
+name = "compile"
+path = "tests/compile.rs"
+
+[[test]]
+name = "content"
+path = "tests/content.rs"
+required-features = ["std"]
+
+[dependencies]
+sha2.workspace = true
+unicode-segmentation.workspace = true
+serde = { workspace = true, optional = true }
+serde-saphyr = { workspace = true, optional = true }
+
+[features]
+default = ["std"]
+# The crate is pure and has no optional dependencies beyond its allocation
+# floor. `full` remains a documented release target so docs.rs and the
+# workspace feature matrix use the same capability vocabulary as every member.
+full = ["default"]
+alloc = []
+std = ["alloc", "dep:serde", "dep:serde-saphyr", "serde/std"]
+wasm = ["alloc"]
+
+[package.metadata.docs.rs]
+all-features = false
+features = ["full"]
+rustc-args = ["--cfg", "docsrs"]
+version = "v{{version}}"
+
+[package.metadata.release]
+no-dev-version = true
+tag-name = "v{{version}}"
+
+[lints]
+workspace = true

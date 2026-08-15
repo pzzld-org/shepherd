@@ -1,0 +1,1 @@
+ERROR: usage: shepherd models resolve <role>

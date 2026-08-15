@@ -1,0 +1,1 @@
+fixture keeps the otherwise empty content root materialized

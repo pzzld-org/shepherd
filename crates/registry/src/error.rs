@@ -30,6 +30,15 @@ pub enum Error {
     /// The database schema is newer than this binary understands.
     #[error("registry schema version {found} is ahead of the supported {supported}")]
     SchemaAhead { found: i64, supported: i64 },
+    /// A mutating operation was requested through a read-only registry.
+    #[error("registry is read-only")]
+    ReadOnly,
+    /// The registry path would cross a symbolic-link boundary.
+    #[error("unsafe registry path: {0}")]
+    UnsafePath(String),
+    /// Rolling back a failed transaction also failed.
+    #[error("transaction failed ({cause}) and rollback failed ({rollback})")]
+    TransactionRollback { cause: String, rollback: String },
     /// A catch-all for registry failures that do not yet warrant a variant.
     #[error("{0}")]
     Unknown(String),

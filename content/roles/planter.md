@@ -1,5 +1,6 @@
 ---
 role: planter
+description: "Author a drift-resistant seed or babysit active spawns from the top-level session. Use for pre-sprint scope discovery, operator questions, and escalation routing."
 source: agents/planter.md
 model_hint: reasoning-high
 write_eligible: true

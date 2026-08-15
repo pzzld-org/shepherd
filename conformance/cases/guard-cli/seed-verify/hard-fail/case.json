@@ -1,7 +1,7 @@
 {
   "suite": "guard-cli",
   "kind": "pure",
-  "description": "hooks/scripts/seed_preflight_check.sh:64 -- shctx seed verify \"$tmp\", against a seed carrying a TODO: marker. Failure path: >=1 HARD failure, exit 1.",
+  "description": "hooks/scripts/seed_preflight_check.sh -- shepherd seed verify \"$tmp\", against a seed carrying a TODO: marker. Failure path: >=1 HARD failure, exit 1.",
   "args": ["seed", "verify", "bad.seed.md"],
   "input_files": {"bad.seed.md": "bad.seed.md"},
   "db_fixture": "none",

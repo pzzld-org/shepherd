@@ -5,21 +5,11 @@
 */
 //! Atomic write: tempfile -> fsync -> rename -> fsync(dir).
 //!
-//! Reproduces `models_run.py:615-639`'s `atomic_write_json` step for step:
-//!
-//! | Python (`atomic_write_json`) | Here |
-//! |---|---|
-//! | `tempfile.mkstemp(dir=parent, ...)` | [`temp_path`] for the candidate name, [`create_temp_file_exclusive`] for `mkstemp`'s `O_CREAT\|O_EXCL` guarantee |
-//! | `json.dump(...)` + `handle.write("\n")` | the caller-supplied `contents` (already the canonical text) + one trailing `\n` |
-//! | `handle.flush()` + `os.fsync(handle.fileno())` | `File::flush` + `File::sync_all` |
-//! | `os.replace(tmp_path, path)` | `std::fs::rename` |
-//! | `os.fsync(dir_fd)` | opening `parent` as a [`std::fs::File`] and `sync_all` |
-//! | `finally: os.unlink(tmp_path)` if it still exists | best-effort [`std::fs::remove_file`] on the tempfile THIS call itself created |
-//!
-//! `std::fs::File::open` on a directory, and fsyncing it, is POSIX behavior
-//! that the Python reference itself relies on unconditionally (`os.open(parent,
-//! os.O_RDONLY)` fails identically on platforms without it) — reproduced
-//! here rather than made more lenient than the reference.
+//! The publication sequence is fixed: create a same-directory candidate with
+//! `O_CREAT|O_EXCL`, write the canonical bytes plus one newline, flush and
+//! fsync the file, rename it over the target, then fsync the parent directory.
+//! Directory fsync is a POSIX durability boundary and fails explicitly on a
+//! host that cannot provide it.
 //!
 //! No `std::process` anywhere in this module: `crates/core` may not depend on
 //! it (decision 8, enforced by `boundaries.yml`'s process/argv grep), so the
@@ -31,8 +21,7 @@
 //! only rules out a same-process collision. [`create_temp_file_exclusive`]
 //! is what turns that possible collision into a retry instead of silent
 //! corruption: it opens each candidate with `O_CREAT|O_EXCL`
-//! (`create_new(true)`), the same exclusivity `tempfile.mkstemp` gives the
-//! Python reference, so a colliding candidate fails atomically with
+//! (`create_new(true)`), so a colliding candidate fails atomically with
 //! `ErrorKind::AlreadyExists` rather than truncating whatever the other
 //! writer already has open there.
 use std::path::{Path, PathBuf};
@@ -69,8 +58,7 @@ fn temp_path(target: &Path) -> PathBuf {
     target.with_file_name(format!(".{stem}-{nanos:x}-{seq:x}.tmp"))
 }
 
-/// Exclusively create a tempfile from a sequence of candidate paths, the way
-/// `tempfile.mkstemp` does for the Python reference: each candidate is
+/// Exclusively create a tempfile from a sequence of candidate paths. Each candidate is
 /// opened with `O_CREAT|O_EXCL` (`create_new(true)`), which atomically fails
 /// with `ErrorKind::AlreadyExists` if the path already exists instead of
 /// truncating whatever is there. On that specific error, a fresh candidate
@@ -122,7 +110,7 @@ fn create_temp_file_exclusive(
     }
 }
 
-/// Write `contents` to `target` atomically, matching `atomic_write_json`'s
+/// Write `contents` to `target` atomically with the pinned run-store
 /// sequencing and bytes (a trailing `\n` after `contents`, which `contents`
 /// itself should not already carry — [`crate::run::RunState::to_canonical_json`]
 /// does not add one, for exactly this reason).

@@ -1,5 +1,6 @@
 ---
 role: conductor
+description: "Execute one plan lane through disjoint implementation, review, redo, and handoff waves. Use when a lane needs a durable lead that may dispatch implementers."
 source: agents/conductor.md
 model_hint: standard
 # exception: no `write` tool grant at all — see "write_eligible: true — the documented exception" below

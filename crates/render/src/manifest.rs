@@ -4,8 +4,7 @@
     Contrib: @FL03
 */
 //! The render provenance manifest: the digest triad that proves a render
-//! reproduced byte-for-byte -- the Rust twin of `render.py:164-251`'s
-//! `RenderResult` / `_canonical_vars_digest` / `render_template`.
+//! reproduced byte-for-byte.
 //!
 //! ## Why `vars_sha256` needs canonicalization and the other two do not
 //!
@@ -15,9 +14,8 @@
 //! variables, built in a different insertion order (a `HashMap` iterated
 //! in address order, say), would hash to different bytes even though the
 //! rendered TEXT is identical -- an unreproducible digest hiding behind a
-//! perfectly reproducible render. `render.py`'s `_canonical_vars_digest`
-//! dodges this with `json.dumps(variables, sort_keys=True,
-//! separators=(",", ":"), ensure_ascii=False)`.
+//! perfectly reproducible render. Shepherd serializes variables with sorted
+//! keys, compact separators, and unescaped Unicode before hashing.
 //!
 //! This module reproduces those exact bytes with no hand-written
 //! serializer. Per `crate::filters`' module docs (W2-S1), a
@@ -26,20 +24,17 @@
 //! sorted at every nesting level before serialization ever runs; and
 //! `serde_json`'s own compact `Serializer` already writes `,`/`:` with no
 //! surrounding space and passes non-ASCII text through as UTF-8
-//! untouched. `serde_json::to_vec` alone reproduces Python's canonical
-//! bytes -- no recursive writer needed (contrast `crate::filters`, whose
+//! untouched. `serde_json::to_vec` alone reproduces the canonical bytes -- no
+//! recursive writer is needed (contrast `crate::filters`, whose
 //! `tojson` filter needs one because ITS separators/HTML-escaping rules
-//! differ from `serde_json`'s own defaults; `_canonical_vars_digest`'s
-//! separators happen to be `serde_json`'s defaults exactly).
+//! differ from `serde_json`'s own defaults).
 use crate::error::{Error, Result};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::path::Path;
 
-/// The provenance digest triad for one render -- the Rust twin of
-/// `render.py`'s `RenderResult`'s three hash fields (its `manifest()`
-/// dict, minus the name/path fields a [`Path`]-based caller already
-/// holds). Every field is a lowercase-hex sha256 digest.
+/// The provenance digest triad for one render. Every field is a lowercase-hex
+/// SHA-256 digest.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RenderManifest {
     /// sha256 of the template source's raw bytes, exactly as read from
@@ -53,8 +48,7 @@ pub struct RenderManifest {
 }
 
 /// Render the template at `template_path` with `vars`, returning the
-/// rendered text and its [`RenderManifest`] -- the Rust twin of
-/// `render.py:199-251`'s `render_template`.
+/// rendered text and its [`RenderManifest`].
 ///
 /// Applies no name resolution or search-path precedence: the caller
 /// supplies the exact file to render (a loader is a later step, outside
@@ -71,8 +65,7 @@ pub struct RenderManifest {
 /// - [`Error::Template`] (wrapping [`minijinja::Error`]) if the template
 ///   fails to compile, or -- preserved here, never softened to a warning
 ///   or a blank render -- if `vars` leaves any referenced variable
-///   undefined. Mapping that failure to `render.py`'s exit code 4 is a
-///   CLI-layer concern outside this crate's `[FILE-SCOPE]`.
+///   undefined. Exit-status mapping is a CLI-layer concern.
 pub fn render_with_manifest(
     template_path: &Path,
     vars: &Value,
@@ -84,8 +77,8 @@ pub fn render_with_manifest(
         .template_from_str(&template_source)?
         .render(vars)?;
 
-    // See the module docs: `to_vec` alone reproduces `render.py`'s
-    // canonical (sorted-key, compact-separator, `ensure_ascii=False`)
+    // See the module docs: `to_vec` alone reproduces the canonical
+    // sorted-key, compact-separator, unescaped-Unicode
     // vars serialization, with no hand-written writer.
     let vars_bytes = serde_json::to_vec(vars)
         .map_err(|error| Error::unknown(format!("vars not JSON-serializable: {error}")))?;
@@ -205,7 +198,7 @@ mod tests {
     /// blank render. This step must not soften that -- assert the
     /// failure surfaces as `Error::Template` wrapping minijinja's own
     /// `ErrorKind::UndefinedError`, distinguishable enough for a CLI
-    /// layer to map to `render.py`'s exit code 4.
+    /// layer to map to its documented render failure status.
     #[test]
     fn undefined_variable_is_hard_error() {
         let path = scratch_template_path("undefined-var");

@@ -1,276 +1,154 @@
 #!/usr/bin/env bash
-# shepherd hook — SubagentStop: per-dispatch cache-telemetry capture (v5.1.3)
+# shepherd hook — SubagentStop: cache-usage telemetry.
 #
-# Captures prompt-caching health for every subagent that completes. The hook
-# parses the subagent's transcript JSONL — emitted by Claude Code at
-# `agent_transcript_path` in the SubagentStop payload — and aggregates the
-# four cache-related Anthropic-API usage fields:
-#
-#     input_tokens
-#     output_tokens
-#     cache_read_input_tokens
-#     cache_creation_input_tokens
-#     cache_creation.ephemeral_5m_input_tokens
-#     cache_creation.ephemeral_1h_input_tokens
-#
-# One JSONL line is appended to `<ns>/logs/events-YYYY-MM-DD.jsonl`. The line
-# follows the skills/context/SKILL.md §Cache telemetry contract (see also
-# skills/context/SKILL.md §Event log for the broader event-log convention).
-#
-# Discipline:
-#   • Never block.    The hook exits 0 unconditionally; parse failures emit
-#                     a `parse_error` event rather than going silent.
-#   • Never lie.      Missing fields surface as `null`, not zero — zero means
-#                     "the assistant turn measured zero tokens", which is a
-#                     meaningful signal (cache hit on a very small prefix).
-#   • Counts only.    No prompt content is captured; the event log carries
-#                     token counts and identifiers.
-#
-# Input  (stdin): SubagentStop JSON
-#   {
-#     "session_id": "...",
-#     "transcript_path": "...",          (parent session)
-#     "cwd": "...",
-#     "hook_event_name": "SubagentStop",
-#     "stop_hook_active": ...,
-#     "agent_id": "agt-...",
-#     "agent_type": "Explore | <subagent-type>",
-#     "agent_transcript_path": "...jsonl",
-#     "last_assistant_message": "..."
-#   }
-#
-# Output (stdout): silent exit 0 (the hook's signal is on disk, not in chat).
+# This source-tree hook is observational. jq is its one parser dependency; if
+# unavailable it emits a diagnostic and deliberately records no synthetic row.
 
 set -eu -o pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=_lib.sh
 source "$HERE/_lib.sh"
 
-input=$(cat)
+input="$(cat)"
 is_shepherd_project || exit 0
+shepherd_skip_without_jq "subagent_telemetry" || exit 0
 
-# The lane runs only on SubagentStop. If something else routes here, no-op.
-hook_event=$(json_field "$input" '.hook_event_name')
-case "$hook_event" in
-  SubagentStop) ;;
-  *) exit 0 ;;
-esac
+hook_event="$(json_field "$input" '.hook_event_name')"
+[[ "$hook_event" == "SubagentStop" ]] || exit 0
 
-session_id=$(json_field "$input" '.session_id')
-agent_id=$(json_field "$input" '.agent_id')
-agent_type=$(json_field "$input" '.agent_type')
-transcript_path=$(json_field "$input" '.agent_transcript_path')
+session_id="$(json_field "$input" '.session_id')"
+agent_id="$(json_field "$input" '.agent_id')"
+agent_type="$(json_field "$input" '.agent_type')"
+transcript_path="$(json_field "$input" '.agent_transcript_path')"
+case "$transcript_path" in "~/"*) transcript_path="$HOME/${transcript_path#\~/}" ;; esac
 
-# Expand a leading ~ in the transcript path (Claude Code emits paths like
-# "~/.claude/projects/...").
-case "$transcript_path" in
-  "~/"*) transcript_path="${HOME}/${transcript_path#\~/}" ;;
-esac
-
-# Resolve the role written by agent_invocation_tagger.sh. The tagger keys on
-# `tool_use_id`, which SubagentStop does NOT carry — but `agent_id` is the
-# durable identifier. Falling back to agent_type if no per-id mapping is
-# available is honest: it captures whatever signal IS present.
-sprint=$(current_sprint)
 role="${agent_type:-unknown}"
+case "$role" in engineer|critic|coder|auditor|worker|discovery) ;; *) role="${role:-unknown}" ;; esac
 
-# Map agent_type to the canonical flock role when possible. Claude Code's
-# built-in agent_type is the subagent's `name` field (e.g., "engineer",
-# "coder", etc., for shepherd dispatches; "Explore" for the built-in).
-case "$role" in
-  engineer|critic|coder|auditor|worker|discovery) ;;
-  *) role="${role:-unknown}" ;;
-esac
+# Telemetry belongs to its exact executing run. There is no cross-run
+# fallback: without one, skipping with a diagnostic is more honest than
+# creating a retired logs root or assigning the event by branch guesswork.
+run_dir="$(primary_active_run_dir 2>/dev/null || true)"
+if [[ -z "$run_dir" ]]; then
+  printf '[shepherd] subagent_telemetry skipped: no executing run is available for the event.\n' >&2
+  exit 0
+fi
+run_id="$(basename "$run_dir")"
+events_dir="$run_dir/events"
+if ! mkdir -p "$events_dir" 2>/dev/null; then
+  printf '[shepherd] subagent_telemetry skipped: cannot create active-run events directory.\n' >&2
+  exit 0
+fi
+day="$(date -u +%Y-%m-%d 2>/dev/null || echo unknown)"
+events_file="$events_dir/events-$day.jsonl"
+ts="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)"
 
-ns=$(resolve_namespace)
-logs_dir="$ns/logs"
-mkdir -p "$logs_dir" 2>/dev/null || true
-day=$(date -u +%Y-%m-%d 2>/dev/null || echo "unknown")
-events_file="$logs_dir/events-${day}.jsonl"
-# Millisecond timestamp. macOS `date` lacks %N; fall back through gdate, then
-# python3, then second-precision (still valid ISO-8601).
-ts=$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ 2>/dev/null) || ts=""
-case "$ts" in
-  *NZ|"")
-    if command -v gdate >/dev/null 2>&1; then
-      ts=$(gdate -u +%Y-%m-%dT%H:%M:%S.%3NZ 2>/dev/null) || ts=""
-    fi
-    ;;
-esac
-case "$ts" in
-  *NZ|"")
-    ts=$(python3 -c "import datetime as d; n=d.datetime.now(d.timezone.utc); print(n.strftime('%Y-%m-%dT%H:%M:%S.')+str(n.microsecond//1000).zfill(3)+'Z')" 2>/dev/null) || ts=""
-    ;;
-esac
-[[ -z "$ts" ]] && ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-
-# ---------------------------------------------------------------------------
-# Parse the subagent transcript. Python carries the JSONL aggregation because
-# jq's loop semantics over a streaming file are awkward and the math is
-# trivial in Python.
-# ---------------------------------------------------------------------------
 emit_event() {
-  # emit_event "<json line>"
-  local line="$1"
-  printf '%s\n' "$line" >> "$events_file" 2>/dev/null || true
+  printf '%s\n' "$1" >> "$events_file" 2>/dev/null || true
 }
 
-build_parse_error_event() {
+parse_error_event() {
   local reason="$1"
-  python3 - "$ts" "$session_id" "$role" "$agent_id" "$sprint" "$reason" <<'PY' 2>/dev/null
-import json, sys
-ts, session_id, role, agent_id, sprint, reason = sys.argv[1:]
-print(json.dumps({
-    "ts":                          ts,
-    "event_type":                  "cache_usage",
-    "session_id":                  session_id or None,
-    "role":                        role or "unknown",
-    "agent_id":                    agent_id or None,
-    "sprint":                      sprint or None,
-    "turns":                       None,
-    "input_tokens":                None,
-    "output_tokens":               None,
-    "cache_read_input_tokens":     None,
-    "cache_creation_input_tokens": None,
-    "ephemeral_5m_input_tokens":   None,
-    "ephemeral_1h_input_tokens":   None,
-    "hit_rate":                    None,
-    "parse_error":                 reason,
-}))
-PY
+  jq -cn \
+    --arg ts "$ts" \
+    --arg session_id "$session_id" \
+    --arg role "$role" \
+    --arg agent_id "$agent_id" \
+    --arg run "$run_id" \
+    --arg reason "$reason" \
+    '{
+      ts:$ts, event_type:"cache_usage",
+      session_id:(if $session_id == "" then null else $session_id end),
+      role:(if $role == "" then "unknown" else $role end),
+      agent_id:(if $agent_id == "" then null else $agent_id end),
+      run:$run,
+      turns:null, input_tokens:null, output_tokens:null,
+      cache_read_input_tokens:null, cache_creation_input_tokens:null,
+      ephemeral_5m_input_tokens:null, ephemeral_1h_input_tokens:null,
+      hit_rate:null, parse_error:$reason
+    }'
 }
 
-# Early-out: no transcript path → emit a parse_error event so the absence is
-# visible to the auditor, then exit 0.
 if [[ -z "$transcript_path" ]]; then
-  ev=$(build_parse_error_event "missing agent_transcript_path in SubagentStop payload")
-  [[ -n "$ev" ]] && emit_event "$ev"
+  emit_event "$(parse_error_event "missing agent_transcript_path in SubagentStop payload")"
   log_event "subagent_telemetry" "warn" "SubagentStop" "$role" "$session_id" \
     "$(emit_json_obj agent_id "$agent_id" reason "missing_transcript_path")"
   exit 0
 fi
 
 if [[ ! -r "$transcript_path" ]]; then
-  ev=$(build_parse_error_event "agent_transcript_path not readable: $transcript_path")
-  [[ -n "$ev" ]] && emit_event "$ev"
+  emit_event "$(parse_error_event "agent_transcript_path not readable: $transcript_path")"
   log_event "subagent_telemetry" "warn" "SubagentStop" "$role" "$session_id" \
     "$(emit_json_obj agent_id "$agent_id" reason "transcript_unreadable")"
   exit 0
 fi
 
-# Aggregate usage. The transcript shape is the Anthropic SDK message-stream
-# JSONL: one record per line, with assistant turns carrying `message.usage`.
-event_json=$(python3 - "$ts" "$session_id" "$role" "$agent_id" "$sprint" "$transcript_path" <<'PY' 2>/dev/null || true
-import json, sys
+# Parse JSONL as raw lines. fromjson? intentionally drops malformed transcript
+# lines, matching the former parser's best-effort semantics without adding a
+# second language runtime.
+event_json="$(
+  jq -Rn \
+    --arg ts "$ts" \
+    --arg session_id "$session_id" \
+    --arg role "$role" \
+    --arg agent_id "$agent_id" \
+    --arg run "$run_id" '
+      def number_or_zero:
+        if type == "number" then . else 0 end;
+      def sum_field($name):
+        (map(.[$name] | number_or_zero) | add) // 0;
+      def sum_cache_field($name):
+        (map(
+          if (.cache_creation | type) == "object"
+          then (.cache_creation[$name] | number_or_zero)
+          else 0
+          end
+        ) | add) // 0;
+      [
+        inputs
+        | fromjson?
+        | .message?
+        | select(
+            type == "object"
+            and .role == "assistant"
+            and (.usage | type) == "object"
+          )
+        | .usage
+      ] as $usage
+      | ($usage | length) as $turns
+      | (if $turns == 0 then "no_assistant_usage_records_in_transcript" else null end) as $parse_error
+      | ($usage | sum_field("input_tokens")) as $input_tokens
+      | ($usage | sum_field("output_tokens")) as $output_tokens
+      | ($usage | sum_field("cache_read_input_tokens")) as $cache_read
+      | ($usage | sum_field("cache_creation_input_tokens")) as $cache_creation
+      | ($usage | sum_cache_field("ephemeral_5m_input_tokens")) as $ephemeral_5m
+      | ($usage | sum_cache_field("ephemeral_1h_input_tokens")) as $ephemeral_1h
+      | ($cache_read + $cache_creation + $input_tokens) as $denominator
+      | (if $denominator > 0
+         then ((($cache_read / $denominator) * 10000 | round) / 10000)
+         else null
+         end) as $hit_rate
+      | {
+          ts:$ts, event_type:"cache_usage",
+          session_id:(if $session_id == "" then null else $session_id end),
+          role:(if $role == "" then "unknown" else $role end),
+          agent_id:(if $agent_id == "" then null else $agent_id end),
+          run:$run,
+          turns:(if $parse_error == null then $turns else null end),
+          input_tokens:(if $parse_error == null then $input_tokens else null end),
+          output_tokens:(if $parse_error == null then $output_tokens else null end),
+          cache_read_input_tokens:(if $parse_error == null then $cache_read else null end),
+          cache_creation_input_tokens:(if $parse_error == null then $cache_creation else null end),
+          ephemeral_5m_input_tokens:(if $parse_error == null then $ephemeral_5m else null end),
+          ephemeral_1h_input_tokens:(if $parse_error == null then $ephemeral_1h else null end),
+          hit_rate:(if $parse_error == null then $hit_rate else null end),
+          parse_error:$parse_error
+        }
+    ' < "$transcript_path" 2>/dev/null || true
+)"
 
-ts, session_id, role, agent_id, sprint, path = sys.argv[1:]
-
-def nz(v):
-    """Treat None / missing as 0 for SUMs; preserve None for downstream nulls."""
-    return v if isinstance(v, (int, float)) else 0
-
-totals = {
-    "input_tokens":                0,
-    "output_tokens":                0,
-    "cache_read_input_tokens":      0,
-    "cache_creation_input_tokens":  0,
-    "ephemeral_5m_input_tokens":    0,
-    "ephemeral_1h_input_tokens":    0,
-}
-turns = 0
-saw_any_usage = False
-parse_error = None
-
-try:
-    with open(path, "r", encoding="utf-8", errors="replace") as fh:
-        for line in fh:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                rec = json.loads(line)
-            except Exception:
-                continue
-            msg = rec.get("message") if isinstance(rec, dict) else None
-            if not isinstance(msg, dict):
-                continue
-            if msg.get("role") != "assistant":
-                continue
-            usage = msg.get("usage")
-            if not isinstance(usage, dict):
-                continue
-            saw_any_usage = True
-            turns += 1
-            totals["input_tokens"]                += nz(usage.get("input_tokens"))
-            totals["output_tokens"]                += nz(usage.get("output_tokens"))
-            totals["cache_read_input_tokens"]      += nz(usage.get("cache_read_input_tokens"))
-            totals["cache_creation_input_tokens"]  += nz(usage.get("cache_creation_input_tokens"))
-            cc = usage.get("cache_creation")
-            if isinstance(cc, dict):
-                totals["ephemeral_5m_input_tokens"]   += nz(cc.get("ephemeral_5m_input_tokens"))
-                totals["ephemeral_1h_input_tokens"]   += nz(cc.get("ephemeral_1h_input_tokens"))
-except Exception as e:
-    parse_error = "transcript_read_failed: {}".format(type(e).__name__)
-
-if parse_error is None and not saw_any_usage:
-    parse_error = "no_assistant_usage_records_in_transcript"
-
-# Hit-rate. Defined as cache_read / (cache_read + cache_creation + fresh input).
-# Total billable input across the dispatch:
-#   cache_read + cache_creation + raw input_tokens
-# If the denominator is zero, the rate is undefined (null), not zero.
-denom = (totals["cache_read_input_tokens"]
-         + totals["cache_creation_input_tokens"]
-         + totals["input_tokens"])
-if denom > 0:
-    hit_rate = round(totals["cache_read_input_tokens"] / denom, 4)
-else:
-    hit_rate = None
-
-# When parse_error fires, surface counts as null rather than zero so the
-# auditor's hit-rate aggregation isn't poisoned by phantom rows.
-def maybe(v):
-    return None if parse_error else v
-
-event = {
-    "ts":                          ts,
-    "event_type":                  "cache_usage",
-    "session_id":                  session_id or None,
-    "role":                        role or "unknown",
-    "agent_id":                    agent_id or None,
-    "sprint":                      sprint or None,
-    "turns":                       maybe(turns) if turns else (None if parse_error else 0),
-    "input_tokens":                maybe(totals["input_tokens"]),
-    "output_tokens":               maybe(totals["output_tokens"]),
-    "cache_read_input_tokens":     maybe(totals["cache_read_input_tokens"]),
-    "cache_creation_input_tokens": maybe(totals["cache_creation_input_tokens"]),
-    "ephemeral_5m_input_tokens":   maybe(totals["ephemeral_5m_input_tokens"]),
-    "ephemeral_1h_input_tokens":   maybe(totals["ephemeral_1h_input_tokens"]),
-    "hit_rate":                    None if parse_error else hit_rate,
-    "parse_error":                 parse_error,
-}
-print(json.dumps(event))
-PY
-)
-
-if [[ -z "$event_json" ]]; then
-  # Python pipeline itself failed (truly unexpected — emit parse_error rather
-  # than going silent, so the gap is visible to the auditor).
-  event_json=$(build_parse_error_event "python_aggregation_failed")
-fi
-
+[[ -n "$event_json" ]] || event_json="$(parse_error_event "transcript_aggregation_failed")"
 emit_event "$event_json"
-
-# Mirror to the structured hook-event-log so `shctx doctor` sees the fire.
 log_event "subagent_telemetry" "pass" "SubagentStop" "$role" "$session_id" \
-  "$(emit_json_obj agent_id "$agent_id" sprint "$sprint" events_file "$events_file")"
-
-# v6.0.5: the v5.1.7 per-tool teammate-heartbeat emission was RETIRED here. It
-# keyed on $CLAUDE_TEAMMATE_NAME, which reads EMPTY on the live Agent Teams
-# platform (#93), so this block never fired — dead machinery for a signal the
-# platform now provides natively. Teammate liveness is driven by the native
-# `TeammateIdle` hook (hooks/scripts/teammate_idle.sh — routes by teammate_name
-# OR session_id) plus the `shctx teammate liveness --stale-mins` staleness poll.
-# See skills/harness/SKILL.md §V + sqlite-canonical-state.md.
-
+  "$(emit_json_obj agent_id "$agent_id" run "$run_id" events_file "$events_file")"
 exit 0

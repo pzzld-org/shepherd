@@ -1,0 +1,13 @@
+{
+  "suite": "core",
+  "kind": "pure",
+  "description": "seed verify parses flow scope entries, accepts NEW markers, and reports only unresolved paths",
+  "args": ["seed", "verify", "scope.seed.md"],
+  "input_files": {
+    "scope.seed.md": "scope.seed.md",
+    "src/existing.rs": "existing.rs"
+  },
+  "db_fixture": "none",
+  "capture_files": [],
+  "requires_git": true
+}

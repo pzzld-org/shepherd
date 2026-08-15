@@ -3,7 +3,7 @@ DISCOVERY REPORT — focus rehydration after compaction
 Question: does the focus record survive `/compact`, and where is it re-read?
 
 Findings:
-- focus rows live in SQLite (`skills/context/schema/migrations/0013_focus.sql`, PK widened to (sprint, lane) in `0017_focus_lane.sql`), so they survive compaction by construction — they are not in the context window.
+- focus rows live in SQLite (`crates/registry/src/migrate/sql/migrations/0013_focus.sql`, PK widened to (sprint, lane) in `0017_focus_lane.sql`), so they survive compaction by construction — they are not in the context window.
 - `hooks/scripts/precompact_snapshot.sh` denormalizes the sprint-level row (`lane=''`, column-guarded for pre-0017 DBs) into a rehydration digest at PreCompact.
 - `hooks/scripts/focus_rehydrate.sh` re-reads that digest at SessionStart:compact.
 

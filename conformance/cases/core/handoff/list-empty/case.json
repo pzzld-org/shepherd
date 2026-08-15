@@ -1,0 +1,11 @@
+{
+  "suite": "core",
+  "kind": "pure",
+  "authority": "native-v6.4.5",
+  "intentional_difference": "layout-v5 stores handoffs only in runs/<run>/handoff.md and does not recreate docs/handoffs",
+  "requires_git": true,
+  "description": "handoff list is a read-only inspection that reports the canonical empty run-artifact root.",
+  "args": ["handoff", "list"],
+  "db_fixture": "none",
+  "capture_files": []
+}

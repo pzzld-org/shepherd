@@ -24,8 +24,376 @@ on:
   workflow_dispatch:
 
 jobs:
+  release-metadata:
+    name: Resolve release metadata
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      proceed: ${{ steps.detect.outputs.proceed }}
+      current: ${{ steps.detect.outputs.current }}
+      tag: ${{ steps.detect.outputs.tag }}
+    steps:
+      - name: Checkout release commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 1
+          ref: ${{ github.sha }}
+      - name: Detect exact release version
+        id: detect
+        shell: bash
+        env:
+          DEFAULT_BRANCH_REF: refs/heads/${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" != "$DEFAULT_BRANCH_REF" ]]; then
+            printf 'proceed=false\n' >> "$GITHUB_OUTPUT"
+            printf 'Skipping release from non-default ref: %s\n' "$GITHUB_REF"
+            exit 0
+          fi
+          subject=$(git log -1 --format=%s HEAD)
+          if [[ "$subject" =~ ^(release:[[:space:]]+)?v([0-9]+\.[0-9]+\.[0-9]+)([[:space:]:]|$) ]]; then
+            current="${BASH_REMATCH[2]}"
+            plugin=$(jq -r '.version' .claude-plugin/plugin.json)
+            if [[ "$current" == "$plugin" ]]; then
+              python3 scripts/version-bump.py check --root . --version "$current"
+              {
+                printf 'proceed=true\n'
+                printf 'current=%s\n' "$current"
+                printf 'tag=v%s\n' "$current"
+              } >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+          printf 'proceed=false\n' >> "$GITHUB_OUTPUT"
+
+  build-native-assets:
+    name: Native ${{ matrix.target }}
+    needs: release-metadata
+    if: needs.release-metadata.outputs.proceed == 'true'
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            target: aarch64-apple-darwin
+          - runner: macos-15-intel
+            target: x86_64-apple-darwin
+          - runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+          - runner: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+          - runner: windows-2025
+            target: x86_64-pc-windows-msvc
+    steps:
+      - name: Checkout release commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 1
+          ref: ${{ github.sha }}
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
+        with:
+          cache: false
+      - name: Setup Zig for GNU libc 2.17 builds
+        if: contains(matrix.target, 'unknown-linux-gnu')
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
+        with:
+          version: 0.14.0
+      - name: Install locked cargo-zigbuild
+        if: contains(matrix.target, 'unknown-linux-gnu')
+        shell: bash
+        run: cargo install cargo-zigbuild --version 0.20.1 --locked
+      - name: Build locked canonical CLI
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          if [[ "$TARGET" == *-unknown-linux-gnu ]]; then
+            cargo zigbuild --locked --release --package shepherd-cli --target "${TARGET}.2.17"
+          else
+            cargo build --locked --release --package shepherd-cli
+          fi
+      - name: Execute and verify the native CLI version
+        shell: bash
+        env:
+          VERSION: ${{ needs.release-metadata.outputs.current }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          binary='target/release/shepherd'
+          if [[ "$TARGET" == *-unknown-linux-gnu ]]; then
+            binary="target/${TARGET}/release/shepherd"
+          fi
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            binary="${binary}.exe"
+          fi
+          actual=$("$binary" --version)
+          expected="shepherd-cli ${VERSION}"
+          [[ "$actual" == "$expected" ]] || {
+            printf 'native CLI version mismatch: expected %s, got %s\n' "$expected" "$actual" >&2
+            exit 1
+          }
+      - name: Assert GNU libc compatibility floor
+        if: contains(matrix.target, 'unknown-linux-gnu')
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          binary="target/${TARGET}/release/shepherd"
+          assert_glibc_floor() {
+            local executable="$1" floor="$2" maximum
+            maximum=$(readelf --version-info "$executable" \
+              | sed -nE 's/.*Name: GLIBC_([0-9]+\.[0-9]+).*/\1/p' \
+              | sort -V | tail -n 1)
+            [[ -n "$maximum" ]] || { printf 'no GLIBC symbol versions found in %s\n' "$executable" >&2; return 1; }
+            python3 - "$maximum" "$floor" <<'PY'
+            import sys
+            maximum = tuple(map(int, sys.argv[1].split('.')))
+            floor = tuple(map(int, sys.argv[2].split('.')))
+            if maximum > floor:
+                raise SystemExit(f"requires GLIBC_{sys.argv[1]}, exceeds supported GLIBC_{sys.argv[2]}")
+            PY
+          }
+          assert_glibc_floor "$binary" 2.17
+      - name: Package Unix archive and SHA-256 sidecars
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          VERSION: ${{ needs.release-metadata.outputs.current }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          staging="${RUNNER_TEMP}/shepherd-native-${TARGET}"
+          mkdir -p "$staging"
+          if [[ "$TARGET" == *-unknown-linux-gnu ]]; then
+            cp "target/${TARGET}/release/shepherd" "$staging/shepherd"
+          else
+            cp target/release/shepherd "$staging/shepherd"
+          fi
+          scripts/stage-distribution-legal.sh "$staging" --scope native --target "$TARGET"
+          chmod 0755 "$staging/shepherd"
+          find "$staging" -type f -exec touch -t 198001010000 {} +
+          legal_entries=()
+          while IFS= read -r entry; do
+            legal_entries+=("$entry")
+          done < <(
+              cd "$staging"
+              find THIRD_PARTY_LICENSES -type f -name '*.txt' -print | LC_ALL=C sort
+            )
+          ((${#legal_entries[@]} > 0))
+          versioned="shepherd-${VERSION}-${TARGET}.tar.gz"
+          stable="shepherd-${TARGET}.tar.gz"
+          COPYFILE_DISABLE=1 LC_ALL=C \
+            tar --format ustar --uid 0 --gid 0 --uname root --gname root \
+              -C "$staging" -cf - LICENSE THIRD_PARTY_NOTICES.md "${legal_entries[@]}" shepherd \
+            | gzip -n > "dist/${versioned}"
+          cp "dist/${versioned}" "dist/${stable}"
+          (
+            cd dist
+            shasum -a 256 "${versioned}" > "${versioned}.sha256"
+            shasum -a 256 "${stable}" > "${stable}.sha256"
+          )
+      - name: Package Windows archive and SHA-256 sidecars
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.release-metadata.outputs.current }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          $staging = Join-Path $env:RUNNER_TEMP "shepherd-native-$env:TARGET"
+          New-Item -ItemType Directory -Force $staging | Out-Null
+          $stagedBinary = Join-Path $staging 'shepherd.exe'
+          Copy-Item -LiteralPath target/release/shepherd.exe -Destination $stagedBinary
+          bash scripts/stage-distribution-legal.sh "$staging" --scope native --target "$env:TARGET"
+          Get-ChildItem -LiteralPath $staging -Recurse -File | ForEach-Object { $_.LastWriteTimeUtc = [DateTime]'1980-01-01T00:00:00Z' }
+          $versioned = "shepherd-$env:VERSION-$env:TARGET.zip"
+          $stable = "shepherd-$env:TARGET.zip"
+          Add-Type -AssemblyName System.IO.Compression
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          function New-DeterministicZip([string]$Destination) {
+            if (Test-Path -LiteralPath $Destination) { Remove-Item -LiteralPath $Destination -Force }
+            $archive = [System.IO.Compression.ZipFile]::Open(
+              $Destination,
+              [System.IO.Compression.ZipArchiveMode]::Create
+            )
+            try {
+              $files = @(Get-ChildItem -LiteralPath $staging -Recurse -File | Sort-Object FullName)
+              foreach ($file in $files) {
+                $relative = $file.FullName.Substring($staging.Length).TrimStart([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar).Replace('\', '/')
+                $entry = $archive.CreateEntry($relative, [System.IO.Compression.CompressionLevel]::Optimal)
+                $entry.LastWriteTime = [DateTimeOffset]'1980-01-01T00:00:00Z'
+                $source = [System.IO.File]::OpenRead($file.FullName)
+                try {
+                  $destinationStream = $entry.Open()
+                  try { $source.CopyTo($destinationStream) } finally { $destinationStream.Dispose() }
+                } finally { $source.Dispose() }
+              }
+            } finally { $archive.Dispose() }
+          }
+          New-DeterministicZip "dist/$versioned"
+          $reproducibilityProbe = Join-Path $env:RUNNER_TEMP "shepherd-$env:TARGET-repro.zip"
+          New-DeterministicZip $reproducibilityProbe
+          if ((Get-FileHash -LiteralPath "dist/$versioned" -Algorithm SHA256).Hash -cne (Get-FileHash -LiteralPath $reproducibilityProbe -Algorithm SHA256).Hash) {
+            throw 'Windows release ZIP is not reproducible from identical staged inputs'
+          }
+          Remove-Item -LiteralPath $reproducibilityProbe -Force
+          Copy-Item -LiteralPath "dist/$versioned" -Destination "dist/$stable"
+          foreach ($asset in @($versioned, $stable)) {
+            $hash = (Get-FileHash -LiteralPath "dist/$asset" -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $asset" | Set-Content -NoNewline -LiteralPath "dist/$asset.sha256"
+          }
+      - name: Verify asset sidecars
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          (
+            cd dist
+            for check in *.sha256; do
+              shasum -a 256 --check "$check"
+            done
+          )
+      - name: Verify asset sidecars
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Get-ChildItem -LiteralPath dist -Filter '*.sha256' | ForEach-Object {
+            if ((Get-Content -LiteralPath $_.FullName) -notmatch '^[0-9A-Fa-f]{64}  [^/\\]+$') {
+              throw "invalid checksum sidecar: $($_.Name)"
+            }
+          }
+      - name: Exercise the Windows installer against the packaged asset
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.release-metadata.outputs.current }}
+        run: scripts/tests/test-release-installer-windows.ps1 -Version $env:VERSION -ArchiveDirectory dist
+      - name: Exercise the Windows installer with Windows PowerShell 5.1
+        if: runner.os == 'Windows'
+        shell: powershell
+        env:
+          VERSION: ${{ needs.release-metadata.outputs.current }}
+        run: scripts/tests/test-release-installer-windows.ps1 -Version $env:VERSION -ArchiveDirectory dist
+      - name: Upload native release assets
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-native-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 1
+
+  build-component-assets:
+    name: Component and harness adapters
+    needs: release-metadata
+    if: needs.release-metadata.outputs.proceed == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout release commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 1
+          ref: ${{ github.sha }}
+      - name: Setup Rust with the Component Model target
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
+        with:
+          cache: false
+          target: wasm32-wasip2
+      - name: Install locked Node dependencies
+        run: npm ci --ignore-scripts
+      - name: Build and validate the Component Model artifact
+        run: |
+          set -euo pipefail
+          cargo build --locked --release --package shepherd-component --target wasm32-wasip2
+          bash scripts/test-component-node.sh
+          node --test packages/component-runtime/test/*.test.mjs
+          node packages/harness-claude/test.mjs
+          node packages/harness-codex/test.mjs
+          node packages/harness-pi/test.mjs
+          node packages/scripts/check-package-boundary.mjs
+          bash scripts/test-packed-plugin.sh
+          bash scripts/tests/test-claude-plugin-release.sh
+      - name: Stage Wasm component and npm adapter tarballs
+        shell: bash
+        env:
+          VERSION: ${{ needs.release-metadata.outputs.current }}
+        run: |
+          set -euo pipefail
+          wasm='target/wasm32-wasip2/release/shepherd_component.wasm'
+          test -s "$wasm"
+          mkdir -p dist stage/packages
+          component_stage="${RUNNER_TEMP}/shepherd-component-wasm32-wasip2"
+          mkdir -p "$component_stage"
+          cp "$wasm" "$component_stage/shepherd-component.wasm"
+          scripts/stage-distribution-legal.sh "$component_stage"
+          find "$component_stage" -type f -exec touch -t 198001010000 {} +
+          component_legal_entries=()
+          while IFS= read -r entry; do
+            component_legal_entries+=("$entry")
+          done < <(
+              cd "$component_stage"
+              find THIRD_PARTY_LICENSES -type f -name '*.txt' -print | LC_ALL=C sort
+            )
+          ((${#component_legal_entries[@]} > 0))
+          for asset in \
+            "shepherd-component-${VERSION}-wasm32-wasip2.tar.gz" \
+            'shepherd-component-wasm32-wasip2.tar.gz'; do
+            LC_ALL=C tar --format ustar --uid 0 --gid 0 --uname root --gname root \
+              -C "$component_stage" -cf - LICENSE THIRD_PARTY_NOTICES.md "${component_legal_entries[@]}" shepherd-component.wasm \
+              | gzip -n > "dist/${asset}"
+          done
+          for package in component-runtime harness-claude harness-codex harness-pi; do
+            cp -R "packages/${package}" "stage/packages/${package}"
+          done
+          SHEPHERD_COMPONENT_NODE_ROOT="$PWD" SHEPHERD_COMPONENT_WASM="$wasm" \
+            scripts/stage-component-runtime.sh stage
+          scripts/stage-distribution-legal.sh stage
+          ln -s "$PWD/node_modules" stage/packages/component-runtime/node_modules
+          for package in component-runtime harness-claude harness-codex harness-pi; do
+            (
+              cd "stage/packages/${package}"
+              npm pack --json --ignore-scripts --pack-destination "$PWD/../../../dist" >/dev/null
+            )
+          done
+          (
+            cd dist
+            for asset in *; do
+              sha256sum "$asset" > "${asset}.sha256"
+            done
+          )
+          SHEPHERD_COMPONENT_NODE_ROOT="$PWD" SHEPHERD_COMPONENT_WASM="$wasm" \
+            scripts/build-claude-plugin-release.sh dist
+      - name: Verify component and npm release asset sidecars
+        shell: bash
+        run: |
+          set -euo pipefail
+          (
+            cd dist
+            for check in *.sha256; do
+              sha256sum --check --status "$check"
+            done
+          )
+      - name: Upload Component Model and adapter assets
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-component-and-adapters
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 1
+
   release:
     name: Patch release pipeline
+    needs: [release-metadata, build-native-assets, build-component-assets]
+    if: needs.release-metadata.outputs.proceed == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -33,11 +401,11 @@ jobs:
       issues: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
           fetch-tags: true
-          ref: ${{ github.ref_name }}
+          ref: ${{ github.sha }}
           token: ${{ secrets.GITHUB_TOKEN }}
           persist-credentials: true
       - name: Detect release commit
@@ -136,20 +504,55 @@ jobs:
           fi
           echo "path=$NOTES" >> "$GITHUB_OUTPUT"
 
+      - name: Download and verify release assets
+        if: steps.detect.outputs.proceed == 'true'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/shepherd-release-assets
+
+      - name: Verify all release asset checksums
+        if: steps.detect.outputs.proceed == 'true'
+        shell: bash
+        env:
+          ASSET_DIR: ${{ runner.temp }}/shepherd-release-assets
+          VERSION: ${{ steps.ver.outputs.current }}
+        run: |
+          set -euo pipefail
+          ASSET_LIST="${ASSET_DIR}.txt"
+          scripts/verify-release-assets.sh "$ASSET_DIR" "$ASSET_LIST" "$VERSION"
+          scripts/verify-release-distribution.sh "$ASSET_DIR" "$VERSION"
+          mapfile -t release_files < "$ASSET_LIST"
+          ((${#release_files[@]} == 34))
+
       # ─── Patch close: tag + GitHub release ─────────────────────────────────
-      - name: Tag the release commit
+      - name: Tag the verified release commit
         if: steps.detect.outputs.proceed == 'true'
         env:
           TAG: ${{ steps.ver.outputs.tag }}
         run: |
           set -euo pipefail
           if git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "Tag $TAG already exists locally; skipping create."
+            local_target=$(git rev-list -n 1 "$TAG")
+            [ "$local_target" = "$GITHUB_SHA" ] || {
+              printf 'existing local tag %s resolves to %s, expected event SHA %s\n' \
+                "$TAG" "$local_target" "$GITHUB_SHA" >&2
+              exit 1
+            }
           else
             git tag -a "$TAG" -m "$TAG"
           fi
-          if git ls-remote --exit-code --tags origin "$TAG" >/dev/null 2>&1; then
-            echo "Tag $TAG already on origin; skipping push."
+          remote_direct=$(git ls-remote --tags origin "refs/tags/${TAG}" | awk 'NR == 1 { print $1 }')
+          remote_peeled=$(git ls-remote --tags origin "refs/tags/${TAG}^{}" | awk 'NR == 1 { print $1 }')
+          if [ -n "$remote_direct" ]; then
+            remote_target="${remote_peeled:-$remote_direct}"
+            [ "$remote_target" = "$GITHUB_SHA" ] || {
+              printf 'existing remote tag %s resolves to %s, expected event SHA %s\n' \
+                "$TAG" "$remote_target" "$GITHUB_SHA" >&2
+              exit 1
+            }
+            echo "Tag $TAG already points at the event SHA; skipping push."
           else
             git push origin "$TAG"
           fi
@@ -162,12 +565,33 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ steps.ver.outputs.tag }}
           NOTES: ${{ steps.notes.outputs.path }}
+          ASSET_DIR: ${{ runner.temp }}/shepherd-release-assets
+          ASSET_LIST: ${{ runner.temp }}/shepherd-release-assets.txt
+          VERSION: ${{ steps.ver.outputs.current }}
         run: |
           set -euo pipefail
+          mapfile -t release_files < "$ASSET_LIST"
+          ((${#release_files[@]} == 34)) || { echo 'missing verified release files' >&2; exit 1; }
           if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "Release $TAG already exists; skipping create."
+            release_state=$(gh release view "$TAG" --json isDraft,isPrerelease,tagName)
+            [ "$(jq -r '.tagName' <<<"$release_state")" = "$TAG" ]
+            [ "$(jq -r '.isPrerelease' <<<"$release_state")" = false ] || {
+              echo "existing release $TAG is unexpectedly a prerelease" >&2
+              exit 1
+            }
+            remote_dir=$(mktemp -d "${RUNNER_TEMP}/shepherd-existing-release.XXXXXX")
+            trap 'find "$remote_dir" -depth -delete' EXIT
+            gh release download "$TAG" --dir "$remote_dir"
+            scripts/verify-release-assets.sh "$remote_dir" "${remote_dir}.txt" "$VERSION"
+            diff --recursive --brief "$ASSET_DIR" "$remote_dir"
+            if [ "$(jq -r '.isDraft' <<<"$release_state")" = true ]; then
+              gh release edit "$TAG" --draft=false
+              echo "Published byte-identical recovered draft $TAG."
+            else
+              echo "Existing release $TAG is byte-identical; no upload required."
+            fi
           else
-            gh release create "$TAG" --target "${{ github.ref_name }}" --title "$TAG" --notes-file "$NOTES"
+            gh release create "$TAG" --verify-tag --target "$GITHUB_SHA" --title "$TAG" --notes-file "$NOTES" "${release_files[@]}"
           fi
 
       - name: Create GitHub Release (auto-generated notes)
@@ -177,22 +601,42 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ steps.ver.outputs.tag }}
+          ASSET_DIR: ${{ runner.temp }}/shepherd-release-assets
+          ASSET_LIST: ${{ runner.temp }}/shepherd-release-assets.txt
+          VERSION: ${{ steps.ver.outputs.current }}
         run: |
           set -euo pipefail
+          mapfile -t release_files < "$ASSET_LIST"
+          ((${#release_files[@]} == 34)) || { echo 'missing verified release files' >&2; exit 1; }
           if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "Release $TAG already exists; skipping create."
+            release_state=$(gh release view "$TAG" --json isDraft,isPrerelease,tagName)
+            [ "$(jq -r '.tagName' <<<"$release_state")" = "$TAG" ]
+            [ "$(jq -r '.isPrerelease' <<<"$release_state")" = false ] || {
+              echo "existing release $TAG is unexpectedly a prerelease" >&2
+              exit 1
+            }
+            remote_dir=$(mktemp -d "${RUNNER_TEMP}/shepherd-existing-release.XXXXXX")
+            trap 'find "$remote_dir" -depth -delete' EXIT
+            gh release download "$TAG" --dir "$remote_dir"
+            scripts/verify-release-assets.sh "$remote_dir" "${remote_dir}.txt" "$VERSION"
+            diff --recursive --brief "$ASSET_DIR" "$remote_dir"
+            if [ "$(jq -r '.isDraft' <<<"$release_state")" = true ]; then
+              gh release edit "$TAG" --draft=false
+              echo "Published byte-identical recovered draft $TAG."
+            else
+              echo "Existing release $TAG is byte-identical; no upload required."
+            fi
           else
-            gh release create "$TAG" --target "${{ github.ref_name }}" --title "$TAG" --generate-notes
+            gh release create "$TAG" --verify-tag --target "$GITHUB_SHA" --title "$TAG" --generate-notes "${release_files[@]}"
           fi
 
-      # ─── Next patch: cut from current patch branch + bump all version refs ──
+      # ─── Next patch: cut from current patch branch + bump every authority ───
       - name: Cut next patch branch + bump all version refs
         if: steps.detect.outputs.proceed == 'true'
         env:
           CURRENT: ${{ steps.ver.outputs.current }}
           NEXT: ${{ steps.ver.outputs.next }}
           PATCH: ${{ steps.ver.outputs.patch_branch }}
-          CURRENT_REF: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           if git ls-remote --exit-code --heads origin "$PATCH" >/dev/null 2>&1; then
@@ -200,59 +644,23 @@ jobs:
             git fetch origin "$PATCH"
             git checkout -B "$PATCH" "origin/$PATCH"
           else
-            # Cut the next patch branch from main — which NOW contains this
-            # release (the v${CURRENT} patch branch just merged in, which is
-            # what triggered this run). CURRENT_REF is the default branch.
-            git checkout -b "$PATCH" "origin/${CURRENT_REF}"
+            # Cut the next patch branch from the immutable release commit. A
+            # later push to main while assets build must not change its base.
+            git checkout -b "$PATCH" "$GITHUB_SHA"
           fi
 
-          # ── Claude plugin: bump version in plugin + marketplace manifests ──
-          jq --arg v "${NEXT}" '.version = $v' .claude-plugin/plugin.json \
-            > .claude-plugin/plugin.json.tmp \
-            && mv .claude-plugin/plugin.json.tmp .claude-plugin/plugin.json
-          jq --arg v "${NEXT}" '.version = $v | .plugins[0].version = $v' \
-            .claude-plugin/marketplace.json > .claude-plugin/marketplace.json.tmp \
-            && mv .claude-plugin/marketplace.json.tmp .claude-plugin/marketplace.json
-          echo "  bumped .claude-plugin/plugin.json + marketplace.json"
-
-          # ── SKILL.md frontmatters: bump version: line in both skill entry points ──
-          for f in skills/shepherd/SKILL.md skills/context/SKILL.md; do
-            if [ -f "$f" ]; then
-              sed -i.bak -E "s/^version: ${CURRENT}$/version: ${NEXT}/" "$f"
-              rm -f "${f}.bak"
-              echo "  bumped $f"
-            fi
-          done
-
-          # ── README: bump the title heading + the current-version line ──
-          if [ -f README.md ]; then
-            # Title heading "# shepherd — vX.Y.Z". Structural match (any version
-            # → NEXT) so a title left behind a few patches self-heals instead of
-            # sticking — the failure mode that left it at v6.0.5 through v6.0.7.
-            sed -i.bak -E \
-              "s/^# shepherd — v[0-9]+\.[0-9]+\.[0-9]+/# shepherd — v${NEXT}/" \
-              README.md
-            # Current-version line (specific CURRENT → NEXT).
-            sed -i.bak -E \
-              "s/Current version: \*\*${CURRENT}\*\*/Current version: **${NEXT}**/" \
-              README.md
-            rm -f README.md.bak
+          changed_paths="${RUNNER_TEMP}/shepherd-version-bump-paths.txt"
+          : > "$changed_paths"
+          if python3 scripts/version-bump.py check --root . --version "$NEXT" >/dev/null 2>&1; then
+            echo "Branch $PATCH already has one coherent v${NEXT} authority set."
+          else
+            python3 scripts/version-bump.py check --root . --version "$CURRENT"
+            bump_output="${RUNNER_TEMP}/shepherd-version-bump-output.txt"
+            python3 scripts/version-bump.py bump \
+              --root . --current "$CURRENT" --next "$NEXT" | tee "$bump_output"
+            tail -n +2 "$bump_output" > "$changed_paths"
           fi
-
-          # ── Report any remaining old-version strings for manual review ──
-          # Excludes: .artifacts/ (sprint docs), .git/, and lock files —
-          # these contain version strings that are NOT intentional version refs.
-          echo "::group::Remaining references to ${CURRENT} (review manually if any)"
-          grep -rn "${CURRENT}" \
-            --include="*.md" \
-            --include="*.json" \
-            --include="*.toml" \
-            --exclude-dir=.git \
-            --exclude-dir=.artifacts \
-            --exclude=skills-lock.json \
-            --exclude='*.lock' \
-            . || true
-          echo "::endgroup::"
+          python3 scripts/version-bump.py check --root . --version "$NEXT"
 
       - name: Commit + push next patch branch with version bump
         if: steps.detect.outputs.proceed == 'true'
@@ -262,13 +670,13 @@ jobs:
           PATCH: ${{ steps.ver.outputs.patch_branch }}
         run: |
           set -euo pipefail
-          # Stage only the files the bump step explicitly modified — never `git add -A`.
-          # .artifacts/, lock files, and unrelated tracked/untracked files must not
-          # ride this commit.
-          git add .claude-plugin/plugin.json .claude-plugin/marketplace.json
-          for f in skills/shepherd/SKILL.md skills/context/SKILL.md README.md; do
-            [ -f "$f" ] && git add "$f" || true
-          done
+          # Stage only the deterministic tool's exact changed-path list. Never
+          # use git add -A; unrelated runner files must not ride this commit.
+          changed_paths="${RUNNER_TEMP}/shepherd-version-bump-paths.txt"
+          if [[ -s "$changed_paths" ]]; then
+            mapfile -t version_paths < "$changed_paths"
+            git add -- "${version_paths[@]}"
+          fi
           if git diff --cached --quiet; then
             echo "No version changes to commit (idempotent re-run?)."
           else
@@ -287,7 +695,7 @@ jobs:
           if gh pr view "$PATCH" --json number >/dev/null 2>&1; then
             echo "Draft PR for $PATCH already exists; skipping."
           else
-            gh pr create --base main --head "$PATCH" --draft \
+            gh pr create --base "${{ github.event.repository.default_branch }}" --head "$PATCH" --draft \
               --title "release: v${NEXT}" \
               --body "Draft PR — accumulates dev.0..dev.9 of v${NEXT}. Generated by .github/workflows/release.yml."
           fi

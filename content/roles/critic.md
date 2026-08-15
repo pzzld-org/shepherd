@@ -1,5 +1,6 @@
 ---
 role: critic
+description: "Challenge a plan or proposal before execution without editing it. Use to find contradictions, missing gates, unnecessary complexity, and unsafe assumptions."
 source: agents/critic.md
 model_hint: standard
 write_eligible: false

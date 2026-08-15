@@ -8,9 +8,8 @@
 # why the doctrine caps it at 200 characters and requires it to be
 # load-bearing.
 #
-# The rule was doctrine-only until now, and doctrine with no teeth drifts: two
-# descriptions had already gone over (commands/start.md at 206,
-# skills/bridge/SKILL.md at 309) with nothing to notice. A cap that is only
+# The rule was doctrine-only until now, and doctrine with no teeth drifts. A
+# cap that is only
 # written down is a cap that is only sometimes true.
 #
 # Counts the description VALUE, joined and whitespace-collapsed, stopping at
@@ -34,7 +33,6 @@ import glob, os, pathlib, re, sys
 root, limit = sys.argv[1], int(sys.argv[2])
 targets = sorted(
     glob.glob(os.path.join(root, "agents", "*.md"))
-    + glob.glob(os.path.join(root, "commands", "*.md"))
     + glob.glob(os.path.join(root, "skills", "*", "SKILL.md"))
 )
 

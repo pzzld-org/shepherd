@@ -1,208 +1,56 @@
-# shepherd.toml — shepherd plugin (self-hosted dogfood)
-#
-# This is the shepherd plugin REPO running shepherd on itself. The plugin
-# under development IS the orchestration framework being used. Sprint
-# scope per dev.N = patch-grade per doctrines/sprint-as-patch.md.
+# Canonical layout-v5 configuration for Shepherd dogfooding itself.
+# Defaults come from the closed Rust schema; only project decisions are stated.
 
 [project]
-name        = "shepherd"
-description = "Sprint-by-sprint version-cycle conductor (Claude Code plugin)"
-language    = "markdown"   # primary content is .md doctrine + shell scripts
+name = "shepherd"
+description = "Harness-neutral execution workflow with one Rust CLI, a typed WebAssembly Component Model, and thin Claude, Codex, and Pi adapters."
+language = "rust"
+harnesses = ["claude", "codex", "pi"]
 
 [branching]
-patch_branch_pattern  = "v{X}.{Y}.{Z}"
+patch_branch_pattern = "v{X}.{Y}.{Z}"
 sprint_branch_pattern = "v{X}.{Y}.{Z}-dev.{N}"
-sprint_slug_pattern   = "v{X}{Y}{Z}-dev{N}"      # v5.1.2 — filesystem-slug form; dots collapsed
-patch_slug_pattern    = "v{X}{Y}{Z}"             # v5.1.2 — patch-arc slug form
-sprints_per_patch     = 10
-main_branch           = "main"
+patch_slug_pattern = "v{X}{Y}{Z}"
+sprint_slug_pattern = "v{X}{Y}{Z}-dev{N}"
+sprints_per_patch = 10
+main_branch = "main"
+release_tag_pattern = "v{X}.{Y}.{Z}"
+allow_direct_main_commit = false
 
 [paths]
-plans   = ".shepherd/docs/plans"
-reports = ".shepherd/docs/reports"
-docs    = ".shepherd/docs"
-ctx     = ".shepherd/ctx"
-runs    = ".shepherd/runs"
+docs = ".shepherd/docs"
+ctx = ".shepherd/ctx"
+runs = ".shepherd/runs"
 
 [gates]
-# Plugin has no compilable language; gates are validation of structured assets.
-check  = "jq empty .claude-plugin/plugin.json .claude-plugin/marketplace.json hooks/hooks.json"
-lint   = "bin/shepherd lint"
-format = ""
+check = "scripts/gate.sh fast"
+lint = "cargo clippy --workspace --all-targets --locked -- -D warnings"
+format = "cargo fmt --all -- --check"
 
 [gates.extra]
-hook_tests = "bash hooks/scripts/_lib.sh && echo lib-sourceable-ok"
-ctx_tests  = "bash skills/context/tests/run.sh"
+full = "scripts/gate.sh full"
+wasm = "scripts/gate.sh wasm"
+hooks = "bash hooks/tests/run.sh"
+release = "bash scripts/tests/test-release-workflow.sh"
 
 [skills]
-mandatory  = ["code-style"]
-by_domain  = { shell = ["code-style"], markdown = ["code-style"] }
+mandatory = ["shepherd"]
+
+[skills.by_domain]
+rust = ["thinking"]
 
 [release]
-driver              = "operator"
-release_notes_path  = "CHANGELOG.md"
-
-[ledger]
-carry_forward_file        = ".shepherd/ctx/carry-forward.md"
-phase_0_full_ledger       = true
-chronic_threshold_patches = 2
-non_issue_labels          = ["wontfix", "tracking-future", "design-question", "rfc"]
-
-[stage_graph]
-default_wave_count    = 2
-hotfix_max_iterations = 3
-walk_trace_enabled    = true
-
-[stage_graph.intro_wave]
-enabled                  = true
-default_discoveries      = ["prior-close-audit-summary", "canonical-types-freshness", "gh-state-inventory"]
-default_intro_auditors   = ["regression", "carry-forward-disposition"]
-disable_for_tshirt       = ["XS"]
-parallel_max             = 5
-
-[context]
-auto_refresh = ["on-sprint-open"]
-[context.refresh]
-ttl_minutes = 30
-[context.lock]
-stale_after_minutes = 120
+driver = "github-workflow"
+release_notes_path = "CHANGELOG.md"
+workflow_file = ".github/workflows/release.yml"
+devlast_guard = "block"
 
 [spawn]
-# Effort posture injected into TEAM-LEAD sessions (@engineer, @conductor) at spawn
-# (v6.3.3). The leads own fan-out — the engineer's parallel discovery/audit waves,
-# the conductor's per-lane step fan-out — so they run at ultracode by default: the
-# effort level itself makes Dynamic-Workflow orchestration the natural default,
-# without shepherd having to spend brief-context nagging for it (commands/spawn.md
-# §Lead effort). Subagents/workers are unaffected — this is leads only. Set to any
-# effort ("max"|"high"|…) or "off" to leave the lead session's effort as-is.
-lead_effort = "ultracode"
-
-[hooks]
-# Automatic teammate liveness (v6.3.3 #193): a PreToolUse hook stamps last_seen_at
-# for the current teammate on every tool call, so `shctx teammate liveness` is
-# trustworthy for roles that never self-report (the self-contained @engineer). "off"
-# disables it (liveness then reverts to explicit `shctx teammate heartbeat`).
-teammate_heartbeat = "on"
+max_parallel = 3
+lead_effort = "high"
 
 [mcp]
-github   = true
-sentry   = false
-supabase = false
+github = true
 
 [cli]
-fly = false
-gh  = true
-
-[preflight]
-auto_invoke = "doctor"
-
-[models]
-# Per-role subagent model map (v6.2.5). The single source for which model each
-# flock/meta role dispatches with — every dispatching tier resolves it via
-# `shctx models resolve <role>` and injects the result as the Agent `model:` pin.
-# Unset roles fall to built-in defaults (root/planter/engineer = opus[1m];
-# conductor/critic/discovery/coder/auditor/worker = sonnet), so these values
-# just make the defaults explicit for the self-hosted dogfood. root is ADVISORY:
-# it names the model your live session SHOULD run; a config key cannot rebind a
-# running main-chat session (a spawn preflight warns on mismatch). Set any role
-# to any slug for total control. See docs/configuration.md §models.
-#
-# TIERING RULE (v6.4.5, operator directive 2026-08-12: "use haiku whenever
-# compiling research"). Tier by WHAT THE ROLE DOES, applying the two-machine-spaces
-# split in CLAUDE.md to model choice, not just to code-vs-prompt:
-#
-#   COMPILING  — probe a binary, read a doc, count objects, grep, tabulate. Same
-#                input, same correct output. Deterministic-shaped work wearing a
-#                model. -> haiku
-#   JUDGING    — grade, refute, decide, decompose, adjudicate. Genuinely latent.
-#                -> sonnet and up
-#
-# Measured on the v6.4.5 intro wave, subagent tokens actually billed:
-#   discovery  D1 122,024 · D2 275,034 (incl. a 143k re-emission)  = 397,058
-#   auditor    A1 146,393 · A2 252,903 (incl. a 128k re-emission)
-#              A3 134,218                                          = 533,514
-#   critic     pass1 239,042 · pass2 203,490                       = 442,532
-#                                                          total  ~1,373,104
-#
-# Every one of those agents spent the BULK of its budget compiling: D1 probed
-# `pi --help` and bundled docs; D2 read live registry package.json and minijinja
-# source; A1 counted LOC and grepped for `todo!()`; A2 AST-walked 43 modules and
-# tokenize-measured code density; A3 counted 36 tables / 14 views / 34 indexes.
-# The load-bearing JUDGMENTS -- A2's NO-FIT verdict, A3's refutation of locked
-# decision 3 -- were each one short inference sitting on top of a large pile of
-# mechanical measurement.
-#
-# SHAPE (operator, 2026-08-12): do NOT tier the mixed roles whole. Split them.
-# `@discovery` stays SONNET and becomes a research LEAD: it decomposes the question,
-# fans out haiku `@worker`s to compile the evidence, and synthesizes the report the
-# engineer consumes. The compiling tier is `@worker` at HAIKU. No seventh role is
-# needed and the flock stays closed at six -- `@worker` is already defined as bounded
-# execution for research, ops and batches, which is exactly the compiler tier.
-#
-# This is strictly better than tiering discovery down, for two reasons beyond cost:
-# the synthesis stays at a tier that can actually weigh conflicting evidence (D2 had
-# to settle two lanes' contradictory rusqlite/FTS5 claims at the source), and fan-out
-# forces each compiler's evidence onto disk as its own artifact instead of leaving it
-# in one agent's reasoning trace.
-#
-# BLOCKED ON DF-14, and this is the point where that finding stops being an
-# inconvenience and becomes load-bearing: on this substrate a dispatched agent's
-# result is delivered to the TASK-TREE OWNER, not to the agent that dispatched it
-# (measured 5/5 this run; GH #270). A `@discovery` lead fanning out haiku `@worker`s
-# would therefore receive none of their reports -- exactly the failure that cost this
-# run ~270k tokens in re-queries before root materialized the payloads to disk by
-# hand. So this shape is CORRECT and NOT YET DISPATCHABLE. W0 has to land the DF-14
-# fix (sub-flock reports written to `{run_dir}/reports/` by the agents themselves as
-# their contracted durable artifact, lead reads from disk by design) before the
-# discovery-lead pattern can run at all.
-#
-# `auditor` stays sonnet because it GRADES, and `critic` stays sonnet because it is
-# the adversarial gate -- this run is the argument against cheapening it: the critic
-# caught a deadlock the engineer introduced, then refused a peer's request to truncate
-# its own mandated report. `coder` stays sonnet; it writes.
-#
-# ---------------------------------------------------------------------------
-# TIERING POLICY (operator, 2026-08-12). Binding floors, not preferences:
-#
-#   TEAM LEADS AND PERSISTENT AGENTS -- `engineer`, `conductor` -- are SONNET AT
-#   MINIMUM. Never haiku. They hold state across a whole plan or a whole lane,
-#   they decompose, and they adjudicate; a lead that loses the thread costs more
-#   than the tier ever saves. `engineer` is RECOMMENDED and DEFAULTED to an
-#   opus-level model. `conductor` may dispatch at sonnet or opus at root's
-#   discretion per lane -- escalate a lane that is dense, cross-cutting, or
-#   carrying an unresolved gate; sonnet is the default and is sufficient for a
-#   lane walking a well-decomposed plan.
-#
-#   `discovery` may run at SONNET OR HAIKU, with a condition attached: **if
-#   haiku, fan out wider and cut each task narrower.** Haiku compiles a tightly
-#   scoped question well and degrades on a broad one, so the tier is only cheaper
-#   if the decomposition does the work the model no longer does. One haiku agent
-#   asked "probe the Pi harness surface" is a false economy; six asked one
-#   concrete question each, with the answer shape specified, is not. At sonnet,
-#   discovery can hold a broad brief and settle conflicting evidence itself --
-#   which D2 had to do this run, resolving two lanes' contradictory rusqlite and
-#   FTS5 claims by going to the source and finding both wrong.
-#
-#   The rule generalizes: DROPPING A TIER IS ONLY A SAVING IF THE BRIEF GETS
-#   NARROWER BY THE SAME MEASURE. Cheaper model, same broad question, is how a
-#   research pass returns something plausible and wrong -- the most expensive
-#   outcome available, because the cost lands downstream on whoever trusts it.
-# ---------------------------------------------------------------------------
-#
-root      = "opus[1m]"
-planter   = "opus[1m]"
-engineer  = "opus[1m]"
-conductor = "sonnet"
-critic    = "sonnet"
-discovery = "sonnet"   # research LEAD: decomposes, fans out haiku workers, synthesizes
-coder     = "sonnet"
-auditor   = "sonnet"
-worker    = "haiku"    # the compiling tier: probe, read, count, grep, tabulate
-
-[prune]
-# Workdir + registry GC retention windows (v6.2.5). `shctx prune` defaults to
-# --dry-run; --confirm executes after snapshotting to /tmp. See docs/configuration.md §prune.
-logs_days        = 60    # age floor for logs/events-*.jsonl + logs/hooks/*.jsonl
-dispatch_days    = 30    # age floor for stale dispatch/<sprint>/ dirs (non-current branch)
-snapshots_keep   = 20    # precompact memory snapshots to retain (newest-first)
-findings_sprints = 6     # keep discovery/audit findings for the last N sprints
+gh = true

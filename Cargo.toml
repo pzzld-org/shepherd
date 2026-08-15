@@ -40,6 +40,7 @@ version = "6.4.5"
 shepherd = { default-features = false, path = "crates/sdk", version = "6.4.5" }
 # members, in dependency order
 shepherd-core = { default-features = false, path = "crates/core", version = "6.4.5" }
+shepherd-compiler = { default-features = false, path = "crates/compiler", version = "6.4.5" }
 shepherd-registry = { default-features = false, path = "crates/registry", version = "6.4.5" }
 shepherd-render = { default-features = false, path = "crates/render", version = "6.4.5" }
 # bin
@@ -49,15 +50,16 @@ shepherd-cli = { default-features = false, path = "crates/cli", version = "6.4.5
 clap = { default-features = false, features = ["derive"], version = "4" }
 # databases
 rusqlite = { default-features = false, version = "0.40" }
-# config
-# TOML only. Defaults pull json/yaml/ini/ron/json5/convert-case/async, and `async`
-# drags in async-trait against the no-async-runtime decision. `ini` alone pulls
-# rust-ini -> ordered-multimap -> dlv-list -> const-random -> getrandom.
-# shepherd.toml is the only config format shepherd has ever read.
-config = { default-features = false, features = ["toml"], version = "0.15" }
+# config -- `toml` plus serde is sufficient because the engine receives
+# already-read strings and owns its own fixed precedence/merge policy.
 schemars = { default-features = false, features = ["derive"], version = "1" }
+toml = { default-features = false, features = ["parse", "serde"], version = "1.1" }
 # parsing — structured text only (slugs, brief headers, seed blocks)
 nom = { default-features = false, version = "8" }
+# shell-style path expansion for deterministic file-scope validation
+glob = { default-features = false, version = "0.3.4" }
+# Unicode Standard Annex #29 word boundaries for deterministic prompt budgets.
+unicode-segmentation = { default-features = false, version = "1.13.3" }
 # templating
 minijinja = { default-features = false, version = "2" }
 # hashing
@@ -65,6 +67,7 @@ sha2 = { default-features = false, version = "0.11" }
 # serialization
 serde = { default-features = false, features = ["derive"], version = "1" }
 serde_json = { default-features = false, version = "1" }
+serde-saphyr = { default-features = false, features = ["deserialize"], version = "1.0.1" }
 # macros & utils
 strum = { default-features = false, features = ["derive"], version = "0.28" }
 # error handling
@@ -77,6 +80,10 @@ chrono = { default-features = false, version = "0.4" }
 # tracing
 tracing = { default-features = false, features = ["attributes"], version = "0.1" }
 tracing-subscriber = { default-features = false, features = ["env-filter", "fmt"], version = "0.3" }
+# descriptor-relative filesystem operations for race-safe CLI publication
+rustix = { default-features = false, features = ["fs"], version = "1" }
+# WebAssembly component-model bindings over the pure SDK surface.
+wit-bindgen = { default-features = false, features = ["macros", "realloc"], version = "0.60.0" }
 # benchmarks
 criterion = { version = "0.7" }
 

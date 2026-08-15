@@ -1,0 +1,11 @@
+{
+  "suite": "core",
+  "kind": "pure",
+  "authority": "native-v6.4.5",
+  "intentional_difference": "legacy ready spawned init/migrate/refresh/lint/doctor subprocesses; native ready validates the already-canonical registry and selected run ledger in-process without hidden mutation or retired refresh authority",
+  "requires_git": true,
+  "description": "native ready validates an initialized canonical run and registry",
+  "setup": [["init", "--confirm"], ["run", "init", "v900"]],
+  "args": ["ready", "--run", "v900", "--json"],
+  "db_fixture": "none"
+}

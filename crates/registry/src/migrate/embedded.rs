@@ -2,26 +2,18 @@
     Appellation: embedded <module>
     Contrib: @FL03
 */
-//! Byte-identical, compile-time-embedded copies of the registry's schema SQL.
+//! Compile-time-embedded registry schema SQL.
 //!
-//! `include_str!` reaches only into this crate's own package root -- a
-//! published `rlib` cannot embed a file that lives outside it (`cargo
-//! package` only bundles files under the crate directory), and a
-//! self-contained crate should not need the monorepo layout on disk just to
-//! build. So the 21 files at `skills/context/schema/{0001_init.sql,
-//! migrations/*.sql}` are vendored verbatim under `sql/` here, staged with a
-//! byte-for-byte `cp` (never hand-retyped, which is exactly how "verbatim"
-//! quietly stops being true). [`crate::migrate::tests::vendored_copies_match_source`]
-//! is the standing drift check: it reads the real source of truth back and
-//! fails the day it and the vendored copy disagree.
+//! The 21 files under this module's `sql/` directory are the one schema
+//! authority. `include_str!` packages them with the Rust crate so the native
+//! CLI, component, and language adapters cannot drift through copied schemas.
 
-/// The baseline schema (`skills/context/schema/0001_init.sql`). Applied
+/// The baseline schema (`sql/0001_init.sql`). Applied
 /// FIRST, before any migration -- it creates `schema_versions` itself and
 /// self-inserts its own `(1, unixepoch(), 'baseline-v5.0.0')` row, so
 /// [`super::runner::apply_all`] never records version 1 a second time.
 /// `0001_init.sql` sits at the schema-dir TOP LEVEL, outside `migrations/`,
-/// and is applied by a *separate* path in both existing runners (`shctx
-/// init`) -- see the crate's own top-level doc comment.
+/// and is applied before the ordered migration sequence.
 pub(super) const INIT_SQL: &str = include_str!("sql/0001_init.sql");
 
 /// One vendored migration file.
@@ -29,17 +21,15 @@ pub(super) struct Migration {
     /// The 4-digit version this migration advances `schema_versions` to.
     pub(super) version: u32,
     /// The source filename, used in error messages so a failure names the
-    /// exact file, matching the existing bash/Python runners' narration
-    /// (`shctx migrate: applying NNNN_*.sql`).
+    /// exact file in native diagnostics.
     pub(super) filename: &'static str,
     /// The verbatim SQL text.
     pub(super) sql: &'static str,
 }
 
-/// Every migration under `skills/context/schema/migrations/`
+/// Every migration under `sql/migrations/`
 /// (`0002_styles.sql` .. `0021_spawn_lead.sql`), in filename (== version)
-/// order -- the same order both existing runners glob
-/// `migrations/[0-9][0-9][0-9][0-9]_*.sql` in. `0001_init.sql` is NOT here:
+/// order. `0001_init.sql` is NOT here:
 /// it sits outside `migrations/` and is [`INIT_SQL`] above.
 pub(super) const MIGRATIONS: &[Migration] = &[
     Migration {

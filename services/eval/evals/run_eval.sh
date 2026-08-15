@@ -50,6 +50,9 @@ _pair() { # kind  good-case  bad-case
 
 _pair reflection reflection_good.txt reflection_bad.txt
 _pair discovery  discovery_good.txt  discovery_bad.txt
+_pair dispatch   dispatch_good.txt   dispatch_bad.txt
+_pair content    content_good.txt    content_bad.txt
+_pair plugin-distribution plugin_distribution_good.txt plugin_distribution_bad.txt
 
 if (( fails == 0 )); then
   echo "—— live eval lane PASSED (judge discriminates good from bad) ——"

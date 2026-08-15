@@ -30,6 +30,10 @@ fn ff_resolve() {
     {
         let _: Option<shepherd::render::Error> = None;
     }
+    #[cfg(feature = "compiler")]
+    {
+        let _: Option<shepherd::compiler::CompileInput> = None;
+    }
 }
 
 /// The umbrella's prelude must stay unambiguous with every capability enabled.

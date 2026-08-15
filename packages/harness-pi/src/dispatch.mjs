@@ -1,47 +1,168 @@
-// packages/harness-pi/src/dispatch.mjs -- Pi has no native per-role dispatch primitive
-// (discovery-d1-harness.md: "absent as file-declared roles; a role = a CLI invocation
-// (`pi --system-prompt`/`--append-system-prompt` + `--model` + `--tools`)"), and `setModel()`
-// is session-global (discovery-harness-portability.md §3: "session-global (--model, one
-// process per role)"), so per-role model pinning costs one `pi` subprocess per role rather
-// than a frontmatter flag. This module builds that subprocess's argv + env; it never spawns
-// one -- spawning is the caller's job, so this stays a pure, unit-testable builder.
-//
-// `--append-system-prompt <path>` resolves to the FILE'S CONTENTS when the path exists on
-// disk (confirmed against the installed 0.84.1 binary's own resource-loader:
-// `resolvePromptInput` calls `readFileSync` when `existsSync(input)`), so passing the
-// materialized `prompts/<role>.md` path is correct, not a guess.
-//
-// `SHEPHERD_ROLE`/`SHEPHERD_SCOPE` reuse skills/bridge/SKILL.md §Dispatch envelope's own
-// field names for the same purpose (role identity, declared write scope) rather than
-// inventing a second env-var convention -- src/extension.ts's guard layer reads the same
-// two variables at tool_call time.
+//! Provider-only Pi lifecycle adapter. The component owns identity and
+//! dispatch policy; this module owns provider invocation and host publication.
 
-import { resolvePiModelFlag } from "./models.mjs";
-import { resolvePiTools } from "./tools.mjs";
+import {
+  componentBinding,
+  planToNativeDispatch,
+  planWithComponent,
+  validateNativeExchangeWithComponent,
+} from "../../component-runtime/src/index.mjs";
+import {
+  invokeNativeDispatch,
+  nativeShepherdBin,
+} from "../../component-runtime/src/native-transport.mjs";
+import { normalizePiWithComponent } from "./identity.mjs";
+import { readySubagentProvider } from "./subagent-provider.mjs";
 
-/**
- * @param {import("./roles.mjs").RoleFact} role
- * @param {{promptPath: string, writeScope?: string, binary?: string}} options
- *   `promptPath` is the materialized `prompts/<role>.md` (see src/materialize.mjs).
- * @returns {{argv: string[], env: Record<string,string>, unsupportedCapabilities: string[]}}
- */
-export function buildRoleInvocation(role, options) {
-  if (!role.dispatchable) {
-    throw new Error(`role \`${role.role}\` is dispatchable: false -- it is a session root/meta tier, never spawned as its own subprocess`);
+export async function spawnSubagent(provider, request, runtime) {
+  const bound = readySubagentProvider(provider, runtime);
+  if (bound === null) return capabilityBlocked("subagent-provider");
+  if (!runtime?.componentEngine) return capabilityBlocked("component-runtime");
+  const engine = runtime.componentEngine;
+  let nativeEvent;
+  let spawned = false;
+  try {
+    nativeEvent = await bound.spawn(request);
+    spawned = true;
+    const lifecycle = lifecycleResult("started", bound, nativeEvent, runtime, engine);
+    const dispatch = planToNativeDispatch(lifecycle.plan);
+    if (!dispatch || dispatch.operation !== "start") throw new Error("component did not plan a start request");
+    const published = publishNative(dispatch, runtime);
+    validateNativeExchangeWithComponent(engine, dispatch.operation, dispatch.request, published);
+    validatePublishedIdentity(published, lifecycle.identity, dispatch.operation);
+    return { kind: "started", identity: lifecycle.identity, native_event: nativeEvent, plan: lifecycle.plan, request: dispatch.request, dispatch: published };
+  } catch (publishError) {
+    if (!spawned) throw publishError;
+    return await failAndStopChild(bound, childAgentId(nativeEvent), publishError, "native dispatch publication failed and the Pi child could not be stopped");
   }
-  if (!options.promptPath) {
-    throw new Error("options.promptPath is required -- it carries the role's system-prompt content");
+}
+
+export async function resumeSubagent(provider, agentId, runtime) {
+  return publishLifecycle("resumed", provider, agentId, runtime);
+}
+
+export async function stopSubagent(provider, agentId, runtime) {
+  return publishLifecycle("stopped", provider, agentId, runtime);
+}
+
+async function publishLifecycle(kind, provider, agentId, runtime) {
+  const bound = readySubagentProvider(provider, runtime);
+  if (bound === null) return capabilityBlocked("subagent-provider");
+  if (!runtime?.componentEngine) return capabilityBlocked("component-runtime");
+  let nativeEvent;
+  try {
+    nativeEvent = kind === "resumed"
+      ? await bound.resume(agentId)
+      : kind === "stopped"
+        ? stopIdentity(agentId, runtime)
+        : await bound.stop(agentId);
+    const lifecycle = lifecycleResult(kind, bound, nativeEvent, { ...runtime, sourceAgentId: agentId }, runtime.componentEngine);
+    const dispatch = planToNativeDispatch(lifecycle.plan);
+    if (!dispatch) throw new Error(`component ignored ${kind} lifecycle`);
+    const published = publishNative(dispatch, runtime);
+    validateNativeExchangeWithComponent(runtime.componentEngine, dispatch.operation, dispatch.request, published);
+    validatePublishedIdentity(published, lifecycle.identity, dispatch.operation);
+    const providerEvent = kind === "stopped" ? await bound.stop(agentId) : nativeEvent;
+    return { kind, identity: lifecycle.identity, native_event: providerEvent, plan: lifecycle.plan, request: dispatch.request, dispatch: published };
+  } catch (lifecycleError) {
+    if (kind !== "resumed") throw lifecycleError;
+    return await failAndStopChild(bound, childAgentId(nativeEvent), lifecycleError, "native resume publication failed and the resumed Pi child could not be stopped");
   }
+}
 
-  const binary = options.binary ?? "pi";
-  const model = resolvePiModelFlag(role.modelHint);
-  const { tools, unsupported } = resolvePiTools(role.capabilities);
+export async function planPiLifecycleWithComponent(provider, event, runtime, engine, binding = undefined) {
+  const bound = readySubagentProvider(provider, runtime);
+  if (bound === null) return capabilityBlocked("subagent-provider");
+  const nativeEvent = event.lifecycle === "started"
+    ? await bound.spawn(event)
+    : event.lifecycle === "resumed"
+      ? await bound.resume(event.agentId)
+      : await bound.stop(event.agentId);
+  const identity = normalizePiWithComponent(nativeEvent, {
+    sessionId: runtime?.sessionId,
+    providerVersion: bound.capabilities()?.version,
+  }, engine);
+  const plan = planWithComponent(engine, identity, binding === undefined ? undefined : componentBinding(binding));
+  return { identity, plan, native_event: nativeEvent };
+}
 
-  const argv = [binary, "--print", "--append-system-prompt", options.promptPath, "--tools", tools.join(",")];
-  if (model) argv.push("--model", model);
+function lifecycleResult(kind, provider, nativeEvent, runtime, engine) {
+  const capabilities = provider.capabilities();
+  const identity = normalizePiWithComponent(nativeEvent, {
+    sessionId: runtime?.sessionId,
+    providerVersion: capabilities?.version,
+  }, engine);
+  const binding = componentBinding({
+    run: runtime.run,
+    role: runtime.role_carrier ?? runtime.roleCarrier ?? identity.roleCarrier,
+    lane: runtime.lane,
+    parentAgentId: runtime.parent_agent_id ?? runtime.parentAgentId,
+    writeScope: runtime.write_scope ?? runtime.writeScope,
+    model: runtime.model ?? identity.model,
+    observedCapabilities: runtime.observed_capabilities ?? runtime.observedCapabilities,
+    capabilitySource: runtime.capability_source ?? runtime.capabilitySource ?? "pi-startup-provider-probe",
+    harnessVersion: runtime.harnessVersion,
+    providerVersion: identity.providerVersion,
+    leaseMs: runtime.leaseMs,
+    expectedRevision: runtime.expectedRevision,
+    resultArtifact: nativeEvent.resultArtifact ?? runtime.resultArtifact,
+    sourceAgentId: kind === "resumed" ? runtime.sourceAgentId ?? identity.agentId : undefined,
+  });
+  const plan = planWithComponent(engine, identity, binding);
+  return { kind, identity, plan };
+}
 
-  const env = { SHEPHERD_ROLE: role.role };
-  if (options.writeScope) env.SHEPHERD_SCOPE = options.writeScope;
+function stopIdentity(agentId, runtime) {
+  const agentType = runtime.agent_type ?? runtime.agentType;
+  if (typeof agentType !== "string" || agentType.length === 0) {
+    throw new TypeError("Pi stop requires the provider agent_type before native durable stop");
+  }
+  return {
+    lifecycle: "stopped",
+    agentId,
+    agentType,
+    model: runtime.model,
+    resultArtifact: runtime.result_artifact ?? runtime.resultArtifact,
+  };
+}
 
-  return { argv, env, unsupportedCapabilities: unsupported };
+function publishNative(dispatch, runtime) {
+  const result = invokeNativeDispatch({
+    shepherdBin: nativeShepherdBin(runtime.shepherdBin),
+    operation: dispatch.operation,
+    request: dispatch.request,
+    cwd: runtime.cwd ?? process.cwd(),
+  });
+  if (!result.ok) throw new Error(result.detail);
+  return result.value;
+}
+
+function validatePublishedIdentity(value, identity, operation) {
+  const record = operation === "resume" ? value?.record : value;
+  if (record?.agent_id !== identity.agentId
+    || record.agent_type !== identity.agentType
+    || record.harness !== identity.harness
+    || record.session_id !== identity.sessionId
+    || (operation === "start" && record.state === "capability_blocked")) {
+    throw new TypeError("native dispatch publisher returned a mismatched or blocked record");
+  }
+}
+
+function childAgentId(nativeEvent) {
+  const agentId = nativeEvent?.agentId ?? nativeEvent?.agent_id;
+  return typeof agentId === "string" && agentId.length > 0 ? agentId : null;
+}
+
+async function failAndStopChild(provider, agentId, primaryError, message) {
+  if (agentId === null) throw primaryError;
+  try {
+    await provider.stop(agentId);
+  } catch (stopError) {
+    throw new AggregateError([primaryError, stopError], message);
+  }
+  throw primaryError;
+}
+
+function capabilityBlocked(name) {
+  return { kind: "capability_blocked", missing_required: [name] };
 }

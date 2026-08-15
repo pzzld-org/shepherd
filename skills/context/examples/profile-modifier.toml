@@ -1,6 +1,0 @@
-# profile-modifier.toml — example: skip critic for XS sprints
-name = "skip-critic-xs"
-kind = "modifier"
-[config]
-skip_critic_for = ["XS"]
-reason = "XS sprints are fully scoped by the seed; critic adds no value"

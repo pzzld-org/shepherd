@@ -1,0 +1,11 @@
+{
+  "suite": "core",
+  "kind": "pure",
+  "authority": "native-v6.4.5",
+  "intentional_difference": "native doctor JSON validates the initialized typed registry and canonical layout-v5 roots without legacy probes",
+  "requires_git": true,
+  "description": "doctor JSON verifies a confirmed native initialization",
+  "setup": [["init", "--confirm"]],
+  "args": ["doctor", "--json"],
+  "db_fixture": "none"
+}

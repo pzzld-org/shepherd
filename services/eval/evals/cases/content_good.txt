@@ -1,0 +1,11 @@
+REQUEST: Continue a stopped implementation lane in Codex after the prior Claude session compacted. The lane needs the canonical compiler output and no source edits.
+
+DECISION:
+
+1. Load the `bridge` skill plus the stopped dispatch record's project/run/lane-scoped checkpoint, memory summary, and artifact index. Do not load the full sprint doctrine or prior transcript. The resume bundle must remain inside the always-loaded dispatch-bundle limit: 300 lines, 2,000 words, and 22 KiB.
+
+2. Use the canonical `content/` role and skill sources through the Rust compiler. Emit the Codex carrier to a fresh generated tree with source paths, SHA-256 provenance, per-file measurements, and its tree digest. Do not hand-edit `shepherd.codex.toml` or any generated skill carrier.
+
+3. Route the work as the existing `coder` lane in the canonical nine-role flock. Store every new lane artifact under `.shepherd/runs/<run>/`; do not create a harness-specific run directory. Codex gets its verified `worker` mapping, not an invented prompt or command surface.
+
+4. Allocate a fresh Codex native identity that records the stopped Claude identity as lineage. Re-probe required capabilities. If the required provider or capability binding is absent, return `capability_blocked` before mutation. Preserve project, run, lane, and write scope. Never infer them from environment variables or replay the compacted transcript.

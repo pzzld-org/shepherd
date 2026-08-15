@@ -1,55 +1,41 @@
 ---
 name: bridge
+description: "Coordinate Shepherd sessions across Claude, Codex, or Pi through shared durable artifacts. Use when dispatch, handoff, resume, or state exchange crosses harness or session boundaries."
 source: skills/bridge/SKILL.md
-portability: unverified  # concept is already harness-neutral by design; Codex-side counterpart not independently probed this pass — RECONCILIATION.md §Residual
+portability: cross-harness
 ---
 
 # bridge — the cross-shepherd coordination contract
 
-The one contract letting two shepherd implementations coordinate on the same repository
-without either knowing the other's harness internals. A change here is meant to replicate
-to every implementation; a capability that can't be expressed through this contract
-belongs to one implementation, never to the bridge.
+Coordinate implementations without exposing harness internals. A capability that cannot
+fit this contract stays adapter-local.
 
 ## The filesystem is the bus
 
-Implementations never talk harness-to-harness — no shared task lists, no cross-harness
-inboxes, no tool-name assumptions. They coordinate exclusively through the project-visible
-run-artifact tree: a shared run-state file (schema-versioned; a reader seeing a version
-higher than it understands treats the run as foreign and read-only), the seed/plan/lane-
-plan prose artifacts (identical shape in every implementation), and durable learnings/
-context directories (shared read, single writer per file). Identifiers everywhere are
-`[a-z0-9][a-z0-9-]*` — no path separators, no `..`, no absolute paths; timestamps live in
-the run-state file, never in artifact bodies, so a byte-stable render stays diffable.
+No shared task list, cross-harness inbox, or tool-name assumption. Coordination uses
+`.shepherd/runs/<run>/`: versioned `run.json`, native dispatch records, and canonical
+seed/plan/lane/report/checkpoint artifacts. Cross-run knowledge lives only in
+`.shepherd/ctx/`. An unknown schema version is foreign and read-only. Identifiers match
+`[a-z0-9][a-z0-9-]*`; separators, `..`, absolute paths, and Unicode lookalikes are invalid.
+Timestamps belong in structured state, not rendered prose.
 
 ## Content contract vs. path contract
 
-Two implementations agreeing WHERE an artifact lives is not the same guarantee as agreeing
-WHAT it must contain. An artifact this contract names required sections or fields for is
-content-contracted — a consumer may assume nothing about its interior beyond what's named.
-An artifact the contract only names a path for is path-compatible only — the path is the
-whole guarantee, and a consumer must not assume a stronger one. Observed failure mode: one
-implementation wrote a real file at the right path with none of the required sections — a
-well-formed empty box a second implementation's boot check took as real instruction. The
-self-healing response is to reconstruct the missing content from the parent plan before
-executing, never to treat an empty-shaped file as valid instruction.
+Path agreement does not imply content agreement. Consumers trust only versioned fields or
+required sections named by the contract. A file at the right path with missing required
+content is invalid; reconstruct it from its canonical parent or halt before execution.
 
 ## Custody
 
-Single-writer per path, claimed through the run-state file: registering a lane with its
-worktree/branch fields populated makes it FOREIGN to every other participant — no writes
-under its path, no commits to its branch, no worktree access. The run's root custodian is
-whichever implementation created the run-state file; only it mutates run-level fields and
-executes cross-lane integration. A non-custodian needing a run-level change writes a
-best-effort signal and waits — never assumes, never force-writes.
+`run.json` declares one writer per lane path and branch. Every other participant treats it
+as foreign. The root session binding owns run-level state and cross-lane integration. A
+non-custodian requests a change through a durable event and never force-writes.
 
 ## Dispatch envelope
 
-Work crossing the bridge — one implementation authoring work another will execute — is a
-file carrying a fixed, machine-readable header (role, a stable node id, scope, an
-acceptance predicate, a report path) and a fixed completion footer (a closed four-value
-status vocabulary, plus a non-empty pointer to verifiable evidence) — both grammar-checked
-by the consumer; a report missing either is unfinished, not merely terse.
+Cross-harness work uses a versioned native dispatch record naming agent id/type, role,
+lane, scope, acceptance, capability contract, and result path. Completion uses a closed
+status vocabulary plus verifiable evidence. Missing or mismatched identity fails closed.
 
 ## Non-goals
 

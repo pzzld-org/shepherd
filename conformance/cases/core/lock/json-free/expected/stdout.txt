@@ -1,0 +1,8 @@
+{
+  "held": false,
+  "holder_session_id": null,
+  "mode": null,
+  "acquired_at": null,
+  "pid": null,
+  "children": null
+}

@@ -1,0 +1,10 @@
+{
+  "suite": "core",
+  "kind": "pure",
+  "authority": "native-v6.4.5",
+  "intentional_difference": "native config get resolves dotted values from the typed schema instead of legacy line-oriented arbitrary-key parsing",
+  "requires_git": true,
+  "description": "config get reads a dotted typed path setting without mutation",
+  "args": ["config", "get", "paths.runs"],
+  "db_fixture": "none"
+}

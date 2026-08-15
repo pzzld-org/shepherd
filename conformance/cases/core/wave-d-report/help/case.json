@@ -1,0 +1,10 @@
+{
+  "suite": "core",
+  "kind": "pure",
+  "authority": "native-v6.4.5",
+  "intentional_difference": "native report help documents only the canonical run-scoped report leaves and omits retired registry report forms",
+  "requires_git": true,
+  "description": "native report help lists the bounded report surface",
+  "args": ["report", "help"],
+  "db_fixture": "none"
+}

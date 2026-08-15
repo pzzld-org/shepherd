@@ -1,0 +1,17 @@
+{
+  "primary_root": "<SCRATCH>/cwd",
+  "namespace": "<SCRATCH>/cwd/.shepherd",
+  "docs": "<SCRATCH>/cwd/.shepherd/docs",
+  "ctx": "<SCRATCH>/cwd/.shepherd/ctx",
+  "runs": "<SCRATCH>/cwd/.shepherd/runs",
+  "registry": "<SCRATCH>/cwd/.shepherd/shepherd.db",
+  "config_sources": [],
+  "registry_schema": null,
+  "findings": [
+    "docs directory is absent: <SCRATCH>/cwd/.shepherd/docs",
+    "ctx directory is absent: <SCRATCH>/cwd/.shepherd/ctx",
+    "runs directory is absent: <SCRATCH>/cwd/.shepherd/runs",
+    "cannot open registry read-only: unable to open database file: <SCRATCH>/cwd/.shepherd/shepherd.db"
+  ],
+  "ok": false
+}

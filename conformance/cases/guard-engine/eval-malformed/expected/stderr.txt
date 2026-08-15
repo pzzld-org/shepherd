@@ -1,0 +1,1 @@
+ERROR: malformed JSON on stdin: request must be one valid RFC 8259 JSON value

@@ -1,19 +1,13 @@
 {
   "name": "@fl03/harness-codex",
   "version": "6.4.5",
-  "private": true,
-  "description": "Codex CLI adapter: materializes @fl03/compiler's `codex` emission target (skills/, shepherd.codex.toml -- no command surface, Codex has nowhere to put one) onto this package's own root, maps the 8 shepherd roles onto Codex's two native primitives (explorer read-only, worker write-capable) via [agent_types], declares the max_concurrent_children = 3 descendant cap plus per-role [models]/[profiles.*] reasoning_effort pins, and wires a PreToolUse guard (hooks/hooks.json + hooks/scripts/shepherd_guard.mjs) interpreting content/predicates/*.toml for write-boundary and git-custody. Implemented in Wave 4 (W4-S5).",
+  "description": "Thin Codex CLI adapter for native per-agent identity, lifecycle dispatch, and the shared Rust guard engine.",
   "type": "module",
-  "bin": {
-    "shepherd-harness-codex-apply": "bin/apply.mjs"
-  },
   "scripts": {
-    "test": "node test.mjs",
-    "apply": "node bin/apply.mjs"
+    "test": "node test.mjs"
   },
   "dependencies": {
-    "@fl03/compiler": "6.4.5",
-    "@fl03/harness-claude": "6.4.5"
+    "@fl03/component-runtime": "6.4.5"
   },
   "engines": {
     "node": ">=20"

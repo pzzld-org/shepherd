@@ -1,17 +1,16 @@
 {
   "name": "@fl03/harness-pi",
   "version": "6.4.5",
-  "private": true,
-  "description": "Pi coding agent adapter: materializes @fl03/compiler's `pi` emission target (prompts/*.md slash commands, skills/*/SKILL.md) to disk, builds the per-role `pi` subprocess invocation (--model/--tools/--append-system-prompt, since Pi has no file-declared-role primitive and setModel() is session-global), and interprets content/predicates/*.toml directly in a jiti-loaded TypeScript extension (pi.on('tool_call', ...)) -- Pi has no hooks.json module, so this is a genuine second guard interpreter, not a file copy. Implemented in Wave 4 (W4-S6).",
+  "description": "Thin Pi adapter for an explicit subagent provider and Rust Component-owned native lifecycle exchanges.",
   "type": "module",
   "scripts": {
-    "test": "node --experimental-strip-types test.mjs"
+    "test": "node test.mjs"
   },
   "dependencies": {
-    "@fl03/compiler": "6.4.5"
+    "@fl03/component-runtime": "6.4.5"
   },
   "engines": {
-    "node": ">=22.6.0"
+    "node": ">=20"
   },
   "license": "Apache-2.0"
 }

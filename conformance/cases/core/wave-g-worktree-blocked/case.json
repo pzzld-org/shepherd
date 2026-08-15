@@ -1,0 +1,10 @@
+{
+  "suite": "core",
+  "kind": "pure",
+  "authority": "native-v6.4.5",
+  "intentional_difference": "worktree remains explicitly unpromoted until descriptor-safe native git lifecycle operations are available",
+  "requires_git": true,
+  "description": "worktree fails closed without shell or tmux mutation",
+  "args": ["worktree", "list"],
+  "db_fixture": "none"
+}

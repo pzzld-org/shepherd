@@ -1,0 +1,27 @@
+{
+  "name": "@fl03/component-runtime",
+  "version": "6.4.5",
+  "description": "Minimal loader and typed call boundary for the Shepherd WebAssembly Component Model runtime.",
+  "type": "module",
+  "files": [
+    "README.md",
+    "THIRD_PARTY_NOTICES.md",
+    "THIRD_PARTY_LICENSES",
+    "package.json",
+    "src",
+    "runtime"
+  ],
+  "exports": {
+    ".": "./src/index.mjs"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@bytecodealliance/preview2-shim": "0.20.1"
+  },
+  "license": "Apache-2.0"
+}

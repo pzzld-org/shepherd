@@ -33,6 +33,15 @@ on:
       - "**/*.rs"
       - "**/Cargo.toml"
       - "Cargo.lock"
+      - "crates/component/wit/**"
+      - "content/**"
+      - "packages/**"
+      - "package.json"
+      - "package-lock.json"
+      - "scripts/test-component-node.sh"
+      - "scripts/build-claude-plugin-release.sh"
+      - "scripts/tests/test-claude-plugin-release.sh"
+      - "packages/scripts/test-component-node.mjs"
       - ".cargo/config.toml"
       - "rust-toolchain.toml"
       - ".github/workflows/rust-wasm.yml"
@@ -46,6 +55,15 @@ on:
       - "**/*.rs"
       - "**/Cargo.toml"
       - "Cargo.lock"
+      - "crates/component/wit/**"
+      - "content/**"
+      - "packages/**"
+      - "package.json"
+      - "package-lock.json"
+      - "scripts/test-component-node.sh"
+      - "scripts/build-claude-plugin-release.sh"
+      - "scripts/tests/test-claude-plugin-release.sh"
+      - "packages/scripts/test-component-node.mjs"
       - ".cargo/config.toml"
       - "rust-toolchain.toml"
       - ".github/workflows/rust-wasm.yml"
@@ -63,6 +81,7 @@ env:
   # commit somebody reviewed.
   WASI_SDK_VERSION: "33"
   WASI_SDK_RELEASE: "33.0"
+  WASM_TOOLS_VERSION: "1.254.0"
 
 permissions:
   contents: read
@@ -115,6 +134,8 @@ jobs:
         include:
           - package: shepherd-core
             features: wasm
+          - package: shepherd-compiler
+            features: wasm
           - package: shepherd
             features: wasm
           # The interesting one: proves `sqlite-wasm` is wired to the backend
@@ -125,17 +146,17 @@ jobs:
             features: wasm
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 1
           ref: ${{ needs.resolve.outputs.ref }}
           repository: ${{ github.repository }}
       - name: Setup rust-cache
-        uses: swatinem/rust-cache@v2
+        uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           key: wasm-unknown-${{ matrix.package }}
       - name: Setup Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
         with:
           cache: false
           target: wasm32-unknown-unknown
@@ -168,17 +189,17 @@ jobs:
         target: [wasm32-wasip1, wasm32-wasip2]
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 1
           ref: ${{ needs.resolve.outputs.ref }}
           repository: ${{ github.repository }}
       - name: Setup rust-cache
-        uses: swatinem/rust-cache@v2
+        uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           key: wasi-${{ matrix.target }}
       - name: Setup Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
         with:
           cache: false
           target: ${{ matrix.target }}
@@ -186,7 +207,7 @@ jobs:
       # pinned version rather than re-downloaded on every run.
       - name: Cache wasi-sdk
         id: wasi-sdk-cache
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: /opt/wasi-sdk
           key: wasi-sdk-${{ env.WASI_SDK_RELEASE }}-x86_64-linux
@@ -207,19 +228,53 @@ jobs:
       - name: Export the wasi-sdk path
         run: echo "WASI_SDK_PATH=/opt/wasi-sdk" >> "${GITHUB_ENV}"
       - name: Setup wasmtime
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@82cd3e7658a6f96c86c0234aeeda1748937cb0a1 # v2
         with:
           tool: wasmtime
+      - name: Setup wasm-tools
+        if: matrix.target == 'wasm32-wasip2'
+        run: cargo install wasm-tools --version "${WASM_TOOLS_VERSION}" --locked
       - name: cargo build shepherd-registry
         run: |
           cargo build --locked --release \
             --package shepherd-registry \
             --target ${{ matrix.target }} \
             --no-default-features --features wasi
+      - name: Build and validate the Shepherd component
+        if: matrix.target == 'wasm32-wasip2'
+        run: |
+          set -euo pipefail
+          cargo build --locked --release --package shepherd-component --target wasm32-wasip2
+          artifact="target/wasm32-wasip2/release/shepherd_component.wasm"
+          wasm-tools validate "${artifact}"
+          wit_output="${RUNNER_TEMP}/shepherd.wit"
+          wasm-tools component wit "${artifact}" > "${wit_output}"
+          test -s "${RUNNER_TEMP}/shepherd.wit"
+          grep -Fq 'export fl03:shepherd/engine@6.4.5;' "${wit_output}"
+          resolved_imports="${RUNNER_TEMP}/shepherd.imports"
+          sed -n 's/^  import \(wasi:[^;]*\);$/\1/p' "${wit_output}" \
+            | LC_ALL=C sort > "${resolved_imports}"
+          resolved_import_count=$(wc -l < "${resolved_imports}" | tr -d ' ')
+          test "${resolved_import_count}" -eq 14
+          diff -u crates/component/wit/resolved-imports.txt "${resolved_imports}"
+      - name: Call the component from Node through jco
+        if: matrix.target == 'wasm32-wasip2'
+        run: |
+          npm ci --ignore-scripts
+          bash scripts/test-component-node.sh
+          node --test packages/component-runtime/test/*.test.mjs
+          node packages/harness-claude/test.mjs
+          node packages/harness-codex/test.mjs
+          node packages/harness-pi/test.mjs
+          node packages/scripts/check-package-boundary.mjs
+          bash scripts/test-packed-plugin.sh
+          bash scripts/tests/test-claude-plugin-release.sh
       # THE POINT OF THIS JOB. `.cargo/config.toml` sets the runner to
       # `wasmtime --dir=. --dir=/tmp`, so these tests do not merely compile --
-      # they execute, and one of them opens a WAL-mode database as a real file,
-      # closes it, and reads the row back through the WASI VFS.
+      # they execute, and one of them opens a real file-backed database, closes
+      # it, and reads the row back through the WASI VFS. SQLite falls back from
+      # requested WAL to delete journaling here because WASI has no WAL
+      # shared-memory locking.
       #
       # That is the property `wasm32-unknown-unknown` cannot satisfy in Node,
       # and it is the first half of the v6.5.x in-process spike's success

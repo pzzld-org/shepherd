@@ -1,0 +1,232 @@
+use std::{
+    fs,
+    path::PathBuf,
+    time::{SystemTime, UNIX_EPOCH},
+};
+
+use shepherd_cli::{
+    content_compiler::{embedded_compile_input, load_compile_input},
+    shepherd::compiler::{BudgetClass, BudgetLimits, HarnessProfile, compile, measure_text},
+};
+
+#[test]
+fn embedded_content_is_the_exact_canonical_authored_corpus() {
+    let filesystem = load_compile_input(&content_dir()).expect("load live content");
+    let embedded = embedded_compile_input().expect("load embedded content");
+    assert_eq!(embedded, filesystem);
+}
+
+fn content_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../content")
+}
+
+fn fixture(label: &str) -> PathBuf {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock")
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!("shepherd-content-{label}-{nonce:x}"));
+    fs::create_dir_all(root.join("content/roles")).expect("roles");
+    fs::create_dir_all(root.join("content/skills/example")).expect("skills");
+    root
+}
+
+#[test]
+fn live_content_matches_the_frozen_target_final_oracle() {
+    let input = load_compile_input(&content_dir()).expect("load live content");
+    assert_eq!(input.roles.len(), 9);
+    assert_eq!(input.skills.len(), 7);
+    let oracle: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../conformance/content-target-final.json"
+    ))
+    .expect("target-final oracle is valid JSON");
+    assert_eq!(oracle["schema"], "shepherd.content-target-final/1");
+
+    for profile in HarnessProfile::canonical() {
+        let tree = compile(&input, &profile).expect("compile live content");
+        let target = profile.target.as_str();
+        let expected = &oracle["targets"][target];
+        let expected_files = expected["files"].as_object().expect("oracle files");
+        assert_eq!(tree.roles.len(), 9);
+        assert_eq!(tree.files.len(), expected_files.len());
+        assert_eq!(
+            tree.digest,
+            expected["tree_digest"].as_str().unwrap(),
+            "{target}"
+        );
+        for file in &tree.files {
+            let frozen = expected_files
+                .get(&file.path)
+                .unwrap_or_else(|| panic!("{target}: missing frozen path {}", file.path))
+                .as_array()
+                .expect("[bytes, sha256]");
+            assert_eq!(
+                file.content.len(),
+                usize::try_from(frozen[0].as_u64().expect("byte count"))
+                    .expect("byte count fits usize"),
+                "{target}: {} byte count",
+                file.path
+            );
+            assert_eq!(
+                file.content_sha256,
+                frozen[1].as_str().expect("content digest"),
+                "{target}: {} digest",
+                file.path
+            );
+        }
+
+        for (role_name, expected_role) in oracle["roles"].as_object().expect("oracle roles") {
+            let role = tree
+                .roles
+                .iter()
+                .find(|role| &role.role == role_name)
+                .unwrap_or_else(|| panic!("{target}: missing role {role_name}"));
+            match target {
+                "claude" => assert_eq!(
+                    role.model.as_deref(),
+                    expected_role["claude_model"].as_str(),
+                    "Claude model for {role_name}"
+                ),
+                "codex" => {
+                    assert_eq!(
+                        role.profile.as_deref(),
+                        expected_role["codex_profile"].as_str(),
+                        "Codex profile for {role_name}"
+                    );
+                    assert_eq!(
+                        role.reasoning_effort.as_deref(),
+                        expected_role["codex_effort"].as_str(),
+                        "Codex effort for {role_name}"
+                    );
+                }
+                "pi" => {
+                    assert_eq!(
+                        role.model.as_deref(),
+                        expected_role["pi_model"].as_str(),
+                        "Pi model for {role_name}"
+                    );
+                    assert_eq!(
+                        serde_json::to_value(&role.tools).expect("Pi tools JSON"),
+                        expected_role["pi_tools"],
+                        "Pi tools for {role_name}"
+                    );
+                    assert_eq!(
+                        serde_json::to_value(&role.unsupported_capabilities)
+                            .expect("Pi unsupported JSON"),
+                        expected_role["pi_unsupported"],
+                        "Pi unsupported capabilities for {role_name}"
+                    );
+                }
+                _ => unreachable!("canonical target"),
+            }
+        }
+    }
+}
+
+#[test]
+fn codex_target_final_config_bytes_are_frozen() {
+    const EXPECTED: &str = "# Generated by the canonical Rust shepherd compiler. Source: content/roles/*.md.\n\
+# Do not hand-edit; regenerate via `shepherd compile --target codex --out <directory>`.\n\n\
+max_concurrent_children = 3\n\n\
+[agent_types]\n\
+auditor = \"explorer\"\n\
+coder = \"worker\"\n\
+conductor = \"worker\"\n\
+critic = \"explorer\"\n\
+discovery = \"explorer\"\n\
+engineer = \"worker\"\n\
+planter = \"worker\"\n\
+worker = \"worker\"\n\n\
+[models]\n\
+auditor = \"standard\"\n\
+coder = \"standard\"\n\
+conductor = \"standard\"\n\
+critic = \"standard\"\n\
+discovery = \"standard\"\n\
+engineer = \"reasoning-high\"\n\
+planter = \"reasoning-high\"\n\
+worker = \"standard\"\n\n\
+[profiles.\"reasoning-high\"]\n\
+reasoning_effort = \"high\"\n\n\
+[profiles.\"standard\"]\n\
+reasoning_effort = \"medium\"\n";
+
+    let input = load_compile_input(&content_dir()).expect("load live content");
+    let tree = compile(&input, &HarnessProfile::codex()).expect("compile Codex");
+    let config = tree
+        .files
+        .iter()
+        .find(|file| file.path == "shepherd.codex.toml")
+        .expect("Codex config");
+    assert_eq!(config.content, EXPECTED);
+}
+
+#[test]
+fn live_authored_entrypoints_respect_every_file_budget() {
+    let input = load_compile_input(&content_dir()).expect("load live content");
+    let mut violations = Vec::new();
+    for (name, class, source) in input
+        .roles
+        .iter()
+        .map(|role| {
+            (
+                role.source_path.as_str(),
+                BudgetClass::Role,
+                role.source_content.as_str(),
+            )
+        })
+        .chain(input.skills.iter().map(|skill| {
+            (
+                skill.source_path.as_str(),
+                BudgetClass::Skill,
+                skill.source_content.as_str(),
+            )
+        }))
+    {
+        let measured = measure_text(source);
+        let (lines, words, bytes) = BudgetLimits::for_class(class);
+        eprintln!(
+            "{name}: {} lines, {} words, {} bytes, {} prompt tokens",
+            measured.lines, measured.words, measured.utf8_bytes, measured.prompt_tokens
+        );
+        if measured.lines > lines || measured.words > words || measured.utf8_bytes > bytes {
+            violations.push(format!(
+                "{name}: {}/{lines} lines, {}/{words} words, {}/{bytes} bytes",
+                measured.lines, measured.words, measured.utf8_bytes
+            ));
+        }
+    }
+    assert!(violations.is_empty(), "{}", violations.join("\n"));
+}
+
+#[test]
+fn malformed_metadata_and_symlinks_fail_closed_without_echoing_content() {
+    let root = fixture("invalid");
+    let content = root.join("content");
+    fs::write(
+        content.join("roles/coder.md"),
+        "---\nrole: coder\ndescription: [secret]\nsource: agents/coder.md\nmodel_hint: standard\nwrite_eligible: true\ndispatchable: true\ncapabilities: [read]\nwrite_scope: scope\n---\nbody\n",
+    )
+    .expect("role");
+    fs::write(
+        content.join("skills/example/SKILL.md"),
+        "---\nname: example\ndescription: ok\nsource: x\nportability: cross-harness\n---\nbody\n",
+    )
+    .expect("skill");
+    let error = load_compile_input(&content).expect_err("typed description");
+    let message = error.message_text().expect("message");
+    assert!(message.contains("invalid role frontmatter"));
+    assert!(!message.contains("secret"));
+
+    fs::remove_file(content.join("roles/coder.md")).expect("remove invalid role");
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(
+        content.join("skills/example/SKILL.md"),
+        content.join("roles/coder.md"),
+    )
+    .expect("symlink");
+    let error = load_compile_input(&content).expect_err("symlink");
+    assert!(error.message_text().expect("message").contains("symlink"));
+
+    fs::remove_dir_all(root).expect("cleanup");
+}

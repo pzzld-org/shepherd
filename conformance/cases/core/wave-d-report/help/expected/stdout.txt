@@ -1,0 +1,1 @@
+usage: shepherd report <audit|close|discovery|escalation|teammates|help> [args]

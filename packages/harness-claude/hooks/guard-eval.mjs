@@ -1,96 +1,60 @@
 #!/usr/bin/env node
-// packages/harness-claude/hooks/guard-eval.mjs -- the executable PreToolUse relay
-// `src/guard.mjs`'s `buildGuardHooksEntry()` wires in. Reads Claude's PreToolUse hook JSON
-// from stdin, resolves `role` LOCALLY (`src/dispatch-record.mjs`'s `resolveRole`, closing the
-// W10 auditor's HIGH finding -- see `src/guard.mjs`'s own "ROLE RESOLUTION" header for the
-// full three-way contract), then either short-circuits allow/deny or forwards the resolved
-// request to the shared guard engine and prints Claude's own hook-output JSON.
-//
-// T2-serve-wiring: this used to `spawnSync(LAUNCHER, ["guard", "eval"], ...)` -- a fresh
-// `bin/shepherd` process (and a fresh `content/predicates/*.toml` parse) on EVERY guarded
-// Write/Edit/Bash/Agent/Workflow call, measured at 450-535ms/call. It now relays through
-// `src/guard-serve-client.mjs`'s `requestGuardVerdict()`, which talks to a persistent
-// `bin/shepherd guard serve` engine over a Unix socket broker (`src/guard-serve-broker.mjs`) --
-// warm requests measured sub-millisecond (see this step's CODER REPORT). `requestGuardVerdict()`
-// always resolves to the same `{ok:true, engineResult} | {ok:false, detail}` envelope a
-// `spawnSync` call's `{error,status}`/`JSON.parse(stdout)` used to produce, so the two branches
-// below are unchanged in shape, only in what feeds them. All decision logic still lives in
-// `src/guard.mjs` (`buildGuardDecision` / `interpretEngineResult` / `engineUnavailableVerdict` /
-// `missingRecordWarnedVerdict` / `roleResolutionUnavailableVerdict`) so it stays unit testable
-// without spawning a process -- this file is intentionally the thinnest possible wrapper around
-// that logic plus stdin/stdout/transport plumbing.
-//
-// `missing-record` prints a WARN (`additionalContext`) and falls through to `return 0` with no
-// `permissionDecision` key -- Claude's own "allow, stay silent-of-blocking" shape -- rather than
-// denying. See `src/guard.mjs`'s module header ("MISSING-RECORD POSTURE, CORRECTED") for why.
 
 import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { resolveRole } from "../src/dispatch-record.mjs";
 import {
-  buildGuardDecision,
-  engineUnavailableVerdict,
-  interpretEngineResult,
-  missingRecordWarnedVerdict,
-  roleResolutionUnavailableVerdict,
-} from "../src/guard.mjs";
-import { defaultSocketPath } from "../src/guard-serve-broker.mjs";
-import { requestGuardVerdict } from "../src/guard-serve-client.mjs";
+  componentBinding,
+  guardWithComponent,
+  loadComponent,
+  planToNativeDispatch,
+  planWithComponent,
+  validateNativeExchangeWithComponent,
+} from "../../component-runtime/src/index.mjs";
+import {
+  invokeNativeDispatch,
+  nativeShepherdBin,
+} from "../../component-runtime/src/native-transport.mjs";
+import { normalizeClaudeWithComponent } from "../src/identity.mjs";
+import { preToolUseDeny } from "../src/guard.mjs";
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = join(HERE, "..", "..", "..");
-const LAUNCHER = join(REPO_ROOT, "bin", "shepherd");
-const CONTENT_DIR = join(REPO_ROOT, "content");
+const nativeLauncher = nativeShepherdBin();
 
-function readStdin() {
-  try {
-    return readFileSync(0, "utf8");
-  } catch {
-    return "";
-  }
+function failClosed(detail) {
+  return preToolUseDeny(`Shepherd component unavailable or rejected the request: ${detail}`);
 }
 
 async function main() {
-  const raw = readStdin();
-  let input;
+  let payload;
   try {
-    input = JSON.parse(raw || "{}");
+    payload = JSON.parse(readFileSync(0, "utf8") || "{}");
+    const engine = await loadComponent();
+    const identity = normalizeClaudeWithComponent(payload, engine);
+    const planned = planToNativeDispatch(planWithComponent(
+      engine,
+      identity,
+      payload.shepherd_dispatch === undefined ? undefined : componentBinding(payload.shepherd_dispatch),
+    ));
+    if (!planned || planned.operation !== "resolve") throw new Error("component did not plan PreToolUse resolution");
+    const resolved = invokeNativeDispatch({
+      shepherdBin: nativeLauncher,
+      operation: planned.operation,
+      request: planned.request,
+    });
+    if (!resolved.ok) throw new Error(resolved.detail);
+    validateNativeExchangeWithComponent(engine, "resolve", planned.request, resolved.value);
+    if (typeof resolved.value.role !== "string" || resolved.value.role.length === 0) {
+      throw new Error("native dispatch identity resolution did not provide a role");
+    }
+    const verdict = guardWithComponent(engine, {
+      tool_name: payload.tool_name ?? "",
+      tool_input: payload.tool_input ?? {},
+      role: resolved.value.role,
+      dispatch: resolved.value,
+    });
+    if (verdict.decision === "allow") return;
+    console.log(JSON.stringify(preToolUseDeny(verdict.reason ?? "Shepherd component denied the request")));
   } catch (error) {
-    console.log(JSON.stringify(engineUnavailableVerdict(`malformed PreToolUse input: ${error.message}`)));
-    return 0;
+    console.log(JSON.stringify(failClosed(error?.message ?? error)));
   }
-
-  const decision = buildGuardDecision(input, resolveRole);
-  if (decision.kind === "allow") return 0;
-  if (decision.kind === "missing-record") {
-    // WARN, not deny -- src/guard.mjs's "MISSING-RECORD POSTURE, CORRECTED". The call
-    // proceeds; `additionalContext` only informs, it never blocks.
-    console.log(JSON.stringify(missingRecordWarnedVerdict(decision.toolUseId)));
-    return 0;
-  }
-  if (decision.kind === "resolution-failed") {
-    console.log(JSON.stringify(roleResolutionUnavailableVerdict(decision.detail)));
-    return 0;
-  }
-
-  const result = await requestGuardVerdict({
-    shepherdBin: LAUNCHER,
-    contentDir: CONTENT_DIR,
-    payload: decision.payload,
-    socketPath: defaultSocketPath(CONTENT_DIR),
-  });
-
-  if (!result.ok) {
-    console.log(JSON.stringify(engineUnavailableVerdict(result.detail)));
-    return 0;
-  }
-
-  const verdict = interpretEngineResult(result.engineResult);
-  if (Object.keys(verdict).length > 0) console.log(JSON.stringify(verdict));
-  return 0;
 }
 
-main().then((code) => {
-  process.exitCode = code;
-});
+main();

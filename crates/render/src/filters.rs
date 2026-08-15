@@ -10,14 +10,12 @@
 //! minijinja's own `tojson` (its `builtins` feature reserves the
 //! registration slot; its separate `json` feature -- turned on by this
 //! crate's own `json` feature, see `Cargo.toml` -- compiles the filter
-//! body) is not a drop-in for
-//! `render.py:129-138`'s `_sorted_tojson`, two independent ways, either
-//! alone breaking `output_sha256`: (1) it unconditionally HTML-escapes
+//! body) is not a drop-in for Shepherd's Markdown JSON contract, two
+//! independent ways, either alone breaking `output_sha256`: (1) it
+//! unconditionally HTML-escapes
 //! `<`/`>`/`&`/`'` (built for embedding JSON in an HTML `<script>` tag --
-//! wrong for Markdown templates whose `boot-prompt.md.j2`/`seed.md.j2`
-//! `| tojson` calls carry branch names, paths and URLs that legitimately
-//! contain `&`/`'`); (2) it does not sort map keys, where Python's version
-//! always does (`sort_keys=True`).
+//! wrong for Markdown values that legitimately contain `&`/`'`); (2) it
+//! does not sort map keys.
 //!
 //! ## Why this is not a second JSON serializer
 //!
@@ -27,8 +25,8 @@
 //! inside `shepherd_core` (`crates/core/**` is `must_not_touch` here
 //! regardless), and even public, its format is a DELIBERATELY different
 //! serialization -- 2-space indent, `ensure_ascii=True`, matching
-//! `models_run.py:627`'s `json.dump(indent=2, sort_keys=True)` -- not
-//! `render.py:138`'s single-line `separators=(", ", ": "), ensure_ascii=False`.
+//! the canonical run-state writer -- not this filter's single-line
+//! `separators=(", ", ": "), ensure_ascii=False` format.
 //! What IS shared is the mechanism, not a function call: neither crate
 //! implements the recursive sort as code -- it falls out of
 //! `serde_json::Map`'s storage for free, since this workspace never turns
@@ -43,8 +41,7 @@ use alloc::{
 
 use minijinja::{Error, ErrorKind, Value};
 
-/// `tojson` filter override -- the byte-exact port of `render.py:129-138`'s
-/// `_sorted_tojson`: recursively sorted keys,
+/// `tojson` filter override with recursively sorted keys and the frozen format
 /// `json.dumps(value, sort_keys=True, separators=(", ", ": "), ensure_ascii=False)`.
 /// Register with `env.add_filter("tojson", sorted_tojson)`, as
 /// [`crate::env::build`] does.
@@ -52,9 +49,8 @@ use minijinja::{Error, ErrorKind, Value};
 /// # Errors
 ///
 /// Returns a minijinja [`Error`] if `value` cannot be represented as JSON
-/// at all. Every value the 5 real templates pass through `tojson` today is
-/// a plain string, list, or map built from already-JSON-shaped context
-/// data, so this path is not exercised in practice; it exists because
+/// at all. Canonical callers pass plain strings, lists, or maps built from
+/// already-JSON-shaped context data; this path exists because
 /// [`serde_json::to_value`] is fallible in general.
 pub fn sorted_tojson(value: Value) -> Result<String, Error> {
     let tree: serde_json::Value = serde_json::to_value(&value).map_err(|error| {
@@ -131,10 +127,7 @@ fn write_json_string(s: &str, out: &mut String) {
 
 #[cfg(test)]
 mod tests {
-    /// `cargo test -p shepherd-render filters::tests::sorted_tojson_key_order`
-    /// (mandated by `[ACCEPTANCE]`; requires `--features json` -- see the
-    /// coder report). Byte-exact against a real `render.py::_sorted_tojson`
-    /// run captured 2026-08-13, on a value exercising every property the
+    /// Byte-exact compatibility vector exercising every property the
     /// builtin gets wrong at once: an unsorted top level, an unsorted
     /// nested map, an HTML-sensitive string, and a non-ASCII string.
     /// Rendered through `crate::env::build()`'s registered filter (not a

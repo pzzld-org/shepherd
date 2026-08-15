@@ -1,0 +1,7 @@
+{
+  "suite": "guard-engine",
+  "kind": "pure",
+  "description": "Serve emits readiness, survives malformed input, and preserves response order.",
+  "args": ["guard", "serve"],
+  "stdin_file": "stdin.jsonl"
+}

@@ -36,6 +36,7 @@ tag-name = "v{{version}}"
 # engine — the only mandatory member; everything else is a capability
 shepherd-core = { workspace = true }
 # capability layers, each behind its own flag
+shepherd-compiler = { optional = true, workspace = true }
 shepherd-registry = { optional = true, workspace = true }
 shepherd-render = { optional = true, workspace = true }
 
@@ -47,6 +48,7 @@ default = [
 full = [
   "default",
   "chrono",
+  "compiler",
   "config",
   "json",
   "parse",
@@ -60,6 +62,11 @@ full = [
 # ********* [FF] Flags *********
 config = [
   "shepherd-core/config",
+]
+
+compiler = [
+  "alloc",
+  "dep:shepherd-compiler",
 ]
 
 #
@@ -95,6 +102,7 @@ nightly = [
 # members'. Forwarding alone leaves the umbrella itself below `alloc` and it
 # fails its own `compile_error!` guard — which is exactly how this was caught.
 wasi = [
+  "shepherd-compiler?/wasm",
   "shepherd-core/wasi",
   "shepherd-registry?/wasi",
   "shepherd-render?/wasi",
@@ -102,6 +110,7 @@ wasi = [
 ]
 
 wasm = [
+  "shepherd-compiler?/wasm",
   "shepherd-core/wasm",
   "shepherd-registry?/wasm",
   "shepherd-render?/wasm",
@@ -110,6 +119,7 @@ wasm = [
 
 # ********* [FF] Standard Library *********
 alloc = [
+  "shepherd-compiler?/alloc",
   "shepherd-core/alloc",
   "shepherd-registry?/alloc",
   "shepherd-render?/alloc",
@@ -117,6 +127,7 @@ alloc = [
 
 std = [
   "alloc",
+  "shepherd-compiler?/std",
   "shepherd-core/std",
   "shepherd-registry?/std",
   "shepherd-render?/std",
@@ -133,6 +144,7 @@ chrono = [
 
 registry = [
   "dep:shepherd-registry",
+  "shepherd-registry?/layout",
 ]
 
 render = [
