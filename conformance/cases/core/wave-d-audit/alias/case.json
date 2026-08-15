@@ -1,8 +1,8 @@
 {
   "suite": "core",
   "kind": "pure",
-  "authority": "native-v6.4.5",
-  "intentional_difference": "legacy audit is a multi-stage Python orchestration pipeline over retired commands; native v6.4.5 audit is the canonical read-only run audit view",
+  "authority": "native-v6.4.6",
+  "intentional_difference": "legacy audit is a multi-stage Python orchestration pipeline over retired commands; native v6.4.6 audit is the canonical read-only run audit view",
   "requires_git": true,
   "description": "native audit alias renders the selected run audit view",
   "setup": [["init", "--confirm"], ["run", "init", "v900"]],

@@ -1,7 +1,7 @@
 {
   "suite": "core",
   "kind": "pure",
-  "authority": "native-v6.4.5",
+  "authority": "native-v6.4.6",
   "intentional_difference": "native teammate liveness reads only the typed registry and never queries tmux or a harness inbox",
   "requires_git": true,
   "description": "teammate liveness reports the empty live set",

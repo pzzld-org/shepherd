@@ -3,17 +3,21 @@
     Created At: 2026.08.12:17:30:00
     Contrib: @FL03
 */
-//! Pure configuration precedence, validation, and layering.
+//! Fixed configuration precedence with standards-backed source layering.
 //!
 //! This module never reads a file, an environment variable, or a git process.
 //! Hosts provide already-read `(path, contents)` pairs in the same
-//! highest-priority-first order returned by [`candidates`].
+//! highest-priority-first order returned by [`candidates`]. The `config`
+//! crate owns TOML source merge and typed deserialization; Shepherd owns only
+//! its closed candidate policy and migration compatibility boundary.
 
 use alloc::{
     string::{String, ToString},
     vec::Vec,
 };
 use std::path::{Path, PathBuf};
+
+use config::{Config as SourceConfig, File, FileFormat};
 
 use crate::{Error, Result, settings::ShepherdConfig, types::Harness};
 
@@ -130,6 +134,11 @@ where
 }
 
 /// Validate and merge caller-supplied layers under one explicit policy.
+///
+/// Inputs arrive highest priority first, whereas `config` applies later
+/// sources as overrides. We therefore validate in caller order, then add the
+/// normalized sources in reverse. This keeps both Shepherd's provenance order
+/// and the standard builder's merge semantics explicit.
 pub fn load_with_mode<'a, I>(layers: I, mode: LoadMode) -> Result<LoadedConfig>
 where
     I: IntoIterator<Item = (&'a Path, &'a str)>,
@@ -141,12 +150,29 @@ where
         parsed.push(parse_layer(path, contents, mode)?);
     }
 
-    let mut merged = toml::Value::Table(toml::Table::new());
-    for value in parsed.into_iter().rev() {
-        merge_value(&mut merged, value);
+    let mut builder = SourceConfig::builder();
+    for value in parsed.iter().rev() {
+        let source = toml::to_string(value).map_err(|error| {
+            Error::config(alloc::format!(
+                "{}: {error}",
+                ordered
+                    .first()
+                    .map_or_else(|| Path::new("<defaults>"), |layer| layer.0)
+                    .display()
+            ))
+        })?;
+        builder = builder.add_source(File::from_str(&source, FileFormat::Toml));
     }
-
-    let config = deserialize(
+    let merged = builder.build().map_err(|error| {
+        Error::config(alloc::format!(
+            "{}: {error}",
+            ordered
+                .first()
+                .map_or_else(|| Path::new("<defaults>"), |layer| layer.0)
+                .display()
+        ))
+    })?;
+    let config = deserialize_merged(
         ordered.first().map_or(Path::new("<defaults>"), |v| v.0),
         merged,
     )?;
@@ -182,7 +208,7 @@ fn parse_layer(path: &Path, contents: &str, mode: LoadMode) -> Result<toml::Valu
         strip_retired_layout_v5(path, &mut value)?;
     }
     validate_gate_entries(path, &value)?;
-    deserialize(path, value.clone())?;
+    deserialize_toml(path, value.clone())?;
     Ok(value)
 }
 
@@ -335,10 +361,21 @@ fn validate_gate_entries(path: &Path, value: &toml::Value) -> Result {
     Ok(())
 }
 
-fn deserialize(path: &Path, value: toml::Value) -> Result<ShepherdConfig> {
+fn deserialize_toml(path: &Path, value: toml::Value) -> Result<ShepherdConfig> {
     let config: ShepherdConfig = value.try_into().map_err(|error: toml::de::Error| {
         Error::config(alloc::format!("{}: {}", path.display(), diagnostic(&error)))
     })?;
+    validate_config(path, config)
+}
+
+fn deserialize_merged(path: &Path, value: SourceConfig) -> Result<ShepherdConfig> {
+    let config = value
+        .try_deserialize()
+        .map_err(|error| Error::config(alloc::format!("{}: {error}", path.display())))?;
+    validate_config(path, config)
+}
+
+fn validate_config(path: &Path, config: ShepherdConfig) -> Result<ShepherdConfig> {
     config.validate().map_err(|error| {
         let message = match error {
             Error::Config(message) => message,
@@ -367,21 +404,6 @@ fn diagnostic(error: &toml::de::Error) -> String {
         (_, Some(field)) => alloc::format!("{field}: {message}"),
         (Some(path), None) if !path.is_empty() => alloc::format!("{path}: {message}"),
         _ => message.to_string(),
-    }
-}
-
-fn merge_value(base: &mut toml::Value, overlay: toml::Value) {
-    match (base, overlay) {
-        (toml::Value::Table(base), toml::Value::Table(overlay)) => {
-            for (key, value) in overlay {
-                if let Some(existing) = base.get_mut(&key) {
-                    merge_value(existing, value);
-                } else {
-                    base.insert(key, value);
-                }
-            }
-        }
-        (base, overlay) => *base = overlay,
     }
 }
 

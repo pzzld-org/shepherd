@@ -1,13 +1,13 @@
 {
-  "name": "@fl03/harness-pi",
-  "version": "6.4.5",
+  "name": "@pzzld/pi-shepherd",
+  "version": "6.4.6",
   "description": "Thin Pi adapter for an explicit subagent provider and Rust Component-owned native lifecycle exchanges.",
   "type": "module",
   "scripts": {
     "test": "node test.mjs"
   },
   "dependencies": {
-    "@fl03/component-runtime": "6.4.5"
+    "@pzzld/component-runtime": "6.4.6"
   },
   "engines": {
     "node": ">=20"

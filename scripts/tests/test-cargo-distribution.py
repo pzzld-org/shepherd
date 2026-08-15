@@ -17,6 +17,22 @@ def load_toml(relative: str) -> dict:
 
 
 class CargoIdentityTests(unittest.TestCase):
+    def test_core_uses_the_standard_config_builder_for_layer_merge(self) -> None:
+        root = load_toml("Cargo.toml")
+        core = load_toml("crates/core/Cargo.toml")
+        loader = (ROOT / "crates/core/src/loader.rs").read_text(encoding="utf-8")
+
+        config_dependency = root["workspace"]["dependencies"]["config"]
+        self.assertEqual(config_dependency["version"], "0.15")
+        self.assertEqual(config_dependency["features"], ["toml"])
+        self.assertFalse(config_dependency["default-features"])
+
+        self.assertTrue(core["dependencies"]["config"]["optional"])
+        self.assertTrue(core["dependencies"]["config"]["workspace"])
+        self.assertIn("dep:config", core["features"]["config"])
+        self.assertIn("SourceConfig::builder()", loader)
+        self.assertNotIn("fn merge_value", loader)
+
     def test_sdk_package_preserves_the_shepherd_rust_import(self) -> None:
         root = load_toml("Cargo.toml")
         sdk = load_toml("crates/sdk/Cargo.toml")
