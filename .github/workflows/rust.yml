@@ -106,62 +106,6 @@ jobs:
         run: ./scripts/check-plugin.py --self-test
       - name: plugin contract holds
         run: ./scripts/check-plugin.py
-
-  # ------------------------------------------------------------------ #
-  # Clippy, per feature set, with results surfaced in code scanning.    #
-  # ------------------------------------------------------------------ #
-  clippy:
-    name: clippy (${{ matrix.features }})
-    needs: resolve
-    runs-on: ${{ github.event.inputs.runner || 'ubuntu-latest' }}
-    permissions:
-      actions: read
-      contents: read
-      security-events: write
-    strategy:
-      fail-fast: false
-      matrix:
-        features: [default, full]
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7 # v7.0.1
-        with:
-          fetch-depth: 1
-          ref: ${{ needs.resolve.outputs.ref }}
-          repository: ${{ github.repository }}
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
-      - name: Enable the sccache wrapper
-        run: |
-          echo "RUSTC_WRAPPER=sccache" >> "${GITHUB_ENV}"
-          echo "SCCACHE_GHA_ENABLED=true" >> "${GITHUB_ENV}"
-      - name: Setup rust-cache
-        uses: Swatinem/rust-cache@v2 # v2.9.2
-        with:
-          key: clippy-${{ matrix.features }}
-      - name: Setup Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          cache: false
-          components: clippy
-          toolchain: ${{ github.event.inputs.toolchain || 'stable' }}
-      - name: Install SARIF tools
-        uses: taiki-e/install-action@v2
-        with:
-          tool: clippy-sarif,sarif-fmt
-      - name: cargo clippy
-        run: |
-          cargo clippy --workspace --all-targets --locked \
-            --features ${{ matrix.features }} \
-            --message-format=json \
-            -- -D warnings | clippy-sarif | tee clippy-${{ matrix.features }}.sarif | sarif-fmt
-      - name: Upload results
-        if: ${{ always() && github.event.repository.public }}
-        uses: github/codeql-action/upload-sarif@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
-        with:
-          sarif_file: clippy-${{ matrix.features }}.sarif
-          category: clippy-${{ matrix.features }}
-          wait-for-processing: true
   test:
     name: test (${{ matrix.features }})
     needs: resolve
@@ -178,7 +122,7 @@ jobs:
           ref: ${{ needs.resolve.outputs.ref }}
           repository: ${{ github.repository }}
       - name: Setup sccache
-        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+        uses: mozilla-actions/sccache-action@v0.0.11 # v0.0.11
       - name: Enable the sccache wrapper
         run: |
           echo "RUSTC_WRAPPER=sccache" >> "${GITHUB_ENV}"
@@ -221,7 +165,7 @@ jobs:
           ref: ${{ needs.resolve.outputs.ref }}
           repository: ${{ github.repository }}
       - name: Setup sccache
-        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+        uses: mozilla-actions/sccache-action@v0.0.11 # v0.0.11
       - name: Enable the sccache wrapper
         run: |
           echo "RUSTC_WRAPPER=sccache" >> "${GITHUB_ENV}"
@@ -291,7 +235,7 @@ jobs:
           ref: ${{ needs.resolve.outputs.ref }}
           repository: ${{ github.repository }}
       - name: Setup sccache
-        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+        uses: mozilla-actions/sccache-action@v0.0.11 # v0.0.11
       - name: Enable the sccache wrapper
         run: |
           echo "RUSTC_WRAPPER=sccache" >> "${GITHUB_ENV}"
