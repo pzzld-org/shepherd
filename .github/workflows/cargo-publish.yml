@@ -28,16 +28,16 @@ jobs:
     environment: crates-io
     steps:
       - name: Checkout exact event commit
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7 # v7.0.1
         with:
           fetch-depth: 0
           ref: ${{ github.sha }}
           persist-credentials: false
       - name: Setup pinned Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           cache: false
-          toolchain: 1.96.0
+          toolchain: 1.97.0
       - name: Resolve exact version and checkout custody
         id: release
         shell: bash

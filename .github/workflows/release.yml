@@ -35,7 +35,7 @@ jobs:
       tag: ${{ steps.detect.outputs.tag }}
     steps:
       - name: Checkout release commit
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7 # v7.0.1
         with:
           fetch-depth: 1
           ref: ${{ github.sha }}
@@ -90,12 +90,12 @@ jobs:
             target: x86_64-pc-windows-msvc
     steps:
       - name: Checkout release commit
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7 # v7.0.1
         with:
           fetch-depth: 1
           ref: ${{ github.sha }}
       - name: Setup Rust
-        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           cache: false
       - name: Setup Zig for GNU libc 2.17 builds
@@ -268,7 +268,7 @@ jobs:
           VERSION: ${{ needs.release-metadata.outputs.current }}
         run: scripts/tests/test-release-installer-windows.ps1 -Version $env:VERSION -ArchiveDirectory dist
       - name: Upload native release assets
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@v7 # v7.0.1
         with:
           name: release-native-${{ matrix.target }}
           path: dist/*
@@ -284,12 +284,12 @@ jobs:
       contents: read
     steps:
       - name: Checkout release commit
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7 # v7.0.1
         with:
           fetch-depth: 1
           ref: ${{ github.sha }}
       - name: Setup Rust with the Component Model target
-        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           cache: false
           target: wasm32-wasip2
@@ -365,7 +365,7 @@ jobs:
             done
           )
       - name: Upload Component Model and adapter assets
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@v7 # v7.0.1
         with:
           name: release-component-and-adapters
           path: dist/*
@@ -381,7 +381,7 @@ jobs:
       contents: write
     steps:
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7 # v7.0.1
         with:
           fetch-depth: 0
           fetch-tags: true
@@ -390,15 +390,6 @@ jobs:
           persist-credentials: true
       - name: Detect release commit
         id: detect
-        # Recognise release commit subjects (squash-merged sprint PRs on vX.Y.Z):
-        #   "vX.Y.Z"            — bare (gh may append " (#N)")
-        #   "vX.Y.Z: <summary>" — descriptive
-        #   "release: vX.Y.Z"   — back-compat / automation-authored
-        # Extracted version is cross-checked against .claude-plugin/plugin.json so
-        # a stray commit subject can't accidentally fire the pipeline against the
-        # wrong version. SUBJECT is read from `git log` (not github.event.*), held
-        # as a shell-quoted var, and only used for regex comparison + echo — never
-        # interpolated into a command.
         run: |
           set -euo pipefail
           SUBJECT=$(git log -1 --format=%s HEAD)
