@@ -130,9 +130,13 @@ Changing one of these is a critic-RED escalation, not a sprint-time judgment cal
 7. **Codex and Pi are first-class, not derived.** Harness fidelity means each of the three
    binds identity, guards tool use, and closes dispatch. A harness that silently defines fewer
    events than another is a regression, not a capability difference (deliverable 5).
-8. **Model tiers for this sprint's own execution: sonnet and haiku only.** Operator directive,
-   2026-08-17. Plan authorship (engineer) and root are the stated exceptions in the flock map;
-   every implementer, auditor, critic, and discovery dispatch runs sonnet or haiku.
+8. **Model tiers for this sprint's own execution: sonnet and haiku for the implementer
+   flock.** Operator directive, 2026-08-17, corrected same day. The axis is persistence and
+   authority, not cost: a role that persists across waves, dispatches its own sub-flock, and
+   is answerable for an objective gets the reasoning tier. That is root, planter, engineer,
+   **and conductor** — a conductor is a lane lead running its own workflows, not a worker.
+   Every dispatch beneath them (coder, worker, auditor, critic) runs sonnet; discovery may run
+   haiku. Under-tiering a lead degrades every dispatch under it.
 
 ## E. Deliverables
 
@@ -318,10 +322,13 @@ carries assets and the v6.4.7 branch and draft PR are cut automatically.
 
 ### 8. The model map states the intended tiers — MEDIUM
 **Anchors:** mesh ROW 9. **Issue:** #181.
-Operator's intent: root and planter and engineer at opus; conductor opus or sonnet; coder,
-worker, auditor, critic at sonnet; discovery sonnet or haiku.
+Operator's intent: root, planter, engineer, **and conductor** at opus; coder, worker,
+auditor, critic at sonnet; discovery sonnet or haiku. The conductor value is the operator's
+2026-08-17 correction to an earlier "opus or sonnet" reading — conductors lead lanes and
+dispatch their own implementers, so they take the lead tier.
 Current resolution matches for seven of nine. Deltas: `root` is `inherit-caller` → `inherit`
-and must be opus; and there is **no economy tier** in the portable vocabulary
+and must be opus; `conductor` is `standard` and must be `reasoning-high`; and there is
+**no economy tier** in the portable vocabulary
 (`crates/core/src/settings.rs:557-570` has only `inherit-caller`, `reasoning-high`,
 `standard`), so "discovery on haiku" is currently unexpressible. Add the tier, set the two
 values, and reconcile the second copy of this map in `agents/*.md` frontmatter so there is one
