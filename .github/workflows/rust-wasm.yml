@@ -267,8 +267,14 @@ jobs:
             exit 1
           }
           resolved_imports="${RUNNER_TEMP}/shepherd.imports"
-          sed -n 's/^  import \(wasi:[^;]*\);$/\1/p' "${wit_output}" \
-            | LC_ALL=C sort > "${resolved_imports}"
+          # The `@0.2.x` suffix is a toolchain artifact, not a property of this
+          # code: a runner and a workstation on different Rust releases emit
+          # different WASI point versions from identical source. Pinning it made
+          # the gate unsatisfiable on both at once. What this gate is actually
+          # about is WHICH capabilities the component can reach, so the version
+          # is stripped and the interface set is what must not drift.
+          sed -n 's/^  import \(wasi:[^;@]*\)[^;]*;$/\1/p' "${wit_output}" \
+            | LC_ALL=C sort -u > "${resolved_imports}"
           pinned='crates/component/wit/resolved-imports.txt'
           # Derived from the pinned file, never hardcoded: a literal count drifts
           # out of step with the list it is supposed to describe.

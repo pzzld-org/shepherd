@@ -306,7 +306,7 @@ pub struct ExecutionContext {
     pub config_sources: Vec<ConfigSource>,
     /// Dotted keys (e.g. `"models.root"`) some merged config layer set
     /// explicitly. Carried straight from
-    /// [`shepherd_core::loader::LoadedConfig::explicit_keys`] so a caller can
+    /// `LoadedConfig::explicit_keys` so a caller can
     /// tell "a layer set this key" from "the merged value happens to equal
     /// the default" without re-reading or re-parsing any configuration file.
     pub explicit_keys: BTreeSet<String>,
