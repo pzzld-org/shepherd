@@ -168,13 +168,16 @@ fn malformed_input_and_unbound_subagent_events_have_safe_host_outputs() {
         "deny"
     );
 
+    // An in-flock SubagentStart is now recorded rather than rejected, so the
+    // unresolvable case is an agent type outside the closed flock -- which is
+    // what this assertion was really about.
     let blocked = hook(
         &root,
         serde_json::json!({
             "hook_event_name": "SubagentStart",
             "session_id": "claude-session-blocked",
             "agent_id": "claude-agent-blocked",
-            "agent_type": "coder"
+            "agent_type": "general-purpose"
         }),
     );
     assert!(blocked.status.success());
@@ -482,6 +485,100 @@ fn post_tool_use_records_without_running_the_pre_flight_guard() {
     assert!(
         !text.contains("PreToolUse"),
         "PostToolUse must never label its output PreToolUse: {text}"
+    );
+    fs::remove_dir_all(root).expect("remove fixture directory");
+}
+
+/// The dispatch ledger stayed empty on every harness: `SubagentStart` blocked
+/// on a missing binding because a host envelope carries no `shepherd_dispatch`
+/// block and has no way to add one. With no record, no tool call could be
+/// attributed to a role, so not one role-scoped guard rule could ever fire.
+#[test]
+fn dispatched_agents_are_recorded_and_their_role_rules_enforce() {
+    let root = repository("subagent-ledger");
+    assert!(
+        hook(
+            &root,
+            serde_json::json!({"hook_event_name": "SessionStart", "session_id": "s1"})
+        )
+        .status
+        .success()
+    );
+
+    for (agent, agent_type) in [
+        ("cond-1", "shepherd:conductor"),
+        ("code-1", "shepherd:coder"),
+    ] {
+        let started = hook(
+            &root,
+            serde_json::json!({
+                "hook_event_name": "SubagentStart",
+                "session_id": "s1",
+                "agent_id": agent,
+                "agent_type": agent_type,
+                "model": "test-model"
+            }),
+        );
+        assert!(started.status.success());
+        assert!(
+            root.join(format!(".shepherd/runs/v645/dispatch/{agent}.json"))
+                .is_file(),
+            "{agent_type} must be recorded in the dispatch ledger"
+        );
+    }
+
+    // Tool calls carry agent_id only; the record supplies the type.
+    let decision = |agent: &str, tool: &str, input: serde_json::Value| -> String {
+        let out = hook(
+            &root,
+            serde_json::json!({
+                "hook_event_name": "PreToolUse",
+                "session_id": "s1",
+                "agent_id": agent,
+                "tool_use_id": format!("{agent}-{tool}"),
+                "tool_name": tool,
+                "tool_input": input
+            }),
+        );
+        assert!(out.status.success());
+        String::from_utf8_lossy(&out.stdout).into_owned()
+    };
+
+    assert!(
+        decision(
+            "cond-1",
+            "Bash",
+            serde_json::json!({"command": "printf hi"})
+        )
+        .is_empty(),
+        "a recorded conductor may run a safe shell command"
+    );
+    assert!(
+        decision(
+            "cond-1",
+            "Agent",
+            serde_json::json!({"subagent_type": "shepherd:coder"})
+        )
+        .is_empty(),
+        "a conductor may dispatch an implementer"
+    );
+    assert!(
+        decision(
+            "cond-1",
+            "Agent",
+            serde_json::json!({"subagent_type": "shepherd:engineer"})
+        )
+        .contains("deny"),
+        "a conductor must not dispatch the plan-author role"
+    );
+    assert!(
+        decision(
+            "code-1",
+            "Agent",
+            serde_json::json!({"subagent_type": "shepherd:worker"})
+        )
+        .contains("deny"),
+        "an implementer must not dispatch at all"
     );
     fs::remove_dir_all(root).expect("remove fixture directory");
 }

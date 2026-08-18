@@ -322,6 +322,51 @@ fn binding_for(
         // and that default carries no tool name, so the resolver derived no
         // write paths and the guard refused every Write and Edit from a root
         // session for lack of them. Forward what the host actually sent.
+        // A host announces a subagent with an id, a type, and a model, but has
+        // no way to attach a `shepherd_dispatch` block, so `plan_lifecycle`
+        // blocked on a missing binding and NO dispatched agent was ever
+        // recorded -- on any harness. An empty ledger cannot attribute a tool
+        // call to a role, so no role-scoped guard could fire either.
+        //
+        // Synthesize the binding from what the host actually sends. The write
+        // scope is recorded as `**` because the host declared none: that is
+        // honest about being unnarrowed, where recording nothing at all left
+        // the agent unattributable. Narrowing still requires a declared scope.
+        if matches!(event, "SubagentStart" | "SubagentStop") {
+            let Some(agent_type) = input.agent_type.as_deref() else {
+                return Ok(None);
+            };
+            let role = parse_role(agent_type).map_err(|error| {
+                CliError::message(format!("cannot resolve dispatched role: {error}"))
+            })?;
+            // The host reports no capability set, but shepherd compiled the
+            // carrier and therefore knows what the role was granted. Its own
+            // required set is the truthful observation, and it is what makes
+            // the contract Ready instead of Blocked.
+            // `dispatch_capability_contract` additionally requires
+            // `subagent-provider`, and a SubagentStart event is itself the
+            // proof the host provides subagents.
+            let observed = role
+                .dispatch_capability_contract()
+                .map_err(|error| CliError::message(error.to_string()))?
+                .required;
+            let mut binding = DispatchBinding::new(
+                None,
+                Some(role),
+                None,
+                None,
+                vec!["**".into()],
+                input.model.clone(),
+                observed,
+                host.capability_source(),
+                "unknown",
+                input.provider_version.as_deref(),
+                DEFAULT_LEASE_MS,
+            )
+            .map_err(|error| CliError::message(error.to_string()))?;
+            binding.mode = "execution".into();
+            return Ok(Some(binding));
+        }
         if matches!(event, "PreToolUse" | "PostToolUse") {
             let mut binding = DispatchBinding::root(Role::Shepherd, "execution", DEFAULT_LEASE_MS)
                 .map_err(|error| CliError::message(error.to_string()))?;

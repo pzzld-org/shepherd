@@ -126,9 +126,6 @@ pub fn resolve_native_identity(
         }
         return resolve_root(native);
     };
-    let Some(agent_type) = &native.agent_type else {
-        return Err(IdentityError::IncompleteNativeIdentity);
-    };
     let record = record.ok_or_else(|| IdentityError::MissingRecord {
         agent_id: agent_id.clone(),
     })?;
@@ -138,7 +135,13 @@ pub fn resolve_native_identity(
             record: record.agent_id.clone(),
         });
     }
-    if agent_type != &record.agent_type {
+    // A host declares agent_type when the agent starts and resends only
+    // agent_id on each tool call afterwards. The record is the authority for
+    // the type, so an absent one is read from there rather than treated as an
+    // incomplete identity. A type that IS supplied still has to agree.
+    if let Some(agent_type) = &native.agent_type
+        && agent_type != &record.agent_type
+    {
         return Err(IdentityError::AgentTypeMismatch {
             native: agent_type.clone(),
             record: record.agent_type.clone(),
