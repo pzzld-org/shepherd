@@ -85,12 +85,15 @@ check_trigger_paths_contains() {
   fi
 }
 
-check_contains "workflow validates extracted WIT bytes" "${WORKFLOW}" 'test -s "${RUNNER_TEMP}/shepherd.wit"'
+check_contains "workflow validates extracted WIT bytes" "${WORKFLOW}" 'test -s "${wit_output}"'
 check_contains "feature matrix validates the component" "${FEATURES}" 'wasm-tools validate'
 check_contains "feature matrix extracts non-empty WIT" "${FEATURES}" 'wasm-tools component wit'
 check_contains "local wasm gate validates extracted WIT bytes" "${GATE}" 'test -s "${wit_output}"'
 check_contains "local wasm gate validates the resolved component export" "${GATE}" "grep -Fq 'export fl03:shepherd/engine@"
-check_contains "workflow validates the resolved component export" "${WORKFLOW}" "grep -Fq 'export fl03:shepherd/engine@"
+check_contains "workflow validates the resolved component export" "${WORKFLOW}" 'expected_export=' \
+  "the workflow must pin the exported interface"
+check_contains "workflow reports its import count" "${WORKFLOW}" 'component imports %s WASI interfaces'
+check_contains "workflow derives the expected import count" "${WORKFLOW}" 'expected_count=$(wc -l < "${pinned}"'
 check_contains "toolchain installs wasip2" "${TOOLCHAIN}" 'wasm32-wasip2'
 check_contains "toolchain installs Windows cfg target" "${TOOLCHAIN}" 'x86_64-pc-windows-msvc'
 check_contains "setup installs wasip2" "${SETUP}" 'wasm32-wasip2'

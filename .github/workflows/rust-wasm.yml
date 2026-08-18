@@ -251,17 +251,40 @@ jobs:
           set -euo pipefail
           cargo build --locked --release --package shepherd-component --target wasm32-wasip2
           artifact="target/wasm32-wasip2/release/shepherd_component.wasm"
-          wasm-tools validate "${artifact}"
+          # Every check below names what it found. The previous form was a chain
+          # of `grep -Fq` and bare `test`, so a failure printed NOTHING and the
+          # step died with only `exit code 1` -- diagnosing it took a log dive.
+          wasm-tools validate "${artifact}" \
+            || { printf 'component failed wasm-tools validate: %s\n' "${artifact}" >&2; exit 1; }
           wit_output="${RUNNER_TEMP}/shepherd.wit"
           wasm-tools component wit "${artifact}" > "${wit_output}"
-          test -s "${RUNNER_TEMP}/shepherd.wit"
-          grep -Fq 'export fl03:shepherd/engine@6.4.6;' "${wit_output}"
+          test -s "${wit_output}" \
+            || { printf 'wit extraction produced an empty file: %s\n' "${wit_output}" >&2; exit 1; }
+          expected_export='export fl03:shepherd/engine@6.4.6;'
+          grep -Fq "${expected_export}" "${wit_output}" || {
+            printf 'component does not export the pinned interface\n  expected: %s\n  exports found:\n' "${expected_export}" >&2
+            grep -F 'export ' "${wit_output}" >&2 || printf '    (none)\n' >&2
+            exit 1
+          }
           resolved_imports="${RUNNER_TEMP}/shepherd.imports"
           sed -n 's/^  import \(wasi:[^;]*\);$/\1/p' "${wit_output}" \
             | LC_ALL=C sort > "${resolved_imports}"
+          pinned='crates/component/wit/resolved-imports.txt'
+          # Derived from the pinned file, never hardcoded: a literal count drifts
+          # out of step with the list it is supposed to describe.
+          expected_count=$(wc -l < "${pinned}" | tr -d ' ')
           resolved_import_count=$(wc -l < "${resolved_imports}" | tr -d ' ')
-          test "${resolved_import_count}" -eq 14
-          diff -u crates/component/wit/resolved-imports.txt "${resolved_imports}"
+          printf 'component imports %s WASI interfaces (pinned: %s)\n' \
+            "${resolved_import_count}" "${expected_count}"
+          diff -u "${pinned}" "${resolved_imports}" || {
+            printf '\ncomponent WASI import surface changed.\n' >&2
+            printf 'This is a CAPABILITY change, not a lint: the component can reach\n' >&2
+            printf 'something it previously could not, or has lost something it needed.\n' >&2
+            printf 'If intended, regenerate with:\n' >&2
+            printf "  wasm-tools component wit %s | sed -n 's/^  import \\(wasi:[^;]*\\);\$/\\1/p' | LC_ALL=C sort > %s\n" \
+              "${artifact}" "${pinned}" >&2
+            exit 1
+          }
       - name: Call the component from Node through jco
         if: matrix.target == 'wasm32-wasip2'
         run: |

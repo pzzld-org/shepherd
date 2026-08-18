@@ -18,9 +18,14 @@ use shepherd::registry::{OpenMode, Registry};
 
 use crate::{
     ContextInputs, ExecutionContext,
-    cmd::dispatch::{ReadSubject, classify_nofollow_open_error},
+    cmd::dispatch::ReadSubject,
     interface::{CliError, CliGlobals},
 };
+// The classifier maps a `rustix::io::Errno`, so it exists only where the
+// descriptor-safe read does. `ReadSubject` is unconditional because both the
+// unix and non-unix readers take one.
+#[cfg(unix)]
+use crate::cmd::dispatch::classify_nofollow_open_error;
 
 const MAX_KNOWLEDGE_BYTES: u64 = 1_048_576;
 const MAX_SEARCH_TEXT: usize = 4_096;
