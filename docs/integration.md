@@ -10,8 +10,8 @@ language or domain mechanics. These boundaries are the portability contract.
 Claude hooks → shepherd claude-hook → native Rust core ─────┐
 Codex hooks  → shepherd codex-hook  → native Rust core ─────┤
                                                              │
-Pi extension → thin host adapter → @fl03/component-runtime  │
-                                  → fl03:shepherd@6.4.5     │
+Pi extension → thin host adapter → @pzzld/component-runtime  │
+                                  → fl03:shepherd@6.4.6     │
                                            WebAssembly component
                                                              │
                         identity, guard, lifecycle, response,
@@ -35,7 +35,7 @@ guard also compares the host tool target with the native resolved write paths.
 This keeps project custody in the native filesystem boundary instead of
 letting an adapter assert an arbitrary project ID.
 
-The WIT package is `fl03:shepherd@6.4.5` in
+The WIT package is `fl03:shepherd@6.4.6` in
 [`crates/component/wit/shepherd.wit`](../crates/component/wit/shepherd.wit).
 Generated JavaScript bindings are release artifacts, not a second source of
 logic. The adapter packages must remain thin and must not grow policy parsers,
@@ -77,17 +77,17 @@ Its `.codex-plugin/plugin.json` selects a byte-gated regular-file projection
 because Codex does not copy source symlinks. Install it with:
 
 ```sh
-codex plugin marketplace add FL03/shepherd --ref v6.4.5
+codex plugin marketplace add FL03/shepherd --ref v6.4.6
 codex plugin add shepherd@shepherd
 ```
 
 The cache contains no Node, npm, Wasm, or source-checkout dependency.
-`@fl03/harness-codex` remains the Component-backed npm embedding adapter; it
+`@pzzld/pi-codex` remains the Component-backed npm embedding adapter; it
 does not own this marketplace path or import Claude's private hooks.
 
 ### Pi
 
-`@fl03/harness-pi` is a host extension, not a standalone Pi agent runtime. It
+`@pzzld/pi-shepherd` is a host extension, not a standalone Pi agent runtime. It
 requires a `SubagentProvider`-compatible extension, such as `pi-subagents`, to
 resolve mutation identity and spawn/resume/stop operations. The provider must
 advertise the required methods and readiness. Missing or unready provider

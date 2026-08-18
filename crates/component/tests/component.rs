@@ -24,7 +24,7 @@ fn canonical_compile_uses_the_embedded_authored_corpus() {
         .expect("canonical content compiles");
     assert_eq!(tree.target, wit::Target::Codex);
     assert_eq!(tree.roles.len(), 9);
-    assert_eq!(tree.files.len(), 7);
+    assert_eq!(tree.files.len(), 9);
     assert!(
         tree.files
             .iter()
@@ -32,7 +32,7 @@ fn canonical_compile_uses_the_embedded_authored_corpus() {
     );
     assert_eq!(
         tree.digest,
-        "a17bfc70e2a70ae266d254d4073402e23cbbea0017114da17f33c5b919822784"
+        "0eb297b3c0f7774ca8057c07c848adbcadbdf45275ebf958050de159ef8a1e25"
     );
 }
 
@@ -68,7 +68,7 @@ fn canonical_guard_uses_the_embedded_predicate_and_role_corpus() {
 #[test]
 fn wit_contract_metadata_matches_the_component_package() {
     let wit = include_str!("../wit/shepherd.wit");
-    assert!(wit.contains("package fl03:shepherd@6.4.5;"));
+    assert!(wit.contains("package fl03:shepherd@6.4.6;"));
     assert!(wit.contains("world shepherd-core"));
     for function in [
         "canonical-profile",

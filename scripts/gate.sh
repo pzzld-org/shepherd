@@ -44,6 +44,7 @@ step() {
 # No compilation. This is what runs on every commit.
 gate_fast() {
   step "rustfmt" cargo fmt --all --check
+  step "Git hooks are non-blocking" bash scripts/tests/test-git-hooks.sh
   step "engine boundary negative controls" bash .github/scripts/boundary-selftest.sh
   step "npm adapter dependency rules are falsifiable" node packages/scripts/check-deps.mjs --self-test
   step "npm adapter dependency rules" node packages/scripts/check-deps.mjs
@@ -66,6 +67,13 @@ gate_fast() {
   step "PowerShell installer contract" bash scripts/tests/test-release-installer-powershell-contract.sh
   step "release distribution legal material" bash scripts/tests/test-release-distribution-license.sh
   step "portable deterministic release tar" bash scripts/tests/test-release-tar-portability.sh
+  # Both of these shipped correct, falsifiable and referenced by NOTHING. The
+  # distribution lane's own headline finding was that
+  # test_shepherd_native_launcher.sh had never run in any gate; it then produced
+  # two more of the same shape. A correct unwired gate is worth exactly what an
+  # inert one is.
+  step "release package-name derivation" bash scripts/tests/test-release-package-names.sh
+  step "release archive layout" bash scripts/tests/test-release-archive-layout.sh
   step "GitHub Action pin checker is falsifiable" python3 scripts/tests/test-check-github-actions.py
   step "GitHub Action pins" python3 scripts/check-github-actions.py
   step "release workflow contract" bash scripts/tests/test-release-workflow.sh
@@ -91,6 +99,15 @@ gate_full() {
   step "clippy (default)" env RUSTFLAGS="-D warnings" cargo clippy --workspace --all-targets --locked
   step "clippy (full)" env RUSTFLAGS="-D warnings" cargo clippy --workspace --all-targets --locked --features full
   step "tests" cargo test --workspace --locked
+  # `cargo test --workspace` runs each member with its DEFAULT features, and
+  # `required-features` targets are silently SKIPPED rather than failed. With
+  # shepherd-core defaulting to ["std"], that skipped guard, dispatch,
+  # portable_dispatch and run_state outright and reduced loader to zero tests
+  # via its own `#![cfg]` -- 3 of 126 core tests actually executed, including
+  # none of the guard engine's 66. check-features.sh does not cover this: it
+  # runs `cargo check`, proving the feature graph compiles, never that the
+  # feature-gated tests run.
+  step "tests (feature-gated targets)" cargo test --workspace --locked --all-features
   step "build typed component for adapter package suites" \
     cargo build --locked --release --package shepherd-component --target wasm32-wasip2
   step "component runtime package suite" \
@@ -194,7 +211,7 @@ gate_wasm() {
     local resolved_import_count
     wasm-tools component wit "${artifact}" > "${wit_output}"
     test -s "${wit_output}"
-    grep -Fq 'export fl03:shepherd/engine@6.4.5;' "${wit_output}"
+    grep -Fq 'export fl03:shepherd/engine@6.4.6;' "${wit_output}"
     sed -n 's/^  import \(wasi:[^;]*\);$/\1/p' "${wit_output}" \
       | LC_ALL=C sort > "${resolved_imports}"
     resolved_import_count=$(wc -l < "${resolved_imports}" | tr -d ' ')

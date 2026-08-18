@@ -1,8 +1,8 @@
 {
   "suite": "core",
   "kind": "pure",
-  "authority": "native-v6.4.5",
-  "intentional_difference": "legacy graph state belongs to a retired graph root and is coupled to Python mutation commands; native v6.4.5 inspects only an explicitly run-scoped graph artifact",
+  "authority": "native-v6.4.6",
+  "intentional_difference": "legacy graph state belongs to a retired graph root and is coupled to Python mutation commands; native v6.4.6 inspects only an explicitly run-scoped graph artifact",
   "requires_git": true,
   "description": "native graph status reads a canonical run graph artifact",
   "setup": [["init", "--confirm"], ["run", "init", "v900"]],

@@ -7,7 +7,9 @@
 
 use std::{
     collections::BTreeSet,
+    fs,
     io::{self, Read},
+    path::Path,
 };
 
 use serde::Deserialize;
@@ -124,8 +126,24 @@ pub(super) fn run_native_hook(host: HookHost, globals: CliGlobals) -> Result<(),
     match run_hook(input, host, globals) {
         Ok(HookOutput::Silent) => Ok(()),
         Ok(HookOutput::Context { event, detail }) => emit_json(&context(&event, &detail), host),
-        Ok(HookOutput::Deny { detail }) => emit_json(&deny(&detail), host),
-        Err(error) if pre_tool_use => emit_json(&deny(cli_error_detail(&error)), host),
+        Ok(HookOutput::Deny { detail }) => emit_json(&deny(&hook_event_name, &detail), host),
+        // A guard verdict reaches us as `Ok(HookOutput::Deny)`. Every error that
+        // lands here is therefore an infrastructure fault in shepherd's own
+        // bookkeeping -- an unresolved identity, a run that is not executing,
+        // unreadable dispatch state -- and says nothing about whether the
+        // requested call is safe. Denying on it strands the session: the repair
+        // for broken run state is itself a tool call, and this matcher covers
+        // every tool that could perform one. Surface the fault and allow.
+        Err(error) if pre_tool_use => emit_json(
+            &context(
+                "PreToolUse",
+                &format!(
+                    "dispatch state unavailable, tool allowed: {}",
+                    cli_error_detail(&error)
+                ),
+            ),
+            host,
+        ),
         Err(error) if hook_event_name == "SubagentStop" => emit_json(
             &block(&format!(
                 "native lifecycle hook rejected: {}",
@@ -176,7 +194,12 @@ fn read_input(host: HookHost) -> Result<NativeHookInput, CliError> {
 
 fn emit_parse_error(error: CliError, host: HookHost) -> Result<(), CliError> {
     let fallback = format!("invalid {} hook input", host.label());
-    emit_json(&deny(error.message_text().unwrap_or(&fallback)), host)
+    // The envelope did not parse, so the event it claimed is unknown; a
+    // refusal is only meaningful pre-flight, which is what the host asked for.
+    emit_json(
+        &deny("PreToolUse", error.message_text().unwrap_or(&fallback)),
+        host,
+    )
 }
 
 fn run_hook(
@@ -260,8 +283,19 @@ fn run_hook(
         }
         DispatchRequest::Resolve(request) => {
             let request = decode_request(&request)?;
-            let response = service.resolve(request, now).map_err(service_error)?;
-            evaluate_pre_tool_use(&input, &response)
+            match service.resolve(request, now) {
+                // Both tool events resolve, but only the pre-flight one gates.
+                // A `PostToolUse` verdict would be advice about a call that
+                // already ran, emitted under a `PreToolUse` label -- so the
+                // resolution is recorded and the guard is not consulted.
+                Ok(_) if input.hook_event_name == "PostToolUse" => Ok(HookOutput::Silent),
+                Ok(response) => evaluate_pre_tool_use(&input, &response),
+                Err(error) if input.hook_event_name == "PostToolUse" => Ok(HookOutput::Context {
+                    event: input.hook_event_name.clone(),
+                    detail: format!("dispatch state unavailable after the tool ran: {error}"),
+                }),
+                Err(error) => Ok(unresolved_pre_tool_use(&input, &context, &error)),
+            }
         }
     }
 }
@@ -282,6 +316,64 @@ fn binding_for(
     host: HookHost,
 ) -> Result<Option<DispatchBinding>, CliError> {
     let Some(raw) = input.shepherd_dispatch.as_ref() else {
+        // A host tool envelope carries no `shepherd_dispatch` block -- only a
+        // dispatched subagent gets one -- but it does name the tool being
+        // requested. `plan_lifecycle` substitutes a default root binding here,
+        // and that default carries no tool name, so the resolver derived no
+        // write paths and the guard refused every Write and Edit from a root
+        // session for lack of them. Forward what the host actually sent.
+        // A host announces a subagent with an id, a type, and a model, but has
+        // no way to attach a `shepherd_dispatch` block, so `plan_lifecycle`
+        // blocked on a missing binding and NO dispatched agent was ever
+        // recorded -- on any harness. An empty ledger cannot attribute a tool
+        // call to a role, so no role-scoped guard could fire either.
+        //
+        // Synthesize the binding from what the host actually sends. The write
+        // scope is recorded as `**` because the host declared none: that is
+        // honest about being unnarrowed, where recording nothing at all left
+        // the agent unattributable. Narrowing still requires a declared scope.
+        if matches!(event, "SubagentStart" | "SubagentStop") {
+            let Some(agent_type) = input.agent_type.as_deref() else {
+                return Ok(None);
+            };
+            let role = parse_role(agent_type).map_err(|error| {
+                CliError::message(format!("cannot resolve dispatched role: {error}"))
+            })?;
+            // The host reports no capability set, but shepherd compiled the
+            // carrier and therefore knows what the role was granted. Its own
+            // required set is the truthful observation, and it is what makes
+            // the contract Ready instead of Blocked.
+            // `dispatch_capability_contract` additionally requires
+            // `subagent-provider`, and a SubagentStart event is itself the
+            // proof the host provides subagents.
+            let observed = role
+                .dispatch_capability_contract()
+                .map_err(|error| CliError::message(error.to_string()))?
+                .required;
+            let mut binding = DispatchBinding::new(
+                None,
+                Some(role),
+                None,
+                None,
+                vec!["**".into()],
+                input.model.clone(),
+                observed,
+                host.capability_source(),
+                "unknown",
+                input.provider_version.as_deref(),
+                DEFAULT_LEASE_MS,
+            )
+            .map_err(|error| CliError::message(error.to_string()))?;
+            binding.mode = "execution".into();
+            return Ok(Some(binding));
+        }
+        if matches!(event, "PreToolUse" | "PostToolUse") {
+            let mut binding = DispatchBinding::root(Role::Shepherd, "execution", DEFAULT_LEASE_MS)
+                .map_err(|error| CliError::message(error.to_string()))?;
+            binding.tool_name = input.tool_name.clone();
+            binding.tool_input = input.tool_input.clone();
+            return Ok(Some(binding));
+        }
         return Ok(None);
     };
     let role = raw
@@ -373,16 +465,24 @@ fn evaluate_pre_tool_use(
     input: &NativeHookInput,
     resolution: &crate::DispatchResolution,
 ) -> Result<HookOutput, CliError> {
-    let engine = load_engine(None)?;
+    // Guard integrity is the one fault class that stays fail-closed: an engine
+    // that will not load or evaluate cannot vouch for the call. The self-repair
+    // exemption in `guard_unavailable` is what keeps that from bricking a
+    // session whose only route back to a working ruleset is a tool call.
+    let engine = match load_engine(None) {
+        Ok(engine) => engine,
+        Err(error) => return Ok(guard_unavailable(input, cli_error_detail(&error))),
+    };
     let request = serde_json::json!({
         "role": resolution.role.as_str(),
         "tool_name": input.tool_name.as_deref().unwrap_or_default(),
         "tool_input": input.tool_input.clone().unwrap_or(serde_json::Value::Object(Default::default())),
         "dispatch": resolution,
     });
-    let verdict = engine
-        .evaluate(&GuardValue::from(request))
-        .map_err(|error| CliError::message(error.to_string()))?;
+    let verdict = match engine.evaluate(&GuardValue::from(request)) {
+        Ok(verdict) => verdict,
+        Err(error) => return Ok(guard_unavailable(input, &error.to_string())),
+    };
     if verdict.decision.as_str() == "allow" {
         Ok(HookOutput::Silent)
     } else {
@@ -394,6 +494,121 @@ fn evaluate_pre_tool_use(
     }
 }
 
+/// Decide what an unresolved `PreToolUse` means before refusing it.
+///
+/// Resolution fails for two unrelated reasons, and they deserve opposite
+/// answers. Either shepherd's own run bookkeeping is unusable -- in which case
+/// the failure says nothing about this tool call, and denying would strand the
+/// session, since every repair is itself a tool call -- or the run is healthy
+/// and this session is simply not bound to it, which is a genuine refusal.
+fn unresolved_pre_tool_use(
+    input: &NativeHookInput,
+    context: &ExecutionContext,
+    error: &crate::DispatchServiceError,
+) -> HookOutput {
+    if is_self_repair_call(input) {
+        return HookOutput::Context {
+            event: "PreToolUse".into(),
+            detail: format!("dispatch unresolved ({error}); allowed shepherd self-repair"),
+        };
+    }
+    // A record shepherd never wrote is shepherd's own bookkeeping gap, not a
+    // claim by the caller, so it gets the same treatment as an unusable run
+    // namespace. Every other resolution failure -- a run, harness, project, or
+    // agent-type that disagrees with the record -- means the envelope contradicts
+    // state shepherd does hold, and that stays a refusal.
+    let never_recorded = matches!(
+        error,
+        crate::DispatchServiceError::Identity(
+            shepherd::dispatch::IdentityError::MissingRecord { .. }
+        ) | crate::DispatchServiceError::Store(crate::DispatchStoreError::UnknownRecord { .. })
+    );
+    if never_recorded {
+        return HookOutput::Context {
+            event: "PreToolUse".into(),
+            detail: format!("{error}; tool allowed because shepherd never recorded this agent"),
+        };
+    }
+    if run_namespace_is_usable(&context.runs_root) {
+        return HookOutput::Deny {
+            detail: error.to_string(),
+        };
+    }
+    HookOutput::Context {
+        event: "PreToolUse".into(),
+        detail: format!(
+            "no usable run namespace ({error}); tool allowed. \
+Repair with `shepherd run layout <run> --repair` \
+then `shepherd run set <run> --status executing`."
+        ),
+    }
+}
+
+/// Whether any run is executing with the dispatch directory it needs.
+///
+/// This is the minimum state shepherd requires to attribute a tool call to a
+/// role. Below it, no refusal it issues would be meaningful.
+fn run_namespace_is_usable(runs_root: &Path) -> bool {
+    let Ok(entries) = fs::read_dir(runs_root) else {
+        return false;
+    };
+    entries.filter_map(Result::ok).any(|entry| {
+        let run = entry.path();
+        run.join("dispatch").is_dir()
+            && fs::read(run.join("run.json"))
+                .ok()
+                .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
+                .is_some_and(|document| document["status"] == "executing")
+    })
+}
+
+/// Fail closed when the guard engine cannot reach a verdict, except for a bare
+/// `shepherd` invocation.
+///
+/// Without the exemption a damaged ruleset is unrecoverable from inside the
+/// session that has to recover it: every repair path is a tool call, and every
+/// tool call is denied.
+fn guard_unavailable(input: &NativeHookInput, detail: &str) -> HookOutput {
+    if is_self_repair_call(input) {
+        return HookOutput::Context {
+            event: "PreToolUse".into(),
+            detail: format!("guard engine unavailable ({detail}); allowed shepherd self-repair"),
+        };
+    }
+    HookOutput::Deny {
+        detail: format!("guard engine unavailable: {detail}"),
+    }
+}
+
+/// True for a `Bash` call that runs `shepherd` and nothing else.
+///
+/// Shell metacharacters disqualify the call rather than being parsed. This is a
+/// deliberately narrow escape hatch, so anything that could chain a second
+/// command past it is refused outright.
+fn is_self_repair_call(input: &NativeHookInput) -> bool {
+    if input.tool_name.as_deref() != Some("Bash") {
+        return false;
+    }
+    let Some(command) = input
+        .tool_input
+        .as_ref()
+        .and_then(|value| value.get("command"))
+        .and_then(serde_json::Value::as_str)
+    else {
+        return false;
+    };
+    if command.contains([';', '|', '&', '`', '>', '<', '\n', '\r']) || command.contains("$(") {
+        return false;
+    }
+    input_is_shepherd(command.trim_start())
+}
+
+fn input_is_shepherd(command: &str) -> bool {
+    command
+        .strip_prefix("shepherd")
+        .is_some_and(|rest| rest.is_empty() || rest.starts_with(char::is_whitespace))
+}
+
 fn context(event: &str, detail: &str) -> serde_json::Value {
     serde_json::json!({
         "hookSpecificOutput": {
@@ -403,10 +618,10 @@ fn context(event: &str, detail: &str) -> serde_json::Value {
     })
 }
 
-fn deny(detail: &str) -> serde_json::Value {
+fn deny(event: &str, detail: &str) -> serde_json::Value {
     serde_json::json!({
         "hookSpecificOutput": {
-            "hookEventName": "PreToolUse",
+            "hookEventName": event,
             "permissionDecision": "deny",
             "permissionDecisionReason": format!("[shepherd] {detail}"),
         }

@@ -98,50 +98,75 @@ class GitHubActionsPinCheckerTests(unittest.TestCase):
         self.assertIn(expected, result.stderr)
 
     def test_canonical_lock_and_workflows_pass(self) -> None:
-        result = self.run_fixture(
-            f"jobs:\n  test:\n    uses: actions/checkout@{CHECKOUT_SHA} # v7.0.1\n"
-        )
+        result = self.run_fixture("jobs:\n  test:\n    uses: actions/checkout@v7 # v7.0.1\n")
 
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("1 workflow file, 1 external use, 1 repository", result.stdout)
 
-    def test_mutable_tag_is_rejected(self) -> None:
+    def test_sha_pin_is_rejected(self) -> None:
+        """A SHA cannot inherit the action's own minor and patch fixes."""
         self.assert_rejected(
-            "jobs:\n  test:\n    uses: actions/checkout@v7 # v7.0.1\n",
-            "reference must be a 40-character lowercase commit SHA",
+            f"jobs:\n  test:\n    uses: actions/checkout@{CHECKOUT_SHA} # v7.0.1\n",
+            "reference must be the major version tag 'v7'",
         )
+
+    def test_wrong_major_is_rejected(self) -> None:
+        """Floating is not unconstrained: the major must match the lock."""
+        self.assert_rejected(
+            "jobs:\n  test:\n    uses: actions/checkout@v6 # v7.0.1\n",
+            "reference must be the major version tag 'v7'",
+        )
+
+    def test_upstream_patch_release_keeps_the_gate_green(self) -> None:
+        """The whole point of floating: v7.0.2 ships and we are not red."""
+        result = self.run_fixture("jobs:\n  test:\n    uses: actions/checkout@v7 # v7.0.2\n")
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_comment_is_optional(self) -> None:
+        result = self.run_fixture("jobs:\n  test:\n    uses: actions/checkout@v7\n")
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_comment_from_another_major_is_rejected(self) -> None:
+        self.assert_rejected(
+            "jobs:\n  test:\n    uses: actions/checkout@v7 # v6.1.0\n",
+            "tag comment must be an exact semver in v7.x, or omitted",
+        )
+
+    def test_inexact_comment_is_rejected(self) -> None:
+        self.assert_rejected(
+            "jobs:\n  test:\n    uses: actions/checkout@v7 # v7\n",
+            "tag comment must be an exact semver in v7.x, or omitted",
+        )
+
+    def test_pre_release_action_must_pin_the_exact_tag(self) -> None:
+        """`v0` is not a compatibility channel -- a 0.x minor may break."""
+        lock = canonical_lock(
+            {"mozilla-actions/sccache-action": action_record("v0.0.11", CHECKOUT_SHA)}
+        )
+        self.assert_rejected(
+            "jobs:\n  test:\n    uses: mozilla-actions/sccache-action@v0\n",
+            "pre-1.0 action must pin the exact tag 'v0.0.11'",
+            lock,
+        )
+
+        result = self.run_fixture(
+            "jobs:\n  test:\n    uses: mozilla-actions/sccache-action@v0.0.11\n", lock
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_unknown_action_is_rejected(self) -> None:
         self.assert_rejected(
-            f"jobs:\n  test:\n    uses: example/action@{CHECKOUT_SHA} # v1.0.0\n",
+            "jobs:\n  test:\n    uses: example/action@v1 # v1.0.0\n",
             "action repository is absent from .github/actions-lock.json: example/action",
-        )
-
-    def test_exact_tag_comment_drift_is_rejected(self) -> None:
-        self.assert_rejected(
-            f"jobs:\n  test:\n    uses: actions/checkout@{CHECKOUT_SHA} # v7\n",
-            "tag comment must be exactly '# v7.0.1'",
-        )
-
-    def test_stale_sha_is_rejected(self) -> None:
-        self.assert_rejected(
-            f"jobs:\n  test:\n    uses: actions/checkout@{'c' * 40} # v7.0.1\n",
-            f"commit SHA must equal locked SHA {CHECKOUT_SHA}",
         )
 
     def test_malformed_comment_without_yaml_whitespace_is_rejected(self) -> None:
         self.assert_rejected(
             "jobs:\n  test:\n    uses: actions/checkout@v7# v7.0.1\n",
-            "uses scalar must be an unquoted action followed by '# <exact-tag>'",
+            "uses scalar must be an unquoted action, optionally followed by '# <exact-tag>'",
         )
-
-    def test_noncanonical_sha_lengths_and_case_are_rejected(self) -> None:
-        for reference in ("a" * 39, "a" * 41, "A" * 40):
-            with self.subTest(reference=reference):
-                self.assert_rejected(
-                    f"jobs:\n  test:\n    uses: actions/checkout@{reference} # v7.0.1\n",
-                    "reference must be a 40-character lowercase commit SHA",
-                )
 
     def test_unused_lock_entry_is_rejected(self) -> None:
         lock = canonical_lock(
@@ -151,7 +176,7 @@ class GitHubActionsPinCheckerTests(unittest.TestCase):
             }
         )
         self.assert_rejected(
-            f"jobs:\n  test:\n    uses: actions/checkout@{CHECKOUT_SHA} # v7.0.1\n",
+            "jobs:\n  test:\n    uses: actions/checkout@v7 # v7.0.1\n",
             "lock entry is not used by any workflow: example/unused",
             lock,
         )
@@ -168,7 +193,7 @@ class GitHubActionsPinCheckerTests(unittest.TestCase):
             }
         )
         result = self.run_fixture(
-            f"jobs:\n  test:\n    uses: github/codeql-action/upload-sarif@{CODEQL_SHA} # v4.37.7\n",
+            "jobs:\n  test:\n    uses: github/codeql-action/upload-sarif@v4 # v4.37.7\n",
             lock,
         )
 
@@ -177,20 +202,20 @@ class GitHubActionsPinCheckerTests(unittest.TestCase):
     def test_expired_lock_is_rejected_offline(self) -> None:
         lock = canonical_lock(refresh_by="2026-08-15T17:59:59Z")
         self.assert_rejected(
-            f"jobs:\n  test:\n    uses: actions/checkout@{CHECKOUT_SHA} # v7.0.1\n",
+            "jobs:\n  test:\n    uses: actions/checkout@v7 # v7.0.1\n",
             "action lock expired at 2026-08-15T17:59:59Z",
             lock,
         )
 
     def test_local_and_docker_actions_do_not_require_lock_entries(self) -> None:
         result = self.run_fixture(
-            f"""jobs:
+            """jobs:
   local:
     uses: ./actions/local
   docker:
     uses: docker://alpine:3.22
   external:
-    uses: actions/checkout@{CHECKOUT_SHA} # v7.0.1
+    uses: actions/checkout@v7 # v7.0.1
 """
         )
 

@@ -7,7 +7,6 @@
 
 use std::{
     collections::BTreeSet,
-    fs,
     io::{self, Write},
 };
 
@@ -30,7 +29,7 @@ const ROLES: [&str; 9] = [
     "worker",
 ];
 const HARNESSES: [&str; 3] = ["claude", "codex", "pi"];
-const USAGE: &str = "shepherd models <resolve|show> [args]\n\n  resolve <role>        Echo the portable model hint for one role.\n  resolve <role> --harness <claude|codex|pi>\n                        Resolve the hint through the compiler's canonical\n                        harness profile.\n                        Roles: root planter engineer conductor critic\n                               discovery coder auditor worker\n  show [--md|--json]    Print the full resolved 9-role hint table + source.\n\nThe [models] block in .shepherd/shepherd.toml is the one project map. Unset\nroles use portable defaults: root = inherit-caller; planter/engineer =\nreasoning-high; all other roles = standard. See docs/configuration.md §models.";
+const USAGE: &str = "shepherd models <resolve|show> [args]\n\n  resolve <role>        Echo the portable model hint for one role.\n  resolve <role> --harness <claude|codex|pi>\n                        Resolve the hint through the compiler's canonical\n                        harness profile.\n                        Roles: root planter engineer conductor critic\n                               discovery coder auditor worker\n  show [--md|--json]    Print the full resolved 9-role hint table + source.\n  show --harness <claude|codex|pi> [--md|--json]\n                        Render every role's harness-native model spelling\n                        instead of the portable hint.\n\nThe [models] block in .shepherd/shepherd.toml is the one project map. Unset\nroles use portable defaults: root/planter/engineer/conductor =\nreasoning-high; all other roles = standard. See docs/configuration.md §models.";
 const TEXT_FOOTER: &str = "root is advisory (your live session model). Spawned roles resolve their\nportable hint through the Rust compiler's Claude, Codex, or Pi profile.\nSee docs/configuration.md §models.";
 const MD_FOOTER: &str = "_root is advisory: it names the model your live session should run; a config key cannot rebind a running main-chat session._";
 
@@ -123,6 +122,9 @@ struct ModelsShowCmd {
     /// Render the role map as JSON.
     #[arg(long)]
     json: bool,
+    /// Translate every row's model to one harness's native spelling.
+    #[arg(long)]
+    harness: Option<String>,
     /// Print the canonical models usage contract.
     #[arg(short = 'h', long = "help")]
     help: bool,
@@ -226,7 +228,24 @@ impl ModelsShowCmd {
         if self.help {
             return write_stdout(USAGE);
         }
-        let rows = resolve_rows(&globals)?;
+        if let Some(harness) = self.harness.as_deref()
+            && !HARNESSES.contains(&harness)
+        {
+            return Err(CliError::message_with_code(
+                format!(
+                    "unknown harness: {harness} (valid: {})",
+                    HARNESSES.join(" ")
+                ),
+                2,
+            ));
+        }
+
+        let mut rows = resolve_rows(&globals)?;
+        if let Some(harness) = self.harness.as_deref() {
+            for row in &mut rows {
+                row.model = translate_for_harness(&row.model, harness)?;
+            }
+        }
         if self.json {
             write_stdout(&render_json(&rows))
         } else if self.md {
@@ -269,35 +288,16 @@ fn explicit_models(
     inputs.verbosity = globals.verbosity;
     let context =
         ExecutionContext::discover(inputs).map_err(|error| CliError::message(error.to_string()))?;
-    let config_path = context
-        .config_sources
-        .first()
-        .map(|source| source.path.as_path())
-        .ok_or_else(|| {
-            CliError::message("explicit models configuration did not contribute a source")
-        })?;
-    let contents = fs::read_to_string(config_path).map_err(|error| {
-        CliError::message(format!(
-            "cannot read explicit models configuration {}: {error}",
-            config_path.display()
-        ))
-    })?;
-    let document: toml::Value = toml::from_str(&contents).map_err(|error| {
-        CliError::message(format!(
-            "cannot parse explicit models configuration {}: {error}",
-            config_path.display()
-        ))
-    })?;
-    let configured_roles = document
-        .get("models")
-        .and_then(toml::Value::as_table)
-        .map(|models| {
-            ROLES
-                .into_iter()
-                .filter(|role| models.contains_key(*role))
-                .collect()
-        })
-        .unwrap_or_default();
+    // The loader already walked every merged layer's parsed table once to
+    // build `explicit_keys` (see `shepherd_core::loader::LoadedConfig`); a
+    // role is "configured" exactly when its dotted `models.<role>` key was
+    // present in some layer, never by comparing the merged value against
+    // `ModelsConfig::default()` (a config that explicitly sets a role to its
+    // default value must still report `source: config`).
+    let configured_roles = ROLES
+        .into_iter()
+        .filter(|role| context.explicit_keys.contains(&format!("models.{role}")))
+        .collect();
     Ok((context.config.models, configured_roles))
 }
 

@@ -163,12 +163,12 @@ def build(scope: str, target: str) -> tuple[str, dict[str, bytes]]:
     scopes: dict[str, tuple[list[str], list[str]]] = {
         "native": (["shepherd-cli"], []),
         "component": (["shepherd-component"], []),
-        "npm-component-runtime": (["shepherd-component"], ["@fl03/component-runtime"]),
-        "npm-harness-claude": ([], ["@fl03/harness-claude"]),
-        "npm-harness-codex": ([], ["@fl03/harness-codex"]),
-        "npm-harness-pi": ([], ["@fl03/harness-pi"]),
-        "claude": (["shepherd-component"], ["@fl03/harness-claude"]),
-        "full": (["shepherd-cli", "shepherd-component"], ["@fl03/harness-claude"]),
+        "npm-component-runtime": (["shepherd-component"], ["@pzzld/component-runtime"]),
+        "npm-harness-claude": ([], ["@pzzld/pi-claude"]),
+        "npm-harness-codex": ([], ["@pzzld/pi-codex"]),
+        "npm-harness-pi": ([], ["@pzzld/pi-shepherd"]),
+        "claude": (["shepherd-component"], ["@pzzld/pi-claude"]),
+        "full": (["shepherd-cli", "shepherd-component"], ["@pzzld/pi-claude"]),
     }
     cargo_packages, node_packages = scopes[scope]
     rows = [row for package_name in cargo_packages for row in cargo_rows(target, package_name)]

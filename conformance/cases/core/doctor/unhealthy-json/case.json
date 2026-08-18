@@ -1,7 +1,7 @@
 {
   "suite": "core",
   "kind": "pure",
-  "authority": "native-v6.4.5",
+  "authority": "native-v6.4.6",
   "intentional_difference": "native doctor JSON is a typed layout-v5 report with no legacy subprocess diagnostics",
   "requires_git": true,
   "description": "doctor JSON reports an uninitialized project without mutation",

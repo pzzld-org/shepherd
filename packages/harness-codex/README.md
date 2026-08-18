@@ -1,7 +1,7 @@
-# `@fl03/harness-codex`
+# `@pzzld/pi-codex`
 
 The Codex adapter translates native hook envelopes into the typed
-`fl03:shepherd@6.4.5` Component Model contract. The Rust component owns
+`fl03:shepherd@6.4.6` Component Model contract. The Rust component owns
 identity normalization, guard policy, lifecycle planning, provider facts,
 response validation, and canonical emission. Codex hooks only load the
 adjacent packaged runtime, translate the hook envelope, and hand a typed
@@ -17,6 +17,6 @@ adapter exposes no separate apply executable; use
 `shepherd compile --target codex --out <absolute-directory>` for descriptor-safe
 installation.
 
-The generated runtime is staged into `@fl03/component-runtime/runtime` during
+The generated runtime is staged into `@pzzld/component-runtime/runtime` during
 release and is never committed. `SHEPHERD_COMPONENT_MODULE` is a test or
 embedding override only.

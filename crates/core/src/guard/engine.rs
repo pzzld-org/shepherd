@@ -225,7 +225,7 @@ impl GuardEngine {
         } else if tool_name == "Bash" {
             self.evaluate_bash_tool(role, tool_input)
         } else if DISPATCH_TOOL_NAMES.contains(&tool_name) {
-            self.evaluate_dispatch_tool(role, tool_input)
+            self.evaluate_dispatch_tool(role, tool_input, tool_name)
         } else {
             Verdict::unresolved(
                 format!("no (predicate, action) mapping known for tool `{tool_name}`"),
@@ -382,20 +382,28 @@ impl GuardEngine {
         )
     }
 
-    fn evaluate_dispatch_tool(&self, role: Option<&GuardValue>, tool_input: &Context) -> Verdict {
+    fn evaluate_dispatch_tool(
+        &self,
+        role: Option<&GuardValue>,
+        tool_input: &Context,
+        tool_name: &str,
+    ) -> Verdict {
         let target = ["subagent_type", "target_role", "role"]
             .into_iter()
             .filter_map(|key| tool_input.get(key))
-            .find(|value| value.is_truthy());
-        let Some(target) = target
+            .find(|value| value.is_truthy())
             .and_then(GuardValue::as_str)
-            .filter(|value| !value.is_empty())
-        else {
+            .map(carrier_role)
+            .filter(|value| !value.is_empty());
+        // `Workflow` fans out inside its own script, so its `tool_input` carries
+        // no single target role. `Agent` always carries one, so a missing target
+        // there is still unresolved.
+        if target.is_none() && tool_name != "Workflow" {
             return Verdict::unresolved(
                 "cannot determine the dispatch target role from `tool_input`",
                 &["tool_input.subagent_type"],
             );
-        };
+        }
         let Some(role) = role.filter(|value| !value.is_null()) else {
             return Verdict::unresolved(
                 "missing `role` -- cannot identify the dispatching role",
@@ -409,15 +417,28 @@ impl GuardEngine {
                 &["role"],
             );
         };
-        self.decide(
-            "dispatch-scope",
-            "dispatch",
-            role,
-            &BTreeMap::from([
-                (String::from("target_role"), GuardValue::from(target)),
-                (String::from("dispatcher_tier"), GuardValue::from(tier)),
-            ]),
-        )
+        // Two dispatch-scope rules key on the TARGET, so an undeclared target
+        // makes them unenforceable. That is fine for a role no target-keyed rule
+        // restricts -- there is nothing to evade. It is NOT fine for a role that
+        // one does: a lane lead denied `engineer` by name could otherwise obtain
+        // it by writing the dispatch as a script string, which is a bypass by
+        // payload shape rather than by permission. Such a role must declare.
+        if target.is_none() && restricted_by_target_rule(tier) {
+            return Verdict::deny(
+                "dispatch-scope",
+                "plan-authorship-and-gating-are-root-tier-exclusive",
+                Some(String::from("WRONG-TIER-DISPATCH")),
+                "a lane-executor lead must DECLARE the roles it dispatches: pass \
+`target_role` (or `subagent_type`) in `tool_input`. Two dispatch-scope rules key on the \
+target, so an undeclared target would let a refused dispatch through by payload shape.",
+            );
+        }
+        let mut context =
+            BTreeMap::from([(String::from("dispatcher_tier"), GuardValue::from(tier))]);
+        if let Some(target) = target {
+            context.insert(String::from("target_role"), GuardValue::from(target));
+        }
+        self.decide("dispatch-scope", "dispatch", role, &context)
     }
 
     fn decide(
@@ -491,6 +512,27 @@ impl GuardEngine {
         }
         None
     }
+}
+
+/// Strip shepherd's own carrier prefix from a dispatch target.
+///
+/// A host names a plugin agent `<plugin>:<agent>`, so Claude Code sends
+/// `shepherd:conductor` where `role_facts` is keyed on the bare `conductor`.
+/// Without this, every dispatch to a real flock role was refused as off-flock
+/// and the plugin could not dispatch through its own guard. Only shepherd's
+/// prefix is stripped: another plugin's `coder` is not this flock's `coder`.
+/// Whether any `dispatch-scope` rule restricts this tier BY TARGET.
+///
+/// Only the lane lead is: `plan-authorship-and-gating-are-root-tier-exclusive`
+/// forbids it `engineer` and `critic`. Root has no target-keyed restriction it
+/// could evade, and an implementer is refused by acting role alone, which no
+/// payload shape can hide.
+fn restricted_by_target_rule(tier: &str) -> bool {
+    tier == "lane-lead"
+}
+
+fn carrier_role(value: &str) -> &str {
+    value.strip_prefix("shepherd:").unwrap_or(value)
 }
 
 fn role_tier(role: &str) -> Option<&'static str> {

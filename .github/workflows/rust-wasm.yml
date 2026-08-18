@@ -53,8 +53,6 @@ on:
     branches:
       - main
       - master
-      - "v[0-9]*.[0-9]*.[0-9]*"
-      - "v[0-9]*.[0-9]*.[0-9]*-dev.[0-9]*"
     paths:
       - "**/*.rs"
       - "**/Cargo.toml"
@@ -154,25 +152,22 @@ jobs:
             features: wasm
     steps:
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7 # v7.0.1
         with:
           fetch-depth: 1
           ref: ${{ needs.resolve.outputs.ref }}
           repository: ${{ github.repository }}
       - name: Setup rust-cache
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        uses: Swatinem/rust-cache@v2 # v2.9.2
         with:
           key: wasm-unknown-${{ matrix.package }}
       - name: Setup Rust
-        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           cache: false
           target: wasm32-unknown-unknown
-      # sqlite-wasm-rs compiles SQLite from C to wasm, so it needs a clang with
-      # a WebAssembly backend. Ubuntu's has one; Apple's system clang does not,
-      # which is why local runs want Homebrew LLVM.
-      - name: Setup clang
-        run: sudo apt-get update && sudo apt-get install -y clang
+      - name: Verify runner clang
+        run: clang --version
       - name: cargo build ${{ matrix.package }}
         run: |
           cargo build --locked --release \
@@ -197,17 +192,17 @@ jobs:
         target: [wasm32-wasip1, wasm32-wasip2]
     steps:
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7 # v7.0.1
         with:
           fetch-depth: 1
           ref: ${{ needs.resolve.outputs.ref }}
           repository: ${{ github.repository }}
       - name: Setup rust-cache
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        uses: Swatinem/rust-cache@v2 # v2.9.2
         with:
           key: wasi-${{ matrix.target }}
       - name: Setup Rust
-        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           cache: false
           target: ${{ matrix.target }}
@@ -215,7 +210,7 @@ jobs:
       # pinned version rather than re-downloaded on every run.
       - name: Cache wasi-sdk
         id: wasi-sdk-cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache@v6 # v6.1.0
         with:
           path: /opt/wasi-sdk
           key: wasi-sdk-${{ env.WASI_SDK_RELEASE }}-x86_64-linux
@@ -236,12 +231,14 @@ jobs:
       - name: Export the wasi-sdk path
         run: echo "WASI_SDK_PATH=/opt/wasi-sdk" >> "${GITHUB_ENV}"
       - name: Setup wasmtime
-        uses: taiki-e/install-action@b27e114ddbae5cc01df19a22cf70a124d5177567 # v2.86.0
+        uses: taiki-e/install-action@v2
         with:
           tool: wasmtime
       - name: Setup wasm-tools
+        uses: taiki-e/install-action@v2
         if: matrix.target == 'wasm32-wasip2'
-        run: cargo install wasm-tools --version "${WASM_TOOLS_VERSION}" --locked
+        with:
+          tool: wasm-tools@${{ env.WASM_TOOLS_VERSION }}
       - name: cargo build shepherd-registry
         run: |
           cargo build --locked --release \
@@ -258,7 +255,7 @@ jobs:
           wit_output="${RUNNER_TEMP}/shepherd.wit"
           wasm-tools component wit "${artifact}" > "${wit_output}"
           test -s "${RUNNER_TEMP}/shepherd.wit"
-          grep -Fq 'export fl03:shepherd/engine@6.4.5;' "${wit_output}"
+          grep -Fq 'export fl03:shepherd/engine@6.4.6;' "${wit_output}"
           resolved_imports="${RUNNER_TEMP}/shepherd.imports"
           sed -n 's/^  import \(wasi:[^;]*\);$/\1/p' "${wit_output}" \
             | LC_ALL=C sort > "${resolved_imports}"

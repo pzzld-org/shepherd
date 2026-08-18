@@ -4,6 +4,7 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 
 script='scripts/install-shepherd.ps1'
+windows_test='scripts/tests/test-release-installer-windows.ps1'
 rg -q '\[switch\]\$PrintAsset' "$script"
 rg -q '\[switch\]\$PrintUrl' "$script"
 rg -q "SHEPHERD_VERSION" "$script"
@@ -41,6 +42,10 @@ rg -q 'Windows ARM64 release asset is not published' "$script"
 rg -q 'RuntimeInformation\]::OSArchitecture' "$script"
 if rg -q 'RuntimeInformation\]::ProcessArchitecture' "$script"; then
   printf 'PowerShell installer must select the OS architecture, not ProcessArchitecture\n' >&2
+  exit 1
+fi
+if ! rg -Fq 'New-Item -ItemType SymbolicLink -Path $danglingDestination -Target $missingTarget -Force | Out-Null' "$windows_test"; then
+  printf '%s: the dangling-symlink New-Item must pass -Force (PowerShell 5.1 refuses a symlink to an unresolved target)\n' "$windows_test" >&2
   exit 1
 fi
 printf 'ok: PowerShell installer declares versioned/latest, checksum, no-clobber, atomic recovery, and path-kind contracts\n'

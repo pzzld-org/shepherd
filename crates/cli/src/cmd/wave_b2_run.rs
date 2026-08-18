@@ -17,10 +17,14 @@ use crate::{
     interface::{CliError, CliGlobals},
 };
 
-// Layout-v5 makes lane plans the only directory-shaped canonical run
-// artifact. Reports/audits are disposable views and dispatch/graph are
-// operational state; none is scaffolded as a durable run contract.
-const RUN_SUBDIRS: [&str; 1] = ["lanes"];
+// Directories a run must have on disk. `lanes/` is the durable canonical
+// artifact; reports/audits stay disposable views and are not scaffolded.
+// `dispatch/` is operational rather than canonical, but it still has to exist
+// before anything reads it: `DispatchStore` creates it on a write path only, so
+// a run whose first dispatch touch is a read (resolving a root binding during
+// PreToolUse) fails on a directory nothing had yet created. Scaffolding it here
+// is what makes `run init` leave a namespace that can actually dispatch.
+const RUN_SUBDIRS: [&str; 2] = ["lanes", "dispatch"];
 const TRACKED_FILES: [&str; 6] = [
     "seed.md",
     "mesh.md",

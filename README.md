@@ -1,4 +1,4 @@
-# Shepherd v6.4.5
+# Shepherd v6.4.6
 
 [![License](https://img.shields.io/github/license/FL03/shepherd?style=for-the-badge&logo=github)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/FL03/shepherd?style=for-the-badge&logo=github)](https://github.com/FL03/shepherd/releases)
@@ -8,7 +8,7 @@ agent work. The deterministic core and the canonical CLI are Rust. Claude Code,
 Codex, and Pi are host adapters over the same typed WebAssembly Component Model
 contract, so a new harness does not require a second policy engine or a rewrite.
 
-The v6.4.5 component is published as `fl03:shepherd@6.4.5`. Its WIT contract,
+The v6.4.6 component is published as `fl03:shepherd@6.4.6`. Its WIT contract,
 generated bindings, native CLI, and adapter packages are versioned together.
 
 ## What is canonical
@@ -62,9 +62,9 @@ macOS (arm64/x86_64) and GNU-libc Linux (arm64/x86_64):
 
 ```sh
 curl --fail --location \
-  https://raw.githubusercontent.com/FL03/shepherd/v6.4.5/scripts/install-shepherd.sh \
+  https://raw.githubusercontent.com/FL03/shepherd/v6.4.6/scripts/install-shepherd.sh \
   --output /tmp/install-shepherd.sh
-SHEPHERD_VERSION=6.4.5 bash /tmp/install-shepherd.sh
+SHEPHERD_VERSION=6.4.6 bash /tmp/install-shepherd.sh
 ```
 
 Windows x86_64 PowerShell:
@@ -72,9 +72,9 @@ Windows x86_64 PowerShell:
 ```powershell
 $installer = Join-Path $env:TEMP 'install-shepherd.ps1'
 Invoke-WebRequest `
-  https://raw.githubusercontent.com/FL03/shepherd/v6.4.5/scripts/install-shepherd.ps1 `
+  https://raw.githubusercontent.com/FL03/shepherd/v6.4.6/scripts/install-shepherd.ps1 `
   -OutFile $installer
-$env:SHEPHERD_VERSION = '6.4.5'
+$env:SHEPHERD_VERSION = '6.4.6'
 & $installer
 ```
 
@@ -104,10 +104,12 @@ scripts/gate.sh wasm
 
 The native executable can be placed on `PATH` by the operator. Published
 adapters resolve an explicit `SHEPHERD_NATIVE_BIN` first and otherwise execute
-the installed `shepherd` command from `PATH`. The checkout-only `bin/shepherd`
-launcher also recognizes `target/release/shepherd` and
-`target/debug/shepherd` for contributor workflows. No adapter invokes a retired
-language-specific CLI.
+the installed `shepherd` command from `PATH`: the native executable installed
+by `cargo install shepherd-cli --locked`, `cargo binstall shepherd-cli`, or
+`scripts/install-shepherd.sh`. There is no repo-local launcher and no wrapper
+to shadow it; a `shepherd` on `PATH` that is not the native binary is a
+misconfiguration to repair. No adapter invokes a retired language-specific
+CLI.
 
 ## Initialize a project
 
@@ -239,11 +241,11 @@ artifact names do not repeat the run or date prefix. `run.json` is written by
 
 | Harness | Package | Constraint |
 | --- | --- | --- |
-| Claude Code | `@fl03/harness-claude` | Hook envelopes and lifecycle events only. |
-| Codex | `@fl03/harness-codex` | Embedding adapter translates typed lifecycle envelopes; the regular marketplace carrier registers SessionStart and guarded PreToolUse only. |
-| Pi | `@fl03/harness-pi` | Requires a `SubagentProvider`-compatible extension such as `pi-subagents`; absent or unready providers fail closed. |
+| Claude Code | `@pzzld/pi-claude` | Hook envelopes and lifecycle events only. |
+| Codex | `@pzzld/pi-codex` | Embedding adapter translates typed lifecycle envelopes; the regular marketplace carrier registers SessionStart and guarded PreToolUse only. |
+| Pi | `@pzzld/pi-shepherd` | Requires a `SubagentProvider`-compatible extension such as `pi-subagents`; absent or unready providers fail closed. |
 
-The npm embedding adapters load the adjacent `@fl03/component-runtime` package.
+The npm embedding adapters load the adjacent `@pzzld/component-runtime` package.
 The normal Claude and Codex marketplace plugins are different: they invoke
 `shepherd claude-hook` and `shepherd codex-hook` directly. Generated ESM
 bindings and `.wasm` files are staged for
@@ -277,7 +279,7 @@ the supported installation path.
 Codex installs the same repository source through its canonical marketplace:
 
 ```sh
-codex plugin marketplace add FL03/shepherd --ref v6.4.5
+codex plugin marketplace add FL03/shepherd --ref v6.4.6
 codex plugin add shepherd@shepherd
 ```
 

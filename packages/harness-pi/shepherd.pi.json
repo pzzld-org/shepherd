@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "contract": "fl03:shepherd@6.4.5",
+  "contract": "fl03:shepherd@6.4.6",
   "adapter": "pi",
   "extension": "./src/extension.mjs",
   "provider": {
@@ -24,6 +24,30 @@
       "validateNativeResponse",
       "validateNativeExchange"
     ]
+  },
+  "hooksDispatchModel": "Pi does not spawn the shepherd binary once per event the way hooks/hooks.json's command/args exec form does. src/extension.mjs is loaded once and registers in-process pi.on(event, handler) callbacks for the life of the session; each handler below calls into the fl03:shepherd component and the native shepherd binary directly (invokeNativeDispatch). This block declares what src/extension.mjs already implements — it adds no new enforcement. hooks/tests/test_pi_manifest_drift.sh is the tripwire that keeps this declaration and src/extension.mjs from drifting apart.",
+  "hooks": {
+    "session_start": {
+      "canonicalEvent": "SessionStart",
+      "dispatch": "in-process",
+      "handler": "src/extension.mjs:31 pi.on(\"session_start\", ...)",
+      "behavior": "normalizes identity, plans lifecycle, calls shepherd dispatch bind-root; throws (fail-closed) if the component is unavailable",
+      "guardedTools": []
+    },
+    "tool_call": {
+      "canonicalEvent": "PreToolUse",
+      "dispatch": "in-process",
+      "handler": "src/extension.mjs:59 pi.on(\"tool_call\", ...)",
+      "behavior": "calls shepherd dispatch resolve then guardWithComponent; returns {block: true, reason} on every error path (fail-closed)",
+      "guardedTools": ["write", "edit", "bash"]
+    },
+    "session_shutdown": {
+      "canonicalEvent": "SessionShutdown",
+      "dispatch": "in-process",
+      "handler": "src/extension.mjs:58 pi.on(\"session_shutdown\", ...)",
+      "behavior": "no-op, declared for lifecycle parity with the other two harnesses",
+      "guardedTools": []
+    }
   },
   "transitions": {
     "resume": "publish-native-dispatch-resume",

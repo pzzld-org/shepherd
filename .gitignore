@@ -40,10 +40,22 @@
 !.shepherd/runs/*/phase0.md
 !.shepherd/runs/*/close.md
 !.shepherd/runs/*/handoff.md
+!.shepherd/runs/*/carry-forward.md
 !.shepherd/runs/*/dogfood.md
 !.shepherd/runs/*/lanes/
 !.shepherd/runs/*/lanes/*/
 !.shepherd/runs/*/lanes/*/plan.md
+# A lane's evidence is a release artifact, not scratch: GATE-CAN-FAIL requires
+# the failing output be recorded in the lane artifact, and the close report
+# carries the harness-parity table. Markdown and re-runnable reproduction
+# scripts are durable; dispatch records, events, and fixtures stay local.
+!.shepherd/runs/*/lanes/*/*.md
+!.shepherd/runs/*/lanes/*/*.sh
+!.shepherd/runs/*/lanes/*/reference/
+!.shepherd/runs/*/lanes/*/reference/*
+!.shepherd/runs/*/lanes/*/evidence/
+!.shepherd/runs/*/lanes/*/evidence/*
+!.shepherd/runs/*/harness-parity.md
 # Durable analysis output is tracked.
 !.shepherd/runs/*/reports/
 !.shepherd/runs/*/reports/*.md

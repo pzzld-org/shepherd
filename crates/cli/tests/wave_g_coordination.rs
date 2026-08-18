@@ -3,7 +3,7 @@
 use std::{
     fs,
     io::Write,
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::{Command, Stdio},
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -47,10 +47,20 @@ fn initialized(label: &str) -> PathBuf {
     let root = fixture(label);
     let init = invoke(&root, &["init", "--confirm"]);
     assert!(init.status.success(), "stderr={:?}", init.stderr);
-    let registry =
-        Registry::open(root.join(".shepherd/shepherd.db"), OpenMode::ReadWrite).expect("registry");
-    registry.execute("INSERT INTO projects (id, name, created_at, updated_at) VALUES ('project-g', 'wave g', 0, 0)", []).expect("project");
     root
+}
+
+/// Read the project id `init` actually minted, from the identity document it
+/// wrote. Fixtures key their hand-inserted rows to this id instead of an
+/// invented one, so they never compete with the row `init` itself registers.
+fn project_id(root: &Path) -> String {
+    let raw = fs::read_to_string(root.join(".shepherd/project.json")).expect("project.json");
+    let document: serde_json::Value =
+        serde_json::from_str(&raw).expect("project.json is valid JSON");
+    document["id"]
+        .as_str()
+        .expect("project identity id must be a string")
+        .to_owned()
 }
 
 #[test]
@@ -227,9 +237,10 @@ fn concurrent_signal_sends_preserve_distinct_registry_rows() {
 #[test]
 fn teammate_state_status_and_liveness_share_typed_registry_state() {
     let root = initialized("teammate");
+    let project = project_id(&root);
     let registry =
         Registry::open(root.join(".shepherd/shepherd.db"), OpenMode::ReadWrite).expect("registry");
-    registry.execute("INSERT INTO teammates (id, project_id, team_name, teammate_name, agent_type, session_id, spawned_at, last_seen_at, status, declared_state) VALUES ('t1', 'project-g', 'team-a', 'lane-a', 'conductor', 'sess-a', ?1, ?1, 'active', NULL)", [0_i64]).expect("teammate");
+    registry.execute("INSERT INTO teammates (id, project_id, team_name, teammate_name, agent_type, session_id, spawned_at, last_seen_at, status, declared_state) VALUES ('t1', ?1, 'team-a', 'lane-a', 'conductor', 'sess-a', ?2, ?2, 'active', NULL)", rusqlite::params![project, 0_i64]).expect("teammate");
     let status = invoke(&root, &["teammate", "status", "lane-a", "--json"]);
     assert!(status.status.success(), "stderr={:?}", status.stderr);
     let value: serde_json::Value = serde_json::from_slice(&status.stdout).expect("status json");

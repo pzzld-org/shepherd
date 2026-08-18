@@ -1,9 +1,9 @@
-# `@fl03/harness-pi`
+# `@pzzld/pi-shepherd`
 
-The Pi adapter is a thin host extension over `@fl03/component-runtime`.
+The Pi adapter is a thin host extension over `@pzzld/component-runtime`.
 Identity normalization, guard evaluation, lifecycle planning, provider
 capability validation, and request-to-response exchange validation are implemented once by the
-`fl03:shepherd@6.4.5` Rust WebAssembly component.
+`fl03:shepherd@6.4.6` Rust WebAssembly component.
 
 Pi contributes only its extension API and provider transport. The extension
 requires an explicit `SubagentProvider` for lifecycle `spawn`, `resume`, and
@@ -30,7 +30,7 @@ The adapter exposes no separate materializer or CLI. Use `shepherd compile
 --target pi --out <absolute-directory>` for descriptor-safe installation.
 
 Pi loads the generated component from the adjacent runtime packaged in
-`@fl03/component-runtime/runtime`. `SHEPHERD_COMPONENT_MODULE` is reserved
+`@pzzld/component-runtime/runtime`. `SHEPHERD_COMPONENT_MODULE` is reserved
 for tests and controlled embedding. Release staging is performed by
 `scripts/stage-component-runtime.sh`; generated `.wasm`, `.js`, and `.d.ts`
 files are not committed to the repository.

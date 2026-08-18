@@ -427,3 +427,40 @@ fn native_lifecycle_response_validation_enforces_operation_schema_state_and_cont
         .validate_for(NativeLifecycleOperation::Resume)
         .expect("valid resume response");
 }
+
+/// A host resends `agent_id` on every subagent tool call but not `agent_type`,
+/// which it only declares when the agent starts. Requiring the pair on tool
+/// events made every dispatched agent's tool use unresolvable, so the guard
+/// never ran for a subagent at all.
+#[test]
+fn tool_events_resolve_a_subagent_from_agent_id_alone() {
+    for event in ["PreToolUse", "PostToolUse"] {
+        let normalized = identity(Harness::ClaudeCode, event, Some("agent-1"), None)
+            .normalize()
+            .unwrap_or_else(|error| panic!("{event} with agent_id alone must normalize: {error}"));
+        assert_eq!(
+            normalized.agent_id.as_ref().map(AgentId::as_str),
+            Some("agent-1")
+        );
+        assert!(normalized.agent_type.is_none());
+
+        // An agent_type with no agent_id stays invalid: there is no record to key.
+        assert!(
+            identity(Harness::ClaudeCode, event, None, Some("shepherd:coder"))
+                .normalize()
+                .is_err(),
+            "{event} accepted an agent_type with no agent_id"
+        );
+    }
+
+    // Lifecycle events still require the pair -- they CREATE the record, so
+    // they must declare which role is starting.
+    for event in ["SubagentStart", "SubagentStop"] {
+        assert!(
+            identity(Harness::ClaudeCode, event, Some("agent-1"), None)
+                .normalize()
+                .is_err(),
+            "{event} must still require agent_type"
+        );
+    }
+}

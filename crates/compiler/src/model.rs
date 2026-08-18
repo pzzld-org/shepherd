@@ -141,6 +141,13 @@ impl HarnessProfile {
                         ..ModelResolution::default()
                     },
                 ),
+                (
+                    "economy".into(),
+                    ModelResolution {
+                        model: Some("haiku".into()),
+                        ..ModelResolution::default()
+                    },
+                ),
             ]),
         }
     }
@@ -167,6 +174,14 @@ impl HarnessProfile {
                     ModelResolution {
                         profile: Some("standard".into()),
                         reasoning_effort: Some("medium".into()),
+                        ..ModelResolution::default()
+                    },
+                ),
+                (
+                    "economy".into(),
+                    ModelResolution {
+                        profile: Some("economy".into()),
+                        reasoning_effort: Some("low".into()),
                         ..ModelResolution::default()
                     },
                 ),
@@ -211,6 +226,13 @@ impl HarnessProfile {
                     "standard".into(),
                     ModelResolution {
                         model: Some("sonnet".into()),
+                        ..ModelResolution::default()
+                    },
+                ),
+                (
+                    "economy".into(),
+                    ModelResolution {
+                        model: Some("haiku".into()),
                         ..ModelResolution::default()
                     },
                 ),

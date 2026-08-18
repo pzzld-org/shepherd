@@ -42,6 +42,23 @@ fn repository(label: &str) -> PathBuf {
     root
 }
 
+fn repository_missing_identity(label: &str) -> PathBuf {
+    let root = fixture_dir(label);
+    let status = Command::new("git")
+        .args(["init", "--quiet"])
+        .current_dir(&root)
+        .status()
+        .expect("git init");
+    assert!(status.success());
+    std::fs::create_dir_all(root.join(".shepherd/runs/v645")).expect("namespace");
+    std::fs::write(
+        root.join(".shepherd/runs/v645/run.json"),
+        br#"{"run":"v645","status":"executing"}"#,
+    )
+    .expect("run state");
+    root
+}
+
 fn run(root: &Path, args: &[&str], input: &serde_json::Value) -> Output {
     let mut child = Command::new(binary())
         .args(args)
@@ -256,4 +273,113 @@ fn linked_worktree_uses_only_the_primary_project_and_active_run_store() {
 
     std::fs::remove_dir_all(&linked).expect("cleanup linked");
     std::fs::remove_dir_all(&root).expect("cleanup primary");
+}
+
+#[test]
+fn dispatch_reports_missing_identity_as_unscaffolded_not_a_symlink_refusal() {
+    // GE1: a plain ENOENT on `.shepherd/project.json` (zero symlinks anywhere
+    // in this fixture) must be classified as "not scaffolded", never as a
+    // refused symlink follow. See w0-gate.md section 8 for the reproduction
+    // this test pins.
+    let root = repository_missing_identity("missing-identity");
+    assert!(!root.join(".shepherd/project.json").exists());
+
+    let start = run(&root, &["dispatch", "start"], &start_request());
+    assert!(!start.status.success());
+    assert!(start.stdout.is_empty());
+    let stderr = String::from_utf8_lossy(&start.stderr);
+    assert!(stderr.contains("project not scaffolded"), "stderr={stderr}");
+    assert!(stderr.contains("run `shepherd init`"), "stderr={stderr}");
+    assert!(
+        !stderr.contains("without following symlinks"),
+        "stderr={stderr}"
+    );
+    std::fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[cfg(unix)]
+#[test]
+fn dispatch_refuses_a_symlinked_project_identity() {
+    // GE2: an ACTUAL symlink in place of `.shepherd/project.json`, end to
+    // end through the CLI. Measured, not assumed: `context.rs`'s
+    // `validate_resolved_project_paths` already walks `project_id_path` and
+    // refuses any symlink there (`ContextError::NonCanonicalProjectPath`)
+    // during `ExecutionContext::discover`, before `dispatch.rs::read_project_id`
+    // ever runs. So this exact CLI scenario surfaces that earlier guard's
+    // wording ("resolved project path is not canonical"), not dispatch.rs's
+    // own NOFOLLOW refusal — dispatch.rs's NOFOLLOW-on-a-symlink branch for
+    // the project identity subject is unreachable through the CLI for this
+    // reason and is pinned directly instead, in
+    // `read_project_id_refuses_a_symlinked_identity_with_the_security_wording`
+    // (crates/cli/src/cmd/dispatch.rs). What this test still proves, for
+    // real and end to end: a symlinked identity is refused, and refused
+    // with a security-shaped message, never with the "not scaffolded"
+    // remediation a plain absence gets.
+    use std::os::unix::fs::symlink;
+
+    let root = repository("symlinked-identity");
+    let target = root.join(".shepherd/identity-target.json");
+    std::fs::write(
+        &target,
+        br#"{"id":"018f47ce-72d7-7f64-9eb1-2f651d521c2a","scaffolded_at":1000}"#,
+    )
+    .expect("identity target");
+    std::fs::remove_file(root.join(".shepherd/project.json")).expect("remove regular identity");
+    symlink(&target, root.join(".shepherd/project.json")).expect("symlink identity");
+
+    let start = run(&root, &["dispatch", "start"], &start_request());
+    assert!(!start.status.success());
+    assert!(start.stdout.is_empty());
+    let stderr = String::from_utf8_lossy(&start.stderr);
+    assert!(stderr.contains("not canonical"), "stderr={stderr}");
+    assert!(
+        !stderr.contains("project not scaffolded"),
+        "stderr={stderr}"
+    );
+    std::fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[cfg(unix)]
+#[test]
+fn dispatch_refuses_a_directory_in_place_of_project_identity() {
+    // GE3: `.shepherd/project.json` present as a directory must classify as
+    // "not a regular file", distinct from both the symlink refusal and the
+    // not-scaffolded remediation.
+    let root = repository("directory-identity");
+    std::fs::remove_file(root.join(".shepherd/project.json")).expect("remove regular identity");
+    std::fs::create_dir(root.join(".shepherd/project.json")).expect("directory identity");
+
+    let start = run(&root, &["dispatch", "start"], &start_request());
+    assert!(!start.status.success());
+    assert!(start.stdout.is_empty());
+    let stderr = String::from_utf8_lossy(&start.stderr);
+    assert!(stderr.contains("not a regular file"), "stderr={stderr}");
+    std::fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[cfg(unix)]
+#[test]
+fn dispatch_directory_identity_gets_the_identity_specific_not_a_regular_file_wording() {
+    // GG1 (review follow-up, wave 2 of the identity lane): pins the
+    // SUBJECT-VARYING wording that `ReadSubject::not_a_regular_file_message`
+    // exists to produce. `dispatch_refuses_a_directory_in_place_of_project_identity`
+    // above only checks the shared substring "not a regular file"; this test
+    // checks the identity subject's exact prefix, from a REAL on-disk
+    // directory (the kernel produces the post-fstat is_file() failure, not a
+    // hand-built error), so a regression that collapses both subjects back
+    // onto one shared string is caught here even though the shared substring
+    // would still match.
+    let root = repository("directory-identity-wording");
+    std::fs::remove_file(root.join(".shepherd/project.json")).expect("remove regular identity");
+    std::fs::create_dir(root.join(".shepherd/project.json")).expect("directory identity");
+
+    let start = run(&root, &["dispatch", "start"], &start_request());
+    assert!(!start.status.success());
+    assert!(start.stdout.is_empty());
+    let stderr = String::from_utf8_lossy(&start.stderr);
+    assert!(
+        stderr.contains("project identity is not a regular file:"),
+        "stderr={stderr}"
+    );
+    std::fs::remove_dir_all(root).expect("cleanup");
 }

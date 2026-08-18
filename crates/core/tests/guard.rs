@@ -2034,3 +2034,143 @@ fn malformed_json_is_an_engine_error_not_a_verdict() {
         .expect_err("wire text is malformed");
     assert!(error.to_string().starts_with("malformed JSON:"));
 }
+
+/// `Workflow` carries no target role and never can — its agents are spawned
+/// inside the script and guarded individually at `SubagentStart`. Demanding one
+/// made the tool permanently unusable instead of governed.
+#[test]
+fn workflow_dispatch_is_governed_by_tier_without_a_target_role() {
+    let engine = live_engine();
+
+    let root = engine
+        .evaluate_json(r#"{"role":"shepherd","tool_name":"Workflow","tool_input":{}}"#)
+        .expect("a Workflow call is evaluable");
+    assert_eq!(
+        root.decision.as_str(),
+        "allow",
+        "root must be able to run a workflow: {}",
+        root.to_wire_json()
+    );
+
+    // The tier rule still bites: an implementer never dispatches, and routing
+    // through Workflow must not become the way around that.
+    let implementer = engine
+        .evaluate_json(r#"{"role":"coder","tool_name":"Workflow","tool_input":{}}"#)
+        .expect("a Workflow call is evaluable");
+    assert_eq!(
+        implementer.decision.as_str(),
+        "deny",
+        "an implementer must not dispatch through Workflow: {}",
+        implementer.to_wire_json()
+    );
+
+    // Agent is unchanged: it does carry a target, so a missing one is still
+    // unresolved rather than silently permitted.
+    let agent = engine
+        .evaluate_json(r#"{"role":"shepherd","tool_name":"Agent","tool_input":{}}"#)
+        .expect("an Agent call is evaluable");
+    assert_eq!(agent.decision.as_str(), "unresolved");
+}
+
+/// A host names a plugin agent `<plugin>:<agent>`, so a real dispatch arrives as
+/// `shepherd:conductor` while role_facts is keyed on the bare id. Comparing the
+/// two directly refused every in-flock dispatch as off-flock.
+#[test]
+fn dispatch_target_accepts_the_plugin_carrier_form() {
+    let engine = live_engine();
+
+    let carrier = engine
+        .evaluate_json(
+            r#"{"role":"shepherd","tool_name":"Agent","tool_input":{"subagent_type":"shepherd:conductor"}}"#,
+        )
+        .expect("a carrier-form dispatch is evaluable");
+    assert_eq!(
+        carrier.decision.as_str(),
+        "allow",
+        "root must be able to dispatch a conductor: {}",
+        carrier.to_wire_json()
+    );
+
+    // The bare form keeps working.
+    let bare = engine
+        .evaluate_json(
+            r#"{"role":"shepherd","tool_name":"Agent","tool_input":{"subagent_type":"conductor"}}"#,
+        )
+        .expect("a bare dispatch is evaluable");
+    assert_eq!(bare.decision.as_str(), "allow");
+
+    // Only shepherd's own prefix is stripped, and off-flock stays refused.
+    for request in [
+        r#"{"role":"shepherd","tool_name":"Agent","tool_input":{"subagent_type":"general-purpose"}}"#,
+        r#"{"role":"shepherd","tool_name":"Agent","tool_input":{"subagent_type":"other:coder"}}"#,
+    ] {
+        let verdict = engine.evaluate_json(request).expect("evaluable");
+        assert_eq!(
+            verdict.decision.as_str(),
+            "deny",
+            "off-flock dispatch must stay refused: {request}"
+        );
+    }
+}
+
+/// Two `dispatch-scope` rules key on the target role, so a `Workflow` payload
+/// that names none made them unenforceable: a conductor refused `engineer` by
+/// name could obtain it by writing the dispatch as a script string. That is a
+/// bypass by payload shape rather than by permission.
+#[test]
+fn a_lane_lead_must_declare_its_dispatch_targets() {
+    let engine = live_engine();
+    let eval = |request: &str| {
+        engine
+            .evaluate_json(request)
+            .expect("dispatch request is evaluable")
+    };
+
+    // The bypass itself: same intent as a declared `engineer`, written as a script.
+    let bypass = eval(
+        r#"{"role":"conductor","tool_name":"Workflow","tool_input":{"script":"agent({agentType:\"shepherd:engineer\"})"}}"#,
+    );
+    assert_eq!(
+        bypass.decision.as_str(),
+        "deny",
+        "an undeclared lane-lead dispatch must not evade a target-keyed rule: {}",
+        bypass.to_wire_json()
+    );
+    assert_eq!(bypass.halt_code.as_deref(), Some("WRONG-TIER-DISPATCH"));
+
+    // Declaring is the way through, and the legitimate fan-out still works.
+    assert_eq!(
+        eval(r#"{"role":"conductor","tool_name":"Workflow","tool_input":{"target_role":"coder"}}"#)
+            .decision
+            .as_str(),
+        "allow",
+        "a lane lead may still fan out to implementers by declaring them"
+    );
+    assert_eq!(
+        eval(
+            r#"{"role":"conductor","tool_name":"Workflow","tool_input":{"target_role":"engineer"}}"#
+        )
+        .decision
+        .as_str(),
+        "deny",
+        "declaring the forbidden target is still refused"
+    );
+
+    // Root has no target-keyed restriction to evade, so `Workflow` stays usable
+    // where the whole flock is dispatchable anyway.
+    assert_eq!(
+        eval(r#"{"role":"shepherd","tool_name":"Workflow","tool_input":{"script":"agent()"}}"#)
+            .decision
+            .as_str(),
+        "allow",
+        "root must not be forced to declare what it is already permitted to dispatch"
+    );
+
+    // An implementer is refused by ACTING role, which no payload shape hides.
+    assert_eq!(
+        eval(r#"{"role":"coder","tool_name":"Workflow","tool_input":{}}"#)
+            .decision
+            .as_str(),
+        "deny"
+    );
+}

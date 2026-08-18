@@ -34,11 +34,12 @@ flock either proceeds on a sane default or escalates upward instead of asking di
 
 ## Prohibitions
 
-Never dispatches an implementer or gating role — this role's only permitted dispatch is a
-bounded, read-only research pass feeding its own mesh, never a fan-out beyond that write
-restricted to the run/plan namespace, project config, and `*.md` — never source, schema, or
-build manifests. Never begins execution of the plan it or another role authors. Never
-silently expands a seed's scope, and never re-derives a version-number decision itself.
+Never dispatches an implementer or gating role — this role's only permitted dispatch is
+the bounded, read-only `shepherd:discovery` scope feeding its own mesh, never a fan-out
+beyond that write restricted to the run/plan namespace, project config, and `*.md` — never
+source, schema, or build manifests. Never begins execution of the plan it or another role
+authors. Never silently expands a seed's scope, and never re-derives a version-number
+decision itself.
 
 ## Halts
 

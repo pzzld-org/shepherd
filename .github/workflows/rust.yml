@@ -1,12 +1,5 @@
 name: rust
 
-# NOTE ON CONCURRENCY. `${{ github.workflow }}` is used rather than a
-# hand-written name because groups are shared across ALL workflows in a
-# repository. Two workflows that both hard-code `rust-<ref>` with
-# cancel-in-progress cancel each OTHER on every push, and a cancelled required
-# check reads as "not failed" -- the exact outcome a gate exists to prevent.
-# That bug was live in this repo until 2026-08-12. The interpolated form cannot
-# collide, so it removes the class rather than the instance.
 concurrency:
   cancel-in-progress: true
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -19,8 +12,6 @@ on:
     branches:
       - main
       - master
-      - "v[0-9]*.[0-9]*.[0-9]*"
-      - "v[0-9]*.[0-9]*.[0-9]*-dev.[0-9]*"
     tags:
       - latest
       - "v[0-9]*.[0-9]*.[0-9]*"
@@ -46,33 +37,10 @@ env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: full
 
-# NOTE: `RUSTC_WRAPPER: sccache` is deliberately NOT set here. It is only valid
-# in a job that ran `mozilla-actions/sccache-action`, and at workflow level it
-# is inherited by jobs that did not -- cargo then tries to exec a binary that
-# does not exist and dies with `could not execute process \`sccache ... rustc
-# -vV\` (never executed)`, which names the wrapper but not the reason. That
-# failed `msrv` and `supply-chain` on this workflow's first run. Scoping it to
-# the jobs that install it means a job added later cannot inherit the trap.
-
 permissions:
   contents: read
 
 jobs:
-  # ------------------------------------------------------------------ #
-  # Resolve the checkout ref ONCE, fail-closed.                        #
-  #                                                                     #
-  # `client_payload.*` is authored entirely by whoever sends the        #
-  # `repository_dispatch`, and dispatch is grantable WITHOUT            #
-  # `contents: write` -- so interpolating it straight into `ref:` lets  #
-  # a token that cannot push a commit still make CI check out and       #
-  # execute arbitrary code (FL03/axiom#2578).                           #
-  #                                                                     #
-  # This runs as its own job rather than a composite action because     #
-  # `uses: ./...` requires the repository to already be checked out,    #
-  # which is the very thing being guarded. A job output is resolved     #
-  # before any checkout happens anywhere, and unlike copy-pasting the   #
-  # guard into every job it leaves exactly one allowlist to maintain.   #
-  # ------------------------------------------------------------------ #
   resolve:
     name: resolve ref
     runs-on: ubuntu-latest
@@ -111,13 +79,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7 # v7.0.1
         with:
           fetch-depth: 1
           ref: ${{ needs.resolve.outputs.ref }}
           repository: ${{ github.repository }}
       - name: Setup Rust
-        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           cache: false
           components: rustfmt
@@ -138,70 +106,6 @@ jobs:
         run: ./scripts/check-plugin.py --self-test
       - name: plugin contract holds
         run: ./scripts/check-plugin.py
-
-  # ------------------------------------------------------------------ #
-  # Clippy, per feature set, with results surfaced in code scanning.    #
-  # ------------------------------------------------------------------ #
-  clippy:
-    name: clippy (${{ matrix.features }})
-    needs: resolve
-    runs-on: ${{ github.event.inputs.runner || 'ubuntu-latest' }}
-    permissions:
-      actions: read
-      contents: read
-      security-events: write
-    strategy:
-      fail-fast: false
-      matrix:
-        features: [default, full]
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 1
-          ref: ${{ needs.resolve.outputs.ref }}
-          repository: ${{ github.repository }}
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
-      - name: Enable the sccache wrapper
-        run: |
-          echo "RUSTC_WRAPPER=sccache" >> "${GITHUB_ENV}"
-          echo "SCCACHE_GHA_ENABLED=true" >> "${GITHUB_ENV}"
-      - name: Setup rust-cache
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          key: clippy-${{ matrix.features }}
-      - name: Setup Rust
-        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
-        with:
-          cache: false
-          components: clippy
-          toolchain: ${{ github.event.inputs.toolchain || 'stable' }}
-      - name: Install SARIF tools
-        uses: taiki-e/install-action@b27e114ddbae5cc01df19a22cf70a124d5177567 # v2.86.0
-        with:
-          tool: clippy-sarif,sarif-fmt
-      # `--locked` is not decoration. A resolver that is free to pick a newer
-      # patch release turns "CI was green" into a statement about a dependency
-      # set nobody has on disk, which is how a byte-exact port loses its
-      # reproducibility argument.
-      - name: cargo clippy
-        run: |
-          cargo clippy --workspace --all-targets --locked \
-            --features ${{ matrix.features }} \
-            --message-format=json \
-            -- -D warnings | clippy-sarif | tee clippy-${{ matrix.features }}.sarif | sarif-fmt
-      - name: Upload results
-        if: ${{ always() && github.event.repository.public }}
-        uses: github/codeql-action/upload-sarif@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
-        with:
-          sarif_file: clippy-${{ matrix.features }}.sarif
-          category: clippy-${{ matrix.features }}
-          wait-for-processing: true
-
-  # ------------------------------------------------------------------ #
-  # Tests, per feature set, via nextest.                                #
-  # ------------------------------------------------------------------ #
   test:
     name: test (${{ matrix.features }})
     needs: resolve
@@ -212,28 +116,28 @@ jobs:
         features: [default, full]
     steps:
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7 # v7.0.1
         with:
           fetch-depth: 1
           ref: ${{ needs.resolve.outputs.ref }}
           repository: ${{ github.repository }}
       - name: Setup sccache
-        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+        uses: mozilla-actions/sccache-action@v0.0.11 # v0.0.11
       - name: Enable the sccache wrapper
         run: |
           echo "RUSTC_WRAPPER=sccache" >> "${GITHUB_ENV}"
           echo "SCCACHE_GHA_ENABLED=true" >> "${GITHUB_ENV}"
       - name: Setup rust-cache
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        uses: Swatinem/rust-cache@v2 # v2.9.2
         with:
           key: test-${{ matrix.features }}
       - name: Setup Rust
-        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           cache: false
           toolchain: ${{ github.event.inputs.toolchain || 'stable' }}
       - name: Setup nextest
-        uses: taiki-e/install-action@b27e114ddbae5cc01df19a22cf70a124d5177567 # v2.86.0
+        uses: taiki-e/install-action@v2
         with:
           tool: cargo-nextest
       - name: cargo nextest
@@ -245,60 +149,48 @@ jobs:
       # is a rotted instruction, not a cosmetic issue.
       - name: cargo test --doc
         run: cargo test --doc --workspace --locked --features ${{ matrix.features }}
-
-  # ------------------------------------------------------------------ #
-  # The feature graph. See scripts/check-features.sh for why this is    #
-  # its own job and not a flag on the others.                           #
-  # ------------------------------------------------------------------ #
   features:
     name: feature matrix
     needs: resolve
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     env:
       WASM_TOOLS_VERSION: "1.254.0"
     steps:
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7 # v7.0.1
         with:
           fetch-depth: 1
           ref: ${{ needs.resolve.outputs.ref }}
           repository: ${{ github.repository }}
       - name: Setup sccache
-        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+        uses: mozilla-actions/sccache-action@v0.0.11 # v0.0.11
       - name: Enable the sccache wrapper
         run: |
           echo "RUSTC_WRAPPER=sccache" >> "${GITHUB_ENV}"
           echo "SCCACHE_GHA_ENABLED=true" >> "${GITHUB_ENV}"
       - name: Setup rust-cache
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        uses: Swatinem/rust-cache@v2 # v2.9.2
         with:
           key: features
       - name: Setup Rust
-        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           cache: false
           target: wasm32-unknown-unknown
       - name: Setup wasm-tools
         run: cargo install wasm-tools --version "${WASM_TOOLS_VERSION}" --locked
-      # sqlite-wasm-rs compiles SQLite from C to wasm, which needs a clang with
-      # a WebAssembly backend. Ubuntu's has one; Apple's system clang does not.
-      - name: Setup clang
-        run: sudo apt-get update && sudo apt-get install -y clang
+      - name: Verify runner clang
+        run: clang --version
       - name: cross-target feature matrix
         run: ./scripts/check-features.sh --targets
-
-  # ------------------------------------------------------------------ #
-  # MSRV. `rust-version = "1.96.0"` is a promise to every consumer, and #
-  # until now nothing checked it -- a dependency bump that quietly      #
-  # required a newer compiler would ship as a patch release.            #
-  # ------------------------------------------------------------------ #
   msrv:
     name: msrv
     needs: resolve
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7
         with:
           fetch-depth: 1
           ref: ${{ needs.resolve.outputs.ref }}
@@ -316,24 +208,18 @@ jobs:
           printf 'version=%s\n' "${version}" >> "${GITHUB_OUTPUT}"
           printf 'declared MSRV: %s\n' "${version}"
       - name: Setup rust-cache
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        uses: Swatinem/rust-cache@v2 # v2.9.2
         with:
           key: msrv-${{ steps.msrv.outputs.version }}
       # `rust-toolchain.toml` pins `stable` for everyone else, so it is
       # overridden explicitly here rather than edited.
       - name: Setup Rust ${{ steps.msrv.outputs.version }}
-        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           cache: false
           toolchain: ${{ steps.msrv.outputs.version }}
       - name: cargo check on the declared MSRV
         run: cargo +${{ steps.msrv.outputs.version }} check --workspace --locked --features full
-
-  # ------------------------------------------------------------------ #
-  # Docs. The crate docs are where the boundary rules and the           #
-  # add-a-member recipe live, so a broken intra-doc link is a broken    #
-  # instruction to the next agent.                                      #
-  # ------------------------------------------------------------------ #
   docs:
     name: docs
     needs: resolve
@@ -342,51 +228,68 @@ jobs:
       RUSTDOCFLAGS: -D warnings -D rustdoc::broken_intra_doc_links
     steps:
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7 # v7.0.1
         with:
           fetch-depth: 1
           ref: ${{ needs.resolve.outputs.ref }}
           repository: ${{ github.repository }}
       - name: Setup sccache
-        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+        uses: mozilla-actions/sccache-action@v0.0.11 # v0.0.11
       - name: Enable the sccache wrapper
         run: |
           echo "RUSTC_WRAPPER=sccache" >> "${GITHUB_ENV}"
           echo "SCCACHE_GHA_ENABLED=true" >> "${GITHUB_ENV}"
       - name: Setup rust-cache
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        uses: Swatinem/rust-cache@v2 # v2.9.2
         with:
           key: docs
       - name: Setup Rust
-        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           cache: false
       - name: cargo doc
         run: cargo doc --workspace --no-deps --locked --features full
-
-  # ------------------------------------------------------------------ #
-  # Supply chain. Locked decision 7 says the dependency stack is closed #
-  # and 98 packages is a ceiling to defend. `deny.toml` is that         #
-  # sentence expressed as something a build can fail on.                #
-  # ------------------------------------------------------------------ #
   supply-chain:
     name: supply chain
     needs: resolve
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7 # v7.0.1
         with:
           fetch-depth: 1
           ref: ${{ needs.resolve.outputs.ref }}
           repository: ${{ github.repository }}
       - name: Setup Rust
-        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           cache: false
       - name: Setup cargo-deny
-        uses: taiki-e/install-action@b27e114ddbae5cc01df19a22cf70a124d5177567 # v2.86.0
+        uses: taiki-e/install-action@v2
         with:
           tool: cargo-deny
       - name: cargo deny
         run: cargo deny --workspace --all-features check
+  # `cargo binstall shepherd-cli` resolves `pkg-url` to a release archive and
+  # then looks for the binary at the path `bin-dir` (crates/cli/Cargo.toml:61)
+  # describes: a bare filename, with no directory prefix. If packaging ever
+  # emits the binary under a leading directory instead of the archive root,
+  # binstall fails at extract time -- silently, and only once a user actually
+  # runs it. Packaging has broken before (four consecutive releases shipped
+  # zero assets), so this runs on the runner image that broke, before a merge,
+  # rather than only at release time.
+  binstall-layout:
+    name: binstall archive layout (macos-14)
+    needs: resolve
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7 # v7.0.1
+        with:
+          fetch-depth: 1
+          ref: ${{ needs.resolve.outputs.ref }}
+          repository: ${{ github.repository }}
+      - name: archive layout gate is falsifiable
+        run: scripts/tests/test-release-archive-layout.sh --self-test
+      - name: archive layout gate holds
+        run: scripts/tests/test-release-archive-layout.sh

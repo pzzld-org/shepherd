@@ -31,7 +31,7 @@ fn repository(label: &str) -> PathBuf {
         .status()
         .expect("initialize fixture repository");
     assert!(status.success());
-    fs::create_dir_all(root.join(".shepherd/runs/v645")).expect("create run namespace");
+    fs::create_dir_all(root.join(".shepherd/runs/v645/dispatch")).expect("create run namespace");
     fs::write(
         root.join(".shepherd/project.json"),
         br#"{"id":"018f47ce-72d7-7f64-9eb1-2f651d521c2a","scaffolded_at":1000}"#,

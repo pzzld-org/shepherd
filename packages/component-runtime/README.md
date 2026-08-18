@@ -1,7 +1,7 @@
-# `@fl03/component-runtime`
+# `@pzzld/component-runtime`
 
 This package is the only JavaScript boundary for the generated
-`fl03:shepherd@6.4.5` WebAssembly Component Model bindings. A release places
+`fl03:shepherd@6.4.6` WebAssembly Component Model bindings. A release places
 the generated ESM module, declarations, and adjacent core Wasm under
 `runtime/`; `SHEPHERD_COMPONENT_MODULE` is an explicit test/embedding
 override. It exposes only

@@ -61,7 +61,7 @@ fn standalone_binary_compiles_embedded_content_without_a_checkout() {
     let manifest: serde_json::Value = serde_json::from_slice(&output.stdout).expect("manifest");
     assert_eq!(manifest["schema"], "shepherd.compiled-tree/2");
     assert_eq!(manifest["target"], "claude");
-    assert_eq!(manifest["files"].as_array().expect("files").len(), 16);
+    assert_eq!(manifest["files"].as_array().expect("files").len(), 18);
     assert_eq!(manifest["roles"].as_array().expect("roles").len(), 9);
     let coder = manifest["roles"]
         .as_array()
@@ -273,7 +273,7 @@ fn stale_generated_files_are_removed_only_with_intact_prior_provenance() {
         &fs::read(output_root.join(".shepherd-generated.json")).expect("manifest"),
     )
     .expect("manifest JSON");
-    assert_eq!(manifest["files"].as_array().expect("files").len(), 15);
+    assert_eq!(manifest["files"].as_array().expect("files").len(), 17);
     fs::remove_dir_all(root).expect("cleanup");
 }
 

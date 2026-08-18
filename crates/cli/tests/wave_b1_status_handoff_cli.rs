@@ -135,6 +135,11 @@ fn create_writes_only_the_selected_runs_canonical_handoff_with_registry_metrics(
             [],
         )
         .expect("memory");
+    // Release the fixture's connection before the CLI opens the same database.
+    // Holding it across the subprocess leaves this test contending with itself
+    // for the SQLite write lock, which is why it was the only flaky test in
+    // this file under the full parallel gate.
+    drop(registry);
 
     let output = run(&root, &["handoff", "create", "--run=v645"]);
     assert!(

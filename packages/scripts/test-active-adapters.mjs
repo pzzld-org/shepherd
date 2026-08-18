@@ -10,11 +10,21 @@ import { resumeSubagent, spawnSubagent, stopSubagent } from "../harness-pi/src/d
 const modulePath = process.argv[2];
 const packageRoot = resolve(process.argv[3] ?? join(dirname(fileURLToPath(import.meta.url)), ".."));
 if (!modulePath) throw new Error("usage: test-active-adapters.mjs <component-module> [package-root]");
-for (const name of ["harness-claude", "harness-codex", "harness-pi", "component-runtime"]) {
-  if (!existsSync(join(packageRoot, name, "package.json"))) {
-    throw new Error(`package root is missing ${name}: ${packageRoot}`);
+const packageDirectories = {
+  claude: ["harness-claude", "pi-claude"],
+  codex: ["harness-codex", "pi-codex"],
+  pi: ["harness-pi", "pi-shepherd"],
+  runtime: ["component-runtime", "component-runtime"],
+};
+function packageDirectory([workspaceDirectory, publishedDirectory]) {
+  for (const directory of [workspaceDirectory, publishedDirectory]) {
+    if (existsSync(join(packageRoot, directory, "package.json"))) return directory;
   }
+  throw new Error(`package root is missing ${workspaceDirectory} or ${publishedDirectory}: ${packageRoot}`);
 }
+const packages = Object.fromEntries(
+  Object.entries(packageDirectories).map(([name, directories]) => [name, packageDirectory(directories)]),
+);
 const temp = mkdtempSync(join(tmpdir(), "shepherd-active-adapters-"));
 const dispatcher = join(temp, "native-dispatch.mjs");
 const loadedComponent = await import(pathToFileURL(modulePath).href);
@@ -134,10 +144,10 @@ function camelToSnake(value) {
   ]));
 }
 
-const claudeGuardScript = join(packageRoot, "harness-claude/hooks/guard-eval.mjs");
-const claudeLifecycleScript = join(packageRoot, "harness-claude/hooks/dispatch-lifecycle.mjs");
-const codexHookScript = join(packageRoot, "harness-codex/hooks/scripts/shepherd_guard.mjs");
-const piExtension = join(packageRoot, "harness-pi/src/extension.mjs");
+const claudeGuardScript = join(packageRoot, packages.claude, "hooks/guard-eval.mjs");
+const claudeLifecycleScript = join(packageRoot, packages.claude, "hooks/dispatch-lifecycle.mjs");
+const codexHookScript = join(packageRoot, packages.codex, "hooks/scripts/shepherd_guard.mjs");
+const piExtension = join(packageRoot, packages.pi, "src/extension.mjs");
 
 const claudeGuard = runHook(claudeGuardScript, {
   hook_event_name: "PreToolUse", session_id: "session-a", tool_use_id: "tool-a",

@@ -240,6 +240,46 @@ fn target_final_role_carriers_resolve_models_profiles_and_pi_tools_in_core() {
 }
 
 #[test]
+fn economy_hint_resolves_and_matches_target_shape_on_all_canonical_profiles() {
+    for target_profile in HarnessProfile::canonical() {
+        let mut economy_input = input();
+        for role in &mut economy_input.roles {
+            if role.role != "shepherd" {
+                role.model_hint = "economy".into();
+            }
+        }
+        let tree = compile(&economy_input, &target_profile).unwrap_or_else(|error| {
+            panic!(
+                "{} economy hint should resolve: {error}",
+                target_profile.target.as_str()
+            )
+        });
+        let coder = tree
+            .roles
+            .iter()
+            .find(|role| role.role == "coder")
+            .expect("coder resolved for economy hint");
+        match target_profile.target {
+            Target::Claude => {
+                assert_eq!(coder.model.as_deref(), Some("haiku"));
+                assert_eq!(coder.profile, None);
+                assert_eq!(coder.reasoning_effort, None);
+            }
+            Target::Codex => {
+                assert_eq!(coder.model, None);
+                assert_eq!(coder.profile.as_deref(), Some("economy"));
+                assert_eq!(coder.reasoning_effort.as_deref(), Some("low"));
+            }
+            Target::Pi => {
+                assert_eq!(coder.model.as_deref(), Some("haiku"));
+                assert_eq!(coder.profile, None);
+                assert_eq!(coder.reasoning_effort, None);
+            }
+        }
+    }
+}
+
+#[test]
 fn missing_or_malformed_target_model_mapping_fails_closed() {
     let mut missing = HarnessProfile::claude();
     missing.model_by_hint.remove("standard");

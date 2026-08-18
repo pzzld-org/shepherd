@@ -137,7 +137,23 @@ impl RawIdentity {
         let session_id = SessionId::new(self.session_id)?;
         let agent_id = self.agent_id.map(AgentId::new).transpose()?;
         let agent_type = self.agent_type.map(AgentType::new).transpose()?;
-        if agent_id.is_some() != agent_type.is_some() {
+        // `agent_type` is load-bearing only where a record is CREATED: a
+        // lifecycle event has to declare which role is starting. A tool event
+        // resolves its role from the record already keyed by `agent_id`, and
+        // hosts do not resend the type on every call. Requiring the pair there
+        // made every dispatched agent's tool use unresolvable, so the guard
+        // never ran for a subagent at all. An `agent_type` with no `agent_id`
+        // stays invalid either way -- there is no record to key.
+        let resolves_existing_record = matches!(
+            self.event,
+            NativeEvent::PreToolUse | NativeEvent::PostToolUse
+        );
+        if agent_type.is_some() && agent_id.is_none() {
+            return Err(DispatchError::InvalidRecord(
+                "native identity requires agent_id whenever agent_type is present".into(),
+            ));
+        }
+        if !resolves_existing_record && agent_id.is_some() != agent_type.is_some() {
             return Err(DispatchError::InvalidRecord(
                 "native identity requires both agent_id and agent_type".into(),
             ));

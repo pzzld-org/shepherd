@@ -1,15 +1,15 @@
 [package]
 description = "The WebAssembly component-model boundary for the harness-neutral Shepherd engine and content compiler."
 name = "shepherd-component"
-publish = false
+readme = "README.md"
 
 authors.workspace = true
 categories.workspace = true
 edition.workspace = true
+publish = false
 homepage.workspace = true
 keywords.workspace = true
 license.workspace = true
-readme = "README.md"
 repository.workspace = true
 rust-version.workspace = true
 version.workspace = true

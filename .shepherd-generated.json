@@ -1,7 +1,7 @@
 {
   "schema": "shepherd.compiled-tree/2",
   "target": "claude",
-  "tree_digest": "49a6ee4bae89882637be0e902bf89c2b677a2009b37e2500feb5a30607aebc7f",
+  "tree_digest": "49df9c9a2d44756ae639f17f1f10275d157b1cf5145ec5dd5ee5f0ef7759b0b6",
   "tokenizer_version": "shepherd-prompt-v1-uax29",
   "roles": [
     {
@@ -71,7 +71,7 @@
       "role": "conductor",
       "carrier_path": "agents/conductor.md",
       "description": "Execute one plan lane through disjoint implementation, review, redo, and handoff waves. Use when a lane needs a durable lead that may dispatch implementers.",
-      "model": "sonnet",
+      "model": "opus[1m]",
       "profile": null,
       "reasoning_effort": null,
       "tools": [
@@ -352,12 +352,12 @@
       "path": "agents/conductor.md",
       "kind": "role",
       "source_path": "content/roles/conductor.md",
-      "source_sha256": "5785e9e70283d1ebb60262b7e1ce29a546ffc4fc2f1af7c18d1d034d102d6577",
-      "content_sha256": "7ef5552bd083e912476e395ad7750576d8f7b187bb31994468d844fe90cac0a2",
+      "source_sha256": "475ec4250bd80078b984787e773b9decf537cd50db30c603427be4a733737826",
+      "content_sha256": "8a1cce1eb884d111470b8762d0b0228181d453c40ce76b1f8e2e8d297998f2fa",
       "lines": 65,
-      "words": 559,
-      "utf8_bytes": 3719,
-      "prompt_tokens": 1128
+      "words": 560,
+      "utf8_bytes": 3721,
+      "prompt_tokens": 1130
     },
     {
       "path": "agents/critic.md",
@@ -385,23 +385,23 @@
       "path": "agents/engineer.md",
       "kind": "role",
       "source_path": "content/roles/engineer.md",
-      "source_sha256": "34473b0ebe9d94ce78247efd53145465a58d91546814499e8aa907bee4a2685f",
-      "content_sha256": "6478c08433575065a610494d38b0209cdebe248db803f3bea03e482d02e15f61",
+      "source_sha256": "344c5fdd59e41b12d1b13e789714f90b144c240b7be7cbae81ae390b05c3c9f0",
+      "content_sha256": "08b3db211ac059cefacaf13a36f9ca6e656c1cc4c05a1752819a459f09677036",
       "lines": 55,
-      "words": 409,
-      "utf8_bytes": 2736,
-      "prompt_tokens": 843
+      "words": 413,
+      "utf8_bytes": 2793,
+      "prompt_tokens": 861
     },
     {
       "path": "agents/planter.md",
       "kind": "role",
       "source_path": "content/roles/planter.md",
-      "source_sha256": "23e9dd318eee8b9ccac2bd555393ad66447c21084b6af3ff5a2c15613080e873",
-      "content_sha256": "f267f0f704d6bc6af901e3d5f5f7c653dd54069c080d68d8cfe46ccf2feb3a69",
-      "lines": 54,
+      "source_sha256": "d7156c531519dd29fa8898c2b56ce086772d84f5bb727e97471bd6506fbb1904",
+      "content_sha256": "ec4bd21eb93a7fa583c5dfdb11ec6be3f24ef66329141a921a607034c5c4aacc",
+      "lines": 55,
       "words": 451,
-      "utf8_bytes": 3062,
-      "prompt_tokens": 945
+      "utf8_bytes": 3077,
+      "prompt_tokens": 951
     },
     {
       "path": "agents/shepherd.md",
@@ -490,6 +490,28 @@
       "words": 268,
       "utf8_bytes": 1951,
       "prompt_tokens": 612
+    },
+    {
+      "path": "skills/spawn/SKILL.md",
+      "kind": "skill",
+      "source_path": "content/skills/spawn/SKILL.md",
+      "source_sha256": "4e7e66df605ab308729b0067bf443f85140d2f34495eb3aea6db7b99c0800ff5",
+      "content_sha256": "2c84b4983e7036c360cf3e45c957ce2523e959b9d806b6938d3a522f11134ec7",
+      "lines": 60,
+      "words": 378,
+      "utf8_bytes": 2477,
+      "prompt_tokens": 755
+    },
+    {
+      "path": "skills/start/SKILL.md",
+      "kind": "skill",
+      "source_path": "content/skills/start/SKILL.md",
+      "source_sha256": "4451bb024511d60164ab07af1df99a0fa4ee6e56e3b6c4879dc719edfe8beaa4",
+      "content_sha256": "e5161df5dea5f82f74bfbcba2d1f1869de20b7cf9373ce39eb3125c2e671897f",
+      "lines": 46,
+      "words": 256,
+      "utf8_bytes": 1674,
+      "prompt_tokens": 520
     },
     {
       "path": "skills/thinking/SKILL.md",

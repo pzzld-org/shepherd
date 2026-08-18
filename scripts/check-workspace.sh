@@ -260,7 +260,7 @@ def rule_component_contract(root: Path, crates: dict[str, dict]) -> list[str]:
     wit = directory / "wit" / "shepherd.wit"
     if not wit.is_file():
         bad.append(f"{COMPONENT}: missing wit/shepherd.wit")
-    elif "package fl03:shepherd@6.4.5;" not in wit.read_text():
+    elif "package fl03:shepherd@6.4.6;" not in wit.read_text():
         bad.append(f"{COMPONENT}: WIT package/version does not match the workspace")
     tests = directory / "tests" / "component.rs"
     if not tests.is_file():
@@ -291,6 +291,38 @@ def rule_retired_namespaces_are_visible(root: Path, crates: dict[str, dict]) -> 
     return bad
 
 
+def rule_msrv_is_consistent(root: Path, crates: dict[str, dict]) -> list[str]:
+    """clippy.toml, the workspace `rust-version`, and the pinned toolchain agree.
+
+    clippy consults `clippy.toml`'s `msrv` to suppress the `manual_*` and
+    `incompatible_msrv` families, so a value below the real floor silently
+    disables every modernization lint stabilized in between. Nothing else
+    reads all three files, which is how `msrv` sat five minors behind the
+    workspace without turning any build red.
+    """
+    manifest = load(root / "Cargo.toml")
+    declared = manifest.get("workspace", {}).get("package", {}).get("rust-version")
+    if not declared:
+        return ["Cargo.toml: workspace.package.rust-version is missing"]
+
+    bad = []
+    clippy = root / "clippy.toml"
+    if clippy.is_file():
+        msrv = load(clippy).get("msrv")
+        if msrv != declared:
+            bad.append(f"clippy.toml: msrv `{msrv}` must match workspace rust-version `{declared}`")
+
+    toolchain = root / "rust-toolchain.toml"
+    if toolchain.is_file():
+        channel = load(toolchain).get("toolchain", {}).get("channel")
+        if channel != declared:
+            bad.append(
+                f"rust-toolchain.toml: channel `{channel}` must match "
+                f"workspace rust-version `{declared}`"
+            )
+    return bad
+
+
 RULES = [
     rule_lints_inherited,
     rule_version_inherited,
@@ -303,6 +335,7 @@ RULES = [
     rule_members_in_feature_matrix,
     rule_component_contract,
     rule_retired_namespaces_are_visible,
+    rule_msrv_is_consistent,
 ]
 
 
@@ -348,7 +381,7 @@ FIXTURES = {
     },
     rule_version_inherited: {
         "shepherd-core": {
-            "package": {"name": "shepherd-core", "version": "6.4.5"},
+            "package": {"name": "shepherd-core", "version": "6.4.6"},
             "lints": {"workspace": True},
             "__dir__": Path("/nonexistent"),
         },
@@ -436,6 +469,19 @@ def self_test(root: Path) -> int:
         )
         label = "retired namespaces are visible"
         if len(rule_retired_namespaces_are_visible(broken, {})) == 4:
+            print(f"  {label:<44} fails as designed")
+        else:
+            print(f"  {label:<44} DID NOT FAIL on a broken fixture")
+            failures += 1
+
+    with tempfile.TemporaryDirectory() as tmp:
+        broken = Path(tmp)
+        (broken / "Cargo.toml").write_text(
+            '[workspace.package]\nrust-version = "1.97.0"\n', encoding="utf-8"
+        )
+        (broken / "clippy.toml").write_text('msrv = "1.91.0"\n', encoding="utf-8")
+        label = "msrv is consistent"
+        if rule_msrv_is_consistent(broken, {}):
             print(f"  {label:<44} fails as designed")
         else:
             print(f"  {label:<44} DID NOT FAIL on a broken fixture")

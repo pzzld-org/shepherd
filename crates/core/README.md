@@ -15,7 +15,7 @@ So this crate holds the logic and none of the delivery. `shepherd-cli` is one co
 | Forbidden | Why |
 |---|---|
 | `clap`, or any argument parser | Arguments are a delivery concern. A wasm host has none. |
-| `config::File::with_name`, `config::Environment` | Reading a file or the process environment is I/O. The engine owns *which* files matter and *in what order* (`loader`); the adapter opens them. Enforced by name in CI. |
+| `config::File::new`, `config::Environment` | Reading a file or the process environment is I/O. The engine owns *which* files matter and *in what order* (`loader`); the adapter opens them, then `config::File::from_str` performs the standard merge. Enforced by name in CI. |
 | `std::process`, exit codes, `std::env::args` | Process semantics are the binary's, not the engine's. |
 | `anyhow` | Contextual error strings are an application concern. This crate returns typed errors. |
 | `tracing-subscriber`, any log sink | A library configures no global subscriber. `tracing` alone is fine. |
@@ -44,7 +44,7 @@ Every dependency past `thiserror` and `strum` is optional, and every module that
 |---|---|
 | `std` *(default)* | `settings`, and the `std` surface of every enabled dependency |
 | `alloc` | the `no_std` floor; `error` and `types` are available here |
-| `config` | `loader`: the configuration precedence chain and layering |
+| `config` | `loader`: `config` crate source merge plus Shepherd's fixed precedence policy |
 | `json` | `serde` + `serde_json`, for the canonical artifact codec |
 | `parse` | `nom`, for the run-id and branch grammars |
 | `schema` | `schemars`, for the config key universe |

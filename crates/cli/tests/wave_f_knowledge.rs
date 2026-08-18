@@ -131,3 +131,51 @@ fn knowledge_leaves_do_not_fallback_to_an_interpreter() {
     assert!(!stderr.contains("bash"));
     cleanup(root);
 }
+
+#[test]
+fn dups_check_on_a_missing_file_does_not_suggest_init() {
+    // GE4: `dups check` and `project_id()` share one NOFOLLOW-guarded reader,
+    // but only the identity subject may point an ENOENT at `shepherd init`.
+    // A missing ordinary file, on an already-scaffolded project, must not
+    // repeat that remediation. See w0-gate.md section 9: `dups check
+    // src/lib.rs` on a merely-absent file used to say "without following
+    // symlinks" despite zero symlinks; the fix must not just swap that for
+    // the identity subject's wording either.
+    let root = fixture("dups-missing-file");
+    init(&root);
+    let output = invoke(&root, &["dups", "check", "definitely-missing.rs", "--json"]);
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stdout.is_empty());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("no such file"), "stderr={stderr}");
+    assert!(!stderr.contains("shepherd init"), "stderr={stderr}");
+    assert!(
+        !stderr.contains("without following symlinks"),
+        "stderr={stderr}"
+    );
+    cleanup(root);
+}
+
+#[test]
+fn dups_check_on_a_directory_gets_the_plain_not_a_regular_file_wording() {
+    // GG1 (review follow-up, wave 2 of the identity lane): pins the
+    // SUBJECT-VARYING wording `ReadSubject::not_a_regular_file_message`
+    // exists to produce, for the File subject this time, from a REAL
+    // on-disk directory so the kernel (not a hand-built error) produces the
+    // post-fstat is_file() failure. The File subject's wording must stay
+    // plain: no "project identity" prefix, matching
+    // `dispatch_directory_identity_gets_the_identity_specific_not_a_regular_file_wording`
+    // in `dispatch_cli.rs`, which pins the identity subject's own prefix.
+    // Together the two prove the two subjects still diverge after routing
+    // both call sites through the one shared helper.
+    let root = fixture("dups-directory");
+    init(&root);
+    fs::create_dir(root.join("a-directory")).expect("real on-disk directory");
+    let output = invoke(&root, &["dups", "check", "a-directory", "--json"]);
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stdout.is_empty());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("not a regular file:"), "stderr={stderr}");
+    assert!(!stderr.contains("project identity"), "stderr={stderr}");
+    cleanup(root);
+}

@@ -19,7 +19,7 @@ your-project/
 Keep each doctrine bounded and avoid copying the same rule into `content/roles`,
 `content/skills`, and a run brief. The native content compiler enforces the
 per-surface limits; the project owns the meaning. The old `[memory]` table is a
-layout-migration input only and is not a v6.4.5 configuration surface.
+layout-migration input only and is not a v6.4.6 configuration surface.
 
 Do not place project doctrine in `~/.shepherd` unless it is intentionally a
 user-wide default. Do not place run-specific decisions in a cross-run doctrine.
@@ -64,9 +64,9 @@ keep project-only explanatory prose in the flat `.shepherd/docs/` root.
 Claude, Codex, and Pi may have host-specific metadata, but it must remain at the
 adapter boundary:
 
-- Claude hook response names stay in `@fl03/harness-claude`.
-- Codex hook response names stay in `@fl03/harness-codex`.
-- Pi provider discovery stays in `@fl03/harness-pi` and its
+- Claude hook response names stay in `@pzzld/pi-claude`.
+- Codex hook response names stay in `@pzzld/pi-codex`.
+- Pi provider discovery stays in `@pzzld/pi-shepherd` and its
   `shepherd.pi.json` contract.
 
 The component receives typed, host-neutral records. Do not add a harness branch

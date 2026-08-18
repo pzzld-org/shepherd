@@ -4,8 +4,8 @@
 //
 // WHY THIS EXISTS.
 //
-// Three harness adapters (@fl03/harness-claude, @fl03/harness-codex,
-// @fl03/harness-pi) sit over one shared Component Model runtime. That split only holds if no adapter ever
+// Three harness adapters (@pzzld/pi-claude, @pzzld/pi-codex,
+// @pzzld/pi-shepherd) sit over one shared Component Model runtime. That split only holds if no adapter ever
 // depends on another adapter -- the moment `harness-codex` names
 // `harness-claude` in its `dependencies`, installing the Codex adapter drags
 // in Claude's runtime too, and the "thin adapter over one core" property is
@@ -15,16 +15,16 @@
 // which. So the rule is checked here, not just documented in READMEs.
 //
 // The three rules:
-//   1. No `@fl03/harness-*` package may depend on or import another
-//      `@fl03/harness-*` package, in any dependency field or executable
+//   1. No `@pzzld/pi-*` package may depend on or import another
+//      `@pzzld/pi-*` package, in any dependency field or executable
 //      `.js`, `.mjs`, `.cjs`, `.jsx`, `.ts`, `.mts`, `.cts`, or `.tsx` file.
 //      Adapter packages declare `type: module`; `.cjs` and `.cts` are rejected
 //      explicitly because they would otherwise introduce CommonJS require()
 //      semantics outside the ESM ownership scanner.
-//   2. A `@fl03/harness-*` package's `@fl03/*`-scoped dependencies must be
-//      `@fl03/component-runtime`. A prefix allowlist would let an adapter introduce a
+//   2. A `@pzzld/pi-*` package's `@pzzld/*`-scoped dependencies must be
+//      `@pzzld/component-runtime`. A prefix allowlist would let an adapter introduce a
 //      second, unreviewed platform dependency while still passing this gate.
-//   3. The component runtime must not depend on any `@fl03/harness-*` package.
+//   3. The component runtime must not depend on any `@pzzld/pi-*` package.
 //
 // Usage:
 //   node packages/scripts/check-deps.mjs              # check packages/
@@ -46,9 +46,9 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, "..", "..");
 const PACKAGES_DIR = join(REPO_ROOT, "packages");
 
-const ADAPTER_PREFIX = "@fl03/harness-";
-const COMPONENT_RUNTIME_NAME = "@fl03/component-runtime";
-const SCOPE_PREFIX = "@fl03/";
+const ADAPTER_PREFIX = "@pzzld/pi-";
+const COMPONENT_RUNTIME_NAME = "@pzzld/component-runtime";
+const SCOPE_PREFIX = "@pzzld/";
 
 const DEP_FIELDS = ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"];
 // These are every executable JavaScript/TypeScript source extension supported by the adapter
@@ -455,11 +455,11 @@ function selfTest() {
   // Fixture 1: an adapter depends directly on another adapter.
   withTempPackagesDir((tmp) => {
     writeFixturePackage(join(tmp, "harness-a"), {
-      name: "@fl03/harness-a",
+      name: "@pzzld/pi-a",
       version: "0.0.0",
-      dependencies: { "@fl03/harness-b": "0.0.0" },
+      dependencies: { "@pzzld/pi-b": "0.0.0" },
     });
-    writeFixturePackage(join(tmp, "harness-b"), { name: "@fl03/harness-b", version: "0.0.0" });
+    writeFixturePackage(join(tmp, "harness-b"), { name: "@pzzld/pi-b", version: "0.0.0" });
     writeFixturePackage(join(tmp, "component-runtime"), { name: COMPONENT_RUNTIME_NAME, version: "0.0.0" });
     const violations = ruleNoAdapterToAdapter(loadPackages(tmp));
     reportFixture("no adapter depends on another adapter", violations.length > 0);
@@ -474,40 +474,40 @@ function selfTest() {
   // cases: they are not imports and must not be reported.
   withTempPackagesDir((tmp) => {
     const harnessA = join(tmp, "harness-a");
-    writeFixturePackage(harnessA, { name: "@fl03/harness-a", version: "0.0.0", type: "module" });
-    writeFileSync(join(harnessA, "index.mjs"), 'import "@fl03/harness-b";\nimport "../harness-b/src/guard.mjs";\n');
-    writeFileSync(join(harnessA, "cross.jsx"), 'import "@fl03/harness-b/guard-jsx";\n');
+    writeFixturePackage(harnessA, { name: "@pzzld/pi-a", version: "0.0.0", type: "module" });
+    writeFileSync(join(harnessA, "index.mjs"), 'import "@pzzld/pi-b";\nimport "../harness-b/src/guard.mjs";\n');
+    writeFileSync(join(harnessA, "cross.jsx"), 'import "@pzzld/pi-b/guard-jsx";\n');
     writeFileSync(join(harnessA, "cross.mts"), 'import "../harness-b/src/guard.mts";\n');
-    writeFileSync(join(harnessA, "cross.tsx"), 'import "@fl03/harness-b/guard";\n');
-    writeFileSync(join(harnessA, "re-export.mjs"), 'export { guard } from "@fl03/harness-b";\n');
+    writeFileSync(join(harnessA, "cross.tsx"), 'import "@pzzld/pi-b/guard";\n');
+    writeFileSync(join(harnessA, "re-export.mjs"), 'export { guard } from "@pzzld/pi-b";\n');
     writeFileSync(join(harnessA, "dynamic.ts"), 'await import("../harness-b/src/dynamic.mts");\n');
-    writeFileSync(join(harnessA, "dynamic-template-specifier.mjs"), 'await import(`@fl03/harness-b`);\n');
-    writeFileSync(join(harnessA, "division-dynamic.mjs"), 'const ratio = 1 / import("@fl03/harness-b");\n');
-    writeFileSync(join(harnessA, "postfix-division-dynamic.mjs"), 'let value = 1; const ratio = value++ / import("@fl03/harness-b");\n');
-    writeFileSync(join(harnessA, "template-dynamic.mjs"), 'const ratio = `${1 / import("@fl03/harness-b")}`;\n');
-    writeFileSync(join(harnessA, "type-import-equals.ts"), 'import Guard = require("@fl03/harness-b");\nvoid Guard;\n');
-    writeFileSync(join(harnessA, "parse-error.mjs"), 'import { from "@fl03/harness-b";\n');
-    writeFileSync(join(harnessA, "common.cjs"), 'require("@fl03/harness-b");\n');
-    writeFileSync(join(harnessA, "common.cts"), 'require("@fl03/harness-b");\n');
+    writeFileSync(join(harnessA, "dynamic-template-specifier.mjs"), 'await import(`@pzzld/pi-b`);\n');
+    writeFileSync(join(harnessA, "division-dynamic.mjs"), 'const ratio = 1 / import("@pzzld/pi-b");\n');
+    writeFileSync(join(harnessA, "postfix-division-dynamic.mjs"), 'let value = 1; const ratio = value++ / import("@pzzld/pi-b");\n');
+    writeFileSync(join(harnessA, "template-dynamic.mjs"), 'const ratio = `${1 / import("@pzzld/pi-b")}`;\n');
+    writeFileSync(join(harnessA, "type-import-equals.ts"), 'import Guard = require("@pzzld/pi-b");\nvoid Guard;\n');
+    writeFileSync(join(harnessA, "parse-error.mjs"), 'import { from "@pzzld/pi-b";\n');
+    writeFileSync(join(harnessA, "common.cjs"), 'require("@pzzld/pi-b");\n');
+    writeFileSync(join(harnessA, "common.cts"), 'require("@pzzld/pi-b");\n');
     writeFileSync(
       join(harnessA, "non-imports.mjs"),
-      '// import "@fl03/harness-b";\nconst ordinary = "import \\"@fl03/harness-b\\"";\nconst template = `import "@fl03/harness-b"`;\nconst matcher = /import "@fl03\\/harness-b"/;\nif (ready) /import\\("@fl03\\/harness-b"\\)/.test(source);\nif (ready) {} /import\\("@fl03\\/harness-b"\\)/.test(source);\nconst member = { import() {} }; member.import("@fl03/harness-b");\nconst require = () => {}; require("@fl03/harness-b");\n'
+      '// import "@pzzld/pi-b";\nconst ordinary = "import \\"@pzzld/pi-b\\"";\nconst template = `import "@pzzld/pi-b"`;\nconst matcher = /import "@fl03\\/harness-b"/;\nif (ready) /import\\("@fl03\\/harness-b"\\)/.test(source);\nif (ready) {} /import\\("@fl03\\/harness-b"\\)/.test(source);\nconst member = { import() {} }; member.import("@pzzld/pi-b");\nconst require = () => {}; require("@pzzld/pi-b");\n'
     );
-    writeFileSync(join(harnessA, "jsx-text.jsx"), 'const view = <div>import("@fl03/harness-b")</div>;\n');
+    writeFileSync(join(harnessA, "jsx-text.jsx"), 'const view = <div>import("@pzzld/pi-b")</div>;\n');
     writeFileSync(join(harnessA, "same-adapter.mjs"), 'import "./harness-helper.mjs";\n');
     writeFileSync(join(harnessA, "harness-helper.mjs"), 'export const helper = true;\n');
     const harnessB = join(tmp, "harness-b");
-    writeFixturePackage(harnessB, { name: "@fl03/harness-b", version: "0.0.0", type: "module" });
+    writeFixturePackage(harnessB, { name: "@pzzld/pi-b", version: "0.0.0", type: "module" });
     mkdirSync(join(harnessB, "src"), { recursive: true });
     writeFileSync(join(harnessB, "src", "guard.mjs"), "export const guard = true;\n");
     symlinkSync("../harness-b", join(harnessA, "linked-harness-b"), "dir");
     writeFileSync(join(harnessA, "symlinked-relative.mjs"), 'import "./linked-harness-b/src/guard.mjs";\n');
     const externalSource = join(tmp, "external-source");
     mkdirSync(externalSource);
-    writeFileSync(join(externalSource, "symlinked-source.mjs"), 'import "@fl03/harness-b";\n');
+    writeFileSync(join(externalSource, "symlinked-source.mjs"), 'import "@pzzld/pi-b";\n');
     symlinkSync("../external-source", join(harnessA, "linked-source"), "dir");
     const linkedWorkspaceTarget = join(harnessA, "linked-workspace-target");
-    writeFixturePackage(linkedWorkspaceTarget, { name: "@fl03/harness-c", version: "0.0.0", type: "module" });
+    writeFixturePackage(linkedWorkspaceTarget, { name: "@pzzld/pi-c", version: "0.0.0", type: "module" });
     mkdirSync(join(linkedWorkspaceTarget, "src"), { recursive: true });
     writeFileSync(join(linkedWorkspaceTarget, "src", "guard.mjs"), "export const guard = true;\n");
     symlinkSync("harness-a/linked-workspace-target", join(tmp, "harness-c-root"), "dir");
@@ -515,11 +515,11 @@ function selfTest() {
     writeFixturePackage(join(tmp, "component-runtime"), { name: COMPONENT_RUNTIME_NAME, version: "0.0.0" });
     const violations = ruleNoAdapterToAdapterImports(loadPackages(tmp));
     const catchesEveryForbiddenEdge = [
-      "imports adapter package `@fl03/harness-b` via `@fl03/harness-b`",
+      "imports adapter package `@pzzld/pi-b` via `@pzzld/pi-b`",
       "imports adapter path `../harness-b/src/guard.mjs`",
-      "imports adapter package `@fl03/harness-b` via `@fl03/harness-b/guard-jsx`",
+      "imports adapter package `@pzzld/pi-b` via `@pzzld/pi-b/guard-jsx`",
       "imports adapter path `../harness-b/src/guard.mts`",
-      "imports adapter package `@fl03/harness-b` via `@fl03/harness-b/guard`",
+      "imports adapter package `@pzzld/pi-b` via `@pzzld/pi-b/guard`",
       "re-export.mjs",
       "imports adapter path `../harness-b/src/dynamic.mts`",
       "dynamic-template-specifier.mjs",
@@ -546,7 +546,7 @@ function selfTest() {
   // not changed by Node's default CommonJS interpretation.
   withTempPackagesDir((tmp) => {
     const harnessA = join(tmp, "harness-a");
-    writeFixturePackage(harnessA, { name: "@fl03/harness-a", version: "0.0.0" });
+    writeFixturePackage(harnessA, { name: "@pzzld/pi-a", version: "0.0.0" });
     writeFixturePackage(join(tmp, "component-runtime"), { name: COMPONENT_RUNTIME_NAME, version: "0.0.0" });
     const violations = ruleNoAdapterToAdapterImports(loadPackages(tmp));
     reportFixture("adapter packages declare type=module", violations.length === 1);
@@ -556,9 +556,9 @@ function selfTest() {
   // Fixture 4: an adapter depends on an un-allowlisted @fl03-scoped package.
   withTempPackagesDir((tmp) => {
     writeFixturePackage(join(tmp, "harness-a"), {
-      name: "@fl03/harness-a",
+      name: "@pzzld/pi-a",
       version: "0.0.0",
-      dependencies: { "@fl03/cli-unreviewed": "0.0.0" },
+      dependencies: { "@pzzld/cli-unreviewed": "0.0.0" },
     });
     writeFixturePackage(join(tmp, "component-runtime"), { name: COMPONENT_RUNTIME_NAME, version: "0.0.0" });
     const violations = ruleAdapterScopedDepsAllowlisted(loadPackages(tmp));
@@ -571,7 +571,7 @@ function selfTest() {
     writeFixturePackage(join(tmp, "component-runtime"), {
       name: COMPONENT_RUNTIME_NAME,
       version: "0.0.0",
-      dependencies: { "@fl03/harness-claude": "0.0.0" },
+      dependencies: { "@pzzld/pi-claude": "0.0.0" },
     });
     const violations = ruleComponentRuntimeDoesNotDependOnAdapters(loadPackages(tmp));
     reportFixture("component runtime does not depend on adapters", violations.length > 0);
@@ -582,18 +582,18 @@ function selfTest() {
   // workspace owner, not merely trust an arbitrary dependency key.
   withTempPackagesDir((tmp) => {
     writeFixturePackage(join(tmp, "harness-a"), {
-      name: "@fl03/harness-a",
+      name: "@pzzld/pi-a",
       version: "0.0.0",
       dependencies: {
-        "adapter-npm-alias": "npm:@fl03/harness-b@0.0.0",
+        "adapter-npm-alias": "npm:@pzzld/pi-b@0.0.0",
         "adapter-file-alias": "file:../harness-b",
         "adapter-workspace-alias": "workspace:../harness-b",
       },
     });
-    writeFixturePackage(join(tmp, "harness-b"), { name: "@fl03/harness-b", version: "0.0.0" });
+    writeFixturePackage(join(tmp, "harness-b"), { name: "@pzzld/pi-b", version: "0.0.0" });
     writeFixturePackage(join(tmp, "component-runtime"), { name: COMPONENT_RUNTIME_NAME, version: "0.0.0" });
     const violations = ruleNoAdapterToAdapter(loadPackages(tmp));
-    const passes = violations.length === 3 && violations.every((violation) => violation.includes("@fl03/harness-b"));
+    const passes = violations.length === 3 && violations.every((violation) => violation.includes("@pzzld/pi-b"));
     reportFixture("adapter aliases resolve to adapter owners", passes);
     if (!passes) failures += 1;
   });
@@ -601,17 +601,17 @@ function selfTest() {
   // Fixture 7: aliases must not hide an unreviewed @fl03 package from the adapter allowlist.
   withTempPackagesDir((tmp) => {
     writeFixturePackage(join(tmp, "harness-a"), {
-      name: "@fl03/harness-a",
+      name: "@pzzld/pi-a",
       version: "0.0.0",
       dependencies: {
-        "platform-npm-alias": "npm:@fl03/cli-unreviewed@0.0.0",
+        "platform-npm-alias": "npm:@pzzld/cli-unreviewed@0.0.0",
         "platform-file-alias": "file:../cli-unreviewed",
       },
     });
-    writeFixturePackage(join(tmp, "cli-unreviewed"), { name: "@fl03/cli-unreviewed", version: "0.0.0" });
+    writeFixturePackage(join(tmp, "cli-unreviewed"), { name: "@pzzld/cli-unreviewed", version: "0.0.0" });
     writeFixturePackage(join(tmp, "component-runtime"), { name: COMPONENT_RUNTIME_NAME, version: "0.0.0" });
     const violations = ruleAdapterScopedDepsAllowlisted(loadPackages(tmp));
-    const passes = violations.length === 2 && violations.every((violation) => violation.includes("@fl03/cli-unreviewed"));
+    const passes = violations.length === 2 && violations.every((violation) => violation.includes("@pzzld/cli-unreviewed"));
     reportFixture("adapter aliases preserve the @fl03 allowlist", passes);
     if (!passes) failures += 1;
   });
@@ -621,11 +621,11 @@ function selfTest() {
     writeFixturePackage(join(tmp, "component-runtime"), {
       name: COMPONENT_RUNTIME_NAME,
       version: "0.0.0",
-      dependencies: { "adapter-alias": "npm:@fl03/harness-claude@0.0.0" },
+      dependencies: { "adapter-alias": "npm:@pzzld/pi-claude@0.0.0" },
     });
-    writeFixturePackage(join(tmp, "harness-claude"), { name: "@fl03/harness-claude", version: "0.0.0" });
+    writeFixturePackage(join(tmp, "harness-claude"), { name: "@pzzld/pi-claude", version: "0.0.0" });
     const violations = ruleComponentRuntimeDoesNotDependOnAdapters(loadPackages(tmp));
-    const passes = violations.length === 1 && violations[0].includes("@fl03/harness-claude");
+    const passes = violations.length === 1 && violations[0].includes("@pzzld/pi-claude");
     reportFixture("component runtime aliases preserve reverse-edge rule", passes);
     if (!passes) failures += 1;
   });
@@ -634,16 +634,16 @@ function selfTest() {
   // field must not overwrite and hide a forbidden production edge from an earlier field.
   withTempPackagesDir((tmp) => {
     writeFixturePackage(join(tmp, "harness-a"), {
-      name: "@fl03/harness-a",
+      name: "@pzzld/pi-a",
       version: "0.0.0",
-      dependencies: { alias: "npm:@fl03/harness-b@0.0.0" },
-      devDependencies: { alias: "npm:@fl03/component-runtime@0.0.0" },
+      dependencies: { alias: "npm:@pzzld/pi-b@0.0.0" },
+      devDependencies: { alias: "npm:@pzzld/component-runtime@0.0.0" },
     });
-    writeFixturePackage(join(tmp, "harness-b"), { name: "@fl03/harness-b", version: "0.0.0" });
+    writeFixturePackage(join(tmp, "harness-b"), { name: "@pzzld/pi-b", version: "0.0.0" });
     writeFixturePackage(join(tmp, "component-runtime"), { name: COMPONENT_RUNTIME_NAME, version: "0.0.0" });
     const pkgs = loadPackages(tmp);
     const adapterViolations = ruleNoAdapterToAdapter(pkgs);
-    const passes = adapterViolations.length === 1 && adapterViolations[0].includes("dependencies") && adapterViolations[0].includes("@fl03/harness-b");
+    const passes = adapterViolations.length === 1 && adapterViolations[0].includes("dependencies") && adapterViolations[0].includes("@pzzld/pi-b");
     reportFixture("dependency fields cannot mask each other", passes);
     if (!passes) failures += 1;
   });

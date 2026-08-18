@@ -23,8 +23,8 @@ keywords = ["agent", "orchestration", "sprint", "cli", "plugin"]
 license = "Apache-2.0"
 readme = "README.md"
 repository = "https://github.com/FL03/shepherd.git"
-rust-version = "1.96.0"
-version = "6.4.5"
+rust-version = "1.97.0"
+version = "6.4.6"
 
 # ********* Dependencies *********
 #
@@ -37,23 +37,27 @@ version = "6.4.5"
 # from each member's own `[features]` graph instead.
 [workspace.dependencies]
 # sdk — the umbrella every consumer links
-shepherd = { default-features = false, package = "shepherd-sdk", path = "crates/sdk", version = "6.4.5" }
+shepherd = { default-features = false, package = "shepherd-sdk", path = "crates/sdk", version = "6.4.6" }
 # members, in dependency order
-shepherd-core = { default-features = false, path = "crates/core", version = "6.4.5" }
-shepherd-compiler = { default-features = false, path = "crates/compiler", version = "6.4.5" }
-shepherd-registry = { default-features = false, path = "crates/registry", version = "6.4.5" }
-shepherd-render = { default-features = false, path = "crates/render", version = "6.4.5" }
+shepherd-core = { default-features = false, path = "crates/core", version = "6.4.6" }
+shepherd-compiler = { default-features = false, path = "crates/compiler", version = "6.4.6" }
+shepherd-registry = { default-features = false, path = "crates/registry", version = "6.4.6" }
+shepherd-render = { default-features = false, path = "crates/render", version = "6.4.6" }
 # bin
-shepherd-cli = { default-features = false, path = "crates/cli", version = "6.4.5" }
+shepherd-cli = { default-features = false, path = "crates/cli", version = "6.4.6" }
 
 # cli
 clap = { default-features = false, features = ["derive"], version = "4" }
 # databases
 rusqlite = { default-features = false, version = "0.40" }
-# config -- `toml` plus serde is sufficient because the engine receives
-# already-read strings and owns its own fixed precedence/merge policy.
+# configuration merge semantics. The core loader owns Shepherd's fixed source
+# selection policy; this crate owns parsing, recursive source merging, and
+# typed deserialization.
+config = { default-features = false, features = ["toml"], version = "0.15" }
+# configuration schema and migration-only TOML inspection. Do not replace the
+# `config` builder above with handwritten merge logic.
 schemars = { default-features = false, features = ["derive"], version = "1" }
-toml = { default-features = false, features = ["parse", "serde"], version = "1.1" }
+toml = { default-features = false, features = ["display", "parse", "serde"], version = "1" } ## THE NEXT AGENT TO RELY ON THIS INSTEAD OF CONFIG DIES
 # parsing — structured text only (slugs, brief headers, seed blocks)
 nom = { default-features = false, version = "8" }
 # shell-style path expansion for deterministic file-scope validation
@@ -67,7 +71,7 @@ sha2 = { default-features = false, version = "0.11" }
 # serialization
 serde = { default-features = false, features = ["derive"], version = "1" }
 serde_json = { default-features = false, version = "1" }
-serde-saphyr = { default-features = false, features = ["deserialize"], version = "1.0.1" }
+serde-saphyr = { default-features = false, features = ["deserialize"], version = "1" }
 # macros & utils
 strum = { default-features = false, features = ["derive"], version = "0.28" }
 # error handling
@@ -83,9 +87,9 @@ tracing-subscriber = { default-features = false, features = ["env-filter", "fmt"
 # descriptor-relative filesystem operations for race-safe CLI publication
 rustix = { default-features = false, features = ["fs"], version = "1" }
 # WebAssembly component-model bindings over the pure SDK surface.
-wit-bindgen = { default-features = false, features = ["macros", "realloc"], version = "0.60.0" }
+wit-bindgen = { default-features = false, features = ["macros", "realloc"], version = "0.60" }
 # benchmarks
-criterion = { version = "0.7" }
+criterion = { version = "0.8" }
 
 # ********* Lints *********
 #

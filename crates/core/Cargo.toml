@@ -55,8 +55,8 @@ thiserror = { workspace = true }
 strum = { workspace = true }
 # parsing — the run-id and branch grammars are engine rules, not CLI rules
 nom = { optional = true, workspace = true }
-# configuration layering parses only already-read TOML strings. Filesystem and
-# environment discovery stay on the adapter side; see src/loader.rs.
+# source merge and typed deserialization for the standard configuration loader
+config = { optional = true, workspace = true }
 toml = { optional = true, workspace = true }
 # schema generation — feeds the config key universe the validator checks
 schemars = { optional = true, workspace = true }
@@ -87,12 +87,6 @@ full = [
 ]
 
 # ********* [FF] Flags *********
-config = [
-  "dep:toml",
-  "json",
-  "std",
-]
-
 json = [
   "alloc",
   "serde",
@@ -112,12 +106,6 @@ schema = [
 ]
 
 # ********* [FF] Targets *********
-#
-# No target here may enable a host-coupled dependency. That is the whole point
-# of this crate; see the boundary rule in src/lib.rs. Note that `wasm` and
-# `wasi` deliberately exclude `uuid` and `chrono`: UUIDv7 needs an entropy
-# source and chrono's `clock` needs a system timezone, and neither exists on
-# `wasm32-unknown-unknown` without a JS shim. An embedder supplies both.
 native = ["full"]
 
 nightly = []
@@ -161,19 +149,18 @@ std = [
 ]
 
 # ********* [FF] Deps *********
-#
-# Every dep flag pulls in `alloc`. There is no configuration of this crate that
-# builds below the allocating floor -- `Error` carries owned strings -- so a
-# flag that lets you *select* one is a flag that hands you a compile error and
-# blames your feature list. `scripts/check-features.sh` checks each of these in
-# isolation, which is how that was found rather than assumed.
 chrono = [
-  "alloc",
   "dep:chrono",
+  "std",
+]
+
+config = [
+  "dep:config",
+  "std",
+  "json",
 ]
 
 serde = [
-  "alloc",
   "dep:serde",
   "chrono?/serde",
   "uuid?/serde",

@@ -138,9 +138,10 @@ fn empty_document_materializes_the_canonical_defaults() {
         config.dups.dups_registry,
         PathBuf::from("dups-registry.json")
     );
-    assert_eq!(config.models.root, "inherit-caller");
+    assert_eq!(config.models.root, "reasoning-high");
     assert_eq!(config.models.planter, "reasoning-high");
     assert_eq!(config.models.engineer, "reasoning-high");
+    assert_eq!(config.models.conductor, "reasoning-high");
     assert_eq!(config.models.worker, "standard");
     assert_eq!(config.release.driver, ReleaseDriver::GithubWorkflow);
     assert_eq!(config.context.refresh.ttl_minutes, 30);
@@ -234,6 +235,77 @@ fn partial_layers_merge_and_the_highest_priority_value_wins() {
             .collect::<Vec<_>>(),
         vec![project, user]
     );
+}
+
+#[test]
+fn explicit_keys_records_a_role_set_to_its_own_default_value() {
+    // `models.conductor`'s portable default is `reasoning-high` (see
+    // `ModelsConfig::default`). A layer that explicitly sets it to that same
+    // value must still be recorded as explicit -- the merged value alone can
+    // never distinguish "a layer set this" from "nothing set this and the
+    // default happened to apply", which is exactly what a
+    // merged-value-vs-default comparison gets wrong.
+    let loaded = loader::load([(
+        Path::new("/repo/.shepherd/shepherd.toml"),
+        "[models]\nconductor = \"reasoning-high\"\n",
+    )])
+    .expect("valid layer loads");
+
+    assert_eq!(loaded.config.models.conductor, "reasoning-high");
+    assert!(
+        loaded.explicit_keys.contains("models.conductor"),
+        "{:?}",
+        loaded.explicit_keys
+    );
+    assert!(
+        !loaded.explicit_keys.contains("models.root"),
+        "an unset role must not be recorded as explicit: {:?}",
+        loaded.explicit_keys
+    );
+}
+
+#[test]
+fn explicit_keys_union_every_merged_layer_regardless_of_priority() {
+    let project = Path::new("/repo/.shepherd/shepherd.toml");
+    let user = Path::new("/home/jo3/.shepherd/shepherd.toml");
+
+    let loaded = loader::load([
+        (project, "[models]\ncoder = \"native-coder\"\n"),
+        (user, "[models]\nworker = \"native-worker\"\n"),
+    ])
+    .expect("valid layers merge");
+
+    assert_eq!(loaded.config.models.coder, "native-coder");
+    assert_eq!(loaded.config.models.worker, "native-worker");
+    assert!(loaded.explicit_keys.contains("models.coder"));
+    assert!(loaded.explicit_keys.contains("models.worker"));
+    assert!(!loaded.explicit_keys.contains("models.root"));
+}
+
+#[test]
+fn a_layer_illegal_alone_but_legal_after_merge_still_loads() {
+    // `paths.ctx` and `paths.docs` must not overlap (settings.rs's
+    // cross-field check). The user layer only sets `paths.ctx`, which is
+    // illegal in isolation because it collides with `paths.docs`'s default
+    // (".shepherd/docs"). The higher-priority project layer moves
+    // `paths.docs` out of the way, so the *merged* result is legal even
+    // though the user layer alone never would be. Per-layer decoding used to
+    // reject the user layer before the merge ever happened; the loader must
+    // now decode and validate only once, against the merged configuration.
+    let project = Path::new("/repo/.shepherd/shepherd.toml");
+    let user = Path::new("/home/jo3/.shepherd/shepherd.toml");
+
+    let loaded = loader::load([
+        (project, "[paths]\ndocs = \".shepherd/documentation\"\n"),
+        (user, "[paths]\nctx = \".shepherd/docs\"\n"),
+    ])
+    .expect("a layer illegal alone but legal after merge must still load");
+
+    assert_eq!(
+        loaded.config.paths.docs,
+        PathBuf::from(".shepherd/documentation")
+    );
+    assert_eq!(loaded.config.paths.ctx, PathBuf::from(".shepherd/docs"));
 }
 
 #[test]

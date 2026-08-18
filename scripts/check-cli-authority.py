@@ -4,6 +4,15 @@
 The former Python Typer package and Bash ``shctx`` dispatcher are deleted.
 Their route names remain in ``conformance/legacy-command-disposition.json`` as
 an immutable retirement inventory, not as executable compatibility code.
+
+The repo also carried a Bash compatibility launcher at ``bin/shepherd`` that
+resolved and ``exec``'d the native binary. D4 retired it outright rather than
+patch its resolution bug: it derived its search root from the unresolved
+``BASH_SOURCE[0]``, so a symlinked install (e.g. ``~/.local/bin/shepherd``)
+silently exited 127 instead of falling through PATH. The launcher's
+PRESENCE is now the defect this gate checks for: the native binary reached
+via PATH (or ``SHEPHERD_NATIVE_BIN``) is the sole CLI authority, and a
+repo-tracked launcher can only reintroduce the same class of resolution bug.
 """
 
 from __future__ import annotations
@@ -15,9 +24,19 @@ from pathlib import Path
 
 
 MANIFEST_PATH = Path("conformance/legacy-command-disposition.json")
+
+# `conformance/legacy-command-disposition.json`'s `retirement_contract.public_launcher`
+# field names this exact same path as a historical retirement record -- the launcher
+# that used to be the repo's public CLI entrypoint. `conformance/` belongs to a
+# different lane and is read-only from here, so this gate deliberately does NOT parse
+# that field back out of the manifest; it never did (the prior revision of this module
+# hardcoded the identical literal without reading it either). This constant remains
+# that independently-maintained literal -- both it and the manifest field are
+# retirement records of the same deleted file, not a live contract between the two
+# documents -- and the rule below inverts to assert the path's ABSENCE rather than
+# requiring its presence.
 PUBLIC_LAUNCHER = Path("bin/shepherd")
 RETIRED_ROOTS = (Path("services/cli"), Path("skills/context/scripts"))
-FORBIDDEN_LAUNCHER_TOKENS = ("poetry", "python", "shepherd_cli", "node", "npm")
 
 
 class AuthorityError(ValueError):
@@ -66,23 +85,16 @@ def validate(repo_root: Path, manifest_path: Path) -> tuple[int, int, int]:
         raise AuthorityError(f"Bash route count is {len(bash_routes)}, manifest expects {expected_bash}")
 
     launcher = repo_root / PUBLIC_LAUNCHER
-    if not launcher.is_file() or not launcher.stat().st_mode & 0o111:
-        raise AuthorityError("bin/shepherd must be an executable file")
-    launcher_text = launcher.read_text(encoding="utf-8").lower()
-    forbidden = [token for token in FORBIDDEN_LAUNCHER_TOKENS if token in launcher_text]
-    if forbidden:
-        raise AuthorityError(f"bin/shepherd contains forbidden fallback token(s): {', '.join(forbidden)}")
-    if 'exec "$candidate" "$@"' not in launcher_text:
-        raise AuthorityError("bin/shepherd must exec the resolved native binary")
+    if launcher.exists() or launcher.is_symlink():
+        raise AuthorityError(
+            f"{PUBLIC_LAUNCHER} must not exist: the compatibility launcher is retired (D4) "
+            "and the native binary resolved from PATH/SHEPHERD_NATIVE_BIN is the sole CLI authority"
+        )
     return len(python_routes), len(bash_routes), len(python_section["native"])
 
 
 def _write_fixture(root: Path) -> Path:
     (root / "conformance").mkdir(parents=True)
-    (root / "bin").mkdir()
-    launcher = root / PUBLIC_LAUNCHER
-    launcher.write_text('#!/bin/sh\nexec "$candidate" "$@"\n', encoding="utf-8")
-    launcher.chmod(0o755)
     manifest = {
         "schema_version": 2,
         "python_typer": {"native": ["known"], "retired": ["old"], "expected_strict_leaf_count": 2},
@@ -122,10 +134,23 @@ def self_test() -> None:
         else:
             raise AuthorityError("self-test failed: reintroduced executable shctx was accepted")
 
+        shctx.unlink()
+        shctx.parent.rmdir()
+        launcher = root / PUBLIC_LAUNCHER
+        launcher.parent.mkdir(parents=True, exist_ok=True)
+        launcher.write_text('#!/bin/sh\nexec "$candidate" "$@"\n', encoding="utf-8")
+        launcher.chmod(0o755)
+        try:
+            validate(root, manifest)
+        except AuthorityError:
+            pass
+        else:
+            raise AuthorityError("self-test failed: reintroduced bin/shepherd launcher was accepted")
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--self-test", action="store_true", help="test both retired CLI resurrection paths")
+    parser.add_argument("--self-test", action="store_true", help="test all three retired-artifact resurrection paths")
     args = parser.parse_args()
     try:
         if args.self_test:

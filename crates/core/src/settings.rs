@@ -557,10 +557,10 @@ pub struct ModelsConfig {
 impl Default for ModelsConfig {
     fn default() -> Self {
         Self {
-            root: "inherit-caller".into(),
+            root: "reasoning-high".into(),
             planter: "reasoning-high".into(),
             engineer: "reasoning-high".into(),
-            conductor: "standard".into(),
+            conductor: "reasoning-high".into(),
             critic: "standard".into(),
             discovery: "standard".into(),
             coder: "standard".into(),

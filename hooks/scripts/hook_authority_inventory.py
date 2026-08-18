@@ -28,6 +28,41 @@ METADATA: dict[str, dict[str, Any]] = {
         "native_coverage": "full",
         "native_surface": ["shepherd claude-hook", "shepherd dispatch", "shepherd guard"],
     },
+    "hooks/scripts/seed_preflight_check.sh": {
+        "classification": THIN,
+        "native_coverage": "full",
+        "native_surface": ["shepherd seed verify"],
+    },
+    "hooks/scripts/subagent_telemetry.sh": {
+        "classification": TELEMETRY,
+        "native_coverage": "none",
+        "native_surface": [],
+    },
+    "hooks/scripts/bash_post.sh": {
+        "classification": TELEMETRY,
+        "native_coverage": "none",
+        "native_surface": [],
+    },
+    "hooks/scripts/agent_insight_capture.sh": {
+        "classification": TELEMETRY,
+        "native_coverage": "none",
+        "native_surface": [],
+    },
+    "hooks/scripts/discovery_capture.sh": {
+        "classification": TELEMETRY,
+        "native_coverage": "none",
+        "native_surface": [],
+    },
+    "hooks/scripts/cwd_changed.sh": {
+        "classification": TELEMETRY,
+        "native_coverage": "none",
+        "native_surface": [],
+    },
+    "hooks/scripts/precompact_snapshot.sh": {
+        "classification": TELEMETRY,
+        "native_coverage": "none",
+        "native_surface": [],
+    },
 }
 
 TARGET_RE = re.compile(r"(?P<target>(?:hooks/scripts|packages/harness-claude/hooks)/\S+)")
@@ -197,6 +232,10 @@ def self_test() -> int:
                                         "type": "command",
                                         "command": f"{plugin_root}/hooks/scripts/telemetry.sh",
                                     },
+                                    {
+                                        "type": "command",
+                                        "command": f"{plugin_root}/hooks/scripts/unclassified.sh",
+                                    },
                         {"type": "agent", "prompt": "legacy policy"},
                                 ]
                             }
@@ -212,6 +251,10 @@ def self_test() -> int:
         )
         (root / "hooks/scripts/telemetry.sh").write_text(
             "emit_deny nope\nsqlite3 db 'UPDATE state SET x=1'\n",
+            encoding="utf-8",
+        )
+        (root / "hooks/scripts/unclassified.sh").write_text(
+            "# fixture hook with no inventory metadata entry\necho unclassified\n",
             encoding="utf-8",
         )
         (root / "crates/cli/src/cmd").mkdir(parents=True)
@@ -244,6 +287,7 @@ def self_test() -> int:
         "sqlite3/python3",
         "telemetry_policy_authority",
         "nondeterministic-policy agent registration is retired",
+        "missing inventory metadata",
     }
     found = "\n".join(failures)
     missing = [item for item in required if item not in found]

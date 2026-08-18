@@ -76,7 +76,7 @@ class ProjectionTests(unittest.TestCase):
                 self.assertNotEqual(checked.returncode, 0)
                 self.assertIn(mutation, checked.stderr.lower())
 
-    def test_repository_projection_has_exactly_twenty_one_sources(self) -> None:
+    def test_repository_projection_has_exactly_twenty_three_sources(self) -> None:
         checked = run(ROOT, ROOT / "crates/compiler/package-content", "--check")
         self.assertEqual(checked.returncode, 0, checked.stderr)
         sources = [
@@ -84,7 +84,7 @@ class ProjectionTests(unittest.TestCase):
             for path in (ROOT / "crates/compiler/package-content/content").rglob("*")
             if path.is_file() and not path.is_symlink()
         ]
-        self.assertEqual(len(sources), 21)
+        self.assertEqual(len(sources), 23)
 
 
 if __name__ == "__main__":
