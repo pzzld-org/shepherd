@@ -112,6 +112,27 @@ recovery contract that shells out to it. Resolved in v6.4.6 by removing the vers
 prose. The general question is whether documentation should be allowed to carry a
 version-specific statement at all, and if so, how the tool rewrites it on bump.
 
+## 6b. Pin tests and helpers against a SYNTHETIC version, never the current release — HIGH
+
+Three independent coders, in three unrelated files, each wrote the current release literal
+into a file `version-bump.py` scans, and each time it reddened TWO gates because
+`test-cargo-publish.py` shells out to it:
+
+- `docs/cargo-distribution.md:79` — a transitional prose note
+- `scripts/lib/release-package-names.sh:104` — `local pinned_version='6.4.6'`
+- a third in the same package-name work
+
+The tool behaved correctly every time. The pattern is that "write the version you are
+working on into the thing you are writing" is a completely natural reflex and nothing warns
+you until a gate fires several steps later, in a file you did not touch.
+
+The distribution lane's rule, which belongs in the next seed rather than in a review comment:
+
+> In tests and helpers, pin against a SYNTHETIC version (`1.2.3`), never the current release.
+
+It is strictly better ground truth — it proves the logic is version-agnostic instead of
+agreeing with today's number by accident — and it never needs editing at bump time.
+
 ## 7. Deliberately still out of scope
 
 - The 20 open SQL-injection and guard issues (#284-#298). Real, not on the delivery chain.
