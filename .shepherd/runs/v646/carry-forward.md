@@ -80,6 +80,19 @@ The interim mitigation, now the run's rule, is the distribution lane's drift tes
 `git diff --stat <briefed-base>..HEAD -- <that coder's own file scope>`, where a non-empty
 diff is only drift if content the coder did NOT write replaced content it DID.
 
+The general rule this run arrived at the hard way, after root disrupted lane work twice
+(`git add -A` sweeping in-flight coder files, `git stash -u` splitting a coder's edit into
+two complementary partial states) and the distribution lane did the same thing from the
+other seat an hour later:
+
+> On a shared worktree, any operation that reverts or stages state you did not author is
+> unsafe regardless of which seat runs it, and falsification belongs to whoever currently
+> owns the file.
+
+Both recoveries were verified byte-for-byte and nothing was lost, but that was luck, not
+process. A clean-tree baseline belongs in a throwaway clone; a fail-on-purpose edit waits
+for the auditor.
+
 ## 5. A refusal that never reaches the dispatching lead reads as incompetence — MEDIUM
 
 Harness lane's finding, and it generalizes past this sprint. A worker spent 49 tool calls and
