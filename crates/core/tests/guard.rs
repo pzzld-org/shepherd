@@ -2034,3 +2034,40 @@ fn malformed_json_is_an_engine_error_not_a_verdict() {
         .expect_err("wire text is malformed");
     assert!(error.to_string().starts_with("malformed JSON:"));
 }
+
+/// `Workflow` carries no target role and never can — its agents are spawned
+/// inside the script and guarded individually at `SubagentStart`. Demanding one
+/// made the tool permanently unusable instead of governed.
+#[test]
+fn workflow_dispatch_is_governed_by_tier_without_a_target_role() {
+    let engine = live_engine();
+
+    let root = engine
+        .evaluate_json(r#"{"role":"shepherd","tool_name":"Workflow","tool_input":{}}"#)
+        .expect("a Workflow call is evaluable");
+    assert_eq!(
+        root.decision.as_str(),
+        "allow",
+        "root must be able to run a workflow: {}",
+        root.to_wire_json()
+    );
+
+    // The tier rule still bites: an implementer never dispatches, and routing
+    // through Workflow must not become the way around that.
+    let implementer = engine
+        .evaluate_json(r#"{"role":"coder","tool_name":"Workflow","tool_input":{}}"#)
+        .expect("a Workflow call is evaluable");
+    assert_eq!(
+        implementer.decision.as_str(),
+        "deny",
+        "an implementer must not dispatch through Workflow: {}",
+        implementer.to_wire_json()
+    );
+
+    // Agent is unchanged: it does carry a target, so a missing one is still
+    // unresolved rather than silently permitted.
+    let agent = engine
+        .evaluate_json(r#"{"role":"shepherd","tool_name":"Agent","tool_input":{}}"#)
+        .expect("an Agent call is evaluable");
+    assert_eq!(agent.decision.as_str(), "unresolved");
+}

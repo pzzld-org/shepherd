@@ -225,7 +225,7 @@ impl GuardEngine {
         } else if tool_name == "Bash" {
             self.evaluate_bash_tool(role, tool_input)
         } else if DISPATCH_TOOL_NAMES.contains(&tool_name) {
-            self.evaluate_dispatch_tool(role, tool_input)
+            self.evaluate_dispatch_tool(role, tool_input, tool_name)
         } else {
             Verdict::unresolved(
                 format!("no (predicate, action) mapping known for tool `{tool_name}`"),
@@ -382,20 +382,31 @@ impl GuardEngine {
         )
     }
 
-    fn evaluate_dispatch_tool(&self, role: Option<&GuardValue>, tool_input: &Context) -> Verdict {
+    fn evaluate_dispatch_tool(
+        &self,
+        role: Option<&GuardValue>,
+        tool_input: &Context,
+        tool_name: &str,
+    ) -> Verdict {
         let target = ["subagent_type", "target_role", "role"]
             .into_iter()
             .filter_map(|key| tool_input.get(key))
-            .find(|value| value.is_truthy());
-        let Some(target) = target
+            .find(|value| value.is_truthy())
             .and_then(GuardValue::as_str)
-            .filter(|value| !value.is_empty())
-        else {
+            .filter(|value| !value.is_empty());
+        // `Workflow` fans out inside its own script, so its `tool_input` carries
+        // no single target role and never can. Each agent the script spawns is
+        // guarded at `SubagentStart`, where its role is known. Demanding a
+        // target here made the tool permanently unusable rather than governed --
+        // the predicate's own header scopes this rule to "Workflow's agent()",
+        // not to the Workflow call. Dispatcher-tier rules still apply, and the
+        // target-specific rules correctly abstain on an absent target.
+        if target.is_none() && tool_name != "Workflow" {
             return Verdict::unresolved(
                 "cannot determine the dispatch target role from `tool_input`",
                 &["tool_input.subagent_type"],
             );
-        };
+        }
         let Some(role) = role.filter(|value| !value.is_null()) else {
             return Verdict::unresolved(
                 "missing `role` -- cannot identify the dispatching role",
@@ -409,15 +420,12 @@ impl GuardEngine {
                 &["role"],
             );
         };
-        self.decide(
-            "dispatch-scope",
-            "dispatch",
-            role,
-            &BTreeMap::from([
-                (String::from("target_role"), GuardValue::from(target)),
-                (String::from("dispatcher_tier"), GuardValue::from(tier)),
-            ]),
-        )
+        let mut context =
+            BTreeMap::from([(String::from("dispatcher_tier"), GuardValue::from(tier))]);
+        if let Some(target) = target {
+            context.insert(String::from("target_role"), GuardValue::from(target));
+        }
+        self.decide("dispatch-scope", "dispatch", role, &context)
     }
 
     fn decide(
