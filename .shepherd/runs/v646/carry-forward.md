@@ -87,6 +87,20 @@ agent's first tool call and thereafter resolve any child's dispatcher from its `
 Deferred from v6.4.6 only because it is new machinery in the dispatch core, authored at
 02:45 with four lanes executing through that exact path — not because it is hard.
 
+**One design constraint that shapes the whole fix: `SubagentStart` CANNOT refuse.** In
+`run_native_hook`, only `PreToolUse` emits `permissionDecision: deny` and only
+`SubagentStop` emits `decision: block`; a `SubagentStart` error becomes an `additionalContext`
+line and the agent runs anyway. So spawn-time evaluation is necessarily ADVISORY, and the
+enforcement has to be two-part: decide at `SubagentStart` and record the verdict on the
+child's dispatch record, then refuse the child's own `PreToolUse` calls when that record says
+the dispatch was illegitimate. Anyone implementing this who stops at "deny it at
+SubagentStart" will ship a check that observes the violation and permits it — which is this
+sprint's whole failure class, one more time.
+
+That is three pieces of new machinery in the dispatch core — session↔agent binding, the
+spawn-time verdict, and the child-side refusal — which is the real reason it was not
+attempted at 02:45 with four lanes executing through that code path.
+
 The interim alternative remains: require a lane-lead's `Workflow` call to DECLARE its target
 roles and deny when it does not. Enforceable today, but a contract change that needs the
 operator.
