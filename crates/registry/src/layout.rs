@@ -73,6 +73,39 @@ pub enum PlanAction {
     Rewrite,
 }
 
+/// Render a path with `/` separators on every platform.
+///
+/// The manifest is a DURABLE artifact: it is sorted by source and destination,
+/// serialized to stable JSON, and compared. `Path::display` emits OS-native
+/// separators, so the same migration produced a different manifest -- and a
+/// different sort order -- on Windows than on Linux. Building from components
+/// rather than replacing `\\` keeps a literal backslash in a unix filename
+/// intact, which is a legal character there.
+fn canonical_path_string(path: &Path) -> String {
+    use std::path::Component;
+
+    let mut rendered = String::new();
+    for component in path.components() {
+        match component {
+            Component::Prefix(prefix) => {
+                rendered.push_str(&prefix.as_os_str().to_string_lossy());
+            }
+            Component::RootDir => {
+                if !rendered.ends_with('/') {
+                    rendered.push('/');
+                }
+            }
+            other => {
+                if !rendered.is_empty() && !rendered.ends_with('/') {
+                    rendered.push('/');
+                }
+                rendered.push_str(&other.as_os_str().to_string_lossy());
+            }
+        }
+    }
+    rendered
+}
+
 /// One source-to-destination decision, including content provenance.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ManifestEntry {
@@ -335,7 +368,7 @@ impl LayoutPlan {
                     == 0
             {
                 entries.push(ManifestEntry {
-                    source: candidate.path.display().to_string(),
+                    source: canonical_path_string(&candidate.path),
                     destination: String::new(),
                     classification: "empty-placeholder".into(),
                     owner: owner(scope).into(),
@@ -351,7 +384,7 @@ impl LayoutPlan {
                     removable_legacy_file(scope, relative, &candidate.path)?
             {
                 entries.push(ManifestEntry {
-                    source: candidate.path.display().to_string(),
+                    source: canonical_path_string(&candidate.path),
                     destination: String::new(),
                     classification,
                     owner: owner(scope).into(),
@@ -376,8 +409,8 @@ impl LayoutPlan {
                     let byte_size = u64::try_from(rewritten.len()).unwrap_or(u64::MAX);
                     rewrites.insert(candidate.path.clone(), rewritten);
                     entries.push(ManifestEntry {
-                        source: candidate.path.display().to_string(),
-                        destination: candidate.path.display().to_string(),
+                        source: canonical_path_string(&candidate.path),
+                        destination: canonical_path_string(&candidate.path),
                         classification: "project-config".into(),
                         owner: owner(scope).into(),
                         provenance: "removed retired layout-v5 configuration keys".into(),
@@ -411,8 +444,8 @@ impl LayoutPlan {
             };
             if candidate.kind == EntryKind::Directory {
                 entries.push(ManifestEntry {
-                    source: candidate.path.display().to_string(),
-                    destination: destination.display().to_string(),
+                    source: canonical_path_string(&candidate.path),
+                    destination: canonical_path_string(&destination),
                     classification,
                     owner: owner(scope).into(),
                     provenance,
@@ -439,7 +472,7 @@ impl LayoutPlan {
                     if sha256_path(&destination)? != sha256 {
                         return Err(LayoutError::Collision {
                             destination,
-                            sources: candidate.path.display().to_string(),
+                            sources: canonical_path_string(&candidate.path),
                         });
                     }
                     PlanAction::Deduplicated
@@ -448,11 +481,11 @@ impl LayoutPlan {
             };
             destinations.insert(
                 destination.clone(),
-                (candidate.path.display().to_string(), sha256.clone()),
+                (canonical_path_string(&candidate.path), sha256.clone()),
             );
             entries.push(ManifestEntry {
-                source: candidate.path.display().to_string(),
-                destination: destination.display().to_string(),
+                source: canonical_path_string(&candidate.path),
+                destination: canonical_path_string(&destination),
                 classification,
                 owner: owner(scope).into(),
                 provenance,

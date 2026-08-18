@@ -1080,9 +1080,18 @@ fn create_dir_safe(path: &Path) -> Result<(), CliError> {
 }
 
 fn reject_symlink_path(path: &Path) -> Result<(), CliError> {
+    use std::path::Component;
+
     let mut cursor = PathBuf::new();
     for component in path.components() {
         cursor.push(component.as_os_str());
+        // A prefix or root is not a stat-able entry and cannot be a symlink.
+        // On Windows, `symlink_metadata` on a bare `\\?\C:` returns
+        // `Incorrect function. (os error 1)`, so probing it turned every run
+        // command into `ERROR: inspect \\?\C:: Incorrect function.`
+        if matches!(component, Component::Prefix(_) | Component::RootDir) {
+            continue;
+        }
         match fs::symlink_metadata(&cursor) {
             Ok(metadata) if metadata.file_type().is_symlink() => {
                 return Err(CliError::message(format!(

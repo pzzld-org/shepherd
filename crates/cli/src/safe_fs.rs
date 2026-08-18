@@ -77,7 +77,12 @@ pub(crate) fn reject_link_components(path: &Path) -> io::Result<()> {
     let mut walked = std::path::PathBuf::new();
     for component in path.components() {
         walked.push(component.as_os_str());
-        if matches!(component, Component::Prefix(_) | Component::RootDir) {
+        // A prefix or root is not a stat-able entry and cannot be a link. On
+        // Windows a bare `\\?\C:` answers `Incorrect function. (os error 1)`,
+        // so probing one turns every path walk into a hard error.
+        if matches!(component, Component::Prefix(_) | Component::RootDir)
+            || walked.parent().is_none()
+        {
             continue;
         }
         if is_link(&walked)? {
