@@ -454,6 +454,43 @@ an `Option`-returning helper. A swallowed error has no subject to classify, so t
 classification question: it is whether handoff status output should surface that failure at
 all. Its own decision, deliberately not forced through the classifier.
 
+## 4g. A gate can encode a defect as a REQUIREMENT — HIGH
+
+`scripts/tests/test-release-workflow.sh:244` asserts that `release.yml` contains an INLINE
+archive-layout check:
+
+```
+rg -Fq 'tar -tzf "$archive"' "$workflow"
+```
+
+That inline check was one half of a duplicated assertion — a weaker single-entry copy in
+`release.yml` alongside the stronger four-entry ordered one in
+`scripts/tests/test-release-archive-layout.sh`. When the distribution lane converged them
+onto the shared script, **the gate went red because the duplication it pinned was gone.**
+
+This is the assertions-fitted-to-the-artifact family in its most literal form: the gate was
+fitted to the artifact so precisely that IMPROVING the artifact broke the gate. Before
+deleting a duplicated assertion, grep for gates that require its presence.
+
+## 4h. 56 bare `rg -Fq` calls that fail silently — HIGH
+
+Under `set -euo pipefail`, a bare `rg -Fq PATTERN FILE` exits 1 and prints NOTHING, because
+`-q` suppresses output. The script dies with no indication of which requirement failed.
+`test-release-workflow.sh` prints three cheerful `ok:` lines and then stops; finding the
+responsible line took a `bash -x` trace.
+
+`grep -c 'rg -Fq'` returns **56** in that one file. Fifty-six silent-failure landmines, each
+able to redden the gate anonymously.
+
+Third appearance of the shape this sprint: the distribution lane had already converted one in
+`test-release-installer-powershell-contract.sh`, the identity lane hit it from the outside,
+and this is the same family with 56 more. **Every one must become
+`if ! rg -Fq ...; then printf '<requirement>' >&2; exit 1; fi`, naming the requirement —
+diagnostics, not relaxation.** Each must still fail on exactly the input it failed on before.
+
+Pairs with the harness lane's rule in 0b: a gate must say how many things it checked, and it
+must also say WHICH one failed.
+
 ## 5. A refusal that never reaches the dispatching lead reads as incompetence — MEDIUM
 
 Harness lane's finding, and it generalizes past this sprint. A worker spent 49 tool calls and
