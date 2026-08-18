@@ -1,7 +1,7 @@
 {
   "schema": "shepherd.compiled-tree/2",
   "target": "claude",
-  "tree_digest": "d6e4f1fe46fd0408ff910ce64102bd7b9c37e205afaa77479a91eafc32738d12",
+  "tree_digest": "4caee5f76169908d4593f5217a4c1bde7929d735b87d1859ff3826f1afa80512",
   "tokenizer_version": "shepherd-prompt-v1-uax29",
   "roles": [
     {
@@ -407,7 +407,7 @@
       "path": "agents/shepherd.md",
       "kind": "role",
       "source_path": "content/roles/shepherd.md",
-      "source_sha256": "4bc5d2ba771d963c806127eab8fa0fbed66a025c3a15f148b19721f843f59d1a",
+      "source_sha256": "275d6eaf3143429f145cec7d26311cc74b7aaa3e064ceed2130594a03095553b",
       "content_sha256": "28cf35929558d74240096c30c9fc684c49399e21acf37b3a4bfeeef8da019e49",
       "lines": 60,
       "words": 536,
@@ -462,12 +462,12 @@
       "path": "skills/harness/SKILL.md",
       "kind": "skill",
       "source_path": "content/skills/harness/SKILL.md",
-      "source_sha256": "abda9a92ee553a24c10d80bd5b15f78e307f18fd9a39177fc75a7edd1a7aa168",
-      "content_sha256": "f79079b2cd2edd8ce3484af2b209b9373703a24437880bae755301e46a999658",
+      "source_sha256": "09f99616a52dcffd4748dbfe0e6a06070cf1441a438ba14272cce699449f9952",
+      "content_sha256": "dae4937268519c909142c15656b2ca19e411b13ae9d9d9bf6721bcc0b7abf1ab",
       "lines": 29,
       "words": 282,
-      "utf8_bytes": 1995,
-      "prompt_tokens": 621
+      "utf8_bytes": 2009,
+      "prompt_tokens": 626
     },
     {
       "path": "skills/motivation/SKILL.md",

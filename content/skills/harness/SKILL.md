@@ -7,7 +7,7 @@ portability: claude-only
 
 # harness — Claude-only, not emitted for other harnesses
 
-`RECONCILIATION.md` row 2 records the decision: this skill stays Claude-only by design and
+`RECONCILIATION.md`, Canonical sources, records the decision: this skill stays Claude-only by design and
 is never compiled for a Codex or Pi target. Its entire content is platform mechanics for
 ONE harness's own multi-agent primitives — Agent Teams membership rules, the Dynamic
 Workflow fan-out vehicle, `ToolSearch` deferred-tool resolution scope, and native tool

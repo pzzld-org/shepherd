@@ -261,6 +261,31 @@ def rule_codex_carrier_is_regular_and_canonical(root: Path) -> list[str]:
         bad.append("Codex manifest skills must be ./codex/skills/")
     if manifest.get("hooks") != "./codex/hooks/hooks.json":
         bad.append("Codex manifest hooks must be ./codex/hooks/hooks.json")
+    # RECONCILIATION.md is doctrine, and doctrine that miscounts its own corpus
+    # is doctrine nobody can check against. It claimed "seven portable workflow
+    # skills" while nine existed, and two content files cited "row N" of a
+    # document that has no rows.
+    reconciliation = root / "content" / "RECONCILIATION.md"
+    if reconciliation.is_file():
+        prose = reconciliation.read_text(encoding="utf-8")
+        authored = sorted((root / "content" / "skills").glob("*/SKILL.md"))
+        spelled = {
+            1: "one", 2: "two", 3: "three", 4: "four", 5: "five",
+            6: "six", 7: "seven", 8: "eight", 9: "nine", 10: "ten",
+        }
+        total = spelled.get(len(authored), str(len(authored)))
+        if f"{total} workflow skills" not in prose:
+            bad.append(
+                f"content/RECONCILIATION.md must state `{total} workflow skills`; "
+                f"{len(authored)} are authored"
+            )
+    for path in sorted((root / "content").rglob("*.md")):
+        for citation in re.findall(r"RECONCILIATION\.md,? row \d+", path.read_text(encoding="utf-8")):
+            bad.append(
+                f"{path.relative_to(root)} cites `{citation}`, but that document "
+                "has no numbered rows; cite a section heading instead"
+            )
+
     codex_root = root / CODEX_CARRIER
     if not codex_root.is_dir():
         return [*bad, f"{CODEX_CARRIER} is missing"]

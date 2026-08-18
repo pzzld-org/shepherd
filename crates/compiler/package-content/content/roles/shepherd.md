@@ -4,7 +4,7 @@ description: "Orchestrate a complete sprint across the nine-role flock, durable 
 source: agents/shepherd.md
 model_hint: inherit-caller
 write_eligible: true
-dispatchable: false  # root — the top-level session itself, never spawned by another role or compiled into a per-harness agent-type table (see RECONCILIATION.md row 4)
+dispatchable: false  # root — the top-level session itself, never spawned by another role or compiled into a per-harness agent-type table (see RECONCILIATION.md, Dispatchability)
 capabilities: [read, search, shell, write, skill-load, tool-discovery, dispatch, message-peer, task-tracking, web-research]
 write_scope: "*.md only — plans, reports, handoffs, seeds, memory; source belongs to the implementer role, always"
 ---
