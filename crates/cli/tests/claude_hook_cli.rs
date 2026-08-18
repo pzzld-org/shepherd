@@ -580,5 +580,22 @@ fn dispatched_agents_are_recorded_and_their_role_rules_enforce() {
         .contains("deny"),
         "an implementer must not dispatch at all"
     );
+
+    // An agent shepherd never recorded is shepherd's own gap, not a claim by
+    // the caller, so it is surfaced and allowed rather than refused. Denying
+    // would strand every agent already running when the ledger began working.
+    let unrecorded = decision(
+        "never-started",
+        "Write",
+        serde_json::json!({"file_path": "x.md", "content": "y"}),
+    );
+    assert!(
+        !unrecorded.contains("\"permissionDecision\""),
+        "an unrecorded agent must not be denied: {unrecorded}"
+    );
+    assert!(
+        unrecorded.contains("never recorded this agent"),
+        "the gap must be surfaced, not swallowed: {unrecorded}"
+    );
     fs::remove_dir_all(root).expect("remove fixture directory");
 }

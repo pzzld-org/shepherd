@@ -512,6 +512,23 @@ fn unresolved_pre_tool_use(
             detail: format!("dispatch unresolved ({error}); allowed shepherd self-repair"),
         };
     }
+    // A record shepherd never wrote is shepherd's own bookkeeping gap, not a
+    // claim by the caller, so it gets the same treatment as an unusable run
+    // namespace. Every other resolution failure -- a run, harness, project, or
+    // agent-type that disagrees with the record -- means the envelope contradicts
+    // state shepherd does hold, and that stays a refusal.
+    let never_recorded = matches!(
+        error,
+        crate::DispatchServiceError::Identity(
+            shepherd::dispatch::IdentityError::MissingRecord { .. }
+        ) | crate::DispatchServiceError::Store(crate::DispatchStoreError::UnknownRecord { .. })
+    );
+    if never_recorded {
+        return HookOutput::Context {
+            event: "PreToolUse".into(),
+            detail: format!("{error}; tool allowed because shepherd never recorded this agent"),
+        };
+    }
     if run_namespace_is_usable(&context.runs_root) {
         return HookOutput::Deny {
             detail: error.to_string(),
