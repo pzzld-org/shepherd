@@ -50,6 +50,19 @@ and attached to the tag by hand.
   is unix-gated -- and all four were invisible to every unix machine and to every release
   build, which builds the lib rather than the test targets.
 
+### Found, not fixed
+
+- **The shipped Windows binary cannot initialize a project or durably store a run.** With the
+  suite finally able to run on `windows-latest`, it did — and reported
+  `384 tests run: 290 passed, 94 failed`. Two stubs account for all of it:
+  `wave_c_bootstrap.rs` pairs every descriptor-safe mutation with a `#[cfg(not(unix))]` twin
+  that returns `descriptor-safe bootstrap mutation is unavailable on this platform` (five of
+  them), so `shepherd init` fails and every hook test cascades from it; and
+  `crates/core/src/run/atomic.rs:135` opens the parent directory to `sync_all()` it, which
+  Windows refuses with `Access is denied. (os error 5)` because `std::fs::File::open` does not
+  set `FILE_FLAG_BACKUP_SEMANTICS`. Filed as #321 — it is a decision (implement the Windows
+  primitives, or stop shipping the Windows asset), not a patch.
+
 ### Notes
 
 - `cargo binstall shepherd-cli` and `scripts/install-shepherd.sh` were both exercised against
