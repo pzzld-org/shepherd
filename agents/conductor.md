@@ -1,7 +1,7 @@
 ---
 name: conductor
 description: "Execute one plan lane through disjoint implementation, review, redo, and handoff waves. Use when a lane needs a durable lead that may dispatch implementers."
-model: opus[1m]
+model: inherit
 tools: [Read, NotebookRead, Glob, Grep, Bash, Skill, ToolSearch, Agent, Workflow, ScheduleWakeup, SendMessage, TaskCreate, TaskGet, TaskList, TaskUpdate, WebFetch, WebSearch]
 dispatchable: true
 write_eligible: true

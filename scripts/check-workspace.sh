@@ -260,7 +260,7 @@ def rule_component_contract(root: Path, crates: dict[str, dict]) -> list[str]:
     wit = directory / "wit" / "shepherd.wit"
     if not wit.is_file():
         bad.append(f"{COMPONENT}: missing wit/shepherd.wit")
-    elif "package fl03:shepherd@6.4.9;" not in wit.read_text():
+    elif "package fl03:shepherd@6.5.0;" not in wit.read_text():
         bad.append(f"{COMPONENT}: WIT package/version does not match the workspace")
     tests = directory / "tests" / "component.rs"
     if not tests.is_file():
@@ -336,6 +336,43 @@ def rule_msrv_is_consistent(root: Path, crates: dict[str, dict]) -> list[str]:
     return bad
 
 
+def rule_model_defaults_match_the_docs(root: Path, crates: dict[str, dict]) -> list[str]:
+    """`docs/configuration.md`'s default table matches `ModelsConfig::default()`.
+
+    Prose drifts silently. That table said root was `inherit-caller` and
+    conductor was `standard` long after both had moved, and nothing read it --
+    the same failure the README's toolchain claim had.
+    """
+    settings = root / "crates/core/src/settings.rs"
+    docs = root / "docs/configuration.md"
+    if not settings.is_file() or not docs.is_file():
+        return []
+    block = re.search(
+        r"impl Default for ModelsConfig \{.*?\n    \}\n\}", settings.read_text(encoding="utf-8"), re.S
+    )
+    if block is None:
+        return ["crates/core/src/settings.rs: cannot find `impl Default for ModelsConfig`"]
+    actual = dict(re.findall(r'^\s*(\w+): "([a-z-]+)"\.into\(\),', block.group(0), re.M))
+    if not actual:
+        return ["crates/core/src/settings.rs: parsed zero model defaults"]
+
+    text = docs.read_text(encoding="utf-8")
+    documented: dict[str, str] = {}
+    for roles, hint in re.findall(r"^\| ([a-z, ]+) \| `([a-z-]+)` \|", text, re.M):
+        for role in (part.strip() for part in roles.split(",")):
+            documented[role] = hint
+    bad = []
+    for role, hint in sorted(actual.items()):
+        if documented.get(role) != hint:
+            bad.append(
+                f"docs/configuration.md: {role} documented as "
+                f"`{documented.get(role, 'absent')}`, code says `{hint}`"
+            )
+    for role in sorted(set(documented) - set(actual)):
+        bad.append(f"docs/configuration.md: documents unknown role `{role}`")
+    return bad
+
+
 RULES = [
     rule_lints_inherited,
     rule_version_inherited,
@@ -349,6 +386,7 @@ RULES = [
     rule_component_contract,
     rule_retired_namespaces_are_visible,
     rule_msrv_is_consistent,
+    rule_model_defaults_match_the_docs,
 ]
 
 
@@ -394,7 +432,7 @@ FIXTURES = {
     },
     rule_version_inherited: {
         "shepherd-core": {
-            "package": {"name": "shepherd-core", "version": "6.4.9"},
+            "package": {"name": "shepherd-core", "version": "6.5.0"},
             "lints": {"workspace": True},
             "__dir__": Path("/nonexistent"),
         },
@@ -499,6 +537,48 @@ def self_test(root: Path) -> int:
         else:
             print(f"  {label:<44} DID NOT FAIL on a broken fixture")
             failures += 1
+
+    with tempfile.TemporaryDirectory() as tmp:
+        broken = Path(tmp)
+        (broken / "crates" / "core" / "src").mkdir(parents=True)
+        (broken / "docs").mkdir()
+        (broken / "crates/core/src/settings.rs").write_text(
+            'impl Default for ModelsConfig {\n'
+            '    fn default() -> Self {\n'
+            '        Self {\n'
+            '            root: "reasoning-high".into(),\n'
+            '        }\n'
+            '    }\n'
+            '}\n',
+            encoding="utf-8",
+        )
+        (broken / "docs/configuration.md").write_text(
+            "| Role | Hint | Why |\n| --- | --- | --- |\n| root | `standard` | drifted |\n",
+            encoding="utf-8",
+        )
+        label = "model defaults match the docs"
+        if rule_model_defaults_match_the_docs(broken, {}):
+            print(f"  {label:<44} fails as designed")
+        else:
+            print(f"  {label:<44} DID NOT FAIL on a broken fixture")
+            failures += 1
+
+    # A rule with no fixture is silently not self-tested, which is the exact
+    # hazard this whole self-test exists to close, one level up.
+    covered = set(FIXTURES)
+    # These read real files rather than the crate map, so each carries a
+    # hand-rolled fixture root above instead of an entry in FIXTURES.
+    for name in (
+        "workspace_deps_are_ungated",
+        "retired_namespaces_are_visible",
+        "msrv_is_consistent",
+        "model_defaults_match_the_docs",
+    ):
+        covered.add(globals()[f"rule_{name}"])
+    uncovered = [rule.__name__ for rule in RULES if rule not in covered]
+    if uncovered:
+        print(f"\n  {len(uncovered)} rule(s) have NO falsifying fixture: {uncovered}")
+        failures += len(uncovered)
 
     print()
     if failures:

@@ -37,6 +37,11 @@ mod interface;
 pub mod migrate;
 mod resume_context;
 mod run_store;
+// Non-unix only: the reparse-point-rejecting twins of the rustix
+// descriptor primitives. See the module docs for what it does and does not
+// guarantee relative to the unix side.
+#[cfg(not(unix))]
+mod safe_fs;
 // re-exports
 #[doc(inline)]
 pub use self::context::{

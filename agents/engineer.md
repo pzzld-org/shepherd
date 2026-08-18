@@ -1,7 +1,7 @@
 ---
 name: engineer
 description: "Turn an approved seed into a complete, file-disjoint sprint plan and coordinate its critic gate. Use for plan authorship, not production implementation."
-model: opus[1m]
+model: inherit
 tools: [Read, NotebookRead, Glob, Grep, Bash, Write, Edit, Skill, ToolSearch, Agent, Workflow, SendMessage]
 dispatchable: true
 write_eligible: true

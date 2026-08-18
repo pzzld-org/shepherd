@@ -943,15 +943,33 @@ fn ensure_directory_tree(
     Ok(created)
 }
 
+/// The non-unix twin. Same contract as the unix walk, including the part that
+/// matters for rollback: the returned names are the directories THIS call
+/// created, so `init` only ever removes what it made.
 #[cfg(not(unix))]
 fn ensure_directory_tree(
-    _anchor: &Path,
-    _root: &str,
-    _children: &[&str],
+    anchor: &Path,
+    root_name: &str,
+    children: &[&str],
 ) -> Result<Vec<String>, CliError> {
-    Err(CliError::message(
-        "descriptor-safe bootstrap mutation is unavailable on this platform",
-    ))
+    use crate::safe_fs;
+
+    let bootstrap = |error: std::io::Error, what: &str| {
+        CliError::message(format!(
+            "cannot create bootstrap directory `{what}`: {error}"
+        ))
+    };
+    let mut created = Vec::new();
+    if safe_fs::ensure_directory(anchor, root_name).map_err(|e| bootstrap(e, root_name))? {
+        created.push(root_name.to_owned());
+    }
+    let root = anchor.join(root_name);
+    for child in children {
+        if safe_fs::ensure_directory(&root, child).map_err(|e| bootstrap(e, child))? {
+            created.push(format!("{root_name}/{child}"));
+        }
+    }
+    Ok(created)
 }
 
 #[cfg(unix)]
@@ -960,10 +978,19 @@ fn write_no_clobber(anchor: &Path, relative: &str, bytes: &[u8]) -> Result<bool,
 }
 
 #[cfg(not(unix))]
-fn write_no_clobber(_anchor: &Path, _relative: &str, _bytes: &[u8]) -> Result<bool, CliError> {
-    Err(CliError::message(
-        "descriptor-safe bootstrap mutation is unavailable on this platform",
-    ))
+fn write_no_clobber(anchor: &Path, relative: &str, bytes: &[u8]) -> Result<bool, CliError> {
+    let target = safe_relative_path(anchor, relative)?;
+    // The unix twin resolves the parent chain with `create = true`, so it makes
+    // the directories on the way. Without this, `config --confirm` on a fresh
+    // project failed with `cannot create '.shepherd/shepherd.toml': The system
+    // cannot find the path specified` -- the namespace did not exist yet.
+    if let Some(parent) = target.parent() {
+        std::fs::create_dir_all(parent).map_err(|error| {
+            CliError::message(format!("cannot create parent of `{relative}`: {error}"))
+        })?;
+    }
+    crate::safe_fs::write_no_clobber(&target, bytes)
+        .map_err(|error| CliError::message(format!("cannot create `{relative}`: {error}")))
 }
 
 #[cfg(unix)]
@@ -972,10 +999,10 @@ fn remove_file_no_follow(anchor: &Path, relative: &str) -> Result<(), CliError> 
 }
 
 #[cfg(not(unix))]
-fn remove_file_no_follow(_anchor: &Path, _relative: &str) -> Result<(), CliError> {
-    Err(CliError::message(
-        "descriptor-safe bootstrap mutation is unavailable on this platform",
-    ))
+fn remove_file_no_follow(anchor: &Path, relative: &str) -> Result<(), CliError> {
+    let target = safe_relative_path(anchor, relative)?;
+    crate::safe_fs::remove_file_nofollow(&target)
+        .map_err(|error| CliError::message(format!("cannot remove `{relative}`: {error}")))
 }
 
 #[cfg(unix)]
@@ -984,10 +1011,35 @@ fn remove_directory_no_follow(anchor: &Path, relative: &str) -> Result<(), CliEr
 }
 
 #[cfg(not(unix))]
-fn remove_directory_no_follow(_anchor: &Path, _relative: &str) -> Result<(), CliError> {
-    Err(CliError::message(
-        "descriptor-safe bootstrap mutation is unavailable on this platform",
-    ))
+fn remove_directory_no_follow(anchor: &Path, relative: &str) -> Result<(), CliError> {
+    let target = safe_relative_path(anchor, relative)?;
+    crate::safe_fs::remove_directory_nofollow(&target).map_err(|error| {
+        CliError::message(format!("cannot remove directory `{relative}`: {error}"))
+    })
+}
+
+/// Join `relative` onto `anchor` with the SAME validation the unix
+/// `parent_and_name` performs: no absolute paths, no `..`, no `.`, nothing but
+/// normal components. Rejecting here is what keeps a caller-supplied relative
+/// path from escaping the namespace on a platform with no descriptor anchor.
+#[cfg(not(unix))]
+fn safe_relative_path(anchor: &Path, relative: &str) -> Result<std::path::PathBuf, CliError> {
+    use std::path::Component;
+
+    let candidate = Path::new(relative);
+    if candidate.is_absolute()
+        || candidate
+            .components()
+            .any(|part| !matches!(part, Component::Normal(_)))
+    {
+        return Err(CliError::message(
+            "bootstrap file path is not a safe relative path",
+        ));
+    }
+    if candidate.file_name().is_none() {
+        return Err(CliError::message("bootstrap file path has no valid name"));
+    }
+    Ok(anchor.join(candidate))
 }
 
 /// The outcome of a descriptor-safe identity lookup, named outside the
@@ -996,13 +1048,6 @@ fn remove_directory_no_follow(_anchor: &Path, _relative: &str) -> Result<(), Cli
 /// The non-unix reader refuses before it can produce one, so no variant is
 /// constructed there — the type exists so the call sites type-check, which is
 /// the whole point of naming it outside the gated module.
-#[cfg_attr(
-    not(unix),
-    expect(
-        dead_code,
-        reason = "the non-unix reader refuses before constructing a lookup"
-    )
-)]
 enum IdentityLookup {
     Missing,
     NotRegular,
@@ -1030,15 +1075,31 @@ fn read_identity_nofollow(
     )
 }
 
+/// The non-unix twin. Absence and not-a-regular-file are VERDICTS, not errors:
+/// `doctor` reports them and `init`'s heal path acts on them, so collapsing
+/// either into an `Err` would turn a diagnosable state into a dead end.
 #[cfg(not(unix))]
 fn read_identity_nofollow(
-    _anchor: &Path,
-    _relative: &str,
-    _maximum: usize,
+    anchor: &Path,
+    relative: &str,
+    maximum: usize,
 ) -> Result<IdentityLookup, CliError> {
-    Err(CliError::message(
-        "descriptor-safe bootstrap mutation is unavailable on this platform",
-    ))
+    use std::io::ErrorKind;
+
+    let Ok(target) = safe_relative_path(anchor, relative) else {
+        return Ok(IdentityLookup::Missing);
+    };
+    match crate::safe_fs::read_regular_nofollow(&target, maximum as u64) {
+        Ok(bytes) => Ok(IdentityLookup::Regular(bytes)),
+        Err(error) if error.kind() == ErrorKind::NotFound => Ok(IdentityLookup::Missing),
+        Err(error) if error.kind() == ErrorKind::InvalidInput => Ok(IdentityLookup::NotRegular),
+        Err(error) if error.kind() == ErrorKind::InvalidData => Err(CliError::message(format!(
+            "`{relative}` exceeds {maximum}-byte limit"
+        ))),
+        Err(error) => Err(CliError::message(format!(
+            "cannot open `{relative}`: {error}"
+        ))),
+    }
 }
 
 #[cfg(unix)]

@@ -1,3 +1,5 @@
+mod support;
+
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -68,7 +70,7 @@ fn text(bytes: &[u8]) -> String {
 }
 
 fn cleanup(root: &Path) {
-    std::fs::remove_dir_all(root).expect("remove fixture");
+    support::remove_dir_all(root);
 }
 
 fn registry_path(root: &Path) -> PathBuf {
@@ -175,6 +177,10 @@ fn init_refuses_unconfirmed_mutation_then_materializes_only_layout_v5_roots() {
         "stderr={}",
         text(&repeated.stderr)
     );
+    // SQLite holds the database open until the connection drops, and Windows
+    // cannot remove a directory containing an open handle. On unix an open
+    // file unlinks happily, which is why this was never needed here.
+    drop(connection);
     cleanup(&root);
 }
 
@@ -542,7 +548,15 @@ fn doctor_reports_a_stale_shepherd_resolved_from_path() {
 
     let scratch = root.join("scratch-path");
     std::fs::create_dir_all(&scratch).expect("create scratch PATH directory");
-    let stale = scratch.join("shepherd");
+    // Windows does not execute an extensionless file, and `doctor` correctly
+    // resolves `shepherd.exe` there, so the fixture has to name the binary the
+    // way the platform would. Without this the scratch entry was invisible and
+    // `doctor` reported the real build instead.
+    let stale = scratch.join(if cfg!(windows) {
+        "shepherd.exe"
+    } else {
+        "shepherd"
+    });
     std::fs::copy(binary(), &stale).expect("copy the native binary into the scratch PATH entry");
     let ancient = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000_000);
     std::fs::OpenOptions::new()
@@ -552,13 +566,17 @@ fn doctor_reports_a_stale_shepherd_resolved_from_path() {
         .set_modified(ancient)
         .expect("back-date the stale binary's mtime");
 
-    let path = format!(
-        "{}:{}",
-        scratch.display(),
-        std::env::var("PATH").unwrap_or_default()
-    );
+    // `join_paths`, not a hard-coded `:`. Windows separates PATH entries with
+    // `;`, so the colon form produced ONE entry containing a colon and the
+    // scratch directory was never on PATH at all -- doctor then correctly
+    // reported the real build and the test read as a resolution bug.
+    let existing = std::env::var_os("PATH").unwrap_or_default();
+    let mut entries = vec![scratch.clone()];
+    entries.extend(std::env::split_paths(&existing));
+    let path = std::env::join_paths(entries).expect("join PATH entries");
+    let path = path.to_string_lossy().into_owned();
 
-    let json = invoke_with_path(&root, &["doctor", "--json"], &path);
+    let json = invoke_with_path(&root, &["doctor", "--json"], path.as_str());
     assert_eq!(json.status.code(), Some(0), "stderr={}", text(&json.stderr));
     let report: serde_json::Value = serde_json::from_slice(&json.stdout).expect("doctor JSON");
     assert_eq!(
@@ -584,7 +602,7 @@ fn doctor_reports_a_stale_shepherd_resolved_from_path() {
         "a binary back-dated to 2001 must read as stale relative to the freshly built test binary: {report}"
     );
 
-    let text_report = invoke_with_path(&root, &["doctor"], &path);
+    let text_report = invoke_with_path(&root, &["doctor"], path.as_str());
     assert_eq!(
         text_report.status.code(),
         Some(0),
@@ -617,7 +635,7 @@ fn doctor_reports_a_sensible_result_when_nothing_answers_shepherd_on_path() {
 
     let path = path_without_any_shepherd();
 
-    let json = invoke_with_path(&root, &["doctor", "--json"], &path);
+    let json = invoke_with_path(&root, &["doctor", "--json"], path.as_str());
     assert_eq!(json.status.code(), Some(0), "stderr={}", text(&json.stderr));
     let report: serde_json::Value = serde_json::from_slice(&json.stdout).expect("doctor JSON");
     assert_eq!(

@@ -1,5 +1,7 @@
 //! Real-binary tests for native signal and teammate routes.
 
+mod support;
+
 use std::{
     fs,
     io::Write,
@@ -114,7 +116,7 @@ fn signal_send_poll_json_and_consume_are_scoped_and_bounded() {
     assert_eq!(rows[0]["payload"], "{\"run\":\"v645\"}\n");
     let empty = invoke(&root, &["signal", "poll", "--as", "session-b", "--json"]);
     assert_eq!(empty.stdout, b"[]\n");
-    fs::remove_dir_all(root).expect("cleanup");
+    support::remove_dir_all(&root);
 }
 
 #[test]
@@ -139,7 +141,7 @@ fn signal_rejects_invalid_json_without_inserting_state() {
     let output = child.wait_with_output().expect("send");
     assert_eq!(output.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&output.stderr).contains("payload not valid JSON"));
-    fs::remove_dir_all(root).expect("cleanup");
+    support::remove_dir_all(&root);
 }
 
 #[test]
@@ -178,7 +180,11 @@ fn signal_rejects_oversized_payload_before_registry_insert() {
         .next()
         .expect("count row");
     assert_eq!(count, 0);
-    fs::remove_dir_all(root).expect("cleanup");
+    // Windows cannot remove a directory that still holds an open
+    // handle, and SQLite keeps one until the connection drops. On unix
+    // an open file unlinks happily, so this was never needed here.
+    drop(registry);
+    support::remove_dir_all(&root);
 }
 
 #[cfg(unix)]
@@ -194,7 +200,7 @@ fn signal_rejects_symlinked_registry_path() {
     let output = invoke(&root, &["signal", "poll", "--as", "session-b"]);
     assert_eq!(output.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&output.stderr).contains("symlink"));
-    fs::remove_dir_all(root).expect("cleanup");
+    support::remove_dir_all(&root);
 }
 
 #[test]
@@ -231,7 +237,7 @@ fn concurrent_signal_sends_preserve_distinct_registry_rows() {
         .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_owned())
         .collect::<Vec<_>>();
     assert_ne!(ids[0], ids[1]);
-    fs::remove_dir_all(root).expect("cleanup");
+    support::remove_dir_all(&root);
 }
 
 #[test]
@@ -257,7 +263,11 @@ fn teammate_state_status_and_liveness_share_typed_registry_state() {
     assert!(live.status.success(), "stderr={:?}", live.stderr);
     let rows: serde_json::Value = serde_json::from_slice(&live.stdout).expect("liveness json");
     assert_eq!(rows[0]["verdict"], "ok");
-    fs::remove_dir_all(root).expect("cleanup");
+    // Windows cannot remove a directory that still holds an open
+    // handle, and SQLite keeps one until the connection drops. On unix
+    // an open file unlinks happily, so this was never needed here.
+    drop(registry);
+    support::remove_dir_all(&root);
 }
 
 #[test]
@@ -268,5 +278,5 @@ fn unsupported_host_routes_fail_closed_without_shell_authority() {
         assert_eq!(output.status.code(), Some(1));
         assert!(String::from_utf8_lossy(&output.stderr).contains("unavailable"));
     }
-    fs::remove_dir_all(root).expect("cleanup");
+    support::remove_dir_all(&root);
 }

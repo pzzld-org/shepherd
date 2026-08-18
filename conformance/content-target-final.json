@@ -38,10 +38,10 @@
       ]
     },
     "conductor": {
-      "claude_model": "opus[1m]",
-      "codex_effort": "high",
-      "codex_profile": "reasoning-high",
-      "pi_model": "opus",
+      "claude_model": "inherit",
+      "codex_effort": null,
+      "codex_profile": null,
+      "pi_model": null,
       "pi_tools": [
         "read",
         "grep",
@@ -74,10 +74,10 @@
       ]
     },
     "discovery": {
-      "claude_model": "sonnet",
-      "codex_effort": "medium",
-      "codex_profile": "standard",
-      "pi_model": "sonnet",
+      "claude_model": "haiku",
+      "codex_effort": "low",
+      "codex_profile": "economy",
+      "pi_model": "haiku",
       "pi_tools": [
         "read",
         "grep",
@@ -92,10 +92,10 @@
       ]
     },
     "engineer": {
-      "claude_model": "opus[1m]",
-      "codex_effort": "high",
-      "codex_profile": "reasoning-high",
-      "pi_model": "opus",
+      "claude_model": "inherit",
+      "codex_effort": null,
+      "codex_profile": null,
+      "pi_model": null,
       "pi_tools": [
         "read",
         "grep",
@@ -187,20 +187,20 @@
           "e4e3764dc21530feea2349a05ebec68fa88facc2112268899790108499cc9d3f"
         ],
         "agents/conductor.md": [
-          3721,
-          "8a1cce1eb884d111470b8762d0b0228181d453c40ce76b1f8e2e8d297998f2fa"
+          3720,
+          "b49e310cc44ed9349369e27001215b350e480fc6a95c16f7fa4edc434794a307"
         ],
         "agents/critic.md": [
           2134,
           "fe41bb2f9cf66e63643b31a14626041662a890d8eee452fda940f0730736460d"
         ],
         "agents/discovery.md": [
-          2690,
-          "67ac5e6b1278cc5f9f1b53f808d94bd9af0442b49eb6a683edcb40d80f87e5a7"
+          2689,
+          "af6f877b9b9806ca17b401cb6f5a8abe0601a8d69416e2ab75a67653a00757e8"
         ],
         "agents/engineer.md": [
-          2793,
-          "08b3db211ac059cefacaf13a36f9ca6e656c1cc4c05a1752819a459f09677036"
+          2792,
+          "963a45b3b9d05d341cfe1ed2b08224126aecb6411d5772902e6d62216c4c0515"
         ],
         "agents/planter.md": [
           3077,
@@ -227,8 +227,8 @@
           "8aad1b251b255e15f00437004caf49ded0295bb85a1057ef3a01790b43db392d"
         ],
         "skills/harness/SKILL.md": [
-          1995,
-          "f79079b2cd2edd8ce3484af2b209b9373703a24437880bae755301e46a999658"
+          2009,
+          "dae4937268519c909142c15656b2ca19e411b13ae9d9d9bf6721bcc0b7abf1ab"
         ],
         "skills/motivation/SKILL.md": [
           2315,
@@ -251,13 +251,13 @@
           "464768041f6f32bc14cec18ba0d428e0a60b86ba45f652e1cb0cd3956245bf81"
         ]
       },
-      "tree_digest": "49df9c9a2d44756ae639f17f1f10275d157b1cf5145ec5dd5ee5f0ef7759b0b6"
+      "tree_digest": "4caee5f76169908d4593f5217a4c1bde7929d735b87d1859ff3826f1afa80512"
     },
     "codex": {
       "files": {
         "shepherd.codex.toml": [
-          675,
-          "e6c225791211900da52caf036b67e2e876bfdb016684dbc72bfbbd8bd5085faa"
+          645,
+          "bc41c0b79ae67e1f8203b6082752c0f96a536e958067283935e5a0d78dd78da7"
         ],
         "skills/adaptation/SKILL.md": [
           2700,
@@ -292,7 +292,7 @@
           "464768041f6f32bc14cec18ba0d428e0a60b86ba45f652e1cb0cd3956245bf81"
         ]
       },
-      "tree_digest": "0eb297b3c0f7774ca8057c07c848adbcadbdf45275ebf958050de159ef8a1e25"
+      "tree_digest": "693d70a523a491b43ec0294db5f3272064217f333791d1fded54357d3a12e5e1"
     },
     "pi": {
       "files": {

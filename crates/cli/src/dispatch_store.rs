@@ -3,12 +3,14 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use std::time::Instant;
+
 #[cfg(unix)]
 use std::{
     fs::File,
     io::{Read, Write},
     sync::atomic::{AtomicU64, Ordering},
-    time::{Instant, SystemTime, UNIX_EPOCH},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use shepherd::dispatch::{
@@ -16,7 +18,6 @@ use shepherd::dispatch::{
     NativeIdentity, RootSessionBinding, RunId, SessionId, StopRequest, resolve_native_identity,
 };
 
-#[cfg(unix)]
 use shepherd::RunState;
 
 pub type DispatchStoreResult<T> = core::result::Result<T, DispatchStoreError>;
@@ -57,12 +58,9 @@ pub enum DispatchStoreError {
     Domain(#[from] DispatchError),
     #[error(transparent)]
     Identity(#[from] IdentityError),
-    #[error("race-safe dispatch persistence is unavailable on this platform")]
-    UnsupportedPlatform,
 }
 
 impl DispatchStoreError {
-    #[cfg(unix)]
     fn io(operation: &'static str, path: PathBuf, source: impl Into<std::io::Error>) -> Self {
         Self::Io {
             operation,
@@ -200,7 +198,6 @@ impl DispatchStore {
         platform::resume(self, &active, source_agent_id, input)
     }
 
-    #[cfg(unix)]
     fn record_path(&self, run: &RunId, agent_id: &AgentId) -> PathBuf {
         self.runs_root
             .join(run.as_str())
@@ -208,7 +205,6 @@ impl DispatchStore {
             .join(format!("{}.json", agent_id.as_str()))
     }
 
-    #[cfg(unix)]
     fn root_binding_path(&self, run: &RunId, session_id: &SessionId) -> PathBuf {
         self.runs_root
             .join(run.as_str())
@@ -217,7 +213,6 @@ impl DispatchStore {
     }
 }
 
-#[cfg(unix)]
 fn root_binding_name(session_id: &SessionId) -> String {
     format!(".root-session.{}.json", session_id.as_str())
 }
@@ -869,62 +864,422 @@ mod platform {
 
 #[cfg(not(unix))]
 mod platform {
-    use super::*;
+    //! The non-unix twin of the descriptor-anchored dispatch ledger.
+    //!
+    //! Every public function performs the SAME sequence as the unix module --
+    //! validate the runs root, resolve the run directory, resolve the dispatch
+    //! directory, take the exclusive dispatch lock, then operate -- and returns
+    //! the SAME error variants, because callers and the hook fixtures branch on
+    //! them. `AlreadyExists` in particular is the fact that stops a second
+    //! `SessionStart` from silently overwriting a live root binding.
+    //!
+    //! The anchoring differs, and only the anchoring: paths with per-component
+    //! link rejection instead of a chain of directory descriptors. See
+    //! `crate::safe_fs` for exactly what that does and does not guarantee.
 
-    pub(super) fn resolve_active_run(_: &DispatchStore) -> DispatchStoreResult<RunId> {
-        Err(DispatchStoreError::UnsupportedPlatform)
+    use std::fs::{File, TryLockError};
+
+    use super::*;
+    use crate::safe_fs;
+
+    const MAX_RECORD_BYTES: u64 = 1_048_576;
+    const LOCK_RETRY_INTERVAL: Duration = Duration::from_millis(10);
+
+    pub(super) fn resolve_active_run(store: &DispatchStore) -> DispatchStoreResult<RunId> {
+        reject_parent_components(&store.runs_root)?;
+        let mut names = Vec::new();
+        let entries = std::fs::read_dir(&store.runs_root).map_err(|source| {
+            DispatchStoreError::io("read runs directory", store.runs_root.clone(), source)
+        })?;
+        for entry in entries {
+            let entry = entry.map_err(|source| {
+                DispatchStoreError::io("read runs directory", store.runs_root.clone(), source)
+            })?;
+            let name = entry.file_name();
+            let name = name
+                .to_str()
+                .ok_or_else(|| DispatchStoreError::UnsafePath {
+                    path: store.runs_root.join("<non-utf8>"),
+                })?;
+            if name == "." || name == ".." {
+                continue;
+            }
+            if let Ok(run) = RunId::new(name) {
+                names.push(run);
+            }
+        }
+        names.sort();
+        names.dedup();
+
+        let mut active = Vec::new();
+        for run in names {
+            let state = read_run_document(store, &run)?;
+            if state.status == "executing" {
+                active.push(run);
+            }
+        }
+        match active.len() {
+            0 => Err(DispatchStoreError::NoActiveRun),
+            1 => Ok(active.remove(0)),
+            _ => Err(DispatchStoreError::AmbiguousActiveRuns { runs: active }),
+        }
     }
 
-    pub(super) fn publish(_: &DispatchStore, _: &DispatchRecord) -> DispatchStoreResult<()> {
-        Err(DispatchStoreError::UnsupportedPlatform)
+    pub(super) fn publish(
+        store: &DispatchStore,
+        record: &DispatchRecord,
+    ) -> DispatchStoreResult<()> {
+        let dispatch = dispatch_dir(store, &record.run, true)?;
+        let _lock = acquire_lock(store, &record.run)?;
+        let bytes = encode_record(record)?;
+        publish_no_clobber(&dispatch.join(record_name(&record.agent_id)), &bytes)?;
+        // Round-trip before reporting success. A record that cannot be read
+        // back is a record the next hook invocation refuses, and finding that
+        // out here names the writer instead of the reader.
+        let loaded = read_record(store, &record.run, &record.agent_id)?;
+        if loaded != *record {
+            return Err(unknown_record(
+                &record.run,
+                &record.agent_id,
+                "published bytes did not round-trip",
+            ));
+        }
+        Ok(())
     }
 
     pub(super) fn publish_root_binding(
-        _: &DispatchStore,
-        _: &RootSessionBinding,
+        store: &DispatchStore,
+        binding: &RootSessionBinding,
     ) -> DispatchStoreResult<()> {
-        Err(DispatchStoreError::UnsupportedPlatform)
+        let dispatch = dispatch_dir(store, &binding.run, true)?;
+        let _lock = acquire_lock(store, &binding.run)?;
+        let bytes = encode_document(binding)?;
+        publish_no_clobber(
+            &dispatch.join(root_binding_name(&binding.session_id)),
+            &bytes,
+        )
     }
 
     pub(super) fn load_root_binding(
-        _: &DispatchStore,
-        _: &RunId,
-        _: &SessionId,
+        store: &DispatchStore,
+        run: &RunId,
+        session_id: &SessionId,
     ) -> DispatchStoreResult<RootSessionBinding> {
-        Err(DispatchStoreError::UnsupportedPlatform)
+        dispatch_dir(store, run, false)?;
+        let _lock = acquire_lock(store, run)?;
+        let path = store.root_binding_path(run, session_id);
+        let bytes = read_document(&path, "read root binding")?;
+        let binding: RootSessionBinding = serde_json::from_slice(&bytes).map_err(|error| {
+            DispatchStoreError::Domain(DispatchError::InvalidRecord(error.to_string()))
+        })?;
+        binding.validate()?;
+        if &binding.run != run || &binding.session_id != session_id {
+            return Err(DispatchStoreError::Domain(DispatchError::InvalidRecord(
+                "root binding identity does not match its canonical path".into(),
+            )));
+        }
+        Ok(binding)
     }
 
     pub(super) fn load(
-        _: &DispatchStore,
-        _: &RunId,
-        _: &AgentId,
+        store: &DispatchStore,
+        run: &RunId,
+        agent_id: &AgentId,
     ) -> DispatchStoreResult<DispatchRecord> {
-        Err(DispatchStoreError::UnsupportedPlatform)
+        dispatch_dir(store, run, false).map_err(|error| {
+            if is_not_found(&error) {
+                unknown_record(run, agent_id, "dispatch directory is absent")
+            } else {
+                error
+            }
+        })?;
+        let _lock = acquire_lock(store, run)?;
+        read_record(store, run, agent_id)
     }
 
     pub(super) fn stop(
-        _: &DispatchStore,
-        _: &RunId,
-        _: StopRequest,
+        store: &DispatchStore,
+        run: &RunId,
+        request: StopRequest,
     ) -> DispatchStoreResult<DispatchRecord> {
-        Err(DispatchStoreError::UnsupportedPlatform)
+        dispatch_dir(store, run, false)?;
+        let _lock = acquire_lock(store, run)?;
+        let mut record = read_record(store, run, &request.agent_id)?;
+        record.stop(request)?;
+        record.validate_loaded()?;
+        replace_record(store, run, &record)?;
+        Ok(record)
     }
 
     pub(super) fn stop_verified(
-        _: &DispatchStore,
-        _: &RunId,
-        _: &NativeIdentity,
-        _: StopRequest,
+        store: &DispatchStore,
+        run: &RunId,
+        native: &NativeIdentity,
+        request: StopRequest,
     ) -> DispatchStoreResult<DispatchRecord> {
-        Err(DispatchStoreError::UnsupportedPlatform)
+        dispatch_dir(store, run, false)?;
+        let _lock = acquire_lock(store, run)?;
+        let mut record = read_record(store, run, &request.agent_id)?;
+        resolve_native_identity(Some(&record), native)?;
+        record.stop(request)?;
+        record.validate_loaded()?;
+        replace_record(store, run, &record)?;
+        Ok(record)
     }
 
     pub(super) fn resume(
-        _: &DispatchStore,
-        _: &RunId,
-        _: &AgentId,
-        _: DispatchStart,
+        store: &DispatchStore,
+        run: &RunId,
+        source_agent_id: &AgentId,
+        input: DispatchStart,
     ) -> DispatchStoreResult<DispatchRecord> {
-        Err(DispatchStoreError::UnsupportedPlatform)
+        let dispatch = dispatch_dir(store, run, false)?;
+        let _lock = acquire_lock(store, run)?;
+        let source = read_record(store, run, source_agent_id)?;
+        let resumed = source.resume(input)?;
+        let bytes = encode_record(&resumed)?;
+        publish_no_clobber(&dispatch.join(record_name(&resumed.agent_id)), &bytes)?;
+        Ok(resumed)
+    }
+
+    /// Resolve `<runs_root>/<run>/dispatch`, creating it only when asked.
+    ///
+    /// `create` is false on every read path, so a caller expecting an existing
+    /// ledger gets `NotFound` instead of quietly manufacturing an empty
+    /// directory that then reports "record is absent".
+    fn dispatch_dir(
+        store: &DispatchStore,
+        run: &RunId,
+        create: bool,
+    ) -> DispatchStoreResult<PathBuf> {
+        reject_parent_components(&store.runs_root)?;
+        let dispatch = store.runs_root.join(run.as_str()).join("dispatch");
+        if create {
+            std::fs::create_dir_all(&dispatch).map_err(|source| {
+                DispatchStoreError::io("create dispatch directory", dispatch.clone(), source)
+            })?;
+        }
+        safe_fs::reject_link_components(&dispatch).map_err(|_| DispatchStoreError::UnsafePath {
+            path: dispatch.clone(),
+        })?;
+        if !create {
+            let metadata = std::fs::symlink_metadata(&dispatch).map_err(|source| {
+                DispatchStoreError::io("open dispatch directory", dispatch.clone(), source)
+            })?;
+            if !metadata.is_dir() {
+                return Err(DispatchStoreError::UnsafePath { path: dispatch });
+            }
+        }
+        Ok(dispatch)
+    }
+
+    fn read_run_document(store: &DispatchStore, run: &RunId) -> DispatchStoreResult<RunState> {
+        let path = store.runs_root.join(run.as_str()).join("run.json");
+        let bytes = read_document(&path, "read run document")?;
+        let state: RunState = serde_json::from_slice(&bytes).map_err(|error| {
+            DispatchStoreError::InvalidRunDocument {
+                path: path.clone(),
+                reason: error.to_string(),
+            }
+        })?;
+        if state.run != run.as_str()
+            || state.schema_version != 1
+            || !matches!(
+                state.status.as_str(),
+                "planted" | "planned" | "executing" | "closing" | "closed"
+            )
+        {
+            return Err(DispatchStoreError::InvalidRunDocument {
+                path,
+                reason: "run identity, schema, or status is invalid".into(),
+            });
+        }
+        Ok(state)
+    }
+
+    fn read_record(
+        store: &DispatchStore,
+        run: &RunId,
+        agent_id: &AgentId,
+    ) -> DispatchStoreResult<DispatchRecord> {
+        let path = store.record_path(run, agent_id);
+        let bytes = match read_document(&path, "read dispatch record") {
+            Ok(bytes) => bytes,
+            Err(error) if is_not_found(&error) => {
+                return Err(unknown_record(run, agent_id, "record is absent"));
+            }
+            Err(error @ DispatchStoreError::UnsafePath { .. }) => return Err(error),
+            Err(error) => return Err(unknown_record(run, agent_id, error.to_string())),
+        };
+        let record: DispatchRecord = serde_json::from_slice(&bytes)
+            .map_err(|error| unknown_record(run, agent_id, error.to_string()))?;
+        record
+            .validate_loaded()
+            .map_err(|error| unknown_record(run, agent_id, error.to_string()))?;
+        if &record.agent_id != agent_id || &record.run != run {
+            return Err(unknown_record(
+                run,
+                agent_id,
+                "record identity does not match its canonical path",
+            ));
+        }
+        Ok(record)
+    }
+
+    fn read_document(path: &Path, operation: &'static str) -> DispatchStoreResult<Vec<u8>> {
+        safe_fs::read_regular_nofollow(path, MAX_RECORD_BYTES).map_err(|source| {
+            if source.kind() == std::io::ErrorKind::InvalidInput {
+                DispatchStoreError::UnsafePath {
+                    path: path.to_path_buf(),
+                }
+            } else {
+                DispatchStoreError::io(operation, path.to_path_buf(), source)
+            }
+        })
+    }
+
+    /// The advisory lock is `std::fs::File::try_lock`: `LockFileEx` on Windows,
+    /// `flock` on unix. The unix twin makes the same call, so the
+    /// mutual-exclusion contract is genuinely shared, not approximated.
+    fn acquire_lock(store: &DispatchStore, run: &RunId) -> DispatchStoreResult<DispatchLock> {
+        let path = store.runs_root.join(run.as_str()).join("dispatch.lock");
+        let lock_path = store
+            .runs_root
+            .join(run.as_str())
+            .join("dispatch")
+            .join(".dispatch.lock");
+        if safe_fs::is_link(&lock_path).unwrap_or(true) {
+            return Err(DispatchStoreError::UnsafePath { path: lock_path });
+        }
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(&lock_path)
+            .map_err(|source| DispatchStoreError::io("open dispatch lock", path.clone(), source))?;
+        let started = Instant::now();
+        loop {
+            match file.try_lock() {
+                Ok(()) => return Ok(DispatchLock(file)),
+                Err(TryLockError::WouldBlock) if started.elapsed() < store.timeout => {
+                    let remaining = store.timeout.saturating_sub(started.elapsed());
+                    std::thread::sleep(LOCK_RETRY_INTERVAL.min(remaining));
+                }
+                Err(TryLockError::WouldBlock) => {
+                    return Err(DispatchStoreError::LockTimeout {
+                        path,
+                        timeout: store.timeout,
+                    });
+                }
+                Err(TryLockError::Error(source)) => {
+                    return Err(DispatchStoreError::io(
+                        "acquire dispatch lock",
+                        path,
+                        source,
+                    ));
+                }
+            }
+        }
+    }
+
+    /// Refusing to replace is the point: a second publication for a live
+    /// binding must be reported, never silently overwritten.
+    fn publish_no_clobber(path: &Path, bytes: &[u8]) -> DispatchStoreResult<()> {
+        match safe_fs::write_no_clobber(path, bytes) {
+            Ok(true) => Ok(()),
+            Ok(false) => Err(DispatchStoreError::AlreadyExists {
+                path: path.to_path_buf(),
+            }),
+            Err(source) if source.kind() == std::io::ErrorKind::InvalidInput => {
+                Err(DispatchStoreError::UnsafePath {
+                    path: path.to_path_buf(),
+                })
+            }
+            Err(source) => Err(DispatchStoreError::io(
+                "publish dispatch record",
+                path.to_path_buf(),
+                source,
+            )),
+        }
+    }
+
+    fn replace_record(
+        store: &DispatchStore,
+        run: &RunId,
+        record: &DispatchRecord,
+    ) -> DispatchStoreResult<()> {
+        let path = store.record_path(run, &record.agent_id);
+        let bytes = encode_record(record)?;
+        safe_fs::replace_atomic(&path, &bytes).map_err(|source| {
+            DispatchStoreError::io("replace dispatch record", path.clone(), source)
+        })
+    }
+
+    fn encode_record(record: &DispatchRecord) -> DispatchStoreResult<Vec<u8>> {
+        encode_document(record)
+    }
+
+    fn encode_document(document: &impl serde::Serialize) -> DispatchStoreResult<Vec<u8>> {
+        let mut bytes = serde_json::to_vec(document).map_err(|error| {
+            DispatchStoreError::Domain(DispatchError::InvalidRecord(error.to_string()))
+        })?;
+        bytes.push(b'\n');
+        let max = usize::try_from(MAX_RECORD_BYTES).expect("record limit fits usize");
+        if bytes.len() > max {
+            return Err(DispatchStoreError::RecordTooLarge {
+                size: bytes.len(),
+                max,
+            });
+        }
+        Ok(bytes)
+    }
+
+    fn record_name(agent_id: &AgentId) -> String {
+        format!("{}.json", agent_id.as_str())
+    }
+
+    fn unknown_record(
+        run: &RunId,
+        agent_id: &AgentId,
+        reason: impl Into<String>,
+    ) -> DispatchStoreError {
+        DispatchStoreError::UnknownRecord {
+            run: run.clone(),
+            agent_id: agent_id.clone(),
+            reason: reason.into(),
+        }
+    }
+
+    fn reject_parent_components(path: &Path) -> DispatchStoreResult<()> {
+        if !path.is_absolute()
+            || path.components().any(|component| {
+                matches!(
+                    component,
+                    std::path::Component::ParentDir | std::path::Component::CurDir
+                )
+            })
+        {
+            return Err(DispatchStoreError::UnsafePath {
+                path: path.to_path_buf(),
+            });
+        }
+        Ok(())
+    }
+
+    fn is_not_found(error: &DispatchStoreError) -> bool {
+        matches!(
+            error,
+            DispatchStoreError::Io { source, .. }
+                if source.kind() == std::io::ErrorKind::NotFound
+        )
+    }
+
+    struct DispatchLock(File);
+
+    impl Drop for DispatchLock {
+        fn drop(&mut self) {
+            let _ = self.0.unlock();
+        }
     }
 }

@@ -45,6 +45,7 @@ class CheckerFixture:
         self,
         workflow: str,
         lock: dict[str, object] | None = None,
+        workspace_version: str | None = None,
     ) -> None:
         self._temporary_directory = tempfile.TemporaryDirectory(
             prefix="shepherd-action-pins."
@@ -57,6 +58,10 @@ class CheckerFixture:
             json.dumps(lock or canonical_lock(), indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
+        if workspace_version is not None:
+            (self.root / "Cargo.toml").write_text(
+                f'[workspace.package]\nversion = "{workspace_version}"\n', encoding="utf-8"
+            )
 
     def close(self) -> None:
         self._temporary_directory.cleanup()
@@ -82,8 +87,9 @@ class GitHubActionsPinCheckerTests(unittest.TestCase):
         self,
         workflow: str,
         lock: dict[str, object] | None = None,
+        workspace_version: str | None = None,
     ) -> subprocess.CompletedProcess[str]:
-        fixture = CheckerFixture(workflow, lock)
+        fixture = CheckerFixture(workflow, lock, workspace_version)
         self.addCleanup(fixture.close)
         return fixture.run()
 
@@ -92,8 +98,9 @@ class GitHubActionsPinCheckerTests(unittest.TestCase):
         workflow: str,
         expected: str,
         lock: dict[str, object] | None = None,
+        workspace_version: str | None = None,
     ) -> None:
-        result = self.run_fixture(workflow, lock)
+        result = self.run_fixture(workflow, lock, workspace_version)
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
         self.assertIn(expected, result.stderr)
 
@@ -125,6 +132,35 @@ class GitHubActionsPinCheckerTests(unittest.TestCase):
 
     def test_comment_is_optional(self) -> None:
         result = self.run_fixture("jobs:\n  test:\n    uses: actions/checkout@v7\n")
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_workflow_pinning_the_workspace_version_is_rejected(self) -> None:
+        """A version literal in a workflow makes the file a release authority.
+
+        `version-bump.py` then rewrites it every release, and the gitflow
+        handoff cannot push the bumped branch: GITHUB_TOKEN has no `workflows`
+        scope to grant, so GitHub refuses any push that updates a workflow. The
+        release automation ran correctly all the way to `git push` and died
+        there. Derive the version from Cargo.toml in the step instead.
+        """
+        # 9.9.9 is synthetic on purpose. A fixture pinned to the real release
+        # would make this file a version authority, which is the exact coupling
+        # the rule under test exists to prevent.
+        self.assert_rejected(
+            "jobs:\n  test:\n    uses: actions/checkout@v7 # v7.0.1\n"
+            "    env:\n      PINNED: 'engine@9.9.9'\n",
+            "workflow hard-codes the workspace version `9.9.9`",
+            workspace_version="9.9.9",
+        )
+
+    def test_workflow_deriving_the_version_is_accepted(self) -> None:
+        """The rule must not reject a workflow that reads Cargo.toml."""
+        result = self.run_fixture(
+            "jobs:\n  test:\n    uses: actions/checkout@v7 # v7.0.1\n"
+            "    env:\n      PINNED: 'engine@${VERSION}'\n",
+            workspace_version="9.9.9",
+        )
 
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 

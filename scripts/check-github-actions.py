@@ -397,6 +397,8 @@ def check_workflows(
                     )
                 )
 
+    check_no_workflow_pins_the_workspace_version(root, paths, diagnostics)
+
     for repository in sorted(set(records) - used_repositories):
         diagnostics.append(
             Diagnostic(
@@ -406,6 +408,66 @@ def check_workflows(
             )
         )
     return len(paths), used_repositories, external_uses
+
+
+def workspace_version(root: Path) -> str | None:
+    """The one version every release authority is derived from."""
+    manifest = root / "Cargo.toml"
+    try:
+        import tomllib
+
+        return tomllib.loads(manifest.read_text(encoding="utf-8"))["workspace"]["package"][
+            "version"
+        ]
+    except (OSError, UnicodeError, KeyError, TypeError, ValueError):
+        return None
+
+
+def check_no_workflow_pins_the_workspace_version(
+    root: Path,
+    paths: list[Path],
+    diagnostics: list[Diagnostic],
+) -> None:
+    """No workflow file may hard-code the workspace version.
+
+    A version literal in a workflow makes that file a `version-bump.py`
+    authority, so every release rewrites it -- and the gitflow handoff then
+    cannot push the bumped branch, because GITHUB_TOKEN has no `workflows`
+    scope to grant. It is not a permission that was forgotten; it is not in
+    the permission vocabulary at all. The release automation ran correctly all
+    the way to `git push` and died there. Derive the version from Cargo.toml in
+    the step instead, the way rust-wasm.yml's WIT assertion does.
+    """
+    manifest = root / "Cargo.toml"
+    if not manifest.is_file():
+        # A fixture root with no workspace has no workspace version to pin, so
+        # the rule is vacuous rather than violated. It is not inert: in this
+        # repository Cargo.toml always exists, and check-workspace.sh fails hard
+        # if its version is missing.
+        return
+    version = workspace_version(root)
+    if version is None:
+        diagnostics.append(
+            Diagnostic("Cargo.toml", 0, "cannot read workspace.package.version")
+        )
+        return
+    needle = re.compile(rf"(?<![0-9.]){re.escape(version)}(?![0-9.])")
+    for path in paths:
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except (OSError, UnicodeError):
+            continue
+        for line_number, line in enumerate(lines, 1):
+            if needle.search(line):
+                diagnostics.append(
+                    Diagnostic(
+                        str(path.relative_to(root)),
+                        line_number,
+                        f"workflow hard-codes the workspace version `{version}`; derive it "
+                        f"from Cargo.toml instead -- a version literal here makes this file a "
+                        f"release authority, and GITHUB_TOKEN cannot push a workflow update",
+                    )
+                )
 
 
 def plural(count: int, singular: str, plural_form: str | None = None) -> str:

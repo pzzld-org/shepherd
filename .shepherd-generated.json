@@ -1,7 +1,7 @@
 {
   "schema": "shepherd.compiled-tree/2",
   "target": "claude",
-  "tree_digest": "49df9c9a2d44756ae639f17f1f10275d157b1cf5145ec5dd5ee5f0ef7759b0b6",
+  "tree_digest": "4caee5f76169908d4593f5217a4c1bde7929d735b87d1859ff3826f1afa80512",
   "tokenizer_version": "shepherd-prompt-v1-uax29",
   "roles": [
     {
@@ -71,7 +71,7 @@
       "role": "conductor",
       "carrier_path": "agents/conductor.md",
       "description": "Execute one plan lane through disjoint implementation, review, redo, and handoff waves. Use when a lane needs a durable lead that may dispatch implementers.",
-      "model": "opus[1m]",
+      "model": "inherit",
       "profile": null,
       "reasoning_effort": null,
       "tools": [
@@ -140,7 +140,7 @@
       "role": "discovery",
       "carrier_path": "agents/discovery.md",
       "description": "Research external primary sources and produce one bounded run-scoped report. Use for documentation, release notes, web evidence, or capability discovery.",
-      "model": "sonnet",
+      "model": "haiku",
       "profile": null,
       "reasoning_effort": null,
       "tools": [
@@ -173,7 +173,7 @@
       "role": "engineer",
       "carrier_path": "agents/engineer.md",
       "description": "Turn an approved seed into a complete, file-disjoint sprint plan and coordinate its critic gate. Use for plan authorship, not production implementation.",
-      "model": "opus[1m]",
+      "model": "inherit",
       "profile": null,
       "reasoning_effort": null,
       "tools": [
@@ -352,12 +352,12 @@
       "path": "agents/conductor.md",
       "kind": "role",
       "source_path": "content/roles/conductor.md",
-      "source_sha256": "475ec4250bd80078b984787e773b9decf537cd50db30c603427be4a733737826",
-      "content_sha256": "8a1cce1eb884d111470b8762d0b0228181d453c40ce76b1f8e2e8d297998f2fa",
+      "source_sha256": "2509d531d601d9a233a372c4a4bdaacca790ed7014c0f98033f97c34cab8abf4",
+      "content_sha256": "b49e310cc44ed9349369e27001215b350e480fc6a95c16f7fa4edc434794a307",
       "lines": 65,
-      "words": 560,
-      "utf8_bytes": 3721,
-      "prompt_tokens": 1130
+      "words": 559,
+      "utf8_bytes": 3720,
+      "prompt_tokens": 1128
     },
     {
       "path": "agents/critic.md",
@@ -374,23 +374,23 @@
       "path": "agents/discovery.md",
       "kind": "role",
       "source_path": "content/roles/discovery.md",
-      "source_sha256": "8636a9f0cc5d6c41b33b3de7931a51b5465859ab6654b2b4313e0ae87e3b1ac8",
-      "content_sha256": "67ac5e6b1278cc5f9f1b53f808d94bd9af0442b49eb6a683edcb40d80f87e5a7",
+      "source_sha256": "637d7c57eba9c6d30aef0df8362bdff47d894e348ca63ee0b51a4d65abaa2bd8",
+      "content_sha256": "af6f877b9b9806ca17b401cb6f5a8abe0601a8d69416e2ab75a67653a00757e8",
       "lines": 53,
       "words": 386,
-      "utf8_bytes": 2690,
+      "utf8_bytes": 2689,
       "prompt_tokens": 873
     },
     {
       "path": "agents/engineer.md",
       "kind": "role",
       "source_path": "content/roles/engineer.md",
-      "source_sha256": "344c5fdd59e41b12d1b13e789714f90b144c240b7be7cbae81ae390b05c3c9f0",
-      "content_sha256": "08b3db211ac059cefacaf13a36f9ca6e656c1cc4c05a1752819a459f09677036",
+      "source_sha256": "864776a939eac911b9e090bb9e25c88ea5ccb3368e4e0479e6a3fc40af3c8e20",
+      "content_sha256": "963a45b3b9d05d341cfe1ed2b08224126aecb6411d5772902e6d62216c4c0515",
       "lines": 55,
-      "words": 413,
-      "utf8_bytes": 2793,
-      "prompt_tokens": 861
+      "words": 412,
+      "utf8_bytes": 2792,
+      "prompt_tokens": 859
     },
     {
       "path": "agents/planter.md",
@@ -407,7 +407,7 @@
       "path": "agents/shepherd.md",
       "kind": "role",
       "source_path": "content/roles/shepherd.md",
-      "source_sha256": "4bc5d2ba771d963c806127eab8fa0fbed66a025c3a15f148b19721f843f59d1a",
+      "source_sha256": "275d6eaf3143429f145cec7d26311cc74b7aaa3e064ceed2130594a03095553b",
       "content_sha256": "28cf35929558d74240096c30c9fc684c49399e21acf37b3a4bfeeef8da019e49",
       "lines": 60,
       "words": 536,
@@ -462,12 +462,12 @@
       "path": "skills/harness/SKILL.md",
       "kind": "skill",
       "source_path": "content/skills/harness/SKILL.md",
-      "source_sha256": "abda9a92ee553a24c10d80bd5b15f78e307f18fd9a39177fc75a7edd1a7aa168",
-      "content_sha256": "f79079b2cd2edd8ce3484af2b209b9373703a24437880bae755301e46a999658",
+      "source_sha256": "09f99616a52dcffd4748dbfe0e6a06070cf1441a438ba14272cce699449f9952",
+      "content_sha256": "dae4937268519c909142c15656b2ca19e411b13ae9d9d9bf6721bcc0b7abf1ab",
       "lines": 29,
       "words": 282,
-      "utf8_bytes": 1995,
-      "prompt_tokens": 621
+      "utf8_bytes": 2009,
+      "prompt_tokens": 626
     },
     {
       "path": "skills/motivation/SKILL.md",

@@ -21,6 +21,26 @@ runner = "wasmtime --dir=. --dir=/tmp"
 [target.wasm32-wasip2]
 runner = "wasmtime --dir=. --dir=/tmp"
 
+# --- Windows cross-check ------------------------------------------------ #
+#
+# The CLI has a `#[cfg(windows)]` half that a unix machine never type-checks,
+# which is how five stub families and four dead items reached a shipped release
+# unobserved. `cargo check --target x86_64-pc-windows-gnu` type-checks that half
+# locally in seconds instead of a six-minute CI round trip.
+#
+# gnu rather than msvc because the MSVC target needs a C compiler that can
+# target MSVC for libsqlite3-sys; mingw-w64 supplies one for gnu on any host:
+#   brew install mingw-w64   (or apt install mingw-w64)
+#
+# The SHIPPED Windows binary is still x86_64-pc-windows-msvc, built in CI. This
+# target exists to type-check, not to release.
+[target.x86_64-pc-windows-gnu]
+linker = "x86_64-w64-mingw32-gcc"
+
+[env]
+CC_x86_64_pc_windows_gnu = "x86_64-w64-mingw32-gcc"
+AR_x86_64_pc_windows_gnu = "x86_64-w64-mingw32-ar"
+
 # --- Aliases ------------------------------------------------------------ #
 #
 # The full gate suite, under one name, identical locally and in the pre-push

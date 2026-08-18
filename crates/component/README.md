@@ -19,7 +19,7 @@ filesystem and process work remains in native adapters.
 
 ## Dispatch contract
 
-`fl03:shepherd@6.4.9` exports one typed dispatch surface in addition to the
+`fl03:shepherd@6.5.0` exports one typed dispatch surface in addition to the
 canonical compiler and guard operations:
 
 - `normalize-identity` accepts a typed `identity-input` and returns a

@@ -3,7 +3,14 @@
 // an argument so generated JS, core Wasm, and declarations never enter git.
 
 import assert from "node:assert/strict";
-import { pathToFileURL } from "node:url";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+const oracle = JSON.parse(
+  readFileSync(join(dirname(fileURLToPath(import.meta.url)), "content-target-final.json"), "utf8"),
+);
+assert.equal(oracle.schema, "shepherd.content-target-final/1");
 
 const modulePath = process.argv[2];
 if (!modulePath) throw new Error("usage: test-component-node.mjs <transpiled-component.js>");
@@ -20,13 +27,13 @@ for (const target of ["claude", "codex", "pi"]) {
   assert.equal(canonical.roles.length, 9);
   assert.ok(canonical.files.length > 0);
   assert.ok(canonical.files.every((file) => file.sourceSha256.length === 64));
-  const expected = {
-    claude: ["49df9c9a2d44756ae639f17f1f10275d157b1cf5145ec5dd5ee5f0ef7759b0b6", 18],
-    codex: ["0eb297b3c0f7774ca8057c07c848adbcadbdf45275ebf958050de159ef8a1e25", 9],
-    pi: ["2aa766cce9b09bcc488ddfb3ae3a056066c73bf6021b2385fd4d470a4580ced1", 17],
-  }[target];
-  assert.equal(canonical.digest, expected[0]);
-  assert.equal(canonical.files.length, expected[1]);
+  // Derived from the conformance oracle, never copied as a literal. The
+  // component MUST agree with the compiler about every target's tree, and
+  // stating that agreement twice is how it silently stopped being true.
+  const frozen = oracle.targets[target];
+  assert.ok(frozen, `oracle has no ${target} target`);
+  assert.equal(canonical.digest, frozen.tree_digest);
+  assert.equal(canonical.files.length, Object.keys(frozen.files).length);
   canonicalByTarget.set(target, canonical);
 }
 const canonical = canonicalByTarget.get("codex");

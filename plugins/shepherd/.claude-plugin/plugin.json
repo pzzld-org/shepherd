@@ -1,9 +1,9 @@
 {
   "name": "shepherd",
-  "version": "6.4.9",
-  "description": "Harness-neutral sprint execution and governance powered by one Rust CLI and the typed fl03:shepherd@6.4.9 WebAssembly Component Model. Thin Claude Code, Codex, and Pi adapters share identity, guard, lifecycle, context, and run artifacts without parallel command authorities.",
+  "version": "6.5.0",
+  "description": "Harness-neutral sprint execution and governance powered by one Rust CLI and the typed fl03:shepherd@6.5.0 WebAssembly Component Model. Thin Claude Code, Codex, and Pi adapters share identity, guard, lifecycle, context, and run artifacts without parallel command authorities.",
   "author": {
-    "name": "FL03",
+    "name": "pzzld-org",
     "email": "joe@pzzld.org",
     "url": "https://github.com/FL03"
   },

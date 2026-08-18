@@ -1,3 +1,5 @@
+mod support;
+
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -124,7 +126,7 @@ fn sprint_transitions_are_locked_and_close_requires_every_lane() {
         text(&close.stderr)
     );
     assert!(text(&invoke(&root, &["run", "show", "v900"]).stdout).contains("status: closed"));
-    fs::remove_dir_all(root).expect("cleanup");
+    support::remove_dir_all(&root);
 }
 
 #[test]
@@ -184,7 +186,12 @@ fn deliverables_and_issue_cache_use_the_typed_registry() {
         serde_json::from_slice::<serde_json::Value>(&issues.stdout).expect("issues json")[0]["bucket"],
         "blocking-this-sprint"
     );
-    fs::remove_dir_all(root).expect("cleanup");
+    // SQLite holds the database open until the connection drops, and Windows
+    // cannot remove a directory containing an open handle. On unix an open
+    // file unlinks happily, which is why this was never needed here. The
+    // teardown named the survivors: shepherd.db, -shm and -wal.
+    drop(connection);
+    support::remove_dir_all(&root);
 }
 
 #[test]
@@ -224,5 +231,10 @@ fn report_escalation_and_teammates_have_registry_backed_output() {
             ["teammate_name"],
         "luna"
     );
-    fs::remove_dir_all(root).expect("cleanup");
+    // SQLite holds the database open until the connection drops, and Windows
+    // cannot remove a directory containing an open handle. On unix an open
+    // file unlinks happily, which is why this was never needed here. The
+    // teardown named the survivors: shepherd.db, -shm and -wal.
+    drop(connection);
+    support::remove_dir_all(&root);
 }

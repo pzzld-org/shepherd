@@ -93,16 +93,37 @@ fn normalize_relative(
     primary_root: &Path,
     candidate: &str,
 ) -> Result<String, DispatchServiceError> {
+    // A backslash is a LITERAL filename character on unix, so smuggling one
+    // into a write path is a real attempt to confuse a downstream consumer and
+    // is refused. On Windows it is THE separator, so refusing it rejected every
+    // absolute path the platform produces. Normalizing first keeps one rule.
+    let normalized;
+    let candidate = if cfg!(windows) {
+        normalized = candidate.replace('\\', "/");
+        normalized.as_str()
+    } else {
+        candidate
+    };
     if candidate.len() > 4_096
-        || candidate.contains(['\\', '\0'])
+        || (!cfg!(windows) && candidate.contains('\\'))
+        || candidate.contains('\0')
         || candidate.chars().any(char::is_control)
     {
         return Err(invalid("write path is unsafe"));
     }
     let candidate = Path::new(candidate);
+    let resolved;
     let relative = if candidate.is_absolute() {
-        candidate
-            .strip_prefix(primary_root)
+        // Compare by identity, not by spelling. One side of this comparison
+        // arrives canonicalized by `ExecutionContext` and the other arrives as
+        // the caller typed it, and on Windows those are routinely different
+        // spellings of the same directory -- verbatim vs plain, long name vs
+        // 8.3 short name -- so a containment check on the raw strings refused
+        // paths that were plainly inside the repository.
+        resolved = crate::interface::canonical_identity(candidate);
+        let root = crate::interface::canonical_identity(primary_root);
+        resolved
+            .strip_prefix(&root)
             .map_err(|_| invalid("absolute write path escapes the primary repository"))?
     } else {
         candidate
@@ -174,11 +195,52 @@ fn verify_nofollow(primary_root: &Path, relative: &str) -> Result<(), DispatchSe
     Ok(())
 }
 
+/// The non-unix twin. Same three verdicts as the unix walk: an absent final
+/// component is allowed (the write is about to create it), an existing final
+/// component must be a regular file, and a link anywhere in the chain is
+/// refused.
 #[cfg(not(unix))]
-fn verify_nofollow(_primary_root: &Path, _relative: &str) -> Result<(), DispatchServiceError> {
-    Err(invalid(
-        "race-safe write-path containment is unavailable on this platform",
-    ))
+fn verify_nofollow(primary_root: &Path, relative: &str) -> Result<(), DispatchServiceError> {
+    if crate::safe_fs::is_link(primary_root)
+        .map_err(|error| invalid(format!("cannot inspect primary root: {error}")))?
+    {
+        return Err(invalid(
+            "cannot open primary root without following links: it is a symlink",
+        ));
+    }
+    let mut walked = primary_root.to_path_buf();
+    let parts: Vec<&str> = relative.split('/').collect();
+    for (index, part) in parts.iter().enumerate() {
+        walked.push(part);
+        let final_component = index + 1 == parts.len();
+        let metadata = match std::fs::symlink_metadata(&walked) {
+            Ok(metadata) => metadata,
+            Err(error) if final_component && error.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(());
+            }
+            Err(error) => {
+                return Err(invalid(format!(
+                    "write target is not safely contained without following links at {}: {error}",
+                    walked.display()
+                )));
+            }
+        };
+        if metadata.file_type().is_symlink() {
+            return Err(invalid(
+                "write target is not safely contained without following links: it traverses a symlink",
+            ));
+        }
+        if final_component {
+            if !metadata.is_file() {
+                return Err(invalid("existing write target is not a regular file"));
+            }
+        } else if !metadata.is_dir() {
+            return Err(invalid(
+                "write target is not safely contained without following links: an intermediate component is not a directory",
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn invalid(reason: impl Into<String>) -> DispatchServiceError {

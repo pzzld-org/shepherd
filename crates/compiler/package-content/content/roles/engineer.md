@@ -2,7 +2,7 @@
 role: engineer
 description: "Turn an approved seed into a complete, file-disjoint sprint plan and coordinate its critic gate. Use for plan authorship, not production implementation."
 source: agents/engineer.md
-model_hint: reasoning-high
+model_hint: inherit-caller
 dispatchable: true
 write_eligible: true
 write_scope: "the run's plan/report namespace and *.md only — never source"

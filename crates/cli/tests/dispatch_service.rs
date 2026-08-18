@@ -1,3 +1,5 @@
+mod support;
+
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -112,7 +114,7 @@ fn session_start_binding_is_durable_and_required_for_root_resolution() {
 }
 
 fn cleanup(path: &Path) {
-    std::fs::remove_dir_all(path).expect("cleanup");
+    support::remove_dir_all(path)
 }
 
 fn service(dir: &Path) -> DispatchService {

@@ -34,9 +34,22 @@ handlers = [hook for groups in hooks["hooks"].values() for group in groups for h
 assert handlers and all(hook["command"] == "shepherd codex-hook" for hook in handlers)
 assert all("args" not in hook for hook in handlers)
 assert not any(path.is_symlink() for path in (carrier / "codex").rglob("*"))
-source = sorted((root / "skills").glob("*/SKILL.md"))
+# MINUS the claude-only skills. An exact match with the Claude tree is what
+# shipped `skills/harness/` -- Agent Teams, Dynamic Workflows, `ToolSearch` --
+# into the Codex carrier, on a platform that has none of them.
+import re as _re
+claude_only = set()
+for authored in sorted((root / "content/skills").glob("*/SKILL.md")):
+    text = authored.read_text()
+    end = text.find("\n---", 4) if text.startswith("---\n") else -1
+    if end != -1 and _re.search(r"^portability:\s*claude-only\s*$", text[4:end], _re.M):
+        claude_only.add(authored.parent.name)
+source = [p for p in sorted((root / "skills").glob("*/SKILL.md")) if p.parent.name not in claude_only]
 projected = sorted((carrier / "codex/skills").glob("*/SKILL.md"))
-assert [p.parent.name for p in source] == [p.parent.name for p in projected]
+assert [p.parent.name for p in source] == [p.parent.name for p in projected], (
+    f"expected {[p.parent.name for p in source]}, found {[p.parent.name for p in projected]}"
+)
+assert claude_only, "no skill is marked claude-only; this filter would be a no-op"
 for left, right in zip(source, projected, strict=True):
     assert left.read_bytes() == right.read_bytes(), right
 PY

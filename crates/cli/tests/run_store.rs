@@ -1,3 +1,5 @@
+mod support;
+
 /*
     Appellation: run_store <integration tests>
     Created At: 2026.08.14
@@ -25,7 +27,7 @@ fn fixture_dir(label: &str) -> PathBuf {
 }
 
 fn cleanup(path: &Path) {
-    std::fs::remove_dir_all(path).expect("remove isolated run-store fixture");
+    support::remove_dir_all(path)
 }
 
 fn state(run: &str) -> shepherd::RunState {

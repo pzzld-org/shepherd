@@ -69,20 +69,25 @@ ignored. The principal groups are:
 | `[spawn]`, `[autorun]`, `[compaction]`, `[focus]`, `[close]` | Execution lifecycle policies. |
 | `[eval]`, `[models]`, `[prune]` | Recorded evaluation metadata, model labels, and retention policy. |
 
-The layout roots are not a second policy language. A valid v6.4.9 configuration
+The layout roots are not a second policy language. A valid v6.5.0 configuration
 must resolve `docs`, `ctx`, and `runs` beneath the project `.shepherd/` namespace
 unless an explicitly supported embedding host supplies an equivalent root.
 
 ## Portable model hints
 
 `[models]` stores model intent, not a provider-specific model id. The canonical
-values are `inherit-caller`, `reasoning-high`, and `standard`. Defaults are:
+values are `inherit-caller`, `reasoning-high`, `standard`, and `economy`.
+Defaults are:
 
-| Role | Hint |
-| --- | --- |
-| root | `inherit-caller` |
-| planter, engineer | `reasoning-high` |
-| conductor, critic, discovery, coder, auditor, worker | `standard` |
+| Role | Hint | Why |
+| --- | --- | --- |
+| root, planter | `reasoning-high` | a sprint's expensive thinking is its seeding and its top-level orchestration |
+| engineer, conductor | `inherit-caller` | a lane costs what the run it belongs to is worth, rather than pinning the top tier on every lead |
+| critic, coder, auditor, worker | `standard` | judgement and authorship, where a miss costs more than the tier saved |
+| discovery | `economy` | the widest fan-out role: bounded research, many at once, where width beats depth |
+
+Every one is overridable per project. `worker` is the usual one to move to
+`economy` when a run's workers are doing volume rather than synthesis.
 
 `shepherd models resolve <role>` returns the portable hint. Add
 `--harness claude`, `--harness codex`, or `--harness pi` to resolve that hint

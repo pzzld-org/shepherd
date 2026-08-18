@@ -557,14 +557,31 @@ pub struct ModelsConfig {
 impl Default for ModelsConfig {
     fn default() -> Self {
         Self {
+            // root and planter hold the reasoning tier: the sprint's expensive
+            // thinking is its seeding and its top-level orchestration, and that
+            // is where a fable-class model earns its cost.
             root: "reasoning-high".into(),
             planter: "reasoning-high".into(),
-            engineer: "reasoning-high".into(),
-            conductor: "reasoning-high".into(),
+            // The team leads INHERIT the caller instead of pinning a tier. A
+            // sprint spawned at the reasoning tier gets leads at that tier; a
+            // sprint spawned cheaply gets cheap leads. Pinning them meant every
+            // lane lead cost the top tier regardless of what the run was worth.
+            // Override either in `[models]` in `.shepherd/shepherd.toml`.
+            engineer: "inherit-caller".into(),
+            conductor: "inherit-caller".into(),
+            // The judgement roles hold standard: a critic that misses a
+            // contradiction and an auditor that passes a bad wave both cost
+            // more than the tier they saved, and a coder writes the diff.
             critic: "standard".into(),
-            discovery: "standard".into(),
             coder: "standard".into(),
             auditor: "standard".into(),
+            // `discovery` is the widest fan-out role in the flock -- bounded
+            // external research, many at once, each returning one report -- so
+            // it defaults to the economy tier where width is worth more than
+            // depth. `worker` stays standard because its output IS the
+            // deliverable rather than an input to one; move it to "economy" in
+            // `[models]` when a run's workers are doing volume, not synthesis.
+            discovery: "economy".into(),
             worker: "standard".into(),
         }
     }

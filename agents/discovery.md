@@ -1,7 +1,7 @@
 ---
 name: discovery
 description: "Research external primary sources and produce one bounded run-scoped report. Use for documentation, release notes, web evidence, or capability discovery."
-model: sonnet
+model: haiku
 tools: [Read, NotebookRead, Glob, Grep, Bash, Skill, ToolSearch, WebFetch, WebSearch, Write]
 dispatchable: true
 write_eligible: false

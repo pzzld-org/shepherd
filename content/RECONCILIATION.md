@@ -1,4 +1,4 @@
-# Content authority v6.4.9
+# Content authority v6.5.0
 
 `content/` is Shepherd's only authored prompt and policy corpus. It is
 harness-neutral input to the Rust compiler, not a staging area for a later
@@ -8,7 +8,10 @@ rewrite.
 
 - `roles/*.md` defines all nine roles, portable model hints, capabilities,
   write eligibility, dispatchability, and write scopes.
-- `skills/*/SKILL.md` defines the seven portable workflow skills.
+- `skills/*/SKILL.md` defines the nine workflow skills. Eight are portable
+  and compile for every target; `harness` carries `portability: claude-only`
+  and is emitted for Claude alone, because its content is one platform's
+  multi-agent mechanics and none of it is a fact about any other harness.
 - `predicates/*.toml` defines deterministic guard-policy inputs.
 - `templates/*.md` defines native artifact templates that are compiled or
   embedded by Rust.
@@ -32,6 +35,19 @@ host events, typed component calls, and host response envelopes. They do not
 parse Markdown, choose policy, maintain model/tool maps, or create run state.
 Pi dispatch additionally requires a ready `SubagentProvider`; an unavailable
 provider is a typed, fail-closed limitation rather than an emulated subagent.
+
+## Dispatchability
+
+`root` (carrier `roles/shepherd.md`) and `planter` are `dispatchable: false`.
+Both are top-level sessions, entered directly rather than spawned by another
+role. Their role profiles are authored in full -- capabilities, write scope,
+tools -- because that fidelity is what makes the contract checkable; being
+authored is not the same as being spawnable.
+
+A harness's agent-type table therefore lists exactly the `dispatchable: true`
+roles. `crates/compiler` keys that on the `dispatchable` field itself. It used
+to key on `model_hint == "inherit-caller"` as a proxy, which put `planter` in
+Codex's `[agent_types]` against its own declaration.
 
 ## Enforced invariants
 

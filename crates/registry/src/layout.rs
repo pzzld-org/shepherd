@@ -73,6 +73,78 @@ pub enum PlanAction {
     Rewrite,
 }
 
+/// Remove a directory that the migration has just emptied.
+///
+/// Windows marks a deleted file for removal and only unlinks it once the last
+/// handle closes, so a directory emptied moments ago can still answer
+/// `The directory is not empty. (os error 145)`. The retry is short and
+/// bounded: a directory that is still populated after it is genuinely
+/// populated, and the error says so rather than being swallowed.
+fn remove_dir_settled(path: &Path) -> std::io::Result<()> {
+    const ATTEMPTS: u32 = 20;
+
+    for attempt in 0..ATTEMPTS {
+        match fs::remove_dir(path) {
+            Ok(()) => return Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::DirectoryNotEmpty => {
+                if attempt + 1 == ATTEMPTS {
+                    return Err(error);
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(())
+}
+
+/// Render a path with `/` separators on every platform.
+///
+/// The manifest is a DURABLE artifact: it is sorted by source and destination,
+/// serialized to stable JSON, and compared. `Path::display` emits OS-native
+/// separators, so the same migration produced a different manifest -- and a
+/// different sort order -- on Windows than on Linux. Building from components
+/// rather than replacing `\\` keeps a literal backslash in a unix filename
+/// intact, which is a legal character there.
+fn canonical_path_string(path: &Path) -> String {
+    use std::path::Component;
+
+    let mut rendered = String::new();
+    for component in path.components() {
+        match component {
+            // The verbatim prefix is stripped, not rendered: `\\?\C:` accepts
+            // only `\\` separators, so `\\?\C:/Users/...` is canonical AND
+            // unusable -- every re-read of `entry.source` as a path failed with
+            // "The system cannot find the file specified". `C:/Users/...` is
+            // both valid on Windows and canonical.
+            Component::Prefix(prefix) => {
+                let text = match prefix.kind() {
+                    std::path::Prefix::VerbatimDisk(letter) => format!("{}:", letter as char),
+                    std::path::Prefix::VerbatimUNC(server, share) => {
+                        format!("//{}/{}", server.to_string_lossy(), share.to_string_lossy())
+                    }
+                    std::path::Prefix::Verbatim(name) => name.to_string_lossy().into_owned(),
+                    _ => prefix.as_os_str().to_string_lossy().replace('\\', "/"),
+                };
+                rendered.push_str(&text);
+            }
+            Component::RootDir => {
+                if !rendered.ends_with('/') {
+                    rendered.push('/');
+                }
+            }
+            other => {
+                if !rendered.is_empty() && !rendered.ends_with('/') {
+                    rendered.push('/');
+                }
+                rendered.push_str(&other.as_os_str().to_string_lossy());
+            }
+        }
+    }
+    rendered
+}
+
 /// One source-to-destination decision, including content provenance.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ManifestEntry {
@@ -170,7 +242,11 @@ pub struct LayoutPlan {
     scope: PlanScope,
     namespace: PathBuf,
     manifest: LayoutManifest,
-    rewrites: BTreeMap<PathBuf, Vec<u8>>,
+    /// Keyed by the CANONICAL source string, because that is what
+    /// `ManifestEntry::source` carries and what the executor looks up with. A
+    /// native `PathBuf` key never matched on Windows and the migration failed
+    /// with `missing rewrite payload`.
+    rewrites: BTreeMap<String, Vec<u8>>,
 }
 
 impl LayoutPlan {
@@ -266,7 +342,7 @@ impl LayoutPlan {
                     }
                 }
                 PlanAction::Rewrite => {
-                    let bytes = self.rewrites.get(source).ok_or_else(|| {
+                    let bytes = self.rewrites.get(&entry.source).ok_or_else(|| {
                         LayoutError::InvalidInput(format!(
                             "missing rewrite payload for {}",
                             source.display()
@@ -281,7 +357,7 @@ impl LayoutPlan {
                 }
                 PlanAction::RemoveDirectory => {
                     if source.exists() {
-                        fs::remove_dir(source).map_err(|source_error| LayoutError::Io {
+                        remove_dir_settled(source).map_err(|source_error| LayoutError::Io {
                             path: source.to_path_buf(),
                             source: source_error,
                         })?;
@@ -335,7 +411,7 @@ impl LayoutPlan {
                     == 0
             {
                 entries.push(ManifestEntry {
-                    source: candidate.path.display().to_string(),
+                    source: canonical_path_string(&candidate.path),
                     destination: String::new(),
                     classification: "empty-placeholder".into(),
                     owner: owner(scope).into(),
@@ -351,7 +427,7 @@ impl LayoutPlan {
                     removable_legacy_file(scope, relative, &candidate.path)?
             {
                 entries.push(ManifestEntry {
-                    source: candidate.path.display().to_string(),
+                    source: canonical_path_string(&candidate.path),
                     destination: String::new(),
                     classification,
                     owner: owner(scope).into(),
@@ -374,10 +450,10 @@ impl LayoutPlan {
                 if rewritten != original {
                     let sha256 = sha256_bytes(&rewritten);
                     let byte_size = u64::try_from(rewritten.len()).unwrap_or(u64::MAX);
-                    rewrites.insert(candidate.path.clone(), rewritten);
+                    rewrites.insert(canonical_path_string(&candidate.path), rewritten);
                     entries.push(ManifestEntry {
-                        source: candidate.path.display().to_string(),
-                        destination: candidate.path.display().to_string(),
+                        source: canonical_path_string(&candidate.path),
+                        destination: canonical_path_string(&candidate.path),
                         classification: "project-config".into(),
                         owner: owner(scope).into(),
                         provenance: "removed retired layout-v5 configuration keys".into(),
@@ -411,8 +487,8 @@ impl LayoutPlan {
             };
             if candidate.kind == EntryKind::Directory {
                 entries.push(ManifestEntry {
-                    source: candidate.path.display().to_string(),
-                    destination: destination.display().to_string(),
+                    source: canonical_path_string(&candidate.path),
+                    destination: canonical_path_string(&destination),
                     classification,
                     owner: owner(scope).into(),
                     provenance,
@@ -439,7 +515,7 @@ impl LayoutPlan {
                     if sha256_path(&destination)? != sha256 {
                         return Err(LayoutError::Collision {
                             destination,
-                            sources: candidate.path.display().to_string(),
+                            sources: canonical_path_string(&candidate.path),
                         });
                     }
                     PlanAction::Deduplicated
@@ -448,11 +524,11 @@ impl LayoutPlan {
             };
             destinations.insert(
                 destination.clone(),
-                (candidate.path.display().to_string(), sha256.clone()),
+                (canonical_path_string(&candidate.path), sha256.clone()),
             );
             entries.push(ManifestEntry {
-                source: candidate.path.display().to_string(),
-                destination: destination.display().to_string(),
+                source: canonical_path_string(&candidate.path),
+                destination: canonical_path_string(&destination),
                 classification,
                 owner: owner(scope).into(),
                 provenance,
@@ -482,10 +558,16 @@ impl LayoutPlan {
                         b.action,
                         PlanAction::RemoveDirectory | PlanAction::RemoveFile
                     ) {
+                        // `/`, not `MAIN_SEPARATOR`. Manifest sources are stored
+                        // canonically, and on Windows `MAIN_SEPARATOR` is `\`,
+                        // so this counted zero for every entry and the
+                        // deepest-first ordering collapsed -- parents were
+                        // removed before their children and the migration
+                        // failed with `The directory is not empty.`
                         b.source
-                            .matches(std::path::MAIN_SEPARATOR)
+                            .matches('/')
                             .count()
-                            .cmp(&a.source.matches(std::path::MAIN_SEPARATOR).count())
+                            .cmp(&a.source.matches('/').count())
                     } else {
                         std::cmp::Ordering::Equal
                     }
@@ -532,13 +614,20 @@ impl LayoutPlan {
                 continue;
             }
             let source = Path::new(&entry.source);
-            let relative =
-                source
-                    .strip_prefix(&self.namespace)
-                    .map_err(|_| LayoutError::UnsafePath {
-                        path: source.to_path_buf(),
-                        reason: "snapshot source escaped namespace".into(),
-                    })?;
+            // `entry.source` is stored canonically, so it must be compared
+            // canonically. Stripping a native `\\?\C:\...` prefix off a
+            // canonical `C:/...` string always failed, and the failure read as
+            // "snapshot source escaped namespace" -- a security refusal for
+            // what was only a rendering mismatch.
+            let namespace = canonical_path_string(&self.namespace);
+            let relative = entry
+                .source
+                .strip_prefix(&namespace)
+                .map(|tail| Path::new(tail.trim_start_matches('/')))
+                .ok_or_else(|| LayoutError::UnsafePath {
+                    path: source.to_path_buf(),
+                    reason: "snapshot source escaped namespace".into(),
+                })?;
             let destination = before.join(relative);
             if let Some(parent) = destination.parent() {
                 fs::create_dir_all(parent).map_err(|source_error| io(parent, source_error))?;
@@ -1395,9 +1484,17 @@ fn rollback_commands(plan: &LayoutPlan) -> String {
             continue;
         }
         let source = Path::new(&entry.source);
-        let relative = source
-            .strip_prefix(&plan.namespace)
-            .expect("manifest sources are under the planned namespace");
+        // Canonical string against canonical string. `plan.namespace` is a
+        // native path, and stripping it off a canonically-stored source
+        // panicked with `StripPrefixError` on Windows.
+        let planned_namespace = canonical_path_string(&plan.namespace);
+        let relative = Path::new(
+            entry
+                .source
+                .strip_prefix(&planned_namespace)
+                .map(|tail| tail.trim_start_matches('/'))
+                .expect("manifest sources are under the planned namespace"),
+        );
         let _ = writeln!(
             output,
             "mkdir -p -- {}\ncp -p -- \"$before\"/{} {}",

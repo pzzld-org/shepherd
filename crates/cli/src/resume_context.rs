@@ -385,25 +385,92 @@ impl Source {
     }
 }
 
+/// The non-unix twin. Same three operations, same messages, same truncation
+/// behaviour -- including the part that is easy to lose: an over-limit artifact
+/// is truncated at a char boundary and marked, not rejected, because a resume
+/// context is a summary and a partial one is still useful.
 #[cfg(not(unix))]
-struct Source;
+struct Source {
+    run_path: std::path::PathBuf,
+}
 
 #[cfg(not(unix))]
 impl Source {
-    fn open(_runs_root: &Path, _run: &RunId) -> Result<Self, String> {
-        Err("race-safe resume artifacts are unavailable on this platform".into())
+    fn open(runs_root: &Path, run: &RunId) -> Result<Self, String> {
+        use crate::safe_fs;
+
+        if !safe_fs::directory_exists(runs_root)
+            .map_err(|error| format!("cannot open runs root without following links: {error}"))?
+        {
+            return Err("cannot open runs root without following links: it is absent".into());
+        }
+        let run_path = runs_root.join(run.as_str());
+        if !safe_fs::directory_exists(&run_path)
+            .map_err(|error| format!("cannot open active run without following links: {error}"))?
+        {
+            return Err("cannot open active run without following links: it is absent".into());
+        }
+        Ok(Self { run_path })
     }
 
-    fn read_text(&self, _relative: &str, _limit: usize) -> Result<String, String> {
-        Err("race-safe resume artifacts are unavailable on this platform".into())
+    fn read_text(&self, relative: &str, limit: usize) -> Result<String, String> {
+        use crate::safe_fs;
+
+        let parts = safe_parts(relative)?;
+        let mut target = self.run_path.clone();
+        for part in &parts {
+            target.push(part);
+        }
+        let bytes = safe_fs::read_regular_nofollow(&target, limit as u64 + 1)
+            .map_err(|error| format!("cannot read resume artifact `{relative}`: {error}"))?;
+        if bytes.is_empty() {
+            return Err(format!("resume artifact `{relative}` is empty"));
+        }
+        let truncated = bytes.len() > limit;
+        let mut bytes = bytes;
+        bytes.truncate(limit);
+        let mut content = loop {
+            match String::from_utf8(bytes) {
+                Ok(content) => break content,
+                Err(error)
+                    if error.utf8_error().error_len().is_none()
+                        && error.utf8_error().valid_up_to() > 0 =>
+                {
+                    let valid_up_to = error.utf8_error().valid_up_to();
+                    bytes = error.into_bytes();
+                    bytes.truncate(valid_up_to);
+                }
+                Err(_) => {
+                    return Err(format!("resume artifact `{relative}` is not valid UTF-8"));
+                }
+            }
+        };
+        if truncated {
+            content = truncate_utf8(content, limit);
+        }
+        Ok(content)
     }
 
+    /// An absent `snapshots/` directory is `None`, not an error: a run that has
+    /// not checkpointed yet still resumes, it just resumes without one.
     fn latest_checkpoint(&mut self) -> Result<Option<String>, String> {
-        Err("race-safe resume artifacts are unavailable on this platform".into())
+        use crate::safe_fs;
+
+        let snapshots = self.run_path.join("snapshots");
+        let names = match safe_fs::regular_children(&snapshots) {
+            Ok(names) => names,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(format!("cannot open snapshots safely: {error}")),
+        };
+        let mut candidates: Vec<String> = names
+            .into_iter()
+            .filter(|name| is_checkpoint_name(name))
+            .collect();
+        candidates.sort();
+        Ok(candidates.pop().map(|name| format!("snapshots/{name}")))
     }
 }
 
-#[cfg(unix)]
 fn safe_parts(relative: &str) -> Result<Vec<&str>, String> {
     if relative.is_empty()
         || relative.len() > 4_096
@@ -423,7 +490,6 @@ fn safe_parts(relative: &str) -> Result<Vec<&str>, String> {
     Ok(parts)
 }
 
-#[cfg(unix)]
 fn is_checkpoint_name(name: &str) -> bool {
     name.starts_with("precompact-")
         && name.ends_with(".json")

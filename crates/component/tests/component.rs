@@ -30,9 +30,13 @@ fn canonical_compile_uses_the_embedded_authored_corpus() {
             .iter()
             .any(|file| file.path == "shepherd.codex.toml")
     );
+    // Moved when `[agent_types]` stopped listing `planter` (a `dispatchable:
+    // false` role Codex was advertising as spawnable) and `[models]` stopped
+    // pinning the leads, which now inherit the caller. Same digest the CLI and
+    // the conformance oracle carry for the Codex target.
     assert_eq!(
         tree.digest,
-        "0eb297b3c0f7774ca8057c07c848adbcadbdf45275ebf958050de159ef8a1e25"
+        "693d70a523a491b43ec0294db5f3272064217f333791d1fded54357d3a12e5e1"
     );
 }
 
@@ -68,7 +72,7 @@ fn canonical_guard_uses_the_embedded_predicate_and_role_corpus() {
 #[test]
 fn wit_contract_metadata_matches_the_component_package() {
     let wit = include_str!("../wit/shepherd.wit");
-    assert!(wit.contains("package fl03:shepherd@6.4.9;"));
+    assert!(wit.contains("package fl03:shepherd@6.5.0;"));
     assert!(wit.contains("world shepherd-core"));
     for function in [
         "canonical-profile",

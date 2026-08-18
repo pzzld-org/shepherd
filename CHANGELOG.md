@@ -4,7 +4,128 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
-## v6.4.9 — unreleased
+## v6.5.0 — unreleased
+
+**The release automation ran correctly all the way to `git push` and died there.** The first
+fully green release pipeline in the project's history published crates, cut the tag, and
+uploaded 32 assets. Its post-publication handoff then computed the successor, cut the branch,
+committed the bump, and was refused:
+
+```
+! [remote rejected] v6.5.0 -> v6.5.0 (refusing to allow a GitHub App to create or
+  update workflow `.github/workflows/rust-wasm.yml` without `workflows` permission)
+```
+
+### Fixed
+
+- **A workflow file was a version authority, and no token can push that.** `rust-wasm.yml`
+  hard-coded the WIT export string, so `version-bump.py` rewrote it every release and the
+  push became a workflow update. There is no permission to grant: `workflows` is **not in the
+  `GITHUB_TOKEN` permission vocabulary at all**, so adding it to the `permissions:` block
+  would be a syntax error, not a fix. The step now derives the version from `Cargo.toml`, the
+  single source of truth, and the authority is retired — 53 authorities down to 52, and no
+  workflow file carries a version literal.
+- **The coupling cannot come back.** `check-github-actions.py` gained a rule that rejects any
+  workflow line containing the workspace version, naming the dead end in the message.
+  Falsified two ways: reintroducing the literal turns the checker red, and deleting the rule
+  turns its own suite red. `test-version-bump.py` now carries a derived workflow in its
+  fixture and asserts the bump leaves it byte-identical; pinning that fixture to the current
+  version turns the test red.
+
+### Fixed — Windows is a supported platform, not a shipped stub (#321)
+
+**392 tests run: 392 passed.** The Windows suite is green on both feature sets. It went
+94 failures, 35, 20, 12, 6, 3, 0 — every step a real cross-platform defect, none of them a
+test that needed relaxing.
+
+The Windows binary this repository builds, packages, and publishes could not create
+`.shepherd/`, could not bind a session, and could not store a run. Five families of
+`#[cfg(not(unix))]` twins were `Err("... unavailable on this platform")`, and the first Windows
+test run in the project's history reported `384 tests run: 290 passed, 94 failed`. Every one is
+now implemented.
+
+- **`crate::safe_fs`** is the new shared primitive layer for non-unix targets, and its module
+  docs state exactly what it does and does not guarantee rather than implying parity with the
+  descriptor-anchored unix side. Opens pass `FILE_FLAG_OPEN_REPARSE_POINT`, so a leaf that is
+  or becomes a link yields the link itself and never an attacker's target; every ancestor is
+  checked with `symlink_metadata`; publication is `CREATE_NEW` plus `CreateHardLinkW`, the same
+  two refusals unix gets from `O_EXCL` and `linkat`. The residual gap — an ancestor swapped
+  between its check and its use — is written down in the module rather than discovered later.
+- **Implemented:** `wave_c_bootstrap` (all five, so `init` works), the whole `dispatch_store`
+  ledger (so the hooks work, for Claude Code, Codex, and Pi alike), `dispatch_scope`
+  containment, `compile`'s generated-tree check and materialize, `wave_d_planning` artifacts,
+  `wave_b1_status_handoff` run states and handoffs, and `resume_context`. Each returns the SAME
+  error variants and messages as its unix twin, because callers and fixtures branch on them.
+- **The directory fsync is now a paired platform decision.** `run/atomic.rs` opened the parent
+  directory to `sync_all()` it; on Windows `std::fs::File::open` does not set
+  `FILE_FLAG_BACKUP_SEMANTICS`, so every store failed with `Access is denied. (os error 5)`.
+  The non-unix arm does nothing and says why: NTFS journals the rename, so there is no
+  unflushed directory entry the way there is on POSIX. A stated difference, not a swallowed
+  error.
+- **`windows-latest` is now a permanent CI axis**, not a dispatch option, so this cannot
+  regress unobserved. `.cargo/config.toml` and `scripts/setup.sh` add a local
+  `x86_64-pc-windows-gnu` cross-check so the Windows half type-checks in seconds instead of a
+  six-minute round trip.
+- **`safe_fs` ships its own suite**: no-clobber publishes once and leaves no temporary,
+  `replace_atomic` overwrites where no-clobber refuses, an over-limit read fails instead of
+  truncating, absence and wrong-type stay distinguishable, `ensure_directory` reports only what
+  it created, children are sorted and split by kind, removal is idempotent, and a real symlink
+  is refused rather than followed.
+
+- **The defects Windows found that had nothing to do with the stubs.** `reject_symlink_path`
+  stat'ed the bare drive prefix, so every run command died with
+  `ERROR: inspect \\?\C:: Incorrect function.` The layout manifest rendered OS-native
+  separators into a durable, sorted, compared artifact, so the same migration produced a
+  different manifest on each platform — and once the sources were canonical, the deepest-first
+  removal ordering counted `MAIN_SEPARATOR` and collapsed to zero, removing parents before
+  their children. `normalize_relative` refused every absolute Windows path because a backslash
+  is a smuggling attempt on unix and the separator there. Path identity needed
+  `canonical_identity`, because Windows spells one directory three ways —
+  `\\?\C:\Users\runneradmin`, `C:\Users\runneradmin`, and `C:\Users\RUNNER~1`.
+- **Three tests held a live SQLite connection across their fixture removal.** Windows cannot
+  delete a directory containing an open handle; unix unlinks an open file happily, which is
+  why no amount of retrying would ever have helped. The teardown helper names the surviving
+  files now, which is what turned that from a guess into a diagnosis.
+
+### Changed — the model tier map
+
+The team leads no longer pin a tier. A sprint spawned at the reasoning tier gets leads at that
+tier; a sprint spawned cheaply gets cheap leads.
+
+| Roles | Hint | Claude / Codex / Pi |
+|---|---|---|
+| root, planter | `reasoning-high` | `opus[1m]` / `reasoning-high` / `opus` |
+| engineer, conductor | `inherit-caller` | `inherit` / `inherit-caller` |
+| critic, coder, auditor, worker | `standard` | `sonnet` / `standard` |
+| discovery | `economy` | `haiku` / `economy` at low effort |
+
+`discovery` is the widest fan-out role in the flock, so it reaches for the economy tier that
+all three harness profiles already defined and nothing had ever used. All nine stay overridable
+through `[models]`.
+
+**This was not safe to change on its own.** `compiler.rs` built the Codex `[agent_types]` table
+by skipping any role whose `model_hint` was `inherit-caller`, a proxy for "not dispatchable"
+that was wrong in both directions: `planter` is `dispatchable: false` and Codex had been
+advertising the role that holds `ask-operator` as spawnable, while any lead adopting
+`inherit-caller` would have silently vanished from the table. It keys on `dispatchable` now.
+
+### Changed — organization identity
+
+Identity fields renamed to `pzzld-org` ahead of the repository transfer. Every remaining `FL03`
+string resolves something — the binstall `pkg-url`, both installers' release bases, the README
+curl one-liner, the marketplace `add` lines — and GitHub's permanent post-transfer redirect
+makes `FL03` correct in both states while `pzzld-org` 404s until the move lands. #326 flips them
+afterwards.
+
+### Notes
+
+- The fixture pins a synthetic `9.9.9`, never the live release. A fixture pinned to the real
+  version would make the test file a version authority, which is the exact coupling the rule
+  under test exists to prevent.
+
+---
+
+## v6.4.9 — 2026-08-18
 
 **A Windows checkout rewrote the LICENSE and the release found out last.** Every asset built,
 every crate published, and only then did the publication gate compare the LICENSE inside the
@@ -49,6 +170,29 @@ and attached to the tag by hand.
   on PATH. All four are the same shape -- an item declared unconditionally whose every caller
   is unix-gated -- and all four were invisible to every unix machine and to every release
   build, which builds the lib rather than the test targets.
+
+### Fixed — Codex users were shipped a Claude-only skill
+
+`plugins/shepherd/codex/skills/harness/` shipped in every Codex install since v6.4.5. Its own
+authored frontmatter says `portability: claude-only` and its content is Agent Teams, Dynamic
+Workflows, and `ToolSearch` — none of which exist on Codex. The compiler has always excluded
+it correctly; three separate gates demanded it be there.
+
+- `generate-codex-carrier.py` projected from `skills/`, the **Claude** carrier, so its drift
+  check compared the Claude tree against a copy of the Claude tree and was green throughout.
+  It now filters `portability: claude-only`, read from `content/skills/` because the compiler
+  STRIPS that key out of what it emits — the projection source cannot answer the question
+  about itself.
+- `check-plugin.py` required the Codex inventory to equal the Claude inventory exactly, and
+  `test-codex-marketplace.sh` asserted the same. Both encoded the defect as a requirement.
+  Both now exclude claude-only skills, and the marketplace test additionally refuses to pass
+  if no skill is marked claude-only, so the filter can never quietly become a no-op.
+- The full gate gained the AUTHORITATIVE check the other three cannot be: the committed
+  carrier is diffed against a real `compile --target codex`. A projector and a carrier
+  agreeing with each other proves nothing when both are wrong.
+
+All four are falsified: restoring `harness/` to the carrier turns each red, and byte-drifting
+a carrier file turns the projector red.
 
 ### Found, not fixed
 
