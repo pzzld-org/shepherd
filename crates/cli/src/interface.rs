@@ -11,6 +11,36 @@ pub struct CliError {
     exit_code: u8,
 }
 
+/// Resolve a path to the form the OS itself considers canonical, so two
+/// spellings of the same location compare equal.
+///
+/// Windows has at least three spellings for one directory: verbatim
+/// (`\\?\C:\Users\runneradmin`), plain (`C:\Users\runneradmin`), and the 8.3
+/// short name (`C:\Users\RUNNER~1`). `std::fs::canonicalize` collapses all of
+/// them, but it only works on a path that EXISTS -- and the interesting case is
+/// usually a file about to be created. So the longest existing ancestor is
+/// canonicalized and the missing tail is re-appended.
+pub(crate) fn canonical_identity(path: &std::path::Path) -> std::path::PathBuf {
+    let mut tail = Vec::new();
+    let mut cursor = path.to_path_buf();
+    loop {
+        if let Ok(resolved) = std::fs::canonicalize(&cursor) {
+            let mut rebuilt = resolved;
+            for part in tail.iter().rev() {
+                rebuilt.push(part);
+            }
+            return rebuilt;
+        }
+        let Some(name) = cursor.file_name().map(std::ffi::OsString::from) else {
+            return path.to_path_buf();
+        };
+        tail.push(name);
+        if !cursor.pop() {
+            return path.to_path_buf();
+        }
+    }
+}
+
 /// Render a path with `/` separators, and without a Windows verbatim prefix.
 ///
 /// Paths that shepherd PRINTS are logical artifact identifiers that operators

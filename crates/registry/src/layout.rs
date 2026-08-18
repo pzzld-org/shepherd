@@ -73,6 +73,32 @@ pub enum PlanAction {
     Rewrite,
 }
 
+/// Remove a directory that the migration has just emptied.
+///
+/// Windows marks a deleted file for removal and only unlinks it once the last
+/// handle closes, so a directory emptied moments ago can still answer
+/// `The directory is not empty. (os error 145)`. The retry is short and
+/// bounded: a directory that is still populated after it is genuinely
+/// populated, and the error says so rather than being swallowed.
+fn remove_dir_settled(path: &Path) -> std::io::Result<()> {
+    const ATTEMPTS: u32 = 20;
+
+    for attempt in 0..ATTEMPTS {
+        match fs::remove_dir(path) {
+            Ok(()) => return Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::DirectoryNotEmpty => {
+                if attempt + 1 == ATTEMPTS {
+                    return Err(error);
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(())
+}
+
 /// Render a path with `/` separators on every platform.
 ///
 /// The manifest is a DURABLE artifact: it is sorted by source and destination,
@@ -327,7 +353,7 @@ impl LayoutPlan {
                 }
                 PlanAction::RemoveDirectory => {
                     if source.exists() {
-                        fs::remove_dir(source).map_err(|source_error| LayoutError::Io {
+                        remove_dir_settled(source).map_err(|source_error| LayoutError::Io {
                             path: source.to_path_buf(),
                             source: source_error,
                         })?;
@@ -1448,9 +1474,17 @@ fn rollback_commands(plan: &LayoutPlan) -> String {
             continue;
         }
         let source = Path::new(&entry.source);
-        let relative = source
-            .strip_prefix(&plan.namespace)
-            .expect("manifest sources are under the planned namespace");
+        // Canonical string against canonical string. `plan.namespace` is a
+        // native path, and stripping it off a canonically-stored source
+        // panicked with `StripPrefixError` on Windows.
+        let planned_namespace = canonical_path_string(&plan.namespace);
+        let relative = Path::new(
+            entry
+                .source
+                .strip_prefix(&planned_namespace)
+                .map(|tail| tail.trim_start_matches('/'))
+                .expect("manifest sources are under the planned namespace"),
+        );
         let _ = writeln!(
             output,
             "mkdir -p -- {}\ncp -p -- \"$before\"/{} {}",

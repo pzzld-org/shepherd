@@ -562,13 +562,17 @@ fn doctor_reports_a_stale_shepherd_resolved_from_path() {
         .set_modified(ancient)
         .expect("back-date the stale binary's mtime");
 
-    let path = format!(
-        "{}:{}",
-        scratch.display(),
-        std::env::var("PATH").unwrap_or_default()
-    );
+    // `join_paths`, not a hard-coded `:`. Windows separates PATH entries with
+    // `;`, so the colon form produced ONE entry containing a colon and the
+    // scratch directory was never on PATH at all -- doctor then correctly
+    // reported the real build and the test read as a resolution bug.
+    let existing = std::env::var_os("PATH").unwrap_or_default();
+    let mut entries = vec![scratch.clone()];
+    entries.extend(std::env::split_paths(&existing));
+    let path = std::env::join_paths(entries).expect("join PATH entries");
+    let path = path.to_string_lossy().into_owned();
 
-    let json = invoke_with_path(&root, &["doctor", "--json"], &path);
+    let json = invoke_with_path(&root, &["doctor", "--json"], path.as_str());
     assert_eq!(json.status.code(), Some(0), "stderr={}", text(&json.stderr));
     let report: serde_json::Value = serde_json::from_slice(&json.stdout).expect("doctor JSON");
     assert_eq!(
@@ -594,7 +598,7 @@ fn doctor_reports_a_stale_shepherd_resolved_from_path() {
         "a binary back-dated to 2001 must read as stale relative to the freshly built test binary: {report}"
     );
 
-    let text_report = invoke_with_path(&root, &["doctor"], &path);
+    let text_report = invoke_with_path(&root, &["doctor"], path.as_str());
     assert_eq!(
         text_report.status.code(),
         Some(0),
@@ -627,7 +631,7 @@ fn doctor_reports_a_sensible_result_when_nothing_answers_shepherd_on_path() {
 
     let path = path_without_any_shepherd();
 
-    let json = invoke_with_path(&root, &["doctor", "--json"], &path);
+    let json = invoke_with_path(&root, &["doctor", "--json"], path.as_str());
     assert_eq!(json.status.code(), Some(0), "stderr={}", text(&json.stderr));
     let report: serde_json::Value = serde_json::from_slice(&json.stdout).expect("doctor JSON");
     assert_eq!(

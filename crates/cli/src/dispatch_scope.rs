@@ -112,9 +112,18 @@ fn normalize_relative(
         return Err(invalid("write path is unsafe"));
     }
     let candidate = Path::new(candidate);
+    let resolved;
     let relative = if candidate.is_absolute() {
-        candidate
-            .strip_prefix(primary_root)
+        // Compare by identity, not by spelling. One side of this comparison
+        // arrives canonicalized by `ExecutionContext` and the other arrives as
+        // the caller typed it, and on Windows those are routinely different
+        // spellings of the same directory -- verbatim vs plain, long name vs
+        // 8.3 short name -- so a containment check on the raw strings refused
+        // paths that were plainly inside the repository.
+        resolved = crate::interface::canonical_identity(candidate);
+        let root = crate::interface::canonical_identity(primary_root);
+        resolved
+            .strip_prefix(&root)
             .map_err(|_| invalid("absolute write path escapes the primary repository"))?
     } else {
         candidate

@@ -35,8 +35,17 @@ pub(crate) fn remove_dir_all(path: &Path) {
             }
         }
     }
+    // Naming the survivors is the difference between "Windows was slow" and a
+    // real handle leak. Without it the next investigation starts from scratch.
+    let mut survivors = Vec::new();
+    if let Ok(entries) = fs::read_dir(path) {
+        for entry in entries.flatten() {
+            survivors.push(entry.file_name().to_string_lossy().into_owned());
+        }
+    }
+    survivors.sort();
     panic!(
-        "cannot remove fixture {} after {ATTEMPTS} attempts: {}",
+        "cannot remove fixture {} after {ATTEMPTS} attempts: {}\nstill present: {survivors:?}",
         path.display(),
         last.expect("a failure was recorded")
     );
