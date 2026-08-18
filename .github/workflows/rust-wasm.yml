@@ -260,7 +260,14 @@ jobs:
           wasm-tools component wit "${artifact}" > "${wit_output}"
           test -s "${wit_output}" \
             || { printf 'wit extraction produced an empty file: %s\n' "${wit_output}" >&2; exit 1; }
-          expected_export='export fl03:shepherd/engine@6.4.9;'
+          # Derived, not pinned. A literal here made this file a version
+          # authority, so `version-bump.py` rewrote it on every release and the
+          # gitflow handoff could not push the bumped branch: GITHUB_TOKEN has
+          # no `workflows` scope (it is not in the permission vocabulary at
+          # all), so GitHub refuses any push that updates a workflow file.
+          # Reading the single source of truth removes the whole problem.
+          component_version=$(python3 -c 'import tomllib,pathlib;print(tomllib.loads(pathlib.Path("Cargo.toml").read_text(encoding="utf-8"))["workspace"]["package"]["version"])')
+          expected_export="export fl03:shepherd/engine@${component_version};"
           grep -Fq "${expected_export}" "${wit_output}" || {
             printf 'component does not export the pinned interface\n  expected: %s\n  exports found:\n' "${expected_export}" >&2
             grep -F 'export ' "${wit_output}" >&2 || printf '    (none)\n' >&2

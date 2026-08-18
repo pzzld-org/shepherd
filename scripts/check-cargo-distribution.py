@@ -10,7 +10,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent.parent
-VERSION = "6.4.9"
+VERSION = "6.5.0"
 TARGETS = (
     "aarch64-apple-darwin",
     "x86_64-apple-darwin",

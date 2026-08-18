@@ -312,8 +312,12 @@ The command families are owned by the Rust CLI in v{CURRENT}:
         ),
         "scripts/check-features.sh": f"grep -Fq 'package fl03:shepherd@{CURRENT};' out\n",
         "scripts/gate.sh": f"grep -Fq 'export fl03:shepherd/engine@{CURRENT};' out\n",
+        # A workflow file that DERIVES the version, mirroring the real
+        # rust-wasm.yml. It must survive the bump untouched: a workflow that is
+        # a version authority cannot be pushed by gitflow, because GITHUB_TOKEN
+        # has no `workflows` scope to grant.
         ".github/workflows/rust-wasm.yml": (
-            f"run: grep -Fq 'export fl03:shepherd/engine@{CURRENT};' out\n"
+            "run: grep -Fq \"export fl03:shepherd/engine@${component_version};\" out\n"
         ),
     }
     for relative, content in exact_text.items():
@@ -409,6 +413,17 @@ class VersionBumpTests(unittest.TestCase):
 
             checked = self.run_tool(root, "check", "--version", NEXT)
             self.assertEqual(checked.returncode, 0, checked.stderr)
+
+            # The bump must leave every workflow file byte-identical. A
+            # workflow that is a version authority gets rewritten on release,
+            # and gitflow then cannot push the bumped branch -- GITHUB_TOKEN
+            # has no `workflows` scope to grant, so GitHub refuses the push.
+            workflow = (root / ".github/workflows/rust-wasm.yml").read_text(encoding="utf-8")
+            self.assertEqual(
+                workflow,
+                'run: grep -Fq "export fl03:shepherd/engine@${component_version};" out\n',
+            )
+            self.assertNotIn(NEXT, workflow)
 
             readme = (root / "README.md").read_text(encoding="utf-8")
             self.assertIn(f"# Shepherd v{NEXT}", readme)

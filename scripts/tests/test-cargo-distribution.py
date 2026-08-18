@@ -44,7 +44,7 @@ class CargoIdentityTests(unittest.TestCase):
         alias = root["workspace"]["dependencies"]["shepherd"]
         self.assertEqual(alias["package"], "shepherd-sdk")
         self.assertEqual(alias["path"], "crates/sdk")
-        self.assertEqual(alias["version"], "6.4.9")
+        self.assertEqual(alias["version"], "6.5.0")
 
         self.assertIs(component["package"]["publish"], False)
 

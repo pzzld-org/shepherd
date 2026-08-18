@@ -5,7 +5,7 @@ import {
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-export const COMPONENT_CONTRACT_VERSION = "fl03:shepherd@6.4.9";
+export const COMPONENT_CONTRACT_VERSION = "fl03:shepherd@6.5.0";
 export const COMPONENT_MODULE_ENV = "SHEPHERD_COMPONENT_MODULE";
 export const DEFAULT_COMPONENT_MODULE = join(
   dirname(fileURLToPath(import.meta.url)),

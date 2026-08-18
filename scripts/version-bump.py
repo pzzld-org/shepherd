@@ -306,13 +306,11 @@ def version_rules(current: SemVer, next_version: SemVer) -> tuple[TextRule, ...]
             "'export fl03:shepherd/engine@{version};'",
             "full-gate WIT assertion",
         ),
-        _literal(
-            ".github/workflows/rust-wasm.yml",
-            current,
-            next_version,
-            "'export fl03:shepherd/engine@{version};'",
-            "CI WIT assertion",
-        ),
+        # `.github/workflows/rust-wasm.yml` deliberately is NOT an authority.
+        # It derives the version from Cargo.toml, because a literal there made
+        # the bump rewrite a workflow file, and GITHUB_TOKEN cannot push such a
+        # change -- there is no `workflows` permission scope to grant. Any new
+        # version literal in a workflow file recreates that dead end.
         _whole("scripts/test-packed-plugin.sh", current, next_version, 10),
         TextRule(
             "scripts/tests/test-release-installers.sh",

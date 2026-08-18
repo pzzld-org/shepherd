@@ -4,7 +4,43 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
-## v6.4.9 — unreleased
+## v6.5.0 — unreleased
+
+**The release automation ran correctly all the way to `git push` and died there.** The first
+fully green release pipeline in the project's history published crates, cut the tag, and
+uploaded 32 assets. Its post-publication handoff then computed the successor, cut the branch,
+committed the bump, and was refused:
+
+```
+! [remote rejected] v6.5.0 -> v6.5.0 (refusing to allow a GitHub App to create or
+  update workflow `.github/workflows/rust-wasm.yml` without `workflows` permission)
+```
+
+### Fixed
+
+- **A workflow file was a version authority, and no token can push that.** `rust-wasm.yml`
+  hard-coded the WIT export string, so `version-bump.py` rewrote it every release and the
+  push became a workflow update. There is no permission to grant: `workflows` is **not in the
+  `GITHUB_TOKEN` permission vocabulary at all**, so adding it to the `permissions:` block
+  would be a syntax error, not a fix. The step now derives the version from `Cargo.toml`, the
+  single source of truth, and the authority is retired — 53 authorities down to 52, and no
+  workflow file carries a version literal.
+- **The coupling cannot come back.** `check-github-actions.py` gained a rule that rejects any
+  workflow line containing the workspace version, naming the dead end in the message.
+  Falsified two ways: reintroducing the literal turns the checker red, and deleting the rule
+  turns its own suite red. `test-version-bump.py` now carries a derived workflow in its
+  fixture and asserts the bump leaves it byte-identical; pinning that fixture to the current
+  version turns the test red.
+
+### Notes
+
+- The fixture pins a synthetic `9.9.9`, never the live release. A fixture pinned to the real
+  version would make the test file a version authority, which is the exact coupling the rule
+  under test exists to prevent.
+
+---
+
+## v6.4.9 — 2026-08-18
 
 **A Windows checkout rewrote the LICENSE and the release found out last.** Every asset built,
 every crate published, and only then did the publication gate compare the LICENSE inside the
