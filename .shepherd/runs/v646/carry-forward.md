@@ -353,6 +353,49 @@ Worth pairing with the drift rule wherever that is written down, because the dri
 ("did MY files move?") actively encourages the wrong inference here ("this file did not move,
 so it is not mine").
 
+## 4e. Deleting a scanned path silently converts a scanner into a no-op — HIGH
+
+`scripts/tests/test_cli_authority_gate.sh:34-37` scans three paths for legacy interpreter
+bootstrap:
+
+```bash
+if rg -n '(session_venv|shepherd-venv-ensure|poetry)' \
+  "$ROOT/hooks/hooks.json" "$ROOT/hooks/scripts" "$ROOT/bin"; then
+  printf '%s\n' 'legacy interpreter bootstrap remains in an active launcher path' >&2
+  exit 1
+fi
+```
+
+`bin/` was deleted by the distribution lane executing seed decision D4 ("the wrapper goes").
+Measured, not assumed:
+
+```
+$ rg -n 'session_venv' /tmp/rgtest/real /tmp/rgtest/does-not-exist
+rg: /tmp/rgtest/does-not-exist: No such file or directory (os error 2)
+/tmp/rgtest/real/f.txt:1:session_venv here
+rg exit=2
+```
+
+**`rg` finds the match, prints it, and exits 2. `if` treats 2 as false, so `exit 1` is never
+reached.** The check now passes even if `session_venv`, `shepherd-venv-ensure`, or `poetry`
+reappears in `hooks/hooks.json` or `hooks/scripts` — the match is printed to stdout and
+ignored.
+
+**The general rule, and it is the first instance this sprint caused by a lane doing exactly
+what the seed told it to do:**
+
+> A SUBTRACT decision needs a sweep for every gate that still references the deleted path.
+> Deleting a scanned path converts a scanner into a no-op silently, because a search tool's
+> "I could not look" and "I looked and found nothing" are the same exit status to `if`.
+
+Fix in the same pass as the line-55 reframe: drop or guard the deleted path, and make the
+check distinguish "no match" from "could not search" — `rg` exit 1 is a clean no-match,
+exit 2 is an error and must fail the gate rather than pass it.
+
+Found by the harness lane while being routed a DIFFERENT defect in the same file. Recorded
+because the gate was about to be wired into `gate.sh fast`, which would have given a check
+that cannot fail the appearance of coverage.
+
 ## 5. A refusal that never reaches the dispatching lead reads as incompetence — MEDIUM
 
 Harness lane's finding, and it generalizes past this sprint. A worker spent 49 tool calls and
