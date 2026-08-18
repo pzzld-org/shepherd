@@ -1,4 +1,4 @@
-# Shepherd v6.4.6
+# Shepherd v6.4.7
 
 [![License](https://img.shields.io/github/license/FL03/shepherd?style=for-the-badge&logo=github)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/FL03/shepherd?style=for-the-badge&logo=github)](https://github.com/FL03/shepherd/releases)
@@ -8,7 +8,7 @@ agent work. The deterministic core and the canonical CLI are Rust. Claude Code,
 Codex, and Pi are host adapters over the same typed WebAssembly Component Model
 contract, so a new harness does not require a second policy engine or a rewrite.
 
-The v6.4.6 component is published as `fl03:shepherd@6.4.6`. Its WIT contract,
+The v6.4.7 component is published as `fl03:shepherd@6.4.7`. Its WIT contract,
 generated bindings, native CLI, and adapter packages are versioned together.
 
 ## What is canonical
@@ -62,9 +62,9 @@ macOS (arm64/x86_64) and GNU-libc Linux (arm64/x86_64):
 
 ```sh
 curl --fail --location \
-  https://raw.githubusercontent.com/FL03/shepherd/v6.4.6/scripts/install-shepherd.sh \
+  https://raw.githubusercontent.com/FL03/shepherd/v6.4.7/scripts/install-shepherd.sh \
   --output /tmp/install-shepherd.sh
-SHEPHERD_VERSION=6.4.6 bash /tmp/install-shepherd.sh
+SHEPHERD_VERSION=6.4.7 bash /tmp/install-shepherd.sh
 ```
 
 Windows x86_64 PowerShell:
@@ -72,9 +72,9 @@ Windows x86_64 PowerShell:
 ```powershell
 $installer = Join-Path $env:TEMP 'install-shepherd.ps1'
 Invoke-WebRequest `
-  https://raw.githubusercontent.com/FL03/shepherd/v6.4.6/scripts/install-shepherd.ps1 `
+  https://raw.githubusercontent.com/FL03/shepherd/v6.4.7/scripts/install-shepherd.ps1 `
   -OutFile $installer
-$env:SHEPHERD_VERSION = '6.4.6'
+$env:SHEPHERD_VERSION = '6.4.7'
 & $installer
 ```
 
@@ -279,7 +279,7 @@ the supported installation path.
 Codex installs the same repository source through its canonical marketplace:
 
 ```sh
-codex plugin marketplace add FL03/shepherd --ref v6.4.6
+codex plugin marketplace add FL03/shepherd --ref v6.4.7
 codex plugin add shepherd@shepherd
 ```
 

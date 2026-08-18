@@ -260,7 +260,7 @@ jobs:
           wasm-tools component wit "${artifact}" > "${wit_output}"
           test -s "${wit_output}" \
             || { printf 'wit extraction produced an empty file: %s\n' "${wit_output}" >&2; exit 1; }
-          expected_export='export fl03:shepherd/engine@6.4.6;'
+          expected_export='export fl03:shepherd/engine@6.4.7;'
           grep -Fq "${expected_export}" "${wit_output}" || {
             printf 'component does not export the pinned interface\n  expected: %s\n  exports found:\n' "${expected_export}" >&2
             grep -F 'export ' "${wit_output}" >&2 || printf '    (none)\n' >&2
