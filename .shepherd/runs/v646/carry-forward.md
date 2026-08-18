@@ -57,6 +57,17 @@ Two shapes, both indistinguishable from success:
 the gap survived. That script runs `cargo check` — it proves the feature graph resolves, not
 that feature-gated tests run.
 
+**The rule this forces on GATE-CAN-FAIL itself, and it is the sharpest thing to come out of
+this sprint:**
+
+> A gate is not proven by a red test. The test must be shown to RUN, and then shown to go red.
+
+`test result: ok. 0 passed` survives every "did it go red?" check ever devised, because a
+suite that never executes never goes red either. Proving falsifiability without first
+proving execution is exactly the inert-gate class one level further out — and it is what
+hid 22 loader tests behind an unset `config` feature while the lane believed it had a
+working gate on its primary acceptance criterion.
+
 **Carry forward:** (a) any new `[[test]]` with `required-features` must be added to the
 feature-gated gate step, or it is born inert; (b) reviewing a test report means reading the
 COUNT, not the word `ok`; (c) `parse` does not imply `config` — `parse = ["alloc",
@@ -155,10 +166,17 @@ mid-revert; the conductor sampled it pristine at 415 lines minutes later; the fi
 is 576. All three readings were correct at the instant taken, and any two of them compared
 naively suggest lost work.
 
-**The fix is procedural and belongs in the next seed alongside GATE-CAN-FAIL itself:**
-falsification runs against a COPY under `/tmp`, never `git checkout` on a live file. State
-it as part of the requirement, because a discipline that demands evidence without naming a
-safe way to produce it will keep teaching agents the unsafe way.
+**The fix is procedural and belongs INSIDE the GATE-CAN-FAIL requirement, not beside it as
+a caveat.** The discipline is correct; the DEFAULT TECHNIQUE is what is unsafe. Written as
+"prove the gate can fail", a coder reaches for `git checkout` every single time. Written as
+"prove the gate red against a `/tmp` copy", it never does. So the requirement should carry
+its own safe technique in the same sentence:
+
+> Every gate is shown to fail on purpose, **proven against a copy under `/tmp`, never by
+> reverting a live file.**
+
+A discipline that demands evidence without naming a safe way to produce it will keep
+teaching agents the unsafe way, and the agent is not wrong to have inferred it.
 
 Corollary for anyone reading a shared tree: a single `git status` or `cargo fmt --check`
 sample is a snapshot of a moving target, not a fact about a lane's work. Attribute from
