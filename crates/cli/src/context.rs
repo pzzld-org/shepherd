@@ -10,6 +10,7 @@
 //! value shared by every command.
 
 use std::{
+    collections::BTreeSet,
     env,
     ffi::{OsStr, OsString},
     fs,
@@ -303,6 +304,12 @@ pub struct ExecutionContext {
     pub explicit_config: Option<PathBuf>,
     pub config: ShepherdConfig,
     pub config_sources: Vec<ConfigSource>,
+    /// Dotted keys (e.g. `"models.root"`) some merged config layer set
+    /// explicitly. Carried straight from
+    /// [`shepherd_core::loader::LoadedConfig::explicit_keys`] so a caller can
+    /// tell "a layer set this key" from "the merged value happens to equal
+    /// the default" without re-reading or re-parsing any configuration file.
+    pub explicit_keys: BTreeSet<String>,
     pub output_format: OutputFormat,
     pub verbosity: u8,
     runtime: RuntimeBindings,
@@ -318,6 +325,7 @@ impl core::fmt::Debug for ExecutionContext {
             .field("active_harness", &self.active_harness)
             .field("explicit_config", &self.explicit_config)
             .field("config_sources", &self.config_sources)
+            .field("explicit_keys", &self.explicit_keys)
             .field("output_format", &self.output_format)
             .field("verbosity", &self.verbosity)
             .finish_non_exhaustive()
@@ -465,6 +473,7 @@ impl ExecutionContext {
             explicit_config,
             config: loaded.config,
             config_sources: loaded.sources,
+            explicit_keys: loaded.explicit_keys,
             output_format: inputs.output_format,
             verbosity: inputs.verbosity,
             runtime,

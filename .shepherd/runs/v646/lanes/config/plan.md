@@ -330,3 +330,140 @@ means `config` is already proven against the whole schema including the `GatesEx
 shape (`crates/core/tests/loader.rs:270`) and every `deny_unknown_fields` struct. This redesign
 therefore introduces no new deserialization risk. The only genuinely new surface is error message
 shaping and the migration strip, both handled above.
+
+---
+
+## 16. Revision — §8 is SUPERSEDED
+
+Root granted `crates/cli/src/context.rs` and ruled out the approximation. §8's default-comparison
+approach is **withdrawn**. Ship the exact version.
+
+**Why the approximation was disqualified.** Deriving `configured_roles` by comparing the merged
+`ModelsConfig` against `ModelsConfig::default()` renders `source: default` for a config that
+explicitly set a role to the default value. That is a wrong answer the user cannot see, in a sprint
+whose whole subject is machinery that reports healthy while being wrong. Self-disqualifying.
+
+**Replacement design.** Thread explicit-key provenance from the loader through to the CLI:
+
+1. `LoadedConfig` (`crates/core/src/loader.rs:57`) gains a field recording the dotted keys actually
+   present across the merged layers. This is a natural byproduct of the §15 design: after
+   `FileFormat::Toml.parse` returns `Map<String, Value>` per layer, the key set is already in hand
+   before merging, so collecting it costs one walk and no extra parse.
+2. `ExecutionContext` (`crates/cli/src/context.rs:291`) carries it alongside `config` and
+   `config_sources`, populated at `:467` where `loaded.sources` is already consumed.
+3. `explicit_models` (`crates/cli/src/cmd/wave_a_models.rs:261`) reads it instead of re-reading and
+   re-parsing the file at `:279-290`.
+
+The test at `crates/cli/tests/wave_a_models_cli.rs:102` uses `coder = "native-coder"` and stays
+green either way. **Add the case that distinguishes the two designs**: a config that sets a role
+explicitly to its default value must still render `source: config`. That test fails under the
+withdrawn approximation and passes under this one, which is what makes it worth writing.
+
+`LoadedConfig` gains a field, so its construction site in `loader.rs` is the only thing that must
+change; `crates/cli/src/context.rs:467` is the sole consumer. §4's containment rule still holds for
+every other loader API.
+
+### Wave re-plan
+
+Step 1A is already in flight under the §4 rule that preserves `LoadedConfig { config, sources }`.
+It is NOT interrupted. The field addition moves to Wave 2, which re-opens `loader.rs` after 1A
+lands. Waves are sequential, so there is no conflict.
+
+**WAVE 2 (revised) owns the whole models vertical**, and remains ONE step for the reason given in
+§6: the table spans core defaults, the compiler tier vocabulary, and CLI rendering, so any split
+reports a false red until every part lands.
+
+| File | Change |
+|---|---|
+| `crates/core/src/loader.rs` | add explicit-key provenance to `LoadedConfig` |
+| `crates/core/src/settings.rs` | `ModelsConfig::root` and `::conductor` -> `reasoning-high` |
+| `crates/core/tests/loader.rs` | default assertions at `:141-144`; explicit-key test |
+| `crates/cli/src/context.rs` | carry provenance on `ExecutionContext` |
+| `crates/cli/src/cmd/wave_a_models.rs` | consume it; delete the re-read at `:279-290`; add `--harness` to `show`; update `USAGE` |
+| `crates/cli/tests/wave_a_models_cli.rs` | `--harness` table, the explicit-default-value case, the codex `[agent_types]` root-exclusion pin |
+| `content/roles/conductor.md` | `model_hint: standard` -> `reasoning-high` (frontmatter line only) |
+
+### Base verification rule
+
+A flat "HEAD equals briefed SHA" check is invalid in this shared worktree because root commits land
+during waves. Use:
+
+```
+git diff --stat <briefed-base>..HEAD -- <the step's own file scope>
+```
+
+Empty means proceed regardless of HEAD; non-empty means genuinely halt. Measured at Wave 1:
+`git diff --stat 58aadf4..b992ec6` against this lane's entire file scope is **empty**, across root
+commits bd391e1, 7e63628, aa6dc98, 7d5492e, 587fcfa, b992ec6. Wave 1 was therefore not restarted.
+
+## 17. Enforcement note — the tier map is no longer advisory
+
+Commit 7d5492e makes `SubagentStart` write a dispatch record, and 587fcfa enforces role rules for
+any agent shepherd DID record. Role-scoped guard rules now actually fire: a recorded conductor is
+refused when it dispatches an engineer; a recorded coder is refused when it dispatches anything.
+
+Two consequences for this lane's Objective 2:
+
+1. `conductor: standard -> reasoning-high` is a correctness fix, not a cosmetic one. An
+   under-tiered lead is now a role enforced at the wrong tier, and every dispatch beneath it
+   inherits that.
+2. The `content/roles/shepherd.md` decision in §7 gains teeth. Flipping root off `inherit-caller`
+   would enroll it in the codex `[agent_types]` table via `compiler.rs:367` — with rules live that
+   is an enforcement change, not a table entry. The test pinning that exclusion is load-bearing.
+
+---
+
+## 18. Revision — Wave 3 regeneration is WITHDRAWN; root owns it
+
+§6's "WAVE 3 — regeneration and drift report" is **cancelled**. Root regenerates `agents/` once,
+after all four lanes land.
+
+**Why, in root's words:** the failure mode is not a merge conflict, it is a stale tree. Both this
+lane and the harness lane edit `content/roles/`. Whoever regenerates first produces a tree correct
+for their own source edit and missing the other's, and because the capability lint reads `agents/`
+rather than `content/roles/`, the lost edit resurfaces as a lint violation with no source-level
+evidence of what caused it.
+
+**This lane therefore:**
+- edits `content/roles/conductor.md` only;
+- does NOT run `scripts/generate-compiler-package-content.py`, `shepherd compile --out "$PWD"`, or
+  `scripts/generate-codex-carrier.py` as a committed step;
+- may regenerate locally to run a lint, but commits nothing from it;
+- states in the handoff exactly which role files changed and what the regenerated tree must contain.
+
+**Handoff must declare this expected tree delta:**
+
+| Generated file | Before | After |
+|---|---|---|
+| `agents/conductor.md` | `model: sonnet` | `model: opus[1m]` |
+| `agents/shepherd.md` | `model: inherit` | `model: inherit` (UNCHANGED — see §7) |
+| codex `[agent_types]` | root absent | root still absent (§7, pinned by test) |
+
+`conformance/content-target-final.json` and the `crates/component/tests/component.rs` digest move as
+a consequence. Both are root's, regenerated from the compiler's own manifest, never hand-edited.
+
+**Collision status, confirmed by the harness lane:** file-level disjoint, not merely field-level.
+Harness owns `engineer.md` and `planter.md`; this lane owns `conductor.md` and `shepherd.md`.
+Neither lane can clobber the other even by accident.
+
+## 19. Drift rule — final form
+
+Supersedes §16's base-verification rule.
+
+```
+git diff --stat <briefed-base>..HEAD -- <the step's own file scope>
+```
+
+A non-empty result is **only** drift if content the step did NOT write replaced content it DID. If
+the diff is the step's own in-flight work committed underneath it, proceed. Inspect
+`git diff -- <file>` before halting.
+
+Measured for this lane at Wave 1 close, base `1f2a398`:
+
+| Check | Result |
+|---|---|
+| `git diff --stat b992ec6..1f2a398` over the full lane scope | empty |
+| Root commits since boot: bd391e1, 7e63628, aa6dc98, 7d5492e, 587fcfa, b992ec6, 0623dfd, 1f2a398 | none touch lane scope |
+| 1B's work after the `git add -A` sweep that hit the distribution lane | intact and uncommitted, 4 `economy` entries present |
+
+No re-dispatch was required at any point. Lane re-based on `1f2a398`.

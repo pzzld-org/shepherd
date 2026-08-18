@@ -158,7 +158,6 @@ config = [
   "dep:config",
   "std",
   "json",
-  "dep:toml",
 ]
 
 serde = [
