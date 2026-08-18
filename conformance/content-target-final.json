@@ -199,12 +199,12 @@
           "67ac5e6b1278cc5f9f1b53f808d94bd9af0442b49eb6a683edcb40d80f87e5a7"
         ],
         "agents/engineer.md": [
-          2736,
-          "6478c08433575065a610494d38b0209cdebe248db803f3bea03e482d02e15f61"
+          2793,
+          "08b3db211ac059cefacaf13a36f9ca6e656c1cc4c05a1752819a459f09677036"
         ],
         "agents/planter.md": [
-          3062,
-          "f267f0f704d6bc6af901e3d5f5f7c653dd54069c080d68d8cfe46ccf2feb3a69"
+          3077,
+          "ec4bd21eb93a7fa583c5dfdb11ec6be3f24ef66329141a921a607034c5c4aacc"
         ],
         "agents/shepherd.md": [
           3612,
@@ -251,7 +251,7 @@
           "464768041f6f32bc14cec18ba0d428e0a60b86ba45f652e1cb0cd3956245bf81"
         ]
       },
-      "tree_digest": "3b88c9ea861b80343c5516417f8d562dd9081081683c6062b10764892cba5a1c"
+      "tree_digest": "534209d8e4d33a8f106ff174a5b920cf9429083173809653095a39b479aa9cb4"
     },
     "codex": {
       "files": {
@@ -317,12 +317,12 @@
           "b04b046b5b0aa777ef4c50a08cfbee13feffb0bee8d812038f5b7e0071f59650"
         ],
         "prompts/engineer.md": [
-          2707,
-          "a814fd772a39e0a88f2721decd6bbb5a243402398ef776207587fbaea24b010c"
+          2764,
+          "8489d61db8c86db58a007c173c61b4278e574e5bf54fcc17cadb8825dc3a0ddf"
         ],
         "prompts/planter.md": [
-          2994,
-          "a21c6cde68067f1d99cb09f0c0204a39bb242c0cb30e9554e429386c9ddaf147"
+          3009,
+          "43b992720a88232a894e9191a96f9331adb81e07c6d10ae27b0904649bbd38cc"
         ],
         "prompts/shepherd.md": [
           3549,
@@ -365,7 +365,7 @@
           "464768041f6f32bc14cec18ba0d428e0a60b86ba45f652e1cb0cd3956245bf81"
         ]
       },
-      "tree_digest": "18e02c5472576df2eb21a25056db17c0127beb6c01d043817cb82630e5a870fd"
+      "tree_digest": "2aa766cce9b09bcc488ddfb3ae3a056066c73bf6021b2385fd4d470a4580ced1"
     }
   }
 }

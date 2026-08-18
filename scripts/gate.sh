@@ -92,6 +92,15 @@ gate_full() {
   step "clippy (default)" env RUSTFLAGS="-D warnings" cargo clippy --workspace --all-targets --locked
   step "clippy (full)" env RUSTFLAGS="-D warnings" cargo clippy --workspace --all-targets --locked --features full
   step "tests" cargo test --workspace --locked
+  # `cargo test --workspace` runs each member with its DEFAULT features, and
+  # `required-features` targets are silently SKIPPED rather than failed. With
+  # shepherd-core defaulting to ["std"], that skipped guard, dispatch,
+  # portable_dispatch and run_state outright and reduced loader to zero tests
+  # via its own `#![cfg]` -- 3 of 126 core tests actually executed, including
+  # none of the guard engine's 66. check-features.sh does not cover this: it
+  # runs `cargo check`, proving the feature graph compiles, never that the
+  # feature-gated tests run.
+  step "tests (feature-gated targets)" cargo test --workspace --locked --all-features
   step "build typed component for adapter package suites" \
     cargo build --locked --release --package shepherd-component --target wasm32-wasip2
   step "component runtime package suite" \
