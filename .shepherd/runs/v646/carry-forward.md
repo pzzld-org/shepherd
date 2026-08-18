@@ -68,6 +68,21 @@ proving execution is exactly the inert-gate class one level further out — and 
 hid 22 loader tests behind an unset `config` feature while the lane believed it had a
 working gate on its primary acceptance criterion.
 
+**The propagatable form, from the harness lane, and it generalizes past Rust:**
+
+> Every gate must state how many things it checked, and fail when that number is zero.
+
+The pattern already exists in this repo and was simply never generalized: `test_exec_bits.sh`
+fails with `no path-invoked scripts matched — pathspec drift?` when zero paths match. That is
+exactly the defence the Cargo test targets lacked. A gate that reports `ok` without a count
+cannot distinguish "checked 126 things, all fine" from "checked nothing".
+
+Applied during this sprint rather than merely filed: the harness lane probed all three gates
+it shipped against empty input and all three failed loudly; its highest-risk case was the
+harness-parity table, where a zero-row table would satisfy a naive regenerate-and-diff
+perfectly because both sides of the diff are equally empty. Its test now derives the expected
+row count from the three manifests.
+
 **Carry forward:** (a) any new `[[test]]` with `required-features` must be added to the
 feature-gated gate step, or it is born inert; (b) reviewing a test report means reading the
 COUNT, not the word `ok`; (c) `parse` does not imply `config` — `parse = ["alloc",
