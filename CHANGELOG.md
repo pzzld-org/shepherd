@@ -44,6 +44,11 @@ and attached to the tag by hand.
   `ReadSubject::open_label` gated `not(unix)` when a non-unix **lib test** build does use it,
   making the expectation unfulfilled -- which `-D warnings` rejects exactly as hard as the
   dead code it was written to tolerate. The gate is now `all(not(unix), not(test))`.
+  A fourth followed in the integration suite: `invoke_with_path` in
+  `wave_e_coordination.rs`, whose only caller is a `#[cfg(unix)]` test that puts a stub `kill`
+  on PATH. All four are the same shape -- an item declared unconditionally whose every caller
+  is unix-gated -- and all four were invisible to every unix machine and to every release
+  build, which builds the lib rather than the test targets.
 
 ### Notes
 
