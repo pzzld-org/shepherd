@@ -13,6 +13,7 @@ version=$2
 [[ -d "$asset_dir" && ! -L "$asset_dir" ]] || fail 'asset directory must be a real directory'
 [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "invalid version: $version"
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+source "$repo_root/scripts/lib/release-package-names.sh"
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/shepherd-release-legal-verify.XXXXXX")
 trap 'find "$tmp_dir" -depth -delete' EXIT
 

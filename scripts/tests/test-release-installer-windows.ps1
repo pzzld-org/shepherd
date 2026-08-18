@@ -368,7 +368,10 @@ try {
     $danglingDestination = Join-Path $danglingInstall 'shepherd.exe'
     $missingTarget = Join-Path $temporary 'dangling-link-destination/missing.exe'
     [System.IO.File]::WriteAllText($missingTarget, 'dangling link target')
-    New-Item -ItemType SymbolicLink -Path $danglingDestination -Target $missingTarget | Out-Null
+    # -Force is required: PowerShell 5.1 refuses New-Item -ItemType SymbolicLink without it
+    # unless the target is resolvable, and the line below deletes that target immediately
+    # after linking, by design, to produce the dangling link this fixture exists to test.
+    New-Item -ItemType SymbolicLink -Path $danglingDestination -Target $missingTarget -Force | Out-Null
     [System.IO.File]::Delete($missingTarget)
     Assert-True (-not [System.IO.File]::Exists($missingTarget)) 'dangling-link fixture target was not removed'
     $env:SHEPHERD_INSTALL_DIR = $danglingInstall

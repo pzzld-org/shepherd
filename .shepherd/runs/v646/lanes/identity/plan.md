@@ -223,3 +223,24 @@ Each of these was confirmed before the wave was briefed, so no coder has to redi
   predates the in-flight `native_hook.rs` fix (20:43:45). The hook manifest invokes bare
   `shepherd`, so the stale binary is the one enforcing the guard. Escalated to team-lead with the
   reinstall requirement. No source file will be written by this conductor while held.
+
+## 10. I3 implementation note, verified in source
+
+`descriptor::write_no_clobber` already computes the exact fact the rollback set needs, then
+discards it. At `wave_c_bootstrap.rs:~552-566`:
+
+- `linkat(...)` -> `Ok(())` sets `published = true`; `Errno::EXIST` sets `published = false`
+- the temporary file is unlinked either way
+- then `if !published { return Ok(()); }`
+
+So a caller cannot currently distinguish "I created this file" from "it was already there". Both
+return `Ok(())`. Change the signature to surface `published` (a `bool`, or a two-variant enum for
+readability) and thread it to the caller. That single fact is what makes the rollback set precise:
+only artifacts whose write reported `published == true` in THIS invocation are eligible for
+unwind. It also gives `init` the information it needs to distinguish a fresh scaffold from a heal
+without a second stat, and stat-then-write would be a TOCTOU race that the descriptor-safe
+design exists to avoid.
+
+Both existing symlink-refusal tests for this path must keep passing unchanged:
+`init_refuses_a_symlink_namespace_without_touching_its_target` (`wave_c_bootstrap_cli.rs:235`) and
+`init_refuses_an_existing_config_symlink_instead_of_reporting_success` (`:253`).
