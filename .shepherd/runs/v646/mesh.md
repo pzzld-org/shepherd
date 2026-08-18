@@ -448,3 +448,52 @@ and publish release assets. Not on the delivery chain; recorded for the plan to 
 (`axiom-node v0.3.9`, online), Obsidian (vault root reachable) all responded. There is no
 GitHub MCP server under `MCP_DOCKER`; GitHub access is the `gh` CLI, which is sufficient and is
 what every GitHub row above was measured with.
+
+## ROW 20 — adversarial verification results, including where this mesh was wrong
+
+The seed's findings were put through an independent refutation pass (36 agents, 13 findings
+confirmed, 4 refuted). Recording the refutations, because a corrected claim that is not written
+down gets re-derived by the next role.
+
+**Refuted — `cargo-publish.yml` is NOT dead by construction.** An earlier draft of ROW 16.2
+claimed the tag trigger can never fire. Measured: `gh run list --workflow=cargo-publish.yml`
+shows run `31911572114`, `event=push`, `ref=v6.4.5` — it fired, because the **operator** pushed
+that tag by hand, and the run was then `cancelled`. The `GITHUB_TOKEN` rule is real but only
+bites once `release.yml` becomes the tag authority. The narrower real defect: `release.yml`
+holds no crates.io step and no visibility check, so it can create a GitHub release before the
+crates exist, violating `docs/cargo-distribution.md:45-47`.
+
+**Refuted — `disabled-strategies` is intentional, not a defect.**
+`.shepherd/docs/2026-08-15-v645-cargo-native-distribution.spec.md:70` requires binstall to work
+"without compile or third-party quick-install fallback", and the gate at
+`scripts/check-cargo-distribution.py:64` enforces it deliberately. The loud 404 is the
+specified behaviour and is the only reason the four real causes were ever visible. Relaxing it
+would turn binstall into a silent slow source build and mask the next four failures.
+
+**Refuted — no live Python-in-hooks contradiction.** `hook_authority_inventory.py` is a gate
+helper invoked by three tests and registered in no manifest, so
+`test_registered_hooks_no_python.sh` is not in conflict with it.
+
+**Corrected — "build artifacts in the repo" is real in effect, wrong in mechanism.** No build
+artifact is tracked anywhere: largest tracked file is a 37 KB markdown doc, `git ls-files |
+file --mime` returns only text/JSON, and the committed generated tree is byte-identical to a
+fresh `shepherd compile --target claude`. The install break is one tracked *script*
+(`bin/shepherd`), and `plugins/shepherd/` ships no `bin/`, so it is never distributed — a
+local-install defect, not a shipped-package defect.
+
+**Confirmed and sharpened — the hooks damage is de-registration, not dangling paths.** Commit
+`ffd9aea` deleted six hook registrations without deleting or re-homing their scripts. Seven
+shell hooks ship inert across all three interfaces, including `seed_preflight_check.sh` (the
+SEED-GATE policy adapter), and three events — `PostToolUse`, `CwdChanged`, `PreCompact` — now
+exist in no manifest anywhere. It shipped green because `hooks/tests/run.sh` runs 6 of 24 test
+files and the 18 it skips are exactly the tests for the de-registered hooks.
+
+**Confirmed — the npm asset-name mismatch.** `scripts/verify-release-distribution.sh:86-88`
+still loops `for package in component-runtime harness-claude harness-codex harness-pi` and
+extracts `fl03-${package}-${version}.tgz`, against real names `@pzzld/component-runtime`,
+`@pzzld/pi-claude`, `@pzzld/pi-codex`, `@pzzld/pi-shepherd`.
+
+**Confirmed — the version checker is not inert.** Mutating `README.md:1` to 6.4.5 made
+`version-bump.py check` fail with `README release heading expected 1 occurrence(s), found 0`.
+It was restored and the tree left clean. This is the one gate in the release path that was
+demonstrated able to fail.

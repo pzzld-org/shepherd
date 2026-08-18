@@ -159,11 +159,31 @@ published names are `@pzzld/component-runtime`, `@pzzld/pi-claude`, `@pzzld/pi-c
 `@pzzld/pi-shepherd`, so `npm pack` (`release.yml:348`) emits `pzzld-pi-claude-6.4.6.tgz` and
 friends. **Both the scope prefix and three of the four package names are wrong.** This runs at
 `release.yml:483`, inside the publish job — so even a green build fails here.
-**1d. crates.io publishing is dead by construction.** `cargo-publish.yml:3-4` triggers on
-`push: tags: ["v*.*.*"]`, and `release.yml` pushes the tag using `secrets.GITHUB_TOKEN`.
-GitHub does not trigger workflows from `GITHUB_TOKEN`-authored events. The lane can only ever
-run via `workflow_dispatch` — which is why crates.io `shepherd-cli 6.4.5` exists with no
-GitHub assets behind it.
+**1d. `release.yml` can cut a GitHub release before the crates are on crates.io.**
+*(Corrected at seed time — an earlier draft of this row claimed the crates.io lane was "dead by
+construction". That is false and is recorded here so it is not re-derived: `gh run list
+--workflow=cargo-publish.yml` shows run `31911572114`, `event=push`, `ref=v6.4.5` — the tag
+trigger has fired. It fired because the **operator** pushed that tag by hand; the run was then
+`cancelled`.)*
+The narrower, real defect: `release.yml:515` pushes the tag authenticated as
+`secrets.GITHUB_TOKEN`, and GitHub does not trigger workflows from `GITHUB_TOKEN`-authored
+events — so once `release.yml` becomes the tag authority, `cargo-publish.yml` stops firing.
+`release.yml` also contains no crates.io step and no crates.io-visibility check; grepping it
+for `cargo|crates` returns only build lines. `docs/cargo-distribution.md:45-47` requires that
+"GitHub release publication … must not start until all six crate receipts are `published`",
+so the workflow can create a release that violates its own documented phase ordering.
+**Remedy direction:** a fail-closed pre-tag assertion in `release.yml` that the exact
+`shepherd-cli` version is visible on crates.io. **Not** a post-release `gh workflow run`
+dispatch, which inverts phases 2 and 3.
+
+**Do NOT "fix" this by relaxing `disabled-strategies`.** `crates/cli/Cargo.toml:63` and the
+gate at `scripts/check-cargo-distribution.py:64` are deliberate:
+`.shepherd/docs/2026-08-15-v645-cargo-native-distribution.spec.md:70` requires binstall to work
+"without compile or third-party quick-install fallback", and the same spec bans a release that
+"silently falls back to another strategy". A loud 404 is the specified behaviour and is what
+exposed all four causes above; re-enabling `compile` would turn binstall into a slow source
+build and mask the next four. `cargo install shepherd-cli --locked` is already the documented
+source path (`README.md:47-51`).
 
 Then verify `pkg-url` (`crates/cli/Cargo.toml:60`) resolves to a real object with the binary at
 the archive root, matching `bin-dir = "{ bin }{ binary-ext }"`.
@@ -179,9 +199,24 @@ house rule.
 
 ### 2. `shepherd` on PATH is the native binary — BLOCKER
 **Anchors:** mesh ROW 1. **Issue:** #307.
+**Scope correction, measured — read before starting.** The operator's report was "build
+artifacts stored in the repo". The effect is real; the stated mechanism is not. **No build
+artifact is tracked anywhere in this repo** — the largest tracked file is a 37 KB markdown doc,
+`git ls-files | file --mime` returns only text and JSON, and the committed generated tree
+(`.shepherd-generated.json`, `agents/`, `skills/`) is byte-identical to a fresh `shepherd
+compile --target claude`. Do not spend the lane hunting artifacts; there are none.
+
+What actually breaks installs is one tracked *script*: `bin/shepherd`, a checkout-only bash
+launcher, symlinked into `~/.local/bin` ahead of `~/.cargo/bin`. `plugins/shepherd/` ships no
+`bin/`, so the launcher is **never distributed** — this is a local-install defect, not a
+shipped-package defect, which narrows the fix considerably.
+
 Delete `bin/shepherd`, or make it structurally uninstallable. `scripts/install-shepherd.sh`
-currently defaults to the exact directory the launcher symlink occupies; it must not be
-possible for the repo launcher to precede `~/.cargo/bin/shepherd` on PATH.
+currently defaults to the exact directory the launcher symlink occupies and then refuses to
+repair it; it must not be possible for the repo launcher to precede `~/.cargo/bin/shepherd` on
+PATH. Note both `plugins/shepherd/hooks/hooks.json` and
+`packages/component-runtime/src/native-transport.mjs` invoke the bare name `shepherd`, which is
+why one shadowed launcher fails every hook and every adapter dispatch at once.
 **Acceptance:** with `~/.local/bin` ahead of `~/.cargo/bin`, `shepherd --version` prints the
 native version. `shepherd doctor` detects and reports when the resolved `shepherd` is not the
 native binary. The launcher's existing test is wired into a gate that runs.
@@ -194,6 +229,13 @@ the comment-only `shepherd.toml`, and the migrated registry — and never writes
 fixtures. The pzzld vault is not corrupted; it is the exact, expected output of `shepherd init
 --confirm`, which means **every project this tool has ever created is born unable to
 dispatch**. Nothing inserts a `projects` row either.
+Both failures were reproduced in a clean git fixture against `target/debug/shepherd` 6.4.6.
+Registry-backed verbs fail with `no project registered — run 'shepherd init' first` — a
+remediation that provably does not remediate, because `init` is what failed to create it.
+**Locked direction:** `init` is the single, `--confirm`-gated, descriptor-safe place to create
+identity. **Dispatch must keep hard-failing** — it is anchored at `primary_root` while hooks
+run concurrently from arbitrary working directories, so auto-healing would mint shadow
+identities, which is precisely what `crates/cli/tests/dispatch_cli.rs:199` exists to prevent.
 **Acceptance:** `shepherd init --confirm` in an empty directory produces a namespace where
 `shepherd dispatch` and every registry-backed verb succeed. `shepherd doctor` fails — loudly —
 on a namespace missing identity, instead of reporting `status: ok`. The init gate test asserts
@@ -218,13 +260,20 @@ refusal test still passes unchanged.
   Restore both.
 - Pi has **no hook manifest at all** — `packages/harness-pi/shepherd.pi.json` declares only
   `transitions.resume`/`stop`. Pi binds no identity and guards no tool use. Give it parity.
-- Seven hook scripts under `hooks/scripts/` are registered nowhere after `ffd9aea` replaced
-  them with `crates/cli/src/cmd/claude_hook.rs` (+377 lines). Retire them, or register them.
-  Do not leave both.
-- `hooks/tests/run.sh` executes 6 of 24 test files; the 18 it skips are the tests for the
-  de-registered scripts. Either the tests run or the files go.
-- `hooks/scripts/hook_authority_inventory.py` audits only `hooks/hooks.json`, so the shipped
-  Codex carrier manifest has never been checked by it.
+- **Commit `ffd9aea` ("v6.4.5: recover release pipeline") deleted six hook registrations
+  without deleting or re-homing their scripts.** Seven shell hooks now ship inert in all three
+  interfaces — including `seed_preflight_check.sh`, the SEED-GATE policy adapter. Three events
+  they served — **`PostToolUse`, `CwdChanged`, `PreCompact`** — exist in no manifest anywhere.
+  Retire the scripts or re-register the events. Do not leave both.
+- `hooks/tests/run.sh` executes **6 of the 24** test files present, and the 18 it skips are
+  exactly the tests covering the de-registered hooks. That is why this shipped green.
+- Measured clean, so do not spend the lane on it: every *registered* hook command resolves
+  (zero dangling paths), every hook script is `100755` in the index, and every hook script is
+  bash-3.2 safe (`mapfile`/`declare -A`/`${var,,}` appear only inside comments at
+  `hooks/scripts/precompact_snapshot.sh:168` and `hooks/scripts/_lib.sh:196`).
+  `hooks/scripts/__pycache__/` is untracked and gitignored, and
+  `hook_authority_inventory.py` is a gate helper registered in no manifest — so there is **no**
+  contradiction with `test_registered_hooks_no_python.sh`.
 **Acceptance:** one table, generated not hand-written, showing event × harness × implementation
 for all three harnesses, with no blank cells that are not a documented harness limitation. Each
 harness's hooks are exercised against a real invocation.
@@ -240,8 +289,16 @@ The other three are configuration logic:
   `ExecutionContext` already parsed.
 - `crates/cli/src/cmd/wave_c_bootstrap.rs:324` hand-walks a dotted key over `toml::Value`
   instead of using `config`'s path expressions.
-Also: the `config` feature in `crates/core/Cargo.toml:157-161` force-enables `dep:toml`, and
-`loader.rs` is the only reason it must.
+Also: `toml` is `optional = true` (`crates/core/Cargo.toml:60`) but the `config` feature
+(`:157-162`) force-enables `dep:toml`. Measured: deleting that one line yields **16 compile
+errors, every one of them inside `loader.rs`** — proving the handwritten loader logic is the
+sole reason the standards-backed `config` layer drags `toml` in at all. Removing the
+duplication is therefore also what lets the feature graph state the truth.
+
+`guard/parser.rs` stays, and the reason is concrete, not stylistic: it needs
+`toml::Value::Datetime` (`parser.rs:548`), for which `config::Value` has no variant, and it
+does no layering, precedence, or merging. It is a document parser, correctly gated behind the
+`parse` feature.
 **Constraint:** comment-preserving migration rewrites are a genuine `toml` use. Keep exactly
 those; delete the duplicated merge and validation. Do not break the migration paths pinned by
 `crates/cli/tests/migrate_layout.rs` and `crates/registry/tests/layout.rs`.
