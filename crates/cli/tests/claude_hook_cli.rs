@@ -382,3 +382,63 @@ fn shepherd_self_repair_is_always_permitted() {
     );
     fs::remove_dir_all(root).expect("remove fixture directory");
 }
+
+/// A host tool envelope carries no `shepherd_dispatch` block, so the tool name
+/// never reached the resolver, no write paths were derived, and the guard
+/// refused every `Write` and `Edit` a root session attempted for lack of them.
+#[test]
+fn root_session_may_write_inside_the_repository_but_not_outside_it() {
+    let root = repository("root-write");
+    let session = hook(
+        &root,
+        serde_json::json!({
+            "hook_event_name": "SessionStart",
+            "session_id": "claude-session-write"
+        }),
+    );
+    assert!(session.status.success());
+
+    let inside = hook(
+        &root,
+        serde_json::json!({
+            "hook_event_name": "PreToolUse",
+            "session_id": "claude-session-write",
+            "tool_use_id": "write-inside",
+            "tool_name": "Write",
+            // Relative: the fixture root resolves through a /var -> /private/var
+            // symlink on macOS, which is a temp-dir artifact, not a scope escape.
+            "tool_input": {"file_path": "notes.md", "content": "ok"}
+        }),
+    );
+    assert!(
+        inside.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&inside.stderr)
+    );
+    assert!(
+        inside.stdout.is_empty(),
+        "a root session must be able to write inside its own repository: {}",
+        String::from_utf8_lossy(&inside.stdout)
+    );
+
+    // Deriving the path is what makes the scope check meaningful, so the
+    // escape must still be refused rather than passing for want of a path.
+    let outside = hook(
+        &root,
+        serde_json::json!({
+            "hook_event_name": "PreToolUse",
+            "session_id": "claude-session-write",
+            "tool_use_id": "write-outside",
+            "tool_name": "Write",
+            "tool_input": {"file_path": "/etc/passwd", "content": "no"}
+        }),
+    );
+    assert!(outside.status.success());
+    let outside: serde_json::Value =
+        serde_json::from_slice(&outside.stdout).expect("hook output is JSON");
+    assert_eq!(
+        outside["hookSpecificOutput"]["permissionDecision"], "deny",
+        "a write outside the primary repository must stay refused: {outside}"
+    );
+    fs::remove_dir_all(root).expect("remove fixture directory");
+}

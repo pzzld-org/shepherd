@@ -302,6 +302,19 @@ fn binding_for(
     host: HookHost,
 ) -> Result<Option<DispatchBinding>, CliError> {
     let Some(raw) = input.shepherd_dispatch.as_ref() else {
+        // A host tool envelope carries no `shepherd_dispatch` block -- only a
+        // dispatched subagent gets one -- but it does name the tool being
+        // requested. `plan_lifecycle` substitutes a default root binding here,
+        // and that default carries no tool name, so the resolver derived no
+        // write paths and the guard refused every Write and Edit from a root
+        // session for lack of them. Forward what the host actually sent.
+        if matches!(event, "PreToolUse" | "PostToolUse") {
+            let mut binding = DispatchBinding::root(Role::Shepherd, "execution", DEFAULT_LEASE_MS)
+                .map_err(|error| CliError::message(error.to_string()))?;
+            binding.tool_name = input.tool_name.clone();
+            binding.tool_input = input.tool_input.clone();
+            return Ok(Some(binding));
+        }
         return Ok(None);
     };
     let role = raw
