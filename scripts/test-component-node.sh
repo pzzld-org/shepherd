@@ -41,6 +41,11 @@ artifact_dir=$(cd "$(dirname "$artifact")" && pwd)
 artifact_name=$(basename "$artifact")
 cp "$artifact_dir/$artifact_name" "$stage_dir/shepherd-component.wasm"
 cp packages/scripts/test-component-node.mjs "$stage_dir/test-component-node.mjs"
+# The conformance oracle travels with the test. Its digests used to be copied
+# into the test as literals, which made a content change a seven-file edit and
+# left this one -- reachable only from the wasm workflow -- to fail after the
+# local gate went green.
+cp conformance/content-target-final.json "$stage_dir/content-target-final.json"
 mkdir -p "$tmp_dir/component-runtime"
 cp -R packages/component-runtime/src "$tmp_dir/component-runtime/"
 
