@@ -88,14 +88,31 @@ omits targets whose `required-features` are unmet. Fixed in `04c500a`.
 |---|---|---|
 | 1 | `cargo binstall` reaches a real asset | lane `distribution` |
 | 2 | `shepherd` on PATH is the native binary | lane `distribution` |
-| 3 | a fresh project can dispatch | lane `identity` |
-| 4 | errors name the actual failure | lane `identity` |
+| 3 | a fresh project can dispatch | **CLOSED** — `init --confirm` writes identity and one matching `projects` row atomically; `doctor` fails loudly without it; verified live at integration |
+| 4 | errors name the actual failure | **CLOSED** — 2 of 2 misleading sites fixed, subject-aware by errno, NOFOLLOW untouched |
 | 5 | every harness defines every hook | lane `harness` |
 | 6 | configuration parsing belongs to `config` | **CLOSED** — one `toml::` consumer tree-wide, and it is the intended one |
 | 7 | the release gate can fail | lane `distribution` |
 | 8 | the model map states the intended tiers | **CLOSED** — `models show --md` renders the operator's corrected table |
 | 9 | CHANGELOG and release notes are truthful | **CLOSED** — section present, v6.4.5 dated; the seed's premise was stale |
 | 10 | v6.4.6 milestone, v6.4.5 reconciled | **CLOSED** — milestone existed; 10 stale issues verified and closed with evidence, zero open |
+
+## D2. Gates this sprint made able to fail
+
+Every one below was inert or absent when the sprint started, and each was shown red on
+purpose before being trusted.
+
+| Gate | Was | Now |
+|---|---|---|
+| feature-gated Rust targets | 3 of 126 core tests ran; guard engine's 66 never did | wired into `gate.sh`, 130 more tests execute |
+| `test-release-package-names.sh` | correct, falsifiable, referenced by nothing | wired into `gate.sh fast` |
+| `test-release-archive-layout.sh` | correct, falsifiable, referenced by nothing | wired into `gate.sh fast` |
+| `test-release-tar-portability.sh` | stub modelled a tar that cannot exist | models GNU and old-libarchive; fails under both |
+| `lint_agent_capabilities.sh` | deleted in v6.4.5 while red | restored, its 5 violations fixed, reports OK |
+| `hooks/tests/run.sh` | executed 6 of 24 test files | 27 of 27 |
+| `rule_msrv_is_consistent` | nothing checked the three files agreed | added, falsifiable |
+| `test_cli_authority_gate.sh` | orphan; and its scanner went inert when `bin/` was deleted | in progress |
+| live-symlink refusal | no regression test; suite stayed green when sabotaged | in progress |
 
 ## E. Lane evidence
 
