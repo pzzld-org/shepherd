@@ -206,3 +206,107 @@ fails; it is not this lane's file (also present in the working tree diff outside
 The named follow-up from plan §16 (thread explicit-key provenance through `LoadedConfig` and
 `ExecutionContext`) is DONE, not deferred — see §2 and §9 above; the original §8 approximation was
 superseded and withdrawn before this lane shipped.
+
+---
+
+## 13. Deliverable 6 — closure, the reusable rule, and what not to "simplify"
+
+Added by the conductor after the lane committed at `19af812`, for the close report's
+deliverable-6 section.
+
+### 13.1 The deliverable is CLOSED, not partially closed
+
+`guard/parser.rs` is now the ONLY `toml::` consumer left in the entire `crates/*/src` tree:
+
+```
+$ grep -rln "toml::" crates/*/src/
+crates/core/src/guard/parser.rs
+```
+
+| Site | Before | After | Lane |
+|---|---|---|---|
+| `crates/core/src/loader.rs` | 15 | **0** | config |
+| `crates/cli/src/cmd/wave_a_models.rs` | 2 | **0** | config |
+| `crates/cli/src/cmd/wave_c_bootstrap.rs` | 2 | **0** | identity |
+| `crates/core/src/guard/parser.rs` | 22 | **22, intended** | none, correctly untouched |
+
+All three configuration sites the seed named are gone. The survivor is the one the seed said
+should survive. State it as closed.
+
+### 13.2 The reusable rule — configuration or document?
+
+The next sprint will meet a new `toml::` site and ask the same question. The rule that actually
+decided this one, in priority order:
+
+1. **Does it layer, merge, or apply precedence?** If yes it is CONFIGURATION and belongs to
+   `config`. `loader.rs` merged layers; that alone settled it.
+2. **Does it need a TOML type `config::Value` cannot represent?** `config::ValueKind` is `Nil`,
+   `Boolean`, `I64`, `I128`, `U64`, `U128`, `Float`, `String`, `Table`, `Array`. There is **no
+   datetime**. `guard/parser.rs:548` needs `toml::Value::Datetime`, so it cannot move without
+   inventing a representation — the strongest possible reason to stay.
+3. **Does it preserve formatting or comments on write?** Comment-preserving migration rewrites
+   are a genuine `toml` use. `config` is a read-side merge library and has no such surface.
+4. **Is the input a closed schema or an open document?** `guard/parser.rs` parses
+   `content/predicates/*.toml` with `[[rule]]`/`[[example]]` array-of-tables and an open `extra`
+   map surfaced as dynamic `GuardValue`. That is a document format, not a settings file.
+
+Rule 1 is sufficient on its own. Rules 2 to 4 are what justify an exception.
+
+### 13.3 What was actually deleted — the subtraction, shown
+
+Old path, per layer, on every load:
+
+```
+contents --toml::from_str--> toml::Value
+         --strip retired keys (toml::Value)
+         --validate_gate_entries (toml::Value)
+         --try_into::<ShepherdConfig> + validate()      <-- FULL decode, PER LAYER
+         --toml::to_string--> String                     <-- re-serialize
+         --config::File::from_str--> config parses it AGAIN
+                                                         <-- then merge, then decode again
+```
+
+New path:
+
+```
+contents --FileFormat::Toml.parse(Some(&path), _)--> Map<String, Value>   <-- ONE parse, origins stamped
+         --strip retired keys (config::Value)
+         --LayerSource impl Source --> merge
+         --try_deserialize::<ShepherdConfig> + validate()  <-- ONCE, post-merge
+         --validate_gate_entries                            <-- ONCE, post-merge
+```
+
+Two whole stages are gone: the re-serialize, and the per-layer full decode. `loader.rs` grew in
+line count because the layout-v5 strip and error shaping are now written against `config::Value`
+with documentation, not because it does more work.
+
+### 13.4 The bug's real shape — and the thing most likely to be re-broken
+
+The defect was **not** "per-layer validation is wrong". It was "per-layer validation is wrong
+**on the merge path**".
+
+- `validate(path, contents)` (`loader.rs:223`) is a SINGLE-CANDIDATE api. Decoding one candidate
+  fully is its contract. It still does. Every path-qualified error test routes through it, which
+  is why they survived unchanged.
+- `load` / `load_with_mode` (`:136`, `:176`) merge N layers. Decoding each layer against the full
+  schema before merging rejects configurations that are legal only in combination.
+
+**Do not "simplify" `validate()` to reuse the merge path.** It would look like removing
+duplication and would silently delete the per-candidate diagnostics that
+`crates/core/tests/loader.rs:298`, `:308`, `:327`, `:376`, `:462`, and `:476` depend on. The
+asymmetry is deliberate and load-bearing.
+
+### 13.5 What the 16-error measurement actually proved
+
+Deleting `dep:toml` from the `config` feature produced 16 compile errors, **every one inside
+`loader.rs`**. That is a causal claim, not a count: the handwritten loader was the SOLE reason
+the standards-backed `config` layer dragged `toml` in at all. Now that the duplication is gone,
+`crates/core/Cargo.toml` states the truth — `toml` is reachable only through `parse`, for
+`guard/parser.rs`, which is the one component that genuinely needs it.
+
+The gate only isolates if the command excludes `parse`, since
+`parse = ["alloc", "dep:nom", "dep:toml"]` supplies `toml` independently:
+
+```
+cargo build -p shepherd-core --no-default-features --features="std json config"
+```
