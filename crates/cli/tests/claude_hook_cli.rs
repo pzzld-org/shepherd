@@ -31,7 +31,7 @@ fn repository(label: &str) -> PathBuf {
         .status()
         .expect("initialize fixture repository");
     assert!(status.success());
-    fs::create_dir_all(root.join(".shepherd/runs/v645")).expect("create run namespace");
+    fs::create_dir_all(root.join(".shepherd/runs/v645/dispatch")).expect("create run namespace");
     fs::write(
         root.join(".shepherd/project.json"),
         br#"{"id":"018f47ce-72d7-7f64-9eb1-2f651d521c2a","scaffolded_at":1000}"#,
@@ -112,6 +112,8 @@ fn session_start_binds_root_and_safe_pretooluse_allows() {
 #[test]
 fn pretooluse_denies_unresolved_or_unbound_requests() {
     let root = repository("deny");
+    // The run is healthy, so an unattributed session is a real refusal rather
+    // than a symptom of shepherd's own bookkeeping being broken.
     let denied = hook(
         &root,
         serde_json::json!({
@@ -291,5 +293,92 @@ fn lifecycle_start_and_stop_follow_the_native_dispatch_ledger() {
     )
     .expect("decode stopped dispatch record");
     assert_eq!(record["state"], "stopped");
+    fs::remove_dir_all(root).expect("remove fixture directory");
+}
+
+/// A run shepherd cannot attribute against must not disable the tools that
+/// repair it.
+///
+/// This is the v6.4.6 dogfooding deadlock: the `Write|Edit|Bash|Agent|Workflow`
+/// matcher covers the entire repair surface, so one unusable run namespace made
+/// the session structurally incapable of fixing its own run state.
+#[test]
+fn broken_run_namespace_allows_tools_instead_of_stranding_the_session() {
+    let root = repository("broken-namespace");
+    // Exactly the v646 state: a run that exists but is not executing.
+    fs::write(
+        root.join(".shepherd/runs/v645/run.json"),
+        br#"{"run":"v645","status":"planted"}"#,
+    )
+    .expect("write non-executing run");
+
+    let blocked = hook(
+        &root,
+        serde_json::json!({
+            "hook_event_name": "PreToolUse",
+            "session_id": "stranded-session",
+            "tool_use_id": "repair-tool-a",
+            "tool_name": "Write",
+            "tool_input": {"file_path": ".shepherd/runs/v645/run.json", "content": "{}"}
+        }),
+    );
+    assert!(blocked.status.success());
+    let output: serde_json::Value =
+        serde_json::from_slice(&blocked.stdout).expect("hook output is JSON");
+    assert_ne!(
+        output["hookSpecificOutput"]["permissionDecision"], "deny",
+        "a broken run namespace must not deny the tools that repair it: {output}"
+    );
+    assert!(
+        output["hookSpecificOutput"]["additionalContext"]
+            .as_str()
+            .is_some_and(|detail| detail.contains("no usable run namespace")),
+        "the fault must be surfaced, not swallowed: {output}"
+    );
+    fs::remove_dir_all(root).expect("remove fixture directory");
+}
+
+/// `shepherd` invoking itself is always permitted, so a session can never be
+/// denied the one command that repairs the state doing the denying.
+#[test]
+fn shepherd_self_repair_is_always_permitted() {
+    let root = repository("self-repair");
+    let repair = hook(
+        &root,
+        serde_json::json!({
+            "hook_event_name": "PreToolUse",
+            "session_id": "unbound-session",
+            "tool_use_id": "repair-tool-b",
+            "tool_name": "Bash",
+            "tool_input": {"command": "shepherd run set v645 --status executing"}
+        }),
+    );
+    assert!(repair.status.success());
+    let output: serde_json::Value =
+        serde_json::from_slice(&repair.stdout).expect("hook output is JSON");
+    assert_ne!(
+        output["hookSpecificOutput"]["permissionDecision"], "deny",
+        "shepherd self-repair must never be denied: {output}"
+    );
+
+    // The exemption is narrow: chaining past it is refused, so it cannot be
+    // used to smuggle an unrelated command through an unbound session.
+    let chained = hook(
+        &root,
+        serde_json::json!({
+            "hook_event_name": "PreToolUse",
+            "session_id": "unbound-session",
+            "tool_use_id": "repair-tool-c",
+            "tool_name": "Bash",
+            "tool_input": {"command": "shepherd --version; rm -rf /tmp/shepherd-escape"}
+        }),
+    );
+    assert!(chained.status.success());
+    let chained: serde_json::Value =
+        serde_json::from_slice(&chained.stdout).expect("hook output is JSON");
+    assert_eq!(
+        chained["hookSpecificOutput"]["permissionDecision"], "deny",
+        "a chained command must not ride the self-repair exemption: {chained}"
+    );
     fs::remove_dir_all(root).expect("remove fixture directory");
 }
