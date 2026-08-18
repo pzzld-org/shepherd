@@ -84,10 +84,11 @@ for name in "shepherd-component-${version}-wasm32-wasip2.tar.gz" 'shepherd-compo
   extract_tar "$asset_dir/$name" "$destination"
   check_legal_tree "$destination" shepherd-component.wasm
 done
-for package in component-runtime harness-claude harness-codex harness-pi; do
-  destination="$tmp_dir/${package}.d"
-  extract_tar "$asset_dir/fl03-${package}-${version}.tgz" "$destination"
+package_tarballs=$(release_package_names "$version")
+while IFS= read -r tarball; do
+  destination="$tmp_dir/${tarball%.tgz}.d"
+  extract_tar "$asset_dir/$tarball" "$destination"
   check_legal_material "$destination/package"
-  test -f "$destination/package/package.json" || fail "missing package.json in $package tarball"
-done
+  test -f "$destination/package/package.json" || fail "missing package.json in $tarball"
+done <<<"$package_tarballs"
 printf 'verified legal material inside 16 exact release assets\n'

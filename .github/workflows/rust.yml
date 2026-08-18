@@ -270,3 +270,26 @@ jobs:
           tool: cargo-deny
       - name: cargo deny
         run: cargo deny --workspace --all-features check
+  # `cargo binstall shepherd-cli` resolves `pkg-url` to a release archive and
+  # then looks for the binary at the path `bin-dir` (crates/cli/Cargo.toml:61)
+  # describes: a bare filename, with no directory prefix. If packaging ever
+  # emits the binary under a leading directory instead of the archive root,
+  # binstall fails at extract time -- silently, and only once a user actually
+  # runs it. Packaging has broken before (four consecutive releases shipped
+  # zero assets), so this runs on the runner image that broke, before a merge,
+  # rather than only at release time.
+  binstall-layout:
+    name: binstall archive layout (macos-14)
+    needs: resolve
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7 # v7.0.1
+        with:
+          fetch-depth: 1
+          ref: ${{ needs.resolve.outputs.ref }}
+          repository: ${{ github.repository }}
+      - name: archive layout gate is falsifiable
+        run: scripts/tests/test-release-archive-layout.sh --self-test
+      - name: archive layout gate holds
+        run: scripts/tests/test-release-archive-layout.sh

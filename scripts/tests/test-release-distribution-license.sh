@@ -4,6 +4,7 @@
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
+source scripts/lib/release-package-names.sh
 
 notices='THIRD_PARTY_NOTICES.md'
 test -s LICENSE
@@ -75,9 +76,10 @@ mkdir -p "$payload/package"
 printf '{}\n' > "$payload/package/package.json"
 cp "$payload/LICENSE" "$payload/THIRD_PARTY_NOTICES.md" "$payload/package/"
 cp -R "$payload/THIRD_PARTY_LICENSES" "$payload/package/"
-for package in component-runtime harness-claude harness-codex harness-pi; do
-  tar -C "$payload" -czf "$assets/fl03-${package}-6.4.6.tgz" package
-done
+package_tarballs=$(release_package_names 6.4.6)
+while IFS= read -r tarball; do
+  tar -C "$payload" -czf "$assets/$tarball" package
+done <<<"$package_tarballs"
 scripts/verify-release-distribution.sh "$assets" 6.4.6
 
 cp -R "$assets" "$tmp_dir/tampered"

@@ -242,6 +242,40 @@ publish_forced() {
   fail "forced publication did not replace exact regular-file destination '$target'"
 }
 
+guard_existing_destination() {
+  local destination="$1"
+
+  if [[ -L "$destination" ]]; then
+    if [[ -e "$destination" ]]; then
+      # A live symlink was never produced by this installer: publication
+      # always moves or hard-links a real file into place, never a symlink.
+      # Treat it the same as an unrecognized regular file below -- it is not
+      # "the artifact being installed" and must not be silently replaced.
+      [[ "${SHEPHERD_FORCE:-0}" == 1 ]] \
+        || fail "refusing to replace '$destination', a symlink to '$(readlink "$destination")'; remove it (rm '$destination') or rerun with SHEPHERD_FORCE=1"
+      return 0
+    fi
+
+    # A dangling symlink resolves to nothing, so nothing depends on it and no
+    # installation is at risk. The common case: a developer once ran
+    # `ln -s <checkout>/bin/shepherd ~/.local/bin/shepherd` to reach the Bash
+    # compatibility launcher; that launcher is now deleted outright (the
+    # native binary is the sole CLI authority), so the link is permanently
+    # broken and every hook that invokes the bare `shepherd` name exits 127
+    # through it. Self-heal without requiring SHEPHERD_FORCE: there is no
+    # live installation here to protect, only a stale pointer to a file that
+    # will never exist again.
+    printf 'shepherd installer: removing dangling symlink at %s\n' "$destination" >&2
+    rm -f "$destination" \
+      || fail "could not remove dangling symlink '$destination'; remove it manually (rm '$destination') and rerun"
+    return 0
+  fi
+
+  if [[ -e "$destination" && "${SHEPHERD_FORCE:-0}" != 1 ]]; then
+    fail "refusing to replace existing '$destination'; rerun with SHEPHERD_FORCE=1"
+  fi
+}
+
 main() {
   case "${1:---install}" in
     --help|-h) usage; return 0 ;;
@@ -280,9 +314,7 @@ main() {
   local binary
   binary=$(archive_binary)
   local destination="$destination_dir/$binary"
-  if [[ ( -e "$destination" || -L "$destination" ) && "${SHEPHERD_FORCE:-0}" != 1 ]]; then
-    fail "refusing to replace existing '$destination'; rerun with SHEPHERD_FORCE=1"
-  fi
+  guard_existing_destination "$destination"
 
   local parent
   parent=$(dirname "$destination_dir")

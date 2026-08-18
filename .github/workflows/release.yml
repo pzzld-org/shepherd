@@ -43,29 +43,36 @@ jobs:
         id: detect
         shell: bash
         env:
-          DEFAULT_BRANCH_REF: refs/heads/${{ github.event.repository.default_branch }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
-          if [[ "$GITHUB_REF" != "$DEFAULT_BRANCH_REF" ]]; then
+          subject=$(git log -1 --format=%s HEAD)
+          detect_output=$(scripts/detect-release-commit.sh \
+            --subject "$subject" \
+            --ref "$GITHUB_REF" \
+            --default-branch "$DEFAULT_BRANCH" \
+            --plugin-json .claude-plugin/plugin.json)
+          verdict=''
+          reason=''
+          current=''
+          while IFS= read -r line; do
+            case "$line" in
+              verdict=*) verdict="${line#verdict=}" ;;
+              reason=*) reason="${line#reason=}" ;;
+              version=*) current="${line#version=}" ;;
+            esac
+          done <<<"$detect_output"
+          if [[ "$verdict" == skip ]]; then
             printf 'proceed=false\n' >> "$GITHUB_OUTPUT"
-            printf 'Skipping release from non-default ref: %s\n' "$GITHUB_REF"
+            printf '::notice::%s\n' "$reason"
             exit 0
           fi
-          subject=$(git log -1 --format=%s HEAD)
-          if [[ "$subject" =~ ^(release:[[:space:]]+)?v([0-9]+\.[0-9]+\.[0-9]+)([[:space:]:]|$) ]]; then
-            current="${BASH_REMATCH[2]}"
-            plugin=$(jq -r '.version' .claude-plugin/plugin.json)
-            if [[ "$current" == "$plugin" ]]; then
-              python3 scripts/version-bump.py check --root . --version "$current"
-              {
-                printf 'proceed=true\n'
-                printf 'current=%s\n' "$current"
-                printf 'tag=v%s\n' "$current"
-              } >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-          fi
-          printf 'proceed=false\n' >> "$GITHUB_OUTPUT"
+          python3 scripts/version-bump.py check --root . --version "$current"
+          {
+            printf 'proceed=true\n'
+            printf 'current=%s\n' "$current"
+            printf 'tag=v%s\n' "$current"
+          } >> "$GITHUB_OUTPUT"
 
   build-native-assets:
     name: Native ${{ matrix.target }}
@@ -275,6 +282,26 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  verify-macos-archive-layout:
+    name: Verify binstall archive layout (macos-14)
+    needs: release-metadata
+    if: needs.release-metadata.outputs.proceed == 'true'
+    runs-on: macos-14
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout release commit
+        uses: actions/checkout@v7 # v7.0.1
+        with:
+          fetch-depth: 1
+          ref: ${{ github.sha }}
+      - name: Archive layout gate is falsifiable
+        shell: bash
+        run: scripts/tests/test-release-archive-layout.sh --self-test
+      - name: Archive layout gate holds
+        shell: bash
+        run: scripts/tests/test-release-archive-layout.sh
+
   build-component-assets:
     name: Component and harness adapters
     needs: release-metadata
@@ -390,23 +417,34 @@ jobs:
           persist-credentials: true
       - name: Detect release commit
         id: detect
+        shell: bash
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
-          SUBJECT=$(git log -1 --format=%s HEAD)
-          if [[ "$SUBJECT" =~ ^(release:[[:space:]]+)?v([0-9]+\.[0-9]+\.[0-9]+)([[:space:]:]|$) ]]; then
-            SUBJECT_VER="${BASH_REMATCH[2]}"
-            PLUGIN_VER=$(jq -r '.version' .claude-plugin/plugin.json)
-            if [ "$SUBJECT_VER" = "$PLUGIN_VER" ]; then
-              echo "proceed=true" >> "$GITHUB_OUTPUT"
-              printf 'Release commit detected: %s (v%s) on %s\n' "$SUBJECT" "$SUBJECT_VER" "${{ github.ref_name }}"
-            else
-              echo "proceed=false" >> "$GITHUB_OUTPUT"
-              printf '::warning::Subject version (v%s) does not match plugin.json (v%s); skipping.\n' "$SUBJECT_VER" "$PLUGIN_VER"
-            fi
-          else
-            echo "proceed=false" >> "$GITHUB_OUTPUT"
-            printf 'Skipping: head subject does not match release pattern.\nSubject: %s\n' "$SUBJECT"
+          subject=$(git log -1 --format=%s HEAD)
+          detect_output=$(scripts/detect-release-commit.sh \
+            --subject "$subject" \
+            --ref "$GITHUB_REF" \
+            --default-branch "$DEFAULT_BRANCH" \
+            --plugin-json .claude-plugin/plugin.json)
+          verdict=''
+          reason=''
+          version=''
+          while IFS= read -r line; do
+            case "$line" in
+              verdict=*) verdict="${line#verdict=}" ;;
+              reason=*) reason="${line#reason=}" ;;
+              version=*) version="${line#version=}" ;;
+            esac
+          done <<<"$detect_output"
+          if [[ "$verdict" == skip ]]; then
+            printf 'proceed=false\n' >> "$GITHUB_OUTPUT"
+            printf '::notice::%s\n' "$reason"
+            exit 0
           fi
+          printf 'proceed=true\n' >> "$GITHUB_OUTPUT"
+          printf 'Release commit detected: %s (v%s) on %s\n' "$subject" "$version" "${{ github.ref_name }}"
 
       - name: Configure git identity
         if: steps.detect.outputs.proceed == 'true'
@@ -483,6 +521,46 @@ jobs:
           scripts/verify-release-distribution.sh "$ASSET_DIR" "$VERSION"
           mapfile -t release_files < "$ASSET_LIST"
           ((${#release_files[@]} == 32))
+
+      # ─── Crates.io gate: hold the tag until the crate is actually published ──
+      - name: Verify crates.io publication precedes the tag
+        if: steps.detect.outputs.proceed == 'true'
+        shell: bash
+        env:
+          VERSION: ${{ steps.ver.outputs.current }}
+        run: |
+          set -euo pipefail
+          CRATE='shepherd-cli'
+          USER_AGENT='shepherd-release-workflow (+https://github.com/FL03/shepherd)'
+          MAX_ATTEMPTS=6
+          RETRY_SECONDS=20
+          REQUEST_TIMEOUT=15
+          attempt=1
+          published=false
+          while [ "$attempt" -le "$MAX_ATTEMPTS" ]; do
+            body=$(curl --silent --show-error --fail \
+              --max-time "$REQUEST_TIMEOUT" \
+              --header "User-Agent: ${USER_AGENT}" \
+              "https://crates.io/api/v1/crates/${CRATE}") || body=''
+            if [ -n "$body" ] \
+              && echo "$body" | jq -e --arg v "$VERSION" \
+                   '(.versions // []) | any(.num == $v)' >/dev/null 2>&1; then
+              published=true
+              break
+            fi
+            printf 'crates.io does not yet report %s %s published (attempt %s/%s)\n' \
+              "$CRATE" "$VERSION" "$attempt" "$MAX_ATTEMPTS" >&2
+            attempt=$((attempt + 1))
+            if [ "$attempt" -le "$MAX_ATTEMPTS" ]; then
+              sleep "$RETRY_SECONDS"
+            fi
+          done
+          if [ "$published" != true ]; then
+            printf '::error title=crates.io publish not verified::%s %s is not visible on crates.io after %s attempts (fail-closed; absent version, HTTP error, unparseable body, and timeout all land here). GitHub release publication must not start until the crate is published. Recover with: gh workflow run cargo-publish.yml -f version=%s -f publish=true\n' \
+              "$CRATE" "$VERSION" "$MAX_ATTEMPTS" "$VERSION" >&2
+            exit 1
+          fi
+          printf 'Verified %s %s is published on crates.io; proceeding to tag.\n' "$CRATE" "$VERSION"
 
       # ─── Patch close: tag + GitHub release ─────────────────────────────────
       - name: Tag the verified release commit

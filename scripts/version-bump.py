@@ -321,7 +321,7 @@ def version_rules(current: SemVer, next_version: SemVer) -> tuple[TextRule, ...]
             3,
             "installer wrong-version negative control",
         ),
-        _whole("scripts/tests/test-release-installers.sh", current, next_version, 24),
+        _whole("scripts/tests/test-release-installers.sh", current, next_version, 25),
         TextRule(
             "scripts/tests/test-release-assets.sh",
             str(next_version),

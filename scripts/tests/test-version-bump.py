@@ -3,11 +3,14 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import ModuleType
 
 
 CURRENT = "6.4.5"
@@ -23,6 +26,72 @@ CRATES = (
     "render",
     "sdk",
 )
+
+
+def _load_version_bump_module() -> ModuleType:
+    """Import version-bump.py by path so fixtures can query its rule table
+    directly, instead of re-declaring authority occurrence counts by hand.
+
+    A hand-copied count drifts silently the next time the tool's rule table
+    changes; asking the tool itself keeps this test's fixtures locked to
+    whatever the tool actually enforces.
+    """
+    spec = importlib.util.spec_from_file_location("version_bump_tool", SCRIPT)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"cannot load the version-bump module from {SCRIPT}")
+    module = importlib.util.module_from_spec(spec)
+    # Slotted dataclasses (TextRule, Snapshot, SemVer) look themselves up in
+    # sys.modules during class creation, so the module must be registered
+    # before exec_module runs it.
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+VERSION_BUMP = _load_version_bump_module()
+_CURRENT_SEMVER = VERSION_BUMP.SemVer.parse(CURRENT, label="current")
+_NEXT_SEMVER = VERSION_BUMP.SemVer.parse(NEXT, label="next")
+_VERSION_RULES = VERSION_BUMP.version_rules(_CURRENT_SEMVER, _NEXT_SEMVER)
+
+
+def _rule_count(path: str, old: str, new: str, *, label_contains: str) -> int:
+    """Return the expected occurrence count for the one rule in the tool's
+    rule table that pins `path` from `old` to `new` under a label containing
+    `label_contains`.
+
+    Raises if the rule table no longer carries exactly one such rule, so a
+    rule-table change that removes, splits, or duplicates an authority is
+    caught here rather than producing a fixture that silently stops
+    exercising what it claims to.
+    """
+    matches = [
+        rule
+        for rule in _VERSION_RULES
+        if rule.path == path
+        and rule.old == old
+        and rule.new == new
+        and label_contains in rule.label
+    ]
+    if len(matches) != 1:
+        raise AssertionError(
+            f"{path}: expected exactly one version-bump rule matching "
+            f"old={old!r} new={new!r} label*={label_contains!r}, found {len(matches)}"
+        )
+    return matches[0].expected_count
+
+
+def whole_authority_count(path: str) -> int:
+    """The occurrence count version-bump.py pins for the plain whole-file
+    'release version' authority at `path`."""
+    return _rule_count(path, CURRENT, NEXT, label_contains="release version")
+
+
+def negative_control_count(path: str) -> int:
+    """The occurrence count version-bump.py pins for the wrong-version
+    negative control at `path`: text that already reads NEXT and must be
+    left untouched by a CURRENT -> NEXT bump."""
+    successor = str(_NEXT_SEMVER.successor())
+    return _rule_count(path, NEXT, successor, label_contains="negative control")
 
 
 def write(root: Path, relative: str, content: str) -> None:
@@ -148,7 +217,7 @@ def seed_fixture(root: Path) -> None:
             },
         },
     )
-    write(root, "bun.lock", repeated_version(7))
+    write(root, "bun.lock", repeated_version(whole_authority_count("bun.lock")))
 
     write_json(
         root,
@@ -250,36 +319,46 @@ The command families are owned by the Rust CLI in v{CURRENT}:
     for relative, content in exact_text.items():
         write(root, relative, content)
 
-    whole_file_counts = {
-        "docs/configuration.md": 1,
-        "docs/customization.md": 1,
-        "docs/integration.md": 3,
-        "content/RECONCILIATION.md": 1,
-        "crates/compiler/README.md": 1,
-        "crates/component/README.md": 1,
-        "crates/sdk/README.md": 1,
-        "packages/component-runtime/README.md": 1,
-        "packages/harness-claude/README.md": 1,
-        "packages/harness-codex/README.md": 1,
-        "packages/harness-pi/README.md": 1,
-        "scripts/test-packed-plugin.sh": 10,
-        "scripts/tests/test-release-distribution-license.sh": 7,
-        "packages/scripts/check-package-boundary.mjs": 3,
-        "scripts/verify-release-assets.sh": 1,
-        "scripts/check-cargo-distribution.py": 1,
-        "scripts/tests/test-cargo-distribution.py": 1,
-    }
-    for relative, count in whole_file_counts.items():
-        write(root, relative, repeated_version(count))
+    whole_file_paths = (
+        "docs/configuration.md",
+        "docs/customization.md",
+        "docs/integration.md",
+        "content/RECONCILIATION.md",
+        "crates/compiler/README.md",
+        "crates/component/README.md",
+        "crates/sdk/README.md",
+        "packages/component-runtime/README.md",
+        "packages/harness-claude/README.md",
+        "packages/harness-codex/README.md",
+        "packages/harness-pi/README.md",
+        "scripts/test-packed-plugin.sh",
+        "scripts/tests/test-release-distribution-license.sh",
+        "packages/scripts/check-package-boundary.mjs",
+        "scripts/verify-release-assets.sh",
+        "scripts/check-cargo-distribution.py",
+        "scripts/tests/test-cargo-distribution.py",
+    )
+    for relative in whole_file_paths:
+        write(root, relative, repeated_version(whole_authority_count(relative)))
     write(
         root,
         "scripts/tests/test-release-installers.sh",
-        repeated_version(24) + "\n".join(f"negative-{index}={NEXT}" for index in range(3)) + "\n",
+        repeated_version(whole_authority_count("scripts/tests/test-release-installers.sh"))
+        + "\n".join(
+            f"negative-{index}={NEXT}"
+            for index in range(negative_control_count("scripts/tests/test-release-installers.sh"))
+        )
+        + "\n",
     )
     write(
         root,
         "scripts/tests/test-release-assets.sh",
-        repeated_version(15) + "\n".join(f"negative-{index}={NEXT}" for index in range(2)) + "\n",
+        repeated_version(whole_authority_count("scripts/tests/test-release-assets.sh"))
+        + "\n".join(
+            f"negative-{index}={NEXT}"
+            for index in range(negative_control_count("scripts/tests/test-release-assets.sh"))
+        )
+        + "\n",
     )
 
     write(

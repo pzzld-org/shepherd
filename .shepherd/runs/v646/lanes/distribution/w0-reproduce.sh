@@ -55,33 +55,57 @@ if ! grep -n 'ItemType SymbolicLink' scripts/tests/test-release-installer-window
 fi
 
 printf '\n== 1c: the asset verifier expects tarballs npm pack never emits ==\n'
-expected=$(grep -o 'fl03-\${package}-\${version}.tgz' scripts/verify-release-distribution.sh | head -1)
-printf '   hardcoded pattern in verify-release-distribution.sh: %s\n' "${expected:-<none>}"
-printf '   hardcoded name list:  '
-sed -n 's/^for package in \(.*\); do$/\1/p' scripts/verify-release-distribution.sh | head -1
-printf '   real npm pack names (derived from packages/*/package.json):\n'
-for f in packages/*/package.json; do
-  python3 -c "import json;d=json.load(open('$f'));print('     '+d['name'].lstrip('@').replace('/','-')+'-'+d['version']+'.tgz')"
-done
-overlap=$(comm -12 \
-  <(for p in component-runtime harness-claude harness-codex harness-pi; do echo "fl03-${p}-6.4.6.tgz"; done | sort) \
-  <(for f in packages/*/package.json; do python3 -c "import json;d=json.load(open('$f'));print(d['name'].lstrip('@').replace('/','-')+'-'+d['version']+'.tgz')"; done | sort) | wc -l | tr -d ' ')
-printf '   names in common: %s of 4\n' "$overlap"
-[ "$overlap" = "0" ] && still '1c zero of four expected npm assets can ever exist'
-if grep -q 'fl03-' scripts/tests/test-release-distribution-license.sh; then
-  still '1c the license gate synthesizes fixtures under the SAME stale names, so it cannot catch this'
+# ORACLE NOTE (corrected after the wave-1 audit): the original version of this
+# check compared a HARDCODED `fl03-*` list against the manifests, so it reported
+# REPRODUCED unconditionally and could never observe the fix. It measured its own
+# constant, not the repository. That is the same defect class this lane spent the
+# sprint removing, in the instrument rather than the subject. It now probes the
+# actual state of the two files.
+stale=$(git grep -c 'fl03-' -- scripts/ 2>/dev/null | wc -l | tr -d ' ')
+printf '   files under scripts/ still carrying an fl03- literal: %s\n' "$stale"
+if [ "$stale" != "0" ]; then
+  git grep -n 'fl03-' -- scripts/ | sed 's/^/     /'
+  still '1c stale fl03- literals remain in the asset verifier or its fixtures'
+else
+  printf '   FIXED: no fl03- literal remains; names derive from packages/*/package.json\n'
+fi
+if [ -f scripts/lib/release-package-names.sh ]; then
+  printf '   derived names now:\n'
+  bash scripts/lib/release-package-names.sh 2>/dev/null | sed 's/^/     /'
+else
+  still '1c no shared derivation helper exists'
 fi
 
 printf '\n== 1d: release.yml can tag before crates.io, and kills cargo-publish.yml ==\n'
+# ORACLE NOTE (corrected after the wave-1 audit): this check previously ended in an
+# UNCONDITIONAL `still` call, so it reported REPRODUCED even once the fix landed.
+# An oracle that cannot return the negative case is not evidence.
 n=$(grep -c 'crates\.io\|crates_io\|cargo publish\|CARGO_REGISTRY' .github/workflows/release.yml)
 printf '   crates.io references in release.yml: %s\n' "$n"
-[ "$n" = "0" ] && still '1d release.yml has no crates.io visibility check'
-printf '   tag push credential: '
-grep -n 'token: ${{ secrets.GITHUB_TOKEN }}' .github/workflows/release.yml | head -1
+if [ "$n" = "0" ]; then
+  still '1d release.yml has no crates.io visibility check'
+else
+  printf '   FIXED: release.yml asserts crates.io publication\n'
+fi
+gate_line=$(grep -n 'Verify crates.io publication precedes the tag' .github/workflows/release.yml | head -1 | cut -d: -f1)
+tag_line=$(grep -n 'git tag -a' .github/workflows/release.yml | head -1 | cut -d: -f1)
+if [ -n "$gate_line" ] && [ -n "$tag_line" ]; then
+  printf '   crates.io gate at line %s, tag at line %s\n' "$gate_line" "$tag_line"
+  if [ "$gate_line" -gt "$tag_line" ]; then
+    still '1d the crates.io gate runs AFTER the tag step'
+  else
+    printf '   FIXED: the gate precedes the tag\n'
+  fi
+else
+  still '1d could not locate both the crates.io gate and the tag step'
+fi
 printf '   cargo-publish.yml trigger: '
-sed -n '4,5p' .github/workflows/cargo-publish.yml | tr -d '\n' | sed 's/  */ /g'; printf '\n'
-printf '   GitHub does not fire workflows from GITHUB_TOKEN-authored events.\n'
-still '1d the tag push cannot trigger cargo-publish.yml'
+sed -n '3,6p' .github/workflows/cargo-publish.yml | tr -d '\n' | sed 's/  */ /g'; printf '\n'
+if sed -n '3,6p' .github/workflows/cargo-publish.yml | grep -q 'tags:'; then
+  still '1d cargo-publish.yml still triggers only on a tag push it cannot receive'
+else
+  printf '   FIXED: publication no longer depends on a GITHUB_TOKEN-authored tag event\n'
+fi
 
 printf '\n== 2: the repo launcher shadows the native binary on PATH ==\n'
 if [ ! -e bin/shepherd ]; then
@@ -103,6 +127,10 @@ fi
 
 printf '\n== summary ==\n'
 printf '  %d defect(s) still reproduce.\n' "$STILL_BROKEN"
-[ "$STILL_BROKEN" -ge 5 ] && exit 0
-printf '  Expected 5 or more. Evidence is stale or a fix has landed; re-read before trusting.\n'
+if [ "$STILL_BROKEN" -eq 0 ]; then
+  printf '  ALL FIXED. Every W0 defect now probes as resolved.\n'
+  exit 0
+fi
+printf '  Defects above still reproduce. This script is now a REGRESSION oracle:\n'
+printf '  before the fixes it reported 7; a non-zero count after them is a real failure.\n'
 exit 1

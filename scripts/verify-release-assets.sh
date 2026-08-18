@@ -29,11 +29,14 @@ esac
 bad_entry=$(find "$asset_dir" -mindepth 1 -maxdepth 1 ! -type f -print -quit)
 [[ -z "$bad_entry" ]] || fail "asset directory contains a non-regular entry: $bad_entry"
 
-expected=(
-  "pzzld-component-runtime-${version}.tgz"
-  "pzzld-pi-claude-${version}.tgz"
-  "pzzld-pi-codex-${version}.tgz"
-  "pzzld-pi-shepherd-${version}.tgz"
+source "$(dirname "${BASH_SOURCE[0]}")/lib/release-package-names.sh"
+
+expected=()
+package_tarballs=$(release_package_names "$version")
+while IFS= read -r tarball; do
+  expected+=("$tarball")
+done <<<"$package_tarballs"
+expected+=(
   "shepherd-${version}-aarch64-apple-darwin.tar.gz"
   "shepherd-${version}-aarch64-unknown-linux-gnu.tar.gz"
   "shepherd-${version}-x86_64-apple-darwin.tar.gz"

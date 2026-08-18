@@ -104,10 +104,12 @@ scripts/gate.sh wasm
 
 The native executable can be placed on `PATH` by the operator. Published
 adapters resolve an explicit `SHEPHERD_NATIVE_BIN` first and otherwise execute
-the installed `shepherd` command from `PATH`. The checkout-only `bin/shepherd`
-launcher also recognizes `target/release/shepherd` and
-`target/debug/shepherd` for contributor workflows. No adapter invokes a retired
-language-specific CLI.
+the installed `shepherd` command from `PATH`: the native executable installed
+by `cargo install shepherd-cli --locked`, `cargo binstall shepherd-cli`, or
+`scripts/install-shepherd.sh`. There is no repo-local launcher and no wrapper
+to shadow it; a `shepherd` on `PATH` that is not the native binary is a
+misconfiguration to repair. No adapter invokes a retired language-specific
+CLI.
 
 ## Initialize a project
 

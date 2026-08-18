@@ -143,15 +143,67 @@ if find "$symlink_target" -mindepth 1 -print -quit | grep -q .; then
   fail 'forced publication followed the destination symlink'
 fi
 
+live_symlink_destination="$tmp_dir/live-symlink-destination/bin"
+live_symlink_target="$tmp_dir/live-symlink-destination/real-target"
+live_symlink_stderr="$tmp_dir/live-symlink-destination/stderr.log"
+mkdir -p "$live_symlink_destination"
+printf 'do-not-touch-live-target\n' >"$live_symlink_target"
+ln -s "$live_symlink_target" "$live_symlink_destination/shepherd"
+# Regression coverage for guard_existing_destination()'s live-symlink branch
+# (install-shepherd.sh around line 254): a symlink whose target is a real,
+# existing regular FILE -- distinct from the symlink-to-directory case above.
+# No SHEPHERD_VERSION/release fixture is staged for this destination, on
+# purpose: the guard must refuse before ever reaching the download step, so
+# this case needs nothing beyond the destination itself. Exit status alone is
+# not enough to prove the guard fired -- the no-clobber `ln` a few lines below
+# guard_existing_destination() also refuses an existing destination entry, so
+# removing the explicit refusal still leaves the installer failing, just via
+# a different message and only after attempting a network download. Assert
+# the guard's own wording landed on stderr so this fails specifically when
+# the guard itself is gone, then assert the symlink, its target, and the
+# target's content all survive untouched.
+if SHEPHERD_OS=Linux SHEPHERD_ARCH=x86_64 \
+  SHEPHERD_RELEASE_BASE="file://$release_root" SHEPHERD_INSTALL_DIR="$live_symlink_destination" \
+  "$installer" >/dev/null 2>"$live_symlink_stderr"; then
+  fail 'live symlink destination must not be replaced without SHEPHERD_FORCE=1'
+fi
+if ! grep -Fq "a symlink to '$live_symlink_target'" "$live_symlink_stderr"; then
+  fail "refusal did not come from the live-symlink guard; stderr was: $(cat "$live_symlink_stderr")"
+fi
+[[ -L "$live_symlink_destination/shepherd" ]] \
+  || fail 'live destination symlink was replaced without SHEPHERD_FORCE'
+expect_eq "$(readlink "$live_symlink_destination/shepherd")" "$live_symlink_target" \
+  'live destination symlink target unchanged'
+expect_eq "$(cat "$live_symlink_target")" 'do-not-touch-live-target' \
+  'live symlink target content unchanged'
+if find "$live_symlink_destination" -maxdepth 1 -name '.shepherd-*' -print -quit | grep -q .; then
+  fail 'refused live-symlink install left a temporary artifact behind'
+fi
+
 dangling_dir="$tmp_dir/dangling/bin"
 mkdir -p "$dangling_dir"
 ln -s "$tmp_dir/does-not-exist" "$dangling_dir/shepherd"
-if SHEPHERD_OS=Linux SHEPHERD_ARCH=x86_64 SHEPHERD_VERSION=6.4.6 \
+# POLICY INVERSION -- deliberate, not a regression. Do not "fix" this back.
+# This lane deletes the repo's bin/shepherd Bash-compatibility launcher
+# outright, so every pre-existing ~/.local/bin/shepherd symlink that used to
+# point into a checkout is now dangling. The sprint seed names the old
+# behaviour as the defect in so many words: the installer "defaults to the
+# exact directory the launcher symlink occupies and then refuses to repair
+# it." An installer that cannot repair exactly the breakage this sprint
+# creates is useless at its one remaining job. guard_existing_destination()
+# in install-shepherd.sh (around line 245) now self-heals a dangling
+# destination symlink without requiring SHEPHERD_FORCE: nothing live depends
+# on a broken pointer, so there is nothing to protect by refusing. This case
+# therefore asserts the installer succeeds and leaves a real regular file in
+# place -- the opposite of what it asserted before. The live-symlink refusal
+# case above (a symlink whose target still exists) is untouched and must
+# keep failing without SHEPHERD_FORCE; only the dangling case changed.
+SHEPHERD_OS=Linux SHEPHERD_ARCH=x86_64 SHEPHERD_VERSION=6.4.6 \
   SHEPHERD_RELEASE_BASE="file://$release_root" SHEPHERD_INSTALL_DIR="$dangling_dir" \
-  "$installer" >/dev/null 2>&1; then
-  fail 'dangling destination symlink must not be replaced without force'
-fi
-[[ -L "$dangling_dir/shepherd" ]] || fail 'dangling destination symlink was replaced'
+  "$installer" >/dev/null
+[[ ! -L "$dangling_dir/shepherd" && -f "$dangling_dir/shepherd" ]] \
+  || fail 'dangling destination symlink was not self-healed into a regular file'
+expect_eq "$("$dangling_dir/shepherd")" 'shepherd fixture 6.4.6' 'dangling symlink self-heal'
 
 fake_bin="$tmp_dir/fake-bin"
 mkdir -p "$fake_bin"

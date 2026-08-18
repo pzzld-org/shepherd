@@ -79,8 +79,29 @@ jobs:
             printf 'release run %s did not succeed\n' "$RELEASE_RUN_ID" >&2
             exit 1
           }
-          [[ "$(jq -r '.headBranch' <<<"$run_json")" == "$DEFAULT_BRANCH" ]] ||
+          if [[ "$(jq -r '.headBranch' <<<"$run_json")" != "$DEFAULT_BRANCH" ]]; then
+            probe_branch=$(jq -r '.headBranch' <<<"$run_json")
+            probe_sha=$(jq -r '.headSha' <<<"$run_json")
+            probe_subject=''
+            if [[ "$probe_sha" =~ ^[0-9a-f]{40}$ ]] && git cat-file -e "${probe_sha}^{commit}" 2>/dev/null; then
+              probe_subject=$(git show -s --format=%s "$probe_sha")
+            fi
+            # Force the ref check to pass so the script only speaks to
+            # whether the subject IS release-shaped; plugin.json content
+            # is irrelevant here (proceed vs. version-mismatch-fail both
+            # mean "is a release commit" for this purpose).
+            probe_verdict=$(scripts/detect-release-commit.sh \
+              --subject "$probe_subject" \
+              --ref "refs/heads/${DEFAULT_BRANCH}" \
+              --default-branch "$DEFAULT_BRANCH" \
+              --plugin-json .claude-plugin/plugin.json 2>/dev/null || true)
+            if ! grep -q '^verdict=skip$' <<<"$probe_verdict"; then
+              printf 'release run %s built %s (not %s) but its head commit %s IS a release commit (subject %q); refusing to silently no-op\n' \
+                "$RELEASE_RUN_ID" "$probe_branch" "$DEFAULT_BRANCH" "$probe_sha" "$probe_subject" >&2
+              exit 1
+            fi
             skip_automatic_or_fail "release run ${RELEASE_RUN_ID} did not build the default branch"
+          fi
 
           RELEASE_SHA=$(jq -r '.headSha' <<<"$run_json")
           [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]] || {
@@ -90,18 +111,34 @@ jobs:
           git cat-file -e "${RELEASE_SHA}^{commit}"
 
           SUBJECT=$(git show -s --format=%s "$RELEASE_SHA")
-          if [[ "$SUBJECT" =~ ^(release:[[:space:]]+)?v([0-9]+\.[0-9]+\.[0-9]+)([[:space:]:]|$) ]]; then
-            SUBJECT_VERSION="${BASH_REMATCH[2]}"
-          else
+          plugin_manifest=$(git show "${RELEASE_SHA}:.claude-plugin/plugin.json" 2>/dev/null) ||
+            skip_automatic_or_fail "release commit ${RELEASE_SHA} has no plugin manifest"
+          plugin_json_file=$(mktemp)
+          trap 'rm -f "$plugin_json_file"' EXIT
+          printf '%s\n' "$plugin_manifest" > "$plugin_json_file"
+
+          # A version mismatch here means the release run genuinely built and
+          # published ${RELEASE_SHA} yet its own subject/manifest disagree --
+          # detect-release-commit.sh exits non-zero and, under `set -e`, that
+          # aborts this step with its own ::error:: rather than a soft skip.
+          detect_output=$(scripts/detect-release-commit.sh \
+            --subject "$SUBJECT" \
+            --ref "refs/heads/${DEFAULT_BRANCH}" \
+            --default-branch "$DEFAULT_BRANCH" \
+            --plugin-json "$plugin_json_file")
+          rm -f "$plugin_json_file"
+          trap - EXIT
+          verdict=''
+          CURRENT=''
+          while IFS= read -r line; do
+            case "$line" in
+              verdict=*) verdict="${line#verdict=}" ;;
+              version=*) CURRENT="${line#version=}" ;;
+            esac
+          done <<<"$detect_output"
+          if [[ "$verdict" == skip ]]; then
             skip_automatic_or_fail "release run ${RELEASE_RUN_ID} is not a release commit"
           fi
-          plugin_json=$(git show "${RELEASE_SHA}:.claude-plugin/plugin.json" 2>/dev/null) ||
-            skip_automatic_or_fail "release commit ${RELEASE_SHA} has no plugin manifest"
-          CURRENT=$(jq -r '.version' <<<"$plugin_json")
-          [[ "$CURRENT" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] ||
-            skip_automatic_or_fail "release commit ${RELEASE_SHA} has invalid plugin version ${CURRENT}"
-          [[ "$SUBJECT_VERSION" == "$CURRENT" ]] ||
-            skip_automatic_or_fail "release commit ${RELEASE_SHA} subject version ${SUBJECT_VERSION} does not match plugin version ${CURRENT}"
           TAG="v${CURRENT}"
 
           remote_peeled=$(git ls-remote --tags origin "refs/tags/${TAG}^{}" | awk 'NR == 1 { print $1 }')

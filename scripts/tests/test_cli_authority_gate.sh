@@ -9,6 +9,16 @@ GATE="$ROOT/scripts/check-cli-authority.py"
 python3 "$GATE" --self-test
 python3 "$GATE"
 
+# D4 retired the repo-tracked compatibility launcher outright rather than
+# patch its resolution bug (it derived its search root from the unresolved
+# BASH_SOURCE[0], so a symlinked install silently exited 127 instead of
+# falling through PATH). The GATE run above already asserts this at the
+# manifest-authority level; assert it again here at the filesystem level,
+# matching the retired-root checks immediately below, so the harness catches
+# a regression even if the gate script itself weakens.
+test ! -e "$ROOT/bin/shepherd"
+test ! -e "$ROOT/scripts/tests/test_shepherd_native_launcher.sh"
+
 test ! -e "$ROOT/services/cli"
 test ! -e "$ROOT/skills/context/scripts"
 if rg -n '"authority"[[:space:]]*:[[:space:]]*"python-legacy"|unsupported_pending_parity' \
