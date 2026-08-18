@@ -557,10 +557,18 @@ pub struct ModelsConfig {
 impl Default for ModelsConfig {
     fn default() -> Self {
         Self {
+            // root and planter hold the reasoning tier: the sprint's expensive
+            // thinking is its seeding and its top-level orchestration, and that
+            // is where a fable-class model earns its cost.
             root: "reasoning-high".into(),
             planter: "reasoning-high".into(),
-            engineer: "reasoning-high".into(),
-            conductor: "reasoning-high".into(),
+            // The team leads INHERIT the caller instead of pinning a tier. A
+            // sprint spawned at the reasoning tier gets leads at that tier; a
+            // sprint spawned cheaply gets cheap leads. Pinning them meant every
+            // lane lead cost the top tier regardless of what the run was worth.
+            // Override either in `[models]` in `.shepherd/shepherd.toml`.
+            engineer: "inherit-caller".into(),
+            conductor: "inherit-caller".into(),
             critic: "standard".into(),
             discovery: "standard".into(),
             coder: "standard".into(),

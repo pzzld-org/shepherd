@@ -364,7 +364,14 @@ fn emit_codex(
     )
     .expect("writing to String cannot fail");
     for role in roles {
-        if role.model_hint == "inherit-caller" {
+        // Keyed on `dispatchable`, which is what the field MEANS, not on the
+        // model hint, which merely correlated with it for one role. The proxy
+        // was wrong in both directions: `planter` is `dispatchable: false` and
+        // was listed here anyway because its hint is `reasoning-high`, so Codex
+        // advertised the operator-escalation role as a spawnable agent type;
+        // and any lead that adopts `inherit-caller` would have silently
+        // vanished from this table.
+        if !role.dispatchable {
             continue;
         }
         writeln!(

@@ -138,10 +138,18 @@ fn empty_document_materializes_the_canonical_defaults() {
         config.dups.dups_registry,
         PathBuf::from("dups-registry.json")
     );
+    // root and planter hold the reasoning tier; the team leads INHERIT the
+    // caller so a lane costs what the run it belongs to is worth; everything
+    // dispatched beneath them is standard, which is what makes wide fan-out
+    // affordable. All nine are overridable through `[models]`.
     assert_eq!(config.models.root, "reasoning-high");
     assert_eq!(config.models.planter, "reasoning-high");
-    assert_eq!(config.models.engineer, "reasoning-high");
-    assert_eq!(config.models.conductor, "reasoning-high");
+    assert_eq!(config.models.engineer, "inherit-caller");
+    assert_eq!(config.models.conductor, "inherit-caller");
+    assert_eq!(config.models.critic, "standard");
+    assert_eq!(config.models.discovery, "standard");
+    assert_eq!(config.models.coder, "standard");
+    assert_eq!(config.models.auditor, "standard");
     assert_eq!(config.models.worker, "standard");
     assert_eq!(config.release.driver, ReleaseDriver::GithubWorkflow);
     assert_eq!(config.context.refresh.ttl_minutes, 30);

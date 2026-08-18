@@ -30,9 +30,13 @@ fn canonical_compile_uses_the_embedded_authored_corpus() {
             .iter()
             .any(|file| file.path == "shepherd.codex.toml")
     );
+    // Moved when `[agent_types]` stopped listing `planter` (a `dispatchable:
+    // false` role Codex was advertising as spawnable) and `[models]` stopped
+    // pinning the leads, which now inherit the caller. Same digest the CLI and
+    // the conformance oracle carry for the Codex target.
     assert_eq!(
         tree.digest,
-        "0eb297b3c0f7774ca8057c07c848adbcadbdf45275ebf958050de159ef8a1e25"
+        "573d66adfbd6eb29e215245fbc906127e649548f06eba01cc975bac3924b5518"
     );
 }
 

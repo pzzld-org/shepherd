@@ -88,8 +88,8 @@ fn models_resolve_and_show_use_portable_default_hints() {
         br#"{
   "root": {"model": "reasoning-high", "source": "default"},
   "planter": {"model": "reasoning-high", "source": "default"},
-  "engineer": {"model": "reasoning-high", "source": "default"},
-  "conductor": {"model": "reasoning-high", "source": "default"},
+  "engineer": {"model": "inherit-caller", "source": "default"},
+  "conductor": {"model": "inherit-caller", "source": "default"},
   "critic": {"model": "standard", "source": "default"},
   "discovery": {"model": "standard", "source": "default"},
   "coder": {"model": "standard", "source": "default"},
@@ -106,6 +106,10 @@ fn models_resolve_and_show_use_portable_default_hints() {
 #[test]
 fn models_resolve_delegates_harness_translation_to_the_compiler_profiles() {
     let root = repository("harness-profiles");
+    // `planter` rather than `engineer`: the leads now inherit the caller, so
+    // they are exactly the roles that DO NOT exercise the tier translation this
+    // test exists to cover. Planter still pins the reasoning tier and each
+    // harness spells it differently, which is the property under test.
     for (harness, expected) in [
         ("claude", b"opus[1m]\n".as_slice()),
         ("codex", b"reasoning-high\n".as_slice()),
@@ -113,7 +117,7 @@ fn models_resolve_delegates_harness_translation_to_the_compiler_profiles() {
     ] {
         let output = run(
             &root,
-            &["models", "resolve", "engineer", "--harness", harness],
+            &["models", "resolve", "planter", "--harness", harness],
         );
         assert!(
             output.status.success(),
@@ -121,6 +125,23 @@ fn models_resolve_delegates_harness_translation_to_the_compiler_profiles() {
             String::from_utf8_lossy(&output.stderr)
         );
         assert_eq!(output.stdout, expected, "{harness}");
+    }
+    // The leads inherit, and each harness spells INHERIT differently too. This
+    // is the half a tier-translation test would otherwise stop covering.
+    for (harness, expected) in [
+        ("claude", b"inherit\n".as_slice()),
+        ("codex", b"inherit-caller\n".as_slice()),
+        ("pi", b"inherit-caller\n".as_slice()),
+    ] {
+        for role in ["engineer", "conductor"] {
+            let output = run(&root, &["models", "resolve", role, "--harness", harness]);
+            assert!(
+                output.status.success(),
+                "{harness}/{role}: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert_eq!(output.stdout, expected, "{harness}/{role}");
+        }
     }
     fs::remove_dir_all(root).expect("cleanup fixture");
 }
@@ -188,14 +209,15 @@ fn models_negative_inputs_keep_the_oracle_messages_and_exit_code() {
 fn models_show_harness_translates_every_role_to_the_harness_native_spelling() {
     let root = repository("show-harness");
 
-    // root/planter/engineer/conductor are the opus tier; coder/auditor/
-    // worker/critic and discovery are the sonnet tier. Each harness spells
-    // both tiers differently, and root's tier still translates through the
-    // ordinary hint table even though its compiled carrier is advisory.
-    for (harness, opus_tier, sonnet_tier) in [
-        ("claude", "opus[1m]", "sonnet"),
-        ("codex", "reasoning-high", "standard"),
-        ("pi", "opus", "sonnet"),
+    // root/planter are the opus tier; engineer/conductor INHERIT the caller so a
+    // lane costs what its run is worth; coder/auditor/worker/critic/discovery
+    // are the sonnet tier, which is what makes wide fan-out affordable. Each
+    // harness spells all three differently, and root's tier still translates
+    // through the ordinary hint table even though its carrier is advisory.
+    for (harness, opus_tier, inherit_tier, sonnet_tier) in [
+        ("claude", "opus[1m]", "inherit", "sonnet"),
+        ("codex", "reasoning-high", "inherit-caller", "standard"),
+        ("pi", "opus", "inherit-caller", "sonnet"),
     ] {
         let show = run(&root, &["models", "show", "--harness", harness, "--json"]);
         assert!(
@@ -204,7 +226,7 @@ fn models_show_harness_translates_every_role_to_the_harness_native_spelling() {
             String::from_utf8_lossy(&show.stderr)
         );
         let expected = format!(
-            "{{\n  \"root\": {{\"model\": \"{opus_tier}\", \"source\": \"default\"}},\n  \"planter\": {{\"model\": \"{opus_tier}\", \"source\": \"default\"}},\n  \"engineer\": {{\"model\": \"{opus_tier}\", \"source\": \"default\"}},\n  \"conductor\": {{\"model\": \"{opus_tier}\", \"source\": \"default\"}},\n  \"critic\": {{\"model\": \"{sonnet_tier}\", \"source\": \"default\"}},\n  \"discovery\": {{\"model\": \"{sonnet_tier}\", \"source\": \"default\"}},\n  \"coder\": {{\"model\": \"{sonnet_tier}\", \"source\": \"default\"}},\n  \"auditor\": {{\"model\": \"{sonnet_tier}\", \"source\": \"default\"}},\n  \"worker\": {{\"model\": \"{sonnet_tier}\", \"source\": \"default\"}}\n}}\n"
+            "{{\n  \"root\": {{\"model\": \"{opus_tier}\", \"source\": \"default\"}},\n  \"planter\": {{\"model\": \"{opus_tier}\", \"source\": \"default\"}},\n  \"engineer\": {{\"model\": \"{inherit_tier}\", \"source\": \"default\"}},\n  \"conductor\": {{\"model\": \"{inherit_tier}\", \"source\": \"default\"}},\n  \"critic\": {{\"model\": \"{sonnet_tier}\", \"source\": \"default\"}},\n  \"discovery\": {{\"model\": \"{sonnet_tier}\", \"source\": \"default\"}},\n  \"coder\": {{\"model\": \"{sonnet_tier}\", \"source\": \"default\"}},\n  \"auditor\": {{\"model\": \"{sonnet_tier}\", \"source\": \"default\"}},\n  \"worker\": {{\"model\": \"{sonnet_tier}\", \"source\": \"default\"}}\n}}\n"
         );
         assert_eq!(String::from_utf8_lossy(&show.stdout), expected, "{harness}");
         assert!(show.stderr.is_empty(), "{harness}");
@@ -229,7 +251,11 @@ fn models_show_harness_translates_every_role_to_the_harness_native_spelling() {
         "{markdown_text}"
     );
     assert!(
-        markdown_text.contains("| conductor | `opus[1m]` | default |"),
+        markdown_text.contains("| conductor | `inherit` | default |"),
+        "{markdown_text}"
+    );
+    assert!(
+        markdown_text.contains("| engineer | `inherit` | default |"),
         "{markdown_text}"
     );
     assert!(
@@ -351,14 +377,18 @@ fn models_resolve_all_nine_roles_and_three_harnesses_accept_the_economy_opt_down
 }
 
 #[test]
-fn codex_agent_types_never_names_root() {
-    // `content/roles/shepherd.md` (root's carrier) is `dispatchable: false`
-    // and keeps `model_hint: inherit-caller` even though root's portable
-    // hint elsewhere is now the opus tier (see `ModelsConfig::root`).
-    // `compiler.rs` uses exactly that hint to exclude root from the codex
-    // `[agent_types]` table -- this pins that exclusion against the live
-    // authored content, not a snapshot, so it fails the moment a future edit
-    // removes the guard.
+fn codex_agent_types_never_names_an_undispatchable_role() {
+    // `[agent_types]` is the set of roles Codex may SPAWN, so it must contain
+    // exactly the `dispatchable: true` roles. It used to key on
+    // `model_hint == "inherit-caller"`, a proxy that was wrong in both
+    // directions: `planter` is `dispatchable: false` and appeared here anyway
+    // because its hint is `reasoning-high`, so Codex advertised the
+    // operator-escalation role as spawnable; and any role adopting
+    // `inherit-caller` -- which `engineer` and `conductor` now do -- would have
+    // silently vanished from the table instead.
+    //
+    // Pinned against the LIVE authored content rather than a snapshot, so it
+    // fails the moment an edit changes which roles are dispatchable.
     let content_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
         .nth(2)
@@ -389,12 +419,26 @@ fn codex_agent_types_never_names_root() {
         .nth(1)
         .and_then(|rest| rest.split("\n[models]").next())
         .expect("[agent_types] section exists in the generated codex carrier");
-    assert!(
-        !agent_types
-            .lines()
-            .any(|line| line.trim_start().starts_with("shepherd ")),
-        "root (role id `shepherd`) must never appear in the codex [agent_types] table:\n{agent_types}"
-    );
+    for undispatchable in ["shepherd", "planter"] {
+        assert!(
+            !agent_types
+                .lines()
+                .any(|line| line.trim_start().starts_with(&format!("{undispatchable} "))),
+            "`{undispatchable}` is dispatchable: false and must never appear in the \
+             codex [agent_types] table:\n{agent_types}"
+        );
+    }
+    // And the leads MUST still be there. They inherit the caller now, which is
+    // exactly the shape the old proxy would have excluded.
+    for lead in ["engineer", "conductor"] {
+        assert!(
+            agent_types
+                .lines()
+                .any(|line| line.trim_start().starts_with(&format!("{lead} "))),
+            "`{lead}` is dispatchable and must appear in the codex [agent_types] \
+             table:\n{agent_types}"
+        );
+    }
 
     fs::remove_dir_all(out).expect("cleanup fixture");
 }
