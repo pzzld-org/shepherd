@@ -2112,3 +2112,65 @@ fn dispatch_target_accepts_the_plugin_carrier_form() {
         );
     }
 }
+
+/// Two `dispatch-scope` rules key on the target role, so a `Workflow` payload
+/// that names none made them unenforceable: a conductor refused `engineer` by
+/// name could obtain it by writing the dispatch as a script string. That is a
+/// bypass by payload shape rather than by permission.
+#[test]
+fn a_lane_lead_must_declare_its_dispatch_targets() {
+    let engine = live_engine();
+    let eval = |request: &str| {
+        engine
+            .evaluate_json(request)
+            .expect("dispatch request is evaluable")
+    };
+
+    // The bypass itself: same intent as a declared `engineer`, written as a script.
+    let bypass = eval(
+        r#"{"role":"conductor","tool_name":"Workflow","tool_input":{"script":"agent({agentType:\"shepherd:engineer\"})"}}"#,
+    );
+    assert_eq!(
+        bypass.decision.as_str(),
+        "deny",
+        "an undeclared lane-lead dispatch must not evade a target-keyed rule: {}",
+        bypass.to_wire_json()
+    );
+    assert_eq!(bypass.halt_code.as_deref(), Some("WRONG-TIER-DISPATCH"));
+
+    // Declaring is the way through, and the legitimate fan-out still works.
+    assert_eq!(
+        eval(r#"{"role":"conductor","tool_name":"Workflow","tool_input":{"target_role":"coder"}}"#)
+            .decision
+            .as_str(),
+        "allow",
+        "a lane lead may still fan out to implementers by declaring them"
+    );
+    assert_eq!(
+        eval(
+            r#"{"role":"conductor","tool_name":"Workflow","tool_input":{"target_role":"engineer"}}"#
+        )
+        .decision
+        .as_str(),
+        "deny",
+        "declaring the forbidden target is still refused"
+    );
+
+    // Root has no target-keyed restriction to evade, so `Workflow` stays usable
+    // where the whole flock is dispatchable anyway.
+    assert_eq!(
+        eval(r#"{"role":"shepherd","tool_name":"Workflow","tool_input":{"script":"agent()"}}"#)
+            .decision
+            .as_str(),
+        "allow",
+        "root must not be forced to declare what it is already permitted to dispatch"
+    );
+
+    // An implementer is refused by ACTING role, which no payload shape hides.
+    assert_eq!(
+        eval(r#"{"role":"coder","tool_name":"Workflow","tool_input":{}}"#)
+            .decision
+            .as_str(),
+        "deny"
+    );
+}
