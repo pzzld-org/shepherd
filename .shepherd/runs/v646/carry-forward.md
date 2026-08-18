@@ -93,6 +93,38 @@ Both recoveries were verified byte-for-byte and nothing was lost, but that was l
 process. A clean-tree baseline belongs in a throwaway clone; a fail-on-purpose edit waits
 for the auditor.
 
+## 4b. GATE-CAN-FAIL, as written, induces destructive edits on a shared tree — HIGH
+
+The fourth instance of the shared-worktree class was caused by the sprint's OWN core
+discipline, which makes it the most important one to fix.
+
+GATE-CAN-FAIL requires every gate be shown to fail on purpose. The natural way a coder
+produces that evidence is to revert the file under test, capture the red, and restore:
+
+```
+git checkout -- <the live file>     # capture red, then restore
+```
+
+On a worktree four lanes share, that reverts an in-flight file for as long as the cycle
+takes, and a botched restore loses the work outright. The config lane identified it in its
+own brief before it caused damage, and correctly declined to intervene mid-cycle on the
+grounds that re-dispatching while a coder may be holding the file is how a recoverable state
+becomes a real loss.
+
+It also makes the tree unreadable from outside. Root sampled `loader.rs` at 542 lines
+mid-revert; the conductor sampled it pristine at 415 lines minutes later; the finished file
+is 576. All three readings were correct at the instant taken, and any two of them compared
+naively suggest lost work.
+
+**The fix is procedural and belongs in the next seed alongside GATE-CAN-FAIL itself:**
+falsification runs against a COPY under `/tmp`, never `git checkout` on a live file. State
+it as part of the requirement, because a discipline that demands evidence without naming a
+safe way to produce it will keep teaching agents the unsafe way.
+
+Corollary for anyone reading a shared tree: a single `git status` or `cargo fmt --check`
+sample is a snapshot of a moving target, not a fact about a lane's work. Attribute from
+artifacts and from the owning lane, not from one reading.
+
 ## 5. A refusal that never reaches the dispatching lead reads as incompetence — MEDIUM
 
 Harness lane's finding, and it generalizes past this sprint. A worker spent 49 tool calls and
