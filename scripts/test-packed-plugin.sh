@@ -36,12 +36,12 @@ for package in component-runtime harness-claude harness-codex harness-pi; do
     npm pack --json --ignore-scripts --pack-destination "$tarballs" >/dev/null
   )
 done
-test -f "$tarballs/pzzld-component-runtime-6.5.0.tgz"
-test -f "$tarballs/pzzld-pi-claude-6.5.0.tgz"
-test -f "$tarballs/pzzld-pi-codex-6.5.0.tgz"
-test -f "$tarballs/pzzld-pi-shepherd-6.5.0.tgz"
+test -f "$tarballs/pzzld-component-runtime-6.5.1.tgz"
+test -f "$tarballs/pzzld-pi-claude-6.5.1.tgz"
+test -f "$tarballs/pzzld-pi-codex-6.5.1.tgz"
+test -f "$tarballs/pzzld-pi-shepherd-6.5.1.tgz"
 component_listing="$tmp_dir/component-runtime.list"
-tar -tzf "$tarballs/pzzld-component-runtime-6.5.0.tgz" > "$component_listing"
+tar -tzf "$tarballs/pzzld-component-runtime-6.5.1.tgz" > "$component_listing"
 grep -Fq 'package/runtime/shepherd-component.js' "$component_listing"
 grep -Fq 'package/runtime/shepherd-component.wasm' "$component_listing"
 for package in component-runtime harness-claude harness-codex harness-pi; do
@@ -52,7 +52,7 @@ for package in component-runtime harness-claude harness-codex harness-pi; do
     harness-pi) archive='pzzld-pi-shepherd' ;;
   esac
   listing="$tmp_dir/${package}.list"
-  tar -tzf "$tarballs/${archive}-6.5.0.tgz" > "$listing"
+  tar -tzf "$tarballs/${archive}-6.5.1.tgz" > "$listing"
   grep -Fxq 'package/LICENSE' "$listing"
   grep -Fxq 'package/THIRD_PARTY_NOTICES.md' "$listing"
   grep -Eq '^package/THIRD_PARTY_LICENSES/[0-9a-f]{64}\.txt$' "$listing"
@@ -62,10 +62,10 @@ install="$tmp_dir/install"
 mkdir -p "$install"
 npm_config_cache="$tmp_dir/npm-cache" \
   npm install --prefix "$install" --ignore-scripts --no-audit --no-fund --no-save \
-  "$tarballs/pzzld-component-runtime-6.5.0.tgz" \
-  "$tarballs/pzzld-pi-claude-6.5.0.tgz" \
-  "$tarballs/pzzld-pi-codex-6.5.0.tgz" \
-  "$tarballs/pzzld-pi-shepherd-6.5.0.tgz" >/dev/null
+  "$tarballs/pzzld-component-runtime-6.5.1.tgz" \
+  "$tarballs/pzzld-pi-claude-6.5.1.tgz" \
+  "$tarballs/pzzld-pi-codex-6.5.1.tgz" \
+  "$tarballs/pzzld-pi-shepherd-6.5.1.tgz" >/dev/null
 test -s "$install/node_modules/@pzzld/component-runtime/runtime/shepherd-component.js"
 test -s "$install/node_modules/@pzzld/component-runtime/runtime/shepherd-component.wasm"
 node packages/scripts/test-active-adapters.mjs \

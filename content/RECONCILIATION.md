@@ -1,4 +1,4 @@
-# Content authority v6.5.0
+# Content authority v6.5.1
 
 `content/` is Shepherd's only authored prompt and policy corpus. It is
 harness-neutral input to the Rust compiler, not a staging area for a later

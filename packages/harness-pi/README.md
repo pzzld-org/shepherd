@@ -3,7 +3,7 @@
 The Pi adapter is a thin host extension over `@pzzld/component-runtime`.
 Identity normalization, guard evaluation, lifecycle planning, provider
 capability validation, and request-to-response exchange validation are implemented once by the
-`fl03:shepherd@6.5.0` Rust WebAssembly component.
+`fl03:shepherd@6.5.1` Rust WebAssembly component.
 
 Pi contributes only its extension API and provider transport. The extension
 requires an explicit `SubagentProvider` for lifecycle `spawn`, `resume`, and
