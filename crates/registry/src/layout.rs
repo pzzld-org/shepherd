@@ -578,13 +578,20 @@ impl LayoutPlan {
                 continue;
             }
             let source = Path::new(&entry.source);
-            let relative =
-                source
-                    .strip_prefix(&self.namespace)
-                    .map_err(|_| LayoutError::UnsafePath {
-                        path: source.to_path_buf(),
-                        reason: "snapshot source escaped namespace".into(),
-                    })?;
+            // `entry.source` is stored canonically, so it must be compared
+            // canonically. Stripping a native `\\?\C:\...` prefix off a
+            // canonical `C:/...` string always failed, and the failure read as
+            // "snapshot source escaped namespace" -- a security refusal for
+            // what was only a rendering mismatch.
+            let namespace = canonical_path_string(&self.namespace);
+            let relative = entry
+                .source
+                .strip_prefix(&namespace)
+                .map(|tail| Path::new(tail.trim_start_matches('/')))
+                .ok_or_else(|| LayoutError::UnsafePath {
+                    path: source.to_path_buf(),
+                    reason: "snapshot source escaped namespace".into(),
+                })?;
             let destination = before.join(relative);
             if let Some(parent) = destination.parent() {
                 fs::create_dir_all(parent).map_err(|source_error| io(parent, source_error))?;

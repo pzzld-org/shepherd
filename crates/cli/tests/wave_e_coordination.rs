@@ -180,6 +180,10 @@ fn injected_history_failure_compensates_the_lock_file() {
     assert_eq!(output.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&output.stderr).contains("injected lock history failure"));
     assert!(!root.join(".shepherd/shepherd.lock").exists());
+    // Windows cannot remove a directory that still holds an open
+    // handle, and SQLite keeps one until the connection drops. On unix
+    // an open file unlinks happily, so this was never needed here.
+    drop(registry);
     support::remove_dir_all(&root);
 }
 

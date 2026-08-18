@@ -544,7 +544,15 @@ fn doctor_reports_a_stale_shepherd_resolved_from_path() {
 
     let scratch = root.join("scratch-path");
     std::fs::create_dir_all(&scratch).expect("create scratch PATH directory");
-    let stale = scratch.join("shepherd");
+    // Windows does not execute an extensionless file, and `doctor` correctly
+    // resolves `shepherd.exe` there, so the fixture has to name the binary the
+    // way the platform would. Without this the scratch entry was invisible and
+    // `doctor` reported the real build instead.
+    let stale = scratch.join(if cfg!(windows) {
+        "shepherd.exe"
+    } else {
+        "shepherd"
+    });
     std::fs::copy(binary(), &stale).expect("copy the native binary into the scratch PATH entry");
     let ancient = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000_000);
     std::fs::OpenOptions::new()

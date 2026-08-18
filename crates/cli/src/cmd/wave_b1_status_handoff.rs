@@ -512,7 +512,7 @@ fn canonical_handoff_root(context: &ExecutionContext) -> &Path {
 
 fn handoff_label(context: &ExecutionContext, path: &Path) -> String {
     if let Ok(relative) = path.strip_prefix(&context.runs_root) {
-        return relative.to_string_lossy().into_owned();
+        return crate::interface::canonical_display(relative);
     }
     path.file_name()
         .map(|name| name.to_string_lossy().into_owned())

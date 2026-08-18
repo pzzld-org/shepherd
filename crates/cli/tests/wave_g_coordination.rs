@@ -180,6 +180,10 @@ fn signal_rejects_oversized_payload_before_registry_insert() {
         .next()
         .expect("count row");
     assert_eq!(count, 0);
+    // Windows cannot remove a directory that still holds an open
+    // handle, and SQLite keeps one until the connection drops. On unix
+    // an open file unlinks happily, so this was never needed here.
+    drop(registry);
     support::remove_dir_all(&root);
 }
 
@@ -259,6 +263,10 @@ fn teammate_state_status_and_liveness_share_typed_registry_state() {
     assert!(live.status.success(), "stderr={:?}", live.stderr);
     let rows: serde_json::Value = serde_json::from_slice(&live.stdout).expect("liveness json");
     assert_eq!(rows[0]["verdict"], "ok");
+    // Windows cannot remove a directory that still holds an open
+    // handle, and SQLite keeps one until the connection drops. On unix
+    // an open file unlinks happily, so this was never needed here.
+    drop(registry);
     support::remove_dir_all(&root);
 }
 

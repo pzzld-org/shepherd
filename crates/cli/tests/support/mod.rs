@@ -16,11 +16,11 @@ use std::{fs, io, path::Path, thread, time::Duration};
 /// process. (os error 32)`.
 ///
 /// Retrying is the fix, and bounding the retry is what keeps it from hiding a
-/// genuine leak: if the tree is still locked after a second of trying, that is
+/// genuine leak: if the tree is still locked after four seconds of trying, that is
 /// no longer a scheduling artifact and the panic reports it.
 pub(crate) fn remove_dir_all(path: &Path) {
-    const ATTEMPTS: u32 = 20;
-    const BACKOFF: Duration = Duration::from_millis(50);
+    const ATTEMPTS: u32 = 40;
+    const BACKOFF: Duration = Duration::from_millis(100);
 
     let mut last = None;
     for attempt in 0..ATTEMPTS {

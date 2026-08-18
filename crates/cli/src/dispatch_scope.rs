@@ -93,8 +93,20 @@ fn normalize_relative(
     primary_root: &Path,
     candidate: &str,
 ) -> Result<String, DispatchServiceError> {
+    // A backslash is a LITERAL filename character on unix, so smuggling one
+    // into a write path is a real attempt to confuse a downstream consumer and
+    // is refused. On Windows it is THE separator, so refusing it rejected every
+    // absolute path the platform produces. Normalizing first keeps one rule.
+    let normalized;
+    let candidate = if cfg!(windows) {
+        normalized = candidate.replace('\\', "/");
+        normalized.as_str()
+    } else {
+        candidate
+    };
     if candidate.len() > 4_096
-        || candidate.contains(['\\', '\0'])
+        || (!cfg!(windows) && candidate.contains('\\'))
+        || candidate.contains('\0')
         || candidate.chars().any(char::is_control)
     {
         return Err(invalid("write path is unsafe"));

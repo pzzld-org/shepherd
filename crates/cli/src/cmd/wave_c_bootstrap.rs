@@ -980,6 +980,15 @@ fn write_no_clobber(anchor: &Path, relative: &str, bytes: &[u8]) -> Result<bool,
 #[cfg(not(unix))]
 fn write_no_clobber(anchor: &Path, relative: &str, bytes: &[u8]) -> Result<bool, CliError> {
     let target = safe_relative_path(anchor, relative)?;
+    // The unix twin resolves the parent chain with `create = true`, so it makes
+    // the directories on the way. Without this, `config --confirm` on a fresh
+    // project failed with `cannot create '.shepherd/shepherd.toml': The system
+    // cannot find the path specified` -- the namespace did not exist yet.
+    if let Some(parent) = target.parent() {
+        std::fs::create_dir_all(parent).map_err(|error| {
+            CliError::message(format!("cannot create parent of `{relative}`: {error}"))
+        })?;
+    }
     crate::safe_fs::write_no_clobber(&target, bytes)
         .map_err(|error| CliError::message(format!("cannot create `{relative}`: {error}")))
 }
