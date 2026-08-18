@@ -23,6 +23,45 @@ either a 10-deliverable, 5-lane seed is not a `patch-seed` and the kind vocabula
 coarse, or the seed should carry the directive and leave the evidence in `mesh.md`, which is
 the artifact for evidence. Do not resolve it by moving the number.
 
+## 0b. `required-features` targets are silently skipped, and the gate never noticed — HIGH
+
+Fixed in v6.4.6 (`04c500a` adds a feature-gated step to `scripts/gate.sh`), recorded because
+the PATTERN will recur and because the scale is worth stating plainly.
+
+`cargo test --workspace` builds each member with its DEFAULT features, and Cargo omits any
+target whose `required-features` are unmet — not "fails", not "reports skipped", omits
+entirely, and the run is green. `shepherd-core` defaults to `["std"]`:
+
+```
+[[test]] guard             required-features = ["std", "parse", "json"]   -> SKIPPED
+[[test]] dispatch          required-features = ["std", "json"]            -> SKIPPED
+[[test]] portable_dispatch required-features = ["std", "json"]            -> SKIPPED
+[[test]] run_state         required-features = ["std", "json"]            -> SKIPPED
+
+cargo test -p shepherd-core --locked                 ->   3 tests
+cargo test -p shepherd-core --locked --all-features  -> 126 tests
+```
+
+**The repo's gate ran 3 of 126 core tests, including NONE of the guard engine's 66** — the
+security-critical component, modified twice during this very sprint. `shepherd-render` was
+3 of 10. `crates/core/tests/loader.rs` additionally carries its own
+`#![cfg(all(feature = "config", feature = "std"))]`, so it ran zero tests even when built,
+which is how the config lane found it: its gate for deliverable 6's primary acceptance
+criterion had never executed.
+
+Two shapes, both indistinguishable from success:
+- a skipped target prints NOTHING;
+- a cfg'd-out target prints `test result: ok. 0 passed`.
+
+`check-features.sh` does not cover this, and a comment in `gate.sh` asserting it did is why
+the gap survived. That script runs `cargo check` — it proves the feature graph resolves, not
+that feature-gated tests run.
+
+**Carry forward:** (a) any new `[[test]]` with `required-features` must be added to the
+feature-gated gate step, or it is born inert; (b) reviewing a test report means reading the
+COUNT, not the word `ok`; (c) `parse` does not imply `config` — `parse = ["alloc",
+"dep:nom", "dep:toml"]` — so a briefed feature list is not evidence a target ran.
+
 ## 1. Nothing asserts the installed binary matches the built one — HIGH
 
 Found independently by the distribution and harness lanes, from opposite directions, which
