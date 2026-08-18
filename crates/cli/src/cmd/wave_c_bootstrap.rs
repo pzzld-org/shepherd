@@ -414,16 +414,16 @@ fn resolve_project_identity(
     // Something already answers `project.json`. Read it back rather than
     // discarding or replacing it — this is the one healing path the product
     // has, and it never mutates what it finds.
-    match descriptor::read_relative_nofollow(
+    match read_identity_nofollow(
         &context.primary_root,
         PROJECT_IDENTITY_RELATIVE,
         MAX_PROJECT_IDENTITY_BYTES,
     )? {
-        descriptor::Lookup::Regular(existing) => parse_project_identity(&existing),
-        descriptor::Lookup::Missing => Err(CliError::message(format!(
+        IdentityLookup::Regular(existing) => parse_project_identity(&existing),
+        IdentityLookup::Missing => Err(CliError::message(format!(
             "project identity vanished during initialization: {PROJECT_IDENTITY_RELATIVE}"
         ))),
-        descriptor::Lookup::NotRegular => Err(CliError::message(format!(
+        IdentityLookup::NotRegular => Err(CliError::message(format!(
             "project identity is not a regular file: {PROJECT_IDENTITY_RELATIVE}"
         ))),
     }
@@ -681,24 +681,24 @@ fn read_project_identity_for_doctor(
     primary_root: &Path,
     findings: &mut Vec<String>,
 ) -> Option<ProjectId> {
-    match descriptor::read_relative_nofollow(
+    match read_identity_nofollow(
         primary_root,
         PROJECT_IDENTITY_RELATIVE,
         MAX_PROJECT_IDENTITY_BYTES,
     ) {
-        Ok(descriptor::Lookup::Missing) => {
+        Ok(IdentityLookup::Missing) => {
             findings.push(format!(
                 "project identity is absent: run `shepherd init --confirm` ({PROJECT_IDENTITY_RELATIVE})"
             ));
             None
         }
-        Ok(descriptor::Lookup::NotRegular) => {
+        Ok(IdentityLookup::NotRegular) => {
             findings.push(format!(
                 "project identity is not a regular file: {PROJECT_IDENTITY_RELATIVE}"
             ));
             None
         }
-        Ok(descriptor::Lookup::Regular(bytes)) => match parse_project_identity(&bytes) {
+        Ok(IdentityLookup::Regular(bytes)) => match parse_project_identity(&bytes) {
             Ok(id) => Some(id),
             Err(error) => {
                 findings.push(format!(
@@ -985,6 +985,46 @@ fn remove_directory_no_follow(anchor: &Path, relative: &str) -> Result<(), CliEr
 
 #[cfg(not(unix))]
 fn remove_directory_no_follow(_anchor: &Path, _relative: &str) -> Result<(), CliError> {
+    Err(CliError::message(
+        "descriptor-safe bootstrap mutation is unavailable on this platform",
+    ))
+}
+
+/// The outcome of a descriptor-safe identity lookup, named outside the
+/// unix-only module so callers compile on every platform.
+enum IdentityLookup {
+    Missing,
+    NotRegular,
+    Regular(Vec<u8>),
+}
+
+/// Read project identity without following symlinks.
+///
+/// Paired the way every other mutation in this file is: the descriptor-safe
+/// implementation is unix-only, and callers go through a free function rather
+/// than reaching into `descriptor` directly. Calling into that module from
+/// unconditional code is what broke the Windows build.
+#[cfg(unix)]
+fn read_identity_nofollow(
+    anchor: &Path,
+    relative: &str,
+    maximum: usize,
+) -> Result<IdentityLookup, CliError> {
+    Ok(
+        match descriptor::read_relative_nofollow(anchor, relative, maximum)? {
+            descriptor::Lookup::Missing => IdentityLookup::Missing,
+            descriptor::Lookup::NotRegular => IdentityLookup::NotRegular,
+            descriptor::Lookup::Regular(bytes) => IdentityLookup::Regular(bytes),
+        },
+    )
+}
+
+#[cfg(not(unix))]
+fn read_identity_nofollow(
+    _anchor: &Path,
+    _relative: &str,
+    _maximum: usize,
+) -> Result<IdentityLookup, CliError> {
     Err(CliError::message(
         "descriptor-safe bootstrap mutation is unavailable on this platform",
     ))

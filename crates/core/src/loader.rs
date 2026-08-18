@@ -25,7 +25,7 @@ use config::{
 use crate::{Error, Result, settings::ShepherdConfig, types::Harness};
 
 /// A `config::ConfigError`-flavored result, used only by the structural
-/// checks [`parse_layer`] performs before the typed schema ever sees a
+/// checks `parse_layer` performs before the typed schema ever sees a
 /// layer. Kept distinct from [`Result`] (this crate's own typed error) so the
 /// two error universes are never accidentally conflated.
 type ConfigResult<T = ()> = core::result::Result<T, ConfigError>;
@@ -69,7 +69,7 @@ pub struct LoadedConfig {
     /// Fully dotted keys (e.g. `"models.root"`) that some merged layer set
     /// explicitly, before defaults were applied. Collected from the same
     /// per-layer [`Format::parse`] each layer already goes through (see
-    /// [`parse_layer`] and [`collect_dotted_keys`]), so this costs one walk
+    /// `parse_layer` and `collect_dotted_keys`), so this costs one walk
     /// of an already-parsed table, never an extra parse. This is the exact
     /// provenance a caller needs to distinguish "the merged value happens to
     /// equal the default" from "a layer actually set this key" -- a
@@ -160,13 +160,13 @@ where
 /// reverse, which keeps both Shepherd's provenance order and the standard
 /// builder's merge semantics explicit.
 ///
-/// Each layer is parsed exactly once by [`parse_layer`], which also carries
+/// Each layer is parsed exactly once by `parse_layer`, which also carries
 /// the layer's own structural checks (the layout-v5 migration strip and the
 /// open-map shape checks) and hands back the already-typed
 /// `Map<String, Value>`. That same table is walked once more, locally, via
-/// [`collect_dotted_keys`] to fold its explicit keys into
+/// `collect_dotted_keys` to fold its explicit keys into
 /// [`LoadedConfig::explicit_keys`] before the table is handed to a thin
-/// [`LayerSource`] wrapper for the merge -- no second parse anywhere in this
+/// `LayerSource` wrapper for the merge -- no second parse anywhere in this
 /// path. Only after every layer has been merged does the full
 /// [`ShepherdConfig`] get decoded and cross-field validated -- once, against
 /// the merged result, never per layer. A layer that is legal only in
@@ -237,8 +237,8 @@ pub fn validate(path: &Path, contents: &str) -> Result {
 /// become valid only in combination with another layer, unlike the
 /// cross-field checks in [`crate::settings::ShepherdConfig::validate`]).
 ///
-/// The returned table is the single source both [`LayerSource`] (the merge)
-/// and [`collect_dotted_keys`] (the explicit-key provenance walk in
+/// The returned table is the single source both `LayerSource` (the merge)
+/// and `collect_dotted_keys` (the explicit-key provenance walk in
 /// [`load_with_mode`]) read from -- neither ever reparses `contents`.
 fn parse_layer(path: &Path, contents: &str, mode: LoadMode) -> ConfigResult<Map<String, Value>> {
     let origin = path.display().to_string();
@@ -279,7 +279,7 @@ fn collect_dotted_keys(table: &Map<String, Value>, prefix: &str, out: &mut BTree
 
 /// A `config::Source` over one already-parsed, already-validated layer
 /// table. Parsing and the per-layer structural checks happen once, in
-/// [`parse_layer`], before a layer ever becomes a `LayerSource`; `collect`
+/// `parse_layer`, before a layer ever becomes a `LayerSource`; `collect`
 /// here is therefore an infallible clone, never a second parse.
 #[derive(Clone, Debug)]
 struct LayerSource {

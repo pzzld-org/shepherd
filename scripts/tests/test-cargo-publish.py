@@ -17,8 +17,28 @@ from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts/cargo-publish.py"
-VERSION = "6.4" + ".5"
-NEXT_VERSION = "6.4" + ".6"
+# A synthetic version for the temp-state fixtures: they never touch the real
+# workspace, so pinning a real release here would only rot at every bump.
+VERSION = "1.2" + ".3"
+
+
+def _workspace_version() -> str:
+    """The version `plan` is run against, read from the workspace itself.
+
+    This drives `version-bump.py plan` against the REAL repository, so it has to
+    be whatever the workspace currently declares. Hardcoding the release of the
+    day made this test fail on the next bump -- for the seventh time in one
+    sprint, in a file whose whole job is guarding the version authority.
+    """
+    manifest = (ROOT / "Cargo.toml").read_text(encoding="utf-8")
+    for line in manifest.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("version") and "=" in stripped:
+            return stripped.split("=", 1)[1].strip().strip('"')
+    raise AssertionError("Cargo.toml declares no workspace.package.version")
+
+
+NEXT_VERSION = _workspace_version()
 
 
 def publisher_module():

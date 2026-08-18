@@ -67,8 +67,20 @@ hooks = [
     for group in groups
     for hook in group["hooks"]
 ]
-assert len(hooks) == 4
-assert all(hook == {"type": "command", "command": "shepherd", "args": ["claude-hook"]} for hook in hooks)
+# The four native adapters must be registered exactly as they are, and nothing
+# may resolve POLICY through a plugin-local runtime. v6.4.6 re-registered seven
+# telemetry-only shell hooks that v6.4.5 had left inert, so a literal TOTAL is
+# no longer the property: it counted registrations instead of testing one.
+native = {"type": "command", "command": "shepherd", "args": ["claude-hook"]}
+adapters = [hook for hook in hooks if hook == native]
+assert len(adapters) == 4, f"expected 4 native `shepherd claude-hook` adapters, found {len(adapters)}"
+launchers = [
+    hook
+    for hook in hooks
+    if hook != native
+    and any(token in json.dumps(hook).lower() for token in ("node", "npx", "python", "poetry"))
+]
+assert not launchers, f"a registered hook resolves through a plugin-local runtime: {launchers}"
 PY
 
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/shepherd-claude-marketplace-test.XXXXXX")
@@ -116,8 +128,20 @@ for forbidden in ("package.json", "package-lock.json", "node_modules"):
 
 manifest = json.loads((root / "hooks/hooks.json").read_text(encoding="utf-8"))
 hooks = [hook for groups in manifest["hooks"].values() for group in groups for hook in group["hooks"]]
-assert len(hooks) == 4
-assert all(hook == {"type": "command", "command": "shepherd", "args": ["claude-hook"]} for hook in hooks)
+# The four native adapters must be registered exactly as they are, and nothing
+# may resolve POLICY through a plugin-local runtime. v6.4.6 re-registered seven
+# telemetry-only shell hooks that v6.4.5 had left inert, so a literal TOTAL is
+# no longer the property: it counted registrations instead of testing one.
+native = {"type": "command", "command": "shepherd", "args": ["claude-hook"]}
+adapters = [hook for hook in hooks if hook == native]
+assert len(adapters) == 4, f"expected 4 native `shepherd claude-hook` adapters, found {len(adapters)}"
+launchers = [
+    hook
+    for hook in hooks
+    if hook != native
+    and any(token in json.dumps(hook).lower() for token in ("node", "npx", "python", "poetry"))
+]
+assert not launchers, f"a registered hook resolves through a plugin-local runtime: {launchers}"
 PY
 }
 
@@ -170,10 +194,21 @@ import json
 import sys
 
 response = json.loads(sys.argv[1])
-assert response["hookSpecificOutput"]["hookEventName"] == "PreToolUse"
-assert response["hookSpecificOutput"]["permissionDecision"] == "deny"
+output = response["hookSpecificOutput"]
+assert output["hookEventName"] == "PreToolUse", output
+
+# What this test is actually about: the INSTALLED carrier reaches the native
+# binary and answers, without a plugin-local Node or npm path. It previously
+# asserted `deny`, which pinned the pre-v6.4.6 behaviour where an unusable run
+# namespace refused every tool -- the deadlock that made a broken run
+# unrepairable from inside the session that had to repair it. A namespace with
+# no executing run now surfaces the fault and allows, so the property here is
+# that the hook RESPONDS in one of its two valid shapes, not which one.
+assert "permissionDecision" in output or "additionalContext" in output, output
+if "additionalContext" in output:
+    assert output["additionalContext"].startswith("[shepherd]"), output
 PY
-  printf 'ok: Claude installed the dereferenced thin carrier and native hook failed closed\n'
+  printf 'ok: Claude installed the dereferenced thin carrier and the native hook answered\n'
 else
   printf 'SKIP: claude CLI unavailable; thin carrier and native exec-form hook contracts were verified\n'
 fi

@@ -4,7 +4,40 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
-## v6.4.6 — unreleased
+## v6.4.7 — unreleased
+
+**The release chain fired end to end for the first time and surfaced what only a real run
+could. v6.4.6's crates published to crates.io; the GitHub release did not complete. This
+patch fixes the three defects that stopped it and bumps the version, because 6.4.6 is spent.**
+
+### Fixed
+
+- **Windows builds.** Two unconditional reaches into unix-only code, both introduced by the
+  v6.4.6 identity work and invisible on macOS. `wave_f_knowledge.rs` imported
+  `classify_nofollow_open_error` — `#[cfg(unix)]`, because it maps a `rustix::io::Errno` —
+  from an unconditional `use`. `wave_c_bootstrap.rs` called `descriptor::read_relative_nofollow`
+  directly from two unconditional functions, bypassing the paired-free-function idiom every
+  other mutation in that file follows. Both now go through `#[cfg(unix)]`/`#[cfg(not(unix))]`
+  pairs, with `IdentityLookup` named outside the unix-only module so callers compile
+  everywhere. The second site was found only by sweeping for the pattern after fixing the
+  first: the compiler reports one error at a time, and the class had two.
+- **The pinned WASI import surface.** Stale since v6.4.5. The toolchain bump to 1.97.0 moved
+  wasip2 imports `0.2.6` → `0.2.12` and added `wasi:clocks/monotonic-clock`, so the component
+  imports 15 interfaces where 14 were pinned. `Cargo.lock` moved by exactly one line and
+  carries no `wasi` entry, so this is the toolchain rather than a dependency. The gate was
+  right to catch it.
+- **A sixth pin of the generated tree's identity**, in `packages/scripts/test-component-node.mjs`,
+  holding pre-sprint digests and file counts for all three targets.
+
+### Changed
+
+- **The component validation step names what it found.** It was a chain of `grep -Fq` and bare
+  `test`, so a failure printed NOTHING and the step died with only `exit code 1`; diagnosing it
+  took a log dive. Each check now reports its finding, the import count is DERIVED from the
+  pinned file rather than hardcoded, and a changed import surface is reported as a capability
+  change with the exact regeneration command.
+
+## v6.4.6 — 2026-08-18
 
 **The patch that makes the previous five reachable. Every capability v6.4.x built is currently unreachable from a clean machine: the install path documented as primary is broken, the hooks that carry the plugin's behaviour exit 127 before they run, and a freshly initialized project is structurally incapable of dispatching. Seed and evidence: `.shepherd/runs/v646/seed.md`, `.shepherd/runs/v646/mesh.md`.**
 

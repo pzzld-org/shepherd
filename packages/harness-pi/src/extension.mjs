@@ -1,5 +1,5 @@
 // Pi host adapter. Identity, guard policy, and lifecycle planning are owned
-// by the generated fl03:shepherd@6.4.6 component.
+// by the generated fl03:shepherd@6.4.7 component.
 
 import {
   componentBinding,
