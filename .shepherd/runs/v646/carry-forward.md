@@ -59,13 +59,41 @@ or accept the gap. Breaking every conductor mid-sprint to close it was the worse
 the previous state — `Workflow` denied outright for everyone — was not a safer baseline, it
 was an unusable tool.
 
-**The real fix, for v6.4.7, and it is architectural:** enforcement must move to spawn time.
-The dispatch decision belongs where both roles are known — at `SubagentStart`, evaluating
-dispatch-scope with the PARENT's role as dispatcher and the child's `agent_type` as target.
-That requires a reliable parent link the host does not currently provide, which makes it the
-same family as the Codex spawn-to-child correlation gap in item 3. The interim alternative is
-to require a lane-lead's `Workflow` call to DECLARE its target roles and deny when it does
-not — enforceable today, but a contract change that needs the operator.
+**The real fix, for v6.4.7, and it is closer than it first appeared.** Enforcement must move
+to spawn time: evaluate dispatch-scope at `SubagentStart` with the DISPATCHER's role and the
+child's `agent_type` as target. I first recorded this as blocked on a parent link the host
+does not provide. **That was too pessimistic — measured against the live ledger, the host
+does provide it.**
+
+34 real dispatch records written during this sprint group into exactly FOUR distinct
+`session_id` values, one per lane conductor, each containing precisely the agents that
+conductor dispatched:
+
+```
+5f506bdc-e808-498e…  15 agents  {coder: 15}
+1083db69-aac7-48d2…   8 agents  {coder: 7, worker: 1}
+a9065c8a-4b46-4554…   7 agents  {coder: 6, auditor: 1}
+3b720a49-b9ac-4e7b…   4 agents  {coder: 3, worker: 1}
+```
+
+So a child's `session_id` identifies the DISPATCHING session unambiguously. What is missing
+is not host data but shepherd's own bookkeeping: nothing maps a session back to the agent
+running in it. A record stores `session_id` = the session that SPAWNED it, so the chain
+`root → conductor → coder` never links coder to conductor.
+
+**That mapping is cheap to build and needs no host change.** At `PreToolUse` an agent sends
+BOTH its own `session_id` and its own `agent_id`, so shepherd can bind session ↔ agent on an
+agent's first tool call and thereafter resolve any child's dispatcher from its `session_id`.
+Deferred from v6.4.6 only because it is new machinery in the dispatch core, authored at
+02:45 with four lanes executing through that exact path — not because it is hard.
+
+The interim alternative remains: require a lane-lead's `Workflow` call to DECLARE its target
+roles and deny when it does not. Enforceable today, but a contract change that needs the
+operator.
+
+(Note this is NOT the same family as the Codex correlation gap in item 3, as I first wrote.
+Codex genuinely exposes no trusted spawn-to-child correlation; Claude does, and shepherd is
+simply not recording it.)
 
 `hooks/tests/test_native_cli_contract.sh` is RED and CORRECTLY red. It is the only thing in
 the repo that caught this. It must NOT be edited to assert `allow` — that is fitting the
