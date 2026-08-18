@@ -32,10 +32,13 @@
 #   dropped.)
 #   conductor (v6.2.7, #180) MAY ALSO retain issue_write — it is the conductor's
 #   ONLY direct external mutation (open/close carry-forward + drift-risk
-#   issues); every other write is dispatched to @worker
-#   (hooks/scripts/conductor_write_guard.sh is the mechanical enforcement for
-#   Edit/Write/git-write Bash). conductor is NOT in READONLY_ROLES (it keeps
-#   Agent + Bash for dispatch + read-only inspection), so this carve-out is
+#   issues); every other write is dispatched to @worker. `conductor_write_guard.sh`
+#   was retired in v6.4.5 (source deleted, `hooks/tests/test_legacy_policy_retirement.sh`
+#   pins it unregistered); the mechanical enforcement for Edit/Write is now the
+#   native PreToolUse `Write|Edit` matcher in `hooks/hooks.json` (v6.4.6, #D5),
+#   backed by `content/predicates/write-boundary.toml`'s `role-write-eligibility`
+#   and `path-in-declared-scope` rules. conductor is NOT in READONLY_ROLES (it
+#   keeps Agent + Bash for dispatch + read-only inspection), so this carve-out is
 #   checked separately from the trio loop below.
 #
 # Exit 0 on pass; exit 1 with a per-violation diagnostic.
@@ -44,7 +47,7 @@ set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$HERE/../.." && pwd)"
 AGENTS_DIR="${SHEPHERD_LINT_AGENTS_DIR:-$REPO_ROOT/agents}"  # override for tests
-HOOKS_JSON="$REPO_ROOT/hooks/hooks.json"
+HOOKS_JSON="${SHEPHERD_LINT_HOOKS_JSON:-$REPO_ROOT/hooks/hooks.json}"  # override for tests
 GUARD="$REPO_ROOT/hooks/scripts/lock_guard.sh"
 
 # The closed-flock read-only reviewer set. The flock is closed (CLAUDE.md), so
@@ -109,9 +112,33 @@ done
 # CONDUCTOR-ONLY-TEAMMATE / read+dispatch-only conductor lint (v6.2.7, #180).
 # The conductor is NOT in READONLY_ROLES (it keeps Agent + Bash for dispatch +
 # read-only inspection), but it must carry NO Edit/Write/NotebookEdit/MultiEdit
-# grant at all — the mechanical hook (conductor_write_guard.sh) is defense in
-# depth for a frontmatter contract that must itself be correct. issue_write is
-# its one permitted mutating MCP verb (auditor/conductor carve-out).
+# grant at all — defense in depth for a frontmatter contract that must itself
+# be correct. issue_write is its one permitted mutating MCP verb (auditor/
+# conductor carve-out).
+#
+# v6.4.6 (#D5): `hooks/scripts/conductor_write_guard.sh` was retired in v6.4.5
+# (source deleted; `hooks/tests/test_legacy_policy_retirement.sh` pins it BOTH
+# unregistered AND source-deleted). Asserting it is registered here directly
+# contradicted that shipped, green gate — literally satisfying this line would
+# have turned test_legacy_policy_retirement.sh red, proving THIS line, not
+# that one, was stale. The defense-in-depth authority for "conductor cannot
+# write" is now the NATIVE PreToolUse hook: hooks/hooks.json registers a
+# matcher covering BOTH `Write` and `Edit` (currently
+# "Write|Edit|Bash|Agent|Workflow" at hooks/hooks.json:16), routing every
+# Write/Edit tool call through `shepherd claude-hook` before it executes. The
+# runtime authority behind that hook is content/predicates/write-boundary.toml's
+# `role-write-eligibility` rule (denies fs.write when role.write_eligible is
+# false) and `path-in-declared-scope` rule (denies fs.write outside the
+# dispatch's declared write scope even for a write_eligible role) — cited
+# here, read-only, never edited by this file.
+#
+# TRAP: content/roles/conductor.md declares `write_eligible: true` with a
+# documented exception — it commits/pushes its OWN lane branch via Bash git
+# commands, never via the Edit/Write/NotebookEdit/MultiEdit tools. Keying this
+# check on `write_eligible: false` would therefore be WRONG for conductor.
+# This check keys on the ABSENCE of an Edit/Write/NotebookEdit/MultiEdit TOOL
+# grant (already proven by the loop immediately below) plus the PRESENCE of
+# the PreToolUse Write|Edit matcher — never on the `write_eligible` field.
 # ---------------------------------------------------------------------------
 cf="$AGENTS_DIR/conductor.md"
 if [[ -f "$cf" ]]; then
@@ -124,8 +151,29 @@ if [[ -f "$cf" ]]; then
         fails=$((fails+1)) ;;
     esac
   done <<< "$ctoks"
-  if ! grep -q "conductor_write_guard.sh" "$HOOKS_JSON"; then
-    note "FAIL conductor: no Edit/Write grant is claimed but hooks/scripts/conductor_write_guard.sh is not registered in hooks.json (defense-in-depth missing)"
+
+  # Locate every "matcher" value in HOOKS_JSON and check whether any single
+  # matcher's pipe-delimited token set contains BOTH "Write" and "Edit" as
+  # EXACT tokens. Exact, not substring: a plain `grep -E 'Edit'` would wrongly
+  # accept a matcher containing only "MultiEdit" as covering "Edit", which it
+  # does not.
+  write_edit_matcher_found=0
+  while IFS= read -r matcher_val; do
+    [[ -z "$matcher_val" ]] && continue
+    has_write=0; has_edit=0
+    while IFS= read -r tok; do
+      [[ "$tok" == "Write" ]] && has_write=1
+      [[ "$tok" == "Edit" ]] && has_edit=1
+    done < <(printf '%s' "$matcher_val" | tr '|' '\n')
+    if [[ "$has_write" -eq 1 && "$has_edit" -eq 1 ]]; then
+      write_edit_matcher_found=1
+      break
+    fi
+  done < <(grep -oE '"matcher"[[:space:]]*:[[:space:]]*"[^"]*"' "$HOOKS_JSON" \
+             | sed -E 's/.*"matcher"[[:space:]]*:[[:space:]]*"([^"]*)"/\1/')
+
+  if [[ "$write_edit_matcher_found" -ne 1 ]]; then
+    note "FAIL conductor: no Edit/Write/NotebookEdit/MultiEdit grant is claimed (checked above) but hooks.json has no PreToolUse matcher covering both 'Write' and 'Edit' as exact tokens — defense-in-depth missing (content/predicates/write-boundary.toml: role-write-eligibility, path-in-declared-scope is the native runtime authority; conductor_write_guard.sh was retired in v6.4.5, see test_legacy_policy_retirement.sh)"
     fails=$((fails+1))
   fi
 fi

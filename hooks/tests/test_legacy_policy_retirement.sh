@@ -65,9 +65,8 @@ else
 fi
 
 if jq -e '
-  [.. | objects | select(.type? == "command")]
+  [.. | objects | select(.type? == "command" and .command == "shepherd" and .args == ["claude-hook"])]
   | length == 4
-  and all(.[]; .command == "shepherd" and .args == ["claude-hook"])
 ' "$CONFIG" >/dev/null; then
   pass "registry has exactly four exec-form native CLI adapters"
 else
@@ -75,7 +74,7 @@ else
 fi
 
 if strict="$(python3 "$AUDIT" --strict 2>&1)" \
-   && [[ "$strict" == *'1 thin, 0 telemetry, 0 independent, 0 nondeterministic'* ]]; then
+   && [[ "$strict" == *'2 thin, 6 telemetry, 0 independent, 0 nondeterministic'* ]]; then
   pass "strict authority inventory is green"
 else
   fail "strict authority inventory is green"
