@@ -4,7 +4,74 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
-## v6.4.8 — unreleased
+## v6.4.9 — unreleased
+
+**A Windows checkout rewrote the LICENSE and the release found out last.** Every asset built,
+every crate published, and only then did the publication gate compare the LICENSE inside the
+Windows zip against the repository copy and refuse to publish. The bytes differed by 201 CR
+characters and nothing else. Because the published crates pin that exact commit, the release
+could not be re-cut from a fix — the assets had to be lifted out of the failed run's artifacts
+and attached to the tag by hand.
+
+### Fixed
+
+- **Line endings are pinned at the repository, not hoped for.** GitHub's Windows runners check
+  out with `core.autocrlf=true`. `stage-distribution-legal.sh` copies `LICENSE` verbatim into
+  all 16 assets and `verify-release-distribution.sh` compares every extracted copy against the
+  repository file, so a rewritten checkout guarantees a failure that only the last job can see.
+  `.gitattributes` now pins `* text=auto eol=lf` (no tracked file carried a CR byte, so this
+  changes no content — `git add --renormalize .` is a no-op), with the existing
+  `THIRD_PARTY_LICENSES/*.txt binary` override still winning for the hash-named upstream texts.
+- **The packaging runner refuses a rewritten checkout.** `stage-distribution-legal.sh` fails on
+  a `LICENSE` containing CR bytes, before it copies anything. The job that would have produced
+  the divergence is the job that stops, instead of five build jobs and a crates.io publication
+  succeeding first.
+- **Both gates are falsified in the suite.** `test-release-distribution-license.sh` asserts
+  `git check-attr eol -- LICENSE` reports `lf`, proves that assertion can observe the
+  `unspecified` state by running the same query against a scratch repository with no
+  `.gitattributes`, drives the staging script with a CRLF fixture and requires the CR refusal,
+  and then drives it with an LF fixture and requires the staged copy to appear.
+
+- **The Windows test build was broken under `-D warnings`, and nothing could see it.**
+  `rust.yml`'s `test` job is the only one whose runner is selectable, and three of its run
+  steps never declared a shell, so on `windows-latest` GitHub ran them through PowerShell and
+  `cargo nextest run ... \` died at parse time before a single test executed
+  (`ParserError: D:\a\_temp\<id>.ps1:3`). The advertised escape hatch for proving
+  cross-platform behaviour could not prove anything. With `shell: bash` on all three, the
+  suite ran on Windows for the first time and immediately failed on three real defects:
+  `read_project_id` and `ReadSubject`/`read_regular_nofollow` imported unconditionally into
+  test modules whose only callers are `#[cfg(unix)]`, and an `expect(dead_code)` on
+  `ReadSubject::open_label` gated `not(unix)` when a non-unix **lib test** build does use it,
+  making the expectation unfulfilled -- which `-D warnings` rejects exactly as hard as the
+  dead code it was written to tolerate. The gate is now `all(not(unix), not(test))`.
+  A fourth followed in the integration suite: `invoke_with_path` in
+  `wave_e_coordination.rs`, whose only caller is a `#[cfg(unix)]` test that puts a stub `kill`
+  on PATH. All four are the same shape -- an item declared unconditionally whose every caller
+  is unix-gated -- and all four were invisible to every unix machine and to every release
+  build, which builds the lib rather than the test targets.
+
+### Found, not fixed
+
+- **The shipped Windows binary cannot initialize a project or durably store a run.** With the
+  suite finally able to run on `windows-latest`, it did — and reported
+  `384 tests run: 290 passed, 94 failed`. Two stubs account for all of it:
+  `wave_c_bootstrap.rs` pairs every descriptor-safe mutation with a `#[cfg(not(unix))]` twin
+  that returns `descriptor-safe bootstrap mutation is unavailable on this platform` (five of
+  them), so `shepherd init` fails and every hook test cascades from it; and
+  `crates/core/src/run/atomic.rs:135` opens the parent directory to `sync_all()` it, which
+  Windows refuses with `Access is denied. (os error 5)` because `std::fs::File::open` does not
+  set `FILE_FLAG_BACKUP_SEMANTICS`. Filed as #321 — it is a decision (implement the Windows
+  primitives, or stop shipping the Windows asset), not a patch.
+
+### Notes
+
+- `cargo binstall shepherd-cli` and `scripts/install-shepherd.sh` were both exercised against
+  the published v6.4.8 release on `aarch64-apple-darwin` and resolve, download, verify, and
+  install `shepherd-cli 6.4.8`.
+
+---
+
+## v6.4.8 — 2026-08-18
 
 **Stop burning a version every time a native target fails.** v6.4.6 and v6.4.7 both
 published their crates to crates.io and then failed to produce a GitHub release, because

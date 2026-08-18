@@ -42,6 +42,9 @@ fn invoke(root: &Path, args: &[&str]) -> std::process::Output {
         .expect("invoke shepherd")
 }
 
+// The only caller is the `#[cfg(unix)]` reap test below: it puts a stub `kill`
+// on PATH, which has no Windows equivalent.
+#[cfg(unix)]
 fn invoke_with_path(root: &Path, args: &[&str], path: &Path) -> std::process::Output {
     Command::new(binary())
         .args(args)

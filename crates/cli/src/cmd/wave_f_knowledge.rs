@@ -1030,10 +1030,10 @@ fn read_regular_nofollow(
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        ReadSubject, hex_bytes, query_spec, read_regular_nofollow, render_insights_markdown,
-        render_table,
-    };
+    use super::{hex_bytes, query_spec, render_insights_markdown, render_table};
+    // Used only by the `#[cfg(unix)]` symlink test below.
+    #[cfg(unix)]
+    use super::{ReadSubject, read_regular_nofollow};
     #[test]
     fn query_names_are_an_allowlist() {
         assert!(query_spec("canonical-types").is_ok());

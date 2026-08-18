@@ -44,6 +44,18 @@ render_legal() {
     --licenses-dir "$output_root/THIRD_PARTY_LICENSES"
 }
 
+# The LICENSE copied below is a byte-for-byte payload: scripts/verify-release-
+# distribution.sh compares every extracted archive against the repository copy.
+# A checkout that rewrites line endings (GitHub's Windows runners default to
+# core.autocrlf=true) silently makes the Windows zip diverge from the four
+# tarballs. .gitattributes pins `* text=auto eol=lf`; fail here, on the runner
+# that would have produced the divergence, instead of after every asset job and
+# the crates.io publication have already succeeded.
+if LC_ALL=C grep -q $'\r' "$repo_root/LICENSE"; then
+  printf 'LICENSE carries CR bytes: this checkout rewrote line endings, so the staged archive would not match the repository copy. Verify .gitattributes pins `* text=auto eol=lf` and re-checkout.\n' >&2
+  exit 1
+fi
+
 cp "$repo_root/LICENSE" "$stage_root/LICENSE"
 render_legal "$stage_root" "$scope"
 

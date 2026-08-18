@@ -1,6 +1,6 @@
 {
   "name": "@pzzld/shepherd-workspace",
-  "version": "6.4.8",
+  "version": "6.4.9",
   "private": true,
   "description": "npm workspace root for the generated Shepherd Component runtime and three thin harness adapters. Not published itself; the Rust workspace version is the single authority every package.json tracks.",
   "workspaces": [

@@ -171,8 +171,12 @@ impl ReadSubject {
     /// unix-only. The type itself is not: both the unix and non-unix readers
     /// take a `ReadSubject`, so it cannot be gated without splitting every
     /// caller.
+    // `not(test)` matters: `read_subject_labels_only_project_identity` calls this
+    // on every platform, so in a non-unix LIB TEST build the item is live and
+    // the expectation would be unfulfilled -- which `-D warnings` rejects just
+    // as hard as the dead code it was written to tolerate.
     #[cfg_attr(
-        not(unix),
+        all(not(unix), not(test)),
         expect(dead_code, reason = "only the unix classifier renders a label")
     )]
     fn open_label(self) -> &'static str {
@@ -320,7 +324,11 @@ mod tests {
         SystemHost,
     };
 
-    use super::{ReadSubject, read_project_id, read_request, write_response};
+    use super::{ReadSubject, read_request, write_response};
+    // Both callers are `#[cfg(unix)]`: they build a real symlink and let the
+    // kernel produce a real ELOOP, which Windows cannot do.
+    #[cfg(unix)]
+    use super::read_project_id;
 
     #[derive(Debug)]
     struct FixedClock;
