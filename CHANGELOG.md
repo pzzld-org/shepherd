@@ -4,7 +4,21 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
-## v6.4.5 — unreleased
+## v6.4.6 — unreleased
+
+**The patch that makes the previous five reachable. Every capability v6.4.x built is currently unreachable from a clean machine: the install path documented as primary is broken, the hooks that carry the plugin's behaviour exit 127 before they run, and a freshly initialized project is structurally incapable of dispatching. Seed and evidence: `.shepherd/runs/v646/seed.md`, `.shepherd/runs/v646/mesh.md`.**
+
+### Planned
+
+- **`cargo binstall shepherd-cli` works.** Four independent defects sit between a merge and a downloadable asset: macOS arm64 packaging uses GNU-tar-only flags, the Windows installer test cannot create its deliberately-dangling symlink, the asset verifier looks for `fl03-*` npm tarballs that were renamed to `@pzzld/*`, and `cargo-publish.yml` can never be triggered because the tag is pushed with `GITHUB_TOKEN`. Fixing any three still yields a zero-asset release.
+- **`shepherd` on PATH is the native binary.** The tracked `bin/shepherd` launcher, symlinked into `~/.local/bin`, shadows the cargo-installed binary and exits 127 — which is what turns every hook in every harness into a failure (#307).
+- **A freshly initialized project can dispatch.** `shepherd init --confirm` never writes `.shepherd/project.json` and never inserts a `projects` row, so every project this tool has created is born unable to dispatch, while `doctor` reports `status: ok` (#306).
+- **Errors name the actual failure.** A plain `ENOENT` on the project identity is reported as a symlink refusal, which misdirects every diagnosis down a path the evidence rules out.
+- **Every harness defines every hook.** Codex lost `SubagentStart`/`SubagentStop` in the Rust-native migration; Pi has no hook manifest at all.
+- **Configuration parsing belongs to `config`.** The loader parses each layer with `toml`, re-serializes it, and hands it to `config` to parse a second time.
+- **The release gate can fail.** A push to `main` that skips every job currently concludes `success`, and the post-release gitflow automation chains off that signal.
+
+## v6.4.5 — 2026-08-15
 
 **The first sprint run as a genuine dogfood, and the plugin's own failures became most of the work. Root drove `/shepherd:spawn` on this repo with two lanes and roughly twenty coders; forty defects surfaced against the framework itself, nine of them became Wave-0 steps that were never in the seed, and the single most expensive one killed ten coders for ~610k tokens before a line was written. Four separate mechanisms turned out to look like verification and not be: a wiring test that greps prose, a `[gates.extra]` block that never executes, an acceptance predicate that passes vacuously, and a version-match test left red across a release. The through-line of every fix below is the same — prove the check can fail.**
 
