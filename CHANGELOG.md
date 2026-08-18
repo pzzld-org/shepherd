@@ -87,6 +87,36 @@ now implemented.
   why no amount of retrying would ever have helped. The teardown helper names the surviving
   files now, which is what turned that from a guess into a diagnosis.
 
+### Changed — the model tier map
+
+The team leads no longer pin a tier. A sprint spawned at the reasoning tier gets leads at that
+tier; a sprint spawned cheaply gets cheap leads.
+
+| Roles | Hint | Claude / Codex / Pi |
+|---|---|---|
+| root, planter | `reasoning-high` | `opus[1m]` / `reasoning-high` / `opus` |
+| engineer, conductor | `inherit-caller` | `inherit` / `inherit-caller` |
+| critic, coder, auditor, worker | `standard` | `sonnet` / `standard` |
+| discovery | `economy` | `haiku` / `economy` at low effort |
+
+`discovery` is the widest fan-out role in the flock, so it reaches for the economy tier that
+all three harness profiles already defined and nothing had ever used. All nine stay overridable
+through `[models]`.
+
+**This was not safe to change on its own.** `compiler.rs` built the Codex `[agent_types]` table
+by skipping any role whose `model_hint` was `inherit-caller`, a proxy for "not dispatchable"
+that was wrong in both directions: `planter` is `dispatchable: false` and Codex had been
+advertising the role that holds `ask-operator` as spawnable, while any lead adopting
+`inherit-caller` would have silently vanished from the table. It keys on `dispatchable` now.
+
+### Changed — organization identity
+
+Identity fields renamed to `pzzld-org` ahead of the repository transfer. Every remaining `FL03`
+string resolves something — the binstall `pkg-url`, both installers' release bases, the README
+curl one-liner, the marketplace `add` lines — and GitHub's permanent post-transfer redirect
+makes `FL03` correct in both states while `pzzld-org` 404s until the move lands. #326 flips them
+afterwards.
+
 ### Notes
 
 - The fixture pins a synthetic `9.9.9`, never the live release. A fixture pinned to the real
