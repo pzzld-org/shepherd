@@ -38,10 +38,10 @@
       ]
     },
     "conductor": {
-      "claude_model": "sonnet",
-      "codex_effort": "medium",
-      "codex_profile": "standard",
-      "pi_model": "sonnet",
+      "claude_model": "opus[1m]",
+      "codex_effort": "high",
+      "codex_profile": "reasoning-high",
+      "pi_model": "opus",
       "pi_tools": [
         "read",
         "grep",
@@ -187,8 +187,8 @@
           "e4e3764dc21530feea2349a05ebec68fa88facc2112268899790108499cc9d3f"
         ],
         "agents/conductor.md": [
-          3719,
-          "7ef5552bd083e912476e395ad7750576d8f7b187bb31994468d844fe90cac0a2"
+          3721,
+          "8a1cce1eb884d111470b8762d0b0228181d453c40ce76b1f8e2e8d297998f2fa"
         ],
         "agents/critic.md": [
           2134,
@@ -251,13 +251,13 @@
           "464768041f6f32bc14cec18ba0d428e0a60b86ba45f652e1cb0cd3956245bf81"
         ]
       },
-      "tree_digest": "534209d8e4d33a8f106ff174a5b920cf9429083173809653095a39b479aa9cb4"
+      "tree_digest": "49df9c9a2d44756ae639f17f1f10275d157b1cf5145ec5dd5ee5f0ef7759b0b6"
     },
     "codex": {
       "files": {
         "shepherd.codex.toml": [
-          669,
-          "826d77d3c0829007100af6ef7ab503f44946e5179f509d24a92fda61907c450c"
+          675,
+          "e6c225791211900da52caf036b67e2e876bfdb016684dbc72bfbbd8bd5085faa"
         ],
         "skills/adaptation/SKILL.md": [
           2700,
@@ -292,7 +292,7 @@
           "464768041f6f32bc14cec18ba0d428e0a60b86ba45f652e1cb0cd3956245bf81"
         ]
       },
-      "tree_digest": "6139c0f26a50a774a638eb4b3405703b6e5b9e586a6773cc2950030e236a1cef"
+      "tree_digest": "0eb297b3c0f7774ca8057c07c848adbcadbdf45275ebf958050de159ef8a1e25"
     },
     "pi": {
       "files": {

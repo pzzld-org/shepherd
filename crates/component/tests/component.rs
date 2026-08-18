@@ -32,7 +32,7 @@ fn canonical_compile_uses_the_embedded_authored_corpus() {
     );
     assert_eq!(
         tree.digest,
-        "6139c0f26a50a774a638eb4b3405703b6e5b9e586a6773cc2950030e236a1cef"
+        "0eb297b3c0f7774ca8057c07c848adbcadbdf45275ebf958050de159ef8a1e25"
     );
 }
 

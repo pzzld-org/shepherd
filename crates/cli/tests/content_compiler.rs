@@ -140,7 +140,7 @@ worker = \"worker\"\n\n\
 [models]\n\
 auditor = \"standard\"\n\
 coder = \"standard\"\n\
-conductor = \"standard\"\n\
+conductor = \"reasoning-high\"\n\
 critic = \"standard\"\n\
 discovery = \"standard\"\n\
 engineer = \"reasoning-high\"\n\

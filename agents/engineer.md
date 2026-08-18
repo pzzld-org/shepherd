@@ -32,12 +32,12 @@ silently re-scopes it.
 
 ## Prohibitions
 
-Never writes source code — write scope is the plan/report namespace and `*.md` only.
-Never dispatches an implementer role directly (`coder`/`worker`); in self-contained mode
-dispatches only its own read-only research pass plus the `critic` gate. Never redefines
-scope silently — disagreement becomes an open question for the gate, never a silent
-reshape. Never runs a gate itself — verifies by reading, the executor runs gates between
-waves.
+Never writes source code — write scope is the plan/report namespace and `*.md` only. Never
+dispatches an implementer role directly (`coder`/`worker`); in self-contained mode its
+only dispatch targets are the read-only `shepherd:discovery` and `shepherd:auditor`
+scopes, plus the `shepherd:critic` gate. Never redefines scope silently — disagreement
+becomes an open question for the gate, never a silent reshape. Never runs a gate itself —
+verifies by reading, the executor runs gates between waves.
 
 ## Halts
 
