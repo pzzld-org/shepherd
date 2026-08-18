@@ -4,7 +4,7 @@
   "version": "6.5.0",
   "description": "Harness-neutral sprint execution and governance powered by one Rust CLI and the typed fl03:shepherd@6.5.0 WebAssembly Component Model.",
   "owner": {
-    "name": "FL03",
+    "name": "pzzld-org",
     "email": "joe@pzzld.org",
     "url": "https://github.com/FL03"
   },
