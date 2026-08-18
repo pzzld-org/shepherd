@@ -197,6 +197,50 @@ Corollary for anyone reading a shared tree: a single `git status` or `cargo fmt 
 sample is a snapshot of a moving target, not a fact about a lane's work. Attribute from
 artifacts and from the owning lane, not from one reading.
 
+## 4c. Five production sites resolve project identity by alphabetical accident — HIGH
+
+```
+crates/cli/src/cmd/wave_h_execution.rs:563
+crates/cli/src/cmd/wave_d_planning.rs:785
+crates/cli/src/cmd/wave_e_coordination.rs:121
+crates/cli/src/cmd/wave_g_coordination.rs:541
+crates/cli/src/cmd/wave_f_knowledge.rs:409
+```
+
+all resolve "the project" with `SELECT id FROM projects ORDER BY id LIMIT 1`. That is not
+identity resolution; it is a coin flip that was deterministic only because there was never
+more than one row to choose between — and there was never more than one row **because of the
+bug deliverable 3 fixed.** `init` never inserted a `projects` row, so the arbitrary ordering
+never had two candidates. Fixing `init` made the defect reachable.
+
+A registry is per-project, so two `projects` rows is a corrupt state rather than a choice for
+`ORDER BY` to make. And `.shepherd/project.json` is now the authoritative identity that
+`init` writes, which these five sites ignore entirely.
+
+Found by the identity lane when two apparently-unrelated suites went red: a uuid v7 begins
+`01…` and sorts before a hand-inserted fixture id like `project-g`, so every teammate,
+escalation and issue row keyed to the fixture id became unreachable.
+
+The fix is one helper reading the id from `project.json` — or asserting exactly one row that
+matches it — consumed by all five. It is the same hand-synced duplication that let the
+`not_a_regular_file` message live in two places, one level up.
+
+## 4d. An unchanged test can be broken by changed production behavior — MEDIUM
+
+The inverse of the drift rule, and it cost this run a wrong verdict from three agents at once.
+
+Both coders AND the adversarial auditor reported two failing suites as "pre-existing and
+unrelated", reasoning that the test files were byte-identical to base. That is a category
+error, and the conductor overrode all three, proving it live with `sqlite3` rather than
+arguing it.
+
+> A test file unchanged since base is NOT evidence that a failure in it is pre-existing.
+> Establish that by running it at base — ideally in a throwaway clone — not by diffing it.
+
+Worth pairing with the drift rule wherever that is written down, because the drift rule
+("did MY files move?") actively encourages the wrong inference here ("this file did not move,
+so it is not mine").
+
 ## 5. A refusal that never reaches the dispatching lead reads as incompetence — MEDIUM
 
 Harness lane's finding, and it generalizes past this sprint. A worker spent 49 tool calls and
