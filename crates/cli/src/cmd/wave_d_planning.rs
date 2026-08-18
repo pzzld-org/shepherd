@@ -1221,28 +1221,76 @@ mod descriptor {
 mod descriptor {
     use std::path::Path;
 
-    use super::CliError;
+    use super::{CliError, MAX_ARTIFACT_BYTES};
+    use crate::safe_fs;
 
-    fn unsupported() -> CliError {
-        CliError::message(
-            "descriptor-safe planning artifact access is unavailable on this platform",
-        )
+    /// The exit codes are the contract, not decoration: 2 is "cannot open
+    /// safely", 5 is "missing", 6 is "over the limit". The unix twin returns
+    /// exactly these, and scripts branch on them.
+    pub(super) fn read_regular(path: &Path, limit: u64) -> Result<Vec<u8>, CliError> {
+        match safe_fs::read_regular_nofollow(path, limit) {
+            Ok(bytes) => Ok(bytes),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Err(
+                CliError::message_with_code(format!("artifact is missing: {}", path.display()), 5),
+            ),
+            Err(error) if error.kind() == std::io::ErrorKind::InvalidData => {
+                Err(CliError::message_with_code(
+                    format!("artifact exceeds {MAX_ARTIFACT_BYTES} byte limit"),
+                    6,
+                ))
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::InvalidInput => {
+                Err(CliError::message_with_code(
+                    format!("artifact is not a regular file: {}", path.display()),
+                    2,
+                ))
+            }
+            Err(error) => Err(CliError::message(format!(
+                "cannot read {}: {error}",
+                path.display()
+            ))),
+        }
     }
 
-    pub(super) fn read_regular(_path: &Path, _limit: u64) -> Result<Vec<u8>, CliError> {
-        Err(unsupported())
+    pub(super) fn regular_exists(path: &Path) -> Result<bool, CliError> {
+        safe_fs::regular_exists(path).map_err(|error| {
+            CliError::message_with_code(
+                format!(
+                    "cannot open canonical artifact {} without following links: {error}",
+                    path.display()
+                ),
+                2,
+            )
+        })
     }
 
-    pub(super) fn regular_exists(_path: &Path) -> Result<bool, CliError> {
-        Err(unsupported())
+    pub(super) fn directory_exists(path: &Path) -> Result<bool, CliError> {
+        safe_fs::directory_exists(path).map_err(|error| {
+            CliError::message_with_code(
+                format!(
+                    "cannot open canonical directory {} without following links: {error}",
+                    path.display()
+                ),
+                2,
+            )
+        })
     }
 
-    pub(super) fn directory_exists(_path: &Path) -> Result<bool, CliError> {
-        Err(unsupported())
-    }
-
-    pub(super) fn regular_children(_root: &Path) -> Result<Vec<String>, CliError> {
-        Err(unsupported())
+    /// An absent directory is an empty listing, not an error: the unix twin
+    /// maps ENOENT to `Vec::new()` and callers rely on that to render "no
+    /// artifacts yet" instead of failing a status command.
+    pub(super) fn regular_children(root: &Path) -> Result<Vec<String>, CliError> {
+        match safe_fs::regular_children(root) {
+            Ok(names) => Ok(names),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+            Err(error) => Err(CliError::message_with_code(
+                format!(
+                    "cannot open canonical directory {} without following links: {error}",
+                    root.display()
+                ),
+                2,
+            )),
+        }
     }
 }
 

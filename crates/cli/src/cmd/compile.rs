@@ -5,14 +5,12 @@ use std::{
     path::PathBuf,
 };
 
-#[cfg(unix)]
 use std::{
     collections::{BTreeMap, BTreeSet},
     path::{Component, Path},
 };
 
 use serde::{Deserialize, Serialize};
-#[cfg(unix)]
 use sha2::{Digest, Sha256};
 use shepherd::compiler::{
     EmittedFile, EmittedKind, EmittedRole, EmittedTree, HarnessProfile, compile,
@@ -24,11 +22,8 @@ use crate::{
 };
 
 const MANIFEST_SCHEMA: &str = "shepherd.compiled-tree/2";
-#[cfg(unix)]
 const MANIFEST_NAME: &str = ".shepherd-generated.json";
-#[cfg(unix)]
 const LEGACY_MANIFEST_SCHEMA: &str = "shepherd.compiled-tree/1";
-#[cfg(unix)]
 const MAX_MANIFEST_BYTES: usize = 4 * 1_048_576;
 
 #[derive(
@@ -160,7 +155,6 @@ impl GeneratedManifest {
         }
     }
 
-    #[cfg(unix)]
     fn validate(&self) -> Result<(), CliError> {
         if !matches!(
             self.schema.as_str(),
@@ -288,7 +282,6 @@ fn write_manifest_stdout(manifest: &GeneratedManifest) -> Result<(), CliError> {
         .map_err(|error| CliError::message(format!("cannot write stdout: {error}")))
 }
 
-#[cfg(unix)]
 fn validate_relative(value: &str) -> Result<(), CliError> {
     if value.is_empty()
         || value.len() > 4_096
@@ -305,7 +298,6 @@ fn validate_relative(value: &str) -> Result<(), CliError> {
     Ok(())
 }
 
-#[cfg(unix)]
 fn validate_optional_manifest_token(
     field: &str,
     value: Option<&str>,
@@ -317,7 +309,6 @@ fn validate_optional_manifest_token(
     }
 }
 
-#[cfg(unix)]
 fn validate_manifest_token(field: &str, value: &str, max: usize) -> Result<(), CliError> {
     if value.is_empty()
         || value.len() > max
@@ -332,7 +323,6 @@ fn validate_manifest_token(field: &str, value: &str, max: usize) -> Result<(), C
     Ok(())
 }
 
-#[cfg(unix)]
 fn validate_manifest_text(field: &str, value: &str, max: usize) -> Result<(), CliError> {
     if value.trim().is_empty() || value.len() > max || value.contains(['\0', '\r']) {
         return Err(CliError::message(format!(
@@ -342,7 +332,6 @@ fn validate_manifest_text(field: &str, value: &str, max: usize) -> Result<(), Cl
     Ok(())
 }
 
-#[cfg(unix)]
 fn sha256(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);
     let mut output = String::with_capacity(64);
@@ -749,23 +738,235 @@ mod managed {
 mod managed {
     use std::path::Path;
 
+    use std::path::PathBuf;
+
     use shepherd::compiler::EmittedTree;
 
-    use super::{CliError, GeneratedManifest};
+    use super::{
+        BTreeMap, BTreeSet, CliError, Component, GeneratedManifest, MANIFEST_NAME,
+        MAX_MANIFEST_BYTES, sha256, validate_relative,
+    };
+    use crate::safe_fs;
 
-    pub(super) fn check(_root: &Path, _expected: &GeneratedManifest) -> Result<(), CliError> {
-        Err(CliError::message(
-            "race-safe generated-tree verification is unavailable on this platform",
-        ))
+    /// The non-unix twin of the descriptor-anchored materializer. The ALGORITHM
+    /// is identical -- read the prior manifest, refuse a foreign target, verify
+    /// every owned file still matches its digest, refuse to overwrite anything
+    /// the prior manifest did not own, write, prune stale entries, then publish
+    /// the manifest last. Only the primitives differ: a validated root path
+    /// with per-component link rejection instead of a chain of directory
+    /// descriptors. The manifest is written LAST on both platforms, so an
+    /// interrupted run leaves a tree whose manifest still describes the state
+    /// before it, which is the property `check` depends on.
+    pub(super) fn check(root: &Path, expected: &GeneratedManifest) -> Result<(), CliError> {
+        let directory = open_root(root, false)?;
+        let current = read_manifest(&directory)?.ok_or_else(|| {
+            CliError::message(format!(
+                "{} is not owned by a Shepherd generated manifest",
+                root.display()
+            ))
+        })?;
+        current.validate()?;
+        if &current != expected {
+            return Err(CliError::message(format!(
+                "generated manifest drift for {}",
+                root.display()
+            )));
+        }
+        verify_owned_files(&directory, &current)?;
+        Ok(())
     }
 
     pub(super) fn materialize(
-        _root: &Path,
-        _tree: &EmittedTree,
-        _expected: &GeneratedManifest,
+        root: &Path,
+        tree: &EmittedTree,
+        expected: &GeneratedManifest,
     ) -> Result<(), CliError> {
-        Err(CliError::message(
-            "race-safe generated-tree materialization is unavailable on this platform",
-        ))
+        let directory = open_root(root, true)?;
+        let previous = read_manifest(&directory)?;
+        if let Some(manifest) = &previous {
+            manifest.validate()?;
+            if manifest.target != expected.target {
+                return Err(CliError::message(format!(
+                    "generated root {} belongs to target `{}`, not `{}`",
+                    root.display(),
+                    manifest.target,
+                    expected.target
+                )));
+            }
+            verify_owned_files(&directory, manifest)?;
+        }
+
+        let previous_by_path = previous
+            .as_ref()
+            .map(|manifest| {
+                manifest
+                    .files
+                    .iter()
+                    .map(|entry| (entry.path.as_str(), entry.content_sha256.as_str()))
+                    .collect::<BTreeMap<_, _>>()
+            })
+            .unwrap_or_default();
+        for file in &tree.files {
+            validate_relative(&file.path)?;
+            if previous_by_path.contains_key(file.path.as_str()) {
+                continue;
+            }
+            if read_optional(&directory, &file.path, file.content.len().max(1_048_576))?.is_some() {
+                return Err(CliError::message(format!(
+                    "generated target `{}` is not owned by the prior manifest",
+                    file.path
+                )));
+            }
+        }
+
+        for file in &tree.files {
+            write_atomic(&directory, &file.path, file.content.as_bytes())?;
+        }
+
+        if let Some(previous) = &previous {
+            let next = tree
+                .files
+                .iter()
+                .map(|file| file.path.as_str())
+                .collect::<BTreeSet<_>>();
+            for stale in previous
+                .files
+                .iter()
+                .filter(|entry| !next.contains(entry.path.as_str()))
+            {
+                unlink_file(&directory, &stale.path)?;
+            }
+        }
+
+        let mut manifest_bytes = serde_json::to_vec_pretty(expected).map_err(|error| {
+            CliError::message(format!("cannot encode generated manifest: {error}"))
+        })?;
+        manifest_bytes.push(b'\n');
+        write_atomic(&directory, MANIFEST_NAME, &manifest_bytes)?;
+        Ok(())
+    }
+
+    fn verify_owned_files(directory: &Path, manifest: &GeneratedManifest) -> Result<(), CliError> {
+        for entry in &manifest.files {
+            let bytes = read_optional(directory, &entry.path, entry.utf8_bytes.max(1_048_576))?
+                .ok_or_else(|| {
+                    CliError::message(format!("generated file drift: `{}` is missing", entry.path))
+                })?;
+            if sha256(&bytes) != entry.content_sha256 {
+                return Err(CliError::message(format!(
+                    "generated file drift: `{}` does not match its manifest",
+                    entry.path
+                )));
+            }
+        }
+        Ok(())
+    }
+
+    fn read_manifest(directory: &Path) -> Result<Option<GeneratedManifest>, CliError> {
+        let Some(bytes) = read_optional(directory, MANIFEST_NAME, MAX_MANIFEST_BYTES)? else {
+            return Ok(None);
+        };
+        let manifest = serde_json::from_slice(&bytes)
+            .map_err(|_| CliError::message("generated manifest is invalid JSON"))?;
+        Ok(Some(manifest))
+    }
+
+    /// Validate and resolve the output root, refusing the same shapes the unix
+    /// twin refuses: an empty path, the current directory, the filesystem root,
+    /// and anything carrying `..`. A generated tree is deleted and rewritten
+    /// wholesale, so a root that escapes its intended parent is destructive.
+    fn open_root(path: &Path, create: bool) -> Result<PathBuf, CliError> {
+        if path.as_os_str().is_empty() || path == Path::new(".") || path == Path::new("/") {
+            return Err(CliError::message(
+                "generated output root must name a child directory",
+            ));
+        }
+        for component in path.components() {
+            if matches!(component, Component::ParentDir) {
+                return Err(CliError::message(format!(
+                    "output root is not normalized: {}",
+                    path.display()
+                )));
+            }
+        }
+        let absolute = if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            std::env::current_dir()
+                .map_err(|error| {
+                    CliError::message(format!("cannot resolve current directory: {error}"))
+                })?
+                .join(path)
+        };
+        if create {
+            std::fs::create_dir_all(&absolute).map_err(|error| {
+                CliError::message(format!(
+                    "cannot create generated root {}: {error}",
+                    absolute.display()
+                ))
+            })?;
+        } else if !safe_fs::directory_exists(&absolute).map_err(|error| {
+            CliError::message(format!(
+                "cannot open generated root {} without following links: {error}",
+                absolute.display()
+            ))
+        })? {
+            return Err(CliError::message(format!(
+                "{} is not owned by a Shepherd generated manifest",
+                path.display()
+            )));
+        }
+        safe_fs::reject_link_components(&absolute).map_err(|error| {
+            CliError::message(format!(
+                "cannot open generated root {} without following links: {error}",
+                absolute.display()
+            ))
+        })?;
+        Ok(absolute)
+    }
+
+    fn resolve(root: &Path, relative: &str) -> Result<PathBuf, CliError> {
+        validate_relative(relative)?;
+        Ok(root.join(relative))
+    }
+
+    /// Absence is `None`, not an error: both callers treat "not there" as a
+    /// verdict (nothing to verify, nothing to refuse) rather than a failure.
+    fn read_optional(
+        root: &Path,
+        relative: &str,
+        limit: usize,
+    ) -> Result<Option<Vec<u8>>, CliError> {
+        let target = resolve(root, relative)?;
+        match safe_fs::read_regular_nofollow(&target, limit as u64) {
+            Ok(bytes) => Ok(Some(bytes)),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(CliError::message(format!(
+                "cannot read generated file `{relative}`: {error}"
+            ))),
+        }
+    }
+
+    fn write_atomic(root: &Path, relative: &str, bytes: &[u8]) -> Result<(), CliError> {
+        let target = resolve(root, relative)?;
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent).map_err(|error| {
+                CliError::message(format!(
+                    "cannot create generated directory for `{relative}`: {error}"
+                ))
+            })?;
+        }
+        safe_fs::replace_atomic(&target, bytes).map_err(|error| {
+            CliError::message(format!("cannot write generated file `{relative}`: {error}"))
+        })
+    }
+
+    fn unlink_file(root: &Path, relative: &str) -> Result<(), CliError> {
+        let target = resolve(root, relative)?;
+        safe_fs::remove_file_nofollow(&target).map_err(|error| {
+            CliError::message(format!(
+                "cannot remove stale generated file `{relative}`: {error}"
+            ))
+        })
     }
 }

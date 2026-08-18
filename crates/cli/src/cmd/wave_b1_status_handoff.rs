@@ -1030,40 +1030,286 @@ mod platform {
 
 #[cfg(not(unix))]
 mod platform {
-    use super::*;
+    //! The non-unix twin of the descriptor-anchored run-artifact reader.
+    //!
+    //! Same verdicts, same messages, same ordering as the unix module: run
+    //! states sorted by run id, handoff candidates carrying their modification
+    //! time so `list` renders newest first, and the same refusal for a
+    //! noncanonical path. Only the anchoring differs -- see `crate::safe_fs`.
 
-    fn unsupported() -> CliError {
-        CliError::message("race-safe run artifact operations are unavailable on this platform")
-    }
+    use std::path::PathBuf;
+
+    use super::*;
+    use crate::safe_fs;
+
+    const MAX_HANDOFF_BYTES: u64 = 1_048_576;
 
     pub(super) fn run_states(
-        _context: &ExecutionContext,
+        context: &ExecutionContext,
     ) -> Result<Vec<(RunId, RunState)>, CliError> {
-        Err(unsupported())
+        let mut states = Vec::new();
+        for name in directory_names(&context.runs_root)? {
+            let Ok(run) = RunId::new(&name) else {
+                continue;
+            };
+            states.push((run.clone(), read_run_state(context, &run)?));
+        }
+        states.sort_by(|left, right| left.0.cmp(&right.0));
+        Ok(states)
     }
 
-    pub(super) fn handoffs(_context: &ExecutionContext) -> Result<Vec<HandoffCandidate>, CliError> {
-        Err(unsupported())
+    pub(super) fn handoffs(context: &ExecutionContext) -> Result<Vec<HandoffCandidate>, CliError> {
+        let mut candidates = Vec::new();
+        for name in directory_names(&context.runs_root)? {
+            let Ok(run) = RunId::new(&name) else {
+                continue;
+            };
+            let path = context.runs_root.join(run.as_str()).join(HANDOFF_FILE);
+            if safe_fs::regular_exists(&path).map_err(|error| read_error(&path, error))? {
+                candidates.push(candidate(path)?);
+            }
+        }
+
+        collect_handoffs(
+            &context.docs_root,
+            |name| name.ends_with("handoff.md"),
+            &mut candidates,
+        )?;
+        // The legacy directory is read-only and optional: a project that never
+        // had one is not an error, it just has no legacy documents.
+        collect_handoffs(
+            &context.docs_root.join("handoffs"),
+            |name| name.ends_with(".md"),
+            &mut candidates,
+        )?;
+        Ok(candidates)
     }
 
     pub(super) fn read_handoff(
-        _context: &ExecutionContext,
-        _path: &Path,
+        context: &ExecutionContext,
+        path: &Path,
     ) -> Result<Vec<u8>, CliError> {
-        Err(unsupported())
+        if let Ok(relative) = path.strip_prefix(&context.runs_root) {
+            let parts = normal_parts(relative)?;
+            if parts.len() != 2 || parts[1] != HANDOFF_FILE {
+                return Err(CliError::message(format!(
+                    "noncanonical run handoff path: {}",
+                    path.display()
+                )));
+            }
+            RunId::new(&parts[0]).map_err(|error| {
+                CliError::message(format!(
+                    "invalid run handoff path {}: {error}",
+                    path.display()
+                ))
+            })?;
+            return read_bounded(path);
+        }
+
+        if let Ok(relative) = path.strip_prefix(&context.docs_root) {
+            let parts = normal_parts(relative)?;
+            let valid = match parts.as_slice() {
+                [name] => name.ends_with("handoff.md"),
+                [directory, name] => directory == "handoffs" && name.ends_with(".md"),
+                _ => false,
+            };
+            if !valid {
+                return Err(CliError::message(format!(
+                    "noncanonical legacy handoff path: {}",
+                    path.display()
+                )));
+            }
+            return read_bounded(path);
+        }
+
+        Err(CliError::message(format!(
+            "handoff path is outside canonical and legacy roots: {}",
+            path.display()
+        )))
     }
 
-    pub(super) fn read_project_identity(_context: &ExecutionContext) -> Result<Vec<u8>, CliError> {
-        Err(unsupported())
+    pub(super) fn read_project_identity(context: &ExecutionContext) -> Result<Vec<u8>, CliError> {
+        let relative = context
+            .project_id_path
+            .strip_prefix(&context.namespace)
+            .map_err(|_| {
+                CliError::message(format!(
+                    "project identity path escapes namespace: {}",
+                    context.project_id_path.display()
+                ))
+            })?;
+        normal_parts(relative)?;
+        read_bounded(&context.project_id_path)
     }
 
     pub(super) fn publish_handoff(
-        _context: &ExecutionContext,
-        _selection: &RunSelection,
-        _bytes: &[u8],
-        _replace: bool,
+        context: &ExecutionContext,
+        selection: &RunSelection,
+        bytes: &[u8],
+        replace: bool,
     ) -> Result<(), CliError> {
-        Err(unsupported())
+        if bytes.len() as u64 > MAX_HANDOFF_BYTES {
+            return Err(CliError::message(format!(
+                "handoff is {} bytes; maximum is {MAX_HANDOFF_BYTES}",
+                bytes.len()
+            )));
+        }
+        // Re-read the run under the same rules the renderer used. A run that
+        // moved while the handoff was being written would publish a document
+        // describing a state that no longer exists.
+        let current = read_run_state(context, &selection.id)?;
+        if current.branch != selection.state.branch
+            || current.status != selection.state.status
+            || current.schema_version != selection.state.schema_version
+        {
+            return Err(CliError::message(format!(
+                "run `{}` changed while the handoff was being rendered",
+                selection.id
+            )));
+        }
+
+        let target = context
+            .runs_root
+            .join(selection.id.as_str())
+            .join(HANDOFF_FILE);
+        if replace {
+            match std::fs::symlink_metadata(&target) {
+                Ok(metadata) if metadata.is_file() && !metadata.file_type().is_symlink() => {}
+                Ok(_) => {
+                    return Err(CliError::message(format!(
+                        "refusing to replace non-regular handoff {}",
+                        target.display()
+                    )));
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => {
+                    return Err(CliError::message(format!(
+                        "cannot inspect handoff target {}: {error}",
+                        target.display()
+                    )));
+                }
+            }
+            safe_fs::replace_atomic(&target, bytes).map_err(|error| {
+                CliError::message(format!(
+                    "cannot replace handoff {}: {error}",
+                    target.display()
+                ))
+            })
+        } else {
+            match safe_fs::write_no_clobber(&target, bytes) {
+                Ok(true) => Ok(()),
+                Ok(false) => Err(CliError::message(format!(
+                    "handoff already exists: {}",
+                    target.display()
+                ))),
+                Err(error) => Err(CliError::message(format!(
+                    "cannot publish handoff {}: {error}",
+                    target.display()
+                ))),
+            }
+        }
+    }
+
+    /// An absent directory contributes nothing rather than failing: `list` on a
+    /// project with no legacy documents must render the canonical ones, not an
+    /// error.
+    fn collect_handoffs(
+        root: &Path,
+        accept: impl Fn(&str) -> bool,
+        candidates: &mut Vec<HandoffCandidate>,
+    ) -> Result<(), CliError> {
+        let names = match safe_fs::regular_children(root) {
+            Ok(names) => names,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(error) => return Err(read_error(root, error)),
+        };
+        for name in names {
+            if accept(&name) {
+                candidates.push(candidate(root.join(name))?);
+            }
+        }
+        Ok(())
+    }
+
+    fn candidate(path: PathBuf) -> Result<HandoffCandidate, CliError> {
+        let modified = std::fs::symlink_metadata(&path)
+            .and_then(|metadata| metadata.modified())
+            .map_err(|error| {
+                CliError::message(format!(
+                    "cannot inspect handoff {}: {error}",
+                    path.display()
+                ))
+            })?;
+        let modified_nanos = modified
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or(0);
+        Ok(HandoffCandidate {
+            path,
+            modified_nanos,
+        })
+    }
+
+    /// Directory children of the runs root, sorted. An absent root is an empty
+    /// list: a project that has never run has no runs, which is not a failure.
+    fn directory_names(root: &Path) -> Result<Vec<String>, CliError> {
+        match safe_fs::directory_children(root) {
+            Ok(names) => Ok(names),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+            Err(error) => Err(read_error(root, error)),
+        }
+    }
+
+    fn read_run_state(context: &ExecutionContext, run: &RunId) -> Result<RunState, CliError> {
+        let path = context.runs_root.join(run.as_str()).join("run.json");
+        let bytes = read_bounded(&path)?;
+        let state: RunState = serde_json::from_slice(&bytes).map_err(|error| {
+            CliError::message(format!("invalid run document {}: {error}", path.display()))
+        })?;
+        if state.schema_version != 1
+            || state.run != run.as_str()
+            || !matches!(
+                state.status.as_str(),
+                "planted" | "planned" | "executing" | "closing" | "closed"
+            )
+        {
+            return Err(CliError::message(format!(
+                "invalid run identity, schema, or status in {}",
+                path.display()
+            )));
+        }
+        Ok(state)
+    }
+
+    fn read_bounded(path: &Path) -> Result<Vec<u8>, CliError> {
+        safe_fs::read_regular_nofollow(path, MAX_HANDOFF_BYTES)
+            .map_err(|error| read_error(path, error))
+    }
+
+    fn read_error(path: &Path, error: std::io::Error) -> CliError {
+        CliError::message(format!("cannot read {}: {error}", path.display()))
+    }
+
+    fn normal_parts(path: &Path) -> Result<Vec<String>, CliError> {
+        let mut parts = Vec::new();
+        for component in path.components() {
+            match component {
+                std::path::Component::Normal(part) => parts.push(
+                    part.to_str()
+                        .ok_or_else(|| {
+                            CliError::message(format!("path is not UTF-8: {}", path.display()))
+                        })?
+                        .to_owned(),
+                ),
+                _ => {
+                    return Err(CliError::message(format!(
+                        "path is not normalized: {}",
+                        path.display()
+                    )));
+                }
+            }
+        }
+        Ok(parts)
     }
 }
 

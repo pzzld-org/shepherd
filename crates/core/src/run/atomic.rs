@@ -129,13 +129,38 @@ pub(crate) fn atomic_write(target: &Path, contents: &str) -> Result<()> {
 
     write_and_rename(target, contents, || temp_path(target))?;
 
-    // fsync(dir): the write is not durable until the directory entry that
-    // now points at `target` is flushed too, not just the file's own bytes.
-    let dir = std::fs::File::open(parent)
-        .map_err(|error| Error::unknown(format!("open {} for fsync: {error}", parent.display())))?;
-    dir.sync_all()
-        .map_err(|error| Error::unknown(format!("fsync {}: {error}", parent.display())))?;
+    sync_directory(parent)
+}
 
+/// Flush the directory entry that now points at the renamed file.
+///
+/// On POSIX the write is not durable until the DIRECTORY is flushed too, not
+/// just the file's own bytes: the rename is metadata, and metadata lives in the
+/// parent.
+#[cfg(unix)]
+fn sync_directory(parent: &Path) -> Result<()> {
+    let directory = std::fs::File::open(parent)
+        .map_err(|error| Error::unknown(format!("open {} for fsync: {error}", parent.display())))?;
+    directory
+        .sync_all()
+        .map_err(|error| Error::unknown(format!("fsync {}: {error}", parent.display())))
+}
+
+/// Windows has no equivalent step, and attempting one is not a no-op -- it is a
+/// hard failure.
+///
+/// `std::fs::File::open` on a directory needs `FILE_FLAG_BACKUP_SEMANTICS`,
+/// which `open` does not set, so every store returned
+/// `Access is denied. (os error 5)` and no run could be persisted at all. Even
+/// with the flag, `FlushFileBuffers` on a directory handle is not a supported
+/// operation.
+///
+/// This is a deliberate platform difference, not a swallowed error. NTFS
+/// journals metadata operations, so the rename that published `target` is
+/// already recorded in the log by the time it returns; there is no separate
+/// directory entry left unflushed the way there is on POSIX.
+#[cfg(not(unix))]
+fn sync_directory(_parent: &Path) -> Result<()> {
     Ok(())
 }
 

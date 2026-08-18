@@ -174,11 +174,51 @@ fn verify_nofollow(primary_root: &Path, relative: &str) -> Result<(), DispatchSe
     Ok(())
 }
 
+/// The non-unix twin. Same three verdicts as the unix walk: an absent final
+/// component is allowed (the write is about to create it), an existing final
+/// component must be a regular file, and a link anywhere in the chain is
+/// refused.
 #[cfg(not(unix))]
-fn verify_nofollow(_primary_root: &Path, _relative: &str) -> Result<(), DispatchServiceError> {
-    Err(invalid(
-        "race-safe write-path containment is unavailable on this platform",
-    ))
+fn verify_nofollow(primary_root: &Path, relative: &str) -> Result<(), DispatchServiceError> {
+    if crate::safe_fs::is_link(primary_root)
+        .map_err(|error| invalid(format!("cannot inspect primary root: {error}")))?
+    {
+        return Err(invalid(
+            "cannot open primary root without following links: it is a symlink",
+        ));
+    }
+    let mut walked = primary_root.to_path_buf();
+    let parts: Vec<&str> = relative.split('/').collect();
+    for (index, part) in parts.iter().enumerate() {
+        walked.push(part);
+        let final_component = index + 1 == parts.len();
+        let metadata = match std::fs::symlink_metadata(&walked) {
+            Ok(metadata) => metadata,
+            Err(error) if final_component && error.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(());
+            }
+            Err(error) => {
+                return Err(invalid(format!(
+                    "write target is not safely contained without following links: {error}"
+                )));
+            }
+        };
+        if metadata.file_type().is_symlink() {
+            return Err(invalid(
+                "write target is not safely contained without following links: it traverses a symlink",
+            ));
+        }
+        if final_component {
+            if !metadata.is_file() {
+                return Err(invalid("existing write target is not a regular file"));
+            }
+        } else if !metadata.is_dir() {
+            return Err(invalid(
+                "write target is not safely contained without following links: an intermediate component is not a directory",
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn invalid(reason: impl Into<String>) -> DispatchServiceError {

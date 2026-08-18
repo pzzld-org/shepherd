@@ -107,12 +107,18 @@ jobs:
       - name: plugin contract holds
         run: ./scripts/check-plugin.py
   test:
-    name: test (${{ matrix.features }})
+    name: test (${{ matrix.os }}, ${{ matrix.features }})
     needs: resolve
-    runs-on: ${{ github.event.inputs.runner || 'ubuntu-latest' }}
+    # Windows is a PERMANENT axis, not a dispatch option. The CLI's
+    # `#[cfg(not(unix))]` half shipped five families of stubs that could not
+    # create a project or store a run, through several releases, because no job
+    # ever ran there (#321). A platform with no test coverage is a platform with
+    # no behaviour.
+    runs-on: ${{ github.event.inputs.runner || matrix.os }}
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest, windows-latest]
         features: [default, full]
     steps:
       - name: Checkout
@@ -150,7 +156,7 @@ jobs:
       - name: Setup rust-cache
         uses: Swatinem/rust-cache@v2 # v2.9.2
         with:
-          key: test-${{ matrix.features }}
+          key: test-${{ matrix.os }}-${{ matrix.features }}
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:

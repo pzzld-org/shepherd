@@ -167,18 +167,9 @@ pub(crate) enum ReadSubject {
 }
 
 impl ReadSubject {
-    /// Only the descriptor-safe classifier renders this, and that classifier is
-    /// unix-only. The type itself is not: both the unix and non-unix readers
-    /// take a `ReadSubject`, so it cannot be gated without splitting every
-    /// caller.
-    // `not(test)` matters: `read_subject_labels_only_project_identity` calls this
-    // on every platform, so in a non-unix LIB TEST build the item is live and
-    // the expectation would be unfulfilled -- which `-D warnings` rejects just
-    // as hard as the dead code it was written to tolerate.
-    #[cfg_attr(
-        all(not(unix), not(test)),
-        expect(dead_code, reason = "only the unix classifier renders a label")
-    )]
+    /// Rendered by both classifiers. It used to be unix-only, which is why it
+    /// carried a `dead_code` expectation; the non-unix reader now produces the
+    /// same labelled messages, so the item is live everywhere.
     fn open_label(self) -> &'static str {
         match self {
             Self::ProjectIdentity => "project identity ",
@@ -303,12 +294,35 @@ fn read_regular_nofollow(path: &Path, limit: usize) -> Result<Vec<u8>, CliError>
     Ok(bytes)
 }
 
+/// The non-unix twin. It reports the SAME three outcomes the unix reader does
+/// -- absent, not-a-regular-file, and refused-link -- because callers and tests
+/// key on that wording, and a platform that answers differently is a platform
+/// that behaves differently.
 #[cfg(not(unix))]
-fn read_regular_nofollow(path: &Path, _limit: usize) -> Result<Vec<u8>, CliError> {
-    Err(CliError::message(format!(
-        "race-safe project identity reads are unavailable on this platform: {}",
-        path.display()
-    )))
+fn read_regular_nofollow(path: &Path, limit: usize) -> Result<Vec<u8>, CliError> {
+    use std::io::ErrorKind;
+
+    crate::safe_fs::read_regular_nofollow(path, limit as u64).map_err(|error| match error.kind() {
+        ErrorKind::NotFound => {
+            CliError::message(ReadSubject::ProjectIdentity.not_found_message(path))
+        }
+        ErrorKind::InvalidInput if error.to_string().contains("not a regular file") => {
+            CliError::message(ReadSubject::ProjectIdentity.not_a_regular_file_message(path))
+        }
+        ErrorKind::InvalidInput => CliError::message(format!(
+            "cannot open {}{} without following symlinks: {error}",
+            ReadSubject::ProjectIdentity.open_label(),
+            path.display()
+        )),
+        ErrorKind::InvalidData => CliError::message(format!(
+            "project identity exceeds {limit}-byte limit: {}",
+            path.display()
+        )),
+        _ => CliError::message(format!(
+            "cannot read project identity {}: {error}",
+            path.display()
+        )),
+    })
 }
 
 #[cfg(test)]

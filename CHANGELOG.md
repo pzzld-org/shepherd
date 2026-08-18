@@ -32,6 +32,42 @@ committed the bump, and was refused:
   fixture and asserts the bump leaves it byte-identical; pinning that fixture to the current
   version turns the test red.
 
+### Fixed — Windows is a supported platform, not a shipped stub (#321)
+
+The Windows binary this repository builds, packages, and publishes could not create
+`.shepherd/`, could not bind a session, and could not store a run. Five families of
+`#[cfg(not(unix))]` twins were `Err("... unavailable on this platform")`, and the first Windows
+test run in the project's history reported `384 tests run: 290 passed, 94 failed`. Every one is
+now implemented.
+
+- **`crate::safe_fs`** is the new shared primitive layer for non-unix targets, and its module
+  docs state exactly what it does and does not guarantee rather than implying parity with the
+  descriptor-anchored unix side. Opens pass `FILE_FLAG_OPEN_REPARSE_POINT`, so a leaf that is
+  or becomes a link yields the link itself and never an attacker's target; every ancestor is
+  checked with `symlink_metadata`; publication is `CREATE_NEW` plus `CreateHardLinkW`, the same
+  two refusals unix gets from `O_EXCL` and `linkat`. The residual gap — an ancestor swapped
+  between its check and its use — is written down in the module rather than discovered later.
+- **Implemented:** `wave_c_bootstrap` (all five, so `init` works), the whole `dispatch_store`
+  ledger (so the hooks work, for Claude Code, Codex, and Pi alike), `dispatch_scope`
+  containment, `compile`'s generated-tree check and materialize, `wave_d_planning` artifacts,
+  `wave_b1_status_handoff` run states and handoffs, and `resume_context`. Each returns the SAME
+  error variants and messages as its unix twin, because callers and fixtures branch on them.
+- **The directory fsync is now a paired platform decision.** `run/atomic.rs` opened the parent
+  directory to `sync_all()` it; on Windows `std::fs::File::open` does not set
+  `FILE_FLAG_BACKUP_SEMANTICS`, so every store failed with `Access is denied. (os error 5)`.
+  The non-unix arm does nothing and says why: NTFS journals the rename, so there is no
+  unflushed directory entry the way there is on POSIX. A stated difference, not a swallowed
+  error.
+- **`windows-latest` is now a permanent CI axis**, not a dispatch option, so this cannot
+  regress unobserved. `.cargo/config.toml` and `scripts/setup.sh` add a local
+  `x86_64-pc-windows-gnu` cross-check so the Windows half type-checks in seconds instead of a
+  six-minute round trip.
+- **`safe_fs` ships its own suite**: no-clobber publishes once and leaves no temporary,
+  `replace_atomic` overwrites where no-clobber refuses, an over-limit read fails instead of
+  truncating, absence and wrong-type stay distinguishable, `ensure_directory` reports only what
+  it created, children are sorted and split by kind, removal is idempotent, and a real symlink
+  is refused rather than followed.
+
 ### Notes
 
 - The fixture pins a synthetic `9.9.9`, never the live release. A fixture pinned to the real

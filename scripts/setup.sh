@@ -117,6 +117,36 @@ for hook in commit-msg pre-push; do
   fi
 done
 
+printf '\n\033[1mWindows cross-check\033[0m\n'
+
+# The CLI has a `#[cfg(windows)]` half that a unix machine never type-checks.
+# Five families of it shipped as stubs that could not create a project or store
+# a run, through several releases, because nothing here could see them (#321).
+# `cargo check --target x86_64-pc-windows-gnu` type-checks that half in seconds.
+#
+# gnu rather than msvc: libsqlite3-sys compiles C, and the MSVC target needs a
+# C compiler that targets MSVC. mingw-w64 supplies one for gnu on any host. The
+# SHIPPED binary is still x86_64-pc-windows-msvc, built in CI.
+if rustup target list --installed 2>/dev/null | grep -qx "x86_64-pc-windows-gnu"; then
+  ok "rust std for x86_64-pc-windows-gnu"
+elif [ "${CHECK_ONLY}" = "1" ]; then
+  gap "x86_64-pc-windows-gnu  (rustup target add x86_64-pc-windows-gnu)"
+else
+  printf '  adding x86_64-pc-windows-gnu ...\n'
+  rustup target add x86_64-pc-windows-gnu >/dev/null
+  did "rust std for x86_64-pc-windows-gnu"
+fi
+
+if need x86_64-w64-mingw32-gcc; then
+  ok "mingw-w64"
+else
+  case "$(uname -s)" in
+    Darwin) hint="brew install mingw-w64" ;;
+    *) hint="sudo apt install mingw-w64" ;;
+  esac
+  gap "mingw-w64  (${hint})"
+fi
+
 if [ "${WITH_WASM}" = "1" ]; then
   printf '\n\033[1mWebAssembly\033[0m\n'
 
