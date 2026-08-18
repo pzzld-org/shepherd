@@ -1,7 +1,7 @@
 {
   "schema": "shepherd.compiled-tree/2",
   "target": "claude",
-  "tree_digest": "e11e610c9b407b07b3c97b1bbe52e8cd1062fccd4da052721fd1ac8124c532a3",
+  "tree_digest": "d6e4f1fe46fd0408ff910ce64102bd7b9c37e205afaa77479a91eafc32738d12",
   "tokenizer_version": "shepherd-prompt-v1-uax29",
   "roles": [
     {
@@ -140,7 +140,7 @@
       "role": "discovery",
       "carrier_path": "agents/discovery.md",
       "description": "Research external primary sources and produce one bounded run-scoped report. Use for documentation, release notes, web evidence, or capability discovery.",
-      "model": "sonnet",
+      "model": "haiku",
       "profile": null,
       "reasoning_effort": null,
       "tools": [
@@ -374,11 +374,11 @@
       "path": "agents/discovery.md",
       "kind": "role",
       "source_path": "content/roles/discovery.md",
-      "source_sha256": "8636a9f0cc5d6c41b33b3de7931a51b5465859ab6654b2b4313e0ae87e3b1ac8",
-      "content_sha256": "67ac5e6b1278cc5f9f1b53f808d94bd9af0442b49eb6a683edcb40d80f87e5a7",
+      "source_sha256": "637d7c57eba9c6d30aef0df8362bdff47d894e348ca63ee0b51a4d65abaa2bd8",
+      "content_sha256": "af6f877b9b9806ca17b401cb6f5a8abe0601a8d69416e2ab75a67653a00757e8",
       "lines": 53,
       "words": 386,
-      "utf8_bytes": 2690,
+      "utf8_bytes": 2689,
       "prompt_tokens": 873
     },
     {

@@ -91,7 +91,7 @@ fn models_resolve_and_show_use_portable_default_hints() {
   "engineer": {"model": "inherit-caller", "source": "default"},
   "conductor": {"model": "inherit-caller", "source": "default"},
   "critic": {"model": "standard", "source": "default"},
-  "discovery": {"model": "standard", "source": "default"},
+  "discovery": {"model": "economy", "source": "default"},
   "coder": {"model": "standard", "source": "default"},
   "auditor": {"model": "standard", "source": "default"},
   "worker": {"model": "standard", "source": "default"}
@@ -214,10 +214,16 @@ fn models_show_harness_translates_every_role_to_the_harness_native_spelling() {
     // are the sonnet tier, which is what makes wide fan-out affordable. Each
     // harness spells all three differently, and root's tier still translates
     // through the ordinary hint table even though its carrier is advisory.
-    for (harness, opus_tier, inherit_tier, sonnet_tier) in [
-        ("claude", "opus[1m]", "inherit", "sonnet"),
-        ("codex", "reasoning-high", "inherit-caller", "standard"),
-        ("pi", "opus", "inherit-caller", "sonnet"),
+    for (harness, opus_tier, inherit_tier, sonnet_tier, economy_tier) in [
+        ("claude", "opus[1m]", "inherit", "sonnet", "haiku"),
+        (
+            "codex",
+            "reasoning-high",
+            "inherit-caller",
+            "standard",
+            "economy",
+        ),
+        ("pi", "opus", "inherit-caller", "sonnet", "haiku"),
     ] {
         let show = run(&root, &["models", "show", "--harness", harness, "--json"]);
         assert!(
@@ -226,7 +232,7 @@ fn models_show_harness_translates_every_role_to_the_harness_native_spelling() {
             String::from_utf8_lossy(&show.stderr)
         );
         let expected = format!(
-            "{{\n  \"root\": {{\"model\": \"{opus_tier}\", \"source\": \"default\"}},\n  \"planter\": {{\"model\": \"{opus_tier}\", \"source\": \"default\"}},\n  \"engineer\": {{\"model\": \"{inherit_tier}\", \"source\": \"default\"}},\n  \"conductor\": {{\"model\": \"{inherit_tier}\", \"source\": \"default\"}},\n  \"critic\": {{\"model\": \"{sonnet_tier}\", \"source\": \"default\"}},\n  \"discovery\": {{\"model\": \"{sonnet_tier}\", \"source\": \"default\"}},\n  \"coder\": {{\"model\": \"{sonnet_tier}\", \"source\": \"default\"}},\n  \"auditor\": {{\"model\": \"{sonnet_tier}\", \"source\": \"default\"}},\n  \"worker\": {{\"model\": \"{sonnet_tier}\", \"source\": \"default\"}}\n}}\n"
+            "{{\n  \"root\": {{\"model\": \"{opus_tier}\", \"source\": \"default\"}},\n  \"planter\": {{\"model\": \"{opus_tier}\", \"source\": \"default\"}},\n  \"engineer\": {{\"model\": \"{inherit_tier}\", \"source\": \"default\"}},\n  \"conductor\": {{\"model\": \"{inherit_tier}\", \"source\": \"default\"}},\n  \"critic\": {{\"model\": \"{sonnet_tier}\", \"source\": \"default\"}},\n  \"discovery\": {{\"model\": \"{economy_tier}\", \"source\": \"default\"}},\n  \"coder\": {{\"model\": \"{sonnet_tier}\", \"source\": \"default\"}},\n  \"auditor\": {{\"model\": \"{sonnet_tier}\", \"source\": \"default\"}},\n  \"worker\": {{\"model\": \"{sonnet_tier}\", \"source\": \"default\"}}\n}}\n"
         );
         assert_eq!(String::from_utf8_lossy(&show.stdout), expected, "{harness}");
         assert!(show.stderr.is_empty(), "{harness}");
@@ -263,7 +269,7 @@ fn models_show_harness_translates_every_role_to_the_harness_native_spelling() {
         "{markdown_text}"
     );
     assert!(
-        markdown_text.contains("| discovery | `sonnet` | default |"),
+        markdown_text.contains("| discovery | `haiku` | default |"),
         "{markdown_text}"
     );
 

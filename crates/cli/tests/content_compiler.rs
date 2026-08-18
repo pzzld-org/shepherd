@@ -152,9 +152,11 @@ worker = \"worker\"\n\n\
 auditor = \"standard\"\n\
 coder = \"standard\"\n\
 critic = \"standard\"\n\
-discovery = \"standard\"\n\
+discovery = \"economy\"\n\
 planter = \"reasoning-high\"\n\
 worker = \"standard\"\n\n\
+[profiles.\"economy\"]\n\
+reasoning_effort = \"low\"\n\n\
 [profiles.\"reasoning-high\"]\n\
 reasoning_effort = \"high\"\n\n\
 [profiles.\"standard\"]\n\

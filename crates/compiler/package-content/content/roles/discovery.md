@@ -2,7 +2,7 @@
 role: discovery
 description: "Research external primary sources and produce one bounded run-scoped report. Use for documentation, release notes, web evidence, or capability discovery."
 source: agents/discovery.md
-model_hint: standard
+model_hint: economy
 write_eligible: false
 dispatchable: true
 capabilities: [read, search, shell, skill-load, tool-discovery, web-research, report-write]

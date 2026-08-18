@@ -74,10 +74,10 @@
       ]
     },
     "discovery": {
-      "claude_model": "sonnet",
-      "codex_effort": "medium",
-      "codex_profile": "standard",
-      "pi_model": "sonnet",
+      "claude_model": "haiku",
+      "codex_effort": "low",
+      "codex_profile": "economy",
+      "pi_model": "haiku",
       "pi_tools": [
         "read",
         "grep",
@@ -195,8 +195,8 @@
           "fe41bb2f9cf66e63643b31a14626041662a890d8eee452fda940f0730736460d"
         ],
         "agents/discovery.md": [
-          2690,
-          "67ac5e6b1278cc5f9f1b53f808d94bd9af0442b49eb6a683edcb40d80f87e5a7"
+          2689,
+          "af6f877b9b9806ca17b401cb6f5a8abe0601a8d69416e2ab75a67653a00757e8"
         ],
         "agents/engineer.md": [
           2792,
@@ -251,13 +251,13 @@
           "464768041f6f32bc14cec18ba0d428e0a60b86ba45f652e1cb0cd3956245bf81"
         ]
       },
-      "tree_digest": "e11e610c9b407b07b3c97b1bbe52e8cd1062fccd4da052721fd1ac8124c532a3"
+      "tree_digest": "d6e4f1fe46fd0408ff910ce64102bd7b9c37e205afaa77479a91eafc32738d12"
     },
     "codex": {
       "files": {
         "shepherd.codex.toml": [
-          599,
-          "6739debd20a85d6c28c2a77290ad7a2148f9d88aeccf78dc6672afcf70184dc9"
+          645,
+          "bc41c0b79ae67e1f8203b6082752c0f96a536e958067283935e5a0d78dd78da7"
         ],
         "skills/adaptation/SKILL.md": [
           2700,
@@ -292,7 +292,7 @@
           "464768041f6f32bc14cec18ba0d428e0a60b86ba45f652e1cb0cd3956245bf81"
         ]
       },
-      "tree_digest": "573d66adfbd6eb29e215245fbc906127e649548f06eba01cc975bac3924b5518"
+      "tree_digest": "693d70a523a491b43ec0294db5f3272064217f333791d1fded54357d3a12e5e1"
     },
     "pi": {
       "files": {

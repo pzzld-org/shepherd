@@ -569,10 +569,19 @@ impl Default for ModelsConfig {
             // Override either in `[models]` in `.shepherd/shepherd.toml`.
             engineer: "inherit-caller".into(),
             conductor: "inherit-caller".into(),
+            // The judgement roles hold standard: a critic that misses a
+            // contradiction and an auditor that passes a bad wave both cost
+            // more than the tier they saved, and a coder writes the diff.
             critic: "standard".into(),
-            discovery: "standard".into(),
             coder: "standard".into(),
             auditor: "standard".into(),
+            // `discovery` is the widest fan-out role in the flock -- bounded
+            // external research, many at once, each returning one report -- so
+            // it defaults to the economy tier where width is worth more than
+            // depth. `worker` stays standard because its output IS the
+            // deliverable rather than an input to one; move it to "economy" in
+            // `[models]` when a run's workers are doing volume, not synthesis.
+            discovery: "economy".into(),
             worker: "standard".into(),
         }
     }

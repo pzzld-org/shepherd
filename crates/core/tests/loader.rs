@@ -147,7 +147,8 @@ fn empty_document_materializes_the_canonical_defaults() {
     assert_eq!(config.models.engineer, "inherit-caller");
     assert_eq!(config.models.conductor, "inherit-caller");
     assert_eq!(config.models.critic, "standard");
-    assert_eq!(config.models.discovery, "standard");
+    // the widest fan-out role: width beats depth for bounded research
+    assert_eq!(config.models.discovery, "economy");
     assert_eq!(config.models.coder, "standard");
     assert_eq!(config.models.auditor, "standard");
     assert_eq!(config.models.worker, "standard");

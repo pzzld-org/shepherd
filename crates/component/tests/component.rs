@@ -36,7 +36,7 @@ fn canonical_compile_uses_the_embedded_authored_corpus() {
     // the conformance oracle carry for the Codex target.
     assert_eq!(
         tree.digest,
-        "573d66adfbd6eb29e215245fbc906127e649548f06eba01cc975bac3924b5518"
+        "693d70a523a491b43ec0294db5f3272064217f333791d1fded54357d3a12e5e1"
     );
 }
 
