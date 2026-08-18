@@ -305,6 +305,36 @@ its own safe technique in the same sentence:
 A discipline that demands evidence without naming a safe way to produce it will keep
 teaching agents the unsafe way, and the agent is not wrong to have inferred it.
 
+**The consequence is worse than lost work, and this run proved it.** Falsifying a SECURITY
+guard means temporarily removing it. On a shared worktree that opens a live vulnerability
+window in a file other agents and an integrator can read, stage, or commit at any moment.
+The distribution lane hit exactly this: `scripts/install-shepherd.sh:254`'s live-symlink
+refusal was replaced with `# SABOTAGE: refusal removed for falsification test / return 0`,
+to prove a test it had no coverage for. Three things made it genuinely dangerous:
+
+1. **The lane's own gates could not see it.** `gate.sh` was GREEN with the guard removed —
+   which is the entire finding the test existed to fix, so the sabotage was invisible to
+   precisely the mechanism that should have caught it.
+2. **The obvious remediation would have destroyed work.** `git checkout` on that file
+   restores the guard AND wipes an uncommitted, endorsed change by a different coder in the
+   same file. A surgical two-line restore was required, with checkout and stash explicitly
+   forbidden.
+3. **Agents in this run go inert mid-task without warning.** Had that coder stopped thirty
+   seconds earlier, the lane would carry a removed safety guard, and the integrator commits
+   from that tree.
+
+**The rule, generalizing the throwaway-clone rule from baselines to falsification:**
+
+> Falsify in a COPY, never in place. Copy the file or tree to scratch, break the copy, run
+> the gate against the copy. Where a gate must read the real path, snapshot and restore
+> **within the same command**, never across two tool calls — the window between agent turns
+> is where the danger lives.
+
+**And one thing no gate discipline would have caught.** The background security reviewer
+flagged it, correctly and not as a false positive, while `gate.sh fast` was green. That is an
+argument for keeping security review in the loop on any lane touching installers or
+credentials, not only on work that looks security-shaped.
+
 Corollary for anyone reading a shared tree: a single `git status` or `cargo fmt --check`
 sample is a snapshot of a moving target, not a fact about a lane's work. Attribute from
 artifacts and from the owning lane, not from one reading.
