@@ -242,7 +242,11 @@ pub struct LayoutPlan {
     scope: PlanScope,
     namespace: PathBuf,
     manifest: LayoutManifest,
-    rewrites: BTreeMap<PathBuf, Vec<u8>>,
+    /// Keyed by the CANONICAL source string, because that is what
+    /// `ManifestEntry::source` carries and what the executor looks up with. A
+    /// native `PathBuf` key never matched on Windows and the migration failed
+    /// with `missing rewrite payload`.
+    rewrites: BTreeMap<String, Vec<u8>>,
 }
 
 impl LayoutPlan {
@@ -338,7 +342,7 @@ impl LayoutPlan {
                     }
                 }
                 PlanAction::Rewrite => {
-                    let bytes = self.rewrites.get(source).ok_or_else(|| {
+                    let bytes = self.rewrites.get(&entry.source).ok_or_else(|| {
                         LayoutError::InvalidInput(format!(
                             "missing rewrite payload for {}",
                             source.display()
@@ -446,7 +450,7 @@ impl LayoutPlan {
                 if rewritten != original {
                     let sha256 = sha256_bytes(&rewritten);
                     let byte_size = u64::try_from(rewritten.len()).unwrap_or(u64::MAX);
-                    rewrites.insert(candidate.path.clone(), rewritten);
+                    rewrites.insert(canonical_path_string(&candidate.path), rewritten);
                     entries.push(ManifestEntry {
                         source: canonical_path_string(&candidate.path),
                         destination: canonical_path_string(&candidate.path),
@@ -554,10 +558,16 @@ impl LayoutPlan {
                         b.action,
                         PlanAction::RemoveDirectory | PlanAction::RemoveFile
                     ) {
+                        // `/`, not `MAIN_SEPARATOR`. Manifest sources are stored
+                        // canonically, and on Windows `MAIN_SEPARATOR` is `\`,
+                        // so this counted zero for every entry and the
+                        // deepest-first ordering collapsed -- parents were
+                        // removed before their children and the migration
+                        // failed with `The directory is not empty.`
                         b.source
-                            .matches(std::path::MAIN_SEPARATOR)
+                            .matches('/')
                             .count()
-                            .cmp(&a.source.matches(std::path::MAIN_SEPARATOR).count())
+                            .cmp(&a.source.matches('/').count())
                     } else {
                         std::cmp::Ordering::Equal
                     }

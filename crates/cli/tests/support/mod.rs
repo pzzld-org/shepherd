@@ -16,10 +16,10 @@ use std::{fs, io, path::Path, thread, time::Duration};
 /// process. (os error 32)`.
 ///
 /// Retrying is the fix, and bounding the retry is what keeps it from hiding a
-/// genuine leak: if the tree is still locked after four seconds of trying, that is
+/// genuine leak: if the tree is still locked after ten seconds of trying, that is
 /// no longer a scheduling artifact and the panic reports it.
 pub(crate) fn remove_dir_all(path: &Path) {
-    const ATTEMPTS: u32 = 40;
+    const ATTEMPTS: u32 = 100;
     const BACKOFF: Duration = Duration::from_millis(100);
 
     let mut last = None;
@@ -38,15 +38,30 @@ pub(crate) fn remove_dir_all(path: &Path) {
     // Naming the survivors is the difference between "Windows was slow" and a
     // real handle leak. Without it the next investigation starts from scratch.
     let mut survivors = Vec::new();
-    if let Ok(entries) = fs::read_dir(path) {
-        for entry in entries.flatten() {
-            survivors.push(entry.file_name().to_string_lossy().into_owned());
-        }
-    }
+    collect(path, path, &mut survivors);
     survivors.sort();
     panic!(
         "cannot remove fixture {} after {ATTEMPTS} attempts: {}\nstill present: {survivors:?}",
         path.display(),
         last.expect("a failure was recorded")
     );
+}
+
+/// List every file still present under `root`, relative to it.
+///
+/// The top-level listing said `[".shepherd"]`, which names a directory and not
+/// the handle holding it open. The whole point of the diagnostic is to name the
+/// FILE, so the walk goes all the way down.
+fn collect(root: &Path, current: &Path, found: &mut Vec<String>) {
+    let Ok(entries) = fs::read_dir(current) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect(root, &path, found);
+        } else if let Ok(relative) = path.strip_prefix(root) {
+            found.push(relative.to_string_lossy().replace('\\', "/"));
+        }
+    }
 }
