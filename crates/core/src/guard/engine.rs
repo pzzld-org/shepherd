@@ -393,6 +393,7 @@ impl GuardEngine {
             .filter_map(|key| tool_input.get(key))
             .find(|value| value.is_truthy())
             .and_then(GuardValue::as_str)
+            .map(carrier_role)
             .filter(|value| !value.is_empty());
         // `Workflow` fans out inside its own script, so its `tool_input` carries
         // no single target role and never can. Each agent the script spawns is
@@ -499,6 +500,17 @@ impl GuardEngine {
         }
         None
     }
+}
+
+/// Strip shepherd's own carrier prefix from a dispatch target.
+///
+/// A host names a plugin agent `<plugin>:<agent>`, so Claude Code sends
+/// `shepherd:conductor` where `role_facts` is keyed on the bare `conductor`.
+/// Without this, every dispatch to a real flock role was refused as off-flock
+/// and the plugin could not dispatch through its own guard. Only shepherd's
+/// prefix is stripped: another plugin's `coder` is not this flock's `coder`.
+fn carrier_role(value: &str) -> &str {
+    value.strip_prefix("shepherd:").unwrap_or(value)
 }
 
 fn role_tier(role: &str) -> Option<&'static str> {

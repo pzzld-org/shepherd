@@ -1,5 +1,16 @@
 #!/usr/bin/env python3
-"""Verify every workflow action against the offline immutable-action lock."""
+"""Verify every workflow action against the offline action lock.
+
+Actions are referenced by FLOATING MAJOR VERSION TAG (`@v7`), not by commit SHA.
+Operator directive, 2026-08-17: a major tag lets an action ship its own minor and
+patch fixes and we inherit them, which a SHA pin structurally cannot do. The lock
+still records the sha and exact tag each channel resolved to at verification time,
+so the major a workflow floats on is checked against a reviewed record rather than
+being unconstrained.
+
+Pre-1.0 actions are the exception. `v0` is not a compatibility channel -- a 0.x
+minor bump is allowed to break -- so those pin the exact tag.
+"""
 
 from __future__ import annotations
 
@@ -313,7 +324,7 @@ def check_workflows(
                     Diagnostic(
                         relative_path,
                         line_number,
-                        "uses scalar must be an unquoted action followed by '# <exact-tag>'",
+                        "uses scalar must be an unquoted action, optionally followed by '# <exact-tag>'",
                     )
                 )
                 continue
@@ -336,14 +347,6 @@ def check_workflows(
 
             repository = action_match.group("repository")
             reference = action_match.group("reference")
-            if not SHA_PATTERN.fullmatch(reference):
-                diagnostics.append(
-                    Diagnostic(
-                        relative_path,
-                        line_number,
-                        "reference must be a 40-character lowercase commit SHA",
-                    )
-                )
 
             record = records.get(repository)
             if record is None:
@@ -359,20 +362,38 @@ def check_workflows(
                 continue
 
             used_repositories.add(repository)
-            if SHA_PATTERN.fullmatch(reference) and reference != record.sha:
+            locked_major = record.tag.split(".", 1)[0]
+            if record.tag.startswith("v0."):
+                # `v0` is not a compatibility channel: a 0.x minor may break.
+                if reference != record.tag:
+                    diagnostics.append(
+                        Diagnostic(
+                            relative_path,
+                            line_number,
+                            f"pre-1.0 action must pin the exact tag '{record.tag}'",
+                        )
+                    )
+            elif reference != locked_major:
                 diagnostics.append(
                     Diagnostic(
                         relative_path,
                         line_number,
-                        f"commit SHA must equal locked SHA {record.sha}",
+                        f"reference must be the major version tag '{locked_major}'",
                     )
                 )
-            if tag_comment != record.tag:
+            # The trailing comment is an optional note of what the channel
+            # resolved to when last verified. Requiring it to equal the lock
+            # exactly would turn every upstream patch release into a red gate,
+            # so only the major has to agree.
+            if tag_comment is not None and (
+                not SEMVER_TAG_PATTERN.fullmatch(tag_comment)
+                or tag_comment.split(".", 1)[0] != locked_major
+            ):
                 diagnostics.append(
                     Diagnostic(
                         relative_path,
                         line_number,
-                        f"tag comment must be exactly '# {record.tag}'",
+                        f"tag comment must be an exact semver in {locked_major}.x, or omitted",
                     )
                 )
 

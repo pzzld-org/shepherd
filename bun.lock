@@ -3,7 +3,7 @@
   "configVersion": 0,
   "workspaces": {
     "": {
-      "name": "shepherd-workspace",
+      "name": "@pzzld/shepherd-workspace",
       "devDependencies": {
         "@babel/parser": "^8.0.4",
         "@bytecodealliance/jco": "1.28.1",

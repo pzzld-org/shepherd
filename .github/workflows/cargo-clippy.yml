@@ -6,8 +6,10 @@ concurrency:
 
 on:
   pull_request:
-    types: [synchronize]
+    types: [opened, reopened, synchronize, ready_for_review]
   push:
+    branches:
+      - main
     tags:
       - latest
       - "v[0-9]*.[0-9]*.[0-9]*"

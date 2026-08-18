@@ -238,7 +238,7 @@ jobs:
         uses: taiki-e/install-action@v2
         if: matrix.target == 'wasm32-wasip2'
         with:
-          tool: wasm-tools
+          tool: wasm-tools@${{ env.WASM_TOOLS_VERSION }}
       - name: cargo build shepherd-registry
         run: |
           cargo build --locked --release \

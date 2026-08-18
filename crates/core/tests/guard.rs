@@ -2071,3 +2071,44 @@ fn workflow_dispatch_is_governed_by_tier_without_a_target_role() {
         .expect("an Agent call is evaluable");
     assert_eq!(agent.decision.as_str(), "unresolved");
 }
+
+/// A host names a plugin agent `<plugin>:<agent>`, so a real dispatch arrives as
+/// `shepherd:conductor` while role_facts is keyed on the bare id. Comparing the
+/// two directly refused every in-flock dispatch as off-flock.
+#[test]
+fn dispatch_target_accepts_the_plugin_carrier_form() {
+    let engine = live_engine();
+
+    let carrier = engine
+        .evaluate_json(
+            r#"{"role":"shepherd","tool_name":"Agent","tool_input":{"subagent_type":"shepherd:conductor"}}"#,
+        )
+        .expect("a carrier-form dispatch is evaluable");
+    assert_eq!(
+        carrier.decision.as_str(),
+        "allow",
+        "root must be able to dispatch a conductor: {}",
+        carrier.to_wire_json()
+    );
+
+    // The bare form keeps working.
+    let bare = engine
+        .evaluate_json(
+            r#"{"role":"shepherd","tool_name":"Agent","tool_input":{"subagent_type":"conductor"}}"#,
+        )
+        .expect("a bare dispatch is evaluable");
+    assert_eq!(bare.decision.as_str(), "allow");
+
+    // Only shepherd's own prefix is stripped, and off-flock stays refused.
+    for request in [
+        r#"{"role":"shepherd","tool_name":"Agent","tool_input":{"subagent_type":"general-purpose"}}"#,
+        r#"{"role":"shepherd","tool_name":"Agent","tool_input":{"subagent_type":"other:coder"}}"#,
+    ] {
+        let verdict = engine.evaluate_json(request).expect("evaluable");
+        assert_eq!(
+            verdict.decision.as_str(),
+            "deny",
+            "off-flock dispatch must stay refused: {request}"
+        );
+    }
+}

@@ -1,70 +1,371 @@
 {
-  "schema": "shepherd.content-target-final/1",
   "contract_note": "Claude preserves canonical description while replacing model_hint with model. Codex includes final model/profile tables. Pi prompt bytes remain host-native while role launch metadata is carried separately by the WIT and CLI manifests.",
-  "targets": {
-    "claude": {
-      "tree_digest": "49a6ee4bae89882637be0e902bf89c2b677a2009b37e2500feb5a30607aebc7f",
-      "files": {
-        "agents/auditor.md": [2446, "d8089b8e952025d665dcfd75b4c4130f8ec8f6334155ab8856c2ec95b8bcfd96"],
-        "agents/coder.md": [2899, "e4e3764dc21530feea2349a05ebec68fa88facc2112268899790108499cc9d3f"],
-        "agents/conductor.md": [3719, "7ef5552bd083e912476e395ad7750576d8f7b187bb31994468d844fe90cac0a2"],
-        "agents/critic.md": [2134, "fe41bb2f9cf66e63643b31a14626041662a890d8eee452fda940f0730736460d"],
-        "agents/discovery.md": [2690, "67ac5e6b1278cc5f9f1b53f808d94bd9af0442b49eb6a683edcb40d80f87e5a7"],
-        "agents/engineer.md": [2736, "6478c08433575065a610494d38b0209cdebe248db803f3bea03e482d02e15f61"],
-        "agents/planter.md": [3062, "f267f0f704d6bc6af901e3d5f5f7c653dd54069c080d68d8cfe46ccf2feb3a69"],
-        "agents/shepherd.md": [3612, "28cf35929558d74240096c30c9fc684c49399e21acf37b3a4bfeeef8da019e49"],
-        "agents/worker.md": [2539, "961d8780a3b37c5a8fb66d5f4121a465b944d4e4a0fe15b34a85de4228fbcc29"],
-        "skills/adaptation/SKILL.md": [2700, "6f0b602cd985f5ff8e4baa2895e4fd418a8f324a0faf94cee8cec2f002a7e322"],
-        "skills/bridge/SKILL.md": [2088, "727eacf3f5d39126960cd9a3d3f3f503e8917412a653c6ea20423bc9aed1bddd"],
-        "skills/context/SKILL.md": [2952, "8aad1b251b255e15f00437004caf49ded0295bb85a1057ef3a01790b43db392d"],
-        "skills/harness/SKILL.md": [1995, "f79079b2cd2edd8ce3484af2b209b9373703a24437880bae755301e46a999658"],
-        "skills/motivation/SKILL.md": [2315, "db72c1be317d95fa897702d66a8cc4b19adf1e551984061f060cfae627ba3908"],
-        "skills/shepherd/SKILL.md": [1951, "9c482279a9e9bea5f1ade26bcd24232db27059a84b91f75d97166f5650e4d6e0"],
-        "skills/thinking/SKILL.md": [2111, "464768041f6f32bc14cec18ba0d428e0a60b86ba45f652e1cb0cd3956245bf81"]
-      }
+  "roles": {
+    "auditor": {
+      "claude_model": "sonnet",
+      "codex_effort": "medium",
+      "codex_profile": "standard",
+      "pi_model": "sonnet",
+      "pi_tools": [
+        "read",
+        "grep",
+        "find",
+        "bash",
+        "write"
+      ],
+      "pi_unsupported": [
+        "code-intelligence",
+        "skill-load",
+        "tool-discovery"
+      ]
     },
-    "codex": {
-      "tree_digest": "a17bfc70e2a70ae266d254d4073402e23cbbea0017114da17f33c5b919822784",
-      "files": {
-        "shepherd.codex.toml": [669, "826d77d3c0829007100af6ef7ab503f44946e5179f509d24a92fda61907c450c"],
-        "skills/adaptation/SKILL.md": [2700, "6f0b602cd985f5ff8e4baa2895e4fd418a8f324a0faf94cee8cec2f002a7e322"],
-        "skills/bridge/SKILL.md": [2088, "727eacf3f5d39126960cd9a3d3f3f503e8917412a653c6ea20423bc9aed1bddd"],
-        "skills/context/SKILL.md": [2952, "8aad1b251b255e15f00437004caf49ded0295bb85a1057ef3a01790b43db392d"],
-        "skills/motivation/SKILL.md": [2315, "db72c1be317d95fa897702d66a8cc4b19adf1e551984061f060cfae627ba3908"],
-        "skills/shepherd/SKILL.md": [1951, "9c482279a9e9bea5f1ade26bcd24232db27059a84b91f75d97166f5650e4d6e0"],
-        "skills/thinking/SKILL.md": [2111, "464768041f6f32bc14cec18ba0d428e0a60b86ba45f652e1cb0cd3956245bf81"]
-      }
+    "coder": {
+      "claude_model": "sonnet",
+      "codex_effort": "medium",
+      "codex_profile": "standard",
+      "pi_model": "sonnet",
+      "pi_tools": [
+        "read",
+        "grep",
+        "find",
+        "bash",
+        "write",
+        "edit"
+      ],
+      "pi_unsupported": [
+        "skill-load",
+        "tool-discovery"
+      ]
     },
-    "pi": {
-      "tree_digest": "b0b3f7deb52aa78fafdd56ccf4ba18ac49d644428f4269b260c876b8f6898e76",
-      "files": {
-        "prompts/auditor.md": [2452, "031a7025741586c7b0eaac6688cd1dcedaaffc796a9dc9d9c69d538b49677a35"],
-        "prompts/coder.md": [2878, "20366f8a865db671ec533e0f2a457cbb8388e7df17ad2150268eebc778266800"],
-        "prompts/conductor.md": [3664, "388221da74216b0837617c35776003e7ad2b63f3b3cbf64ec19796cf2708b28f"],
-        "prompts/critic.md": [2115, "5705befe849440c6ca43a8245756eacac2e5c5321c3696bcebca3649fef9df9c"],
-        "prompts/discovery.md": [2675, "b04b046b5b0aa777ef4c50a08cfbee13feffb0bee8d812038f5b7e0071f59650"],
-        "prompts/engineer.md": [2707, "a814fd772a39e0a88f2721decd6bbb5a243402398ef776207587fbaea24b010c"],
-        "prompts/planter.md": [2994, "a21c6cde68067f1d99cb09f0c0204a39bb242c0cb30e9554e429386c9ddaf147"],
-        "prompts/shepherd.md": [3549, "60a81e47f1f8abece724d33e5ca449185cc5a01280421c80dd697fa1863be508"],
-        "prompts/worker.md": [2518, "a6d22012151d4594bf79a3f0c6fcc3ac1f69b845674f9787f3ebb5d3c25b481d"],
-        "skills/adaptation/SKILL.md": [2700, "6f0b602cd985f5ff8e4baa2895e4fd418a8f324a0faf94cee8cec2f002a7e322"],
-        "skills/bridge/SKILL.md": [2088, "727eacf3f5d39126960cd9a3d3f3f503e8917412a653c6ea20423bc9aed1bddd"],
-        "skills/context/SKILL.md": [2952, "8aad1b251b255e15f00437004caf49ded0295bb85a1057ef3a01790b43db392d"],
-        "skills/motivation/SKILL.md": [2315, "db72c1be317d95fa897702d66a8cc4b19adf1e551984061f060cfae627ba3908"],
-        "skills/shepherd/SKILL.md": [1951, "9c482279a9e9bea5f1ade26bcd24232db27059a84b91f75d97166f5650e4d6e0"],
-        "skills/thinking/SKILL.md": [2111, "464768041f6f32bc14cec18ba0d428e0a60b86ba45f652e1cb0cd3956245bf81"]
-      }
+    "conductor": {
+      "claude_model": "sonnet",
+      "codex_effort": "medium",
+      "codex_profile": "standard",
+      "pi_model": "sonnet",
+      "pi_tools": [
+        "read",
+        "grep",
+        "find",
+        "bash"
+      ],
+      "pi_unsupported": [
+        "skill-load",
+        "tool-discovery",
+        "dispatch",
+        "schedule-wakeup",
+        "message-peer",
+        "task-tracking",
+        "web-research"
+      ]
+    },
+    "critic": {
+      "claude_model": "sonnet",
+      "codex_effort": "medium",
+      "codex_profile": "standard",
+      "pi_model": "sonnet",
+      "pi_tools": [
+        "read",
+        "grep",
+        "find",
+        "bash"
+      ],
+      "pi_unsupported": [
+        "skill-load"
+      ]
+    },
+    "discovery": {
+      "claude_model": "sonnet",
+      "codex_effort": "medium",
+      "codex_profile": "standard",
+      "pi_model": "sonnet",
+      "pi_tools": [
+        "read",
+        "grep",
+        "find",
+        "bash",
+        "write"
+      ],
+      "pi_unsupported": [
+        "skill-load",
+        "tool-discovery",
+        "web-research"
+      ]
+    },
+    "engineer": {
+      "claude_model": "opus[1m]",
+      "codex_effort": "high",
+      "codex_profile": "reasoning-high",
+      "pi_model": "opus",
+      "pi_tools": [
+        "read",
+        "grep",
+        "find",
+        "bash",
+        "write",
+        "edit"
+      ],
+      "pi_unsupported": [
+        "skill-load",
+        "tool-discovery",
+        "dispatch",
+        "message-peer"
+      ]
+    },
+    "planter": {
+      "claude_model": "opus[1m]",
+      "codex_effort": "high",
+      "codex_profile": "reasoning-high",
+      "pi_model": "opus",
+      "pi_tools": [
+        "read",
+        "grep",
+        "find",
+        "bash",
+        "write",
+        "edit"
+      ],
+      "pi_unsupported": [
+        "skill-load",
+        "tool-discovery",
+        "dispatch",
+        "ask-operator",
+        "task-tracking",
+        "web-research"
+      ]
+    },
+    "shepherd": {
+      "claude_model": "inherit",
+      "codex_effort": null,
+      "codex_profile": null,
+      "pi_model": null,
+      "pi_tools": [
+        "read",
+        "grep",
+        "find",
+        "bash",
+        "write",
+        "edit"
+      ],
+      "pi_unsupported": [
+        "skill-load",
+        "tool-discovery",
+        "dispatch",
+        "message-peer",
+        "task-tracking",
+        "web-research"
+      ]
+    },
+    "worker": {
+      "claude_model": "sonnet",
+      "codex_effort": "medium",
+      "codex_profile": "standard",
+      "pi_model": "sonnet",
+      "pi_tools": [
+        "read",
+        "grep",
+        "find",
+        "bash",
+        "write",
+        "edit"
+      ],
+      "pi_unsupported": [
+        "skill-load",
+        "tool-discovery"
+      ]
     }
   },
-  "roles": {
-    "auditor": {"claude_model": "sonnet", "codex_profile": "standard", "codex_effort": "medium", "pi_model": "sonnet", "pi_tools": ["read", "grep", "find", "bash", "write"], "pi_unsupported": ["code-intelligence", "skill-load", "tool-discovery"]},
-    "coder": {"claude_model": "sonnet", "codex_profile": "standard", "codex_effort": "medium", "pi_model": "sonnet", "pi_tools": ["read", "grep", "find", "bash", "write", "edit"], "pi_unsupported": ["skill-load", "tool-discovery"]},
-    "conductor": {"claude_model": "sonnet", "codex_profile": "standard", "codex_effort": "medium", "pi_model": "sonnet", "pi_tools": ["read", "grep", "find", "bash"], "pi_unsupported": ["skill-load", "tool-discovery", "dispatch", "schedule-wakeup", "message-peer", "task-tracking", "web-research"]},
-    "critic": {"claude_model": "sonnet", "codex_profile": "standard", "codex_effort": "medium", "pi_model": "sonnet", "pi_tools": ["read", "grep", "find", "bash"], "pi_unsupported": ["skill-load"]},
-    "discovery": {"claude_model": "sonnet", "codex_profile": "standard", "codex_effort": "medium", "pi_model": "sonnet", "pi_tools": ["read", "grep", "find", "bash", "write"], "pi_unsupported": ["skill-load", "tool-discovery", "web-research"]},
-    "engineer": {"claude_model": "opus[1m]", "codex_profile": "reasoning-high", "codex_effort": "high", "pi_model": "opus", "pi_tools": ["read", "grep", "find", "bash", "write", "edit"], "pi_unsupported": ["skill-load", "tool-discovery", "dispatch", "message-peer"]},
-    "planter": {"claude_model": "opus[1m]", "codex_profile": "reasoning-high", "codex_effort": "high", "pi_model": "opus", "pi_tools": ["read", "grep", "find", "bash", "write", "edit"], "pi_unsupported": ["skill-load", "tool-discovery", "dispatch", "ask-operator", "task-tracking", "web-research"]},
-    "shepherd": {"claude_model": "inherit", "codex_profile": null, "codex_effort": null, "pi_model": null, "pi_tools": ["read", "grep", "find", "bash", "write", "edit"], "pi_unsupported": ["skill-load", "tool-discovery", "dispatch", "message-peer", "task-tracking", "web-research"]},
-    "worker": {"claude_model": "sonnet", "codex_profile": "standard", "codex_effort": "medium", "pi_model": "sonnet", "pi_tools": ["read", "grep", "find", "bash", "write", "edit"], "pi_unsupported": ["skill-load", "tool-discovery"]}
+  "schema": "shepherd.content-target-final/1",
+  "targets": {
+    "claude": {
+      "files": {
+        "agents/auditor.md": [
+          2446,
+          "d8089b8e952025d665dcfd75b4c4130f8ec8f6334155ab8856c2ec95b8bcfd96"
+        ],
+        "agents/coder.md": [
+          2899,
+          "e4e3764dc21530feea2349a05ebec68fa88facc2112268899790108499cc9d3f"
+        ],
+        "agents/conductor.md": [
+          3719,
+          "7ef5552bd083e912476e395ad7750576d8f7b187bb31994468d844fe90cac0a2"
+        ],
+        "agents/critic.md": [
+          2134,
+          "fe41bb2f9cf66e63643b31a14626041662a890d8eee452fda940f0730736460d"
+        ],
+        "agents/discovery.md": [
+          2690,
+          "67ac5e6b1278cc5f9f1b53f808d94bd9af0442b49eb6a683edcb40d80f87e5a7"
+        ],
+        "agents/engineer.md": [
+          2736,
+          "6478c08433575065a610494d38b0209cdebe248db803f3bea03e482d02e15f61"
+        ],
+        "agents/planter.md": [
+          3062,
+          "f267f0f704d6bc6af901e3d5f5f7c653dd54069c080d68d8cfe46ccf2feb3a69"
+        ],
+        "agents/shepherd.md": [
+          3612,
+          "28cf35929558d74240096c30c9fc684c49399e21acf37b3a4bfeeef8da019e49"
+        ],
+        "agents/worker.md": [
+          2539,
+          "961d8780a3b37c5a8fb66d5f4121a465b944d4e4a0fe15b34a85de4228fbcc29"
+        ],
+        "skills/adaptation/SKILL.md": [
+          2700,
+          "6f0b602cd985f5ff8e4baa2895e4fd418a8f324a0faf94cee8cec2f002a7e322"
+        ],
+        "skills/bridge/SKILL.md": [
+          2088,
+          "727eacf3f5d39126960cd9a3d3f3f503e8917412a653c6ea20423bc9aed1bddd"
+        ],
+        "skills/context/SKILL.md": [
+          2952,
+          "8aad1b251b255e15f00437004caf49ded0295bb85a1057ef3a01790b43db392d"
+        ],
+        "skills/harness/SKILL.md": [
+          1995,
+          "f79079b2cd2edd8ce3484af2b209b9373703a24437880bae755301e46a999658"
+        ],
+        "skills/motivation/SKILL.md": [
+          2315,
+          "db72c1be317d95fa897702d66a8cc4b19adf1e551984061f060cfae627ba3908"
+        ],
+        "skills/shepherd/SKILL.md": [
+          1951,
+          "9c482279a9e9bea5f1ade26bcd24232db27059a84b91f75d97166f5650e4d6e0"
+        ],
+        "skills/spawn/SKILL.md": [
+          2477,
+          "2c84b4983e7036c360cf3e45c957ce2523e959b9d806b6938d3a522f11134ec7"
+        ],
+        "skills/start/SKILL.md": [
+          1674,
+          "e5161df5dea5f82f74bfbcba2d1f1869de20b7cf9373ce39eb3125c2e671897f"
+        ],
+        "skills/thinking/SKILL.md": [
+          2111,
+          "464768041f6f32bc14cec18ba0d428e0a60b86ba45f652e1cb0cd3956245bf81"
+        ]
+      },
+      "tree_digest": "3b88c9ea861b80343c5516417f8d562dd9081081683c6062b10764892cba5a1c"
+    },
+    "codex": {
+      "files": {
+        "shepherd.codex.toml": [
+          669,
+          "826d77d3c0829007100af6ef7ab503f44946e5179f509d24a92fda61907c450c"
+        ],
+        "skills/adaptation/SKILL.md": [
+          2700,
+          "6f0b602cd985f5ff8e4baa2895e4fd418a8f324a0faf94cee8cec2f002a7e322"
+        ],
+        "skills/bridge/SKILL.md": [
+          2088,
+          "727eacf3f5d39126960cd9a3d3f3f503e8917412a653c6ea20423bc9aed1bddd"
+        ],
+        "skills/context/SKILL.md": [
+          2952,
+          "8aad1b251b255e15f00437004caf49ded0295bb85a1057ef3a01790b43db392d"
+        ],
+        "skills/motivation/SKILL.md": [
+          2315,
+          "db72c1be317d95fa897702d66a8cc4b19adf1e551984061f060cfae627ba3908"
+        ],
+        "skills/shepherd/SKILL.md": [
+          1951,
+          "9c482279a9e9bea5f1ade26bcd24232db27059a84b91f75d97166f5650e4d6e0"
+        ],
+        "skills/spawn/SKILL.md": [
+          2477,
+          "2c84b4983e7036c360cf3e45c957ce2523e959b9d806b6938d3a522f11134ec7"
+        ],
+        "skills/start/SKILL.md": [
+          1674,
+          "e5161df5dea5f82f74bfbcba2d1f1869de20b7cf9373ce39eb3125c2e671897f"
+        ],
+        "skills/thinking/SKILL.md": [
+          2111,
+          "464768041f6f32bc14cec18ba0d428e0a60b86ba45f652e1cb0cd3956245bf81"
+        ]
+      },
+      "tree_digest": "6139c0f26a50a774a638eb4b3405703b6e5b9e586a6773cc2950030e236a1cef"
+    },
+    "pi": {
+      "files": {
+        "prompts/auditor.md": [
+          2452,
+          "031a7025741586c7b0eaac6688cd1dcedaaffc796a9dc9d9c69d538b49677a35"
+        ],
+        "prompts/coder.md": [
+          2878,
+          "20366f8a865db671ec533e0f2a457cbb8388e7df17ad2150268eebc778266800"
+        ],
+        "prompts/conductor.md": [
+          3664,
+          "388221da74216b0837617c35776003e7ad2b63f3b3cbf64ec19796cf2708b28f"
+        ],
+        "prompts/critic.md": [
+          2115,
+          "5705befe849440c6ca43a8245756eacac2e5c5321c3696bcebca3649fef9df9c"
+        ],
+        "prompts/discovery.md": [
+          2675,
+          "b04b046b5b0aa777ef4c50a08cfbee13feffb0bee8d812038f5b7e0071f59650"
+        ],
+        "prompts/engineer.md": [
+          2707,
+          "a814fd772a39e0a88f2721decd6bbb5a243402398ef776207587fbaea24b010c"
+        ],
+        "prompts/planter.md": [
+          2994,
+          "a21c6cde68067f1d99cb09f0c0204a39bb242c0cb30e9554e429386c9ddaf147"
+        ],
+        "prompts/shepherd.md": [
+          3549,
+          "60a81e47f1f8abece724d33e5ca449185cc5a01280421c80dd697fa1863be508"
+        ],
+        "prompts/worker.md": [
+          2518,
+          "a6d22012151d4594bf79a3f0c6fcc3ac1f69b845674f9787f3ebb5d3c25b481d"
+        ],
+        "skills/adaptation/SKILL.md": [
+          2700,
+          "6f0b602cd985f5ff8e4baa2895e4fd418a8f324a0faf94cee8cec2f002a7e322"
+        ],
+        "skills/bridge/SKILL.md": [
+          2088,
+          "727eacf3f5d39126960cd9a3d3f3f503e8917412a653c6ea20423bc9aed1bddd"
+        ],
+        "skills/context/SKILL.md": [
+          2952,
+          "8aad1b251b255e15f00437004caf49ded0295bb85a1057ef3a01790b43db392d"
+        ],
+        "skills/motivation/SKILL.md": [
+          2315,
+          "db72c1be317d95fa897702d66a8cc4b19adf1e551984061f060cfae627ba3908"
+        ],
+        "skills/shepherd/SKILL.md": [
+          1951,
+          "9c482279a9e9bea5f1ade26bcd24232db27059a84b91f75d97166f5650e4d6e0"
+        ],
+        "skills/spawn/SKILL.md": [
+          2477,
+          "2c84b4983e7036c360cf3e45c957ce2523e959b9d806b6938d3a522f11134ec7"
+        ],
+        "skills/start/SKILL.md": [
+          1674,
+          "e5161df5dea5f82f74bfbcba2d1f1869de20b7cf9373ce39eb3125c2e671897f"
+        ],
+        "skills/thinking/SKILL.md": [
+          2111,
+          "464768041f6f32bc14cec18ba0d428e0a60b86ba45f652e1cb0cd3956245bf81"
+        ]
+      },
+      "tree_digest": "18e02c5472576df2eb21a25056db17c0127beb6c01d043817cb82630e5a870fd"
+    }
   }
 }

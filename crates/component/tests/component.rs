@@ -24,7 +24,7 @@ fn canonical_compile_uses_the_embedded_authored_corpus() {
         .expect("canonical content compiles");
     assert_eq!(tree.target, wit::Target::Codex);
     assert_eq!(tree.roles.len(), 9);
-    assert_eq!(tree.files.len(), 7);
+    assert_eq!(tree.files.len(), 9);
     assert!(
         tree.files
             .iter()
@@ -32,7 +32,7 @@ fn canonical_compile_uses_the_embedded_authored_corpus() {
     );
     assert_eq!(
         tree.digest,
-        "a17bfc70e2a70ae266d254d4073402e23cbbea0017114da17f33c5b919822784"
+        "6139c0f26a50a774a638eb4b3405703b6e5b9e586a6773cc2950030e236a1cef"
     );
 }
 

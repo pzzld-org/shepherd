@@ -35,7 +35,7 @@ fn fixture(label: &str) -> PathBuf {
 fn live_content_matches_the_frozen_target_final_oracle() {
     let input = load_compile_input(&content_dir()).expect("load live content");
     assert_eq!(input.roles.len(), 9);
-    assert_eq!(input.skills.len(), 7);
+    assert_eq!(input.skills.len(), 9);
     let oracle: serde_json::Value = serde_json::from_str(include_str!(
         "../../../conformance/content-target-final.json"
     ))

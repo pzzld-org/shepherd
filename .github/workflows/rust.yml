@@ -153,7 +153,6 @@ jobs:
     name: feature matrix
     needs: resolve
     runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request'
     timeout-minutes: 5
     env:
       WASM_TOOLS_VERSION: "1.254.0"
