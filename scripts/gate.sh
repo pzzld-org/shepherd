@@ -131,6 +131,18 @@ gate_full() {
       grep -Fq '"target": "codex"' "$stage/codex/.shepherd-generated.json" || status=1
       grep -Fq '"target": "pi"' "$stage/pi/.shepherd-generated.json" || status=1
     fi
+    # The AUTHORITATIVE carrier check. `generate-codex-carrier.py` projects from
+    # the Claude tree with a portability filter, which is fast and catches the
+    # claude-only class; this compares the committed carrier against what the
+    # compiler actually emits for Codex, which is the only thing that cannot be
+    # fooled by the projector and the carrier agreeing with each other.
+    if [[ "$status" -eq 0 ]]; then
+      if ! diff -r "$stage/codex/skills" plugins/shepherd/codex/skills >/dev/null; then
+        printf 'committed Codex carrier differs from `compile --target codex`:\n' >&2
+        diff -r "$stage/codex/skills" plugins/shepherd/codex/skills >&2 || true
+        status=1
+      fi
+    fi
     find "$stage" -depth -delete
     return "$status"
   }

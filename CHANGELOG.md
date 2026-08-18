@@ -141,6 +141,29 @@ and attached to the tag by hand.
   is unix-gated -- and all four were invisible to every unix machine and to every release
   build, which builds the lib rather than the test targets.
 
+### Fixed — Codex users were shipped a Claude-only skill
+
+`plugins/shepherd/codex/skills/harness/` shipped in every Codex install since v6.4.5. Its own
+authored frontmatter says `portability: claude-only` and its content is Agent Teams, Dynamic
+Workflows, and `ToolSearch` — none of which exist on Codex. The compiler has always excluded
+it correctly; three separate gates demanded it be there.
+
+- `generate-codex-carrier.py` projected from `skills/`, the **Claude** carrier, so its drift
+  check compared the Claude tree against a copy of the Claude tree and was green throughout.
+  It now filters `portability: claude-only`, read from `content/skills/` because the compiler
+  STRIPS that key out of what it emits — the projection source cannot answer the question
+  about itself.
+- `check-plugin.py` required the Codex inventory to equal the Claude inventory exactly, and
+  `test-codex-marketplace.sh` asserted the same. Both encoded the defect as a requirement.
+  Both now exclude claude-only skills, and the marketplace test additionally refuses to pass
+  if no skill is marked claude-only, so the filter can never quietly become a no-op.
+- The full gate gained the AUTHORITATIVE check the other three cannot be: the committed
+  carrier is diffed against a real `compile --target codex`. A projector and a carrier
+  agreeing with each other proves nothing when both are wrong.
+
+All four are falsified: restoring `harness/` to the carrier turns each red, and byte-drifting
+a carrier file turns the projector red.
+
 ### Found, not fixed
 
 - **The shipped Windows binary cannot initialize a project or durably store a run.** With the
