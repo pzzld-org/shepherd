@@ -638,3 +638,86 @@ fn doctor_reports_a_sensible_result_when_nothing_answers_shepherd_on_path() {
     );
     cleanup(&root);
 }
+
+/// Recursively collects every `*.rs` file under `dir`. Dependency-free by
+/// design (`std::fs` only) — used solely by the sole-inserter invariant
+/// test below.
+fn collect_rs_files(dir: &Path) -> Vec<PathBuf> {
+    let mut files = Vec::new();
+    for entry in
+        std::fs::read_dir(dir).unwrap_or_else(|error| panic!("read_dir {}: {error}", dir.display()))
+    {
+        let entry = entry.expect("directory entry");
+        let path = entry.path();
+        if entry.file_type().expect("entry file type").is_dir() {
+            files.extend(collect_rs_files(&path));
+        } else if path.extension().is_some_and(|extension| extension == "rs") {
+            files.push(path);
+        }
+    }
+    files
+}
+
+// Five commands resolve "the current project" by taking the single row out
+// of `projects` (`SELECT id FROM projects ORDER BY id LIMIT 1`) rather than
+// resolving by identity. That is only safe because exactly one production
+// call site ever inserts a row: `wave_c_bootstrap.rs`'s register path. The
+// moment a second inserter exists anywhere under `crates/*/src/`, a
+// namespace can hold two rows and all five call sites start picking a
+// project alphabetically instead of by identity — a failure mode that has
+// already been misdiagnosed once this sprint, when a test fixture hand-
+// inserted a competing row. This test makes the "exactly one inserter"
+// invariant load-bearing instead of implicit.
+#[test]
+fn wave_c_bootstrap_remains_the_sole_production_inserter_of_projects() {
+    let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .expect("canonicalize workspace root from CARGO_MANIFEST_DIR");
+    let crates_dir = workspace_root.join("crates");
+
+    let mut sources = Vec::new();
+    for entry in std::fs::read_dir(&crates_dir).expect("read crates/ directory") {
+        let entry = entry.expect("crates/ directory entry");
+        if !entry.file_type().expect("crate entry file type").is_dir() {
+            continue;
+        }
+        let src_dir = entry.path().join("src");
+        if src_dir.is_dir() {
+            sources.extend(collect_rs_files(&src_dir));
+        }
+    }
+
+    let mut offenders: Vec<String> = sources
+        .into_iter()
+        .filter(|path| {
+            std::fs::read_to_string(path)
+                .map(|contents| {
+                    contents
+                        .to_ascii_uppercase()
+                        .contains("INSERT INTO PROJECTS")
+                })
+                .unwrap_or(false)
+        })
+        .map(|path| {
+            path.strip_prefix(&workspace_root)
+                .unwrap_or(path.as_path())
+                .to_string_lossy()
+                .replace('\\', "/")
+        })
+        .collect();
+    offenders.sort();
+
+    assert_eq!(
+        offenders,
+        vec!["crates/cli/src/cmd/wave_c_bootstrap.rs".to_string()],
+        "found {} production `INSERT INTO projects` writer(s): {offenders:?}. Five commands \
+         resolve \"the current project\" with `SELECT id FROM projects ORDER BY id LIMIT 1` \
+         (crates/cli/src/cmd/wave_h_execution.rs:563, crates/cli/src/cmd/wave_d_planning.rs:785, \
+         crates/cli/src/cmd/wave_e_coordination.rs:121, crates/cli/src/cmd/wave_g_coordination.rs:541, \
+         crates/cli/src/cmd/wave_f_knowledge.rs:409), so a second inserter makes all five pick a \
+         project alphabetically instead of by identity. The correct fix is a shared resolver \
+         keyed to `.shepherd/project.json`, not another `INSERT INTO projects` call site.",
+        offenders.len(),
+    );
+}

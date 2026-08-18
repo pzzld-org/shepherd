@@ -244,3 +244,82 @@ D's own diff at merge time.
 This conductor made zero `git commit` and zero `git push` calls, per the lane's out-of-scope
 statement (plan.md section 6). All ten files above are modified in the shared worktree,
 uncommitted. The root session owns staging, commit message, and push.
+
+## 7. Addendum: the five-site identity resolution decision (post-close)
+
+The team-lead found that `SELECT id FROM projects ORDER BY id LIMIT 1` appears in FIVE production
+files, not just the two test fixtures Step F repaired:
+
+| Site | Shape |
+|---|---|
+| `crates/cli/src/cmd/wave_e_coordination.rs:119` | byte-identical to wave_g |
+| `crates/cli/src/cmd/wave_g_coordination.rs:539` | byte-identical to wave_e |
+| `crates/cli/src/cmd/wave_h_execution.rs:561` | different message, exit code 5 |
+| `crates/cli/src/cmd/wave_d_planning.rs:783` | `report_project_id`, third message, exit code 5 |
+| `crates/cli/src/cmd/wave_f_knowledge.rs:407` | takes `context`, falls back to `project.json` |
+
+Those five resolve "the current project" by alphabetical accident rather than by identity.
+
+**Decision: carry the production defect to v6.4.7, do not refactor now.** Two measured reasons.
+
+1. **It is unreachable in production today.** `grep -rn "INSERT INTO projects" --include='*.rs'
+   crates/*/src/` returns exactly ONE hit, `wave_c_bootstrap.rs:462`, added by this lane. No SQL
+   migration seeds a row either. So a real namespace holds 0 or 1 row and the `ORDER BY` never has
+   two candidates. The sprint only saw it because two fixtures hand-inserted a competitor.
+2. **It is not the clean helper extraction it appears to be.** The five bodies carry three
+   different error messages and two different exit codes. Unifying them changes user-visible
+   behaviour of five registry-backed verbs, in four files this lane does not own, after the lane's
+   blockers were already fixed and green.
+
+**What was added instead, so the carry-forward is not merely a note.** The invariant "there is
+exactly one production inserter" was load-bearing and enforced by nothing.
+`wave_c_bootstrap_remains_the_sole_production_inserter_of_projects`
+(`crates/cli/tests/wave_c_bootstrap_cli.rs`) scans every `*.rs` under `crates/*/src/`, asserts the
+only `INSERT INTO projects` is `wave_c_bootstrap.rs`, and fails with a message naming all five
+call sites and stating the correct fix: a shared resolver keyed to `.shepherd/project.json`, never
+a second writer. Test sources are excluded, since fixtures legitimately insert.
+
+Gate GH1, evidence in `gates-H.md`: shown red by planting a temporary second inserter, restored
+to green with a clean `git diff`. Suite is 13 passed.
+
+So whoever adds the second inserter in v6.4.7 is told exactly what they broke and where, rather
+than discovering it as five commands silently picking a project alphabetically.
+
+## 8. Final state at lane close
+
+- Lane source committed by the root session at `29570a2` ("a fresh project can dispatch, and
+  errors name the actual failure"). `ReadSubject` present in `dispatch.rs` and
+  `wave_f_knowledge.rs`; the single `INSERT INTO projects` present in `wave_c_bootstrap.rs`.
+- Uncommitted at close: `crates/cli/tests/wave_c_bootstrap_cli.rs` only, carrying the GH1
+  invariant gate.
+- `cargo build -p shepherd-cli` clean. Full `cargo test -p shepherd-cli --no-fail-fast` green,
+  zero failures across every target. `rustfmt --edition 2024 --check` exits 0 on all lane files.
+- `scripts/gate.sh` last run RED on `release workflow contract`, which is NOT this lane's. That
+  check sits over `.github/workflows/**` and `scripts/**`, both forbidden to this lane and both
+  actively modified by the release and distribution lanes. This lane's diff is confined to
+  `crates/cli/`.
+- Worth passing to whoever owns that check: it prints three `ok:` sub-assertions and then reports
+  `FAILED`, so its failure signal comes from something it does not print. A check that reports
+  every sub-assertion green and then fails is hard to action, and is a close cousin of the
+  inert-gate shape this sprint has been hunting.
+
+## 9. Post-close verification of the stash split
+
+The team-lead's `git stash -u` split a coder mid-edit across `wave_f_knowledge.rs`, producing two
+complementary partial states, and asked for a re-verification that every call site carries the
+right subject. Audited, all four correct:
+
+| Line | Path read | Subject |
+|---|---|---|
+| 418 | `context.project_id_path` | `ReadSubject::ProjectIdentity` |
+| 548 | `context.dups_registry_path` | `ReadSubject::File` |
+| 587 | knowledge file | `ReadSubject::File` |
+| 679 | knowledge file | `ReadSubject::File` |
+
+The concern that "a call site left on the old form still compiles" does NOT apply to this
+signature. `read_regular_nofollow(subject: ReadSubject, path: &Path, limit: u64)` takes the
+subject as a mandatory first positional parameter, and Rust has no default arguments, so an
+unconverted call site cannot compile. Compiling is sufficient evidence of COVERAGE here; only
+which subject each site passes required review, and that is what the table above records. The
+failure mode being guarded against is real in languages with defaults or varargs and structurally
+impossible in this one.
