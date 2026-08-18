@@ -153,6 +153,81 @@ fn service_error(error: crate::DispatchServiceError) -> CliError {
     CliError::message(error.to_string())
 }
 
+/// Distinguishes which artifact a `NOFOLLOW`-guarded read names, so the
+/// remediation text can differ by subject: `shepherd init` mints exactly
+/// one artifact, `.shepherd/project.json`, and nothing else. Pointing an
+/// ordinary missing file back at `init` is as wrong as pointing a missing
+/// identity file anywhere else.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ReadSubject {
+    /// `.shepherd/project.json`, the one artifact `shepherd init` creates.
+    ProjectIdentity,
+    /// Any other regular file read through the same descriptor-safe path.
+    File,
+}
+
+impl ReadSubject {
+    fn open_label(self) -> &'static str {
+        match self {
+            Self::ProjectIdentity => "project identity ",
+            Self::File => "",
+        }
+    }
+
+    /// The message a caller anywhere in the crate should surface for a
+    /// `NOFOLLOW`-guarded read whose target is simply absent.
+    pub(crate) fn not_found_message(self, path: &Path) -> String {
+        match self {
+            Self::ProjectIdentity => format!(
+                "project not scaffolded — run `shepherd init`: {}",
+                path.display()
+            ),
+            Self::File => format!("no such file: {}", path.display()),
+        }
+    }
+
+    /// The message a caller anywhere in the crate should surface for a
+    /// `NOFOLLOW`-guarded read whose target exists but is not a regular file.
+    pub(crate) fn not_a_regular_file_message(self, path: &Path) -> String {
+        match self {
+            Self::ProjectIdentity => {
+                format!("project identity is not a regular file: {}", path.display())
+            }
+            Self::File => format!("not a regular file: {}", path.display()),
+        }
+    }
+}
+
+/// Classifies a `NOFOLLOW`-guarded `open` failure by its real errno rather
+/// than assuming every failure is a refused symlink. `ENOENT` (plain
+/// absence) and `ELOOP`/refused-`NOFOLLOW` (an actual symlink) are
+/// different failures with different remediations, and conflating them
+/// sends operators chasing a security incident that a `find -type l`
+/// already rules out.
+#[cfg(unix)]
+pub(crate) fn classify_nofollow_open_error(
+    subject: ReadSubject,
+    path: &Path,
+    error: rustix::io::Errno,
+) -> CliError {
+    use rustix::io::Errno;
+
+    match error {
+        Errno::NOENT => CliError::message(subject.not_found_message(path)),
+        Errno::ISDIR => CliError::message(subject.not_a_regular_file_message(path)),
+        Errno::LOOP => CliError::message(format!(
+            "cannot open {}{} without following symlinks: {error}",
+            subject.open_label(),
+            path.display()
+        )),
+        other => CliError::message(format!(
+            "cannot open {}{}: {other}",
+            subject.open_label(),
+            path.display()
+        )),
+    }
+}
+
 pub(crate) fn read_project_id(path: &Path) -> Result<ProjectId, CliError> {
     let bytes = read_regular_nofollow(path, MAX_REQUEST_BYTES)?;
     let document: serde_json::Value = serde_json::from_slice(&bytes).map_err(|error| {
@@ -185,12 +260,7 @@ fn read_regular_nofollow(path: &Path, limit: usize) -> Result<Vec<u8>, CliError>
         OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW,
         Mode::empty(),
     )
-    .map_err(|error| {
-        CliError::message(format!(
-            "cannot open project identity {} without following symlinks: {error}",
-            path.display()
-        ))
-    })?;
+    .map_err(|error| classify_nofollow_open_error(ReadSubject::ProjectIdentity, path, error))?;
     let stat = rustix::fs::fstat(&descriptor).map_err(|error| {
         CliError::message(format!(
             "cannot inspect project identity {}: {error}",
@@ -198,10 +268,9 @@ fn read_regular_nofollow(path: &Path, limit: usize) -> Result<Vec<u8>, CliError>
         ))
     })?;
     if !FileType::from_raw_mode(stat.st_mode).is_file() {
-        return Err(CliError::message(format!(
-            "project identity is not a regular file: {}",
-            path.display()
-        )));
+        return Err(CliError::message(
+            ReadSubject::ProjectIdentity.not_a_regular_file_message(path),
+        ));
     }
     let file = File::from(descriptor);
     let mut bytes = Vec::new();
@@ -243,7 +312,7 @@ mod tests {
         SystemHost,
     };
 
-    use super::{read_request, write_response};
+    use super::{ReadSubject, read_project_id, read_request, write_response};
 
     #[derive(Debug)]
     struct FixedClock;
@@ -322,6 +391,86 @@ mod tests {
         )
         .expect("resolve context");
         (context, stdout, root)
+    }
+
+    // GE2 (unit level): `.shepherd/project.json` sits behind
+    // `context::validate_resolved_project_paths`, which already refuses any
+    // symlink at that exact leaf path before `ExecutionContext::discover`
+    // ever returns (see `crates/cli/src/context.rs::validate_resolved_project_path`).
+    // That means dispatch.rs's own `NOFOLLOW` refusal for the project
+    // identity subject cannot be exercised end to end through the CLI: the
+    // earlier, unrelated guard always wins the race. It CAN be exercised
+    // directly, since `read_project_id` and its NOFOLLOW open never go
+    // through `ExecutionContext` at all — they take a bare path. This test
+    // constructs a real symlink and lets the kernel produce a real `ELOOP`,
+    // satisfying the "no hand-built errno" rule while proving the exact
+    // code this lane changed.
+    #[cfg(unix)]
+    #[test]
+    fn read_project_id_refuses_a_symlinked_identity_with_the_security_wording() {
+        use std::{
+            os::unix::fs::symlink,
+            time::{SystemTime, UNIX_EPOCH},
+        };
+
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let root =
+            std::env::temp_dir().join(format!("shepherd-dispatch-identity-symlink-{suffix}"));
+        fs::create_dir_all(&root).expect("fixture");
+        let target = root.join("identity-target.json");
+        fs::write(&target, br#"{"id":"018f47ce-72d7-7f64-9eb1-2f651d521c2a"}"#)
+            .expect("identity target");
+        let link = root.join("project.json");
+        symlink(&target, &link).expect("symlink identity");
+
+        let error = read_project_id(&link).expect_err("symlinked identity must be refused");
+        let message = error.message_text().expect("error carries a message");
+        assert!(
+            message.contains("without following symlinks"),
+            "message={message}"
+        );
+        assert!(message.contains("project identity"), "message={message}");
+        assert!(!message.contains("not scaffolded"), "message={message}");
+        fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    // GE1 (unit level companion): the same function on a plainly absent path
+    // must not repeat the symlink wording, and must name the real
+    // remediation. Reproduced end to end in `tests/dispatch_cli.rs`; this
+    // pins the same behaviour directly against `read_project_id`.
+    #[cfg(unix)]
+    #[test]
+    fn read_project_id_reports_absence_as_not_scaffolded() {
+        let root = std::env::temp_dir().join(format!(
+            "shepherd-dispatch-identity-absent-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&root).expect("fixture");
+        let absent = root.join("project.json");
+
+        let error = read_project_id(&absent).expect_err("absent identity must be refused");
+        let message = error.message_text().expect("error carries a message");
+        assert!(
+            message.contains("project not scaffolded"),
+            "message={message}"
+        );
+        assert!(
+            !message.contains("without following symlinks"),
+            "message={message}"
+        );
+        fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn read_subject_labels_only_project_identity() {
+        assert_eq!(
+            ReadSubject::ProjectIdentity.open_label(),
+            "project identity "
+        );
+        assert_eq!(ReadSubject::File.open_label(), "");
     }
 
     #[test]

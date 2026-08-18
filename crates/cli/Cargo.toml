@@ -84,6 +84,8 @@ shepherd = { features = [
 ], workspace = true }
 # cli
 clap = { features = ["cargo", "env", "error-context", "help", "usage"], workspace = true }
+# configuration reads go through `config`; `dep:toml` stays a one-way dependency
+config = { workspace = true }
 # errors — contextual strings are an application concern, so `anyhow` is
 # allowed on this side of the boundary and forbidden on the other
 anyhow = { workspace = true }

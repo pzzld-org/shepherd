@@ -18,6 +18,7 @@ use shepherd::registry::{OpenMode, Registry};
 
 use crate::{
     ContextInputs, ExecutionContext,
+    cmd::dispatch::{ReadSubject, classify_nofollow_open_error},
     interface::{CliError, CliGlobals},
 };
 
@@ -414,7 +415,11 @@ fn project_id(context: &ExecutionContext, registry: &Registry) -> Result<String,
     {
         return Ok(id);
     }
-    let bytes = read_regular_nofollow(&context.project_id_path, MAX_KNOWLEDGE_BYTES)?;
+    let bytes = read_regular_nofollow(
+        ReadSubject::ProjectIdentity,
+        &context.project_id_path,
+        MAX_KNOWLEDGE_BYTES,
+    )?;
     let identity: Value = serde_json::from_slice(&bytes)
         .map_err(|error| CliError::message(format!("invalid project identity: {error}")))?;
     identity
@@ -540,7 +545,11 @@ fn search_artifacts(
 
 fn dups_registry(globals: CliGlobals, json: bool) -> Result<(), CliError> {
     let mut context = context(globals)?;
-    let bytes = match read_regular_nofollow(&context.dups_registry_path, MAX_KNOWLEDGE_BYTES) {
+    let bytes = match read_regular_nofollow(
+        ReadSubject::File,
+        &context.dups_registry_path,
+        MAX_KNOWLEDGE_BYTES,
+    ) {
         Ok(bytes) => bytes,
         Err(error)
             if context.dups_registry_path == context.primary_root.join("dups-registry.json") =>
@@ -575,7 +584,7 @@ fn dups_check(globals: CliGlobals, command: DupsCheckCmd) -> Result<(), CliError
     let path = command
         .path
         .ok_or_else(|| CliError::message("usage: dups check <file>"))?;
-    let bytes = read_regular_nofollow(&path, MAX_KNOWLEDGE_BYTES)?;
+    let bytes = read_regular_nofollow(ReadSubject::File, &path, MAX_KNOWLEDGE_BYTES)?;
     let mut names = BTreeMap::<String, usize>::new();
     for line in String::from_utf8_lossy(&bytes).lines() {
         let mut words = line.split_whitespace();
@@ -667,7 +676,7 @@ fn load_insights(context: &ExecutionContext) -> Result<Vec<Value>, CliError> {
     insight_files(context)?
         .into_iter()
         .map(|path| {
-            let bytes = read_regular_nofollow(&path, MAX_KNOWLEDGE_BYTES)?;
+            let bytes = read_regular_nofollow(ReadSubject::File, &path, MAX_KNOWLEDGE_BYTES)?;
             serde_json::from_slice(&bytes).map_err(|error| {
                 CliError::message(format!("invalid insight {}: {error}", path.display()))
             })
@@ -950,7 +959,11 @@ fn registry_error(error: shepherd::registry::Error) -> CliError {
     CliError::message(error.to_string())
 }
 #[cfg(unix)]
-fn read_regular_nofollow(path: &Path, limit: u64) -> Result<Vec<u8>, CliError> {
+fn read_regular_nofollow(
+    subject: ReadSubject,
+    path: &Path,
+    limit: u64,
+) -> Result<Vec<u8>, CliError> {
     use rustix::fs::{FileType, Mode, OFlags, fstat, open};
     use std::fs::File;
     let descriptor = open(
@@ -958,20 +971,12 @@ fn read_regular_nofollow(path: &Path, limit: u64) -> Result<Vec<u8>, CliError> {
         OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW,
         Mode::empty(),
     )
-    .map_err(|error| {
-        CliError::message(format!(
-            "cannot open {} without following symlinks: {error}",
-            path.display()
-        ))
-    })?;
+    .map_err(|error| classify_nofollow_open_error(subject, path, error))?;
     let stat = fstat(&descriptor).map_err(|error| {
         CliError::message(format!("cannot inspect {}: {error}", path.display()))
     })?;
     if !FileType::from_raw_mode(stat.st_mode).is_file() {
-        return Err(CliError::message(format!(
-            "not a regular file: {}",
-            path.display()
-        )));
+        return Err(CliError::message(subject.not_a_regular_file_message(path)));
     }
     let mut bytes = Vec::new();
     File::from(descriptor)
@@ -988,15 +993,20 @@ fn read_regular_nofollow(path: &Path, limit: u64) -> Result<Vec<u8>, CliError> {
 }
 
 #[cfg(not(unix))]
-fn read_regular_nofollow(path: &Path, limit: u64) -> Result<Vec<u8>, CliError> {
+fn read_regular_nofollow(
+    subject: ReadSubject,
+    path: &Path,
+    limit: u64,
+) -> Result<Vec<u8>, CliError> {
     let metadata = fs::symlink_metadata(path).map_err(|error| {
-        CliError::message(format!("cannot inspect {}: {error}", path.display()))
+        if error.kind() == std::io::ErrorKind::NotFound {
+            CliError::message(subject.not_found_message(path))
+        } else {
+            CliError::message(format!("cannot inspect {}: {error}", path.display()))
+        }
     })?;
     if !metadata.is_file() {
-        return Err(CliError::message(format!(
-            "not a regular file: {}",
-            path.display()
-        )));
+        return Err(CliError::message(subject.not_a_regular_file_message(path)));
     }
     let mut bytes = Vec::new();
     fs::File::open(path)
@@ -1016,7 +1026,8 @@ fn read_regular_nofollow(path: &Path, limit: u64) -> Result<Vec<u8>, CliError> {
 #[cfg(test)]
 mod tests {
     use super::{
-        hex_bytes, query_spec, read_regular_nofollow, render_insights_markdown, render_table,
+        ReadSubject, hex_bytes, query_spec, read_regular_nofollow, render_insights_markdown,
+        render_table,
     };
     #[test]
     fn query_names_are_an_allowlist() {
@@ -1048,9 +1059,9 @@ mod tests {
         let link = root.join("link");
         fs::write(&target, b"bounded").expect("target");
         symlink(&target, &link).expect("symlink");
-        assert!(read_regular_nofollow(&target, 7).is_ok());
-        assert!(read_regular_nofollow(&target, 6).is_err());
-        assert!(read_regular_nofollow(&link, 7).is_err());
+        assert!(read_regular_nofollow(ReadSubject::File, &target, 7).is_ok());
+        assert!(read_regular_nofollow(ReadSubject::File, &target, 6).is_err());
+        assert!(read_regular_nofollow(ReadSubject::File, &link, 7).is_err());
         fs::remove_dir_all(root).expect("cleanup");
     }
 }

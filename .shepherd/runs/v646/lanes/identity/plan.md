@@ -244,3 +244,68 @@ design exists to avoid.
 Both existing symlink-refusal tests for this path must keep passing unchanged:
 `init_refuses_a_symlink_namespace_without_touching_its_target` (`wave_c_bootstrap_cli.rs:235`) and
 `init_refuses_an_existing_config_symlink_instead_of_reporting_success` (`:253`).
+
+## 11. SCOPE ADDITION — wave 2, Step D (doctor install integrity)
+
+RESTORED 22:05. This section was written at 21:05 and was subsequently lost when an external
+actor reset plan.md to its committed 246-line state. Recorded per the run's drift rule: content
+this lane did not write replaced content it did. Step D was dispatched citing this section, found
+it missing, and correctly did NOT halt: it cross-verified the same requirement independently from
+`lanes/distribution/plan.md`, `carry-forward.md` and `seed.md`, all three agreeing, and delivered
+against it. Good behaviour under a broken citation, and the reason the loss cost nothing.
+
+Assigned by team-lead after wave 1 was in flight, resolving a file collision with the distribution
+lane: their deliverable 2 needs `shepherd doctor` to detect a non-native or stale `shepherd` on
+PATH, and `doctor` lives in `wave_c_bootstrap.rs`, which this lane owns.
+
+**Why wave 2 and not a parallel step.** Step I was editing `wave_c_bootstrap.rs` at the time. Two
+implementers in one file is the exact collision the file-disjoint rule prevents.
+
+`doctor` reports THREE facts, not one: the resolved PATH of `shepherd`, whether it is the native
+binary rather than a launcher, and the SKEW against the running checkout build.
+
+**A version-only comparison is a gate that cannot fail, measured not theoretical.** The stale
+binary and its fix both report `shepherd-cli 6.4.6`. This lane lost 20 minutes to exactly that:
+`~/.cargo/bin/shepherd` at 20:31:38 versus the fix at 20:43:45, same version string, every
+dispatched subagent denied.
+
+## 12. Wave 2 outcome
+
+Three file-disjoint steps, all DONE, review GREEN.
+
+| Step | Owned | Result |
+|---|---|---|
+| D | `wave_c_bootstrap.rs`, `wave_c_bootstrap_cli.rs` | doctor reports resolved path, native-vs-launcher, skew. 12 passed |
+| F | `wave_g_coordination.rs`, `wave_h_execution_cli.rs` | repaired the regression wave 1 caused. 7 passed, 3 passed |
+| G | `dispatch.rs`, `wave_f_knowledge.rs` + tests | routed both `not_a_regular_file` sites through `ReadSubject`. 7 passed, 7 passed |
+
+Full `cargo test -p shepherd-cli --no-fail-fast`: every target green.
+
+**The wave 1 regression, and why it was nearly missed.** Both wave 1 coders and its auditor
+reported `wave_g_coordination` and `wave_h_execution_cli` as unrelated pre-existing failures,
+reasoning that those test files were byte-identical to base. That is a category error: an
+unchanged test can be broken by changed production behaviour. The conductor disproved it directly:
+
+```
+$ shepherd init --confirm
+$ sqlite3 ... "INSERT INTO projects ... VALUES ('project-g',...)"
+$ sqlite3 ... "SELECT id FROM projects ORDER BY id LIMIT 1;"
+01a012b7-c7c4-7b61-b2fc-4ba198ac68a2      # init's uuid, not project-g
+```
+
+Both fixtures ran `init --confirm` and then hand-inserted a competing row. Wave 1 made `init`
+insert one too, and a uuid v7 sorts before `project-g`, so every dependent row keyed to the
+literal id became unreachable. Step F repaired the fixtures to key off the identity `init`
+actually creates, which is the honest reflection of the corrected product behaviour.
+
+## 13. Known limitation, carried to the handoff
+
+`compare_binary_freshness` (`wave_c_bootstrap.rs:872`) short-circuits to `Some(0)` when the
+resolved PATH binary IS the running binary (`same_binary`), and emits no warning in that case. So
+the skew check cannot fire in the operator's most common invocation, plain `shepherd doctor` from
+PATH. That is defensible, since a stale binary cannot be expected to diagnose its own staleness
+and may not even contain the check, but reporting a silent zero is weaker than saying the check
+could not be performed. Recommended follow-up: emit an explicit "skew not assessable, doctor is
+running as the resolved binary" note, and where a checkout build exists, compare against it.
+Not fixed in this lane: it is a refinement of a requirement that was itself a late scope addition,
+and the delivered check does catch the failure that motivated it.
