@@ -23,6 +23,55 @@ either a 10-deliverable, 5-lane seed is not a `patch-seed` and the kind vocabula
 coarse, or the seed should carry the directive and leave the evidence in `mesh.md`, which is
 the artifact for evidence. Do not resolve it by moving the number.
 
+## 0a. WRONG-TIER-DISPATCH and closed-flock are bypassable by payload shape — HIGH, REGRESSION INTRODUCED BY v6.4.6
+
+**This is a regression this sprint introduced and did NOT fix. It ships open.**
+
+Two `dispatch-scope` rules key on the RESOLVED TARGET. `05a977a` allowed a `Workflow` call
+whose `tool_input` yields no target, on the stated reasoning that "each spawned agent is
+guarded at SubagentStart, where its role is known." **That reasoning was asserted and never
+verified, and it is false** — `SubagentStart` records an agent; it does not evaluate
+dispatch-scope. Removing the fail-closed default left nothing to deny on.
+
+Reproduced (found by the harness lane, whose own role the first rule bounds):
+
+```
+$ printf '%s' '{"tool_name":"Workflow","role":"conductor","tool_input":{"target_role":"engineer"}}' | shepherd guard eval
+{"decision": "deny", "rule": "plan-authorship-and-gating-are-root-tier-exclusive", "halt_code": "WRONG-TIER-DISPATCH"}
+
+$ printf '%s' '{"tool_name":"Workflow","role":"conductor","tool_input":{"script":"await agent(\"plan it\", {agentType: \"shepherd:engineer\"})"}}' | shepherd guard eval
+{"decision": "allow"}                          <-- same intent, opposite verdict
+
+$ printf '%s' '{"tool_name":"Workflow","role":"shepherd","tool_input":{"script":"await agent(\"x\", {agentType: \"general-purpose\"})"}}' | shepherd guard eval
+{"decision": "allow"}                          <-- closed-flock-only bypassed too
+```
+
+`implementer-roles-never-dispatch` is UNAFFECTED and is genuinely stronger than before: it
+keys on the ACTING role, so it holds under both payload shapes.
+
+**Why it was not fixed in-sprint, stated plainly rather than as an excuse.** The guard cannot
+distinguish a legitimate conductor fan-out from the bypass, because neither declares a
+target — a conductor dispatching coders and a conductor dispatching an engineer produce
+identical `tool_input`. So the three available moves were: restore fail-closed (denies every
+conductor `Workflow`, which is the mechanism four lanes were executing through at the time),
+statically interpret the script (brittle, and v6.4.5 deliberately rejected JS interpretation),
+or accept the gap. Breaking every conductor mid-sprint to close it was the worse trade, and
+the previous state — `Workflow` denied outright for everyone — was not a safer baseline, it
+was an unusable tool.
+
+**The real fix, for v6.4.7, and it is architectural:** enforcement must move to spawn time.
+The dispatch decision belongs where both roles are known — at `SubagentStart`, evaluating
+dispatch-scope with the PARENT's role as dispatcher and the child's `agent_type` as target.
+That requires a reliable parent link the host does not currently provide, which makes it the
+same family as the Codex spawn-to-child correlation gap in item 3. The interim alternative is
+to require a lane-lead's `Workflow` call to DECLARE its target roles and deny when it does
+not — enforceable today, but a contract change that needs the operator.
+
+`hooks/tests/test_native_cli_contract.sh` is RED and CORRECTLY red. It is the only thing in
+the repo that caught this. It must NOT be edited to assert `allow` — that is fitting the
+assertion to the artifact, the failure class this sprint exists to end. The harness lane
+refused to touch it and was right to.
+
 ## 0b. `required-features` targets are silently skipped, and the gate never noticed — HIGH
 
 Fixed in v6.4.6 (`04c500a` adds a feature-gated step to `scripts/gate.sh`), recorded because
