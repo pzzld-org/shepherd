@@ -62,35 +62,96 @@ fi
 cp LICENSE "$payload/THIRD_PARTY_LICENSES/$legal_hash.txt"
 printf '# fixture notices\n\nTHIRD_PARTY_LICENSES/%s.txt\n' "$legal_hash" > "$payload/THIRD_PARTY_NOTICES.md"
 for target in aarch64-apple-darwin aarch64-unknown-linux-gnu x86_64-apple-darwin x86_64-unknown-linux-gnu; do
-  for name in "shepherd-6.4.8-${target}.tar.gz" "shepherd-${target}.tar.gz"; do
+  for name in "shepherd-6.4.9-${target}.tar.gz" "shepherd-${target}.tar.gz"; do
     tar -C "$payload" -czf "$assets/$name" LICENSE THIRD_PARTY_NOTICES.md THIRD_PARTY_LICENSES shepherd
   done
 done
-for name in shepherd-6.4.8-x86_64-pc-windows-msvc.zip shepherd-x86_64-pc-windows-msvc.zip; do
+for name in shepherd-6.4.9-x86_64-pc-windows-msvc.zip shepherd-x86_64-pc-windows-msvc.zip; do
   (cd "$payload" && zip -qr "$assets/$name" LICENSE THIRD_PARTY_NOTICES.md THIRD_PARTY_LICENSES shepherd.exe)
 done
-for name in shepherd-component-6.4.8-wasm32-wasip2.tar.gz shepherd-component-wasm32-wasip2.tar.gz; do
+for name in shepherd-component-6.4.9-wasm32-wasip2.tar.gz shepherd-component-wasm32-wasip2.tar.gz; do
   tar -C "$payload" -czf "$assets/$name" LICENSE THIRD_PARTY_NOTICES.md THIRD_PARTY_LICENSES shepherd-component.wasm
 done
 mkdir -p "$payload/package"
 printf '{}\n' > "$payload/package/package.json"
 cp "$payload/LICENSE" "$payload/THIRD_PARTY_NOTICES.md" "$payload/package/"
 cp -R "$payload/THIRD_PARTY_LICENSES" "$payload/package/"
-package_tarballs=$(release_package_names 6.4.8)
+package_tarballs=$(release_package_names 6.4.9)
 while IFS= read -r tarball; do
   tar -C "$payload" -czf "$assets/$tarball" package
 done <<<"$package_tarballs"
-scripts/verify-release-distribution.sh "$assets" 6.4.8
+scripts/verify-release-distribution.sh "$assets" 6.4.9
 
 cp -R "$assets" "$tmp_dir/tampered"
 tampered_payload="$tmp_dir/tampered-payload"
 cp -R "$payload" "$tampered_payload"
 printf 'tampered\n' >> "$tampered_payload/THIRD_PARTY_LICENSES/$legal_hash.txt"
-tar -C "$tampered_payload" -czf "$tmp_dir/tampered/shepherd-component-6.4.8-wasm32-wasip2.tar.gz" \
+tar -C "$tampered_payload" -czf "$tmp_dir/tampered/shepherd-component-6.4.9-wasm32-wasip2.tar.gz" \
   LICENSE THIRD_PARTY_NOTICES.md THIRD_PARTY_LICENSES shepherd-component.wasm
-if scripts/verify-release-distribution.sh "$tmp_dir/tampered" 6.4.8 >/dev/null 2>&1; then
+if scripts/verify-release-distribution.sh "$tmp_dir/tampered" 6.4.9 >/dev/null 2>&1; then
   printf 'tampered legal component archive must fail verification\n' >&2
   exit 1
 fi
+
+
+# ---------------------------------------------------------------------------
+# Line endings. LICENSE is a byte-for-byte payload inside all 16 assets:
+# verify-release-distribution.sh compares each extracted copy against the
+# repository file. GitHub's Windows runners check out with core.autocrlf=true,
+# which rewrote LICENSE to CRLF. The release job then failed at
+# "LICENSE differs in ...windows-msvc.zip.d" only after all five native
+# targets, the component job, and the crates.io publication had succeeded --
+# an unrecoverable ordering, because the published crates pin that commit.
+# Two gates now stand in front of that, and both are falsified below.
+# ---------------------------------------------------------------------------
+
+eol_attr=$(git check-attr eol -- LICENSE)
+if [[ "$eol_attr" != 'LICENSE: eol: lf' ]]; then
+  printf '.gitattributes must pin LICENSE to LF, found: %s\n' "$eol_attr" >&2
+  exit 1
+fi
+
+# The assertion above must be reading a real attribute, not a constant: an
+# identical query against a repository with no .gitattributes reports
+# `unspecified`, which is exactly the state that shipped the broken zip.
+attr_probe="$tmp_dir/attr-probe"
+mkdir -p "$attr_probe"
+git -C "$attr_probe" init -q
+: > "$attr_probe/LICENSE"
+probe_attr=$(git -C "$attr_probe" check-attr eol -- LICENSE)
+if [[ "$probe_attr" != 'LICENSE: eol: unspecified' ]]; then
+  printf 'attribute probe cannot observe an unpinned LICENSE: %s\n' "$probe_attr" >&2
+  exit 1
+fi
+
+# The staging script is the second gate: it runs on the packaging runner, so it
+# fails the one job that would have produced the divergence.
+eol_root="$tmp_dir/crlf-checkout"
+eol_stage="$tmp_dir/crlf-stage"
+mkdir -p "$eol_root/scripts" "$eol_stage"
+cp scripts/stage-distribution-legal.sh "$eol_root/scripts/"
+printf 'a rewritten license\r\nsecond line\r\n' > "$eol_root/LICENSE"
+if crlf_output=$(bash "$eol_root/scripts/stage-distribution-legal.sh" \
+  "$eol_stage" --scope native --target x86_64-pc-windows-msvc 2>&1); then
+  printf 'legal staging must refuse a CRLF checkout\n' >&2
+  exit 1
+fi
+if ! rg -Fq 'LICENSE carries CR bytes' <<<"$crlf_output"; then
+  printf 'legal staging failed for the wrong reason: %s\n' "$crlf_output" >&2
+  exit 1
+fi
+test ! -e "$eol_stage/LICENSE"
+
+# And it must let an LF checkout through -- a guard that refuses everything is
+# not a guard. The staged copy proves execution reached the payload copy; the
+# notices renderer then fails only because this fixture has no workspace.
+printf 'a rewritten license\nsecond line\n' > "$eol_root/LICENSE"
+lf_output=$(bash "$eol_root/scripts/stage-distribution-legal.sh" \
+  "$eol_stage" --scope native --target x86_64-pc-windows-msvc 2>&1) || true
+if rg -Fq 'LICENSE carries CR bytes' <<<"$lf_output"; then
+  printf 'legal staging rejects an LF checkout: %s\n' "$lf_output" >&2
+  exit 1
+fi
+cmp -s "$eol_root/LICENSE" "$eol_stage/LICENSE"
 
 printf 'ok: release sources carry locked notices and package license copies\n'

@@ -4,7 +4,43 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
-## v6.4.8 — unreleased
+## v6.4.9 — unreleased
+
+**A Windows checkout rewrote the LICENSE and the release found out last.** Every asset built,
+every crate published, and only then did the publication gate compare the LICENSE inside the
+Windows zip against the repository copy and refuse to publish. The bytes differed by 201 CR
+characters and nothing else. Because the published crates pin that exact commit, the release
+could not be re-cut from a fix — the assets had to be lifted out of the failed run's artifacts
+and attached to the tag by hand.
+
+### Fixed
+
+- **Line endings are pinned at the repository, not hoped for.** GitHub's Windows runners check
+  out with `core.autocrlf=true`. `stage-distribution-legal.sh` copies `LICENSE` verbatim into
+  all 16 assets and `verify-release-distribution.sh` compares every extracted copy against the
+  repository file, so a rewritten checkout guarantees a failure that only the last job can see.
+  `.gitattributes` now pins `* text=auto eol=lf` (no tracked file carried a CR byte, so this
+  changes no content — `git add --renormalize .` is a no-op), with the existing
+  `THIRD_PARTY_LICENSES/*.txt binary` override still winning for the hash-named upstream texts.
+- **The packaging runner refuses a rewritten checkout.** `stage-distribution-legal.sh` fails on
+  a `LICENSE` containing CR bytes, before it copies anything. The job that would have produced
+  the divergence is the job that stops, instead of five build jobs and a crates.io publication
+  succeeding first.
+- **Both gates are falsified in the suite.** `test-release-distribution-license.sh` asserts
+  `git check-attr eol -- LICENSE` reports `lf`, proves that assertion can observe the
+  `unspecified` state by running the same query against a scratch repository with no
+  `.gitattributes`, drives the staging script with a CRLF fixture and requires the CR refusal,
+  and then drives it with an LF fixture and requires the staged copy to appear.
+
+### Notes
+
+- `cargo binstall shepherd-cli` and `scripts/install-shepherd.sh` were both exercised against
+  the published v6.4.8 release on `aarch64-apple-darwin` and resolve, download, verify, and
+  install `shepherd-cli 6.4.8`.
+
+---
+
+## v6.4.8 — 2026-08-18
 
 **Stop burning a version every time a native target fails.** v6.4.6 and v6.4.7 both
 published their crates to crates.io and then failed to produce a GitHub release, because
