@@ -143,6 +143,7 @@ jobs:
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.11 # v0.0.11
       - name: Enable the sccache wrapper
+        shell: bash
         run: |
           echo "RUSTC_WRAPPER=sccache" >> "${GITHUB_ENV}"
           echo "SCCACHE_GHA_ENABLED=true" >> "${GITHUB_ENV}"
@@ -160,6 +161,7 @@ jobs:
         with:
           tool: cargo-nextest
       - name: cargo nextest
+        shell: bash
         run: |
           cargo nextest run --workspace --locked --no-fail-fast \
             --features ${{ matrix.features }}
@@ -167,6 +169,7 @@ jobs:
       # and the "how to add a member" recipe, so a rotted intra-doc link there
       # is a rotted instruction, not a cosmetic issue.
       - name: cargo test --doc
+        shell: bash
         run: cargo test --doc --workspace --locked --features ${{ matrix.features }}
   features:
     name: feature matrix
