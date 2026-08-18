@@ -126,7 +126,7 @@ pub(super) fn run_native_hook(host: HookHost, globals: CliGlobals) -> Result<(),
     match run_hook(input, host, globals) {
         Ok(HookOutput::Silent) => Ok(()),
         Ok(HookOutput::Context { event, detail }) => emit_json(&context(&event, &detail), host),
-        Ok(HookOutput::Deny { detail }) => emit_json(&deny(&detail), host),
+        Ok(HookOutput::Deny { detail }) => emit_json(&deny(&hook_event_name, &detail), host),
         // A guard verdict reaches us as `Ok(HookOutput::Deny)`. Every error that
         // lands here is therefore an infrastructure fault in shepherd's own
         // bookkeeping -- an unresolved identity, a run that is not executing,
@@ -194,7 +194,12 @@ fn read_input(host: HookHost) -> Result<NativeHookInput, CliError> {
 
 fn emit_parse_error(error: CliError, host: HookHost) -> Result<(), CliError> {
     let fallback = format!("invalid {} hook input", host.label());
-    emit_json(&deny(error.message_text().unwrap_or(&fallback)), host)
+    // The envelope did not parse, so the event it claimed is unknown; a
+    // refusal is only meaningful pre-flight, which is what the host asked for.
+    emit_json(
+        &deny("PreToolUse", error.message_text().unwrap_or(&fallback)),
+        host,
+    )
 }
 
 fn run_hook(
@@ -279,7 +284,16 @@ fn run_hook(
         DispatchRequest::Resolve(request) => {
             let request = decode_request(&request)?;
             match service.resolve(request, now) {
+                // Both tool events resolve, but only the pre-flight one gates.
+                // A `PostToolUse` verdict would be advice about a call that
+                // already ran, emitted under a `PreToolUse` label -- so the
+                // resolution is recorded and the guard is not consulted.
+                Ok(_) if input.hook_event_name == "PostToolUse" => Ok(HookOutput::Silent),
                 Ok(response) => evaluate_pre_tool_use(&input, &response),
+                Err(error) if input.hook_event_name == "PostToolUse" => Ok(HookOutput::Context {
+                    event: input.hook_event_name.clone(),
+                    detail: format!("dispatch state unavailable after the tool ran: {error}"),
+                }),
                 Err(error) => Ok(unresolved_pre_tool_use(&input, &context, &error)),
             }
         }
@@ -542,10 +556,10 @@ fn context(event: &str, detail: &str) -> serde_json::Value {
     })
 }
 
-fn deny(detail: &str) -> serde_json::Value {
+fn deny(event: &str, detail: &str) -> serde_json::Value {
     serde_json::json!({
         "hookSpecificOutput": {
-            "hookEventName": "PreToolUse",
+            "hookEventName": event,
             "permissionDecision": "deny",
             "permissionDecisionReason": format!("[shepherd] {detail}"),
         }

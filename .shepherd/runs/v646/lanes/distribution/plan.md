@@ -340,23 +340,120 @@ does not accept a coder's self-report. Specific things it must refuse to take on
 - that S1's stubs model real tars rather than the current script's spelling.
 Anything not clean goes back as a redo before the lane is committed.
 
-## PENDING-ESCALATION
+## ESCALATIONS - ALL FOUR RESOLVED 2026-08-17
 
-The `shepherd doctor` half of deliverable 2 - detect and report when the resolved `shepherd`
-is not the native binary - lives in `crates/cli/src/cmd/wave_c_bootstrap.rs`
-(`WaveCDoctorCmd` `:152`, `health_report` `:373`). That path is OUTSIDE this lane's scope AND
-collides with the identity lane, which must edit `initialize_project` at `:282` in the same
-file for deliverable 3. Escalated to the team lead; recommended disposition is to hand the
-doctor check to the identity lane as an extra step in the file it already owns.
-Worth folding into that check when it is assigned: the operator's own memory records that
-`~/.cargo/bin/shepherd` goes stale silently, sitting at 6.4.5 while 6.4.6 source was being
-edited, because hooks invoke the binary on PATH. So `doctor` should report the resolved path,
-whether it is the native binary, AND the version skew between the resolved binary and the
-checkout. That covers both this sprint's defect and the v6.4.5 DF-54 finding.
+Team lead ruled on all four. Recorded here so no later reader re-derives them.
 
-Two smaller items also escalated and unresolved: a pre-merge macos-14 packaging job belongs
-in `.github/workflows/rust.yml` (out of scope; S4c puts it in `release.yml`, which is
-release-time rather than merge-time), and `README.md:107` documents the launcher S5 deletes.
+**Doctor check -> IDENTITY LANE.** The `shepherd doctor` half of deliverable 2 detecting a
+non-native resolved `shepherd` is REMOVED from this lane and assigned to the identity lane,
+which already owns `crates/cli/src/cmd/wave_c_bootstrap.rs` (`WaveCDoctorCmd` `:152`,
+`health_report` `:373`, and their `initialize_project` work at `:282`). This lane's
+deliverable 2 is now exactly the repo-side half: launcher deletion, installer hardening, and
+the rewritten authority gate. Passed along for whoever implements it: the operator's memory
+records `~/.cargo/bin/shepherd` going stale silently, sitting at 6.4.5 while 6.4.6 source was
+being edited, because hooks invoke the binary on PATH. So `doctor` should report the resolved
+path, whether it is the native binary, AND the version skew against the checkout. That covers
+this sprint's defect and the v6.4.5 DF-54 finding in one check.
+
+**rust.yml -> GRANTED, narrowly.** Exactly ONE `macos-14` packaging job may be added to
+`.github/workflows/rust.yml`. Nothing else in that file may change; its `features` job runs
+on `pull_request` by deliberate repair earlier this session and must stay. Floating major
+action tags only. See S7.
+
+**README.md:107 -> GRANTED**, that line only. See S8.
+
+**cargo-publish.yml -> GRANTED.** The trigger moves off the tag so publication precedes the
+tag, which is what makes gate H5 reachable without a manual step. See S9, which merges into
+S6 because the two share a predicate. Three binding constraints from the ruling:
+1. Publication gates on the SAME release-commit detection `release.yml` uses. A push to main
+   that is not a release commit publishes NOTHING. This must not become publish-on-every-push.
+2. It must be IDEMPOTENT. Re-running against an already-published version is SUCCESS, not
+   failure. crates.io rejects a duplicate version and that must not turn the release red.
+3. The fail-closed pre-tag assertion from S4 STAYS. Moving publication earlier does not remove
+   the need to assert visibility before the tag is cut. The assertion is what makes the
+   ordering enforceable rather than merely intended.
+No invented secrets. `CARGO_REGISTRY_TOKEN` exists and `cargo-publish.yml` already uses it;
+the point of moving the trigger is that no PAT is needed.
+
+## Wave 1b (sequential, after wave 1 review)
+
+S6 and S9 are ONE step with one owner: they share the release-commit predicate, and splitting
+them would duplicate exactly the logic the change exists to unify. S7 and S8 are file-disjoint
+from it and from each other, so all three fire together.
+
+### S6+S9 - the release chain fires correctly and can fail
+
+**file_scope (exclusive):** `.github/workflows/release.yml` EDIT (detect step),
+`.github/workflows/cargo-publish.yml` EDIT, `.github/workflows/gitflow.yml` EDIT,
+`scripts/detect-release-commit.sh` NEW, `scripts/tests/test-release-workflow.sh` EDIT.
+
+**Change.** Extract the release-commit detection into `scripts/detect-release-commit.sh` and
+have BOTH `release.yml` and `cargo-publish.yml` call it, so constraint 1 above is satisfied
+structurally rather than by two regexes kept in sync by hope. Then apply S6's three-case split
+(below) and move `cargo-publish.yml`'s trigger from `push: tags` to the release-commit-gated
+main push, keeping `workflow_dispatch` for recovery and making an already-published version a
+SUCCESS.
+
+**The S6 defect, unchanged.** `release.yml:47-68` sets `proceed=false` on three distinct
+conditions and treats them identically; every downstream job is `if:`-skipped and the run
+concludes SUCCESS. `gitflow.yml:26-27` chains on `workflow_run ... conclusion == 'success'`,
+so all post-release automation hangs off a signal that is green for a no-op. Two runs
+concluded success having released nothing. Of the three paths:
+- `:49-53` ref is not the default branch. LEGITIMATE SKIP, stays green.
+- `:55` subject does not match the release regex. LEGITIMATE SKIP, stays green.
+- `:68` subject DOES match `^(release:\s+)?vX.Y.Z` but `current != plugin`, the
+  `.claude-plugin/plugin.json` cross-check at `:57-58` failed. **A RELEASE COMMIT THAT
+  PRODUCED NOTHING. This must turn the run RED.**
+Also tighten `gitflow.yml`'s `skip_automatic_or_fail` (`:60-69`) at the `:83` branch so a run
+whose head commit IS a release commit fails rather than no-ops. Leave `:96` as a green skip.
+
+**ACCEPTANCE.** The predicate is executable without GitHub, so assert the full truth table:
+```
+non-default ref                      -> skip, green
+subject 'chore: whatever'            -> skip, green
+subject 'v6.4.6' + plugin 6.4.6      -> proceed
+subject 'v6.4.6' + plugin 6.4.5      -> FAIL, non-zero, message names BOTH versions
+subject 'release: v6.4.6' + mismatch -> FAIL, non-zero
+already-published version            -> SUCCESS, not failure (constraint 2)
+non-release push to main             -> publishes nothing (constraint 1)
+bash scripts/tests/test-release-workflow.sh   # exit 0
+```
+
+**FALSIFICATION (the team lead named this the acceptance).** Construct the deliberately-broken
+release commit, subject `v6.4.6` against a `plugin.json` reading otherwise, and SHOW the gate
+failing with output recorded. Then revert the S6 change and show the SAME input concluding
+green, which is the bug. Both halves go in the artifact. A run that cannot be made red by a
+broken release commit has not fixed deliverable 7.
+
+### S7 - pre-merge macOS packaging gate
+
+**file_scope (exclusive):** `.github/workflows/rust.yml` EDIT (ONE new job, nothing else),
+`scripts/tests/test-release-archive-layout.sh` NEW.
+
+**Change.** Put the archive-layout assertion in a script, not inline YAML, so the release-time
+job S4 added and this pre-merge job share ONE assertion. Assert the layout binstall expects:
+the binary at the archive ROOT with no leading directory component, matching
+`bin-dir = "{ bin }{ binary-ext }"` at `crates/cli/Cargo.toml:60`. Add one `macos-14` job to
+`rust.yml` that runs it. Touch nothing else in `rust.yml`: its `features` job runs on
+`pull_request` by deliberate repair and must stay. Floating major action tags only; a SHA is
+rejected by `scripts/check-github-actions.py`.
+This is the job that catches 1a BEFORE a merge. S4's release.yml job catches it at release
+time. Both are wanted; they must not be two copies of the assertion.
+
+**ACCEPTANCE.** `bash scripts/tests/test-release-archive-layout.sh` exits 0 against a
+correctly-built archive; `python3 scripts/check-github-actions.py` exits 0; `rust.yml` parses.
+**FALSIFICATION.** Build an archive with the binary under a leading directory instead of at
+the root. The assertion MUST go red. Record it.
+
+### S8 - README launcher reference
+
+**file_scope (exclusive):** `README.md` EDIT, line 107 ONLY.
+
+**Change.** `README.md:107` documents the checkout-only `bin/shepherd` launcher that S5
+deletes. Correct that one line so it does not describe a deleted file. Change nothing else in
+README.md.
+**ACCEPTANCE.** `git grep -n 'bin/shepherd' -- README.md` returns no hit describing it as a
+usable launcher; `git diff --stat README.md` shows a one-line change.
 
 ## CI-PENDING - NOT LOCALLY VERIFIABLE
 
@@ -373,3 +470,7 @@ State these as unverified in the handoff. Do not describe any of them as tested.
    `cargo-publish.yml`. This is asserted from GitHub's documented behaviour, not observed.
 6. That a real no-op release run now concludes red. S6 proves the PREDICATE locally; only a
    live run proves the workflow conclusion.
+7. That `cargo-publish.yml`'s moved trigger actually fires on a real release-commit push to
+   main, and that its idempotent path returns success against an already-published version.
+   The predicate is proven locally; the workflow event is not.
+8. That the `rust.yml` macos-14 job passes on the real runner image.

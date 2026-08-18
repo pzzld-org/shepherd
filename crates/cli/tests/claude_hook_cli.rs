@@ -442,3 +442,46 @@ fn root_session_may_write_inside_the_repository_but_not_outside_it() {
     );
     fs::remove_dir_all(root).expect("remove fixture directory");
 }
+
+/// `PostToolUse` resolves like `PreToolUse` but must not be gated by it: a
+/// verdict about a call that already ran is advice, and it was being emitted
+/// under a hardcoded `PreToolUse` label.
+#[test]
+fn post_tool_use_records_without_running_the_pre_flight_guard() {
+    let root = repository("post-tool-use");
+    let session = hook(
+        &root,
+        serde_json::json!({
+            "hook_event_name": "SessionStart",
+            "session_id": "claude-session-post"
+        }),
+    );
+    assert!(session.status.success());
+
+    // The same shape that PreToolUse refuses outside the repository.
+    let after = hook(
+        &root,
+        serde_json::json!({
+            "hook_event_name": "PostToolUse",
+            "session_id": "claude-session-post",
+            "tool_use_id": "post-tool-a",
+            "tool_name": "Write",
+            "tool_input": {"file_path": "/etc/passwd", "content": "no"}
+        }),
+    );
+    assert!(
+        after.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&after.stderr)
+    );
+    let text = String::from_utf8_lossy(&after.stdout);
+    assert!(
+        !text.contains("\"permissionDecision\""),
+        "PostToolUse must not emit a permission decision: {text}"
+    );
+    assert!(
+        !text.contains("PreToolUse"),
+        "PostToolUse must never label its output PreToolUse: {text}"
+    );
+    fs::remove_dir_all(root).expect("remove fixture directory");
+}
