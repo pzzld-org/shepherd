@@ -40,6 +40,7 @@
 !.shepherd/runs/*/phase0.md
 !.shepherd/runs/*/close.md
 !.shepherd/runs/*/handoff.md
+!.shepherd/runs/*/carry-forward.md
 !.shepherd/runs/*/dogfood.md
 !.shepherd/runs/*/lanes/
 !.shepherd/runs/*/lanes/*/
