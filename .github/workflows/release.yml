@@ -399,9 +399,61 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  # Crates publish AFTER the assets exist and BEFORE the tag. Ordering matters
+  # more than it looks: this ran as its own workflow on the same push trigger,
+  # so it raced the asset builds and won. Two consecutive patch versions were
+  # burned that way -- crates uploaded, a native target failed minutes later,
+  # no tag and no release, and a published version is not reissuable. A failed
+  # asset build must cost a re-run, never a version.
+  publish-crates:
+    name: Publish crates once every asset verifies
+    needs:
+      [
+        release-metadata,
+        build-native-assets,
+        build-component-assets,
+        verify-macos-archive-layout,
+      ]
+    if: needs.release-metadata.outputs.proceed == 'true'
+    runs-on: ubuntu-24.04
+    environment: crates-io
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout release commit
+        uses: actions/checkout@v7 # v7.0.1
+        with:
+          fetch-depth: 1
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Setup pinned Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache: false
+          toolchain: 1.97.0
+      - name: Prepare and verify immutable crate bytes
+        shell: bash
+        env:
+          VERSION: ${{ needs.release-metadata.outputs.current }}
+          STATE: ${{ runner.temp }}/shepherd-cargo-state.json
+        run: python3 scripts/cargo-publish.py prepare --version "$VERSION" --state "$STATE"
+      - name: Publish or resume dependency waves
+        shell: bash
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          VERSION: ${{ needs.release-metadata.outputs.current }}
+          STATE: ${{ runner.temp }}/shepherd-cargo-state.json
+        run: python3 scripts/cargo-publish.py publish --version "$VERSION" --state "$STATE" --confirm
+
   release:
     name: Publish verified release
-    needs: [release-metadata, build-native-assets, build-component-assets]
+    needs:
+      [
+        release-metadata,
+        build-native-assets,
+        build-component-assets,
+        publish-crates,
+      ]
     if: needs.release-metadata.outputs.proceed == 'true'
     runs-on: ubuntu-latest
     permissions:

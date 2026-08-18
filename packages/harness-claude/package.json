@@ -1,13 +1,13 @@
 {
   "name": "@pzzld/pi-claude",
-  "version": "6.4.7",
+  "version": "6.4.8",
   "description": "Thin Claude Code adapter for native per-agent identity, lifecycle dispatch, and the shared Rust guard engine.",
   "type": "module",
   "scripts": {
     "test": "node test.mjs"
   },
   "dependencies": {
-    "@pzzld/component-runtime": "6.4.7"
+    "@pzzld/component-runtime": "6.4.8"
   },
   "engines": {
     "node": ">=20"

@@ -103,10 +103,15 @@ fi
 
 python3 scripts/check-github-actions.py
 
+# The property is that EVERY checkout in this workflow pins the exact release
+# commit, not that there happen to be five of them. A literal count fails the
+# moment a job is added -- which it did, when crate publication moved into this
+# workflow to stop racing the asset builds.
+checkout_count=$(rg -Fc 'uses: actions/checkout@' "$workflow")
 sha_checkout_count=$(rg -Fc 'ref: ${{ github.sha }}' "$workflow")
-if [[ "$sha_checkout_count" -ne 5 ]]; then
-  printf 'expected all five release job checkouts to pin github.sha, found %s\n' \
-    "$sha_checkout_count" >&2
+if [[ "$sha_checkout_count" -ne "$checkout_count" ]]; then
+  printf 'every release checkout must pin github.sha: %s of %s do\n' \
+    "$sha_checkout_count" "$checkout_count" >&2
   exit 1
 fi
 if ! rg -Fq 'python3 scripts/version-bump.py check --root . --version "$current"' "$workflow"; then

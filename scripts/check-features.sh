@@ -143,7 +143,7 @@ if [[ "${WITH_TARGETS}" == "1" ]]; then
     run_checked "component validate -> wasm32-wasip2" \
       wasm-tools validate "${component_artifact}"
     extract_component_wit() {
-      local source_package='package fl03:shepherd@6.4.7;'
+      local source_package='package fl03:shepherd@6.4.8;'
       wasm-tools component wit "${component_artifact}" > "${component_wit}"
       test -s "${component_wit}"
       grep -Fq "${source_package%;} {" "${component_wit}"

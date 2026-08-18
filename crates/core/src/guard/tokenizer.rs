@@ -24,7 +24,7 @@ const SHELL_WRAPPERS: &[&str] = &["bash", "sh", "zsh", "dash", "ksh", "env", "xa
 
 /// Extract every git subcommand in encounter order.
 ///
-/// This intentionally preserves the v6.4.7 token-level compatibility limits:
+/// This intentionally preserves the v6.4.8 token-level compatibility limits:
 /// shell separators remain glued unless whitespace made them separate tokens.
 /// Like `shlex`, the primary tokenizer recognizes only space, tab, carriage
 /// return, and line feed as whitespace. Its malformed-quote fallback retains

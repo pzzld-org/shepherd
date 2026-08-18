@@ -37,7 +37,7 @@ different algorithms as if they were equal.
 
 ```toml
 [dependencies]
-shepherd = { package = "shepherd-sdk", version = "6.4.7", default-features = false, features = ["compiler", "alloc"] }
+shepherd = { package = "shepherd-sdk", version = "6.4.8", default-features = false, features = ["compiler", "alloc"] }
 ```
 
 Consumers normally import the crate through `shepherd::compiler`; direct use is

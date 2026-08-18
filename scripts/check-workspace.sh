@@ -260,7 +260,7 @@ def rule_component_contract(root: Path, crates: dict[str, dict]) -> list[str]:
     wit = directory / "wit" / "shepherd.wit"
     if not wit.is_file():
         bad.append(f"{COMPONENT}: missing wit/shepherd.wit")
-    elif "package fl03:shepherd@6.4.7;" not in wit.read_text():
+    elif "package fl03:shepherd@6.4.8;" not in wit.read_text():
         bad.append(f"{COMPONENT}: WIT package/version does not match the workspace")
     tests = directory / "tests" / "component.rs"
     if not tests.is_file():
@@ -320,6 +320,19 @@ def rule_msrv_is_consistent(root: Path, crates: dict[str, dict]) -> list[str]:
                 f"rust-toolchain.toml: channel `{channel}` must match "
                 f"workspace rust-version `{declared}`"
             )
+
+    # The README states the pinned toolchain in prose, and prose drifts silently
+    # -- it sat at 1.96.0 through a 1.97.0 bump because nothing read it.
+    readme = root / "README.md"
+    if readme.is_file():
+        for stated in re.findall(
+            r"`rust-toolchain\.toml` pins Rust ([0-9]+\.[0-9]+\.[0-9]+)",
+            readme.read_text(encoding="utf-8"),
+        ):
+            if stated != declared:
+                bad.append(
+                    f"README.md: states Rust `{stated}` but the workspace pins `{declared}`"
+                )
     return bad
 
 
@@ -381,7 +394,7 @@ FIXTURES = {
     },
     rule_version_inherited: {
         "shepherd-core": {
-            "package": {"name": "shepherd-core", "version": "6.4.7"},
+            "package": {"name": "shepherd-core", "version": "6.4.8"},
             "lints": {"workspace": True},
             "__dir__": Path("/nonexistent"),
         },
