@@ -992,6 +992,17 @@ fn remove_directory_no_follow(_anchor: &Path, _relative: &str) -> Result<(), Cli
 
 /// The outcome of a descriptor-safe identity lookup, named outside the
 /// unix-only module so callers compile on every platform.
+///
+/// The non-unix reader refuses before it can produce one, so no variant is
+/// constructed there — the type exists so the call sites type-check, which is
+/// the whole point of naming it outside the gated module.
+#[cfg_attr(
+    not(unix),
+    expect(
+        dead_code,
+        reason = "the non-unix reader refuses before constructing a lookup"
+    )
+)]
 enum IdentityLookup {
     Missing,
     NotRegular,

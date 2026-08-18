@@ -167,6 +167,14 @@ pub(crate) enum ReadSubject {
 }
 
 impl ReadSubject {
+    /// Only the descriptor-safe classifier renders this, and that classifier is
+    /// unix-only. The type itself is not: both the unix and non-unix readers
+    /// take a `ReadSubject`, so it cannot be gated without splitting every
+    /// caller.
+    #[cfg_attr(
+        not(unix),
+        expect(dead_code, reason = "only the unix classifier renders a label")
+    )]
     fn open_label(self) -> &'static str {
         match self {
             Self::ProjectIdentity => "project identity ",

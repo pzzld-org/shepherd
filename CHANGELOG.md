@@ -4,7 +4,41 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
-## v6.4.7 — unreleased
+## v6.4.8 — unreleased
+
+**Stop burning a version every time a native target fails.** v6.4.6 and v6.4.7 both
+published their crates to crates.io and then failed to produce a GitHub release, because
+crate publication raced the asset builds and won. A published version cannot be reissued, so
+each failure cost a version number rather than a re-run.
+
+### Fixed
+
+- **Crate publication is gated on the assets existing.** `cargo-publish.yml` triggered on
+  push-to-main independently of `release.yml`, so it uploaded to crates.io in parallel with
+  the native and component builds. Publication now happens INSIDE `release.yml`, in a
+  `publish-crates` job that needs every asset job, and the tag still waits on it — so the
+  documented ordering (assets verified, crates published, tag cut, release published) is
+  enforced by the job graph rather than by hope. `cargo-publish.yml` remains as the
+  operator-dispatched recovery path.
+- **Windows builds.** `-D warnings` rejected two unused items on non-unix: `ReadSubject::open_label`,
+  rendered only by the unix-only errno classifier, and the `IdentityLookup` variants, which
+  the non-unix reader refuses before constructing. Both are now `expect(dead_code)` under
+  `cfg(not(unix))`, which still fails loudly if either becomes reachable.
+- **A release gate that counted instead of testing.** The release-workflow contract asserted
+  exactly five checkouts pin `github.sha`; adding the publish job made six and turned it red
+  while the property it cares about held. It now asserts that EVERY checkout pins the release
+  commit.
+- **The README's stated toolchain** sat at 1.96.0 through a 1.97.0 bump, because nothing read
+  it. `check-workspace.sh` now checks the prose claim alongside `Cargo.toml`, `clippy.toml`,
+  and `rust-toolchain.toml`.
+
+### Changed
+
+- The README states where binaries actually come from: the binstall `pkg-url`, the
+  archive-root layout CI asserts on a real macOS runner, why `quick-install` and `compile`
+  are disabled, and that no build artifact is stored in the repository.
+
+## v6.4.7 — 2026-08-18
 
 **The release chain fired end to end for the first time and surfaced what only a real run
 could. v6.4.6's crates published to crates.io; the GitHub release did not complete. This

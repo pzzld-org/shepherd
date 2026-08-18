@@ -69,7 +69,7 @@ ignored. The principal groups are:
 | `[spawn]`, `[autorun]`, `[compaction]`, `[focus]`, `[close]` | Execution lifecycle policies. |
 | `[eval]`, `[models]`, `[prune]` | Recorded evaluation metadata, model labels, and retention policy. |
 
-The layout roots are not a second policy language. A valid v6.4.7 configuration
+The layout roots are not a second policy language. A valid v6.4.8 configuration
 must resolve `docs`, `ctx`, and `runs` beneath the project `.shepherd/` namespace
 unless an explicitly supported embedding host supplies an equivalent root.
 

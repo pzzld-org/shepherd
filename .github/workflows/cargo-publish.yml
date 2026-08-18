@@ -1,8 +1,10 @@
 name: cargo-publish
 
+# Recovery only. Ordinary publication happens inside release.yml, gated on the
+# native and component assets having built, so a late asset failure costs a
+# re-run instead of a version. Reaching for this workflow means the automatic
+# path did not complete and an operator is naming the version by hand.
 on:
-  push:
-    branches: [main, master]
   workflow_dispatch:
     inputs:
       version:

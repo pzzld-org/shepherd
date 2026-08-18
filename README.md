@@ -1,4 +1,4 @@
-# Shepherd v6.4.7
+# Shepherd v6.4.8
 
 [![License](https://img.shields.io/github/license/FL03/shepherd?style=for-the-badge&logo=github)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/FL03/shepherd?style=for-the-badge&logo=github)](https://github.com/FL03/shepherd/releases)
@@ -8,7 +8,7 @@ agent work. The deterministic core and the canonical CLI are Rust. Claude Code,
 Codex, and Pi are host adapters over the same typed WebAssembly Component Model
 contract, so a new harness does not require a second policy engine or a rewrite.
 
-The v6.4.7 component is published as `fl03:shepherd@6.4.7`. Its WIT contract,
+The v6.4.8 component is published as `fl03:shepherd@6.4.8`. Its WIT contract,
 generated bindings, native CLI, and adapter packages are versioned together.
 
 ## What is canonical
@@ -51,6 +51,27 @@ Or build the published crate from source with Cargo:
 cargo install shepherd-cli --locked
 ```
 
+Both paths deliver the same single binary. Binstall downloads a prebuilt archive
+attached to the matching GitHub release, resolved from
+`[package.metadata.binstall]` in `crates/cli/Cargo.toml`:
+
+```
+{ repo }/releases/download/v{ version }/shepherd-{ version }-{ target }.tar.gz
+```
+
+with a `.zip` override for `x86_64-pc-windows-msvc`. Every archive places the
+executable at its root, matching `bin-dir = "{ bin }{ binary-ext }"`, and CI
+asserts that layout on a real macOS runner before a release is cut. The
+`quick-install` and `compile` fallbacks are disabled on purpose: a missing asset
+must fail loudly rather than silently become a slow source build that hides the
+gap.
+
+**No build artifact is stored in this repository.** Archives are produced by
+`.github/workflows/release.yml`, checksummed, verified against an exact expected
+inventory, and only then attached to the release. Crate publication is gated on
+those assets existing, so a broken native target costs a re-run rather than a
+published version that can never carry binaries.
+
 The checksum-first release installers below remain the fallback for hosts
 without Cargo Binstall. They select the host asset, verify its SHA-256 sidecar before
 extraction, require the executable plus `LICENSE`, `THIRD_PARTY_NOTICES.md`,
@@ -62,9 +83,9 @@ macOS (arm64/x86_64) and GNU-libc Linux (arm64/x86_64):
 
 ```sh
 curl --fail --location \
-  https://raw.githubusercontent.com/FL03/shepherd/v6.4.7/scripts/install-shepherd.sh \
+  https://raw.githubusercontent.com/FL03/shepherd/v6.4.8/scripts/install-shepherd.sh \
   --output /tmp/install-shepherd.sh
-SHEPHERD_VERSION=6.4.7 bash /tmp/install-shepherd.sh
+SHEPHERD_VERSION=6.4.8 bash /tmp/install-shepherd.sh
 ```
 
 Windows x86_64 PowerShell:
@@ -72,9 +93,9 @@ Windows x86_64 PowerShell:
 ```powershell
 $installer = Join-Path $env:TEMP 'install-shepherd.ps1'
 Invoke-WebRequest `
-  https://raw.githubusercontent.com/FL03/shepherd/v6.4.7/scripts/install-shepherd.ps1 `
+  https://raw.githubusercontent.com/FL03/shepherd/v6.4.8/scripts/install-shepherd.ps1 `
   -OutFile $installer
-$env:SHEPHERD_VERSION = '6.4.7'
+$env:SHEPHERD_VERSION = '6.4.8'
 & $installer
 ```
 
@@ -93,7 +114,7 @@ cargo build --locked --release -p shepherd-cli
 ./target/release/shepherd --help
 ```
 
-`rust-toolchain.toml` pins Rust 1.96.0 and the three WebAssembly targets. For
+`rust-toolchain.toml` pins Rust 1.97.0 and the three WebAssembly targets. For
 the full Component Model gate, install the WASI tools and SDK through the
 repository setup path:
 
@@ -279,7 +300,7 @@ the supported installation path.
 Codex installs the same repository source through its canonical marketplace:
 
 ```sh
-codex plugin marketplace add FL03/shepherd --ref v6.4.7
+codex plugin marketplace add FL03/shepherd --ref v6.4.8
 codex plugin add shepherd@shepherd
 ```
 
