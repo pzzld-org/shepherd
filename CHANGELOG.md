@@ -8,6 +8,65 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 **The patch that makes the previous five reachable. Every capability v6.4.x built is currently unreachable from a clean machine: the install path documented as primary is broken, the hooks that carry the plugin's behaviour exit 127 before they run, and a freshly initialized project is structurally incapable of dispatching. Seed and evidence: `.shepherd/runs/v646/seed.md`, `.shepherd/runs/v646/mesh.md`.**
 
+### Fixed — the plugin could not run its own sprint
+
+Dogfooding v6.4.6 through the plugin surfaced six defects of one class: a fault in
+shepherd's own plumbing surfacing as a guard refusal aimed at the caller. Each disabled a
+core capability, and no gate caught any of them.
+
+- **A broken run no longer disables the tools that repair it.** `PreToolUse` returned `deny`
+  for every error, and `hooks/hooks.json` matches `Write|Edit|Bash|Agent|Workflow`, so one
+  unusable run namespace left a session structurally unable to fix the state that was
+  failing. Guard verdicts and infrastructure faults are now separated structurally: no usable
+  run namespace surfaces and allows; a healthy run with an unbound session still denies;
+  guard-integrity failure stays fail-closed, with an unconditional exemption for a bare
+  `shepherd` command so the one thing that repairs the state can never be refused by it.
+- **`Workflow` is usable.** It was refused for a `subagent_type` it structurally cannot carry
+  — its agents are spawned inside the script. The `dispatch-scope` rule applies to those
+  agents, not to the call. Tier rules still bite: an implementer cannot fan out through it.
+- **Dispatching a role works.** `deny_if_target_outside_flock` compared the plugin carrier
+  form (`shepherd:conductor`) against role ids (`conductor`), refusing every in-flock
+  dispatch as off-flock.
+- **A root session can write.** Only a dispatched subagent's envelope carries a
+  `shepherd_dispatch` block, so the tool name never reached the resolver, no write path was
+  derived, and every `Write` and `Edit` was denied for "no validated write paths" — the scope
+  check never had a path to check.
+- **A subagent tool call resolves.** Identity normalization demanded `agent_type` on every
+  event, but a host declares it once at start and resends only `agent_id` per tool call.
+- **Dispatched agents are recorded, so role guards can fire at all.** `SubagentStart` required
+  a `shepherd_dispatch` block no host can attach, so the dispatch ledger was empty on every
+  harness, no tool call could be attributed to a role, and not one rule in `dispatch-scope`
+  could ever fire — the nine-role flock was enforced by prose. Bindings are now synthesized
+  from what the host does send. An agent shepherd never recorded is surfaced and allowed; a
+  record that disagrees still refuses.
+- **`PostToolUse` no longer runs a pre-flight guard after the fact**, and a refusal can no
+  longer mislabel itself as an event it is not.
+
+### Added
+
+- **`spawn` and `start`.** The documented primary execution path, `/shepherd:spawn`, resolved
+  to "Unknown skill" — it had never been built. `spawn` advances planted to planned by
+  dispatching one engineer that orients through a composite wave of auditors and discovery
+  agents before authoring the plan. `start` is the opposite shape: a direct conductor
+  dispatch with no root fan-out.
+
+### Changed
+
+- **GitHub Actions are referenced by floating major version tag, not commit SHA.** A major tag
+  inherits an action's own minor and patch fixes; a SHA pin cannot. `actions-lock.json`
+  remains the provenance record and the gate checks the workflow's major against it.
+  Pre-1.0 actions still pin exactly, because `v0` is not a compatibility channel.
+- **Three CI gates that had stopped blocking merges now block again**: clippy never ran on a
+  freshly opened PR or on push to main; the only `wasm32-unknown-unknown` cross-compile was
+  skipped on pull requests; and `wasm-tools` was installed unversioned, orphaning
+  `WASM_TOOLS_VERSION`.
+- **clippy is no longer silently under-linting.** `clippy.toml` declared `msrv 1.91.0` while
+  the workspace and toolchain are `1.97.0`, suppressing every modernization lint stabilized
+  in between. Nothing checked the three files agreed; `check-workspace.sh` now does.
+- **Lane evidence is tracked.** `.shepherd/runs/**` made W0 reproductions, handoffs, and
+  reproduction scripts uncommittable, so evidence the gates require could not reach the
+  release record.
+
 ### Planned
 
 - **`cargo binstall shepherd-cli` works.** Four independent defects sit between a merge and a downloadable asset: macOS arm64 packaging uses GNU-tar-only flags, the Windows installer test cannot create its deliberately-dangling symlink, the asset verifier looks for `fl03-*` npm tarballs that were renamed to `@pzzld/*`, and `cargo-publish.yml` can never be triggered because the tag is pushed with `GITHUB_TOKEN`. Fixing any three still yields a zero-asset release.
