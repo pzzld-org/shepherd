@@ -32,6 +32,19 @@ and attached to the tag by hand.
   `.gitattributes`, drives the staging script with a CRLF fixture and requires the CR refusal,
   and then drives it with an LF fixture and requires the staged copy to appear.
 
+- **The Windows test build was broken under `-D warnings`, and nothing could see it.**
+  `rust.yml`'s `test` job is the only one whose runner is selectable, and three of its run
+  steps never declared a shell, so on `windows-latest` GitHub ran them through PowerShell and
+  `cargo nextest run ... \` died at parse time before a single test executed
+  (`ParserError: D:\a\_temp\<id>.ps1:3`). The advertised escape hatch for proving
+  cross-platform behaviour could not prove anything. With `shell: bash` on all three, the
+  suite ran on Windows for the first time and immediately failed on three real defects:
+  `read_project_id` and `ReadSubject`/`read_regular_nofollow` imported unconditionally into
+  test modules whose only callers are `#[cfg(unix)]`, and an `expect(dead_code)` on
+  `ReadSubject::open_label` gated `not(unix)` when a non-unix **lib test** build does use it,
+  making the expectation unfulfilled -- which `-D warnings` rejects exactly as hard as the
+  dead code it was written to tolerate. The gate is now `all(not(unix), not(test))`.
+
 ### Notes
 
 - `cargo binstall shepherd-cli` and `scripts/install-shepherd.sh` were both exercised against
