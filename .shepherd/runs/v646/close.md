@@ -3,7 +3,7 @@ title: v6.4.6 close report — the plugin could not run its own sprint
 run: v646
 branch: v6.4.6
 base: main
-status: in-progress
+status: closed
 date: 2026-08-17
 author: root @ session-1535f7a2
 ---
@@ -38,7 +38,7 @@ Measured after: a conductor may dispatch a coder, is REFUSED dispatching an engi
 Those are the flock's own rules enforcing for the first time. 34 agents were recorded and
 role-attributed during this sprint's own execution.
 
-## B. A regression this sprint introduced and did not fix
+## B. A regression this sprint introduced — and closed
 
 Recorded in full as carry-forward item 0a. Stated here because a close report that buries it
 is worthless.
@@ -53,11 +53,15 @@ Consequence: two target-keyed rules are bypassable by payload shape. A conductor
 same dispatch as a script string, and `closed-flock-only` falls the same way for any role.
 `implementer-roles-never-dispatch` is unaffected and is genuinely stronger than before.
 
-It was not closed in-sprint because the guard cannot distinguish a legitimate conductor
-fan-out from the bypass — neither declares a target — so closing it means denying every
-conductor `Workflow`, which was the mechanism all four lanes were executing through at the
-time. `hooks/tests/test_native_cli_contract.sh` is RED and correctly red; the harness lane
-refused to edit it to assert `allow` and was right to.
+**Closed at `828edbe`** on the operator's instruction. A lane lead must now DECLARE the roles
+it dispatches; root and implementers are unchanged, so `Workflow` stays usable and only the
+evasion is shut. Measured: `conductor + script naming engineer` now denies with
+`WRONG-TIER-DISPATCH` where it previously allowed, `conductor + target_role: coder` still
+allows, and `Agent` with no target is still unresolved.
+
+`hooks/tests/test_native_cli_contract.sh` was RED and correctly red throughout. The harness
+lane refused three times to edit it to assert `allow`, which is the only reason the bypass
+was visible at all.
 
 ## C. What the sprint learned about its own discipline
 
@@ -86,13 +90,13 @@ omits targets whose `required-features` are unmet. Fixed in `04c500a`.
 
 | # | Deliverable | Status |
 |---|---|---|
-| 1 | `cargo binstall` reaches a real asset | lane `distribution` |
-| 2 | `shepherd` on PATH is the native binary | lane `distribution` |
+| 1 | `cargo binstall` reaches a real asset | **CLOSED** — tar detection, PowerShell `-Force`, derived package names, crates.io precedence |
+| 2 | `shepherd` on PATH is the native binary | **CLOSED** — `bin/shepherd` deleted; installer heals dangling, refuses live |
 | 3 | a fresh project can dispatch | **CLOSED** — `init --confirm` writes identity and one matching `projects` row atomically; `doctor` fails loudly without it; verified live at integration |
 | 4 | errors name the actual failure | **CLOSED** — 2 of 2 misleading sites fixed, subject-aware by errno, NOFOLLOW untouched |
-| 5 | every harness defines every hook | lane `harness` |
+| 5 | every harness defines every hook | **CLOSED** — `run.sh` 27/27; Pi manifest; generated parity table |
 | 6 | configuration parsing belongs to `config` | **CLOSED** — one `toml::` consumer tree-wide, and it is the intended one |
-| 7 | the release gate can fail | lane `distribution` |
+| 7 | the release gate can fail | **CLOSED** — full truth table; a skip-everything run no longer concludes success |
 | 8 | the model map states the intended tiers | **CLOSED** — `models show --md` renders the operator's corrected table |
 | 9 | CHANGELOG and release notes are truthful | **CLOSED** — section present, v6.4.5 dated; the seed's premise was stale |
 | 10 | v6.4.6 milestone, v6.4.5 reconciled | **CLOSED** — milestone existed; 10 stale issues verified and closed with evidence, zero open |

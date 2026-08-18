@@ -23,9 +23,10 @@ either a 10-deliverable, 5-lane seed is not a `patch-seed` and the kind vocabula
 coarse, or the seed should carry the directive and leave the evidence in `mesh.md`, which is
 the artifact for evidence. Do not resolve it by moving the number.
 
-## 0a. WRONG-TIER-DISPATCH and closed-flock are bypassable by payload shape — HIGH, REGRESSION INTRODUCED BY v6.4.6
+## 0a. WRONG-TIER-DISPATCH was bypassable by payload shape — FIXED IN v6.4.6 (`828edbe`)
 
-**This is a regression this sprint introduced and did NOT fix. It ships open.**
+**Introduced by this sprint and CLOSED by it, on the operator's instruction. Kept in full
+because the reasoning error that produced it is the reusable part.**
 
 Two `dispatch-scope` rules key on the RESOLVED TARGET. `05a977a` allowed a `Workflow` call
 whose `tool_input` yields no target, on the stated reasoning that "each spawned agent is
@@ -59,7 +60,23 @@ or accept the gap. Breaking every conductor mid-sprint to close it was the worse
 the previous state — `Workflow` denied outright for everyone — was not a safer baseline, it
 was an unusable tool.
 
-**The real fix, for v6.4.7, and it is closer than it first appeared.** Enforcement must move
+**HOW IT WAS ACTUALLY FIXED.** Not at spawn time. A lane lead must now DECLARE the roles it
+dispatches — `restricted_by_target_rule` is true for the lane lead alone, because
+`plan-authorship-and-gating-are-root-tier-exclusive` is the only target-keyed rule that
+forbids anything. Root has no target-keyed restriction to evade, and an implementer is
+refused by ACTING role, which no payload shape can hide. So `Workflow` stays usable for root
+and for a lane lead that declares; only the evasion is closed, and the denial names the
+remedy.
+
+**The spawn-time design recorded below DOES NOT WORK AS WRITTEN, and the correction matters
+more than the original note.** It assumed a child's `session_id` identifies its dispatcher.
+It does not: an agent's record carries the session it ACTS in, and children share their
+dispatcher's session, so a session-to-actor map is ambiguous between a parent and its own
+children. A fixture proved it — every tool call from an agent whose envelope session differs
+from its record's is refused with `dispatch session mismatch`. Anyone reaching for the
+approach below needs a parent link that genuinely does not exist yet.
+
+**The original (WRONG) analysis, kept for the correction:** enforcement must move
 to spawn time: evaluate dispatch-scope at `SubagentStart` with the DISPATCHER's role and the
 child's `agent_type` as target. I first recorded this as blocked on a parent link the host
 does not provide. **That was too pessimistic — measured against the live ledger, the host
