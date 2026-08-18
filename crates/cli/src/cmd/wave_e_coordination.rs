@@ -504,7 +504,17 @@ mod platform {
             .write(true)
             .create_new(true)
             .open(path)
-            .map_err(|error| CliError::message(error.to_string()))?;
+            .map_err(|error| {
+                // The contended case is the one callers act on, so it gets the
+                // named message the unix twin gives it. Reporting the raw
+                // `The file exists. (os error 80)` tells the caller nothing
+                // about what to do and differs per platform.
+                if error.kind() == std::io::ErrorKind::AlreadyExists {
+                    CliError::message("lock already held")
+                } else {
+                    CliError::message(error.to_string())
+                }
+            })?;
         file.write_all(bytes)
             .and_then(|_| file.sync_all())
             .map_err(|error| CliError::message(error.to_string()))

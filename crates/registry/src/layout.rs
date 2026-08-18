@@ -87,8 +87,21 @@ fn canonical_path_string(path: &Path) -> String {
     let mut rendered = String::new();
     for component in path.components() {
         match component {
+            // The verbatim prefix is stripped, not rendered: `\\?\C:` accepts
+            // only `\\` separators, so `\\?\C:/Users/...` is canonical AND
+            // unusable -- every re-read of `entry.source` as a path failed with
+            // "The system cannot find the file specified". `C:/Users/...` is
+            // both valid on Windows and canonical.
             Component::Prefix(prefix) => {
-                rendered.push_str(&prefix.as_os_str().to_string_lossy());
+                let text = match prefix.kind() {
+                    std::path::Prefix::VerbatimDisk(letter) => format!("{}:", letter as char),
+                    std::path::Prefix::VerbatimUNC(server, share) => {
+                        format!("//{}/{}", server.to_string_lossy(), share.to_string_lossy())
+                    }
+                    std::path::Prefix::Verbatim(name) => name.to_string_lossy().into_owned(),
+                    _ => prefix.as_os_str().to_string_lossy().replace('\\', "/"),
+                };
+                rendered.push_str(&text);
             }
             Component::RootDir => {
                 if !rendered.ends_with('/') {

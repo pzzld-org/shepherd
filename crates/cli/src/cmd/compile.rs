@@ -961,12 +961,41 @@ mod managed {
         })
     }
 
+    /// Removing the file is not enough: the unix twin also prunes the empty
+    /// ancestor directories the file left behind, and `compile --check` asserts
+    /// a pruned tree has no leftover `skills/adaptation/` directory. Stopping at
+    /// the first non-empty ancestor is what keeps it from walking out of the
+    /// generated root.
     fn unlink_file(root: &Path, relative: &str) -> Result<(), CliError> {
         let target = resolve(root, relative)?;
         safe_fs::remove_file_nofollow(&target).map_err(|error| {
             CliError::message(format!(
                 "cannot remove stale generated file `{relative}`: {error}"
             ))
-        })
+        })?;
+        let mut components = relative.split('/').collect::<Vec<_>>();
+        components.pop();
+        while !components.is_empty() {
+            let directory = resolve(root, &components.join("/"))?;
+            match std::fs::remove_dir(&directory) {
+                Ok(()) => {}
+                Err(error)
+                    if matches!(
+                        error.kind(),
+                        std::io::ErrorKind::NotFound | std::io::ErrorKind::DirectoryNotEmpty
+                    ) =>
+                {
+                    break;
+                }
+                Err(error) => {
+                    return Err(CliError::message(format!(
+                        "cannot remove empty generated directory `{}`: {error}",
+                        components.join("/")
+                    )));
+                }
+            }
+            components.pop();
+        }
+        Ok(())
     }
 }

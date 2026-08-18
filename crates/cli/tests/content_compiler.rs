@@ -219,14 +219,25 @@ fn malformed_metadata_and_symlinks_fail_closed_without_echoing_content() {
     assert!(!message.contains("secret"));
 
     fs::remove_file(content.join("roles/coder.md")).expect("remove invalid role");
+    // The symlink refusal is asserted on every platform that can BUILD a
+    // symlink. Windows needs Developer Mode or elevation, so the check is
+    // skipped there rather than asserted against a file that was never created
+    // -- and it says so, because a silent skip reads exactly like a pass.
+    let target = content.join("skills/example/SKILL.md");
+    let link = content.join("roles/coder.md");
     #[cfg(unix)]
-    std::os::unix::fs::symlink(
-        content.join("skills/example/SKILL.md"),
-        content.join("roles/coder.md"),
-    )
-    .expect("symlink");
-    let error = load_compile_input(&content).expect_err("symlink");
-    assert!(error.message_text().expect("message").contains("symlink"));
+    let linked = std::os::unix::fs::symlink(&target, &link).is_ok();
+    #[cfg(windows)]
+    let linked = std::os::windows::fs::symlink_file(&target, &link).is_ok();
+    #[cfg(not(any(unix, windows)))]
+    let linked = false;
+
+    if linked {
+        let error = load_compile_input(&content).expect_err("symlink");
+        assert!(error.message_text().expect("message").contains("symlink"));
+    } else {
+        eprintln!("skipped the symlink refusal: this environment cannot create a symlink");
+    }
 
     fs::remove_dir_all(root).expect("cleanup");
 }

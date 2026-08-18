@@ -199,7 +199,8 @@ fn verify_nofollow(primary_root: &Path, relative: &str) -> Result<(), DispatchSe
             }
             Err(error) => {
                 return Err(invalid(format!(
-                    "write target is not safely contained without following links: {error}"
+                    "write target is not safely contained without following links at {}: {error}",
+                    walked.display()
                 )));
             }
         };

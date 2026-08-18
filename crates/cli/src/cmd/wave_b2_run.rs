@@ -844,7 +844,7 @@ fn ledger(context: &mut ExecutionContext, action: LedgerAction) -> Result<(), Cl
         LedgerAction::Path { run, check } => {
             let run = resolve_active(context, run)?;
             let path = run_dir(context, &run)?.join(LEDGER_FILE);
-            output(context, &path.display().to_string())?;
+            output(context, &crate::interface::canonical_display(&path))?;
             if check && local_ledger_exists(context, &run)? {
                 return Err(CliError::message_with_code(
                     format!(

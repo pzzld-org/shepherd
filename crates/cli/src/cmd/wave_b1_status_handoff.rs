@@ -308,7 +308,7 @@ fn create_handoff(
 
     let content = render_handoff(context, &selection.state.branch)?;
     platform::publish_handoff(context, &selection, content.as_bytes(), replace)?;
-    write(context, &shown.to_string_lossy())
+    write(context, &crate::interface::canonical_display(&shown))
 }
 
 fn select_run(

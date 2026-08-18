@@ -1,5 +1,7 @@
 //! Focused deterministic tests for the native lock coordination slice.
 
+mod support;
+
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -76,7 +78,7 @@ fn lock_show_defaults_to_free_without_creating_state() {
     assert!(output.status.success(), "stderr={:?}", output.stderr);
     assert_eq!(output.stdout, b"lock: free\n");
     assert!(!root.join(".shepherd/shepherd.lock").exists());
-    fs::remove_dir_all(root).expect("cleanup");
+    support::remove_dir_all(&root);
 }
 
 #[test]
@@ -106,7 +108,7 @@ fn lock_acquire_is_atomic_and_second_holder_is_refused() {
     let payload: serde_json::Value = serde_json::from_slice(&show.stdout).expect("lock json");
     assert_eq!(payload["held"], true);
     assert_eq!(payload["holder_session_id"], "sess-a");
-    fs::remove_dir_all(root).expect("cleanup");
+    support::remove_dir_all(&root);
 }
 
 #[test]
@@ -133,7 +135,7 @@ fn lock_release_updates_audit_and_refuses_symlink_paths() {
         assert_eq!(refused.status.code(), Some(1));
         assert_eq!(fs::read(&outside).expect("sentinel remains"), b"outside");
     }
-    fs::remove_dir_all(root).expect("cleanup");
+    support::remove_dir_all(&root);
 }
 
 #[test]
@@ -149,7 +151,7 @@ fn invalid_mode_is_rejected_before_any_lock_state_is_created() {
     assert_eq!(output.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&output.stderr).contains("invalid lock mode"));
     assert!(!root.join(".shepherd/shepherd.lock").exists());
-    fs::remove_dir_all(root).expect("cleanup");
+    support::remove_dir_all(&root);
 }
 
 #[test]
@@ -178,7 +180,7 @@ fn injected_history_failure_compensates_the_lock_file() {
     assert_eq!(output.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&output.stderr).contains("injected lock history failure"));
     assert!(!root.join(".shepherd/shepherd.lock").exists());
-    fs::remove_dir_all(root).expect("cleanup");
+    support::remove_dir_all(&root);
 }
 
 #[cfg(unix)]
@@ -209,5 +211,5 @@ fn reap_uses_native_pid_probe_when_path_has_git_but_no_kill() {
     assert_eq!(output.status.code(), Some(1), "stderr={:?}", output.stderr);
     assert!(String::from_utf8_lossy(&output.stderr).contains("held by live pid"));
     assert!(root.join(".shepherd/shepherd.lock").exists());
-    fs::remove_dir_all(root).expect("cleanup");
+    support::remove_dir_all(&root);
 }

@@ -11,6 +11,51 @@ pub struct CliError {
     exit_code: u8,
 }
 
+/// Render a path with `/` separators, and without a Windows verbatim prefix.
+///
+/// Paths that shepherd PRINTS are logical artifact identifiers that operators
+/// and scripts read and compare; they are not OS handles. `Path::display` emits
+/// native separators, so the same command printed
+/// `.shepherd\\runs\\v645\\handoff.md` on Windows and
+/// `.shepherd/runs/v645/handoff.md` everywhere else, and anything matching on
+/// the output broke on exactly one platform.
+///
+/// The verbatim prefix is stripped rather than rendered: `\\?\C:` only accepts
+/// `\\` separators, so a canonical `\\?\C:/Users/...` is not a usable path,
+/// while `C:/Users/...` is valid on Windows AND canonical.
+pub(crate) fn canonical_display(path: &std::path::Path) -> String {
+    use std::path::{Component, Prefix};
+
+    let mut rendered = String::new();
+    for component in path.components() {
+        match component {
+            Component::Prefix(prefix) => {
+                let text = match prefix.kind() {
+                    Prefix::VerbatimDisk(letter) => format!("{}:", letter as char),
+                    Prefix::VerbatimUNC(server, share) => {
+                        format!("//{}/{}", server.to_string_lossy(), share.to_string_lossy())
+                    }
+                    Prefix::Verbatim(name) => name.to_string_lossy().into_owned(),
+                    _ => prefix.as_os_str().to_string_lossy().replace('\\', "/"),
+                };
+                rendered.push_str(&text);
+            }
+            Component::RootDir => {
+                if !rendered.ends_with('/') {
+                    rendered.push('/');
+                }
+            }
+            other => {
+                if !rendered.is_empty() && !rendered.ends_with('/') {
+                    rendered.push('/');
+                }
+                rendered.push_str(&other.as_os_str().to_string_lossy());
+            }
+        }
+    }
+    rendered
+}
+
 impl CliError {
     pub(crate) fn message(message: impl Into<String>) -> Self {
         Self {
