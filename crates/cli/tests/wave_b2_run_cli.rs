@@ -1,3 +1,5 @@
+mod support;
+
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -43,7 +45,7 @@ fn text(bytes: &[u8]) -> String {
 }
 
 fn cleanup(root: &Path) {
-    std::fs::remove_dir_all(root).expect("remove fixture");
+    support::remove_dir_all(root)
 }
 
 #[test]

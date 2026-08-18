@@ -1,3 +1,5 @@
+mod support;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -30,7 +32,7 @@ fn run_state(run: &str) -> Vec<u8> {
 }
 
 fn cleanup(path: &Path) {
-    fs::remove_dir_all(path).expect("remove fixture");
+    support::remove_dir_all(path)
 }
 
 fn initialize_git(root: &Path) {

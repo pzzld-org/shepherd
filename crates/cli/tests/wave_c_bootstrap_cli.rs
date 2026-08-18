@@ -177,6 +177,10 @@ fn init_refuses_unconfirmed_mutation_then_materializes_only_layout_v5_roots() {
         "stderr={}",
         text(&repeated.stderr)
     );
+    // SQLite holds the database open until the connection drops, and Windows
+    // cannot remove a directory containing an open handle. On unix an open
+    // file unlinks happily, which is why this was never needed here.
+    drop(connection);
     cleanup(&root);
 }
 

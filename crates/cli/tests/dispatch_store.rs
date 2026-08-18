@@ -1,3 +1,5 @@
+mod support;
+
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -25,7 +27,7 @@ fn fixture_dir(label: &str) -> PathBuf {
 }
 
 fn cleanup(path: &Path) {
-    std::fs::remove_dir_all(path).expect("remove fixture");
+    support::remove_dir_all(path)
 }
 
 fn write_run(runs_root: &Path, run: &str, status: &str) {
