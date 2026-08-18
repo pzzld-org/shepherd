@@ -67,6 +67,13 @@ gate_fast() {
   step "PowerShell installer contract" bash scripts/tests/test-release-installer-powershell-contract.sh
   step "release distribution legal material" bash scripts/tests/test-release-distribution-license.sh
   step "portable deterministic release tar" bash scripts/tests/test-release-tar-portability.sh
+  # Both of these shipped correct, falsifiable and referenced by NOTHING. The
+  # distribution lane's own headline finding was that
+  # test_shepherd_native_launcher.sh had never run in any gate; it then produced
+  # two more of the same shape. A correct unwired gate is worth exactly what an
+  # inert one is.
+  step "release package-name derivation" bash scripts/tests/test-release-package-names.sh
+  step "release archive layout" bash scripts/tests/test-release-archive-layout.sh
   step "GitHub Action pin checker is falsifiable" python3 scripts/tests/test-check-github-actions.py
   step "GitHub Action pins" python3 scripts/check-github-actions.py
   step "release workflow contract" bash scripts/tests/test-release-workflow.sh
