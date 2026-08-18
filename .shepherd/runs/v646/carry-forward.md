@@ -136,6 +136,28 @@ Worth a gate of the shape the harness lane proposed: assert that a teammate-shap
 `PreToolUse` payload reaches a REAL verdict — allow or deny — rather than an unresolved
 fail-open. That check would have caught the entire v6.4.6 dispatch-ledger class on day one.
 
+## 5b. The build panic that a `content/` edit causes does not name its remedy — LOW
+
+Editing any `content/roles/*.md` makes `crates/compiler/build.rs:30` panic and the ENTIRE
+workspace stop compiling, because the vendored `crates/compiler/package-content` projection
+is asserted byte-identical to the authored tree. The panic says:
+
+> generated compiler package content differs from authored root content
+
+That is accurate and unactionable. It does not name the one command that fixes it —
+`python3 scripts/generate-compiler-package-content.py --write` — so the reader has to
+discover the generator, and a coder whose scope excludes `crates/**` reasonably concludes it
+is blocked rather than one command from green. It cost the harness lane a diagnostic cycle
+and would have cost the config lane another.
+
+This is deliverable 4's own principle applied to the build script: an error should name the
+actual failure and, where one exists, the remedy. Add the command to the assertion message.
+
+Related: the coupling itself is undiscoverable from the edit site. `content/roles/*.md` has
+nothing indicating that touching it breaks the build until a generator runs. A one-line
+header comment in the authored files, or in `content/RECONCILIATION.md`, would remove the
+surprise entirely.
+
 ## 6. `version-bump.py` has no classification for prose version surfaces — LOW
 
 A single literal `v6.4.6` in `docs/cargo-distribution.md` turned two gates red at once:
