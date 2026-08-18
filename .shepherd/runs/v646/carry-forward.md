@@ -208,6 +208,17 @@ recur silently. The three incidents argue it should be a PRE-DISPATCH check as w
 about to spawn agents that depend on a just-changed binary is the exact moment the cost is
 highest, and it is the moment nothing currently checks.
 
+**The general form, worth more than the specific fix** (config lane's phrasing):
+
+> A stale artifact does not fail loudly. It produces a plausible wrong answer, attributable
+> to someone else's work.
+
+That is why all three instances were mis-attributed on first reading — to a flaky agent, to
+brief defects, and finally to a coder shipping the exact anti-pattern its brief had banned.
+Any derived artifact has this property: a compiled binary, a generated tree, a vendored
+projection, a lockfile. The defence is not vigilance, it is making staleness impossible to
+hold — regenerate before measuring, and gate on skew rather than on version.
+
 ## 2. Write-scope narrowing is unavailable on Claude — MEDIUM
 
 `SubagentStart` now records dispatched agents (v6.4.6), so role-scoped rules enforce. But no
