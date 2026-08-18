@@ -121,6 +121,25 @@ jobs:
           fetch-depth: 1
           ref: ${{ needs.resolve.outputs.ref }}
           repository: ${{ github.repository }}
+      # The release pipeline copies LICENSE verbatim into all 16 assets and
+      # then compares every extracted copy against this file, so a checkout that
+      # rewrites line endings produces a failure only the final publication job
+      # can observe -- after five native builds and the crates.io publication
+      # have already succeeded, at which point the version is spent and cannot
+      # be re-cut. Windows runners default to core.autocrlf=true;
+      # .gitattributes pins `* text=auto eol=lf`. This job is the only one whose
+      # runner is selectable, so dispatch it with runner=windows-latest to
+      # exercise the pin on the platform that broke it.
+      - name: Checkout materializes LF release payloads
+        shell: bash
+        run: |
+          set -euo pipefail
+          count=$(LC_ALL=C tr -dc '\r' < LICENSE | wc -c | tr -d ' ')
+          printf 'LICENSE CR bytes: %s\n' "$count"
+          if [[ "$count" != 0 ]]; then
+            printf 'this checkout rewrote LICENSE line endings, so its release archive would not match the repository copy\n' >&2
+            exit 1
+          fi
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.11 # v0.0.11
       - name: Enable the sccache wrapper
