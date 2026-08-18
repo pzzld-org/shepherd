@@ -34,6 +34,10 @@ committed the bump, and was refused:
 
 ### Fixed — Windows is a supported platform, not a shipped stub (#321)
 
+**392 tests run: 392 passed.** The Windows suite is green on both feature sets. It went
+94 failures, 35, 20, 12, 6, 3, 0 — every step a real cross-platform defect, none of them a
+test that needed relaxing.
+
 The Windows binary this repository builds, packages, and publishes could not create
 `.shepherd/`, could not bind a session, and could not store a run. Five families of
 `#[cfg(not(unix))]` twins were `Err("... unavailable on this platform")`, and the first Windows
@@ -67,6 +71,21 @@ now implemented.
   truncating, absence and wrong-type stay distinguishable, `ensure_directory` reports only what
   it created, children are sorted and split by kind, removal is idempotent, and a real symlink
   is refused rather than followed.
+
+- **The defects Windows found that had nothing to do with the stubs.** `reject_symlink_path`
+  stat'ed the bare drive prefix, so every run command died with
+  `ERROR: inspect \\?\C:: Incorrect function.` The layout manifest rendered OS-native
+  separators into a durable, sorted, compared artifact, so the same migration produced a
+  different manifest on each platform — and once the sources were canonical, the deepest-first
+  removal ordering counted `MAIN_SEPARATOR` and collapsed to zero, removing parents before
+  their children. `normalize_relative` refused every absolute Windows path because a backslash
+  is a smuggling attempt on unix and the separator there. Path identity needed
+  `canonical_identity`, because Windows spells one directory three ways —
+  `\\?\C:\Users\runneradmin`, `C:\Users\runneradmin`, and `C:\Users\RUNNER~1`.
+- **Three tests held a live SQLite connection across their fixture removal.** Windows cannot
+  delete a directory containing an open handle; unix unlinks an open file happily, which is
+  why no amount of retrying would ever have helped. The teardown helper names the surviving
+  files now, which is what turned that from a guess into a diagnosis.
 
 ### Notes
 
