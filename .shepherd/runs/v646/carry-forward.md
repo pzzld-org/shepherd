@@ -193,10 +193,20 @@ returning a bare `BLOCKED` — because the installed binary predated the subagen
 **`shepherd --version` cannot detect this.** Stale and fixed both print `shepherd-cli 6.4.6`.
 Only the build timestamp against the commit log exposes it.
 
+It bit a THIRD time in a different disguise, and this one is the most alarming: the config
+lane's provenance check read `source: "default"` — the exact behaviour its brief BANNED —
+from a stale binary, and the conductor nearly issued a REDO on correct work. `cargo build`
+first, and it read `config`. So across one sprint the same defect cost a diagnostic pass,
+four lanes an implementation wave, and very nearly a wrongful rejection of good code. The
+third instance is the worst because it does not present as a failure at all: it presents as
+evidence that a coder violated its brief.
+
 v6.4.6 addresses the diagnostic half: `shepherd doctor` now reports resolved path,
 native-versus-launcher, and skew against the checkout. What is still missing is a GATE that
 fails when the installed binary is older than the working tree, so the condition cannot
-recur silently.
+recur silently. The three incidents argue it should be a PRE-DISPATCH check as well — a lead
+about to spawn agents that depend on a just-changed binary is the exact moment the cost is
+highest, and it is the moment nothing currently checks.
 
 ## 2. Write-scope narrowing is unavailable on Claude — MEDIUM
 
