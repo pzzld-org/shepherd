@@ -426,6 +426,34 @@ Found by the harness lane while being routed a DIFFERENT defect in the same file
 because the gate was about to be wired into `gate.sh fast`, which would have given a check
 that cannot fail the appearance of coverage.
 
+## 4f. A third NOFOLLOW read implementation, duplication but NOT the deliverable-4 defect — LOW
+
+`crates/cli/src/cmd/wave_b1_status_handoff.rs` carries a third independent implementation of
+the descriptor-safe NOFOLLOW read (`read_relative_file` at :933, `open_regular_optional` at
+:907). Flagged by the identity lane as out of scope, and correctly.
+
+**Checked before recording, because the obvious assumption was wrong.** This copy does NOT
+have deliverable 4's defect. It contains zero occurrences of "without following symlinks",
+`open_regular_optional` returns `Ok(None)` on `ENOENT` rather than misreporting it, and
+`path_error` renders `"{operation} {path}: {errno}"` — generic, but honest, and it never
+blames symlinks. So deliverable 4 shipped 2 of 2 misleading sites fixed, not 2 of 3.
+
+Root initially told the identity lane this was a 2-of-3 gap. That was an assumption from the
+shape of the code rather than a measurement, and it was wrong — recorded here so the close
+report does not understate a closed deliverable.
+
+What remains is genuine duplication: three hand-synced NOFOLLOW readers, which is the
+condition that let the misleading message live in two files in the first place. Adopting
+`ReadSubject`/`classify_nofollow_open_error` here would change user-visible messages in
+handoff and status commands that nobody in this sprint characterized — the same reasoning
+that correctly stopped the five-site `ORDER BY` refactor in item 4c. Consolidate
+deliberately, with the message changes characterized, not as a tidy-up.
+
+Separately, `:473` `platform::read_project_identity(context).ok()?` swallows its error inside
+an `Option`-returning helper. A swallowed error has no subject to classify, so this is not a
+classification question: it is whether handoff status output should surface that failure at
+all. Its own decision, deliberately not forced through the classifier.
+
 ## 5. A refusal that never reaches the dispatching lead reads as incompetence — MEDIUM
 
 Harness lane's finding, and it generalizes past this sprint. A worker spent 49 tool calls and
