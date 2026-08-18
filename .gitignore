@@ -53,6 +53,8 @@
 !.shepherd/runs/*/lanes/*/*.sh
 !.shepherd/runs/*/lanes/*/reference/
 !.shepherd/runs/*/lanes/*/reference/*
+!.shepherd/runs/*/lanes/*/evidence/
+!.shepherd/runs/*/lanes/*/evidence/*
 !.shepherd/runs/*/harness-parity.md
 # Durable analysis output is tracked.
 !.shepherd/runs/*/reports/
