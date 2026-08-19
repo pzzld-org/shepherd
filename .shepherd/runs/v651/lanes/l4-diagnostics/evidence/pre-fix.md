@@ -73,15 +73,15 @@ same shape whether or not PreToolUse still hard-denied. The REFUTED conclusion
 survived re-measurement; the evidence for it did not, and has been replaced.
 See "#306" below.
 
-Two stale comments this lane cannot repair from here, both inside
-`sandbox.sh` and both outside this artifact's scope: its `METHODOLOGY NOTE`
-header still describes the script as awaiting a first execution, and its
-zero-count guard comments (`sandbox.sh:594-599` and `:681-686`) cite
-`passed=0 failed=1` as "the recorded pre-fix `--follow-remediation` run" when
-the measured pre-fix run is `passed=3 failed=1` (the `passed=0 failed=1` case
-is the silent stub, below). Both texts were accurate when written; neither
-guard is wrong, only the examples are. The corrections are left to whoever
-next edits that file.
+Two comments an earlier version of this file recorded as stale, both inside
+`sandbox.sh`, have since been corrected in the same pass that added the
+per-probe liveness assertions: the `METHODOLOGY NOTE` header now records the
+conductor's executed runs instead of describing the script as awaiting a first
+execution, and both zero-count guard comments (`sandbox.sh:594-603` and
+`:698-707`) now cite the silent stub as the `passed=0 failed=1` case instead of
+the pre-fix `--follow-remediation` run, which measures `passed=3 failed=1`.
+Neither guard's logic was ever wrong, only its example was, and nothing on that
+score is outstanding.
 
 ---
 
@@ -150,10 +150,24 @@ What wording replaces the errno is still L4-S2/S3's call, and nothing in
 
 Proof the positive half is load-bearing rather than assumed: the silent-stub
 fixture in the falsification table below scores `--mode expect-fixed` at
-`passed=5 failed=1`, and the one failure is exactly
-`FAIL  #315 remains fail-closed post-fix`. The other five assertions pass
-vacuously against empty output -- which is precisely what a negative-space-only
-`assert_fixed_315` would have amounted to.
+`passed=5 failed=5`, and `assert_fixed_315`'s positive half is one of those
+five failures:
+
+```
+FAIL  #315 probe produced a hook response
+FAIL  #314a probe produced a hook response
+FAIL  #314b probe produced a hook response
+FAIL  #306 probe produced a hook response
+FAIL  #315 remains fail-closed post-fix
+```
+
+The first four are the per-probe liveness assertions, which fail on silence by
+construction. The fifth is the one this section is about: of everything the
+mode-assertion block itself asks, it is still the only question a fail-open
+flip cannot answer benignly. The five passes are exactly the negative space --
+`assert_fixed_315`'s two negatives, both `assert_fixed_314` checks, and
+`assert_306` -- every one of them vacuous against empty output, which is
+precisely what a negative-space-only `assert_fixed_315` would have amounted to.
 
 ---
 
@@ -389,8 +403,10 @@ measurement of the decision is the PreToolUse transcript above.
 run in BOTH modes on purpose: `"permissionDecision":"deny"` must be absent
 from the #306 output. "A missing project identity does not block the tool" has
 to hold before and after L4-S2/S3 land; there is no state of this sprint in
-which a deny there would be acceptable. It is the assertion that makes the
-pre-fix `--mode expect-abort` count 10 rather than 9.
+which a deny there would be acceptable. It is one of the fourteen assertions
+the pre-fix `--mode expect-abort` run counts: four `#315` assertions, five
+`#314` assertions, this one `#306` assertion, and four per-probe liveness
+assertions, 4 + 5 + 1 + 4 = 14.
 
 `note_306` (`sandbox.sh:436-445`) reads the message TEXT and records a NOTE,
 never a PASS/FAIL, because a REFUTED verdict carries no assertion demanding a
@@ -454,18 +470,22 @@ corrected `sandbox.sh`.
 === PROBE #315 · unbound session onto a Write tool (expect hard DENY, raw errno) ===
 {"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[shepherd] dispatch filesystem operation `open regular file` failed for <sandbox>/.shepherd/runs/v900/dispatch/.root-session.stranger.json: No such file or directory (os error 2)"}}
 [exit 0]
+PASS  #315 probe produced a hook response
 
 === PROBE #314a · first SessionStart for probe-314 (expect BIND) ===
 {"hookSpecificOutput":{"additionalContext":"[shepherd] bound root session to run v900","hookEventName":"SessionStart"}}
 [exit 0]
+PASS  #314a probe produced a hook response
 
 === PROBE #314b · second SessionStart for the SAME session (expect REJECTED) ===
 {"hookSpecificOutput":{"additionalContext":"[shepherd] native lifecycle hook rejected: dispatch record already exists: <sandbox>/.shepherd/runs/v900/dispatch/.root-session.probe-314.json","hookEventName":"SessionStart"}}
 [exit 0]
+PASS  #314b probe produced a hook response
 
 === PROBE #306 · PreToolUse write into a fresh scratch repo, no `shepherd init` at all (project identity absent) ===
 {"hookSpecificOutput":{"additionalContext":"[shepherd] dispatch state unavailable, tool allowed: project not scaffolded — run `shepherd init --confirm`: <sandbox-306>/.shepherd/project.json","hookEventName":"PreToolUse"}}
 [exit 0]
+PASS  #306 probe produced a hook response
 
 === ASSERTIONS · mode=expect-abort ===
 PASS  #315 hard-denies the unbound session
@@ -481,28 +501,37 @@ PASS  #306 PreToolUse is not blocked when project identity is missing
 
 === NOTES · #306 message text, not a verdict counted here ===
   NOTE  #306 names an action and carries no bare os error -- REFUTED
+        see evidence/pre-fix.md for the full transcript and citations
 
 === RESULT ===
-mode=expect-abort passed=10 failed=0
+mode=expect-abort passed=14 failed=0
 #315 and #314 reproduced as specified.
 ```
 
-The count is 10, not the 9 an earlier version of this file predicted. The
-difference is `assert_306`, a counted assertion the REDO added; the four
-`#315` and five `#314` assertions are unchanged.
+Worth stating once, here where the transcript is quoted: the RESULT total is 14
+while only ten PASS lines sit under the `ASSERTIONS` heading. That is
+deliberate, not a discrepancy. The four liveness assertions print next to the
+probes they measure, immediately under each probe's own output, because that is
+where a reader checking whether a probe spoke will look.
+
+The count is 14, not the 9 an earlier version of this file predicted. Two
+additions account for the difference: `assert_306`, the counted #306 assertion
+the REDO added, and the four per-probe liveness assertions. The four `#315` and
+five `#314` assertions are unchanged.
 
 ### The matrix
 
 | binary | invocation | result | exit |
 |---|---|---|---|
-| pre-fix | `--mode expect-abort` | `passed=10 failed=0` | 0 |
-| pre-fix | `--mode expect-fixed` | `passed=3 failed=3` | 1 |
-| post-fix | `--mode expect-abort` | `passed=6 failed=4` | 1 |
-| post-fix | `--mode expect-fixed` | `passed=6 failed=0` | 0 |
+| pre-fix | `--mode expect-abort` | `passed=14 failed=0` | 0 |
+| pre-fix | `--mode expect-fixed` | `passed=7 failed=3` | 1 |
+| post-fix | `--mode expect-abort` | `passed=10 failed=4` | 1 |
+| post-fix | `--mode expect-fixed` | `passed=10 failed=0` | 0 |
 | pre-fix | `--follow-remediation` | `passed=3 failed=1` | 1 |
 | post-fix | `--follow-remediation` | `passed=2 failed=0` | 0 |
 | silent stub | `--follow-remediation` | `passed=0 failed=1` | 1 |
-| silent stub | `--mode expect-fixed` | `passed=5 failed=1` | 1 |
+| silent stub | `--mode expect-fixed` | `passed=5 failed=5` | 1 |
+| silent stub | `--mode expect-abort` | `passed=3 failed=11` | 1 |
 
 The first four rows are the shape a reproduction harness has to have: the
 pre-fix binary passes the "these defects are present" mode and fails the
@@ -545,15 +574,32 @@ binary and is not supposed to be; it exists to be the emptiest possible input.
   PASS over a binary that never spoke. `probe_spoke` (`sandbox.sh:453-458`)
   and `assert_probe_spoke` (`:469-478`) now gate every branch of that mode on
   the probe having produced a `hookSpecificOutput` envelope at all.
-- `--mode expect-fixed` against the stub scores `passed=5 failed=1`, and the
-  single failure is `FAIL  #315 remains fail-closed post-fix` -- the assertion
-  the auditor required. The other five pass vacuously on empty output
-  (`printf '' | grep -qF -- '"permissionDecision":"deny"'` exits 1, so silence
-  reads as "not denied"), which is exactly why the negative-space-only form of
-  `assert_fixed_315` was not a gate.
+- `--mode expect-fixed` against the stub scores `passed=5 failed=5`, in this
+  order:
+
+  ```
+  FAIL  #315 probe produced a hook response
+  FAIL  #314a probe produced a hook response
+  FAIL  #314b probe produced a hook response
+  FAIL  #306 probe produced a hook response
+  FAIL  #315 remains fail-closed post-fix
+  ```
+
+  The last of those is the assertion the auditor required. The first four are
+  the per-probe liveness assertions, which now catch the same silence one
+  layer earlier and once per probe. The five remaining assertions still pass
+  vacuously on empty output (`printf '' | grep -qF --
+  '"permissionDecision":"deny"'` exits 1, so silence reads as "not denied"),
+  which is exactly why the negative-space-only form of `assert_fixed_315` was
+  not a gate, and why liveness is now asserted on each probe's own output
+  rather than inferred from whichever neighbour happens to be sound.
+- `--mode expect-abort` against the stub scores `passed=3 failed=11`, exit 1.
+  It was never the mode at risk -- it asks for text the stub cannot produce --
+  and it is recorded here so all three modes are on the same falsification
+  fixture.
 
 Both zero-count guards were also changed to test `PASS_COUNT + FAIL_COUNT`
-rather than `PASS_COUNT` alone (`sandbox.sh:600` and `:687`). Testing
+rather than `PASS_COUNT` alone (`sandbox.sh:604` and `:708`). Testing
 `PASS_COUNT` alone reports "zero assertions ran" about any run in which every
 assertion failed, because such a run also has `PASS_COUNT=0`, and it returns
 before the accurate diagnostic below it. The silent stub's
@@ -586,10 +632,12 @@ so the `# shellcheck source=../l1-resolution/sandbox.sh` directive resolves)
 both ran clean against `sandbox.sh`: zero warnings, zero errors, exit 0. They
 were re-verified clean after the REDO edits that added `assert_306`, added the
 third assertion to `assert_fixed_315`, added `probe_spoke`/`assert_probe_spoke`,
-and changed both zero-count guards to test `PASS_COUNT + FAIL_COUNT`.
-`shellcheck` 0.11.0 was available on this machine
-(`/opt/homebrew/bin/shellcheck`); this is a real, executed, clean result, not
-a claim.
+and changed both zero-count guards to test `PASS_COUNT + FAIL_COUNT`; and
+re-confirmed clean again, both tools exit 0, after the pass that called
+`assert_probe_spoke` on each of the four probes in `main` and corrected the
+`METHODOLOGY NOTE` and both zero-count guard comments. `shellcheck` 0.11.0 was
+available on this machine (`/opt/homebrew/bin/shellcheck`); this is a real,
+executed, clean result, not a claim.
 
 ---
 

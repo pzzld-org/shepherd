@@ -94,19 +94,19 @@
 #   bash 3.2 compatible (macOS ships 3.2): no associative arrays, no ${var^^},
 #   no mapfile/readarray, no `**` globstar.
 #
-#   METHODOLOGY NOTE (read before trusting this file's first run): the coder
-#   who wrote this script is categorically forbidden from running any git
-#   command, in any form, including inside an unrelated scratch directory --
-#   shepherd's own live guard enforces this for the `coder` role ("never
-#   performs any version-control write, under any circumstance"), and it
-#   denied exactly that attempt during authorship. Every probe here was
-#   therefore derived from static reading of the exact code paths it
-#   exercises (cited inline) plus this repository's own existing, checked-in,
-#   currently-passing regression tests -- never from a live run the author
-#   personally executed. The first execution of this script, by whoever has
-#   the standing to run it, should be watched closely, and
-#   `evidence/pre-fix.md`'s #314 and #306 sections re-confirmed against that
-#   run's actual transcript.
+#   METHODOLOGY NOTE (why the author never ran this script): the coder who
+#   wrote it is categorically forbidden from running any git command, in any
+#   form, including inside an unrelated scratch directory -- shepherd's own
+#   live guard enforces this for the `coder` role ("never performs any
+#   version-control write, under any circumstance"), and it denied exactly
+#   that attempt during authorship. Every probe here was therefore derived
+#   from static reading of the exact code paths it exercises (cited inline)
+#   plus this repository's own existing, checked-in, currently-passing
+#   regression tests -- never from a live run the author personally
+#   executed. The lane conductor has since executed this script under its
+#   own standing, in every mode, against both a pre-fix binary built at
+#   `b0ad8aa` and the post-fix binary, and `evidence/pre-fix.md` is
+#   reconciled against those transcripts.
 # ---------------------------------------------------------------------------
 
 set -euo pipefail
@@ -594,9 +594,13 @@ run_follow_remediation() {
     # The TOTAL, not PASS_COUNT: a run in which every assertion FAILED also
     # has PASS_COUNT=0, so testing PASS_COUNT alone reports "zero assertions
     # ran" about a run that ran plenty, and returns before the accurate
-    # diagnostic below it. The recorded pre-fix `--follow-remediation` run did
-    # exactly that: it printed `passed=0 failed=1` and then this line. Only a
-    # genuinely empty run may take this branch, and it still fails loudly (G4).
+    # diagnostic below it. Measured now: pre-fix `--follow-remediation` is
+    # `passed=3 failed=1` and no longer reaches this branch at all, precisely
+    # because the liveness assertions record passes; the run that genuinely
+    # produces `passed=0 failed=1` is a silent-stub binary (accepts every
+    # subcommand, exits 0, prints nothing) -- it fails on "BEFORE probe
+    # produced a hook response" and records no pass. Only a genuinely empty
+    # run may take this branch, and it still fails loudly (G4).
     if [[ $((PASS_COUNT + FAIL_COUNT)) -eq 0 ]]; then
         printf 'zero assertions ran; this gate cannot be trusted at count zero (G4).\n'
         return 1
@@ -639,15 +643,27 @@ main() {
     ENVELOPE_JSON="$(envelope_pretooluse_write "$SESSION_315" "$TOOL_USE_315" "x")"
     probe
     local out_315="$PROBE_OUT"
+    # Liveness is asserted on each probe's own output, not inferred from a
+    # neighbouring assertion. assert_fixed_314 alone checks only that the
+    # second output does NOT contain "rejected" and that the two outputs
+    # compare -- against a binary printing nothing, both checks pass, and
+    # today the mode as a whole only fails because a different assertion
+    # (#315 remains fail-closed post-fix) happens to also be watching. An
+    # assertion that is sound only because its neighbour is sound is exactly
+    # the defect class this harness exists to kill, so every probe gets its
+    # own counted liveness check here, before any mode assertion reads it.
+    assert_probe_spoke "#315" "$out_315" || true
 
     heading "PROBE #314a · first SessionStart for $SESSION_314 (expect BIND)"
     ENVELOPE_JSON="$(envelope_session_start "$SESSION_314")"
     probe
     local out_314a="$PROBE_OUT"
+    assert_probe_spoke "#314a" "$out_314a" || true
 
     heading "PROBE #314b · second SessionStart for the SAME session (expect REJECTED)"
     probe
     local out_314b="$PROBE_OUT"
+    assert_probe_spoke "#314b" "$out_314b" || true
 
     heading "PROBE #306 · PreToolUse write into a fresh scratch repo, no \`shepherd init\` at all (project identity absent)"
     setup_sandbox_306
@@ -657,6 +673,7 @@ main() {
     probe
     local out_306="$PROBE_OUT"
     cd -- "$SANDBOX" || die "cannot return to primary scratch $SANDBOX"
+    assert_probe_spoke "#306" "$out_306" || true
     export SHEPHERD_HOME="$SANDBOX/isolated-home"
 
     heading "ASSERTIONS · mode=$MODE"
@@ -681,9 +698,13 @@ main() {
     # The TOTAL, not PASS_COUNT: a run in which every assertion FAILED also
     # has PASS_COUNT=0, so testing PASS_COUNT alone reports "zero assertions
     # ran" about a run that ran plenty, and returns before the accurate
-    # diagnostic below it. The recorded pre-fix `--follow-remediation` run did
-    # exactly that: it printed `passed=0 failed=1` and then this line. Only a
-    # genuinely empty run may take this branch, and it still fails loudly (G4).
+    # diagnostic below it. Measured now: pre-fix `--follow-remediation` is
+    # `passed=3 failed=1` and no longer reaches this branch at all, precisely
+    # because the liveness assertions record passes; the run that genuinely
+    # produces `passed=0 failed=1` is a silent-stub binary (accepts every
+    # subcommand, exits 0, prints nothing) -- it fails on "BEFORE probe
+    # produced a hook response" and records no pass. Only a genuinely empty
+    # run may take this branch, and it still fails loudly (G4).
     if [[ $((PASS_COUNT + FAIL_COUNT)) -eq 0 ]]; then
         printf 'zero assertions ran; this gate cannot be trusted at count zero (G4).\n'
         return 1
