@@ -4,8 +4,8 @@
 WHY THIS EXISTS.
 
 On 2026-08-19 every hook in a live session ran `~/.cargo/bin/shepherd`
-reporting `6.5.0` against a working tree whose `.claude-plugin/plugin.json`
-declared `6.5.1`. Nothing noticed, because nothing looked:
+reporting an older release than the working tree's `.claude-plugin/plugin.json`
+declared. Nothing noticed, because nothing looked:
 `git grep -n "shepherd --version" hooks/ scripts/ .github/` returned nothing.
 
 That is worse than a stale tool. Hooks are the enforcement surface, so a
@@ -69,7 +69,7 @@ BINARY_NAME = "shepherd"
 # does not work as written is the defect family this gate belongs to.
 REINSTALL_COMMAND = "cargo install --path crates/cli --locked --force"
 
-# `shepherd --version` prints `shepherd-cli 6.5.1`. Match the version token
+# `shepherd --version` prints `shepherd-cli X.Y.Z`. Match the version token
 # rather than a fixed column, so a clap format change does not silently turn
 # a real comparison into an unparse.
 VERSION_TOKEN = re.compile(r"\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?")

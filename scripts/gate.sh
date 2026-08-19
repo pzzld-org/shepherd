@@ -99,15 +99,27 @@ gate_full() {
   step "clippy (default)" env RUSTFLAGS="-D warnings" cargo clippy --workspace --all-targets --locked
   step "clippy (full)" env RUSTFLAGS="-D warnings" cargo clippy --workspace --all-targets --locked --features full
   step "tests" cargo test --workspace --locked
-  # `cargo test --workspace` runs each member with its DEFAULT features, and
-  # `required-features` targets are silently SKIPPED rather than failed. With
-  # shepherd-core defaulting to ["std"], that skipped guard, dispatch,
-  # portable_dispatch and run_state outright and reduced loader to zero tests
-  # via its own `#![cfg]` -- 3 of 126 core tests actually executed, including
-  # none of the guard engine's 66. check-features.sh does not cover this: it
-  # runs `cargo check`, proving the feature graph compiles, never that the
-  # feature-gated tests run.
-  step "tests (feature-gated targets)" cargo test --workspace --locked --all-features
+  # Do not "fix" this by adding `cargo test --workspace --locked --all-features`
+  # below. That was tried and measured wrong twice: `--all-features` on this
+  # workspace turns on `nightly` (crates/core/Cargo.toml), which gates
+  # `#![cfg_attr(feature = "nightly", feature(allocator_api))]`
+  # (crates/core/src/lib.rs) behind an unstable `#[feature]` attribute, and
+  # `rust-toolchain.toml` pins stable 1.97.0 -- the build fails outright with
+  # `error[E0554]`, it does not run a fuller test set.
+  #
+  # The step above already runs every `required-features` target: workspace
+  # feature unification pulls `full` into `shepherd-core` via `shepherd-cli`,
+  # and every `required-features` in the workspace is `std`/`parse`/`json`/
+  # `bundled`/`layout`, all satisfied by that unification. Measured directly
+  # under plain `cargo test --workspace --locked`: shepherd_core 5, dispatch
+  # 15, guard 69, loader 25, portable_dispatch 7, run_state 6 -- 127 core
+  # tests, including all 69 guard-engine tests. The "3 of 126, none of the
+  # guard engine's 66" figure this comment used to cite does not reproduce
+  # under `--workspace`; it only reproduces for a single-crate invocation
+  # (`cargo test -p shepherd-core`), which drops feature unification and is
+  # not what this gate runs. Trusting that single-crate number instead of
+  # remeasuring under the actual gate command is, verbatim, how this comment
+  # went stale in the first place -- do not repeat it.
   step "build typed component for adapter package suites" \
     cargo build --locked --release --package shepherd-component --target wasm32-wasip2
   step "component runtime package suite" \
