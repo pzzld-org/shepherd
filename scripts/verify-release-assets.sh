@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Verify the complete v6.5.1 release payload before GitHub publication.
+# Verify the complete v6.5.2 release payload before GitHub publication.
 set -euo pipefail
 
 fail() {

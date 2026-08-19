@@ -723,7 +723,7 @@ dependencies = [
 
 [[package]]
 name = "shepherd-cli"
-version = "6.5.1"
+version = "6.5.2"
 dependencies = [
  "anyhow",
  "chrono",
@@ -746,7 +746,7 @@ dependencies = [
 
 [[package]]
 name = "shepherd-compiler"
-version = "6.5.1"
+version = "6.5.2"
 dependencies = [
  "serde",
  "serde-saphyr",
@@ -756,7 +756,7 @@ dependencies = [
 
 [[package]]
 name = "shepherd-component"
-version = "6.5.1"
+version = "6.5.2"
 dependencies = [
  "serde_json",
  "shepherd-sdk",
@@ -765,7 +765,7 @@ dependencies = [
 
 [[package]]
 name = "shepherd-core"
-version = "6.5.1"
+version = "6.5.2"
 dependencies = [
  "chrono",
  "config",
@@ -782,7 +782,7 @@ dependencies = [
 
 [[package]]
 name = "shepherd-registry"
-version = "6.5.1"
+version = "6.5.2"
 dependencies = [
  "rusqlite",
  "serde",
@@ -795,7 +795,7 @@ dependencies = [
 
 [[package]]
 name = "shepherd-render"
-version = "6.5.1"
+version = "6.5.2"
 dependencies = [
  "minijinja",
  "serde",
@@ -808,7 +808,7 @@ dependencies = [
 
 [[package]]
 name = "shepherd-sdk"
-version = "6.5.1"
+version = "6.5.2"
 dependencies = [
  "shepherd-compiler",
  "shepherd-core",
