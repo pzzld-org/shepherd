@@ -534,10 +534,25 @@ cargo build --locked -p shepherd-cli --bin shepherd
 export PATH="$PWD/target/debug:$PATH"
 # .shepherd/ctx survives a clone
 git ls-files .shepherd/ctx/.gitkeep | grep -q .
-wt=$(mktemp -d) && git worktree add --detach "$wt" HEAD >/dev/null
-test -d "$wt/.shepherd/ctx"; echo "ctx=$?"
-(cd "$wt" && shepherd doctor); echo "doctor=$?"
-git worktree remove --force "$wt"
+# ROOT AMENDMENT (l3 escalation, 2026-08-19). This block used a linked
+# worktree and was VACUOUS: `resolve_primary` (crates/cli/src/context.rs:608-612)
+# returns `common.parent()` -- the MAIN checkout -- for any linked worktree, so
+# `cd "$wt" && shepherd doctor` never inspected $wt. It reported the registered,
+# healthy root checkout and exited 0 pre-fix, so the clause could not fail.
+# That is a Class A defect inside the gate this plan added to prevent Class A
+# defects. Only a standalone clone makes resolve_primary land on the new tree.
+# The worktree form also could not be run by the lane at all: the guard reserves
+# `git worktree add/remove/prune` to the top-level orchestrator.
+cl=$(mktemp -d)/clone && git clone --no-local -q . "$cl"
+test -d "$cl/.shepherd/ctx"; echo "ctx=$?"
+# Exit stays 3 and that is CORRECT: .shepherd/shepherd.db and
+# .shepherd/project.json are git-ignored (.gitignore:26,31), so a fresh clone
+# genuinely needs `shepherd init --confirm`. Demoting those two findings would
+# break crates/cli/tests/wave_c_bootstrap_cli.rs:259-266, which pins doctor to
+# exit 3 on an unregistered checkout and is outside this lane's file scope.
+# The load-bearing assertion is that `ctx` is no longer among the findings.
+(cd "$cl" && shepherd doctor 2>&1) | tee /dev/stderr | grep -q 'ctx directory is absent' && exit 1
+rm -rf "$(dirname "$cl")"
 # the version-lag gate is falsifiable and correct in both directions
 python3 scripts/check-version-lag.py --self-test; test $? -eq 0
 SHEPHERD_BIN=$PWD/target/debug/shepherd python3 scripts/check-version-lag.py; test $? -eq 0
@@ -1107,9 +1122,17 @@ must state the measured delta against this +465 estimate and explain any gap ove
 4. **`FULL-SUITE`.** On the merge candidate: `bash hooks/tests/run.sh` exits 0 reporting
    `0 failed` with a count of at least 29, and `cargo test --workspace --locked` exits 0 with
    a non-zero total.
-5. **`CLONE-FIDELITY`.** A detached worktree of the merge candidate carries `.shepherd/ctx`,
-   `shepherd doctor` exits 0 there, and a PreToolUse envelope against it emits no
-   run-namespace banner.
+5. **`CLONE-FIDELITY`** (amended by root at l3's escalation, 2026-08-19). A fresh
+   `git clone --no-local` of the merge candidate carries `.shepherd/ctx`, `shepherd doctor`
+   run inside that clone does **not** report `ctx directory is absent`, and a PreToolUse
+   envelope against it emits no run-namespace banner. The original wording said "a detached
+   worktree ... `shepherd doctor` exits 0 there" and was vacuous in both halves:
+   `resolve_primary` (`crates/cli/src/context.rs:608-612`) resolves any linked worktree back
+   to the main checkout, so doctor inspected the registered root tree and exited 0 before any
+   fix existed. Exit 0 is also the wrong bar — a fresh clone lacks the git-ignored
+   `shepherd.db` and `project.json` and must exit 3 until `shepherd init --confirm` runs, a
+   behavior pinned by `crates/cli/tests/wave_c_bootstrap_cli.rs:259-266`. The absence of the
+   `ctx` finding is what actually measures the carry.
 6. **`CLOSE`.** `gh pr checks 328` reports zero `fail` rows, and the close report records
    `shepherd seed verify` against both this seed and the v6.4.6 seed. Note Q3: `main` has no
    branch protection, so this gate is enforced by this plan and by nothing else.
