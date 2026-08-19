@@ -31,6 +31,14 @@ drift between call sites rather than a missing decision.
   `cmd/dispatch.rs` unit test previously accepted `run \`shepherd init\``, which is precisely
   the broken string. Both now require `--confirm`; reverting the source turns them red.
 
+- **Carrier drift was a CI-only failure.** Editing `skills/shepherd/SKILL.md` silently broke
+  `plugins/shepherd/codex/skills/shepherd/SKILL.md`, which `scripts/check-plugin.py` requires
+  to be byte-identical. That script ran in `.github/workflows/rust.yml` and nowhere else, so
+  the local gate lane was green while the cross-harness projection was broken, and the author
+  learned about it from a red CI job twenty minutes later. `hooks/tests/test_plugin_contract.sh`
+  now runs it in the gate lane (0.45s, both the plain scan and `--self-test`), and falsifies
+  itself by drifting a scratch carrier and requiring a non-zero exit.
+
 ### Fixed — the root skill had no entry condition
 
 `skills/spawn` and `skills/start` both open with `## Preconditions` stated as commands.
