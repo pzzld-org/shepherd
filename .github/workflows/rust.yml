@@ -61,6 +61,8 @@ env:
   # workflow scope: the version and its checksum exist in exactly ONE place.
   RIPGREP_VERSION: "15.2.0"
   RIPGREP_SHA256: "33e15bcf1624b25cdd2a55813a47a2f95dbe126268203e76aa6a585d1e7b149c"
+  ACTIONLINT_VERSION: "1.7.12"
+  ACTIONLINT_SHA256: "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"
 
 permissions:
   contents: read
@@ -140,10 +142,31 @@ jobs:
       # workflow requires but the caller omits, or a `needs:` naming a job that
       # moved, all parse fine and fail at dispatch time. actionlint checks
       # exactly that, and it is what verified the cargo-build split.
+      # taiki-e/install-action is the vehicle for CARGO tooling; actionlint is a
+      # Go binary and is not in its manifest, so `tool: actionlint@...` fails to
+      # resolve. This is the same checksum-verified download the ripgrep step
+      # above uses -- a substituted or corrupted archive must stop the job, not
+      # quietly install something else.
       - name: Install pinned actionlint
-        uses: taiki-e/install-action@v2
-        with:
-          tool: actionlint@1.7.12
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          url="https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/${archive}"
+          work="$(mktemp -d)"
+          curl --fail --silent --show-error --location --retry 3 \
+            --output "${work}/actionlint.tar.gz" "${url}"
+          # --strict rejects a malformed checksum line rather than treating it
+          # as "nothing to verify".
+          printf '%s  %s\n' "${ACTIONLINT_SHA256}" "${work}/actionlint.tar.gz" > "${work}/actionlint.sha256"
+          sha256sum --check --strict "${work}/actionlint.sha256"
+          tar -xzf "${work}/actionlint.tar.gz" -C "${work}"
+          mkdir -p "${RUNNER_TEMP}/gate-bin"
+          install -m 0755 "${work}/actionlint" "${RUNNER_TEMP}/gate-bin/actionlint"
+          # GITHUB_PATH applies from the NEXT step, so prove the binary here by
+          # its full path rather than assuming the export already took.
+          "${RUNNER_TEMP}/gate-bin/actionlint" --version
+          printf '%s\n' "${RUNNER_TEMP}/gate-bin" >> "${GITHUB_PATH}"
       - name: Lint every workflow
         shell: bash
         run: |
