@@ -24,7 +24,11 @@ fn canonical_compile_uses_the_embedded_authored_corpus() {
         .expect("canonical content compiles");
     assert_eq!(tree.target, wit::Target::Codex);
     assert_eq!(tree.roles.len(), 9);
-    assert_eq!(tree.files.len(), 9);
+    // v651 authored a tenth skill, content/skills/plant/SKILL.md, which moved
+    // the emitted file count from 9 to 10. Confirmed by re-running `shepherd
+    // compile --target codex`, not hand-computed. If this goes red again,
+    // re-run the compiler, name what changed, and bump.
+    assert_eq!(tree.files.len(), 10);
     assert!(
         tree.files
             .iter()
@@ -32,11 +36,18 @@ fn canonical_compile_uses_the_embedded_authored_corpus() {
     );
     // Moved when `[agent_types]` stopped listing `planter` (a `dispatchable:
     // false` role Codex was advertising as spawnable) and `[models]` stopped
-    // pinning the leads, which now inherit the caller. Same digest the CLI and
-    // the conformance oracle carry for the Codex target.
+    // pinning the leads, which now inherit the caller.
+    //
+    // v651's tenth skill (plant) shifted this digest too, from
+    // 693d70a523a491b43ec0294db5f3272064217f333791d1fded54357d3a12e5e1.
+    // Reproduced via `shepherd compile --target codex`, not hand-computed.
+    // This is the Codex target digest the CLI carries; the conformance
+    // oracle still carries the old value until root regenerates it under
+    // integration custody -- that gap is expected, not a bug here. If this
+    // goes red again, re-run the compiler, name what changed, and bump.
     assert_eq!(
         tree.digest,
-        "693d70a523a491b43ec0294db5f3272064217f333791d1fded54357d3a12e5e1"
+        "553e1d7df5ed31ad9682adbc84e70a754fc4feae1017fe8ea1cd0f083bc1b1c9"
     );
 }
 

@@ -38,9 +38,10 @@ dynamic workflow of two agent kinds running concurrently against one run:
 - **discovery** — resolve the external unknowns the seed names: upstream documentation,
   release notes, API surfaces, prior art.
 
-Width follows tier. These are sonnet and haiku roles, so the wave is wide and every agent
-carries one bounded brief. An agent returning prose instead of evidence is re-dispatched
-once, then dropped.
+Width follows tier. `auditor` runs at the tier `shepherd models resolve auditor` returns,
+and `discovery` at the tier `shepherd models resolve discovery` returns, both lower tiers,
+so the wave is wide and every agent carries one bounded brief. An agent returning prose
+instead of evidence is re-dispatched once, then dropped.
 
 ## Step 3 — the plan
 

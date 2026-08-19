@@ -9,6 +9,18 @@ portability: cross-harness
 
 Bind role dispatch, gates, artifacts, and resume into one harness-neutral sprint.
 
+## Preconditions
+
+Each is a command, not a judgement. A failure stops the sprint before any dispatch and is
+reported with its exact output.
+
+- `shepherd doctor` reports a dispatchable namespace. On an unscaffolded project it exits 3
+  and names the absent artifact.
+- The project is scaffolded. `shepherd init --confirm` mints `.shepherd/project.json`, the
+  registry, and the `projects` row, and it is gated precisely because it mutates. Root
+  never runs it on the operator's behalf: surface the command and halt. Scaffolding a
+  namespace is the operator's decision, not a side effect of loading this contract.
+
 ## The flock is closed
 
 The flock is exactly `shepherd`, `planter`, `engineer`, `conductor`, `critic`, `coder`,
