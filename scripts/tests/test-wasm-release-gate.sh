@@ -103,7 +103,8 @@ check_contains "workflow pins wasm-tools version" "${WORKFLOW}" 'WASM_TOOLS_VERS
 # The install moved to taiki-e/install-action; what must not move is the pin.
 check_contains "workflow installs pinned wasm-tools" "${WORKFLOW}" 'tool: wasm-tools@${{ env.WASM_TOOLS_VERSION }}'
 check_job_contains "feature matrix pins wasm-tools version" "${RUST_WORKFLOW}" "features" "msrv" 'WASM_TOOLS_VERSION: "1.254.0"'
-check_job_contains "feature matrix installs pinned wasm-tools" "${RUST_WORKFLOW}" "features" "msrv" 'cargo install wasm-tools --version "${WASM_TOOLS_VERSION}" --locked'
+# The install moved to taiki-e/install-action; what must not move is the pin.
+check_job_contains "feature matrix installs pinned wasm-tools" "${RUST_WORKFLOW}" "features" "msrv" 'tool: wasm-tools@${{ env.WASM_TOOLS_VERSION }}'
 check_job_contains "feature matrix is bounded" "${RUST_WORKFLOW}" "features" "msrv" 'timeout-minutes: 5'
 check_job_contains "feature matrix uses the runner clang" "${RUST_WORKFLOW}" "features" "msrv" 'clang --version'
 check_absent "Rust workflow never installs clang through apt" "${RUST_WORKFLOW}" 'apt-get install -y clang'

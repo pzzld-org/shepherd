@@ -112,8 +112,9 @@ jobs:
           version: 0.14.0
       - name: Install locked cargo-zigbuild
         if: contains(matrix.target, 'unknown-linux-gnu')
-        shell: bash
-        run: cargo install cargo-zigbuild --version 0.20.1 --locked
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-zigbuild@0.20.1
       - name: Build locked canonical CLI
         shell: bash
         env:
