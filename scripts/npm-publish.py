@@ -47,6 +47,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import time
 import urllib.error
 import urllib.request
 
@@ -64,6 +65,10 @@ ROOT_PACKAGE = "@pzzld/component-runtime"
 class RegistryUnavailable(RuntimeError):
     """The registry could not be consulted, so idempotence cannot be established."""
 
+
+# A new scoped package can take minutes to surface on the public endpoint.
+VERIFY_ATTEMPTS = 10
+VERIFY_INTERVAL_SECONDS = 20
 
 REGISTRY = "https://registry.npmjs.org"
 USER_AGENT = "shepherd-npm-publish (+https://github.com/pzzld-org/shepherd)"
@@ -189,7 +194,51 @@ def run(directory: pathlib.Path, version: str, confirm: bool, dry_run: bool) -> 
     if not confirm:
         print(f"plan only: {len(planned) - skipped} to publish, {skipped} already present")
         return 0
-    print(f"npm-publish: {published} published, {skipped} already present, {len(planned)} total")
+
+    # VERIFY, DO NOT TRUST THE EXIT CODE.
+    #
+    # `npm publish` returned 0 for two brand-new package names that were never
+    # created, and this script duly reported "4 published". Exit status is a
+    # claim about the command; the registry is the fact. A publisher that
+    # believes the claim reports a green release over an empty registry, which
+    # is precisely how the adapter rename appeared to ship and did not.
+    # POLL, do not check once. A brand-new scoped package does not appear on the
+    # public registry endpoint immediately -- claude-shepherd and codex-shepherd
+    # both read 404 for several minutes after a successful publish, which a
+    # single check would report as a failed release. Retry with a bounded
+    # ceiling so lag is tolerated and a genuine no-op still fails.
+    missing = []
+    for name, _ in planned:
+        for attempt in range(VERIFY_ATTEMPTS):
+            try:
+                if already_published(name, version):
+                    break
+            except RegistryUnavailable as error:
+                print(f"FAIL: cannot verify publication: {error}", file=sys.stderr)
+                return 1
+            if attempt + 1 < VERIFY_ATTEMPTS:
+                print(f"  waiting for {name}@{version} to appear "
+                      f"({attempt + 1}/{VERIFY_ATTEMPTS})")
+                time.sleep(VERIFY_INTERVAL_SECONDS)
+        else:
+            missing.append(name)
+    if missing:
+        print(
+            f"FAIL: npm reported success but {len(missing)} package(s) are absent "
+            f"from the registry:\n"
+            + "".join(f"  {name}@{version}\n" for name in missing)
+            + "      This is checked with a bounded retry, so it is not registry lag.\n"
+            "      A brand-new package name needs a token permitted to CREATE\n"
+            "      packages in the scope; a token scoped to existing packages can\n"
+            "      exit 0 without publishing.",
+            file=sys.stderr,
+        )
+        return 1
+
+    print(
+        f"npm-publish: {published} published, {skipped} already present, "
+        f"{len(planned)} total, all verified present on the registry"
+    )
     return 0
 
 
