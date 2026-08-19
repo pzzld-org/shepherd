@@ -154,7 +154,8 @@ workflow='.github/workflows/release.yml'
 # (checkout pinning, action pins) can be asserted across all three at once.
 build_workflow='.github/workflows/cargo-build.yml'
 publish_workflow='.github/workflows/cargo-publish.yml'
-pipeline=("$workflow" "$build_workflow" "$publish_workflow")
+npm_workflow='.github/workflows/npm-publish.yml'
+pipeline=("$workflow" "$build_workflow" "$publish_workflow" "$npm_workflow")
 packed_probe='scripts/test-packed-plugin.sh'
 for pipeline_file in "${pipeline[@]}"; do
   test -f "$pipeline_file" || {
@@ -171,7 +172,7 @@ printf 'ok: release pipeline parses (%s files)\n' "${#pipeline[@]}"
 # The split is only real if release.yml stopped owning the build. Assert the
 # delegation both ways: release.yml must CALL the two workflows, and must not
 # have quietly kept an inlined copy of the jobs it delegated.
-for called in "$build_workflow" "$publish_workflow"; do
+for called in "$build_workflow" "$publish_workflow" "$npm_workflow"; do
   if ! rg -Fq "uses: ./$called" "$workflow"; then
     printf '%s: release workflow must delegate to %s via `uses:`\n' "$workflow" "$called" >&2
     exit 1
@@ -702,7 +703,7 @@ fi
 
 # S4: no step may reference a secret outside the known set (an undefined secret resolves
 # to empty and fails at runtime in a way no local gate catches).
-known_secrets=$'secrets.GITHUB_TOKEN\nsecrets.CARGO_REGISTRY_TOKEN\nsecrets.ANTHROPIC_API_KEY'
+known_secrets=$'secrets.GITHUB_TOKEN\nsecrets.CARGO_REGISTRY_TOKEN\nsecrets.ANTHROPIC_API_KEY\nsecrets.NPM_TOKEN'
 unknown_secrets=$(rg -o 'secrets\.[A-Z_]+' "${pipeline[@]}" | sed 's/^[^:]*://' | sort -u | comm -23 - <(printf '%s\n' "$known_secrets" | sort))
 if [[ -n "$unknown_secrets" ]]; then
   printf 'release pipeline references an undefined secret:\n%s\n' "$unknown_secrets" >&2
@@ -721,6 +722,26 @@ if ! rg -Fq 'CARGO_REGISTRY_TOKEN:' "$publish_workflow"; then
   printf '%s: must declare CARGO_REGISTRY_TOKEN as a workflow_call secret\n' "$publish_workflow" >&2
   exit 1
 fi
+# Same rule for npm: a called workflow inherits no secrets, so an unforwarded
+# NPM_TOKEN publishes with an empty credential and fails at upload time.
+if ! rg -Fq 'NPM_TOKEN: ${{ secrets.NPM_TOKEN }}' "$workflow"; then
+  printf '%s: must forward NPM_TOKEN to %s; workflow_call does not inherit secrets\n' \
+    "$workflow" "$npm_workflow" >&2
+  exit 1
+fi
+if ! rg -Fq 'NPM_TOKEN:' "$npm_workflow"; then
+  printf '%s: must declare NPM_TOKEN as a workflow_call secret\n' "$npm_workflow" >&2
+  exit 1
+fi
+# Publication must be held behind the build, on BOTH registries. An npm version
+# and a crates.io version are equally un-reissuable, and publication that races
+# the asset build is what burned two patch versions.
+for publisher in publish-crates publish-npm; do
+  if ! rg -Fq "needs: [release-metadata, build]" "$workflow"; then
+    printf '%s: %s must declare needs on the asset build\n' "$workflow" "$publisher" >&2
+    exit 1
+  fi
+done
 
 for release_test in \
   test-release-assets.sh \

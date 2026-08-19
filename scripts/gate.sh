@@ -56,6 +56,10 @@ gate_fast() {
   step "Cargo distribution contract" python3 scripts/tests/test-cargo-distribution.py
   step "Cargo distribution inventory" python3 scripts/check-cargo-distribution.py
   step "Cargo publisher recovery contract" python3 scripts/tests/test-cargo-publish.py
+  # There has never been an `npm publish` in this repository's CI. Seven
+  # releases shipped crates and nothing to npm, which is why the published
+  # pi-shepherd is still the inert 6.4.5.
+  step "npm publisher contract is falsifiable" python3 scripts/npm-publish.py --self-test
   step "WASM release boundary is falsifiable" bash scripts/tests/test-wasm-release-gate.sh
   step "component Node boundary is falsifiable" bash scripts/tests/test-component-node-gate.sh
   step "package distribution boundary is falsifiable" bash scripts/tests/test-package-boundary.sh

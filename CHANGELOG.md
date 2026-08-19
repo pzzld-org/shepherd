@@ -54,6 +54,53 @@ The fix is three parts:
   manifest with no `pi` key fails (the exact shipped defect), and a
   declared-but-unpacked carrier fails.
 
+### Added — npm publication exists at all now
+
+**There has never been an `npm publish` anywhere in this repository's CI.** The
+release packed four tarballs, attached them to the GitHub release, and stopped.
+`@pzzld/pi-shepherd` and `@pzzld/component-runtime` were published by hand once
+at 6.4.5 and never again; `@pzzld/pi-claude` and `@pzzld/pi-codex` have never
+been published at all. Seven releases (6.4.6 → 6.5.1) shipped crates to
+crates.io and nothing to npm.
+
+That is the second reason Pi was broken: even with the `pi` key fixed,
+`pi install npm:@pzzld/pi-shepherd` resolves to 6.4.5, because 6.4.5 is the only
+version npm has ever been given.
+
+`npm-publish.yml` publishes the **exact tarballs `cargo-build.yml` already
+produced** — never a rebuild, because a second construction path for bytes that
+were already checksummed and attached to the release is how two sources of truth
+begin disagreeing. Two asset sources and no third: the in-run artifact during a
+release, the published release assets when recovering.
+
+`scripts/npm-publish.py` is idempotent (an npm version is as un-reissuable as a
+crates.io one, so an already-published version is skipped, never overwritten),
+orders `@pzzld/component-runtime` first because every adapter pins it exactly,
+and reads identity from the manifest **inside** each archive rather than the
+filename. That last point was not theoretical: the first draft hardcoded the
+directory names and resolved zero of the three adapters, because
+`packages/harness-claude` publishes as `@pzzld/pi-claude`. A registry that
+cannot be reached is a fail-closed error, not a traceback.
+
+**Both publishers are now reachable four ways** and symmetric: `workflow_call`
+from `release.yml` (held behind every asset job), `workflow_run` on
+`cargo-build` completing on its own, `workflow_dispatch` for operator recovery
+(defaulting to *not* publishing), and `repository_dispatch`. The release gate
+asserts both declare `needs` on the build, and that `NPM_TOKEN` is forwarded
+explicitly — `workflow_call` inherits no secrets.
+
+### Removed — dead code
+
+- `scripts/publish.sh`, 285 lines: a hand-rolled crate publisher with a
+  hardcoded, half commented-out crate list, executed by nothing and fully
+  superseded by `cargo-publish.py` (which covers all six crates against its
+  stale four). Dead code is not free — it reads as current and gets copied from.
+- `scripts/tests/fixtures/native-dispatch-ok.mjs`, referenced nowhere.
+- `scripts/check-gate-wiring.py` now fails on any script under `scripts/` that
+  nothing runs and nothing documents, with a short, deliberate allowlist for
+  operator tools. Prose counts as reachability here, unlike for tests, because a
+  human is the runner.
+
 ### Added — the cross-harness claim is now falsifiable
 
 `scripts/tests/test-harness-surface-parity.sh` asserts all three harnesses at

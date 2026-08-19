@@ -193,6 +193,63 @@ def resolve(root: pathlib.Path) -> tuple[list[pathlib.Path], dict[pathlib.Path, 
     return tests, wired
 
 
+# Operator tools that are meant to be run by a human and referenced by docs
+# rather than executed by CI. Each entry is a deliberate exemption, not a
+# backlog: anything added here should say why in the same commit.
+STANDALONE_SCRIPTS = {
+    "scripts/setup.sh",          # documented in README as the checkout bootstrap
+    "scripts/gate.sh",           # the gate runner itself
+    "scripts/install-shepherd.sh",
+    "scripts/install-shepherd.ps1",
+}
+
+
+def unreferenced_scripts(root: pathlib.Path) -> list[pathlib.Path]:
+    """Scripts under scripts/ that nothing runs and nothing documents.
+
+    `scripts/publish.sh` was a 285-line crate publisher with a hardcoded, half
+    commented-out crate list, fully superseded by cargo-publish.py and executed
+    by nothing. Dead code is not free: it is read as current, copied from, and
+    trusted, and its stale crate list was exactly wrong about what ships.
+
+    Prose DOES count here, unlike for tests -- an operator tool referenced only
+    by the README is genuinely reachable, because a human is the runner.
+    """
+    tracked = tracked_files() if root == REPO else [
+        p.relative_to(root) for p in root.rglob("*") if p.is_file()
+    ]
+    scripts, evidence = [], {}
+    for rel in tracked:
+        text = None
+        path = root / rel
+        if rel.parts and rel.parts[0] == ".shepherd":
+            continue
+        if path.is_file():
+            try:
+                text = path.read_text(errors="replace")
+            except OSError:
+                text = None
+        if text is not None:
+            evidence[rel] = text
+        if (
+            len(rel.parts) == 2
+            and rel.parts[0] == "scripts"
+            and rel.suffix in (".sh", ".py", ".mjs", ".ps1")
+            and str(rel) not in STANDALONE_SCRIPTS
+        ):
+            scripts.append(rel)
+
+    dead = []
+    for script in scripts:
+        referenced = any(
+            other != script and script.name in text
+            for other, text in evidence.items()
+        )
+        if not referenced:
+            dead.append(script)
+    return sorted(dead)
+
+
 def check(root: pathlib.Path, quiet: bool = False) -> int:
     tests, wired = resolve(root)
     if not tests:
@@ -214,8 +271,28 @@ def check(root: pathlib.Path, quiet: bool = False) -> int:
             file=sys.stderr,
         )
         return 1
+    dead = unreferenced_scripts(root)
+    if dead:
+        print(
+            f"FAIL: {len(dead)} script(s) under scripts/ are referenced by nothing "
+            f"(not CI, not another script, not documentation):",
+            file=sys.stderr,
+        )
+        for script in dead:
+            print(f"  {script}", file=sys.stderr)
+        print(
+            "\nDelete it, wire it, or document it. Dead code is read as current and "
+            "copied from -- scripts/publish.sh carried a stale crate list for releases "
+            "after cargo-publish.py replaced it.",
+            file=sys.stderr,
+        )
+        return 1
+
     if not quiet:
-        print(f"check-gate-wiring: OK ({len(tests)} test files, all reachable from a runner)")
+        print(
+            f"check-gate-wiring: OK ({len(tests)} test files reachable from a runner, "
+            f"0 unreferenced scripts)"
+        )
     return 0
 
 

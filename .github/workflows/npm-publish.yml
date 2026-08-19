@@ -1,0 +1,177 @@
+name: npm-publish
+
+# npm publication, isolated from the asset build and the tag, exactly like
+# cargo-publish.yml.
+#
+# There has never been an `npm publish` anywhere in this repository. The release
+# pipeline packed four tarballs, attached them to the GitHub release, and
+# stopped. `@pzzld/pi-shepherd` and `@pzzld/component-runtime` were published by
+# hand once at 6.4.5 and never again; `@pzzld/pi-claude` and `@pzzld/pi-codex`
+# have never been published at all. Seven releases shipped crates to crates.io
+# and nothing to npm, which is why `pi install npm:@pzzld/pi-shepherd` still
+# installs a build that predates the `pi` key and is inert on Pi.
+#
+# This workflow publishes the EXACT tarballs cargo-build.yml already produced.
+# It never rebuilds them: a second construction path for bytes that were already
+# checksummed and attached to the release is precisely how two sources of truth
+# start disagreeing.
+#
+# Reachable four ways, so the modular pipeline can be driven from any of them:
+#   workflow_call        release.yml, held behind every asset job
+#   workflow_run         cargo-build finished on its own; publish what it built
+#   workflow_dispatch    operator recovery, defaults to NOT publishing
+#   repository_dispatch  out-of-band orchestration
+
+concurrency:
+  group: npm-publish-${{ github.ref }}
+  cancel-in-progress: false
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Exact MAJOR.MINOR.PATCH version to publish
+        required: true
+        type: string
+      ref:
+        description: Commit to publish from (defaults to the calling event's SHA)
+        required: false
+        type: string
+    secrets:
+      NPM_TOKEN:
+        required: true
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact MAJOR.MINOR.PATCH version to recover
+        required: true
+        type: string
+      publish:
+        description: Publish absent packages after verifying the tarballs
+        required: true
+        default: false
+        type: boolean
+  repository_dispatch:
+    types: [npm-publish]
+  # The modular hook: when cargo-build completes on its own (a tag push, a
+  # dispatch), publish what it just built. Guarded on a successful conclusion
+  # below, and idempotent regardless -- an npm version already on the registry
+  # is skipped, never overwritten.
+  workflow_run:
+    workflows: [cargo-build]
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish npm packages
+    # A failed or cancelled build must not publish its partial output. Every
+    # other trigger names its own version and is unconditional here.
+    if: >-
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    environment: npm
+    permissions:
+      contents: read
+    steps:
+      # `client_payload.*` is authored by whoever sends the dispatch, and that
+      # permission is grantable WITHOUT `contents: write`. Resolve the checkout
+      # ref through a fail-closed allowlist, via `env:` so the untrusted value
+      # is never spliced into the shell command itself (FL03/axiom#2578).
+      - name: Resolve a trusted checkout ref
+        id: dispatch_ref
+        shell: bash
+        env:
+          CALL_REF: ${{ inputs.ref }}
+          DISPATCH_REF: ${{ github.event.client_payload.ref }}
+          RUN_REF: ${{ github.event.workflow_run.head_sha }}
+          FALLBACK_REF: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          candidate="${CALL_REF:-${DISPATCH_REF:-${RUN_REF:-}}}"
+          if [[ -z "$candidate" ]]; then
+            printf 'ref=%s\n' "$FALLBACK_REF" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ "$candidate" =~ ^(refs/heads/|refs/tags/)?(main|master|latest|v[0-9]+\.[0-9]+\.[0-9]+(-dev\.[0-9]+)?)$ ]] \
+            || [[ "$candidate" =~ ^[0-9a-f]{40}$ ]]; then
+            printf 'ref=%s\n' "$candidate" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          printf '::error::rejected publish ref: not an allowlisted branch, tag, or commit SHA\n'
+          exit 1
+      - name: Checkout
+        uses: actions/checkout@v7 # v7.0.1
+        with:
+          fetch-depth: 1
+          ref: ${{ steps.dispatch_ref.outputs.ref }}
+          persist-credentials: false
+      - name: Resolve the version to publish
+        id: release
+        shell: bash
+        env:
+          REQUESTED_VERSION: ${{ inputs.version || github.event.client_payload.version }}
+        run: |
+          set -euo pipefail
+          version="$REQUESTED_VERSION"
+          if [[ -z "$version" ]]; then
+            # workflow_run and any other trigger without an explicit version:
+            # the tree being published is the authority for its own version.
+            version=$(python3 -c 'import json; print(json.load(open(".claude-plugin/plugin.json"))["version"])')
+          fi
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            printf '::error::resolved version %s is not MAJOR.MINOR.PATCH\n' "$version"
+            exit 1
+          }
+          python3 scripts/version-bump.py check --root . --version "$version"
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+      - name: Setup Node with the npm registry
+        uses: actions/setup-node@v7 # v7.0.0
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+      # Two asset sources, no third. Inside a release run the artifact is right
+      # there; standing alone, the GitHub release holds the same bytes with
+      # their checksums. Neither path rebuilds anything.
+      - name: Download packed tarballs from this run
+        id: artifact
+        continue-on-error: true
+        uses: actions/download-artifact@v8 # v8.0.1
+        with:
+          name: release-component-and-adapters
+          path: ${{ runner.temp }}/npm-assets
+      - name: Fall back to the published release assets
+        if: steps.artifact.outcome != 'success'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.release.outputs.version }}
+          ASSET_DIR: ${{ runner.temp }}/npm-assets
+        run: |
+          set -euo pipefail
+          mkdir -p "$ASSET_DIR"
+          gh release download "v${VERSION}" --dir "$ASSET_DIR" --pattern '*.tgz'
+          printf 'recovered %s tarball(s) from release v%s\n' \
+            "$(find "$ASSET_DIR" -name '*.tgz' | wc -l | tr -d ' ')" "$VERSION"
+      - name: Verify the publication plan
+        shell: bash
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+          ASSET_DIR: ${{ runner.temp }}/npm-assets
+        run: python3 scripts/npm-publish.py --assets "$ASSET_DIR" --version "$VERSION"
+      # `workflow_dispatch` defaults `publish` to false so a recovery run can
+      # verify the tarballs WITHOUT uploading. Every other trigger publishes:
+      # release.yml only calls in once every asset has verified, and workflow_run
+      # only fires on a successful build.
+      - name: Publish absent packages
+        if: >-
+          github.event_name != 'workflow_dispatch' || inputs.publish == true
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          VERSION: ${{ steps.release.outputs.version }}
+          ASSET_DIR: ${{ runner.temp }}/npm-assets
+        run: python3 scripts/npm-publish.py --assets "$ASSET_DIR" --version "$VERSION" --confirm
