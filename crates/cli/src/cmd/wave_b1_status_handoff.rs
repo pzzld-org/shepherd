@@ -118,7 +118,7 @@ impl WaveB1StatusCmd {
         let mut context = context(globals)?;
         if !context.registry_path.is_file() {
             return Err(CliError::message(format!(
-                "no DB at {} — run 'shepherd init'",
+                "no DB at {} — run 'shepherd init --confirm'",
                 context.registry_path.display()
             )));
         }

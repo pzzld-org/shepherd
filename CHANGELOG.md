@@ -4,6 +4,44 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v6.5.1 — unreleased
+
+**Five remediation messages named a command that refuses to run.** `shepherd init` is gated
+behind `--confirm` because it mutates: it mints `.shepherd/project.json`, the registry, and
+the `projects` row. Five user-facing messages nonetheless printed a bare `shepherd init`, so
+an operator on a cold project copied the remediation, got exit 2, and landed exactly where
+they started. `shepherd doctor` carried the correct wording the entire time, which makes this
+drift between call sites rather than a missing decision.
+
+### Fixed
+
+- **The remediation is runnable as printed.** `cmd/dispatch.rs`, `cmd/wave_b1_mem.rs`,
+  `cmd/wave_b1_status_handoff.rs`, `cmd/wave_e_coordination.rs`, and
+  `cmd/wave_g_coordination.rs` now name `shepherd init --confirm`. `cmd/wave_c_bootstrap.rs`
+  already did; that inconsistency is what made the defect legible.
+- **The gated-flag coupling cannot drift back.** `hooks/scripts/remediation_flag_lint.py`
+  derives the gated-subcommand map from the CLI's own refusal text (`X is mutating; re-run
+  with --FLAG`) and rejects any message, skill, or agent line naming a gated subcommand
+  without its flag. A hard-coded list would stop covering a subcommand the day one is added,
+  so there is no list. Falsified three ways in `hooks/tests/test_remediation_flags.sh`:
+  a fixture reintroducing the exact v6.5.0 wording turns it red, a fixture with no refusal
+  text turns it red rather than passing on zero coverage, and it caught a live violation in
+  this change's own `SKILL.md` draft on first run.
+- **The regression tests assert the flag, not the prefix.** `dispatch_cli.rs` and the
+  `cmd/dispatch.rs` unit test previously accepted `run \`shepherd init\``, which is precisely
+  the broken string. Both now require `--confirm`; reverting the source turns them red.
+
+### Fixed — the root skill had no entry condition
+
+`skills/spawn` and `skills/start` both open with `## Preconditions` stated as commands.
+`skills/shepherd`, the contract you load first and the only one reached on a cold project,
+had none. An agent invoking it against an unscaffolded namespace got a sprint contract with
+no way to satisfy it and no sanctioned bootstrap step, leaving the hook's stderr as the only
+signal. It now declares the same precondition shape: `shepherd doctor` must report a
+dispatchable namespace, and scaffolding stays the operator's decision — root surfaces
+`shepherd init --confirm` and halts rather than mutating a namespace as a side effect of
+loading a contract.
+
 ## v6.5.0 — unreleased
 
 **The release automation ran correctly all the way to `git push` and died there.** The first

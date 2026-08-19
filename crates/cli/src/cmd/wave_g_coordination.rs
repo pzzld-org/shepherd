@@ -544,7 +544,9 @@ fn project_id(registry: &Registry) -> Result<String, CliError> {
         .map_err(registry_error)?
         .into_iter()
         .next()
-        .ok_or_else(|| CliError::message("no project registered — run 'shepherd init' first"))
+        .ok_or_else(|| {
+            CliError::message("no project registered — run 'shepherd init --confirm' first")
+        })
 }
 fn stdout(context: &mut ExecutionContext, value: &str) -> Result<(), CliError> {
     let mut bytes = value.as_bytes().to_vec();

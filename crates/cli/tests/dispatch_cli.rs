@@ -289,7 +289,15 @@ fn dispatch_reports_missing_identity_as_unscaffolded_not_a_symlink_refusal() {
     assert!(start.stdout.is_empty());
     let stderr = String::from_utf8_lossy(&start.stderr);
     assert!(stderr.contains("project not scaffolded"), "stderr={stderr}");
-    assert!(stderr.contains("run `shepherd init`"), "stderr={stderr}");
+    // End to end companion to the unit assertion in `cmd/dispatch.rs`: the
+    // printed remediation has to be runnable verbatim. `init` refuses without
+    // `--confirm`, so the flagless form this assertion used to accept sent the
+    // operator to an exit-2 dead end on the one path that exists to unblock a
+    // cold project.
+    assert!(
+        stderr.contains("run `shepherd init --confirm`"),
+        "stderr={stderr}"
+    );
     assert!(
         !stderr.contains("without following symlinks"),
         "stderr={stderr}"
