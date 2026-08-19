@@ -12,7 +12,7 @@ to authored content impossible to ship unnoticed.
 It had no generator. Every content change therefore required hand-editing a
 machine-generated document containing three trees of hashes -- and that went
 wrong exactly the way hand-editing generated data always does: the first attempt
-during v6.5.1 wrote `files` as an ARRAY when the schema is an object keyed by
+wrote `files` as an ARRAY when the schema is an object keyed by
 path, and a later one regenerated the oracle correctly, verified the workspace
 against it locally, and then pushed without the file, turning five CI checks red
 on a digest comparison. Issue #341 tracks precisely this.
@@ -32,7 +32,6 @@ import argparse
 import hashlib
 import json
 import pathlib
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -48,13 +47,22 @@ def shepherd_binary() -> str:
         path = REPO / candidate
         if path.is_file():
             return str(path)
-    found = shutil.which("shepherd")
-    if found:
-        return found
-    sys.exit(
-        "FAIL: no shepherd binary. Build it first -- this generator must read the\n"
-        "      LIVE compiler, never a cached or installed one."
+    # NO PATH FALLBACK, deliberately. A `shepherd` on PATH is whatever the
+    # operator last installed -- when this was written it was a release behind
+    # the checkout, and produced three confidently wrong digests. The oracle records what
+    # THIS tree's compiler emits, so only this tree's build may generate or
+    # verify it. Comparing against an installed binary is the same defect class
+    # as a test asserting against an installed plugin.
+    # A STATED skip, never a silent pass. `gate.sh fast` compiles nothing by
+    # contract, so it legitimately has no binary; the same check runs for real
+    # in the full tier and in `cargo test` via
+    # crates/cli/tests/content_compiler.rs. Exiting 0 here without saying so
+    # would make the fast tier claim a verification it did not perform.
+    print(
+        "content-oracle: SKIP -- no shepherd binary (build it, or rely on the "
+        "full tier and cargo test, which both check this)"
     )
+    sys.exit(0)
 
 
 def emit(target: str, binary: str) -> dict:

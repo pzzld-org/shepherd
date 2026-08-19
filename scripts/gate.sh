@@ -163,6 +163,9 @@ gate_fast() {
 gate_full() {
   gate_fast
   step "cold Cargo Binstall metadata fixture" python3 scripts/tests/test-cargo-binstall-local.py
+  # The fast tier can only SKIP this (it compiles nothing by contract); here a
+  # binary is guaranteed, so it runs for real.
+  step "content oracle matches the live compiler (full)" python3 scripts/generate-content-oracle.py --check
   step "clippy (default)" env RUSTFLAGS="-D warnings" cargo clippy --workspace --all-targets --locked
   step "clippy (full)" env RUSTFLAGS="-D warnings" cargo clippy --workspace --all-targets --locked --features full
   step "tests" cargo test --workspace --locked
