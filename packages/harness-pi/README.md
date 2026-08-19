@@ -3,7 +3,7 @@
 The Pi adapter is a thin host extension over `@pzzld/component-runtime`.
 Identity normalization, guard evaluation, lifecycle planning, provider
 capability validation, and request-to-response exchange validation are implemented once by the
-`fl03:shepherd@6.5.1` Rust WebAssembly component.
+`fl03:shepherd@6.5.2` Rust WebAssembly component.
 
 Pi contributes only its extension API and provider transport. The extension
 requires an explicit `SubagentProvider` for lifecycle `spawn`, `resume`, and
@@ -26,8 +26,29 @@ the provider child running for retry. `pi-subagents`-class extensions are
 supported through the machine-readable [`shepherd.pi.json`](./shepherd.pi.json)
 contract; no shell fallback is used.
 
-The adapter exposes no separate materializer or CLI. Use `shepherd compile
---target pi --out <absolute-directory>` for descriptor-safe installation.
+## Install
+
+```sh
+pi install npm:pi-subagents
+pi install npm:@pzzld/pi-shepherd
+```
+
+Pi discovers everything this package contributes from the `pi` key in
+`package.json` -- `extensions`, `skills`, and `prompts`. That key is the whole
+interface: with it absent Pi loads nothing at all, not even `src/extension.mjs`,
+and the package installs cleanly while being completely inert.
+
+The nine skills and nine role prompts are **generated**, not committed. The Rust
+compiler is their only authority, and a hand-copied tree in this package would
+be a second, inevitably stale one -- `scripts/tests/test-generated-carrier-authority.sh`
+fails if `skills/` or `prompts/` appears in the repository. Release staging runs
+`scripts/stage-pi-carrier.sh`, which invokes `shepherd compile --target pi` into
+the staged package immediately before `npm pack`, so the published tarball
+carries the carrier and the repository does not.
+
+To materialize the same tree yourself against a checkout, use `shepherd compile
+--target pi --out <absolute-directory>`; the adapter exposes no separate
+materializer or CLI.
 
 Pi loads the generated component from the adjacent runtime packaged in
 `@pzzld/component-runtime/runtime`. `SHEPHERD_COMPONENT_MODULE` is reserved

@@ -4,6 +4,123 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v6.5.2 — 2026-08-19
+
+### Fixed — the Pi adapter has never been loadable by Pi
+
+**`@pzzld/pi-shepherd` shipped with no `pi` key in `package.json`, for its entire
+history.** Pi discovers everything a package contributes from that one key:
+
+```json
+"pi": { "extensions": [...], "skills": ["./skills"], "prompts": ["./prompts"] }
+```
+
+With it absent, Pi loaded **nothing** — not the nine skills, not the nine role
+prompts, and not `src/extension.mjs`, which means the lifecycle hooks, the guard,
+and native dispatch never ran either. The package installed cleanly and was
+completely inert. `/shepherd:shepherd` resolved to nothing in the Pi TUI while
+every other installed package listed its skills normally. Confirmed absent in
+every commit that has ever touched that manifest.
+
+This was never a content problem. `shepherd compile --target pi` has always
+emitted exactly the shape Pi wants — `skills/<name>/SKILL.md` and
+`prompts/<role>.md`, 19 files. Nothing put that output inside the package, and
+nothing declared it.
+
+Measured before and after, by resource count in Pi's own resolver:
+
+| | Resources Pi registers |
+| --- | --- |
+| before | **86** (shepherd contributes 0) |
+| after | **105** (shepherd contributes 19) |
+
+19 = 9 skills + 9 role prompts + 1 extension.
+
+The fix is three parts:
+
+- `packages/harness-pi/package.json` declares `pi.extensions`, `pi.skills`,
+  `pi.prompts`, the `pi-package` keyword, and a `files` list that actually packs
+  the generated directories. A `pi` key naming `./skills` while `files` omits it
+  is inert in the same way and harder to see, so the gate checks both.
+- `scripts/stage-pi-carrier.sh` compiles the carrier into the **staged** package
+  immediately before `npm pack`. It is not committed:
+  `test-generated-carrier-authority.sh` fails if `packages/harness-pi/skills`
+  appears in the repository, and that gate is correct — a hand-copied generated
+  tree is a second, inevitably stale authority. The staging script states its
+  counts and fails on zero, and cross-checks them against `content/skills`
+  (minus `portability: claude-only`) and `content/roles` rather than hardcoding.
+- `scripts/tests/test-pi-package-surface.sh` asserts the declaration, wired into
+  `gate.sh`, falsifiable in three directions: a correct manifest passes, a
+  manifest with no `pi` key fails (the exact shipped defect), and a
+  declared-but-unpacked carrier fails.
+
+### Added — npm publication exists at all now
+
+**There has never been an `npm publish` anywhere in this repository's CI.** The
+release packed four tarballs, attached them to the GitHub release, and stopped.
+`@pzzld/pi-shepherd` and `@pzzld/component-runtime` were published by hand once
+at 6.4.5 and never again; `@pzzld/pi-claude` and `@pzzld/pi-codex` have never
+been published at all. Seven releases (6.4.6 → 6.5.1) shipped crates to
+crates.io and nothing to npm.
+
+That is the second reason Pi was broken: even with the `pi` key fixed,
+`pi install npm:@pzzld/pi-shepherd` resolves to 6.4.5, because 6.4.5 is the only
+version npm has ever been given.
+
+`npm-publish.yml` publishes the **exact tarballs `cargo-build.yml` already
+produced** — never a rebuild, because a second construction path for bytes that
+were already checksummed and attached to the release is how two sources of truth
+begin disagreeing. Two asset sources and no third: the in-run artifact during a
+release, the published release assets when recovering.
+
+`scripts/npm-publish.py` is idempotent (an npm version is as un-reissuable as a
+crates.io one, so an already-published version is skipped, never overwritten),
+orders `@pzzld/component-runtime` first because every adapter pins it exactly,
+and reads identity from the manifest **inside** each archive rather than the
+filename. That last point was not theoretical: the first draft hardcoded the
+directory names and resolved zero of the three adapters, because
+`packages/harness-claude` publishes as `@pzzld/pi-claude`. A registry that
+cannot be reached is a fail-closed error, not a traceback.
+
+**Both publishers are now reachable four ways** and symmetric: `workflow_call`
+from `release.yml` (held behind every asset job), `workflow_run` on
+`cargo-build` completing on its own, `workflow_dispatch` for operator recovery
+(defaulting to *not* publishing), and `repository_dispatch`. The release gate
+asserts both declare `needs` on the build, and that `NPM_TOKEN` is forwarded
+explicitly — `workflow_call` inherits no secrets.
+
+### Removed — dead code
+
+- `scripts/publish.sh`, 285 lines: a hand-rolled crate publisher with a
+  hardcoded, half commented-out crate list, executed by nothing and fully
+  superseded by `cargo-publish.py` (which covers all six crates against its
+  stale four). Dead code is not free — it reads as current and gets copied from.
+- `scripts/tests/fixtures/native-dispatch-ok.mjs`, referenced nowhere.
+- `scripts/check-gate-wiring.py` now fails on any script under `scripts/` that
+  nothing runs and nothing documents, with a short, deliberate allowlist for
+  operator tools. Prose counts as reachability here, unlike for tests, because a
+  human is the runner.
+
+### Added — the cross-harness claim is now falsifiable
+
+`scripts/tests/test-harness-surface-parity.sh` asserts all three harnesses at
+once and derives every count from `content/` rather than hardcoding one:
+Claude ships all 10 authored skills and 9 role agents, Codex ships the 9
+cross-harness skills, and Pi declares a loadable surface that release staging
+materializes. Self-test proves the counts can fail, including the exact zero
+case that shipped.
+
+Each harness was previously checked in isolation. The **comparison** between
+them — which is the product claim — was checked by nobody.
+
+**Why it went unnoticed for so long.** No gate ever asked what Pi ships.
+`check-plugin.py` derives its roots from the Claude and Codex shipping manifests
+only, so "Claude 10 skills, Codex 9, Pi 0" was not an assertion anywhere. The
+v6.5.1 sprint audited gates extensively and did not catch this, because it
+checked whether existing gates worked rather than whether the cross-harness
+claim was true. Verifying the three harnesses are actually at parity was the
+sprint's headline goal and it was never tested end to end.
+
 ## v6.5.1 — 2026-08-19
 
 **Five remediation messages named a command that refuses to run.** `shepherd init` is gated

@@ -197,3 +197,6 @@
 ## Vercel
 **/.vercel
 .DS_Store
+
+# Pi project-local extension settings (pi install -l)
+.pi/

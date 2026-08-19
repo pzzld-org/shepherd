@@ -25,6 +25,11 @@
       "sha": "3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
       "tag": "v8.0.1"
     },
+    "actions/setup-node": {
+      "selector": "latest-release",
+      "sha": "820762786026740c76f36085b0efc47a31fe5020",
+      "tag": "v7.0.0"
+    },
     "actions/upload-artifact": {
       "selector": "latest-release",
       "sha": "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",

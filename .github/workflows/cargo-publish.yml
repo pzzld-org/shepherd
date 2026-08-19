@@ -45,6 +45,14 @@ on:
         type: boolean
   repository_dispatch:
     types: [cargo-publish]
+  # The modular hook, symmetric with npm-publish.yml: when cargo-build finishes
+  # on its own (a tag push, a dispatch), publish what it just built. Guarded on
+  # a successful conclusion below, and idempotent regardless -- cargo-publish.py
+  # compares the prepared .crate against the published one and resumes rather
+  # than erroring on a version already on crates.io.
+  workflow_run:
+    workflows: [cargo-build]
+    types: [completed]
 
 permissions:
   contents: read
@@ -52,6 +60,10 @@ permissions:
 jobs:
   publish:
     name: Publish crates
+    # A failed or cancelled build must not publish its partial output.
+    if: >-
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-24.04
     environment: crates-io
     permissions:
@@ -67,10 +79,11 @@ jobs:
         env:
           CALL_REF: ${{ inputs.ref }}
           DISPATCH_REF: ${{ github.event.client_payload.ref }}
+          RUN_REF: ${{ github.event.workflow_run.head_sha }}
           FALLBACK_REF: ${{ github.sha }}
         run: |
           set -euo pipefail
-          candidate="${CALL_REF:-${DISPATCH_REF:-}}"
+          candidate="${CALL_REF:-${DISPATCH_REF:-${RUN_REF:-}}}"
           if [[ -z "$candidate" ]]; then
             printf 'ref=%s\n' "$FALLBACK_REF" >> "$GITHUB_OUTPUT"
             exit 0

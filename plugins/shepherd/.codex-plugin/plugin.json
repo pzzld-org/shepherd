@@ -1,6 +1,6 @@
 {
   "name": "shepherd",
-  "version": "6.5.1",
+  "version": "6.5.2",
   "description": "Harness-neutral sprint execution and governance through one native Shepherd CLI.",
   "keywords": [
     "shepherd",

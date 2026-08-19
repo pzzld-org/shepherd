@@ -446,6 +446,14 @@ jobs:
           done
           SHEPHERD_COMPONENT_NODE_ROOT="$PWD" SHEPHERD_COMPONENT_WASM="$wasm" \
             scripts/stage-component-runtime.sh stage
+          # Pi reads a package's surface from the `pi` key in package.json, and
+          # those paths must resolve inside the tarball. @pzzld/pi-shepherd
+          # shipped with neither the key nor the directories for its entire
+          # history, so Pi loaded NOTHING from it -- not the nine skills, not
+          # src/extension.mjs. Generated into the stage copy, never committed,
+          # so scripts/tests/test-generated-carrier-authority.sh still holds.
+          cargo build --locked --release --package shepherd-cli
+          SHEPHERD_NATIVE_BIN="$PWD/target/release/shepherd" scripts/stage-pi-carrier.sh stage
           scripts/stage-distribution-legal.sh stage
           ln -s "$PWD/node_modules" stage/packages/component-runtime/node_modules
           for package in component-runtime harness-claude harness-codex harness-pi; do

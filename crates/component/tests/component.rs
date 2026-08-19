@@ -83,7 +83,7 @@ fn canonical_guard_uses_the_embedded_predicate_and_role_corpus() {
 #[test]
 fn wit_contract_metadata_matches_the_component_package() {
     let wit = include_str!("../wit/shepherd.wit");
-    assert!(wit.contains("package fl03:shepherd@6.5.1;"));
+    assert!(wit.contains("package fl03:shepherd@6.5.2;"));
     assert!(wit.contains("world shepherd-core"));
     for function in [
         "canonical-profile",

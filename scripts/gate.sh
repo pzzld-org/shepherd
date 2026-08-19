@@ -56,10 +56,24 @@ gate_fast() {
   step "Cargo distribution contract" python3 scripts/tests/test-cargo-distribution.py
   step "Cargo distribution inventory" python3 scripts/check-cargo-distribution.py
   step "Cargo publisher recovery contract" python3 scripts/tests/test-cargo-publish.py
+  # There has never been an `npm publish` in this repository's CI. Seven
+  # releases shipped crates and nothing to npm, which is why the published
+  # pi-shepherd is still the inert 6.4.5.
+  step "npm publisher contract is falsifiable" python3 scripts/npm-publish.py --self-test
   step "WASM release boundary is falsifiable" bash scripts/tests/test-wasm-release-gate.sh
   step "component Node boundary is falsifiable" bash scripts/tests/test-component-node-gate.sh
   step "package distribution boundary is falsifiable" bash scripts/tests/test-package-boundary.sh
   step "generated carrier authority" bash scripts/tests/test-generated-carrier-authority.sh
+  # @pzzld/pi-shepherd shipped with no `pi` key for its entire history, so Pi
+  # loaded nothing from it -- not the nine skills, not src/extension.mjs. The
+  # package installed cleanly and was inert. Nothing asked what Pi ships.
+  step "Pi package surface is falsifiable" bash scripts/tests/test-pi-package-surface.sh --self-test
+  step "Pi package surface" bash scripts/tests/test-pi-package-surface.sh
+  # The cross-harness claim itself. Each harness was checked in isolation and
+  # the COMPARISON between them -- the whole product claim -- was checked by
+  # nobody, which is how "Claude 10, Codex 9, Pi 0" shipped repeatedly.
+  step "harness surface parity is falsifiable" bash scripts/tests/test-harness-surface-parity.sh --self-test
+  step "harness surface parity" bash scripts/tests/test-harness-surface-parity.sh
   step "native CLI authority inventory is falsifiable" python3 scripts/check-cli-authority.py --self-test
   step "native CLI authority inventory" python3 scripts/check-cli-authority.py
   # This harness shipped correct, falsifiable, and referenced by NOTHING, so it
@@ -282,7 +296,7 @@ gate_wasm() {
     local resolved_import_count
     wasm-tools component wit "${artifact}" > "${wit_output}"
     test -s "${wit_output}"
-    grep -Fq 'export fl03:shepherd/engine@6.5.1;' "${wit_output}"
+    grep -Fq 'export fl03:shepherd/engine@6.5.2;' "${wit_output}"
     sed -n 's/^  import \(wasi:[^;]*\);$/\1/p' "${wit_output}" \
       | LC_ALL=C sort > "${resolved_imports}"
     resolved_import_count=$(wc -l < "${resolved_imports}" | tr -d ' ')
