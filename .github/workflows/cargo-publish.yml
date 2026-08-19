@@ -1,10 +1,37 @@
 name: cargo-publish
 
-# Recovery only. Ordinary publication happens inside release.yml, gated on the
-# native and component assets having built, so a late asset failure costs a
-# re-run instead of a version. Reaching for this workflow means the automatic
-# path did not complete and an operator is naming the version by hand.
+# Crates.io publication, isolated from both the asset build and the tag.
+#
+# Ordinary releases reach this through release.yml's `workflow_call`, which
+# holds it behind every asset job. That ordering is not cosmetic: publication
+# ran as its own push-triggered workflow once, raced the asset builds, and won.
+# Two consecutive patch versions were burned that way -- crates uploaded, a
+# native target failed minutes later, no tag and no release. A crates.io
+# version is not reissuable, so a failed asset build must cost a re-run, never
+# a version.
+#
+# The same jobs are reachable manually (`workflow_dispatch`) for recovery when
+# the automatic path did not complete, and by `repository_dispatch` for
+# out-of-band orchestration. Both name the version explicitly.
+
+concurrency:
+  group: cargo-publish-${{ github.ref }}
+  cancel-in-progress: false
+
 on:
+  workflow_call:
+    inputs:
+      version:
+        description: Exact MAJOR.MINOR.PATCH version to publish
+        required: true
+        type: string
+      ref:
+        description: Commit to publish from (defaults to the calling event's SHA)
+        required: false
+        type: string
+    secrets:
+      CARGO_REGISTRY_TOKEN:
+        required: true
   workflow_dispatch:
     inputs:
       version:
@@ -16,46 +43,79 @@ on:
         required: true
         default: false
         type: boolean
-
-concurrency:
-  group: cargo-publish-${{ github.ref }}
-  cancel-in-progress: false
+  repository_dispatch:
+    types: [cargo-publish]
 
 permissions:
   contents: read
 
 jobs:
   publish:
+    name: Publish crates
     runs-on: ubuntu-24.04
     environment: crates-io
+    permissions:
+      contents: read
     steps:
+      # `client_payload.*` is authored by whoever sends the dispatch, and that
+      # permission is grantable WITHOUT `contents: write`. Resolve the checkout
+      # ref through a fail-closed allowlist, via `env:` so the untrusted value
+      # is never spliced into the shell command itself (FL03/axiom#2578).
+      - name: Resolve a trusted checkout ref
+        id: dispatch_ref
+        shell: bash
+        env:
+          CALL_REF: ${{ inputs.ref }}
+          DISPATCH_REF: ${{ github.event.client_payload.ref }}
+          FALLBACK_REF: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          candidate="${CALL_REF:-${DISPATCH_REF:-}}"
+          if [[ -z "$candidate" ]]; then
+            printf 'ref=%s\n' "$FALLBACK_REF" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ "$candidate" =~ ^(refs/heads/|refs/tags/)?(main|master|latest|v[0-9]+\.[0-9]+\.[0-9]+(-dev\.[0-9]+)?)$ ]] \
+            || [[ "$candidate" =~ ^[0-9a-f]{40}$ ]]; then
+            printf 'ref=%s\n' "$candidate" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          printf '::error::rejected publish ref: not an allowlisted branch, tag, or commit SHA\n'
+          exit 1
       - name: Checkout exact event commit
         uses: actions/checkout@v7 # v7.0.1
         with:
           fetch-depth: 0
-          ref: ${{ github.sha }}
+          ref: ${{ steps.dispatch_ref.outputs.ref }}
           persist-credentials: false
       - name: Resolve exact version and detect release commit
         id: release
         shell: bash
         env:
-          REQUESTED_VERSION: ${{ inputs.version }}
+          REQUESTED_VERSION: ${{ inputs.version || github.event.client_payload.version }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
-            # Manual recovery: the operator names the exact version. Not
-            # gated on detect-release-commit.sh -- a recovery run may target
-            # a version whose release commit already merged and moved on.
+          if [[ -n "$REQUESTED_VERSION" ]]; then
+            # A caller named the version: release.yml passing through its own
+            # release-metadata, an operator recovering by hand, or a dispatch.
+            # Not gated on detect-release-commit.sh -- a recovery run may
+            # target a version whose release commit already merged and moved on.
             version="$REQUESTED_VERSION"
-            [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+            [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+              printf '::error::requested version %s is not MAJOR.MINOR.PATCH\n' "$version"
+              exit 1
+            }
             python3 scripts/version-bump.py check --root . --version "$version"
             proceed=true
           else
-            # Ordinary push to the default branch: publish only for a
-            # genuine release commit, using the exact same predicate
-            # release.yml gates on. Everything else publishes nothing.
+            # No version was named. This is reachable only from a
+            # `repository_dispatch` whose payload omitted one -- there is
+            # deliberately no `push` trigger on this workflow, because a
+            # push-triggered run has no `needs:` edge to the asset build and
+            # that is exactly how publication once raced the build and burned
+            # two patch versions. Fall back to the same release-commit
+            # predicate release.yml gates on; anything else publishes nothing.
             subject=$(git log -1 --format=%s HEAD)
             detect_output=$(scripts/detect-release-commit.sh \
               --subject "$subject" \
@@ -94,8 +154,14 @@ jobs:
           VERSION: ${{ steps.release.outputs.version }}
           STATE: ${{ runner.temp }}/shepherd-cargo-state.json
         run: python3 scripts/cargo-publish.py prepare --version "$VERSION" --state "$STATE"
+      # `workflow_dispatch` defaults `publish` to false so a recovery run can
+      # verify crate bytes WITHOUT uploading. Every other trigger publishes:
+      # release.yml only calls in once every asset has verified, and a push or
+      # dispatch that reached here already passed the release-commit predicate.
       - name: Publish or resume dependency waves
-        if: steps.release.outputs.proceed == 'true' && (github.event_name == 'push' || inputs.publish == true)
+        if: >-
+          steps.release.outputs.proceed == 'true' &&
+          (github.event_name != 'workflow_dispatch' || inputs.publish == true)
         shell: bash
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

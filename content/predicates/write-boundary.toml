@@ -8,6 +8,24 @@
 # of any narrow report-path exception it may hold — Codex's `explorer` primitive enforces
 # exactly this at the harness level, and this file's `role-write-eligibility` rule is the
 # input a compiler reads to select `explorer` vs `worker` for that role.
+#
+# Scope boundary (#320, measured in .shepherd/runs/v651/lanes/l2-dispatch-scope/evidence/
+# issue-320.md): this predicate governs the TYPED write surface only — `Write`, `Edit`, and
+# `apply_patch`, routed to it under the `fs.write` action by `evaluate_write_tool`
+# (crates/core/src/guard/engine.rs:237-339). A filesystem write performed through an opaque
+# `Bash` command (a shell redirect, `tee`, `cp`, `dd`, `sed -i`, ...) NEVER reaches this
+# predicate: `evaluate_tool_call` (`:209-235`) routes `Bash` to `evaluate_bash_tool`
+# (`:341-383`), which inspects the command only for git subcommands and returns a bare allow
+# for everything else — `write-boundary` is not consulted for `Bash`, under any command, git
+# or not. This is a deliberate boundary, not an oversight: statically inferring a filesystem
+# write target from arbitrary shell text is a new subsystem (global constraint G2 of the
+# current sprint plan) and the same static-analysis arms race this project already
+# declines on the `Workflow`-script side, for the identical reason, at
+# hooks/tests/test_native_cli_contract.sh:77-81. The typed tool surface carries a typed
+# target and is governed here; an opaque shell string is not statically governable and is
+# governed by role tier through `git-custody` instead. Both halves of this asymmetry, plus
+# the negative control proving `Bash` is not simply unguarded, are pinned in
+# crates/core/tests/guard.rs.
 
 [predicate]
 id = "write-boundary"

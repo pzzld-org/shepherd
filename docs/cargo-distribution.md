@@ -51,45 +51,69 @@ passes, and the tag target matches the prepared source commit.
 
 ## GitHub release ordering (release.yml)
 
-`release.yml`'s "Verify crates.io publication precedes the tag" step enforces
-that ordering mechanically. Immediately before the tag step, it queries
+Ordering is **crates first, tag second**, and it is enforced twice: once
+structurally, once by an independent check.
+
+**Structurally.** Since the pipeline split, `release.yml` calls
+`cargo-publish.yml` through `workflow_call`, and that call declares
+`needs: [release-metadata, build]`. Publication therefore cannot begin until
+every asset job in `cargo-build.yml` has succeeded, and the tag step in turn
+declares `needs: [release-metadata, build, publish-crates]`. The dependency
+graph, not a timing assumption, is what orders the three.
+
+This ordering was bought with two burned patch versions. Publication once ran as
+its own workflow on the same push event, raced the asset builds, and won: crates
+uploaded, a native target failed minutes later, and no tag or release followed. A
+crates.io version is not reissuable, so a failed asset build must cost a re-run,
+never a version.
+
+**Independently.** `release.yml`'s "Verify crates.io publication precedes the
+tag" step still runs immediately before tagging. It queries
 `https://crates.io/api/v1/crates/shepherd-cli` and requires the exact release
 version to appear in `.versions[].num`, with a bounded retry ceiling. It fails
-closed — non-zero exit — on every uncertainty: the version still absent after
-the retry ceiling, an HTTP error, a body it cannot parse as JSON, or a request
+closed — non-zero exit — on every uncertainty: the version still absent after the
+retry ceiling, an HTTP error, a body it cannot parse as JSON, or a request
 timeout all end the same way, with the recovery command named in the failure:
-`gh workflow run cargo-publish.yml -f version=X.Y.Z -f publish=true`. With this
-gate in place, the enforced ordering is **crates first, tag second**:
-`release.yml` will not tag or publish a GitHub release ahead of crates.io.
+`gh workflow run cargo-publish.yml -f version=X.Y.Z -f publish=true`.
 
-Publication is automatic and runs ahead of the tag. `cargo-publish.yml`
-triggers on `push: branches: [main, master]` (`cargo-publish.yml:3-5`), the
-same push event `release.yml` triggers on, and gates its work on the same
-predicate: `scripts/detect-release-commit.sh` run against the pushed
-commit's subject and `.claude-plugin/plugin.json`. When that predicate calls
-the commit a genuine release, `cargo-publish.yml` runs `cargo-publish.py
-prepare` and then `cargo-publish.py publish --confirm` unattended, with no
-operator step and no `workflow_dispatch` call. Publication is idempotent
-against an already-published version: as described above, the publisher
-downloads the existing exact crate version on every run and compares its
-SHA-256 with the prepared `.crate`, so a version already on crates.io resumes
-safely instead of erroring.
+That check is now redundant with the dependency graph, and it is kept anyway. It
+is the assertion that would still hold if someone re-ordered the jobs.
 
-The two workflows are independent Actions runs triggered by the same push,
-not chained with `needs:`, so nothing here structurally forces
-`cargo-publish.yml` to finish before `release.yml` reaches its tag step. The
-crates.io gate above is what makes "crates first, tag second" real rather
-than accidental: `release.yml` polls crates.io itself and refuses to cut the
-tag until it observes the exact version published, regardless of how the two
-runs interleave. This is also why the pipeline no longer depends on the tag
-push to start `cargo-publish.yml`: a `GITHUB_TOKEN`-authored tag push cannot
-fire another workflow, and moving the trigger to the release commit's push
-to `main`/`master` removed that dependency entirely.
+Publication is idempotent against an already-published version: the publisher
+downloads the existing exact crate version on every run and compares its SHA-256
+with the prepared `.crate`, so a version already on crates.io resumes safely
+instead of erroring.
 
-`workflow_dispatch` on `cargo-publish.yml` is a recovery path only, for a
-release commit that already merged and moved on, or a push-triggered run
-that failed partway. In that mode, version resolution takes `inputs.version`
-directly instead of deriving it from `detect-release-commit.sh`. Recover
-with `gh workflow run cargo-publish.yml -f version=X.Y.Z -f publish=true`
-and confirm all six crates are visible on crates.io before the release
-commit's `release.yml` run reaches its crates.io gate.
+## Reaching cargo-publish.yml directly
+
+`cargo-publish.yml` is reachable three ways, and `release.yml`'s `workflow_call`
+is only the first:
+
+| Trigger | Version comes from | Publishes? |
+| --- | --- | --- |
+| `workflow_call` (release.yml) | `release-metadata` output | yes |
+| `workflow_dispatch` | `inputs.version`, required | only with `publish=true` |
+| `repository_dispatch` | `client_payload.version`, or `detect-release-commit.sh` when the payload omits it | yes |
+
+There is deliberately **no `push` trigger.** Publication once had one, on the
+same event `release.yml` triggers on, which is precisely how it raced the asset
+builds and burned two patch versions. Restoring it would restore the race, since
+a push-triggered run has no `needs:` edge to the build. Ordinary releases reach
+this workflow through `release.yml`'s call and no other way.
+
+`workflow_dispatch` is the recovery path: a release commit that already merged
+and moved on, or a call that failed partway. It defaults `publish` to **false**,
+so a recovery run verifies the prepared crate bytes without uploading anything
+until the operator asks for it explicitly. Recover with
+`gh workflow run cargo-publish.yml -f version=X.Y.Z -f publish=true` and confirm
+all six crates are visible on crates.io.
+
+A version supplied by a caller, an operator, or a dispatch payload skips
+`detect-release-commit.sh` deliberately — a recovery run may legitimately target
+a version whose release commit has already merged and moved on — but it is still
+checked against `.claude-plugin/plugin.json` by `version-bump.py check`, and
+rejected outright if it is not `MAJOR.MINOR.PATCH`.
+
+`repository_dispatch` payloads are attacker-controlled and that permission is
+grantable **without** `contents: write`, so the checkout ref is resolved through
+a fail-closed allowlist passed via `env:`, never spliced into a shell command.

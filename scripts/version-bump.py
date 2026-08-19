@@ -228,6 +228,38 @@ def version_rules(current: SemVer, next_version: SemVer) -> tuple[TextRule, ...]
             "codex plugin marketplace add FL03/shepherd --ref v{version}",
             "README Codex marketplace release ref",
         ),
+        # The command-surface heading used to be updated by hand and was still
+        # dated v6.4.5 two releases later. Registering it means the bump owns it.
+        _literal(
+            "README.md",
+            current,
+            next_version,
+            "owned by the Rust CLI in v{version}",
+            "README native command surface version",
+        ),
+        # QUICKSTART.md carries the same install surfaces as the README, so it
+        # drifts the same way unless the bump rewrites it too.
+        _literal(
+            "QUICKSTART.md",
+            current,
+            next_version,
+            "FL03/shepherd/v{version}/scripts/install-shepherd.sh",
+            "QUICKSTART Unix installer tag",
+        ),
+        _literal(
+            "QUICKSTART.md",
+            current,
+            next_version,
+            "SHEPHERD_VERSION={version} bash",
+            "QUICKSTART Unix installer version",
+        ),
+        _literal(
+            "QUICKSTART.md",
+            current,
+            next_version,
+            "codex plugin marketplace add FL03/shepherd --ref v{version}",
+            "QUICKSTART Codex marketplace release ref",
+        ),
         _whole("docs/configuration.md", current, next_version, 1),
         _whole("docs/customization.md", current, next_version, 1),
         _whole("docs/integration.md", current, next_version, 3),
@@ -645,10 +677,16 @@ def _validate_rule_coverage(
     for relative in sorted({rule.path for rule in rules}):
         residual = updated[relative]
         if relative == "README.md" and current == LAYOUT_V5_INTRODUCTION:
-            historical = (
-                f"pre-v{current} namespace",
-                f"owned by the Rust CLI in v{current}:",
-            )
+            # `pre-vX.Y.Z namespace` is genuinely historical: it names the
+            # migration threshold, which does not move when the version does.
+            #
+            # `owned by the Rust CLI in vX.Y.Z:` was in this list too, and that
+            # was the bug -- it describes the CURRENT command surface, so
+            # exempting it from the residual scan meant nothing ever rewrote it
+            # and nothing ever complained. It sat at v6.4.5 through two
+            # releases. It is now a classified surface with its own rule, so it
+            # is rewritten by the bump instead of frozen by this exemption.
+            historical = (f"pre-v{current} namespace",)
             for marker in historical:
                 observed = residual.count(marker)
                 if observed != 1:

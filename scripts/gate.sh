@@ -62,6 +62,19 @@ gate_fast() {
   step "generated carrier authority" bash scripts/tests/test-generated-carrier-authority.sh
   step "native CLI authority inventory is falsifiable" python3 scripts/check-cli-authority.py --self-test
   step "native CLI authority inventory" python3 scripts/check-cli-authority.py
+  # This harness shipped correct, falsifiable, and referenced by NOTHING, so it
+  # was free to rot and did: an rg sweep over the retired bin/ (exit 2 scored as
+  # "clean"), a hooks.json assertion that broke when the seven carrier scripts
+  # were restored, and three lifecycle assertions left pointing at
+  # claude_hook.rs after the lifecycle moved to native_hook.rs. Three failures,
+  # zero signal, because nothing executed it.
+  step "native CLI authority regression harness" bash scripts/tests/test_cli_authority_gate.sh
+  # ...and the rule that makes the above structurally unrepeatable. gate.sh
+  # names its members one `step` at a time, so a new file under scripts/tests/
+  # is unwired until someone remembers this list. This is the fourth instance
+  # of that shape; it is now the gate's problem, not a reviewer's.
+  step "every test is reachable from a runner (falsifiable)" python3 scripts/check-gate-wiring.py --self-test
+  step "every test is reachable from a runner" python3 scripts/check-gate-wiring.py
   step "release asset inventory" bash scripts/tests/test-release-assets.sh
   step "release installers" bash scripts/tests/test-release-installers.sh
   step "PowerShell installer contract" bash scripts/tests/test-release-installer-powershell-contract.sh
@@ -90,6 +103,35 @@ gate_fast() {
   step "plugin contract is falsifiable" ./scripts/check-plugin.py --self-test
   step "plugin contract" ./scripts/check-plugin.py
   step "Codex regular carrier projection" python3 scripts/generate-codex-carrier.py --check
+  # Reusable-workflow wiring (workflow_call inputs, forwarded secrets, needs:
+  # targets) parses fine when it is wrong and fails only at dispatch time.
+  # actionlint is the checker for that. It is optional locally, but a SKIP is
+  # stated out loud -- a gate that silently no-ops when a tool is absent is
+  # indistinguishable from one that passed.
+  lint_workflows() {
+    if ! command -v actionlint >/dev/null 2>&1; then
+      printf '    SKIP: actionlint not installed (brew install actionlint); CI runs it pinned\n'
+      return 0
+    fi
+    local workflows=()
+    local workflow_file
+    while IFS= read -r workflow_file; do
+      workflows+=("$workflow_file")
+    done < <(find .github/workflows -maxdepth 1 -name '*.yml' | sort)
+    if [[ "${#workflows[@]}" -eq 0 ]]; then
+      printf '    no workflow files discovered\n' >&2
+      return 1
+    fi
+    # SC2016 ("expressions don't expand in single quotes") is INFO-level and
+    # fires on every `printf 'format %s\n' "$value"` in the repo -- where the
+    # single quotes are correct, because printf consumes the %s, not the shell.
+    # Excluding one noisy info check keeps the real warnings visible; SC2209
+    # (an unquoted literal that shadows a real binary) was found by this lint
+    # and fixed in gitflow.yml rather than suppressed.
+    SHELLCHECK_OPTS=--exclude=SC2016 actionlint "${workflows[@]}" || return 1
+    printf '    actionlint: %s workflow file(s) clean\n' "${#workflows[@]}"
+  }
+  step "workflow wiring (actionlint)" lint_workflows
 }
 
 # ---------------------------------------------------------------- full --- #
@@ -99,15 +141,32 @@ gate_full() {
   step "clippy (default)" env RUSTFLAGS="-D warnings" cargo clippy --workspace --all-targets --locked
   step "clippy (full)" env RUSTFLAGS="-D warnings" cargo clippy --workspace --all-targets --locked --features full
   step "tests" cargo test --workspace --locked
-  # `cargo test --workspace` runs each member with its DEFAULT features, and
-  # `required-features` targets are silently SKIPPED rather than failed. With
-  # shepherd-core defaulting to ["std"], that skipped guard, dispatch,
-  # portable_dispatch and run_state outright and reduced loader to zero tests
-  # via its own `#![cfg]` -- 3 of 126 core tests actually executed, including
-  # none of the guard engine's 66. check-features.sh does not cover this: it
-  # runs `cargo check`, proving the feature graph compiles, never that the
-  # feature-gated tests run.
-  step "tests (feature-gated targets)" cargo test --workspace --locked --all-features
+  # Do not "fix" this by adding `cargo test --workspace --locked --all-features`
+  # below. That was tried and measured wrong twice: `--all-features` on this
+  # workspace turns on `nightly` (crates/core/Cargo.toml), which gates
+  # `#![cfg_attr(feature = "nightly", feature(allocator_api))]`
+  # (crates/core/src/lib.rs) behind an unstable `#[feature]` attribute, and
+  # `rust-toolchain.toml` pins stable 1.97.0 -- the build fails outright with
+  # `error[E0554]`, it does not run a fuller test set.
+  #
+  # The step above already runs every `required-features` target: workspace
+  # feature unification pulls `full` into `shepherd-core` via `shepherd-cli`,
+  # and every `required-features` in the workspace is `std`/`parse`/`json`/
+  # `bundled`/`layout`, all satisfied by that unification. Measured directly
+  # under plain `cargo test --workspace --locked`: shepherd_core 5, dispatch
+  # 15, guard 69, loader 25, portable_dispatch 7, run_state 6, and the
+  # `default` integration target (`crates/core/tests/default.rs`,
+  # `required-features = []`, so it runs under every invocation) 4 -- 131 core
+  # tests, including all 69 guard-engine tests. This comment previously totaled
+  # 127, four short, because the enumeration omitted `default`; the miscount
+  # was caught by re-deriving the count from `crates/core/Cargo.toml`'s
+  # `[[test]]` list rather than trusting the prose. The "3 of 126, none of the
+  # guard engine's 66" figure this comment used to cite does not reproduce
+  # under `--workspace`; it only reproduces for a single-crate invocation
+  # (`cargo test -p shepherd-core`), which drops feature unification and is not
+  # what this gate runs. Trusting that single-crate number instead of
+  # remeasuring under the actual gate command is, verbatim, how this comment
+  # went stale in the first place -- do not repeat it.
   step "build typed component for adapter package suites" \
     cargo build --locked --release --package shepherd-component --target wasm32-wasip2
   step "component runtime package suite" \
@@ -223,7 +282,7 @@ gate_wasm() {
     local resolved_import_count
     wasm-tools component wit "${artifact}" > "${wit_output}"
     test -s "${wit_output}"
-    grep -Fq 'export fl03:shepherd/engine@6.5.0;' "${wit_output}"
+    grep -Fq 'export fl03:shepherd/engine@6.5.1;' "${wit_output}"
     sed -n 's/^  import \(wasi:[^;]*\);$/\1/p' "${wit_output}" \
       | LC_ALL=C sort > "${resolved_imports}"
     resolved_import_count=$(wc -l < "${resolved_imports}" | tr -d ' ')

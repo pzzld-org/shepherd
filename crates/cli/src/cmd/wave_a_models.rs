@@ -29,7 +29,20 @@ const ROLES: [&str; 9] = [
     "worker",
 ];
 const HARNESSES: [&str; 3] = ["claude", "codex", "pi"];
-const USAGE: &str = "shepherd models <resolve|show> [args]\n\n  resolve <role>        Echo the portable model hint for one role.\n  resolve <role> --harness <claude|codex|pi>\n                        Resolve the hint through the compiler's canonical\n                        harness profile.\n                        Roles: root planter engineer conductor critic\n                               discovery coder auditor worker\n  show [--md|--json]    Print the full resolved 9-role hint table + source.\n  show --harness <claude|codex|pi> [--md|--json]\n                        Render every role's harness-native model spelling\n                        instead of the portable hint.\n\nThe [models] block in .shepherd/shepherd.toml is the one project map. Unset\nroles use portable defaults: root/planter/engineer/conductor =\nreasoning-high; all other roles = standard. See docs/configuration.md §models.";
+// `root` is the canonical spelling on THIS surface only: it is the literal
+// `[models]` TOML key operators write (`ModelsConfig::root`,
+// `crates/core/src/settings.rs:546`), and `docs/configuration.md`'s default
+// table is cross-checked against that field name by
+// `scripts/check-workspace.sh`'s `rule_model_defaults_match_the_docs`. Every
+// other surface in this plugin -- `content/roles/shepherd.md`,
+// `skills/shepherd/SKILL.md`, `agents/shepherd.md`, the `shepherd:shepherd`
+// subagent type, and `role_tier` in `crates/core/src/guard/engine.rs` --
+// spells the same role `shepherd`. Renaming the models role to match would
+// ripple into `crates/core` and `docs/`, both outside this file's scope, so
+// `shepherd` is a documented INPUT alias that resolves to `root`, never a
+// tenth entry in `ROLES` and never a second canonical spelling.
+const ROLE_ALIASES: [(&str, &str); 1] = [("shepherd", "root")];
+const USAGE: &str = "shepherd models <resolve|show> [args]\n\n  resolve <role>        Echo the portable model hint for one role.\n  resolve <role> --harness <claude|codex|pi>\n                        Resolve the hint through the compiler's canonical\n                        harness profile.\n                        Roles: root planter engineer conductor critic\n                               discovery coder auditor worker\n                        Alias: shepherd -> root (the [models] root config key\n                               is canonical here; content/, the guard engine,\n                               and the agent cards spell this same role\n                               shepherd).\n  show [--md|--json]    Print the full resolved 9-role hint table + source.\n  show --harness <claude|codex|pi> [--md|--json]\n                        Render every role's harness-native model spelling\n                        instead of the portable hint.\n\nThe [models] block in .shepherd/shepherd.toml is the one project map. Unset\nroles use portable defaults: root/planter/engineer/conductor =\nreasoning-high; all other roles = standard. See docs/configuration.md §models.";
 const TEXT_FOOTER: &str = "root is advisory (your live session model). Spawned roles resolve their\nportable hint through the Rust compiler's Claude, Codex, or Pi profile.\nSee docs/configuration.md §models.";
 const MD_FOOTER: &str = "_root is advisory: it names the model your live session should run; a config key cannot rebind a running main-chat session._";
 
@@ -177,11 +190,12 @@ impl ModelsResolveCmd {
                 2,
             ));
         };
+        // Normalize an alias input (e.g. `shepherd`) to its canonical `ROLES`
+        // spelling BEFORE the membership check and the row lookup below, so
+        // both see only canonical role strings.
+        let role = canonical_role(role);
         if !ROLES.contains(&role) {
-            return Err(CliError::message_with_code(
-                format!("unknown role: {role} (valid: {})", ROLES.join(" ")),
-                2,
-            ));
+            return Err(CliError::message_with_code(unknown_role_message(role), 2));
         }
         if let Some(harness) = self.harness.as_deref()
             && !HARNESSES.contains(&harness)
@@ -301,6 +315,32 @@ fn explicit_models(
     Ok((context.config.models, configured_roles))
 }
 
+/// Map an input role spelling to its canonical `ROLES` spelling through
+/// `ROLE_ALIASES`. A role with no alias entry passes through unchanged.
+/// Aliases are input-only: the return value is always either the input
+/// itself or a member of `ROLES`, never a synthesized third spelling.
+fn canonical_role(role: &str) -> &str {
+    ROLE_ALIASES
+        .iter()
+        .find(|(alias, _)| *alias == role)
+        .map_or(role, |(_, canonical)| *canonical)
+}
+
+/// Build the `unknown role` error message from `ROLES` and `ROLE_ALIASES`
+/// rather than a hand-typed literal, so the valid-role list and the alias
+/// hint cannot drift out of sync with the const arrays that define them.
+fn unknown_role_message(role: &str) -> String {
+    let aliases = ROLE_ALIASES
+        .iter()
+        .map(|(alias, canonical)| format!("{alias} -> {canonical}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "unknown role: {role} (valid: {}; alias: {aliases})",
+        ROLES.join(" ")
+    )
+}
+
 fn model_for<'a>(models: &'a ModelsConfig, role: &str) -> &'a str {
     match role {
         "root" => &models.root,
@@ -395,7 +435,8 @@ fn write_stdout(text: &str) -> Result<(), CliError> {
 #[cfg(test)]
 mod tests {
     use super::{
-        ModelRow, ModelSource, render_json, render_markdown, render_text, translate_for_harness,
+        ModelRow, ModelSource, ROLE_ALIASES, ROLES, USAGE, canonical_role, render_json,
+        render_markdown, render_text, translate_for_harness, unknown_role_message,
     };
 
     fn defaults() -> Vec<ModelRow> {
@@ -439,5 +480,52 @@ mod tests {
             "opus"
         );
         assert!(translate_for_harness("custom", "claude").is_err());
+    }
+
+    /// Anti-drift tripwire: `ROLES` and the USAGE text are two of the three
+    /// hand-maintained copies of the role vocabulary this step exists to stop
+    /// from drifting apart (the third is the pinned CLI-test assertion in
+    /// `tests/wave_a_models_cli.rs`). This iterates `ROLES` and
+    /// `ROLE_ALIASES` rather than checking today's nine literal names, so it
+    /// fails the moment a role or alias is added to either const without also
+    /// reaching the usage text.
+    #[test]
+    fn usage_names_every_role_and_every_alias_pair() {
+        for role in ROLES {
+            assert!(
+                USAGE.contains(role),
+                "a role was added to ROLES without reaching USAGE: `{role}` is \
+                 missing from:\n{USAGE}"
+            );
+        }
+        for (alias, canonical) in ROLE_ALIASES {
+            let direction = format!("{alias} -> {canonical}");
+            assert!(
+                USAGE.contains(&direction),
+                "an alias was added to ROLE_ALIASES without reaching USAGE: \
+                 `{direction}` is missing from:\n{USAGE}"
+            );
+        }
+    }
+
+    #[test]
+    fn canonical_role_maps_the_documented_alias_and_passes_through_everything_else() {
+        assert_eq!(canonical_role("shepherd"), "root");
+        assert_eq!(canonical_role("root"), "root");
+        assert_eq!(canonical_role("coder"), "coder");
+        assert_eq!(canonical_role("nonsense"), "nonsense");
+    }
+
+    #[test]
+    fn unknown_role_message_names_the_alias_direction_and_every_valid_role() {
+        let message = unknown_role_message("nonsense");
+        assert_eq!(
+            message,
+            "unknown role: nonsense (valid: root planter engineer conductor \
+             critic discovery coder auditor worker; alias: shepherd -> root)"
+        );
+        for role in ROLES {
+            assert!(message.contains(role), "missing role `{role}`: {message}");
+        }
     }
 }

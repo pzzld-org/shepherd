@@ -27,12 +27,12 @@ python3 scripts/generate-third-party-notices.py --scope component --target wasm3
   --output "$closure_dir/component.md" --licenses-dir "$closure_dir/component-licenses"
 python3 scripts/generate-third-party-notices.py --scope npm-harness-claude \
   --output "$closure_dir/npm.md" --licenses-dir "$closure_dir/npm-licenses"
-rg -Fq '`wit-bindgen`' "$closure_dir/component.md"
+rg -Fq '`wit-bindgen`' "$closure_dir/component.md" || { rc=$?; printf 'FAIL: component notice must list the wit-bindgen crate (rg rc=%s)\n' "$rc" >&2; exit 1; }
 if rg -Fq '`wit-bindgen`' "$closure_dir/native.md"; then
   printf 'native notice must exclude the component-only Rust closure\n' >&2
   exit 1
 fi
-rg -Fq '`@bytecodealliance/preview2-shim`' "$closure_dir/npm.md"
+rg -Fq '`@bytecodealliance/preview2-shim`' "$closure_dir/npm.md" || { rc=$?; printf 'FAIL: npm harness notice must list the @bytecodealliance/preview2-shim package (rg rc=%s)\n' "$rc" >&2; exit 1; }
 if rg -Fq '`@babel/parser`' "$closure_dir/npm.md"; then
   printf 'npm notice must exclude root build tooling\n' >&2
   exit 1
@@ -40,9 +40,12 @@ fi
 
 # Every producer must place the same legal material inside its payload. The
 # archive-inspection gates below exercise the byte-level result in CI.
-workflow='.github/workflows/release.yml'
-rg -Fq 'scripts/stage-distribution-legal.sh "$staging"' "$workflow"
-rg -Fq 'scripts/stage-distribution-legal.sh stage' "$workflow"
+# Legal staging happens where the ASSETS are built, which is cargo-build.yml
+# since the release pipeline was split; release.yml orchestrates and tags but
+# stages nothing itself.
+workflow='.github/workflows/cargo-build.yml'
+rg -Fq 'scripts/stage-distribution-legal.sh "$staging"' "$workflow" || { rc=$?; printf 'FAIL: build workflow must invoke stage-distribution-legal.sh against the staging directory (rg rc=%s)\n' "$rc" >&2; exit 1; }
+rg -Fq 'scripts/stage-distribution-legal.sh stage' "$workflow" || { rc=$?; printf 'FAIL: build workflow must invoke stage-distribution-legal.sh with the stage subcommand (rg rc=%s)\n' "$rc" >&2; exit 1; }
 
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/shepherd-release-license.XXXXXX")
 trap 'find "$closure_dir" "$tmp_dir" -depth -delete' EXIT
@@ -62,33 +65,33 @@ fi
 cp LICENSE "$payload/THIRD_PARTY_LICENSES/$legal_hash.txt"
 printf '# fixture notices\n\nTHIRD_PARTY_LICENSES/%s.txt\n' "$legal_hash" > "$payload/THIRD_PARTY_NOTICES.md"
 for target in aarch64-apple-darwin aarch64-unknown-linux-gnu x86_64-apple-darwin x86_64-unknown-linux-gnu; do
-  for name in "shepherd-6.5.0-${target}.tar.gz" "shepherd-${target}.tar.gz"; do
+  for name in "shepherd-6.5.1-${target}.tar.gz" "shepherd-${target}.tar.gz"; do
     tar -C "$payload" -czf "$assets/$name" LICENSE THIRD_PARTY_NOTICES.md THIRD_PARTY_LICENSES shepherd
   done
 done
-for name in shepherd-6.5.0-x86_64-pc-windows-msvc.zip shepherd-x86_64-pc-windows-msvc.zip; do
+for name in shepherd-6.5.1-x86_64-pc-windows-msvc.zip shepherd-x86_64-pc-windows-msvc.zip; do
   (cd "$payload" && zip -qr "$assets/$name" LICENSE THIRD_PARTY_NOTICES.md THIRD_PARTY_LICENSES shepherd.exe)
 done
-for name in shepherd-component-6.5.0-wasm32-wasip2.tar.gz shepherd-component-wasm32-wasip2.tar.gz; do
+for name in shepherd-component-6.5.1-wasm32-wasip2.tar.gz shepherd-component-wasm32-wasip2.tar.gz; do
   tar -C "$payload" -czf "$assets/$name" LICENSE THIRD_PARTY_NOTICES.md THIRD_PARTY_LICENSES shepherd-component.wasm
 done
 mkdir -p "$payload/package"
 printf '{}\n' > "$payload/package/package.json"
 cp "$payload/LICENSE" "$payload/THIRD_PARTY_NOTICES.md" "$payload/package/"
 cp -R "$payload/THIRD_PARTY_LICENSES" "$payload/package/"
-package_tarballs=$(release_package_names 6.5.0)
+package_tarballs=$(release_package_names 6.5.1)
 while IFS= read -r tarball; do
   tar -C "$payload" -czf "$assets/$tarball" package
 done <<<"$package_tarballs"
-scripts/verify-release-distribution.sh "$assets" 6.5.0
+scripts/verify-release-distribution.sh "$assets" 6.5.1
 
 cp -R "$assets" "$tmp_dir/tampered"
 tampered_payload="$tmp_dir/tampered-payload"
 cp -R "$payload" "$tampered_payload"
 printf 'tampered\n' >> "$tampered_payload/THIRD_PARTY_LICENSES/$legal_hash.txt"
-tar -C "$tampered_payload" -czf "$tmp_dir/tampered/shepherd-component-6.5.0-wasm32-wasip2.tar.gz" \
+tar -C "$tampered_payload" -czf "$tmp_dir/tampered/shepherd-component-6.5.1-wasm32-wasip2.tar.gz" \
   LICENSE THIRD_PARTY_NOTICES.md THIRD_PARTY_LICENSES shepherd-component.wasm
-if scripts/verify-release-distribution.sh "$tmp_dir/tampered" 6.5.0 >/dev/null 2>&1; then
+if scripts/verify-release-distribution.sh "$tmp_dir/tampered" 6.5.1 >/dev/null 2>&1; then
   printf 'tampered legal component archive must fail verification\n' >&2
   exit 1
 fi

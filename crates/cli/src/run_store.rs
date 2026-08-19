@@ -462,7 +462,7 @@ mod platform {
                     )
                     .map_err(|error| errno(store, "open state directory", error))?
                 }
-                Err(error) => return Err(errno_path("open state directory", seen, error)),
+                Err(error) => return Err(errno_path(store, "open state directory", seen, error)),
             };
         }
         Ok(fd)
@@ -575,9 +575,58 @@ mod platform {
         result
     }
     fn errno(store: &RunStore, op: &'static str, error: rustix::io::Errno) -> RunStoreError {
-        errno_path(op, store.path.clone(), error)
+        errno_path(store, op, store.path.clone(), error)
     }
-    fn errno_path(op: &'static str, path: PathBuf, error: rustix::io::Errno) -> RunStoreError {
+
+    /// Render one `rustix` errno as a [`RunStoreError`].
+    ///
+    /// `ENOENT` here always means the same thing: the run this [`RunStore`]
+    /// is bound to does not exist (issue #331). It does not matter which of
+    /// the fourteen call sites first noticed -- a missing run directory, a
+    /// missing lock file, a missing `run.json` all fail the same ENOENT way
+    /// once the run itself is gone -- so every `ENOENT` collapses to one
+    /// operator-facing sentence naming the run and the command that lists
+    /// the runs that DO exist, instead of a raw errno. The run id is read
+    /// from `store.path`'s own parent directory name rather than from
+    /// `path`, because `path` is wherever the directory walk happened to
+    /// fail -- which can be an ancestor of the run directory (for example a
+    /// missing `runs/` itself) and would otherwise name the wrong thing as
+    /// "the run".
+    ///
+    /// `wave_b2_run.rs`'s own `load`/`update` helpers already special-case
+    /// `RunStoreError::Io { source, .. }` on `source.kind() ==
+    /// ErrorKind::NotFound` to build their own "no such run" message, so
+    /// this keeps constructing the same `Io` variant with the same
+    /// `ErrorKind::NotFound` -- only the message text changes here, never
+    /// the shape that caller matches on.
+    ///
+    /// Every other errno -- `EACCES`, `EIO`, a path that exists but is not a
+    /// regular file, and so on -- is a real filesystem fault, not a missing
+    /// run, and pointing the operator at `shepherd run list` there would be
+    /// actively misleading. Those keep the original operation/path/OS-error
+    /// rendering, unchanged.
+    fn errno_path(
+        store: &RunStore,
+        op: &'static str,
+        path: PathBuf,
+        error: rustix::io::Errno,
+    ) -> RunStoreError {
+        if error == rustix::io::Errno::NOENT {
+            let run = store
+                .path
+                .parent()
+                .and_then(Path::file_name)
+                .and_then(|name| name.to_str())
+                .unwrap_or("<unknown>");
+            return RunStoreError::io(
+                "run lookup",
+                &path,
+                std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    format!("no such run `{run}` — list existing runs with `shepherd run list`"),
+                ),
+            );
+        }
         RunStoreError::io(
             op,
             &path,
@@ -589,5 +638,119 @@ mod platform {
 impl Drop for RunLock {
     fn drop(&mut self) {
         let _ = self.file.unlock();
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    /// A private, per-test temp directory that already exists and is fully
+    /// canonicalized (no symlink components anywhere in it -- on macOS
+    /// `std::env::temp_dir()` lives under `/var`, which is itself a symlink
+    /// to `/private/var`, and this module's `NOFOLLOW`-guarded traversal
+    /// correctly rejects a symlinked ancestor as a real fault rather than
+    /// treating it as ENOENT). Only `root` itself is created; a `dummy`
+    /// child directory joined onto the returned path stays genuinely
+    /// missing, giving a clean ENOENT one level below a symlink-free root.
+    fn scratch_dir(label: &str) -> PathBuf {
+        let root = std::env::temp_dir().join(format!(
+            "shepherd-run-store-test-{label}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock is after epoch")
+                .as_nanos()
+        ));
+        fs::create_dir_all(&root).expect("create fixture root");
+        fs::canonicalize(root).expect("canonicalize fixture root")
+    }
+
+    /// #331 regression: a run that was never created must fail to load with
+    /// an operator-facing "no such run" diagnostic naming the run and
+    /// `shepherd run list`, never a bare `os error N`.
+    #[test]
+    fn missing_run_reports_no_such_run_without_a_bare_errno() {
+        let root = scratch_dir("missing-run");
+        // `root` exists and is canonical; `root/dummy` is deliberately never
+        // created, so the run directory itself is ENOENT -- the exact
+        // `shepherd ready --run dummy` repro.
+        let store = RunStore::new(root.join("dummy").join("run.json"));
+        let error = store
+            .load()
+            .expect_err("a run directory that was never created must fail to load");
+        let message = error.to_string();
+        assert!(
+            !message.contains("os error"),
+            "message must not leak a bare errno: {message}"
+        );
+        assert!(
+            message.contains("shepherd run list"),
+            "message must point at the discovery command: {message}"
+        );
+        assert!(
+            message.contains("dummy"),
+            "message must name the missing run: {message}"
+        );
+        match error {
+            RunStoreError::Io { source, .. } => {
+                assert_eq!(
+                    source.kind(),
+                    std::io::ErrorKind::NotFound,
+                    "wave_b2_run.rs's own no-such-run handling matches on this exact kind"
+                );
+            }
+            other => panic!("expected RunStoreError::Io, got {other:?}"),
+        }
+        fs::remove_dir_all(&root).expect("remove fixture");
+    }
+
+    /// The same #331 diagnostic must apply when the run's own directory
+    /// exists but `run.json` inside it does not (a distinct call site from
+    /// the one above: this ENOENT surfaces from `read_regular`'s "open
+    /// state" `openat`, not from `parent`'s "open state directory" walk).
+    /// Confirms the fix lives in the shared helper, not in one call site.
+    #[test]
+    fn run_json_missing_inside_an_existing_run_directory_is_still_no_such_run() {
+        let root = scratch_dir("missing-run-json");
+        // The run directory itself exists; only `run.json` is absent.
+        fs::create_dir_all(root.join("dummy")).expect("create run directory");
+        let store = RunStore::new(root.join("dummy").join("run.json"));
+        let error = store
+            .load()
+            .expect_err("an existing run directory with no run.json must fail to load");
+        let message = error.to_string();
+        assert!(
+            !message.contains("os error"),
+            "message must not leak a bare errno: {message}"
+        );
+        assert!(
+            message.contains("shepherd run list"),
+            "message must point at the discovery command: {message}"
+        );
+        fs::remove_dir_all(&root).expect("remove fixture");
+    }
+
+    /// A real filesystem fault -- here, the run's own directory slot is
+    /// occupied by a plain file, so opening it as a directory fails with
+    /// `ENOTDIR`, not `ENOENT` -- must not be relabeled "no such run". That
+    /// would send an operator chasing `shepherd run list` for a problem
+    /// `run list` cannot show or fix.
+    #[test]
+    fn real_fault_is_not_relabeled_no_such_run() {
+        let root = scratch_dir("real-fault");
+        // "dummy" exists, but as a file, not a directory.
+        fs::write(root.join("dummy"), b"not a directory").expect("create blocking file");
+        let store = RunStore::new(root.join("dummy").join("run.json"));
+        let error = store
+            .load()
+            .expect_err("a run slot occupied by a file must fail to load");
+        let message = error.to_string();
+        assert!(
+            !message.contains("shepherd run list"),
+            "a real fault must not be told apart as a missing run: {message}"
+        );
+        fs::remove_dir_all(&root).expect("remove fixture");
     }
 }

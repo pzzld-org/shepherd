@@ -1,11 +1,45 @@
 {
   "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
     "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": "2"
   },
-  "enabledPlugins": {
-    "plugin-dev@claude-plugins-official": true
-  },
+  "includeCoAuthoredBy": false,
   "permissions": {
+    "allow": [
+      "Bash(*)",
+      "Read(*)",
+      "Skill(*)",
+      "WebFetch(*)",
+      "WebSearch"
+    ],
     "defaultMode": "bypassPermissions"
-  }
+  },
+  "enabledPlugins": {
+    "plugin-dev@claude-plugins-official": true,
+    "remember@claude-plugins-official": true,
+    "superpowers@claude-plugins-official": true,
+    "shepherd@shepherd": true
+  },
+  "extraKnownMarketplaces": {
+    "shepherd": {
+      "source": {
+        "source": "github",
+        "repo": "pzzld-org/shepherd"
+      }
+    }
+  },
+  "model": "sonnet",
+  "enableWorkflows": true,
+  "workflowKeywordTriggerEnabled": true,
+  "autoMemoryEnabled": true,
+  "autoDreamEnabled": true,
+  "skipDangerousModePermissionPrompt": true,
+  "skipWorkflowUsageWarning": true,
+  "autoCompactEnabled": true,
+  "showMessageTimestamps": true,
+  "terminalProgressBarEnabled": true,
+  "teammateMode": "tmux",
+  "inputNeededNotifEnabled": true,
+  "agentPushNotifEnabled": true,
+  "skipAutoPermissionPrompt": true
 }

@@ -287,6 +287,19 @@ The command families are owned by the Rust CLI in v{CURRENT}:
 """,
     )
 
+    # QUICKSTART.md carries the same install surfaces as the README and so
+    # drifts the same way; the bump owns it, therefore the fixture must too.
+    write(
+        root,
+        "QUICKSTART.md",
+        f"""# Shepherd Quickstart
+
+https://raw.githubusercontent.com/FL03/shepherd/v{CURRENT}/scripts/install-shepherd.sh
+SHEPHERD_VERSION={CURRENT} bash /tmp/install-shepherd.sh
+codex plugin marketplace add FL03/shepherd --ref v{CURRENT}
+""",
+    )
+
     exact_text = {
         "crates/component/src/lib.rs": (
             f'pub const COMPONENT_CONTRACT_VERSION: &str = "fl03:shepherd@{CURRENT}";\n'
@@ -428,8 +441,20 @@ class VersionBumpTests(unittest.TestCase):
             readme = (root / "README.md").read_text(encoding="utf-8")
             self.assertIn(f"# Shepherd v{NEXT}", readme)
             self.assertIn("thin marketplace carrier", readme)
+            # The migration threshold is historical: it names when layout-v5
+            # was introduced and does NOT move with the version.
             self.assertIn(f"pre-v{CURRENT} namespace", readme)
-            self.assertIn(f"owned by the Rust CLI in v{CURRENT}", readme)
+            # The command surface is NOT historical -- it describes what the
+            # CURRENT binary owns, so the bump must rewrite it. Asserting the
+            # opposite is what kept this line pinned at v6.4.5 across two
+            # releases while the residual scan stayed quiet about it.
+            self.assertIn(f"owned by the Rust CLI in v{NEXT}", readme)
+            self.assertNotIn(f"owned by the Rust CLI in v{CURRENT}", readme)
+            # QUICKSTART's install surfaces move with the version too.
+            quickstart = (root / "QUICKSTART.md").read_text(encoding="utf-8")
+            self.assertIn(f"FL03/shepherd/v{NEXT}/scripts/install-shepherd.sh", quickstart)
+            self.assertIn(f"SHEPHERD_VERSION={NEXT} bash", quickstart)
+            self.assertNotIn(CURRENT, quickstart)
             history = (root / "conformance/cases/history/case.json").read_text()
             self.assertNotIn(f"native-v{NEXT}", history)
 

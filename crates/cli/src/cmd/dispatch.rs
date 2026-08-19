@@ -182,7 +182,7 @@ impl ReadSubject {
     pub(crate) fn not_found_message(self, path: &Path) -> String {
         match self {
             Self::ProjectIdentity => format!(
-                "project not scaffolded — run `shepherd init`: {}",
+                "project not scaffolded — run `shepherd init --confirm`: {}",
                 path.display()
             ),
             Self::File => format!("no such file: {}", path.display()),
@@ -486,6 +486,14 @@ mod tests {
         assert!(
             message.contains("project not scaffolded"),
             "message={message}"
+        );
+        // The remediation must be runnable as printed. `init` is gated behind
+        // `--confirm` (see `WaveCInitCmd::run`), so a bare `shepherd init`
+        // exits 2 and scaffolds nothing -- the operator following this message
+        // ends up exactly where they started.
+        assert!(
+            message.contains("shepherd init --confirm"),
+            "remediation must carry the authorization flag: message={message}"
         );
         assert!(
             !message.contains("without following symlinks"),

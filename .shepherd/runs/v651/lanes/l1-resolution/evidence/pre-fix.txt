@@ -1,0 +1,91 @@
+shepherd #330 — PRE-FIX reproduction, verbatim capture
+=====================================================
+captured_at   : 2026-08-19T06:21:42Z
+run / lane    : v651 / l1-resolution · step L1-S1 · deliverable D2
+base commit   : c7cc9c0
+worktree      : /Users/jo3/src/pzzld/shepherd/.worktrees/v651-l1-resolution
+binary        : /Users/jo3/src/pzzld/shepherd/.worktrees/v651-l1-resolution/target/debug/shepherd
+binary version: shepherd-cli 6.5.1
+uname -a      : Darwin Joes-Mac-mini.local 25.5.0 Darwin Kernel Version 25.5.0: Tue Jun  9 22:26:22 PDT 2026; root:xnu-12377.121.10~1/RELEASE_ARM64_T8132 arm64
+bash          : GNU bash, version 3.2.57(1)-release (arm64-apple-darwin25)
+command       : bash .shepherd/runs/v651/lanes/l1-resolution/sandbox.sh \
+                  /Users/jo3/src/pzzld/shepherd/.worktrees/v651-l1-resolution/target/debug/shepherd
+script exit   : recorded at the end of this file
+
+Everything below this line is the unedited stdout+stderr of that command.
+----------------------------- BEGIN CAPTURE -----------------------------
+shepherd #330 reproduction sandbox
+mode      : expect-abort
+binary    : /Users/jo3/src/pzzld/shepherd/.worktrees/v651-l1-resolution/target/debug/shepherd
+sandbox   : /var/folders/98/hw9cxq3d29sdw5nb5gv0b9wh0000gn/T/shepherd-330-rktYjy
+version   : shepherd-cli 6.5.1
+
+=== STEP 1 · scaffold the layout-v5 namespace ===
+initialized layout-v5 namespace: /private/var/folders/98/hw9cxq3d29sdw5nb5gv0b9wh0000gn/T/shepherd-330-rktYjy/.shepherd
+registry: /private/var/folders/98/hw9cxq3d29sdw5nb5gv0b9wh0000gn/T/shepherd-330-rktYjy/.shepherd/shepherd.db
+
+=== STEP 2 · plant the legacy namespace: plan.md, no run.json ===
+plan.md
+
+=== STEP 3 · create one healthy run beside it ===
+/private/var/folders/98/hw9cxq3d29sdw5nb5gv0b9wh0000gn/T/shepherd-330-rktYjy/.shepherd/runs/v651/run.json
+{
+  "base": "",
+  "branch": "",
+  "kind": "sprint",
+  "lanes": [],
+  "plan": "",
+  "run": "v651",
+  "schema_version": 1,
+  "seed": "",
+  "status": "planted",
+  "updated_at": 1787120502
+}
+
+=== PROBE 1 · PreToolUse with v651 status=planted (expect ADVISORY, tool allowed) ===
+{"hookSpecificOutput":{"additionalContext":"[shepherd] no usable run namespace (dispatch filesystem operation `open regular file` failed for /private/var/folders/98/hw9cxq3d29sdw5nb5gv0b9wh0000gn/T/shepherd-330-rktYjy/.shepherd/runs/v500/run.json: No such file or directory (os error 2)); tool allowed. Repair with `shepherd run layout <run> --repair` then `shepherd run set <run> --status executing`.","hookEventName":"PreToolUse"}}
+[exit 0]
+
+=== STEP 4 · raise v651 to executing (SANDBOX ONLY — mesh R36d) ===
+updated v651
+run v651 status -> executing
+
+=== PROBE 2 · PreToolUse with v651 status=executing (expect HARD DENY) ===
+{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[shepherd] dispatch filesystem operation `open regular file` failed for /private/var/folders/98/hw9cxq3d29sdw5nb5gv0b9wh0000gn/T/shepherd-330-rktYjy/.shepherd/runs/v500/run.json: No such file or directory (os error 2)"}}
+[exit 0]
+
+=== STEP 5 · lower v651 back to planted ===
+updated v651
+run v651 status -> planted
+
+=== PROBE 3 · PreToolUse with v651 status=planted again (expect ADVISORY) ===
+{"hookSpecificOutput":{"additionalContext":"[shepherd] no usable run namespace (dispatch filesystem operation `open regular file` failed for /private/var/folders/98/hw9cxq3d29sdw5nb5gv0b9wh0000gn/T/shepherd-330-rktYjy/.shepherd/runs/v500/run.json: No such file or directory (os error 2)); tool allowed. Repair with `shepherd run layout <run> --repair` then `shepherd run set <run> --status executing`.","hookEventName":"PreToolUse"}}
+[exit 0]
+
+=== STEP 6 · safe mitigation (mesh R36i): give the legacy namespace a run.json ===
+{"run":"v500","status":"closed"}
+
+=== PROBE 4 · PreToolUse after the mitigation (expect the correct banner) ===
+{"hookSpecificOutput":{"additionalContext":"[shepherd] no usable run namespace (no executing shepherd run exists); tool allowed. Repair with `shepherd run layout <run> --repair` then `shepherd run set <run> --status executing`.","hookEventName":"PreToolUse"}}
+[exit 0]
+
+=== ASSERTIONS · mode=expect-abort ===
+PASS  planted/1 reports no usable run namespace
+PASS  planted/1 names the missing legacy run.json
+PASS  planted/1 names the failing filesystem operation
+PASS  planted/1 states the tool was allowed
+PASS  planted/1 is advisory, not a denial
+PASS  executing hard-denies the tool
+PASS  executing denies over the missing legacy run.json
+PASS  executing offers no advisory escape
+PASS  planted/2 returns to no usable run namespace
+PASS  planted/2 names the missing legacy run.json
+PASS  planted/2 is advisory again, not a denial
+PASS  mitigated banner drops the filesystem abort
+PASS  mitigated banner no longer names the legacy run.json
+
+=== RESULT ===
+mode=expect-abort passed=13 failed=0
+#330 reproduced: advisory -> deny -> advisory, mitigated by a stub run.json.
+------------------------------ END CAPTURE ------------------------------
+script exit code: 0

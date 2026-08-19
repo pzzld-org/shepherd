@@ -24,7 +24,7 @@ license = "Apache-2.0"
 readme = "README.md"
 repository = "https://github.com/FL03/shepherd.git"
 rust-version = "1.97.0"
-version = "6.5.0"
+version = "6.5.1"
 
 # ********* Dependencies *********
 #
@@ -37,14 +37,14 @@ version = "6.5.0"
 # from each member's own `[features]` graph instead.
 [workspace.dependencies]
 # sdk — the umbrella every consumer links
-shepherd = { default-features = false, package = "shepherd-sdk", path = "crates/sdk", version = "6.5.0" }
+shepherd = { default-features = false, package = "shepherd-sdk", path = "crates/sdk", version = "6.5.1" }
 # members, in dependency order
-shepherd-core = { default-features = false, path = "crates/core", version = "6.5.0" }
-shepherd-compiler = { default-features = false, path = "crates/compiler", version = "6.5.0" }
-shepherd-registry = { default-features = false, path = "crates/registry", version = "6.5.0" }
-shepherd-render = { default-features = false, path = "crates/render", version = "6.5.0" }
+shepherd-core = { default-features = false, path = "crates/core", version = "6.5.1" }
+shepherd-compiler = { default-features = false, path = "crates/compiler", version = "6.5.1" }
+shepherd-registry = { default-features = false, path = "crates/registry", version = "6.5.1" }
+shepherd-render = { default-features = false, path = "crates/render", version = "6.5.1" }
 # bin
-shepherd-cli = { default-features = false, path = "crates/cli", version = "6.5.0" }
+shepherd-cli = { default-features = false, path = "crates/cli", version = "6.5.1" }
 
 # cli
 clap = { default-features = false, features = ["derive"], version = "4" }

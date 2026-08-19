@@ -150,24 +150,46 @@ fn verify(path: &Path, quiet: bool) -> Result<Report, CliError> {
     let content = raw.trim_end_matches('\n');
     let lines = content.split('\n').collect::<Vec<_>>();
     let kind = extract_kind(&lines);
-    let cap = if kind == "patch-seed" {
+    // Declared-kind's threshold for the WARN-only signals below (smell warn,
+    // patch mislabel warn) — never for the HARD ceiling. `kind` is an
+    // unvalidated author label (measured, not assumed): v645 declares
+    // `patch-seed` at `sprint_size: XL`; v646's 393-line patch-seed and
+    // v651's 388-line sprint-seed carry near-identical deliverable/scope
+    // counts (10/14 vs 13/27 entries). No measured signal in the corpus
+    // separates a "real" patch from a mislabeled sprint, so a one-word
+    // relabel must never buy HARD-cap slack.
+    let declared_cap = if kind == "patch-seed" {
         PATCH_FOOTPRINT_CAP
     } else {
         SPRINT_FOOTPRINT_CAP
     };
     let mut report = Report::new(quiet);
 
-    if lines.len() > cap {
+    // Footprint severity, evaluated in this order, at most one finding:
+    //   1. lines > SPRINT_FOOTPRINT_CAP (400) -> HARD, every kind. The one
+    //      ceiling nothing can relabel its way past.
+    //   2. else kind == "patch-seed" && lines > PATCH_FOOTPRINT_CAP (200)
+    //      -> warn, naming the mislabel. The v6.4.6 carry-forward said "do
+    //      not resolve it by moving the number" — this fixes which
+    //      severity the label may select, not the number itself.
+    //   3. else the pre-existing smell warn at 3/4 of the declared-kind's
+    //      threshold, byte-identical to prior behaviour.
+    if lines.len() > SPRINT_FOOTPRINT_CAP {
         report.hard(format!(
-            "footprint {} lines > cap {cap} (kind={})",
+            "footprint {} lines > cap {SPRINT_FOOTPRINT_CAP} (kind={})",
             lines.len(),
             if kind.is_empty() { "sprint" } else { &kind }
         ));
-    } else if lines.len() > cap * 3 / 4 {
+    } else if kind == "patch-seed" && lines.len() > PATCH_FOOTPRINT_CAP {
+        report.warn(format!(
+            "footprint {} lines > patch cap {PATCH_FOOTPRINT_CAP} (kind=patch-seed) — sprint-shaped; relabel or move evidence to mesh.md",
+            lines.len()
+        ));
+    } else if lines.len() > declared_cap * 3 / 4 {
         report.warn(format!(
             "footprint {} lines > smell threshold {}",
             lines.len(),
-            cap * 3 / 4
+            declared_cap * 3 / 4
         ));
     }
 
@@ -190,12 +212,53 @@ fn verify(path: &Path, quiet: bool) -> Result<Report, CliError> {
     if !scope.is_empty() {
         let repo = repo_root();
         let entries = parse_scope_entries(&scope);
+        // `file_scope` proposes paths that will exist once the seed's sprint
+        // runs — resolving them against the LIVE tree is a pre-flight check,
+        // exactly what USAGE promises ("Deterministic pre-flight gate for a
+        // *.seed.md ... blocks the SEED-GATE"). Once a run has closed, its
+        // seed is a historical record, not a proposal: paths it named can
+        // legitimately be gone (deleted, renamed, moved by a *later* sprint)
+        // without the seed itself being wrong. So a closed run's unresolved
+        // path is a warn, never a HARD block — every other seed keeps
+        // today's HARD failure byte-identical.
+        //
+        // "Closed" requires BOTH, deliberately narrow so a stray close.md
+        // can never accidentally relax a live gate:
+        //   1. path shape: basename is exactly `seed.md` and its parent's
+        //      parent is named `runs` (i.e. `.../runs/<run-id>/seed.md`) —
+        //      this mirrors the shape `hooks/scripts/seed_preflight_check.sh`
+        //      already gates its own input on. It also means the hook's own
+        //      write-time check is structurally immune to this rule: it
+        //      verifies a copy at `mktemp -t shep-seed.XXXXXX`, a bare file
+        //      directly under $TMPDIR that is never named `seed.md` and is
+        //      never inside a `runs/<id>/` directory, so it can never be
+        //      mistaken for a closed run's record no matter what else sits
+        //      beside it in $TMPDIR.
+        //   2. a sibling `close.md` exists next to the seed — the artifact
+        //      a run emits when it closes (`.shepherd/runs/v646/close.md`
+        //      exists; `.shepherd/runs/v651/close.md` does not until
+        //      CLOSE-S2 writes it at the end of this sprint).
+        // Deliberately NOT: frontmatter `date:` (verdict would then flip
+        // with the calendar — a time-bomb) and NOT git archaeology against
+        // the seed's named commit (`base: main` is a moving ref, and the
+        // hook's temp-dir copy has no commit at all).
+        let run_closed = is_run_scoped_seed_path(path)
+            && path
+                .parent()
+                .is_some_and(|dir| dir.join("close.md").is_file());
         for entry in &entries {
             if !resolves(entry, repo.as_deref()) {
-                report.hard(format!(
-                    "file_scope path does not resolve and is not marked (NEW): {}",
-                    first_token(entry)
-                ));
+                if run_closed {
+                    report.warn(format!(
+                        "file_scope path does not resolve: {} (run closed — close.md present; a closed run's seed is a record, not a proposal)",
+                        first_token(entry)
+                    ));
+                } else {
+                    report.hard(format!(
+                        "file_scope path does not resolve and is not marked (NEW): {}",
+                        first_token(entry)
+                    ));
+                }
             }
         }
         if entries.is_empty() {
@@ -412,6 +475,21 @@ fn resolves(raw: &str, repo_root: Option<&Path>) -> bool {
     } else {
         candidate.exists()
     }
+}
+
+/// True when `path`'s basename is exactly `seed.md` and its grandparent
+/// directory is named `runs` — i.e. it has the shape `.../runs/<run-id>/seed.md`.
+/// This is one of the two required conditions for treating a seed as
+/// belonging to a closed run (see the comment above its call site). A
+/// non-UTF8 component defaults to `false` (stays strict) rather than guessing.
+fn is_run_scoped_seed_path(path: &Path) -> bool {
+    path.file_name().and_then(|name| name.to_str()) == Some("seed.md")
+        && path
+            .parent()
+            .and_then(Path::parent)
+            .and_then(Path::file_name)
+            .and_then(|name| name.to_str())
+            == Some("runs")
 }
 
 fn repo_root() -> Option<PathBuf> {

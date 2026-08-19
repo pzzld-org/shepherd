@@ -1,4 +1,4 @@
-# Content authority v6.5.0
+# Content authority v6.5.1
 
 `content/` is Shepherd's only authored prompt and policy corpus. It is
 harness-neutral input to the Rust compiler, not a staging area for a later
@@ -8,7 +8,7 @@ rewrite.
 
 - `roles/*.md` defines all nine roles, portable model hints, capabilities,
   write eligibility, dispatchability, and write scopes.
-- `skills/*/SKILL.md` defines the nine workflow skills. Eight are portable
+- `skills/*/SKILL.md` defines the ten workflow skills. Nine are portable
   and compile for every target; `harness` carries `portability: claude-only`
   and is emitted for Claude alone, because its content is one platform's
   multi-agent mechanics and none of it is a fact about any other harness.

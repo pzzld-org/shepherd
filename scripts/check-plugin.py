@@ -15,6 +15,19 @@ at scripts that no longer existed, 7 skills nothing would discover, 17 gate
 tests red, and the release pipeline quietly skipping its SKILL.md version bump
 forever. It surfaces at publish time, on users, with no CI signal in between.
 
+A second blind spot surfaced later, one layer down: the resolver that checks
+`hooks.json` only ever opened the repo's own `hooks/hooks.json`. The published
+carrier's manifest -- and the Codex sub-carrier's -- were never opened at all,
+so a carrier shipping a manifest naming seven hook scripts it did not contain
+validated clean for four releases. Plugin roots are now derived from the
+shipping marketplace manifests (`.claude-plugin/marketplace.json`,
+`.agents/plugins/marketplace.json`, and the Codex sub-carrier's own
+`.codex-plugin/plugin.json`), never a tree walk -- a tree walk also matches
+npm adapter fixtures under `packages/harness-*/hooks/hooks.json`, which are
+not plugin roots. Each manifest's `${CLAUDE_PLUGIN_ROOT}` refs are then
+resolved against THAT manifest's own root, never the repo root. See
+`_plugin_roots` and `_hook_files`.
+
 The plugin root layout is an interface contract with the harness, not a
 repository-organisation preference. This checks it.
 
@@ -39,15 +52,32 @@ ROOT = Path(__file__).resolve().parent.parent
 # reference, `${CLAUDE_PLUGIN_ROOT}` is "the plugin's installation directory",
 # i.e. the ROOT -- relocating hooks.json does NOT re-base the paths inside it.
 COMPONENT_DIRS = ("agents", "skills", "hooks")
+# The thin carrier's canonical symlinks. `hooks/scripts` is part of the
+# carrier contract, not incidental: it is what every
+# `${CLAUDE_PLUGIN_ROOT}/hooks/scripts/...` ref in hooks.json resolves
+# through. Enforced by `rule_thin_carrier_projects_canonical_content`. There
+# is deliberately no `bin` link: the compatibility launcher is retired (D4 in
+# scripts/check-cli-authority.py) and the native binary resolved from
+# PATH/SHEPHERD_NATIVE_BIN is the sole CLI authority, carrier included.
 CARRIER_LINKS = {
     "hooks/hooks.json": "../../../hooks/hooks.json",
+    "hooks/scripts": "../../../hooks/scripts",
     "agents": "../../agents",
     "skills": "../../skills",
 }
+CLAUDE_MARKETPLACE = Path(".claude-plugin/marketplace.json")
 CODEX_MARKETPLACE = Path(".agents/plugins/marketplace.json")
 CODEX_CARRIER = Path("plugins/shepherd/codex")
 
 PLUGIN_ROOT_REF = re.compile(r"\$\{CLAUDE_PLUGIN_ROOT\}/([^\"'\s)\\]+)")
+
+
+def _rel(path: Path, root: Path) -> str:
+    """POSIX-style display path, relative to `root` when possible."""
+    try:
+        return path.relative_to(root).as_posix()
+    except ValueError:
+        return path.as_posix()
 
 
 def rule_component_dirs_are_at_the_root(root: Path) -> list[str]:
@@ -92,26 +122,124 @@ def rule_hooks_json_is_discoverable(root: Path) -> list[str]:
     ]
 
 
-def _hook_files(root: Path) -> list[Path]:
-    found = [root / "hooks" / "hooks.json"]
-    return [p for p in found if p.is_file()]
+def _plugin_roots(root: Path) -> tuple[list[Path], list[str]]:
+    """Derive shipping plugin roots from the marketplace manifests.
+
+    NOT a tree walk (`root.rglob("hooks.json")`): that also matches the npm
+    adapter fixtures under `packages/harness-*/hooks/hooks.json`, which are
+    not plugin roots -- rooting their refs at the repo root resolves them
+    against a tree they were never relative to. The manifests are the only
+    authority on what is actually published, so roots come from there:
+
+    - `.claude-plugin/marketplace.json` -> `plugins[].source`, a string.
+    - `.agents/plugins/marketplace.json` -> `plugins[].source`, an object
+      with a `path` key.
+    - the repo root itself is always a plugin root.
+    - a Codex sub-carrier is declared by ITS plugin's own
+      `.codex-plugin/plugin.json` `"hooks"` key, e.g.
+      `"./codex/hooks/hooks.json"` roots the sub-carrier at `<plugin>/codex`.
+
+    A missing or malformed manifest degrades to a reported violation, never a
+    silent empty root set -- an empty root set here would recreate the exact
+    D3 blind spot this function exists to close.
+    """
+    roots: list[Path] = [root]
+    bad: list[str] = []
+
+    def sources(manifest_path: Path) -> list[Path]:
+        try:
+            manifest = json.loads(manifest_path.read_text())
+        except (OSError, json.JSONDecodeError) as exc:
+            bad.append(f"{_rel(manifest_path, root)} is missing or malformed: {exc}")
+            return []
+        plugins = manifest.get("plugins")
+        if not isinstance(plugins, list) or not plugins:
+            bad.append(f"{_rel(manifest_path, root)} declares no plugins")
+            return []
+        found = []
+        for plugin in plugins:
+            name = plugin.get("name", "?") if isinstance(plugin, dict) else "?"
+            source = plugin.get("source") if isinstance(plugin, dict) else None
+            if isinstance(source, str):
+                found.append(root / source)
+            elif isinstance(source, dict) and isinstance(source.get("path"), str):
+                found.append(root / source["path"])
+            else:
+                bad.append(
+                    f'{_rel(manifest_path, root)} plugin "{name}" has an '
+                    'unrecognised "source" shape'
+                )
+        return found
+
+    roots.extend(sources(root / CLAUDE_MARKETPLACE))
+    roots.extend(sources(root / CODEX_MARKETPLACE))
+
+    # The Codex sub-carrier is declared by its own plugin.json, not a
+    # marketplace entry -- check every root found so far for one, so a
+    # second plugin with its own Codex sub-carrier is picked up too.
+    for plugin_root in list(roots):
+        codex_manifest = plugin_root / ".codex-plugin" / "plugin.json"
+        if not codex_manifest.is_file():
+            continue
+        try:
+            manifest = json.loads(codex_manifest.read_text())
+        except (OSError, json.JSONDecodeError) as exc:
+            bad.append(f"{_rel(codex_manifest, root)} is malformed: {exc}")
+            continue
+        hooks_ref = manifest.get("hooks")
+        if isinstance(hooks_ref, str) and hooks_ref.endswith("hooks.json"):
+            roots.append((plugin_root / hooks_ref).parent.parent)
+
+    deduped: list[Path] = []
+    for candidate in roots:
+        if candidate not in deduped:
+            deduped.append(candidate)
+    if len(deduped) <= 1:
+        bad.append("no plugin roots could be derived from the marketplace manifests")
+    return deduped, bad
+
+
+def _hook_files(root: Path) -> tuple[list[tuple[Path, Path]], list[str]]:
+    """Every shipping carrier's hooks.json, paired with its own plugin root.
+
+    Plugin roots come from `_plugin_roots`. Each `hooks.json` is looked up by
+    convention at `<plugin root>/hooks/hooks.json`, same as the harness would
+    discover it, so its refs get resolved against the root the harness would
+    actually install it under.
+    """
+    roots, bad = _plugin_roots(root)
+    files = [
+        (plugin_root, candidate)
+        for plugin_root in roots
+        for candidate in [plugin_root / "hooks" / "hooks.json"]
+        if candidate.is_file()
+    ]
+    return files, bad
 
 
 def rule_hook_commands_resolve(root: Path) -> list[str]:
-    """Every `${CLAUDE_PLUGIN_ROOT}/...` in hooks.json points at a real file.
+    """Every `${CLAUDE_PLUGIN_ROOT}/...` in every shipping hooks.json points
+    at a real, executable file -- resolved against THAT carrier's own plugin
+    root, never the repo root.
 
     This is the check that was missing. `claude plugin validate` parses
     hooks.json as JSON and stops; it never opens the `command` strings, so a
-    hook wired to a deleted script validates clean and fails at runtime.
+    hook wired to a deleted script validates clean and fails at runtime. The
+    original version of this check only ever opened the repo's own
+    `hooks/hooks.json`, so the published carrier's manifest -- and the Codex
+    sub-carrier's -- were never checked at all: a hooks.json copied into a
+    carrier without re-rooting its own refs validated clean too.
     """
-    bad = []
-    for path in _hook_files(root):
+    files, bad = _hook_files(root)
+    for plugin_root, path in files:
         for ref in sorted(set(PLUGIN_ROOT_REF.findall(path.read_text()))):
-            target = root / ref
+            target = plugin_root / ref
+            where = _rel(path, root)
+            rooted_at = _rel(plugin_root, root) or "."
             if not target.exists():
-                bad.append(f"{path.relative_to(root)} -> {ref} does not exist")
+                bad.append(f"{where} -> {ref} does not exist (rooted at {rooted_at})")
             elif target.is_file() and not target.stat().st_mode & 0o111:
-                bad.append(f"{path.relative_to(root)} -> {ref} is not executable")
+                bad.append(f"{where} -> {ref} is not executable (rooted at {rooted_at})")
     return bad
 
 
@@ -414,24 +542,36 @@ def run(root: Path) -> int:
 
 
 def self_test(root: Path) -> int:
-    """Every rule must fail on a tree that violates it.
+    """Every rule is a two-sided control: it must PASS on the unmutated
+    fixture and FAIL once mutated.
 
-    Built by copying the real layout into a temp dir and breaking one thing at
-    a time — the same move that broke the plugin for real.
+    A rule that fails on everything -- including a correct tree -- is
+    indistinguishable from a rule that works. Checking only the fail side is
+    exactly how a vacuous gate gets born, so every case here is built and
+    reported on both sides: PASS first, on the fixture nobody touched, then
+    FAIL, on the same fixture with one thing broken -- the same move that
+    broke the plugin for real.
     """
     import shutil
     import tempfile
 
-    print("self-test: every rule must be able to fail\n")
+    print("self-test: every rule must PASS clean and FAIL broken\n")
     failures = 0
 
     def fixture(mutate) -> Path:
         tmp = Path(tempfile.mkdtemp())
         (tmp / ".claude-plugin").mkdir()
         (tmp / ".claude-plugin" / "plugin.json").write_text('{"name":"shepherd"}')
+        (tmp / CLAUDE_MARKETPLACE).write_text(
+            '{"name":"shepherd","plugins":[{"name":"shepherd","source":"./plugins/shepherd"}]}'
+        )
         for name in COMPONENT_DIRS:
             (tmp / name).mkdir()
-        (tmp / "hooks" / "hooks.json").write_text('{"hooks":{}}')
+        (tmp / "hooks" / "hooks.json").write_text(
+            '{"hooks":{"SessionStart":[{"hooks":[{"type":"command",'
+            '"command":"shepherd","args":["claude-hook"]}]}]}}'
+        )
+        (tmp / "hooks" / "scripts").mkdir()
         (tmp / "skills" / "demo").mkdir()
         (tmp / "skills" / "demo" / "SKILL.md").write_text("# demo")
         carrier = tmp / "plugins" / "shepherd"
@@ -441,6 +581,7 @@ def self_test(root: Path) -> int:
         )
         (carrier / "hooks").mkdir()
         (carrier / "hooks" / "hooks.json").symlink_to("../../../hooks/hooks.json")
+        (carrier / "hooks" / "scripts").symlink_to("../../../hooks/scripts")
         (carrier / "agents").symlink_to("../../agents")
         (carrier / "skills").symlink_to("../../skills")
         (tmp / ".agents" / "plugins").mkdir(parents=True)
@@ -461,6 +602,9 @@ def self_test(root: Path) -> int:
         mutate(tmp)
         return tmp
 
+    def no_mutation(tmp: Path) -> None:
+        pass
+
     def broken_move(tmp: Path) -> None:
         # Exactly the real failure: components relocated under src/.
         (tmp / "src").mkdir()
@@ -468,9 +612,33 @@ def self_test(root: Path) -> int:
             shutil.move(str(tmp / name), str(tmp / "src" / name))
 
     def dangling_hook(tmp: Path) -> None:
+        # Root's own hooks.json (and the carrier's symlinked view of it)
+        # references a script that does not exist.
         (tmp / "hooks" / "hooks.json").write_text(
-            '{"PreToolUse":[{"command":"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/gone.sh"}]}'
+            '{"hooks":{"PreToolUse":[{"hooks":[{"type":"command",'
+            '"command":"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/gone.sh"}]}]}}'
         )
+
+    def carrier_hook_ref_mis_rooted(tmp: Path) -> None:
+        # The Codex carrier's OWN hooks.json -- a physically independent
+        # file, never a symlink -- references a script that exists nowhere
+        # under that carrier's root. This is the exact D3 blind spot: the
+        # original `_hook_files` only ever opened the repo's own
+        # hooks/hooks.json and never this one, so this drift validated clean.
+        (tmp / CODEX_CARRIER / "hooks" / "hooks.json").write_text(
+            '{"hooks":{"SessionStart":[{"hooks":[{"type":"command",'
+            '"command":"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/gone.sh"}]}]}}'
+        )
+
+    def all_marketplaces_missing(tmp: Path) -> None:
+        # A missing/malformed manifest must degrade to a reported violation,
+        # never a silent empty root set.
+        (tmp / CLAUDE_MARKETPLACE).unlink()
+        (tmp / CODEX_MARKETPLACE).unlink()
+
+    def hooks_scripts_link_retargeted(tmp: Path) -> None:
+        (tmp / "plugins" / "shepherd" / "hooks" / "scripts").unlink()
+        (tmp / "plugins" / "shepherd" / "hooks" / "scripts").symlink_to("../../../hooks")
 
     def duplicate_command_authority(tmp: Path) -> None:
         (tmp / "commands").mkdir()
@@ -502,35 +670,57 @@ def self_test(root: Path) -> int:
         )
 
     cases = [
-        (rule_component_dirs_are_at_the_root, broken_move),
-        (rule_retired_command_surface_is_absent, duplicate_command_authority),
-        (rule_hooks_json_is_discoverable, broken_move),
-        (rule_hook_commands_resolve, dangling_hook),
-        (rule_plugin_root_refs_resolve, stale_plugin_root_ref),
-        (rule_skills_are_shaped_correctly, skill_without_body),
-        (rule_generated_skills_are_thin, duplicate_skill_authority),
-        (rule_thin_carrier_projects_canonical_content, carrier_manifest_drift),
-        (rule_codex_carrier_is_regular_and_canonical, codex_carrier_drift),
-        (rule_configured_gates_resolve, broken_gate),
+        (rule_component_dirs_are_at_the_root, [broken_move]),
+        (rule_retired_command_surface_is_absent, [duplicate_command_authority]),
+        (rule_hooks_json_is_discoverable, [broken_move]),
+        (
+            rule_hook_commands_resolve,
+            [dangling_hook, carrier_hook_ref_mis_rooted, all_marketplaces_missing],
+        ),
+        (rule_plugin_root_refs_resolve, [stale_plugin_root_ref]),
+        (rule_skills_are_shaped_correctly, [skill_without_body]),
+        (rule_generated_skills_are_thin, [duplicate_skill_authority]),
+        (
+            rule_thin_carrier_projects_canonical_content,
+            [carrier_manifest_drift, hooks_scripts_link_retargeted],
+        ),
+        (rule_codex_carrier_is_regular_and_canonical, [codex_carrier_drift]),
+        (rule_configured_gates_resolve, [broken_gate]),
     ]
 
-    for rule, mutate in cases:
+    for rule, mutations in cases:
         label = rule.__name__.removeprefix("rule_").replace("_", " ")
-        tmp = fixture(mutate)
+
+        tmp = fixture(no_mutation)
         try:
-            if rule(tmp):
-                print(f"  {label:<44} fails as designed")
-            else:
-                print(f"  {label:<44} DID NOT FAIL on a broken fixture")
+            violations = rule(tmp)
+            if violations:
+                print(f"  {label:<44} PASS side FAILED on a clean fixture")
+                for violation in violations[:10]:
+                    print(f"      {violation}")
                 failures += 1
+            else:
+                print(f"  {label:<44} passes clean")
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
+        for mutate in mutations:
+            fail_label = f"{label} [{mutate.__name__}]"
+            tmp = fixture(mutate)
+            try:
+                if rule(tmp):
+                    print(f"  {fail_label:<44} fails as designed")
+                else:
+                    print(f"  {fail_label:<44} DID NOT FAIL on a broken fixture")
+                    failures += 1
+            finally:
+                shutil.rmtree(tmp, ignore_errors=True)
+
     print()
     if failures:
-        print(f"::error::{failures} rule(s) cannot detect their own violation.")
+        print(f"::error::{failures} rule(s) cannot pass clean and fail broken.")
         return 1
-    print("ok: every rule is falsifiable.")
+    print("ok: every rule passes clean and is falsifiable.")
     return 0
 
 
