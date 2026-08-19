@@ -16,9 +16,9 @@ No Cargo Binstall? Use the checksum-verifying installer:
 
 ```sh
 curl --fail --location \
-  https://raw.githubusercontent.com/FL03/shepherd/v6.5.2/scripts/install-shepherd.sh \
+  https://raw.githubusercontent.com/FL03/shepherd/v6.5.3/scripts/install-shepherd.sh \
   --output /tmp/install-shepherd.sh
-SHEPHERD_VERSION=6.5.2 bash /tmp/install-shepherd.sh
+SHEPHERD_VERSION=6.5.3 bash /tmp/install-shepherd.sh
 ```
 
 Windows PowerShell, and building from source, are covered in the
@@ -86,7 +86,7 @@ binary, or the reverse.
 ### Codex
 
 ```sh
-codex plugin marketplace add FL03/shepherd --ref v6.5.2
+codex plugin marketplace add FL03/shepherd --ref v6.5.3
 codex plugin add shepherd@shepherd
 ```
 

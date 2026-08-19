@@ -1,4 +1,4 @@
-# Shepherd v6.5.2
+# Shepherd v6.5.3
 
 [![License](https://img.shields.io/github/license/FL03/shepherd?style=for-the-badge&logo=github)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/FL03/shepherd?style=for-the-badge&logo=github)](https://github.com/FL03/shepherd/releases)
@@ -8,7 +8,7 @@ agent work. The deterministic core and the canonical CLI are Rust. Claude Code,
 Codex, and Pi are host adapters over the same typed WebAssembly Component Model
 contract, so a new harness does not require a second policy engine or a rewrite.
 
-The v6.5.2 component is published as `fl03:shepherd@6.5.2`. Its WIT contract,
+The v6.5.3 component is published as `fl03:shepherd@6.5.3`. Its WIT contract,
 generated bindings, native CLI, and adapter packages are versioned together.
 
 **New here? Start with the [Quickstart](QUICKSTART.md)** — install, initialize,
@@ -86,9 +86,9 @@ macOS (arm64/x86_64) and GNU-libc Linux (arm64/x86_64):
 
 ```sh
 curl --fail --location \
-  https://raw.githubusercontent.com/FL03/shepherd/v6.5.2/scripts/install-shepherd.sh \
+  https://raw.githubusercontent.com/FL03/shepherd/v6.5.3/scripts/install-shepherd.sh \
   --output /tmp/install-shepherd.sh
-SHEPHERD_VERSION=6.5.2 bash /tmp/install-shepherd.sh
+SHEPHERD_VERSION=6.5.3 bash /tmp/install-shepherd.sh
 ```
 
 Windows x86_64 PowerShell:
@@ -96,9 +96,9 @@ Windows x86_64 PowerShell:
 ```powershell
 $installer = Join-Path $env:TEMP 'install-shepherd.ps1'
 Invoke-WebRequest `
-  https://raw.githubusercontent.com/FL03/shepherd/v6.5.2/scripts/install-shepherd.ps1 `
+  https://raw.githubusercontent.com/FL03/shepherd/v6.5.3/scripts/install-shepherd.ps1 `
   -OutFile $installer
-$env:SHEPHERD_VERSION = '6.5.2'
+$env:SHEPHERD_VERSION = '6.5.3'
 & $installer
 ```
 
@@ -200,7 +200,7 @@ change, not an adapter-local alias.
 
 ## Native command surface
 
-The following command families are owned by the Rust CLI in v6.5.2:
+The following command families are owned by the Rust CLI in v6.5.3:
 
 `audit`, `close-lane`, `compile`, `config`, `dispatch`, `discovery`, `doctor`,
 `deliverable`, `dups`, `eval` (recorded-result inspection), `export` (stdout
@@ -339,7 +339,7 @@ the supported installation path.
 Codex installs the same repository source through its canonical marketplace:
 
 ```sh
-codex plugin marketplace add FL03/shepherd --ref v6.5.2
+codex plugin marketplace add FL03/shepherd --ref v6.5.3
 codex plugin add shepherd@shepherd
 ```
 

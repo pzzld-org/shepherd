@@ -1,6 +1,6 @@
 {
   "name": "@pzzld/component-runtime",
-  "version": "6.5.2",
+  "version": "6.5.3",
   "description": "Minimal loader and typed call boundary for the Shepherd WebAssembly Component Model runtime.",
   "type": "module",
   "files": [
