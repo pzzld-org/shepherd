@@ -54,6 +54,18 @@ The fix is three parts:
   manifest with no `pi` key fails (the exact shipped defect), and a
   declared-but-unpacked carrier fails.
 
+### Added — the cross-harness claim is now falsifiable
+
+`scripts/tests/test-harness-surface-parity.sh` asserts all three harnesses at
+once and derives every count from `content/` rather than hardcoding one:
+Claude ships all 10 authored skills and 9 role agents, Codex ships the 9
+cross-harness skills, and Pi declares a loadable surface that release staging
+materializes. Self-test proves the counts can fail, including the exact zero
+case that shipped.
+
+Each harness was previously checked in isolation. The **comparison** between
+them — which is the product claim — was checked by nobody.
+
 **Why it went unnoticed for so long.** No gate ever asked what Pi ships.
 `check-plugin.py` derives its roots from the Claude and Codex shipping manifests
 only, so "Claude 10 skills, Codex 9, Pi 0" was not an assertion anywhere. The

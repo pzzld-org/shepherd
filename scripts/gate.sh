@@ -65,6 +65,11 @@ gate_fast() {
   # package installed cleanly and was inert. Nothing asked what Pi ships.
   step "Pi package surface is falsifiable" bash scripts/tests/test-pi-package-surface.sh --self-test
   step "Pi package surface" bash scripts/tests/test-pi-package-surface.sh
+  # The cross-harness claim itself. Each harness was checked in isolation and
+  # the COMPARISON between them -- the whole product claim -- was checked by
+  # nobody, which is how "Claude 10, Codex 9, Pi 0" shipped repeatedly.
+  step "harness surface parity is falsifiable" bash scripts/tests/test-harness-surface-parity.sh --self-test
+  step "harness surface parity" bash scripts/tests/test-harness-surface-parity.sh
   step "native CLI authority inventory is falsifiable" python3 scripts/check-cli-authority.py --self-test
   step "native CLI authority inventory" python3 scripts/check-cli-authority.py
   # This harness shipped correct, falsifiable, and referenced by NOTHING, so it
