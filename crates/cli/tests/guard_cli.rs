@@ -52,6 +52,35 @@ fn isolated_binary(label: &str) -> (PathBuf, PathBuf) {
     (fixture, copied)
 }
 
+/// Parses a `guard test` summary line of the exact form `N/M examples
+/// passed` and asserts every loaded example passed (`N == M`) and the
+/// corpus was not empty (`N > 0`).
+///
+/// This parses instead of pinning a corpus-size literal on purpose:
+/// `guard.rs:424-430` already fails closed and refuses to report a green
+/// suite when `total == 0`, and `guard_test_fails_closed_on_an_empty_corpus`
+/// (below) pins that exact `0/0` refusal. A literal count here would
+/// re-break every time `content/predicates/*.toml` gains an example -- do
+/// not "simplify" this back into a hardcoded string.
+fn assert_all_examples_passed(stdout: &[u8]) {
+    let text = std::str::from_utf8(stdout).expect("guard test stdout is UTF-8");
+    let line = text.trim_end_matches('\n');
+    let counts = line.strip_suffix(" examples passed").unwrap_or_else(|| {
+        panic!("guard test stdout does not match `N/M examples passed`: {text:?}")
+    });
+    let (passed, total) = counts.split_once('/').unwrap_or_else(|| {
+        panic!("guard test stdout does not match `N/M examples passed`: {text:?}")
+    });
+    let passed: u64 = passed
+        .parse()
+        .unwrap_or_else(|_| panic!("passed count is not a number: {text:?}"));
+    let total: u64 = total
+        .parse()
+        .unwrap_or_else(|_| panic!("total count is not a number: {text:?}"));
+    assert_eq!(passed, total, "not every example passed: {text:?}");
+    assert!(total > 0, "guard example corpus is empty: {text:?}");
+}
+
 #[test]
 fn guard_eval_emits_one_clean_versioned_wire_verdict() {
     let content = content_dir();
@@ -453,7 +482,7 @@ fn installed_binary_uses_complete_embedded_guard_content_without_repo_or_plugin_
         output.status.code(),
         String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(output.stdout, b"17/17 examples passed\n");
+    assert_all_examples_passed(&output.stdout);
     assert!(output.stderr.is_empty());
     assert_eq!(
         fs::read_dir(&fixture)
@@ -541,7 +570,7 @@ fn guard_test_replays_the_complete_live_corpus() {
         "stderr={}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(output.stdout, b"17/17 examples passed\n");
+    assert_all_examples_passed(&output.stdout);
     assert!(output.stderr.is_empty());
 }
 

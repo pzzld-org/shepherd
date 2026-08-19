@@ -564,7 +564,7 @@ fn explicit_content_loader_discovers_every_live_predicate() {
                 .len()
         })
         .sum();
-    assert_eq!(example_count, 17);
+    assert_eq!(example_count, 18);
 }
 
 #[derive(Clone, Copy)]
@@ -798,7 +798,17 @@ const LIVE_EXPECTATIONS: &[ExpectedExample] = &[
         rule: Some("plan-authorship-and-gating-are-root-tier-exclusive"),
         halt_code: Some("WRONG-TIER-DISPATCH"),
         reason: Some(
-            "Only the root orchestrator (shepherd) may dispatch the plan-author (engineer) or gating (critic) roles for sprint-plan authorship/gating; a lane-executor lead (conductor) invoking either directly is refused.",
+            "A lane-executor lead (conductor) may not dispatch the plan-author (engineer), the gating role (critic), the operator-channel role (planter), or the root orchestrator (shepherd); plan authorship, gating, operator contact and root orchestration are reserved to the root tier.",
+        ),
+    },
+    ExpectedExample {
+        predicate: "dispatch-scope",
+        name: "conductor-attempts-to-dispatch-the-planter",
+        decision: Decision::Deny,
+        rule: Some("plan-authorship-and-gating-are-root-tier-exclusive"),
+        halt_code: Some("WRONG-TIER-DISPATCH"),
+        reason: Some(
+            "A lane-executor lead (conductor) may not dispatch the plan-author (engineer), the gating role (critic), the operator-channel role (planter), or the root orchestrator (shepherd); plan authorship, gating, operator contact and root orchestration are reserved to the root tier.",
         ),
     },
     ExpectedExample {
@@ -906,7 +916,7 @@ const LIVE_EXPECTATIONS: &[ExpectedExample] = &[
 ];
 
 #[test]
-fn all_seventeen_live_examples_match_complete_verdicts_and_fields() {
+fn all_live_examples_match_complete_verdicts_and_fields() {
     let content_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../content");
     let engine = GuardEngine::load_content(&content_dir).expect("live content loads");
     let predicate_ids = live_predicate_ids(&content_dir);
@@ -975,7 +985,7 @@ fn all_seventeen_live_examples_match_complete_verdicts_and_fields() {
         }
     }
 
-    assert_eq!(checked, 17, "the live corpus size changed");
+    assert_eq!(checked, 18, "the live corpus size changed");
     assert_eq!(LIVE_EXPECTATIONS.len(), checked, "stale expectation rows");
 }
 
@@ -2172,5 +2182,187 @@ fn a_lane_lead_must_declare_its_dispatch_targets() {
             .decision
             .as_str(),
         "deny"
+    );
+}
+
+/// #323: a lane lead must not reach `planter` (the operator channel,
+/// `AskUserQuestion`) or `shepherd` (the root orchestrator) by dispatching
+/// either directly. `root` is refused too, but by a DIFFERENT mechanism --
+/// `root` is a TIER, not a role id, so `conductor -> root` is refused by
+/// `closed-flock-only`, not by the rule this test is otherwise about. The
+/// sanctioned `conductor -> coder` dispatch is the regression guard against
+/// over-widening the `matches!` arm this fix touches.
+#[test]
+fn conductor_cannot_dispatch_the_planter_or_the_root_orchestrator() {
+    let engine = live_engine();
+    let eval = |request: &str| {
+        engine
+            .evaluate_json(request)
+            .expect("dispatch request is evaluable")
+    };
+
+    let to_planter = eval(
+        r#"{"tool_name":"Agent","role":"conductor","tool_input":{"subagent_type":"planter"}}"#,
+    );
+    assert_eq!(to_planter.decision.as_str(), "deny");
+    assert_eq!(
+        to_planter.rule.as_deref(),
+        Some("plan-authorship-and-gating-are-root-tier-exclusive")
+    );
+    assert_eq!(to_planter.halt_code.as_deref(), Some("WRONG-TIER-DISPATCH"));
+
+    let to_shepherd = eval(
+        r#"{"tool_name":"Agent","role":"conductor","tool_input":{"subagent_type":"shepherd"}}"#,
+    );
+    assert_eq!(to_shepherd.decision.as_str(), "deny");
+    assert_eq!(
+        to_shepherd.rule.as_deref(),
+        Some("plan-authorship-and-gating-are-root-tier-exclusive")
+    );
+    assert_eq!(
+        to_shepherd.halt_code.as_deref(),
+        Some("WRONG-TIER-DISPATCH")
+    );
+
+    // The sanctioned dispatch still works -- the regression guard against
+    // over-widening this rule's `matches!` arm.
+    let to_coder =
+        eval(r#"{"tool_name":"Agent","role":"conductor","tool_input":{"subagent_type":"coder"}}"#);
+    assert_eq!(to_coder.decision.as_str(), "allow");
+
+    // `root` is not a role id -- `shepherd` is the id whose tier is `root` --
+    // so `conductor -> root` is refused by `deny_if_target_outside_flock`
+    // instead. Pinning only `decision == "deny"` here would pin the wrong
+    // mechanism and leave the real one untested.
+    let to_root =
+        eval(r#"{"tool_name":"Agent","role":"conductor","tool_input":{"subagent_type":"root"}}"#);
+    assert_eq!(to_root.decision.as_str(), "deny");
+    assert_eq!(to_root.rule.as_deref(), Some("closed-flock-only"));
+    assert_eq!(to_root.halt_code.as_deref(), Some("DISPATCH-OFF-FLOCK"));
+
+    // Real hook payloads arrive carrier-prefixed (`shepherd:planter`), and
+    // `carrier_role` strips the `shepherd:` prefix before this rule ever sees
+    // the target, so the hole is not a prefix-parsing artifact either.
+    let carrier_to_planter = eval(
+        r#"{"tool_name":"Agent","role":"conductor","tool_input":{"subagent_type":"shepherd:planter"}}"#,
+    );
+    assert_eq!(carrier_to_planter.decision.as_str(), "deny");
+    assert_eq!(
+        carrier_to_planter.rule.as_deref(),
+        Some("plan-authorship-and-gating-are-root-tier-exclusive")
+    );
+    assert_eq!(
+        carrier_to_planter.halt_code.as_deref(),
+        Some("WRONG-TIER-DISPATCH")
+    );
+}
+
+/// #320: `write-boundary` governs the TYPED write surface only, and that is
+/// deliberate, not a hole. `evaluate_tool_call`
+/// (`crates/core/src/guard/engine.rs:209-235`) routes `Write`/`Edit`/
+/// `apply_patch` to `evaluate_write_tool` (`:237-339`), which evaluates
+/// `write-boundary` under the `fs.write` action against the dispatch's
+/// resolved write scope. `Bash` routes instead to `evaluate_bash_tool`
+/// (`:341-383`), which parses the command ONLY for git subcommands via
+/// `extract_git_subcommands` and returns a bare `Verdict::allow()` for every
+/// command that yields none. `write-boundary` is therefore never consulted
+/// on the `Bash` path, for any command, git or not -- an opaque shell string
+/// (a redirect, `tee`, `cp`, `dd`, `sed -i`, ...) is not statically
+/// governable the way a typed tool's target path is.
+///
+/// The one-line reason this stays asymmetric: closing it would mean
+/// statically parsing arbitrary shell for filesystem effects and denying on
+/// the inference, which is a new subsystem (v6.5.1 plan global constraint
+/// G2) and the identical static-analysis arms race this project already
+/// declines on the `Workflow`-script side, for the identical reason, at
+/// `hooks/tests/test_native_cli_contract.sh:77-81`. The typed tool surface
+/// carries a typed target and is governed by `write-boundary`; the opaque
+/// shell string is governed by role tier through `git-custody` instead --
+/// the third assertion below proves `Bash` is not simply unguarded, which is
+/// the half a future reader will most doubt.
+///
+/// #320 closes citing this test
+/// (`.shepherd/runs/v651/lanes/l2-dispatch-scope/evidence/issue-320.md`). Do
+/// NOT "fix" this by teaching `evaluate_bash_tool` to infer filesystem
+/// writes from shell text, and do not narrow what `Bash` allows here without
+/// deliberately deleting this assertion and stating why in the commit that
+/// does it.
+#[test]
+fn write_boundary_governs_write_but_bash_performing_the_identical_write_allows() {
+    let engine = live_engine();
+    let dispatch_out_of_scope = || {
+        object([
+            ("schema", GuardValue::from("shepherd.identity-resolution/1")),
+            ("role", GuardValue::from("auditor")),
+            (
+                "write_paths",
+                GuardValue::Array(vec![GuardValue::from(".shepherd/runs/v651/reports/a.md")]),
+            ),
+            ("path_in_write_scope", GuardValue::from(false)),
+        ])
+    };
+
+    // Half 1: the typed `Write` tool IS governed and denies -- same role,
+    // same destination path, a full valid dispatch resolution block.
+    let write_verdict = evaluate(
+        &engine,
+        &object([
+            ("role", GuardValue::from("auditor")),
+            ("tool_name", GuardValue::from("Write")),
+            (
+                "tool_input",
+                object([("file_path", GuardValue::from("/tmp/x/out.md"))]),
+            ),
+            ("dispatch", dispatch_out_of_scope()),
+        ]),
+    );
+    assert_eq!(write_verdict.decision, Decision::Deny);
+    assert_eq!(write_verdict.predicate.as_deref(), Some("write-boundary"));
+    assert_eq!(
+        write_verdict.rule.as_deref(),
+        Some("role-write-eligibility,path-in-declared-scope")
+    );
+
+    // Half 2: the identical write, performed through `Bash`, allows. The
+    // identical dispatch block is attached to prove it changes nothing --
+    // `evaluate_bash_tool` never reads it.
+    let bash_verdict = evaluate(
+        &engine,
+        &object([
+            ("role", GuardValue::from("auditor")),
+            ("tool_name", GuardValue::from("Bash")),
+            (
+                "tool_input",
+                object([("command", GuardValue::from("echo hi > /tmp/x/out.md"))]),
+            ),
+            ("dispatch", dispatch_out_of_scope()),
+        ]),
+    );
+    assert_eq!(bash_verdict.decision, Decision::Allow);
+
+    // Half 3: the negative control. `Bash` is not simply unguarded -- a git
+    // write verb from the same role still denies under `git-custody`, which
+    // IS reachable from `evaluate_bash_tool`. `Bash` skips `write-boundary`
+    // specifically; it does not skip enforcement generally.
+    let bash_git_verdict = evaluate(
+        &engine,
+        &object([
+            ("role", GuardValue::from("auditor")),
+            ("tool_name", GuardValue::from("Bash")),
+            (
+                "tool_input",
+                object([("command", GuardValue::from("git commit -am x"))]),
+            ),
+        ]),
+    );
+    assert_eq!(bash_git_verdict.decision, Decision::Deny);
+    assert_eq!(bash_git_verdict.predicate.as_deref(), Some("git-custody"));
+    assert_eq!(
+        bash_git_verdict.rule.as_deref(),
+        Some("implementer-never-writes-git")
+    );
+    assert_eq!(
+        bash_git_verdict.halt_code.as_deref(),
+        Some("CODER-GIT-WRITE")
     );
 }
