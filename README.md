@@ -11,6 +11,9 @@ contract, so a new harness does not require a second policy engine or a rewrite.
 The v6.5.1 component is published as `fl03:shepherd@6.5.1`. Its WIT contract,
 generated bindings, native CLI, and adapter packages are versioned together.
 
+**New here? Start with the [Quickstart](QUICKSTART.md)** — install, initialize,
+and run a first sprint in about five minutes. This README is the reference.
+
 ## What is canonical
 
 - `shepherd` is the only command-line authority. It owns configuration, layout,
@@ -67,7 +70,7 @@ must fail loudly rather than silently become a slow source build that hides the
 gap.
 
 **No build artifact is stored in this repository.** Archives are produced by
-`.github/workflows/release.yml`, checksummed, verified against an exact expected
+`.github/workflows/cargo-build.yml`, checksummed, verified against an exact expected
 inventory, and only then attached to the release. Crate publication is gated on
 those assets existing, so a broken native target costs a re-run rather than a
 published version that can never carry binaries.
@@ -197,7 +200,7 @@ change, not an adapter-local alias.
 
 ## Native command surface
 
-The following command families are owned by the Rust CLI in v6.4.5:
+The following command families are owned by the Rust CLI in v6.5.1:
 
 `audit`, `close-lane`, `compile`, `config`, `dispatch`, `discovery`, `doctor`,
 `deliverable`, `dups`, `eval` (recorded-result inspection), `export` (stdout
@@ -217,6 +220,41 @@ workflows:
 - Removed `shctx`, Python, Bash, and Node command paths are not supported.
 
 Use `shepherd <command> --help` for the exact flags in the binary you built.
+
+## Skill surface
+
+The plugin's user-facing surface is ten skills, invoked as `/shepherd:<name>` on
+Claude and as the equivalent skill on Codex and Pi. Nine are cross-harness; only
+`harness` is Claude-only, and the Codex and Pi carriers omit it by contract
+rather than by omission.
+
+A sprint moves through four of them in order:
+
+| Skill | Moves the run from | to |
+| --- | --- | --- |
+| `plant` | nothing | a planted seed |
+| `spawn` | a planted seed | a gated plan |
+| `start` | a gated plan | a lane executing |
+| `shepherd` | any state | the next one, end to end |
+
+`plant` is role adoption, not dispatch: it equips the session already running,
+root, with the planter profile. `spawn` picks up where planting left off under a
+different profile, in the same session or not. That distinction is the reason
+they are two skills rather than one command with a flag.
+
+The remaining six are situational and load on demand:
+
+| Skill | Use when |
+| --- | --- |
+| `thinking` | work is too large, ambiguous, or blocked to dispatch as one step |
+| `context` | selecting the smallest durable context, or touching memory, locks, or dedup |
+| `motivation` | work must survive waits, compaction, or repeated progress checks |
+| `adaptation` | a gate, review, or eval produced a repeatable lesson worth reusing |
+| `bridge` | dispatch, handoff, or resume crosses a harness or session boundary |
+| `harness` | Claude-only: agent teams, workflows, tool discovery, wakeups |
+
+The authored flock behind them is closed at nine roles, listed under
+[Compile adapter content](#compile-adapter-content).
 
 ## Canonical layout-v5
 
@@ -274,8 +312,9 @@ component/npm embedding, not hand-authored or committed. `SHEPHERD_COMPONENT_MOD
 is a controlled test/embedding override, not a production discovery mechanism.
 
 Claude's production plugin is a normal marketplace installation through the
-thin `plugins/shepherd` carrier. Its four Claude hooks use the installed native
-`shepherd` executable directly. The Rust CLI owns identity normalization,
+thin `plugins/shepherd` carrier. It registers 11 hooks across 7 lifecycle
+events: 4 dispatch directly to the installed native `shepherd` executable, and
+7 run carrier scripts shipped under `hooks/scripts/`. The Rust CLI owns identity normalization,
 lifecycle dispatch, and fail-closed
 guard evaluation. The Claude plugin has no ZIP payload, Node runtime, generated
 Component Model carrier, or plugin-local compatibility launcher. Install the
@@ -341,6 +380,7 @@ after publication.
 
 ## Documentation map
 
+- [Quickstart](QUICKSTART.md): install, initialize, and run a first sprint.
 - [Configuration](docs/configuration.md): project and user tiers, layout-v5,
   tracked versus local values, and secret hygiene.
 - [Integration](docs/integration.md): how the three adapters and local skills

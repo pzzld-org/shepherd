@@ -4,7 +4,7 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
-## v6.5.1 — unreleased
+## v6.5.1 — 2026-08-19
 
 **Five remediation messages named a command that refuses to run.** `shepherd init` is gated
 behind `--confirm` because it mutates: it mints `.shepherd/project.json`, the registry, and
@@ -100,6 +100,99 @@ drift between call sites rather than a missing decision.
   Every conversion is append-only: the original command byte-identical plus a guard, verified
   mechanically at 80 conversions and 0 violations.
 
+- **A gate wired to nothing had been red for three refactors, and no one could tell.**
+  `scripts/tests/test_cli_authority_gate.sh` was correct, falsifiable, and referenced by
+  no runner, no workflow, and no suite. Running it for the first time found three
+  independent failures it had accumulated undisturbed. Its legacy-bootstrap sweep named
+  `$ROOT/bin`, a directory D4 **retired** — ripgrep exits 2 on a missing path, and because
+  the call sat inside an `if`, `set -e` was suppressed and rc=2 took the same branch as
+  rc=1, so the sweep reported clean *by erroring out*, every run since the launcher was
+  removed. Its `hooks.json` assertion demanded the native dispatch shape for **every** hook,
+  which stopped being true the moment the seven carrier hook scripts were restored. And
+  three lifecycle assertions still pointed at `claude_hook.rs` after the lifecycle moved to
+  the harness-neutral `native_hook.rs`. All three repaired, and the manifest rule now states
+  what is actually true — every registration is either native dispatch or a carrier script
+  that **resolves on disk** — printing its count (11 checked: native=4, carrier-script=7,
+  unresolvable=0) so a manifest registering zero hooks cannot pass by vacuous truth.
+
+- **The unwired-gate class is now structurally unreachable.** This was its fourth
+  occurrence; `hooks/tests/run.sh` had it once with a hand-maintained array covering 6 of
+  27 files, leaving 21 tests unrun. `scripts/check-gate-wiring.py` asserts every test file
+  is reachable from a runner, computing reachability transitively to a fixed point and
+  treating glob discovery as first-class wiring — so the fix for the original defect is not
+  penalised by the checker that prevents its recurrence. Prose is excluded from the evidence
+  set: a CHANGELOG mention is a reference to a test, not an execution of one. The checker
+  laundered its own finding twice before it worked — its docstring names the file it was
+  written to catch (and `.py` is not prose), and a `.shepherd/` lane worklist names it too.
+  A checker must never be its own evidence. Six self-test cases, both directions.
+
+- **An exact version pin on a third-party CLI, masking three defects behind it.**
+  `test-codex-marketplace.sh` asserted `== "codex-cli 0.147.0"`, so Codex shipping 0.148.0
+  turned it red with nothing in this repository having regressed — and the reflex fix, bumping
+  the literal, teaches that the gate is noise. It is now a **floor**. Converting it let the
+  assertions *after* it run for the first time in a while, and all three were wrong: the
+  install-path check compared two string spellings of one directory (macOS `$TMPDIR` ends in
+  a slash, and `/var` is a symlink to `/private/var`) instead of resolving them; the skill
+  count was hardcoded at 7 when the carrier ships 9, `plant` having been restored this
+  sprint, and is now **derived** from `content/skills` minus `portability: claude-only`; and
+  the success line hardcoded the very version it had just stopped asserting.
+
+### Changed — the release pipeline is three workflows, not one
+
+`release.yml` inlined the entire build, which made every release asset reachable through
+exactly one event: a patch branch merging into `main`. There was no way to rebuild a target
+without cutting a version, and no way to exercise packaging on a branch. The file went from
+719 lines to 387.
+
+- `cargo-build.yml` owns every asset. Four trigger classes — `workflow_call`,
+  `workflow_dispatch`, `repository_dispatch`, and a tag push — plus a `scope` input
+  (`all` | `native` | `component`) for partial runs. One `resolve` job decides the version
+  and the checkout ref once, and everything else consumes them.
+- `cargo-publish.yml` owns crates.io, reachable the same four ways. Its `workflow_dispatch`
+  block had a malformed `jobs:` key nested under it; that is repaired.
+- `release.yml` keeps metadata, the two `uses:` calls, and tag and release custody.
+
+`publish-crates` still needs the whole build to succeed first. That ordering is not
+cosmetic: publication once ran as its own push-triggered workflow, raced the asset builds,
+and won — two consecutive patch versions were burned with crates uploaded, a native target
+failing minutes later, and no tag. A crates.io version is not reissuable, so a failed asset
+build must cost a re-run, never a version.
+
+`repository_dispatch` `client_payload` is authored by whoever sends it and is grantable
+**without** `contents: write`, so both new workflows resolve the checkout ref through a
+fail-closed allowlist passed via `env:`, never spliced into a shell command.
+
+**The gates followed the jobs.** `test-release-workflow.sh` asserted 47 asset properties
+against `release.yml`; every one was retargeted to `cargo-build.yml`, none dropped or
+softened. Its checkout assertion counted `ref: ${{ github.sha }}` occurrences and reported
+"4 of 2" after the split, because `release.yml` now also passes that SHA as an *input* — it
+asserts the real property per file instead. New assertions cover the split itself:
+`release.yml` must delegate via `uses:` **and** must not redefine the jobs it delegated, and
+must forward `CARGO_REGISTRY_TOKEN` explicitly, because `workflow_call` does not inherit
+secrets.
+
+- **`actionlint` now runs on every workflow.** Reusable-workflow wiring — a `workflow_call`
+  input the caller never passes, a required secret the caller omits, a `needs:` naming a job
+  that moved — parses as valid YAML and fails only at dispatch time. It is wired into
+  `gate.sh` (with a **stated** SKIP when absent locally, never a silent no-op) and into CI
+  pinned through `taiki-e/install-action`. It immediately found `SHIFT=patch` in
+  `gitflow.yml`, where `patch` is also a real binary; fixed by quoting rather than suppressed.
+
+### Documentation
+
+- **`QUICKSTART.md` is new**: install, initialize, and run a first sprint, with the
+  `plant` → `spawn` → `start` arc explained in terms of what each moves the run *from* and
+  *to*. Every command in it was executed before it was written.
+- The README carried three stale facts, all corrected: the native command surface was dated
+  to `v6.4.5`, release archives were still attributed to `release.yml`, and the Claude plugin
+  was described as having "four Claude hooks" when it registers 11 across 7 lifecycle events
+  (4 native dispatch, 7 carrier scripts).
+- The README never documented the **skill surface** at all — the ten `/shepherd:*` entry
+  points that are the plugin's actual user-facing contract, and whose disappearance started
+  this sprint. It now does, including why `plant` and `spawn` are two skills rather than one
+  command with a flag: `plant` is role adoption for the session already running, `spawn`
+  picks up from the seed under a different profile.
+
 ### Fixed — the root skill had no entry condition
 
 `skills/spawn` and `skills/start` both open with `## Preconditions` stated as commands.
@@ -111,7 +204,7 @@ dispatchable namespace, and scaffolding stays the operator's decision — root s
 `shepherd init --confirm` and halts rather than mutating a namespace as a side effect of
 loading a contract.
 
-## v6.5.0 — unreleased
+## v6.5.0 — 2026-08-18
 
 **The release automation ran correctly all the way to `git push` and died there.** The first
 fully green release pipeline in the project's history published crates, cut the tag, and

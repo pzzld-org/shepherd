@@ -36,5 +36,29 @@ if ! grep -qE "^## v${esc}( |\$)" "$CHANGELOG"; then
   fail "plugin.json is v${VER} but CHANGELOG.md has no '## v${VER}' entry — add the changelog entry in the same change that bumps the version (this is exactly how v6.3.4/v6.3.5 shipped undocumented)"
 fi
 
-printf 'test_changelog_current: OK — CHANGELOG.md documents the current plugin version v%s\n' "$VER"
+# A version that has SHIPPED must not still be headed "unreleased". v6.5.0 was
+# tagged and released on 2026-08-18 with its header still reading
+# `## v6.5.0 — unreleased`, so the GitHub release notes -- which release.yml
+# extracts verbatim from this file -- announced the shipped version as
+# unreleased. Every git tag vX.Y.Z is proof that X.Y.Z shipped, so the tags are
+# the oracle rather than a hand-maintained list.
+stale=""
+checked=0
+while IFS= read -r tag; do
+  tag_version="${tag#v}"
+  # The version currently being prepared is allowed to be unreleased: its tag
+  # does not exist yet, so it cannot appear in this loop at all.
+  tag_esc="${tag_version//./\\.}"
+  if grep -qE "^## v${tag_esc} — unreleased" "$CHANGELOG"; then
+    stale="${stale}  v${tag_version} is tagged but its changelog header says unreleased"$'\n'
+  fi
+  checked=$((checked + 1))
+done < <(git -C "$ROOT" tag --list 'v[0-9]*.[0-9]*.[0-9]*' 2>/dev/null || true)
+
+if [[ -n "$stale" ]]; then
+  printf 'test_changelog_current: FAIL — a shipped version is still marked unreleased:\n%s' "$stale"
+  exit 1
+fi
+
+printf 'test_changelog_current: OK — CHANGELOG.md documents the current plugin version v%s (%s shipped tag(s) carry a release date)\n' "$VER" "$checked"
 exit 0
