@@ -93,7 +93,7 @@ print(data["version"])
 # transform that is flatly wrong, exactly the mirror that hid the original
 # defect for four releases, just moved one level up. These four controls
 # each fail independently of any consumer:
-#   1. the pinned real-world example: @pzzld/pi-claude, at a SYNTHETIC
+#   1. the pinned real-world example: @pzzld/claude-shepherd, at a SYNTHETIC
 #      version that is not any real release, so a pass proves the rule
 #      itself and never goes stale as the repo version moves
 #   2. the general scoped rule, with a scope/name unrelated to (1) so a pass
@@ -116,13 +116,13 @@ self_test() {
   local fixture_a got_a want_a
   fixture_a="$(mktemp -d -t release-package-names-selftest.XXXXXX)"
   mkdir -p "${fixture_a}/pkg"
-  printf '{"name":"@pzzld/pi-claude","version":"2.0.0"}\n' > "${fixture_a}/pkg/package.json"
+  printf '{"name":"@pzzld/claude-shepherd","version":"2.0.0"}\n' > "${fixture_a}/pkg/package.json"
   got_a="$(release_package_names '' "${fixture_a}")"
-  want_a='pzzld-pi-claude-2.0.0.tgz'
+  want_a='pzzld-claude-shepherd-2.0.0.tgz'
   if [[ "${got_a}" == "${want_a}" ]]; then
-    printf '  PASS  @pzzld/pi-claude at 2.0.0 -> %s\n' "${want_a}"
+    printf '  PASS  @pzzld/claude-shepherd at 2.0.0 -> %s\n' "${want_a}"
   else
-    printf '  FAIL  @pzzld/pi-claude at 2.0.0 -> got "%s", want "%s"\n' "${got_a}" "${want_a}"
+    printf '  FAIL  @pzzld/claude-shepherd at 2.0.0 -> got "%s", want "%s"\n' "${got_a}" "${want_a}"
     fails=$((fails + 1))
   fi
   rm -rf "${fixture_a}"
@@ -162,7 +162,7 @@ self_test() {
   local repo_root
   repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
   local dirs=(component-runtime harness-claude harness-codex harness-pi)
-  local stems=(pzzld-component-runtime pzzld-pi-claude pzzld-pi-codex pzzld-pi-shepherd)
+  local stems=(pzzld-component-runtime pzzld-claude-shepherd pzzld-codex-shepherd pzzld-pi-shepherd)
   local want_d='' i dir stem manifest_version
   for i in 0 1 2 3; do
     dir="${dirs[$i]}"

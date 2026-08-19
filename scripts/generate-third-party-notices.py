@@ -164,11 +164,11 @@ def build(scope: str, target: str) -> tuple[str, dict[str, bytes]]:
         "native": (["shepherd-cli"], []),
         "component": (["shepherd-component"], []),
         "npm-component-runtime": (["shepherd-component"], ["@pzzld/component-runtime"]),
-        "npm-harness-claude": ([], ["@pzzld/pi-claude"]),
-        "npm-harness-codex": ([], ["@pzzld/pi-codex"]),
+        "npm-harness-claude": ([], ["@pzzld/claude-shepherd"]),
+        "npm-harness-codex": ([], ["@pzzld/codex-shepherd"]),
         "npm-harness-pi": ([], ["@pzzld/pi-shepherd"]),
-        "claude": (["shepherd-component"], ["@pzzld/pi-claude"]),
-        "full": (["shepherd-cli", "shepherd-component"], ["@pzzld/pi-claude"]),
+        "claude": (["shepherd-component"], ["@pzzld/claude-shepherd"]),
+        "full": (["shepherd-cli", "shepherd-component"], ["@pzzld/claude-shepherd"]),
     }
     cargo_packages, node_packages = scopes[scope]
     rows = [row for package_name in cargo_packages for row in cargo_rows(target, package_name)]

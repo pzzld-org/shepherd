@@ -11,7 +11,7 @@ Claude hooks → shepherd claude-hook → native Rust core ─────┐
 Codex hooks  → shepherd codex-hook  → native Rust core ─────┤
                                                              │
 Pi extension → thin host adapter → @pzzld/component-runtime  │
-                                  → fl03:shepherd@6.5.3     │
+                                  → fl03:shepherd@6.5.4     │
                                            WebAssembly component
                                                              │
                         identity, guard, lifecycle, response,
@@ -35,7 +35,7 @@ guard also compares the host tool target with the native resolved write paths.
 This keeps project custody in the native filesystem boundary instead of
 letting an adapter assert an arbitrary project ID.
 
-The WIT package is `fl03:shepherd@6.5.3` in
+The WIT package is `fl03:shepherd@6.5.4` in
 [`crates/component/wit/shepherd.wit`](../crates/component/wit/shepherd.wit).
 Generated JavaScript bindings are release artifacts, not a second source of
 logic. The adapter packages must remain thin and must not grow policy parsers,
@@ -77,12 +77,12 @@ Its `.codex-plugin/plugin.json` selects a byte-gated regular-file projection
 because Codex does not copy source symlinks. Install it with:
 
 ```sh
-codex plugin marketplace add FL03/shepherd --ref v6.5.3
+codex plugin marketplace add FL03/shepherd --ref v6.5.4
 codex plugin add shepherd@shepherd
 ```
 
 The cache contains no Node, npm, Wasm, or source-checkout dependency.
-`@pzzld/pi-codex` remains the Component-backed npm embedding adapter; it
+`@pzzld/codex-shepherd` remains the Component-backed npm embedding adapter; it
 does not own this marketplace path or import Claude's private hooks.
 
 ### Pi

@@ -11,30 +11,30 @@
     },
     "packages/component-runtime": {
       "name": "@pzzld/component-runtime",
-      "version": "6.5.3",
+      "version": "6.5.4",
       "dependencies": {
         "@bytecodealliance/preview2-shim": "0.20.1",
       },
     },
     "packages/harness-claude": {
-      "name": "@pzzld/pi-claude",
-      "version": "6.5.3",
+      "name": "@pzzld/claude-shepherd",
+      "version": "6.5.4",
       "dependencies": {
-        "@pzzld/component-runtime": "6.5.3",
+        "@pzzld/component-runtime": "6.5.4",
       },
     },
     "packages/harness-codex": {
-      "name": "@pzzld/pi-codex",
-      "version": "6.5.3",
+      "name": "@pzzld/codex-shepherd",
+      "version": "6.5.4",
       "dependencies": {
-        "@pzzld/component-runtime": "6.5.3",
+        "@pzzld/component-runtime": "6.5.4",
       },
     },
     "packages/harness-pi": {
       "name": "@pzzld/pi-shepherd",
-      "version": "6.5.3",
+      "version": "6.5.4",
       "dependencies": {
-        "@pzzld/component-runtime": "6.5.3",
+        "@pzzld/component-runtime": "6.5.4",
       },
     },
   },
@@ -207,11 +207,11 @@
 
     "@oxc-project/types": ["@oxc-project/types@0.144.0", "", {}, "sha512-nuhZIOLuI6TFQ32I/WnUx+SCPY7SdSKwgnFHydAuoS1+Z4BRcaP+RRJmGzl9lw+0OFF7UmaESf7KQRXaNLHypg=="],
 
+    "@pzzld/claude-shepherd": ["@pzzld/claude-shepherd@workspace:packages/harness-claude"],
+
+    "@pzzld/codex-shepherd": ["@pzzld/codex-shepherd@workspace:packages/harness-codex"],
+
     "@pzzld/component-runtime": ["@pzzld/component-runtime@workspace:packages/component-runtime"],
-
-    "@pzzld/pi-claude": ["@pzzld/pi-claude@workspace:packages/harness-claude"],
-
-    "@pzzld/pi-codex": ["@pzzld/pi-codex@workspace:packages/harness-codex"],
 
     "@pzzld/pi-shepherd": ["@pzzld/pi-shepherd@workspace:packages/harness-pi"],
 

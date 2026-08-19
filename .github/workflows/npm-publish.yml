@@ -6,7 +6,7 @@ name: npm-publish
 # There has never been an `npm publish` anywhere in this repository. The release
 # pipeline packed four tarballs, attached them to the GitHub release, and
 # stopped. `@pzzld/pi-shepherd` and `@pzzld/component-runtime` were published by
-# hand once at 6.4.5 and never again; `@pzzld/pi-claude` and `@pzzld/pi-codex`
+# hand once at 6.4.5 and never again; `@pzzld/claude-shepherd` and `@pzzld/codex-shepherd`
 # have never been published at all. Seven releases shipped crates to crates.io
 # and nothing to npm, which is why `pi install npm:@pzzld/pi-shepherd` still
 # installs a build that predates the `pi` key and is inert on Pi.

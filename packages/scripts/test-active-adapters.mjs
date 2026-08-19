@@ -11,8 +11,8 @@ const modulePath = process.argv[2];
 const packageRoot = resolve(process.argv[3] ?? join(dirname(fileURLToPath(import.meta.url)), ".."));
 if (!modulePath) throw new Error("usage: test-active-adapters.mjs <component-module> [package-root]");
 const packageDirectories = {
-  claude: ["harness-claude", "pi-claude"],
-  codex: ["harness-codex", "pi-codex"],
+  claude: ["harness-claude", "claude-shepherd"],
+  codex: ["harness-codex", "codex-shepherd"],
   pi: ["harness-pi", "pi-shepherd"],
   runtime: ["component-runtime", "component-runtime"],
 };

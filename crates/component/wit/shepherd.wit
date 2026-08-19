@@ -1,4 +1,4 @@
-package fl03:shepherd@6.5.3;
+package fl03:shepherd@6.5.4;
 
 interface engine {
   enum target {

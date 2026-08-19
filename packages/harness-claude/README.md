@@ -1,4 +1,4 @@
-# `@pzzld/pi-claude`
+# `@pzzld/claude-shepherd`
 
 This npm package is an optional Component Model embedding adapter. It is not
 the Claude marketplace runtime. The normal Claude plugin is installed through
@@ -8,7 +8,7 @@ directly. That Rust command owns `RawIdentity` normalization,
 produce Claude's fail-closed denial envelope.
 
 The package remains useful to an embedding that explicitly hosts the
-`fl03:shepherd@6.5.3` Component Model through `@pzzld/component-runtime`. Its
+`fl03:shepherd@6.5.4` Component Model through `@pzzld/component-runtime`. Its
 generated runtime is staged during npm release and is never committed.
 `SHEPHERD_COMPONENT_MODULE` is a test or embedding override only. It is not a
 production discovery mechanism for the normal Claude plugin.
