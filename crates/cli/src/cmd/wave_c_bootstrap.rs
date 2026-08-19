@@ -548,10 +548,11 @@ struct DoctorReport {
     /// running binary's own path or mtime is unavailable).
     resolved_shepherd_skew_seconds: Option<i64>,
     findings: Vec<String>,
-    /// Real, operator-visible facts about the *environment* — principally
-    /// the resolved `shepherd` — that must never flip `ok`/exit 3. A
-    /// checkout with nothing installed on `PATH` at all is a legitimate
-    /// developer workflow, not a broken namespace.
+    /// Real, operator-visible facts that must never flip `ok`/exit 3 —
+    /// principally the resolved `shepherd`, plus any root a checkout has
+    /// simply not scaffolded yet. A checkout with nothing installed on
+    /// `PATH` at all, or one freshly cloned and not yet `init`-ed, is a
+    /// legitimate developer workflow, not a broken namespace.
     warnings: Vec<String>,
     ok: bool,
 }
@@ -599,15 +600,34 @@ impl DoctorReport {
 fn health_report(context: &ExecutionContext) -> DoctorReport {
     let mut findings = Vec::new();
     let mut warnings = Vec::new();
+    // Classified first, reported later: whether this checkout carries an
+    // identity decides the severity of an absent `ctx` below, but the
+    // identity's own finding keeps its established place in the report.
+    let identity = read_project_identity_for_doctor(&context.primary_root);
     for (label, path) in [
         ("namespace", &context.namespace),
         ("docs", &context.docs_root),
         ("ctx", &context.ctx_root),
         ("runs", &context.runs_root),
     ] {
-        if !path.is_dir() {
-            findings.push(format!("{label} directory is absent: {}", path.display()));
+        if path.is_dir() {
+            continue;
         }
+        // Nothing under `ctx` is committed, so a fresh `git clone` never
+        // carries the directory. Failing on that absence failed every
+        // clone before its first `init`. On a checkout with no identity
+        // the state is un-scaffolded, not damaged: say so and keep going.
+        // Every other root, and `ctx` on a scaffolded project, stays a
+        // finding, because there `init` is what should have created it.
+        if label == "ctx" && identity.is_absent() {
+            warnings.push(format!(
+                "ctx directory is absent on a project that is not scaffolded — run \
+                 `shepherd init --confirm` to create it: {}",
+                path.display()
+            ));
+            continue;
+        }
+        findings.push(format!("{label} directory is absent: {}", path.display()));
     }
     let mut registry_handle = None;
     let mut registry_schema = None;
@@ -622,7 +642,7 @@ fn health_report(context: &ExecutionContext) -> DoctorReport {
         Err(error) => findings.push(format!("cannot open registry read-only: {error}")),
     }
 
-    let identity = read_project_identity_for_doctor(&context.primary_root, &mut findings);
+    findings.extend(identity.finding());
 
     let project_rows = registry_handle.as_ref().and_then(|registry| {
         match registry.query::<String, _, _>("SELECT id FROM projects", [], |row| row.get(0)) {
@@ -634,7 +654,7 @@ fn health_report(context: &ExecutionContext) -> DoctorReport {
         }
     });
 
-    match (&identity, &project_rows) {
+    match (identity.project_id(), &project_rows) {
         (Some(identity), Some(rows)) if rows.is_empty() => {
             findings.push(format!(
                 "no `projects` row is registered for project identity {identity}"
@@ -675,46 +695,79 @@ fn health_report(context: &ExecutionContext) -> DoctorReport {
     }
 }
 
+/// What `doctor` could learn about `.shepherd/project.json`.
+///
+/// `Option<ProjectId>` cannot carry this: it collapses "no identity file
+/// exists at all" into the same `None` as "an identity file exists and is
+/// broken". Only the first means the checkout was never scaffolded, and
+/// that distinction decides whether an absent `ctx` directory is a defect
+/// or the expected state of a fresh clone.
+enum DoctorIdentity {
+    /// `.shepherd/project.json` is not there. The project has never been
+    /// `shepherd init --confirm`-ed.
+    Absent,
+    /// An identity is present but unusable: irregular file, unparseable
+    /// document, or unreadable path. Carries the finding text naming
+    /// which, so the caller reports it verbatim without re-deciding.
+    Unusable(String),
+    /// A well-formed identity, read successfully.
+    Present(ProjectId),
+}
+
+impl DoctorIdentity {
+    /// True only for a checkout that was never scaffolded. A present but
+    /// broken identity is deliberately not "absent": it claims the project
+    /// was initialized, so its missing roots stay defects.
+    fn is_absent(&self) -> bool {
+        matches!(self, Self::Absent)
+    }
+
+    /// The registered project id, when one could actually be read.
+    fn project_id(&self) -> Option<&ProjectId> {
+        match self {
+            Self::Present(id) => Some(id),
+            Self::Absent | Self::Unusable(_) => None,
+        }
+    }
+
+    /// The finding this identity owes the operator, if any. Verbatim the
+    /// strings `doctor` has always printed.
+    fn finding(&self) -> Option<String> {
+        match self {
+            Self::Absent => Some(format!(
+                "project identity is absent: run `shepherd init --confirm` ({PROJECT_IDENTITY_RELATIVE})"
+            )),
+            Self::Unusable(finding) => Some(finding.clone()),
+            Self::Present(_) => None,
+        }
+    }
+}
+
 /// Doctor's own identity check. Read-only: a missing, malformed, or
-/// disagreeing identity becomes a finding, never a repair.
-fn read_project_identity_for_doctor(
-    primary_root: &Path,
-    findings: &mut Vec<String>,
-) -> Option<ProjectId> {
+/// disagreeing identity becomes a finding, never a repair. Classification
+/// only, with no report side effect, so the caller can consult the verdict
+/// before the report is built and still emit its finding in order.
+fn read_project_identity_for_doctor(primary_root: &Path) -> DoctorIdentity {
     match read_identity_nofollow(
         primary_root,
         PROJECT_IDENTITY_RELATIVE,
         MAX_PROJECT_IDENTITY_BYTES,
     ) {
-        Ok(IdentityLookup::Missing) => {
-            findings.push(format!(
-                "project identity is absent: run `shepherd init --confirm` ({PROJECT_IDENTITY_RELATIVE})"
-            ));
-            None
-        }
-        Ok(IdentityLookup::NotRegular) => {
-            findings.push(format!(
-                "project identity is not a regular file: {PROJECT_IDENTITY_RELATIVE}"
-            ));
-            None
-        }
+        Ok(IdentityLookup::Missing) => DoctorIdentity::Absent,
+        Ok(IdentityLookup::NotRegular) => DoctorIdentity::Unusable(format!(
+            "project identity is not a regular file: {PROJECT_IDENTITY_RELATIVE}"
+        )),
         Ok(IdentityLookup::Regular(bytes)) => match parse_project_identity(&bytes) {
-            Ok(id) => Some(id),
-            Err(error) => {
-                findings.push(format!(
-                    "project identity is invalid: {}",
-                    error.message_text().unwrap_or("unknown error")
-                ));
-                None
-            }
-        },
-        Err(error) => {
-            findings.push(format!(
-                "cannot inspect project identity: {}",
+            Ok(id) => DoctorIdentity::Present(id),
+            Err(error) => DoctorIdentity::Unusable(format!(
+                "project identity is invalid: {}",
                 error.message_text().unwrap_or("unknown error")
-            ));
-            None
-        }
+            )),
+        },
+        Err(error) => DoctorIdentity::Unusable(format!(
+            "cannot inspect project identity: {}",
+            error.message_text().unwrap_or("unknown error")
+        )),
     }
 }
 
@@ -1370,7 +1423,7 @@ mod tests {
         time::{SystemTime, UNIX_EPOCH},
     };
 
-    use super::descriptor;
+    use super::{ContextInputs, ExecutionContext, descriptor};
 
     #[test]
     fn no_clobber_publication_keeps_one_racing_writer_and_leaves_no_temp() {
@@ -1491,6 +1544,136 @@ mod tests {
         assert!(
             !super::same_binary(&original, &distinct),
             "byte-identical content must not be mistaken for the same file"
+        );
+
+        fs::remove_dir_all(root).expect("remove fixture");
+    }
+
+    /// `doctor` must not fail a fresh `git clone`. Nothing under `ctx` is
+    /// committed, so a clone never carries the directory; on a checkout
+    /// that was never `shepherd init`-ed that absence is un-scaffolded, not
+    /// broken, and it costs the operator a red exit 3 on a healthy tree.
+    /// The moment an identity exists the same absence is a real defect
+    /// again, because `init` is what should have created it.
+    #[test]
+    fn absent_ctx_only_warns_before_init_and_still_fails_a_registered_project() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock is after epoch")
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "shepherd-wave-c-bootstrap-doctor-ctx-{}-{nonce:x}",
+            std::process::id()
+        ));
+        fs::create_dir_all(root.join(".shepherd")).expect("create fixture namespace");
+        let root = fs::canonicalize(root).expect("canonicalize fixture root");
+
+        // `git rev-parse` cannot identify a temp directory, so primary-root
+        // resolution falls through to this explicit fallback and the
+        // fixture never reaches the surrounding checkout.
+        let context = ExecutionContext::discover(ContextInputs {
+            start_dir: root.clone(),
+            primary_fallback: Some(root.clone()),
+            ..ContextInputs::default()
+        })
+        .expect("resolve fixture execution context");
+
+        // Reproduce a fresh clone exactly: every committed root present,
+        // `ctx` absent, no `.shepherd/project.json`.
+        fs::create_dir_all(&context.docs_root).expect("create fixture docs root");
+        fs::create_dir_all(&context.runs_root).expect("create fixture runs root");
+        assert!(
+            !context.ctx_root.exists(),
+            "the fixture must not carry a ctx root"
+        );
+
+        let unregistered = super::health_report(&context);
+        assert!(
+            !unregistered
+                .findings
+                .iter()
+                .any(|finding| finding.starts_with("ctx directory is absent")),
+            "an unregistered checkout must not fail on an un-scaffolded ctx: {:?}",
+            unregistered.findings
+        );
+        assert!(
+            unregistered
+                .warnings
+                .iter()
+                .any(|warning| warning.starts_with("ctx directory is absent")
+                    && warning.contains("shepherd init --confirm")),
+            "the demoted ctx finding must survive as a warning naming the \
+             remediation: {:?}",
+            unregistered.warnings
+        );
+        assert!(
+            unregistered
+                .findings
+                .iter()
+                .any(|finding| finding.starts_with("project identity is absent")),
+            "the identity finding must be unchanged: {:?}",
+            unregistered.findings
+        );
+        assert!(
+            !unregistered.ok,
+            "the remaining findings must still fail the report: {:?}",
+            unregistered.findings
+        );
+        // Reading the identity moved ahead of the directory sweep, but its
+        // finding must not: the operator still reads the registry failure
+        // first, exactly as before.
+        let registry_position = unregistered
+            .findings
+            .iter()
+            .position(|finding| finding.starts_with("cannot open registry read-only"))
+            .expect("an absent registry must still be a finding");
+        let identity_position = unregistered
+            .findings
+            .iter()
+            .position(|finding| finding.starts_with("project identity is absent"))
+            .expect("an absent identity must still be a finding");
+        assert!(
+            registry_position < identity_position,
+            "reading the identity earlier must not reorder the report: {:?}",
+            unregistered.findings
+        );
+
+        // A present-but-broken identity is not an un-scaffolded checkout.
+        // It claims the project was initialized, so nothing softens.
+        fs::write(root.join(".shepherd/project.json"), b"{ not json")
+            .expect("write an unusable project identity");
+        let unusable = super::health_report(&context);
+        assert!(
+            unusable
+                .findings
+                .iter()
+                .any(|finding| finding.starts_with("ctx directory is absent")),
+            "a broken identity must not soften an absent ctx: {:?}",
+            unusable.findings
+        );
+
+        fs::write(
+            root.join(".shepherd/project.json"),
+            br#"{"id":"018f47ce-72d7-7f64-9eb1-2f651d521c2a","scaffolded_at":1000}"#,
+        )
+        .expect("write project identity");
+
+        let registered = super::health_report(&context);
+        assert!(
+            registered
+                .findings
+                .iter()
+                .any(|finding| finding.starts_with("ctx directory is absent")),
+            "a scaffolded project must still fail on an absent ctx: {:?}",
+            registered.findings
+        );
+        assert!(
+            !registered
+                .warnings
+                .iter()
+                .any(|warning| warning.starts_with("ctx directory is absent")),
+            "a scaffolded project must never soften ctx into a warning: {:?}",
+            registered.warnings
         );
 
         fs::remove_dir_all(root).expect("remove fixture");
