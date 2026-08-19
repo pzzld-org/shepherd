@@ -146,8 +146,42 @@ if [[ -n "$bare_compound_assertions" ]]; then
 fi
 
 workflow='.github/workflows/release.yml'
+# The release pipeline is THREE files as of the cargo-build split. release.yml
+# owns metadata, orchestration, tag, and release custody; cargo-build.yml owns
+# every asset; cargo-publish.yml owns crates.io. Assertions below follow each
+# property to the file that now owns it -- none were dropped in the move, and
+# `pipeline` exists so a property that belongs to the pipeline as a whole
+# (checkout pinning, action pins) can be asserted across all three at once.
+build_workflow='.github/workflows/cargo-build.yml'
+publish_workflow='.github/workflows/cargo-publish.yml'
+pipeline=("$workflow" "$build_workflow" "$publish_workflow")
 packed_probe='scripts/test-packed-plugin.sh'
-ruby -e 'require "yaml"; YAML.load_file(ARGV.fetch(0)); puts "ok: release workflow parses"' "$workflow"
+for pipeline_file in "${pipeline[@]}"; do
+  test -f "$pipeline_file" || {
+    printf 'release pipeline file is missing: %s\n' "$pipeline_file" >&2
+    exit 1
+  }
+  ruby -e 'require "yaml"; YAML.load_file(ARGV.fetch(0))' "$pipeline_file" || {
+    printf '%s: does not parse as YAML\n' "$pipeline_file" >&2
+    exit 1
+  }
+done
+printf 'ok: release pipeline parses (%s files)\n' "${#pipeline[@]}"
+
+# The split is only real if release.yml stopped owning the build. Assert the
+# delegation both ways: release.yml must CALL the two workflows, and must not
+# have quietly kept an inlined copy of the jobs it delegated.
+for called in "$build_workflow" "$publish_workflow"; do
+  if ! rg -Fq "uses: ./$called" "$workflow"; then
+    printf '%s: release workflow must delegate to %s via `uses:`\n' "$workflow" "$called" >&2
+    exit 1
+  fi
+done
+if rg -q '^\s+(build-native-assets|build-component-assets|verify-macos-archive-layout):' "$workflow"; then
+  printf '%s: asset jobs belong to %s now; release.yml must not redefine them\n' \
+    "$workflow" "$build_workflow" >&2
+  exit 1
+fi
 
 # Detect-release-commit predicate: the single source of truth for whether a
 # commit is a release commit and for which version, exercised directly
@@ -249,13 +283,35 @@ python3 scripts/check-github-actions.py
 # commit, not that there happen to be five of them. A literal count fails the
 # moment a job is added -- which it did, when crate publication moved into this
 # workflow to stop racing the asset builds.
-checkout_count=$(rg -Fc 'uses: actions/checkout@' "$workflow")
-sha_checkout_count=$(rg -Fc 'ref: ${{ github.sha }}' "$workflow")
-if [[ "$sha_checkout_count" -ne "$checkout_count" ]]; then
-  printf 'every release checkout must pin github.sha: %s of %s do\n' \
-    "$sha_checkout_count" "$checkout_count" >&2
+# Counting `ref: ${{ github.sha }}` occurrences no longer works: release.yml
+# also passes that SHA as an INPUT to each called workflow, so the naive count
+# reported "4 of 2" -- more pins than checkouts. Assert the real property
+# instead, per file: every checkout resolves to a pinned commit, which in
+# release.yml means github.sha literally, and in the called workflows means the
+# allowlist-validated ref resolved from the caller's SHA. A checkout pinning
+# nothing (or a bare branch) is what this has always been here to catch.
+for pipeline_file in "${pipeline[@]}"; do
+  checkout_count=$(rg -Fc 'uses: actions/checkout@' "$pipeline_file" || true)
+  [[ "$checkout_count" -gt 0 ]] || {
+    printf '%s: no checkout found -- pathspec drift?\n' "$pipeline_file" >&2
+    exit 1
+  }
+  pinned_count=$(rg -c 'ref: \$\{\{ (github\.sha|needs\.resolve\.outputs\.ref|steps\.dispatch_ref\.outputs\.ref) \}\}' "$pipeline_file" || true)
+  if [[ "$pinned_count" -lt "$checkout_count" ]]; then
+    printf '%s: every checkout must pin a resolved commit: %s pinned of %s checkouts\n' \
+      "$pipeline_file" "$pinned_count" "$checkout_count" >&2
+    exit 1
+  fi
+done
+# ...and the SHA the release resolved must be what it hands to each called
+# workflow, or the assets would be built from a different tree than the one
+# being tagged.
+call_ref_count=$(rg -Fc 'ref: ${{ github.sha }}' "$workflow")
+[[ "$call_ref_count" -ge 2 ]] || {
+  printf '%s: each called workflow must receive ref: github.sha (found %s)\n' \
+    "$workflow" "$call_ref_count" >&2
   exit 1
-fi
+}
 if ! rg -Fq 'python3 scripts/version-bump.py check --root . --version "$current"' "$workflow"; then
   printf '%s: release workflow must call version-bump.py check with the current version before proceeding\n' \
     "$workflow" >&2
@@ -332,40 +388,47 @@ if rg -Fq -- '--clobber' "$workflow"; then
   exit 1
 fi
 
+
+# ─── Asset-production properties, now owned by cargo-build.yml ──────────────
+# Everything from here to the end of this block asserts how release ASSETS are
+# built and packaged: targets, the glibc floor, deterministic tars and zips,
+# the component and adapter tests. Those jobs moved out of release.yml into
+# cargo-build.yml, so the assertions follow them. Not one was dropped or
+# softened in the move -- the subject changed, the property did not.
 for target in \
   aarch64-apple-darwin \
   x86_64-apple-darwin \
   aarch64-unknown-linux-gnu \
   x86_64-unknown-linux-gnu \
   x86_64-pc-windows-msvc; do
-  if ! rg -Fq "$target" "$workflow"; then
-    printf '%s: release workflow is missing the native build target %s\n' "$workflow" "$target" >&2
+  if ! rg -Fq "$target" "$build_workflow"; then
+    printf '%s: build workflow is missing the native build target %s\n' "$build_workflow" "$target" >&2
     exit 1
   fi
 done
-if ! rg -Fq 'wasm32-wasip2' "$workflow"; then
-  printf '%s: release workflow is missing the wasm32-wasip2 component target\n' "$workflow" >&2
+if ! rg -Fq 'wasm32-wasip2' "$build_workflow"; then
+  printf '%s: build workflow is missing the wasm32-wasip2 component target\n' "$build_workflow" >&2
   exit 1
 fi
-if ! rg -Fq 'scripts/test-component-node.sh' "$workflow"; then
-  printf '%s: release workflow must run scripts/test-component-node.sh\n' "$workflow" >&2
+if ! rg -Fq 'scripts/test-component-node.sh' "$build_workflow"; then
+  printf '%s: build workflow must run scripts/test-component-node.sh\n' "$build_workflow" >&2
   exit 1
 fi
-if ! rg -Fq 'scripts/test-packed-plugin.sh' "$workflow"; then
-  printf '%s: release workflow must run scripts/test-packed-plugin.sh\n' "$workflow" >&2
+if ! rg -Fq 'scripts/test-packed-plugin.sh' "$build_workflow"; then
+  printf '%s: build workflow must run scripts/test-packed-plugin.sh\n' "$build_workflow" >&2
   exit 1
 fi
-if ! rg -Fq 'node packages/scripts/check-package-boundary.mjs' "$workflow"; then
-  printf '%s: release workflow must run the package-boundary check via node packages/scripts/check-package-boundary.mjs\n' \
-    "$workflow" >&2
+if ! rg -Fq 'node packages/scripts/check-package-boundary.mjs' "$build_workflow"; then
+  printf '%s: build workflow must run the package-boundary check via node packages/scripts/check-package-boundary.mjs\n' \
+    "$build_workflow" >&2
   exit 1
 fi
 for adapter_test in \
   'node packages/harness-claude/test.mjs' \
   'node packages/harness-codex/test.mjs' \
   'node packages/harness-pi/test.mjs'; do
-  if ! rg -Fq "$adapter_test" "$workflow"; then
-    printf '%s: release workflow must run %s\n' "$workflow" "$adapter_test" >&2
+  if ! rg -Fq "$adapter_test" "$build_workflow"; then
+    printf '%s: build workflow must run %s\n' "$build_workflow" "$adapter_test" >&2
     exit 1
   fi
   if ! rg -Fq "$adapter_test" scripts/gate.sh; then
@@ -381,16 +444,16 @@ if ! rg -Fq 'scripts/tests/test-release-distribution-license.sh' scripts/gate.sh
   printf 'scripts/gate.sh: must run scripts/tests/test-release-distribution-license.sh\n' >&2
   exit 1
 fi
-if ! rg -Fq 'cargo build --locked --release --package shepherd-cli' "$workflow"; then
-  printf '%s: release workflow must build shepherd-cli via cargo build --locked --release\n' "$workflow" >&2
+if ! rg -Fq 'cargo build --locked --release --package shepherd-cli' "$build_workflow"; then
+  printf '%s: build workflow must build shepherd-cli via cargo build --locked --release\n' "$build_workflow" >&2
   exit 1
 fi
-if ! rg -Fq 'cargo zigbuild --locked --release --package shepherd-cli --target "${TARGET}.2.17"' "$workflow"; then
-  printf '%s: linux release build must use cargo zigbuild pinned to the glibc 2.17 target\n' "$workflow" >&2
+if ! rg -Fq 'cargo zigbuild --locked --release --package shepherd-cli --target "${TARGET}.2.17"' "$build_workflow"; then
+  printf '%s: linux build must use cargo zigbuild pinned to the glibc 2.17 target\n' "$build_workflow" >&2
   exit 1
 fi
-if ! rg -Fq 'scripts/assert-glibc-floor.py 2.17' "$workflow"; then
-  printf '%s: release workflow must assert the glibc 2.17 floor on the linux binary\n' "$workflow" >&2
+if ! rg -Fq 'scripts/assert-glibc-floor.py 2.17' "$build_workflow"; then
+  printf '%s: build workflow must assert the glibc 2.17 floor on the linux binary\n' "$build_workflow" >&2
   exit 1
 fi
 if ! rg -Fq 'RuntimeInformation]::OSArchitecture' scripts/install-shepherd.ps1; then
@@ -401,12 +464,12 @@ if rg -Fq 'RuntimeInformation]::ProcessArchitecture' scripts/install-shepherd.ps
   printf 'Windows installer must select the OS architecture, not the emulated process architecture\n' >&2
   exit 1
 fi
-if ! rg -Fq 'actual=$("$binary" --version)' "$workflow"; then
-  printf '%s: release workflow must capture the built binary --version output as actual\n' "$workflow" >&2
+if ! rg -Fq 'actual=$("$binary" --version)' "$build_workflow"; then
+  printf '%s: build workflow must capture the built binary --version output as actual\n' "$build_workflow" >&2
   exit 1
 fi
-if ! rg -Fq 'expected="shepherd-cli ${VERSION}"' "$workflow"; then
-  printf '%s: release workflow must assert the built binary reports shepherd-cli ${VERSION}\n' "$workflow" >&2
+if ! rg -Fq 'expected="shepherd-cli ${VERSION}"' "$build_workflow"; then
+  printf '%s: build workflow must assert the built binary reports shepherd-cli ${VERSION}\n' "$build_workflow" >&2
   exit 1
 fi
 # The property is that EVERY release tarball is produced by
@@ -461,28 +524,28 @@ raw_tar_expected=$(grep -c '' "$raw_tar_probe_dir/should-match")
 raw_tar_caught=$(grep -cE "$raw_tar_pattern" "$raw_tar_probe_dir/should-match" || true)
 if [[ "$raw_tar_caught" -ne "$raw_tar_expected" ]]; then
   printf '%s: the hand-rolled-tar detector missed a known-bad invocation (caught %s of %s); it cannot be trusted against %s. Undetected:\n%s\n' \
-    "$self" "$raw_tar_caught" "$raw_tar_expected" "$workflow" \
+    "$self" "$raw_tar_caught" "$raw_tar_expected" "$build_workflow" \
     "$(grep -vE "$raw_tar_pattern" "$raw_tar_probe_dir/should-match" || true)" >&2
   exit 1
 fi
 raw_tar_false_positives=$(grep -nE "$raw_tar_pattern" "$raw_tar_probe_dir/should-not-match" || true)
 if [[ -n "$raw_tar_false_positives" ]]; then
   printf '%s: the hand-rolled-tar detector fires on legitimate text (a create-release-tar.sh call site, a .tar.gz asset name, or a read-only tar listing/extraction), so it would fail %s for no reason:\n%s\n' \
-    "$self" "$workflow" "$raw_tar_false_positives" >&2
+    "$self" "$build_workflow" "$raw_tar_false_positives" >&2
   exit 1
 fi
 
-hand_rolled_tar=$(grep -nE "$raw_tar_pattern" "$workflow" || true)
+hand_rolled_tar=$(grep -nE "$raw_tar_pattern" "$build_workflow" || true)
 if [[ -n "$hand_rolled_tar" ]]; then
   printf '%s: a release step hand-rolls tar to build an archive. Every release tarball must be produced by scripts/create-release-tar.sh, the only place that pins member order, ownership, and mtimes; a hand-rolled tar silently breaks byte reproducibility:\n%s\n' \
-    "$workflow" "$hand_rolled_tar" >&2
+    "$build_workflow" "$hand_rolled_tar" >&2
   exit 1
 fi
-create_release_tar_calls=$(rg -Fc 'scripts/create-release-tar.sh' "$workflow") || true
+create_release_tar_calls=$(rg -Fc 'scripts/create-release-tar.sh' "$build_workflow") || true
 create_release_tar_calls="${create_release_tar_calls:-0}"
 if [[ "$create_release_tar_calls" -lt 1 ]]; then
   printf '%s: release workflow never calls scripts/create-release-tar.sh, and hand-rolls no tar either, so it cannot produce a release tarball at all\n' \
-    "$workflow" >&2
+    "$build_workflow" >&2
   exit 1
 fi
 
@@ -492,49 +555,51 @@ fi
 # component staging dir. `-lt 2`, not `-eq 2`, on the same reasoning as above:
 # adding a third staging tree must not fail the gate, dropping a normalization
 # must.
-mtime_normalizations=$(rg -Fc 'TZ=UTC find' "$workflow") || true
+mtime_normalizations=$(rg -Fc 'TZ=UTC find' "$build_workflow") || true
 mtime_normalizations="${mtime_normalizations:-0}"
 if [[ "$mtime_normalizations" -lt 2 ]]; then
   printf '%s: every staging tree that becomes a release tarball must normalize mtimes with TZ=UTC find ... -exec touch -t 198001010000; expected at least 2 (native staging and wasm32 component staging), found %s\n' \
-    "$workflow" "$mtime_normalizations" >&2
+    "$build_workflow" "$mtime_normalizations" >&2
   exit 1
 fi
-if rg -Fq -- '--uid 0' "$workflow" || rg -Fq -- '--gid 0' "$workflow"; then
-  printf 'release workflow must not use BSD-only tar ownership flags\n' >&2
+if rg -Fq -- '--uid 0' "$build_workflow" || rg -Fq -- '--gid 0' "$build_workflow"; then
+  printf 'build workflow must not use BSD-only tar ownership flags\n' >&2
   exit 1
 fi
-if ! rg -Fq "LastWriteTimeUtc = [DateTime]'1980-01-01T00:00:00Z'" "$workflow"; then
-  printf '%s: Windows zip staging must pin LastWriteTimeUtc to the epoch 1980-01-01T00:00:00Z\n' "$workflow" >&2
+if ! rg -Fq "LastWriteTimeUtc = [DateTime]'1980-01-01T00:00:00Z'" "$build_workflow"; then
+  printf '%s: Windows zip staging must pin LastWriteTimeUtc to the epoch 1980-01-01T00:00:00Z\n' "$build_workflow" >&2
   exit 1
 fi
-if ! rg -Fq 'function New-DeterministicZip' "$workflow"; then
-  printf '%s: Windows packaging must define function New-DeterministicZip\n' "$workflow" >&2
+if ! rg -Fq 'function New-DeterministicZip' "$build_workflow"; then
+  printf '%s: Windows packaging must define function New-DeterministicZip\n' "$build_workflow" >&2
   exit 1
 fi
-if ! rg -Fq 'CreateEntry($relative, [System.IO.Compression.CompressionLevel]::Optimal)' "$workflow"; then
-  printf '%s: New-DeterministicZip must add entries via CreateEntry at Optimal compression\n' "$workflow" >&2
+if ! rg -Fq 'CreateEntry($relative, [System.IO.Compression.CompressionLevel]::Optimal)' "$build_workflow"; then
+  printf '%s: New-DeterministicZip must add entries via CreateEntry at Optimal compression\n' "$build_workflow" >&2
   exit 1
 fi
-if ! rg -Fq '$entry.LastWriteTime = [DateTimeOffset]' "$workflow"; then
-  printf '%s: New-DeterministicZip must stamp each zip entry LastWriteTime deterministically\n' "$workflow" >&2
+if ! rg -Fq '$entry.LastWriteTime = [DateTimeOffset]' "$build_workflow"; then
+  printf '%s: New-DeterministicZip must stamp each zip entry LastWriteTime deterministically\n' "$build_workflow" >&2
   exit 1
 fi
-if ! rg -Fq 'Windows release ZIP is not reproducible from identical staged inputs' "$workflow"; then
-  printf '%s: Windows packaging must self-verify zip reproducibility with a named failure message\n' "$workflow" >&2
+if ! rg -Fq 'Windows release ZIP is not reproducible from identical staged inputs' "$build_workflow"; then
+  printf '%s: Windows packaging must self-verify zip reproducibility with a named failure message\n' "$build_workflow" >&2
   exit 1
 fi
-if rg -Fq 'Compress-Archive' "$workflow"; then
+if rg -Fq 'Compress-Archive' "$build_workflow"; then
   printf 'Windows release archive must use deterministic ZipArchive entries, not Compress-Archive\n' >&2
   exit 1
 fi
-if ! rg -Fq 'scripts/tests/test-release-installer-windows.ps1' "$workflow"; then
-  printf '%s: release workflow must run scripts/tests/test-release-installer-windows.ps1\n' "$workflow" >&2
+if ! rg -Fq 'scripts/tests/test-release-installer-windows.ps1' "$build_workflow"; then
+  printf '%s: build workflow must run scripts/tests/test-release-installer-windows.ps1\n' "$build_workflow" >&2
   exit 1
 fi
-if ! rg -Fq 'npm ci --ignore-scripts' "$workflow"; then
-  printf '%s: release workflow must install npm dependencies via npm ci --ignore-scripts\n' "$workflow" >&2
+if ! rg -Fq 'npm ci --ignore-scripts' "$build_workflow"; then
+  printf '%s: build workflow must install npm dependencies via npm ci --ignore-scripts\n' "$build_workflow" >&2
   exit 1
 fi
+
+# ─── Back to release.yml's own custody ─────────────────────────────────────
 if ! rg -Fq 'gh release create' "$workflow"; then
   printf '%s: release workflow must create the GitHub release via gh release create\n' "$workflow" >&2
   exit 1
@@ -617,29 +682,43 @@ if ! rg -Fq '"$published" != true' "$workflow"; then
   exit 1
 fi
 
-# S4(c): the macos-14 binstall archive-layout job must exist and invoke the packaging script.
-if ! rg -Fq 'runs-on: macos-14' "$workflow"; then
-  printf 'release workflow is missing the macos-14 binstall archive-layout job\n' >&2
+# S4(c): the macos-14 binstall archive-layout job must exist and invoke the
+# packaging script. It moved to cargo-build.yml with the rest of the assets.
+if ! rg -Fq 'runs-on: macos-14' "$build_workflow"; then
+  printf '%s: build workflow is missing the macos-14 binstall archive-layout job\n' "$build_workflow" >&2
   exit 1
 fi
 # The archive-layout check itself lives in one place, scripts/tests/test-release-archive-layout.sh
-# (a stronger, four-entry ordered check than release.yml ever inlined). Assert the release path
+# (a stronger, four-entry ordered check than the workflow ever inlined). Assert the build path
 # calls it both as a self-test (proving the checker itself still fails on bad input) and for real
-# (proving it actually runs against the built archive) -- never that release.yml re-implements it.
-archive_layout_calls=$(rg -Fc 'scripts/tests/test-release-archive-layout.sh' "$workflow") || true
+# (proving it actually runs against the built archive) -- never that the workflow re-implements it.
+archive_layout_calls=$(rg -Fc 'scripts/tests/test-release-archive-layout.sh' "$build_workflow") || true
 archive_layout_calls="${archive_layout_calls:-0}"
 if [[ "$archive_layout_calls" -lt 2 ]]; then
   printf '%s: macos-14 job must both self-test and actually run scripts/tests/test-release-archive-layout.sh (the shared archive-layout check), found %s call(s)\n' \
-    "$workflow" "$archive_layout_calls" >&2
+    "$build_workflow" "$archive_layout_calls" >&2
   exit 1
 fi
 
 # S4: no step may reference a secret outside the known set (an undefined secret resolves
 # to empty and fails at runtime in a way no local gate catches).
 known_secrets=$'secrets.GITHUB_TOKEN\nsecrets.CARGO_REGISTRY_TOKEN\nsecrets.ANTHROPIC_API_KEY'
-unknown_secrets=$(rg -o 'secrets\.[A-Z_]+' "$workflow" | sort -u | comm -23 - <(printf '%s\n' "$known_secrets" | sort))
+unknown_secrets=$(rg -o 'secrets\.[A-Z_]+' "${pipeline[@]}" | sed 's/^[^:]*://' | sort -u | comm -23 - <(printf '%s\n' "$known_secrets" | sort))
 if [[ -n "$unknown_secrets" ]]; then
-  printf 'release workflow references an undefined secret:\n%s\n' "$unknown_secrets" >&2
+  printf 'release pipeline references an undefined secret:\n%s\n' "$unknown_secrets" >&2
+  exit 1
+fi
+# A called workflow cannot inherit secrets implicitly: `cargo-publish.yml`
+# declares CARGO_REGISTRY_TOKEN as a required `workflow_call` secret, so
+# release.yml MUST pass it explicitly or publication fails at runtime with an
+# empty token -- the exact class of failure no local gate would otherwise see.
+if ! rg -Fq 'CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}' "$workflow"; then
+  printf '%s: must forward CARGO_REGISTRY_TOKEN to %s; workflow_call does not inherit secrets\n' \
+    "$workflow" "$publish_workflow" >&2
+  exit 1
+fi
+if ! rg -Fq 'CARGO_REGISTRY_TOKEN:' "$publish_workflow"; then
+  printf '%s: must declare CARGO_REGISTRY_TOKEN as a workflow_call secret\n' "$publish_workflow" >&2
   exit 1
 fi
 

@@ -40,9 +40,12 @@ fi
 
 # Every producer must place the same legal material inside its payload. The
 # archive-inspection gates below exercise the byte-level result in CI.
-workflow='.github/workflows/release.yml'
-rg -Fq 'scripts/stage-distribution-legal.sh "$staging"' "$workflow" || { rc=$?; printf 'FAIL: release workflow must invoke stage-distribution-legal.sh against the staging directory (rg rc=%s)\n' "$rc" >&2; exit 1; }
-rg -Fq 'scripts/stage-distribution-legal.sh stage' "$workflow" || { rc=$?; printf 'FAIL: release workflow must invoke stage-distribution-legal.sh with the stage subcommand (rg rc=%s)\n' "$rc" >&2; exit 1; }
+# Legal staging happens where the ASSETS are built, which is cargo-build.yml
+# since the release pipeline was split; release.yml orchestrates and tags but
+# stages nothing itself.
+workflow='.github/workflows/cargo-build.yml'
+rg -Fq 'scripts/stage-distribution-legal.sh "$staging"' "$workflow" || { rc=$?; printf 'FAIL: build workflow must invoke stage-distribution-legal.sh against the staging directory (rg rc=%s)\n' "$rc" >&2; exit 1; }
+rg -Fq 'scripts/stage-distribution-legal.sh stage' "$workflow" || { rc=$?; printf 'FAIL: build workflow must invoke stage-distribution-legal.sh with the stage subcommand (rg rc=%s)\n' "$rc" >&2; exit 1; }
 
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/shepherd-release-license.XXXXXX")
 trap 'find "$closure_dir" "$tmp_dir" -depth -delete' EXIT

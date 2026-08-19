@@ -7,7 +7,35 @@ codex_bin="${CODEX_BIN:-$(command -v codex)}"
 shepherd_bin="${SHEPHERD_NATIVE_BIN:-$root/target/debug/shepherd}"
 version=$(python3 -c 'import json; print(json.load(open(".claude-plugin/plugin.json"))["version"])')
 
-[[ "$($codex_bin --version)" == "codex-cli 0.147.0" ]] || { printf 'FAIL: Codex CLI must report version codex-cli 0.147.0\n' >&2; exit 1; }
+# A FLOOR, never an equality. This asserted `== "codex-cli 0.147.0"`, which
+# fails the moment upstream Codex ships ANY newer build -- 0.148.0 broke it
+# with nothing in this repository having regressed. Pinning a third-party CLI
+# to one exact version makes their release schedule our red build, and the
+# reflex fix (bump the literal) is a chore that teaches the gate is noise.
+# What the contract below actually needs is a Codex new enough to read
+# `.codex-plugin/plugin.json`; 0.147.0 is the oldest release verified against
+# it, so that is the floor and anything newer passes.
+CODEX_VERSION_FLOOR="0.147.0"
+codex_version_raw="$($codex_bin --version)"
+codex_version="${codex_version_raw#codex-cli }"
+[[ "$codex_version_raw" == codex-cli\ * ]] || {
+  printf 'FAIL: Codex CLI version string is unparseable: %s\n' "$codex_version_raw" >&2
+  exit 1
+}
+python3 - "$codex_version" "$CODEX_VERSION_FLOOR" <<'VER' || exit 1
+import sys
+def parts(v):
+    return tuple(int(x) for x in v.split(".")[:3])
+have, floor = sys.argv[1], sys.argv[2]
+try:
+    ok = parts(have) >= parts(floor)
+except ValueError:
+    sys.exit(f"FAIL: unparseable Codex version {have!r}")
+if not ok:
+    sys.exit(f"FAIL: Codex CLI {have} is older than the {floor} floor this "
+             "contract was verified against")
+print(f"codex-cli {have} satisfies the {floor} floor")
+VER
 [[ -x "$shepherd_bin" ]] || { printf 'FAIL: native shepherd binary must be executable at SHEPHERD_NATIVE_BIN or target/debug/shepherd\n' >&2; exit 1; }
 python3 - "$root" <<'PY'
 import json, pathlib, sys
@@ -63,11 +91,44 @@ run_codex() { env HOME="$fixture/home" CODEX_HOME="$fixture/codex" "$codex_bin" 
 run_codex plugin marketplace add "$root" --json >"$fixture/add.json"
 run_codex plugin add shepherd@shepherd --json >"$fixture/install.json"
 cache=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["installedPath"])' "$fixture/install.json")
-[[ "$cache" == "$fixture/codex/plugins/cache/shepherd/shepherd/$version" || "$cache" == "/private$fixture/codex/plugins/cache/shepherd/shepherd/$version" ]] || { printf 'FAIL: codex plugin add must install shepherd under plugins/cache/shepherd/shepherd/<version>\n' >&2; exit 1; }
+# Compare RESOLVED paths, not raw strings. macOS $TMPDIR ends in a slash, so
+# "$TMPDIR/shepherd-..." yields "/var/folders/.../T//shepherd-..." with a
+# doubled separator, while Codex reports the normalized path -- and on macOS
+# /var is itself a symlink to /private/var, which is why a hand-written
+# "/private$fixture" alternative was bolted on here. Two string spellings of
+# one directory were being compared as text. Resolve both sides and compare
+# the directories. This assertion could not run at all until the codex-cli
+# version pin above became a floor, so this defect was latent, not new.
+expected_cache="$fixture/codex/plugins/cache/shepherd/shepherd/$version"
+resolve_path() { python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$1"; }
+[[ "$(resolve_path "$cache")" == "$(resolve_path "$expected_cache")" ]] || {
+  printf 'FAIL: codex plugin add must install shepherd under plugins/cache/shepherd/shepherd/<version>\n  expected: %s\n  actual:   %s\n' \
+    "$(resolve_path "$expected_cache")" "$(resolve_path "$cache")" >&2
+  exit 1
+}
 cache=${cache#/private}
 [[ -f "$cache/.codex-plugin/plugin.json" ]] || { printf 'FAIL: Codex plugin cache must contain the .codex-plugin/plugin.json manifest\n' >&2; exit 1; }
 [[ -f "$cache/codex/hooks/hooks.json" ]] || { printf 'FAIL: Codex plugin cache must contain the codex/hooks/hooks.json manifest\n' >&2; exit 1; }
-[[ "$(find "$cache/codex/skills" -mindepth 2 -maxdepth 2 -name SKILL.md | wc -l | tr -d ' ')" == 7 ]] || { printf 'FAIL: Codex plugin cache must ship exactly 7 SKILL.md files under codex/skills\n' >&2; exit 1; }
+# DERIVE the count, never hardcode it. The literal here was 7, written when
+# the carrier shipped 7 skills; it is 9 today (`plant` was restored this
+# sprint), and this assertion never once complained -- the codex-cli version
+# pin above exited first, every run. A hardcoded count is a second source of
+# truth that drifts silently from the first.
+#
+# The contract is: the Codex carrier ships every authored skill EXCEPT those
+# marked `portability: claude-only`. Compute both sides and compare, so adding
+# a skill needs no edit here and removing one cannot pass unnoticed.
+expected_skills=$(find content/skills -mindepth 1 -maxdepth 1 -type d | while read -r skill_dir; do
+  grep -q '^portability: claude-only' "$skill_dir/SKILL.md" || printf 'x\n'
+done | wc -l | tr -d ' ')
+actual_skills=$(find "$cache/codex/skills" -mindepth 2 -maxdepth 2 -name SKILL.md | wc -l | tr -d ' ')
+[[ "$expected_skills" -gt 0 ]] || { printf 'FAIL: derived zero cross-harness skills from content/skills -- pathspec drift?\n' >&2; exit 1; }
+[[ "$actual_skills" == "$expected_skills" ]] || {
+  printf 'FAIL: Codex plugin cache must ship every non-claude-only skill\n  expected: %s (from content/skills)\n  actual:   %s (in carrier)\n' \
+    "$expected_skills" "$actual_skills" >&2
+  exit 1
+}
+printf 'codex carrier ships %s/%s cross-harness skills\n' "$actual_skills" "$expected_skills"
 [[ -z "$(find "$cache" -type l -print -quit)" ]] || { printf 'FAIL: Codex plugin cache must not contain any symlinks\n' >&2; exit 1; }
 [[ ! -e "$cache/package.json" && ! -e "$cache/node_modules" ]] || { printf 'FAIL: Codex plugin cache must not contain package.json or node_modules\n' >&2; exit 1; }
 
@@ -92,4 +153,4 @@ session, denial = (json.load(open(path)) for path in sys.argv[1:])
 assert session["hookSpecificOutput"]["hookEventName"] == "SessionStart"
 assert denial["hookSpecificOutput"]["permissionDecision"] == "deny"
 PY
-printf 'ok: Codex 0.147.0 installs the regular native Shepherd carrier\n'
+printf 'ok: Codex %s installs the regular native Shepherd carrier\n' "$codex_version"

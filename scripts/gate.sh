@@ -62,6 +62,19 @@ gate_fast() {
   step "generated carrier authority" bash scripts/tests/test-generated-carrier-authority.sh
   step "native CLI authority inventory is falsifiable" python3 scripts/check-cli-authority.py --self-test
   step "native CLI authority inventory" python3 scripts/check-cli-authority.py
+  # This harness shipped correct, falsifiable, and referenced by NOTHING, so it
+  # was free to rot and did: an rg sweep over the retired bin/ (exit 2 scored as
+  # "clean"), a hooks.json assertion that broke when the seven carrier scripts
+  # were restored, and three lifecycle assertions left pointing at
+  # claude_hook.rs after the lifecycle moved to native_hook.rs. Three failures,
+  # zero signal, because nothing executed it.
+  step "native CLI authority regression harness" bash scripts/tests/test_cli_authority_gate.sh
+  # ...and the rule that makes the above structurally unrepeatable. gate.sh
+  # names its members one `step` at a time, so a new file under scripts/tests/
+  # is unwired until someone remembers this list. This is the fourth instance
+  # of that shape; it is now the gate's problem, not a reviewer's.
+  step "every test is reachable from a runner (falsifiable)" python3 scripts/check-gate-wiring.py --self-test
+  step "every test is reachable from a runner" python3 scripts/check-gate-wiring.py
   step "release asset inventory" bash scripts/tests/test-release-assets.sh
   step "release installers" bash scripts/tests/test-release-installers.sh
   step "PowerShell installer contract" bash scripts/tests/test-release-installer-powershell-contract.sh
@@ -90,6 +103,35 @@ gate_fast() {
   step "plugin contract is falsifiable" ./scripts/check-plugin.py --self-test
   step "plugin contract" ./scripts/check-plugin.py
   step "Codex regular carrier projection" python3 scripts/generate-codex-carrier.py --check
+  # Reusable-workflow wiring (workflow_call inputs, forwarded secrets, needs:
+  # targets) parses fine when it is wrong and fails only at dispatch time.
+  # actionlint is the checker for that. It is optional locally, but a SKIP is
+  # stated out loud -- a gate that silently no-ops when a tool is absent is
+  # indistinguishable from one that passed.
+  lint_workflows() {
+    if ! command -v actionlint >/dev/null 2>&1; then
+      printf '    SKIP: actionlint not installed (brew install actionlint); CI runs it pinned\n'
+      return 0
+    fi
+    local workflows=()
+    local workflow_file
+    while IFS= read -r workflow_file; do
+      workflows+=("$workflow_file")
+    done < <(find .github/workflows -maxdepth 1 -name '*.yml' | sort)
+    if [[ "${#workflows[@]}" -eq 0 ]]; then
+      printf '    no workflow files discovered\n' >&2
+      return 1
+    fi
+    # SC2016 ("expressions don't expand in single quotes") is INFO-level and
+    # fires on every `printf 'format %s\n' "$value"` in the repo -- where the
+    # single quotes are correct, because printf consumes the %s, not the shell.
+    # Excluding one noisy info check keeps the real warnings visible; SC2209
+    # (an unquoted literal that shadows a real binary) was found by this lint
+    # and fixed in gitflow.yml rather than suppressed.
+    SHELLCHECK_OPTS=--exclude=SC2016 actionlint "${workflows[@]}" || return 1
+    printf '    actionlint: %s workflow file(s) clean\n' "${#workflows[@]}"
+  }
+  step "workflow wiring (actionlint)" lint_workflows
 }
 
 # ---------------------------------------------------------------- full --- #

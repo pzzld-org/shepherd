@@ -169,17 +169,17 @@ jobs:
             NX=$X
             NY=$Y
             NZ=$((Z + 1))
-            SHIFT=patch
+            SHIFT='patch'
           elif [ "$Y" -lt 9 ]; then
             NX=$X
             NY=$((Y + 1))
             NZ=0
-            SHIFT=minor
+            SHIFT='minor'
           else
             NX=$((X + 1))
             NY=0
             NZ=0
-            SHIFT=major
+            SHIFT='major'
           fi
           NEXT="${NX}.${NY}.${NZ}"
           {

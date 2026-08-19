@@ -41,5 +41,25 @@ S2 [test-release-workflow.sh] correct line 270 to the true property, give 270
    and 271 real diagnostics, and add a self-lint that bans bare compound
    assertions so the vacuous-on-macOS class cannot recur in this file.
 
-## Status
-S1 dispatched | S2 dispatched
+## Status: COMPLETE (root gates; lane does not self-close)
+
+S1 3986166  scripts/tests/test-release-tar-portability.sh
+S2 d260436  scripts/tests/test-release-workflow.sh
+Branch v651-l11-ci-portability pushed. Not merged; PR #328 untouched.
+
+Wave review run by the lane lead (read-only), NOT by a gate role -- #332 bars
+dispatching shepherd:critic or any gate role. Root gates.
+
+Evidence:
+  gate.sh fast (macOS): 32 steps, 0 FAILED, green in 16s
+  cargo test --workspace --locked --features full: 428 passed, 0 failed / 53 bins
+  cargo test --workspace --locked (no --features full): 224 passed, 0 failed / 30 bins
+  hooks/tests/run.sh: 29/29, 0 failed
+  test-release-tar-portability.sh: 47 checks macOS, 46 Linux, 46 old-libarchive sim
+  Four independent negative controls on the tar gate: all caught
+  Nine independent probe cases on the self-lint: all correct both directions
+
+Bare-assertion sweep: 15 repo-wide, this lane fixed 2. Remaining 13 out of scope:
+  hooks/scripts/_lib.sh 120,369,450 (l7-assertions)
+  scripts/tests/test-codex-marketplace.sh 10,11,62,66,68,69,70,71,72
+  scripts/tests/test-release-installer-powershell-contract.sh 14

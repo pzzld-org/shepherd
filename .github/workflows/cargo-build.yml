@@ -1,0 +1,474 @@
+name: cargo-build
+
+# Every release ASSET is produced here, and nowhere else.
+#
+# This pipeline used to be inlined into release.yml, which made the build
+# reachable through exactly one event: a patch branch merging into main. There
+# was no way to rebuild a target without cutting a version, and no way to
+# exercise the packaging path on a branch. Splitting it out costs one
+# `workflow_call` boundary and buys four independent triggers plus partial runs
+# via `scope`.
+#
+# Callers:
+#   release.yml          workflow_call, scope=all, version pinned by release-metadata
+#   an operator          workflow_dispatch, any scope, any allowlisted ref
+#   another repo/bot     repository_dispatch (type: cargo-build)
+#   a tag push           v*.*.* or latest
+#
+# The jobs themselves are unchanged from the release pipeline they came from:
+# same targets, same glibc floor, same deterministic archives, same sidecars.
+# What changed is who is allowed to start them.
+
+concurrency:
+  cancel-in-progress: false
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.scope || 'all' }}
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Exact MAJOR.MINOR.PATCH the assets must report
+        required: true
+        type: string
+      ref:
+        description: Commit to build (defaults to the calling event's SHA)
+        required: false
+        type: string
+      scope:
+        description: all | native | component
+        required: false
+        default: all
+        type: string
+  workflow_dispatch:
+    inputs:
+      scope:
+        description: Which half of the pipeline to run
+        required: false
+        default: all
+        type: choice
+        options: [all, native, component]
+      ref:
+        description: Commit, branch, or tag to build (defaults to this ref)
+        required: false
+        type: string
+  repository_dispatch:
+    types: [cargo-build]
+  push:
+    tags:
+      - latest
+      - v[0-9]*.[0-9]*.[0-9]*
+
+permissions:
+  contents: read
+
+jobs:
+  # One job resolves what everything else builds, so the version and the
+  # checkout ref are decided ONCE. When release.yml calls in, both are handed
+  # over; on every other trigger they are derived here.
+  resolve:
+    name: Resolve build inputs
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      ref: ${{ steps.plan.outputs.ref }}
+      scope: ${{ steps.plan.outputs.scope }}
+      build_native: ${{ steps.plan.outputs.build_native }}
+      build_component: ${{ steps.plan.outputs.build_component }}
+    steps:
+      # `client_payload.*` is authored entirely by whoever sends the
+      # `repository_dispatch`, and that permission is grantable WITHOUT
+      # `contents: write` -- so interpolating it straight into `ref:` lets a
+      # token that cannot push a commit still make CI check out and execute
+      # arbitrary code (FL03/axiom#2578). Resolve it through a fail-closed
+      # allowlist, passed via `env:` so the untrusted value is never spliced
+      # into the shell command itself.
+      - name: Resolve a trusted checkout ref
+        id: dispatch_ref
+        shell: bash
+        env:
+          CALL_REF: ${{ inputs.ref }}
+          DISPATCH_REF: ${{ github.event.client_payload.ref }}
+          FALLBACK_REF: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          candidate="${CALL_REF:-${DISPATCH_REF:-}}"
+          if [[ -z "$candidate" ]]; then
+            printf 'ref=%s\n' "$FALLBACK_REF" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ "$candidate" =~ ^(refs/heads/|refs/tags/)?(main|master|latest|v[0-9]+\.[0-9]+\.[0-9]+(-dev\.[0-9]+)?)$ ]] \
+            || [[ "$candidate" =~ ^[0-9a-f]{40}$ ]]; then
+            printf 'ref=%s\n' "$candidate" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          printf '::error::rejected build ref: not an allowlisted branch, tag, or commit SHA\n'
+          exit 1
+      - name: Checkout
+        uses: actions/checkout@v7 # v7.0.1
+        with:
+          fetch-depth: 1
+          ref: ${{ steps.dispatch_ref.outputs.ref }}
+          persist-credentials: false
+      - name: Plan the build
+        id: plan
+        shell: bash
+        env:
+          CALL_VERSION: ${{ inputs.version }}
+          DISPATCH_VERSION: ${{ github.event.client_payload.version }}
+          SCOPE: ${{ inputs.scope || github.event.client_payload.scope || 'all' }}
+          REF: ${{ steps.dispatch_ref.outputs.ref }}
+        run: |
+          set -euo pipefail
+          # The version is authority, not decoration: the native job asserts the
+          # built binary reports it. Prefer what the caller pinned, then the
+          # dispatch payload, then the tree's own manifest.
+          version="${CALL_VERSION:-${DISPATCH_VERSION:-}}"
+          if [[ -z "$version" ]]; then
+            version=$(python3 -c 'import json; print(json.load(open(".claude-plugin/plugin.json"))["version"])')
+          fi
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            printf '::error::resolved version %s is not MAJOR.MINOR.PATCH\n' "$version"
+            exit 1
+          }
+          case "$SCOPE" in
+            all)       native=true;  component=true ;;
+            native)    native=true;  component=false ;;
+            component) native=false; component=true ;;
+            *) printf '::error::unknown scope %s (want all|native|component)\n' "$SCOPE"; exit 1 ;;
+          esac
+          {
+            printf 'version=%s\n' "$version"
+            printf 'ref=%s\n' "$REF"
+            printf 'scope=%s\n' "$SCOPE"
+            printf 'build_native=%s\n' "$native"
+            printf 'build_component=%s\n' "$component"
+          } >> "$GITHUB_OUTPUT"
+          printf 'Building %s at %s (scope=%s)\n' "$version" "$REF" "$SCOPE"
+
+  build-native-assets:
+    name: Native ${{ matrix.target }}
+    needs: resolve
+    if: needs.resolve.outputs.build_native == 'true'
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            target: aarch64-apple-darwin
+          - runner: macos-15-intel
+            target: x86_64-apple-darwin
+          - runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+          - runner: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+          - runner: windows-2025
+            target: x86_64-pc-windows-msvc
+    steps:
+      - name: Checkout release commit
+        uses: actions/checkout@v7 # v7.0.1
+        with:
+          fetch-depth: 1
+          ref: ${{ needs.resolve.outputs.ref }}
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache: false
+      - name: Setup Zig for GNU libc 2.17 builds
+        if: contains(matrix.target, 'unknown-linux-gnu')
+        uses: mlugg/setup-zig@v2 # v2.2.1
+        with:
+          version: 0.14.0
+      - name: Install locked cargo-zigbuild
+        if: contains(matrix.target, 'unknown-linux-gnu')
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-zigbuild@0.20.1
+      - name: Build locked canonical CLI
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          if [[ "$TARGET" == *-unknown-linux-gnu ]]; then
+            cargo zigbuild --locked --release --package shepherd-cli --target "${TARGET}.2.17"
+          else
+            cargo build --locked --release --package shepherd-cli
+          fi
+      - name: Execute and verify the native CLI version
+        shell: bash
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          binary='target/release/shepherd'
+          if [[ "$TARGET" == *-unknown-linux-gnu ]]; then
+            binary="target/${TARGET}/release/shepherd"
+          fi
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            binary="${binary}.exe"
+          fi
+          actual=$("$binary" --version)
+          expected="shepherd-cli ${VERSION}"
+          [[ "$actual" == "$expected" ]] || {
+            printf 'native CLI version mismatch: expected %s, got %s\n' "$expected" "$actual" >&2
+            exit 1
+          }
+      - name: Assert GNU libc compatibility floor
+        if: contains(matrix.target, 'unknown-linux-gnu')
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          binary="target/${TARGET}/release/shepherd"
+          readelf --version-info "$binary" | python3 scripts/assert-glibc-floor.py 2.17
+      - name: Package Unix archive and SHA-256 sidecars
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          staging="${RUNNER_TEMP}/shepherd-native-${TARGET}"
+          mkdir -p "$staging"
+          if [[ "$TARGET" == *-unknown-linux-gnu ]]; then
+            cp "target/${TARGET}/release/shepherd" "$staging/shepherd"
+          else
+            cp target/release/shepherd "$staging/shepherd"
+          fi
+          scripts/stage-distribution-legal.sh "$staging" --scope native --target "$TARGET"
+          chmod 0755 "$staging/shepherd"
+          TZ=UTC find "$staging" -type f -exec touch -t 198001010000 {} +
+          legal_entries=()
+          while IFS= read -r entry; do
+            legal_entries+=("$entry")
+          done < <(
+              cd "$staging"
+              find THIRD_PARTY_LICENSES -type f -name '*.txt' -print | LC_ALL=C sort
+            )
+          ((${#legal_entries[@]} > 0))
+          versioned="shepherd-${VERSION}-${TARGET}.tar.gz"
+          stable="shepherd-${TARGET}.tar.gz"
+          scripts/create-release-tar.sh \
+            "$staging" "dist/${versioned}" \
+            LICENSE THIRD_PARTY_NOTICES.md "${legal_entries[@]}" shepherd
+          cp "dist/${versioned}" "dist/${stable}"
+          (
+            cd dist
+            shasum -a 256 "${versioned}" > "${versioned}.sha256"
+            shasum -a 256 "${stable}" > "${stable}.sha256"
+          )
+      - name: Package Windows archive and SHA-256 sidecars
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          $staging = Join-Path $env:RUNNER_TEMP "shepherd-native-$env:TARGET"
+          New-Item -ItemType Directory -Force $staging | Out-Null
+          $stagedBinary = Join-Path $staging 'shepherd.exe'
+          Copy-Item -LiteralPath target/release/shepherd.exe -Destination $stagedBinary
+          bash scripts/stage-distribution-legal.sh "$staging" --scope native --target "$env:TARGET"
+          Get-ChildItem -LiteralPath $staging -Recurse -File | ForEach-Object { $_.LastWriteTimeUtc = [DateTime]'1980-01-01T00:00:00Z' }
+          $versioned = "shepherd-$env:VERSION-$env:TARGET.zip"
+          $stable = "shepherd-$env:TARGET.zip"
+          Add-Type -AssemblyName System.IO.Compression
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          function New-DeterministicZip([string]$Destination) {
+            if (Test-Path -LiteralPath $Destination) { Remove-Item -LiteralPath $Destination -Force }
+            $archive = [System.IO.Compression.ZipFile]::Open(
+              $Destination,
+              [System.IO.Compression.ZipArchiveMode]::Create
+            )
+            try {
+              $files = @(Get-ChildItem -LiteralPath $staging -Recurse -File | Sort-Object FullName)
+              foreach ($file in $files) {
+                $relative = $file.FullName.Substring($staging.Length).TrimStart([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar).Replace('\', '/')
+                $entry = $archive.CreateEntry($relative, [System.IO.Compression.CompressionLevel]::Optimal)
+                $entry.LastWriteTime = [DateTimeOffset]'1980-01-01T00:00:00Z'
+                $source = [System.IO.File]::OpenRead($file.FullName)
+                try {
+                  $destinationStream = $entry.Open()
+                  try { $source.CopyTo($destinationStream) } finally { $destinationStream.Dispose() }
+                } finally { $source.Dispose() }
+              }
+            } finally { $archive.Dispose() }
+          }
+          New-DeterministicZip "dist/$versioned"
+          $reproducibilityProbe = Join-Path $env:RUNNER_TEMP "shepherd-$env:TARGET-repro.zip"
+          New-DeterministicZip $reproducibilityProbe
+          if ((Get-FileHash -LiteralPath "dist/$versioned" -Algorithm SHA256).Hash -cne (Get-FileHash -LiteralPath $reproducibilityProbe -Algorithm SHA256).Hash) {
+            throw 'Windows release ZIP is not reproducible from identical staged inputs'
+          }
+          Remove-Item -LiteralPath $reproducibilityProbe -Force
+          Copy-Item -LiteralPath "dist/$versioned" -Destination "dist/$stable"
+          foreach ($asset in @($versioned, $stable)) {
+            $hash = (Get-FileHash -LiteralPath "dist/$asset" -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $asset" | Set-Content -NoNewline -LiteralPath "dist/$asset.sha256"
+          }
+      - name: Verify asset sidecars
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          (
+            cd dist
+            for check in *.sha256; do
+              shasum -a 256 --check "$check"
+            done
+          )
+      - name: Verify asset sidecars
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Get-ChildItem -LiteralPath dist -Filter '*.sha256' | ForEach-Object {
+            if ((Get-Content -LiteralPath $_.FullName) -notmatch '^[0-9A-Fa-f]{64}  [^/\\]+$') {
+              throw "invalid checksum sidecar: $($_.Name)"
+            }
+          }
+      - name: Exercise the Windows installer against the packaged asset
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: scripts/tests/test-release-installer-windows.ps1 -Version $env:VERSION -ArchiveDirectory dist
+      - name: Exercise the Windows installer with Windows PowerShell 5.1
+        if: runner.os == 'Windows'
+        shell: powershell
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: scripts/tests/test-release-installer-windows.ps1 -Version $env:VERSION -ArchiveDirectory dist
+      - name: Upload native release assets
+        uses: actions/upload-artifact@v7 # v7.0.1
+        with:
+          name: release-native-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 1
+
+  verify-macos-archive-layout:
+    name: Verify binstall archive layout (macos-14)
+    needs: resolve
+    if: needs.resolve.outputs.build_native == 'true'
+    runs-on: macos-14
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout release commit
+        uses: actions/checkout@v7 # v7.0.1
+        with:
+          fetch-depth: 1
+          ref: ${{ needs.resolve.outputs.ref }}
+      - name: Archive layout gate is falsifiable
+        shell: bash
+        run: scripts/tests/test-release-archive-layout.sh --self-test
+      - name: Archive layout gate holds
+        shell: bash
+        run: scripts/tests/test-release-archive-layout.sh
+
+  build-component-assets:
+    name: Component and harness adapters
+    needs: resolve
+    if: needs.resolve.outputs.build_component == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout release commit
+        uses: actions/checkout@v7 # v7.0.1
+        with:
+          fetch-depth: 1
+          ref: ${{ needs.resolve.outputs.ref }}
+      - name: Setup Rust with the Component Model target
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache: false
+          target: wasm32-wasip2
+      - name: Install locked Node dependencies
+        run: npm ci --ignore-scripts
+      - name: Build and validate the Component Model artifact
+        run: |
+          set -euo pipefail
+          cargo build --locked --release --package shepherd-component --target wasm32-wasip2
+          bash scripts/test-component-node.sh
+          node --test packages/component-runtime/test/*.test.mjs
+          node packages/harness-claude/test.mjs
+          node packages/harness-codex/test.mjs
+          node packages/harness-pi/test.mjs
+          node packages/scripts/check-package-boundary.mjs
+          bash scripts/test-packed-plugin.sh
+      - name: Stage Wasm component and npm adapter tarballs
+        shell: bash
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          wasm='target/wasm32-wasip2/release/shepherd_component.wasm'
+          test -s "$wasm"
+          mkdir -p dist stage/packages
+          component_stage="${RUNNER_TEMP}/shepherd-component-wasm32-wasip2"
+          mkdir -p "$component_stage"
+          cp "$wasm" "$component_stage/shepherd-component.wasm"
+          scripts/stage-distribution-legal.sh "$component_stage"
+          TZ=UTC find "$component_stage" -type f -exec touch -t 198001010000 {} +
+          component_legal_entries=()
+          while IFS= read -r entry; do
+            component_legal_entries+=("$entry")
+          done < <(
+              cd "$component_stage"
+              find THIRD_PARTY_LICENSES -type f -name '*.txt' -print | LC_ALL=C sort
+            )
+          ((${#component_legal_entries[@]} > 0))
+          for asset in \
+            "shepherd-component-${VERSION}-wasm32-wasip2.tar.gz" \
+            'shepherd-component-wasm32-wasip2.tar.gz'; do
+            scripts/create-release-tar.sh \
+              "$component_stage" "dist/${asset}" \
+              LICENSE THIRD_PARTY_NOTICES.md "${component_legal_entries[@]}" shepherd-component.wasm
+          done
+          for package in component-runtime harness-claude harness-codex harness-pi; do
+            cp -R "packages/${package}" "stage/packages/${package}"
+          done
+          SHEPHERD_COMPONENT_NODE_ROOT="$PWD" SHEPHERD_COMPONENT_WASM="$wasm" \
+            scripts/stage-component-runtime.sh stage
+          scripts/stage-distribution-legal.sh stage
+          ln -s "$PWD/node_modules" stage/packages/component-runtime/node_modules
+          for package in component-runtime harness-claude harness-codex harness-pi; do
+            (
+              cd "stage/packages/${package}"
+              npm pack --json --ignore-scripts --pack-destination "$PWD/../../../dist" >/dev/null
+            )
+          done
+          (
+            cd dist
+            for asset in *; do
+              sha256sum "$asset" > "${asset}.sha256"
+            done
+          )
+      - name: Verify component and npm release asset sidecars
+        shell: bash
+        run: |
+          set -euo pipefail
+          (
+            cd dist
+            for check in *.sha256; do
+              sha256sum --check --status "$check"
+            done
+          )
+      - name: Upload Component Model and adapter assets
+        uses: actions/upload-artifact@v7 # v7.0.1
+        with:
+          name: release-component-and-adapters
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 1

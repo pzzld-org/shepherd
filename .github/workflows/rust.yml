@@ -135,6 +135,36 @@ jobs:
           # by its full path rather than assuming the export already took.
           "${RUNNER_TEMP}/gate-bin/rg" --version
           printf '%s\n' "${RUNNER_TEMP}/gate-bin" >> "${GITHUB_PATH}"
+      # Reusable-workflow wiring cannot be validated by a YAML parse: a
+      # `workflow_call` input the caller never passes, a secret a called
+      # workflow requires but the caller omits, or a `needs:` naming a job that
+      # moved, all parse fine and fail at dispatch time. actionlint checks
+      # exactly that, and it is what verified the cargo-build split.
+      - name: Install pinned actionlint
+        uses: taiki-e/install-action@v2
+        with:
+          tool: actionlint@1.7.12
+      - name: Lint every workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Count and state it: a glob that matches nothing must fail, not pass
+          # by having checked zero files.
+          workflows=()
+          while IFS= read -r workflow_file; do
+            workflows+=("$workflow_file")
+          done < <(find .github/workflows -maxdepth 1 -name '*.yml' | sort)
+          (( ${#workflows[@]} > 0 )) || {
+            printf 'no workflow files discovered under .github/workflows\n' >&2
+            exit 1
+          }
+          # SC2016 ("expressions don't expand in single quotes") is INFO-level
+          # and fires on every `printf 'format %s\n' "$value"` in the repo,
+          # where the single quotes are correct -- printf consumes the %s, not
+          # the shell. Excluding one noisy info check keeps real warnings
+          # visible; SC2209 was found by this lint and fixed, not suppressed.
+          SHELLCHECK_OPTS=--exclude=SC2016 actionlint "${workflows[@]}"
+          printf 'actionlint: %s workflow file(s) clean\n' "${#workflows[@]}"
       # `gate.sh fast` runs four Node-backed steps (packages/scripts/check-deps.mjs
       # both halves, the release legal-material check that reads
       # node_modules/@bytecodealliance/preview2-shim, and the Cargo publisher
