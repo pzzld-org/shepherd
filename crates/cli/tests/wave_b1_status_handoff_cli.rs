@@ -111,7 +111,15 @@ fn status_no_db_is_a_stable_read_only_failure() {
     assert_eq!(output.status.code(), Some(1));
     assert!(output.stdout.is_empty());
     assert!(String::from_utf8_lossy(&output.stderr).contains("ERROR: no DB at "));
-    assert!(String::from_utf8_lossy(&output.stderr).contains("run 'shepherd init'"));
+    // The remediation must be runnable as printed: `init` refuses without
+    // `--confirm`, so the flagless form this assertion used to accept sent the
+    // operator to an exit-2 dead end. Guarded by
+    // hooks/scripts/remediation_flag_lint.py across every call site.
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("run 'shepherd init --confirm'"),
+        "stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     assert!(!String::from_utf8_lossy(&output.stderr).contains("shctx"));
     fs::remove_dir_all(root).expect("cleanup");
 }
