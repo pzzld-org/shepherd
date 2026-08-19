@@ -52,8 +52,18 @@ Anything outside this list is an escalation to root, not a lane decision.
 - [x] boot verified (worktree, base `c7cc9c0`, clean tree, plan readable)
 - [x] `W0-GATE` reproduction recorded for #323 and #320
 - [x] `L2-S1` implemented (6 files + scope-amended `crates/cli/tests/guard_cli.rs`)
-- [ ] `L2-S1` wave review clean
-- [ ] `L2-S1` committed
-- [ ] `L2-S2` implemented
-- [ ] `L2-S2` wave review clean
+- [x] `L2-S1` wave review clean (verdict PASS; findings text never returned, conductor re-verified independently)
+- [x] `L2-S1` committed as `05aa4cd`
+- [x] `L2-S2` implemented
+- [x] `L2-S2` verified by conductor against ground truth (CLI path, independent of the test harness)
 - [ ] `L2-S2` committed
+
+## D6 (#320) disposition
+
+The asymmetry is **intended at this boundary** and out of this lane's reach to remove.
+`write-boundary` governs the typed write surface only; `evaluate_bash_tool` never consults
+it. Closing it means statically inferring filesystem effects from arbitrary shell, which G2
+makes a critic-RED escalation. Pinned by
+`write_boundary_governs_write_but_bash_performing_the_identical_write_allows` in
+`crates/core/tests/guard.rs`, with a third assertion proving `Bash` is not simply unguarded.
+#320 closes citing `evidence/issue-320.md`.

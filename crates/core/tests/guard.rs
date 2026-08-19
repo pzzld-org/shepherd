@@ -2256,3 +2256,113 @@ fn conductor_cannot_dispatch_the_planter_or_the_root_orchestrator() {
         Some("WRONG-TIER-DISPATCH")
     );
 }
+
+/// #320: `write-boundary` governs the TYPED write surface only, and that is
+/// deliberate, not a hole. `evaluate_tool_call`
+/// (`crates/core/src/guard/engine.rs:209-235`) routes `Write`/`Edit`/
+/// `apply_patch` to `evaluate_write_tool` (`:237-339`), which evaluates
+/// `write-boundary` under the `fs.write` action against the dispatch's
+/// resolved write scope. `Bash` routes instead to `evaluate_bash_tool`
+/// (`:341-383`), which parses the command ONLY for git subcommands via
+/// `extract_git_subcommands` and returns a bare `Verdict::allow()` for every
+/// command that yields none. `write-boundary` is therefore never consulted
+/// on the `Bash` path, for any command, git or not -- an opaque shell string
+/// (a redirect, `tee`, `cp`, `dd`, `sed -i`, ...) is not statically
+/// governable the way a typed tool's target path is.
+///
+/// The one-line reason this stays asymmetric: closing it would mean
+/// statically parsing arbitrary shell for filesystem effects and denying on
+/// the inference, which is a new subsystem (v6.5.1 plan global constraint
+/// G2) and the identical static-analysis arms race this project already
+/// declines on the `Workflow`-script side, for the identical reason, at
+/// `hooks/tests/test_native_cli_contract.sh:77-81`. The typed tool surface
+/// carries a typed target and is governed by `write-boundary`; the opaque
+/// shell string is governed by role tier through `git-custody` instead --
+/// the third assertion below proves `Bash` is not simply unguarded, which is
+/// the half a future reader will most doubt.
+///
+/// #320 closes citing this test
+/// (`.shepherd/runs/v651/lanes/l2-dispatch-scope/evidence/issue-320.md`). Do
+/// NOT "fix" this by teaching `evaluate_bash_tool` to infer filesystem
+/// writes from shell text, and do not narrow what `Bash` allows here without
+/// deliberately deleting this assertion and stating why in the commit that
+/// does it.
+#[test]
+fn write_boundary_governs_write_but_bash_performing_the_identical_write_allows() {
+    let engine = live_engine();
+    let dispatch_out_of_scope = || {
+        object([
+            ("schema", GuardValue::from("shepherd.identity-resolution/1")),
+            ("role", GuardValue::from("auditor")),
+            (
+                "write_paths",
+                GuardValue::Array(vec![GuardValue::from(".shepherd/runs/v651/reports/a.md")]),
+            ),
+            ("path_in_write_scope", GuardValue::from(false)),
+        ])
+    };
+
+    // Half 1: the typed `Write` tool IS governed and denies -- same role,
+    // same destination path, a full valid dispatch resolution block.
+    let write_verdict = evaluate(
+        &engine,
+        &object([
+            ("role", GuardValue::from("auditor")),
+            ("tool_name", GuardValue::from("Write")),
+            (
+                "tool_input",
+                object([("file_path", GuardValue::from("/tmp/x/out.md"))]),
+            ),
+            ("dispatch", dispatch_out_of_scope()),
+        ]),
+    );
+    assert_eq!(write_verdict.decision, Decision::Deny);
+    assert_eq!(write_verdict.predicate.as_deref(), Some("write-boundary"));
+    assert_eq!(
+        write_verdict.rule.as_deref(),
+        Some("role-write-eligibility,path-in-declared-scope")
+    );
+
+    // Half 2: the identical write, performed through `Bash`, allows. The
+    // identical dispatch block is attached to prove it changes nothing --
+    // `evaluate_bash_tool` never reads it.
+    let bash_verdict = evaluate(
+        &engine,
+        &object([
+            ("role", GuardValue::from("auditor")),
+            ("tool_name", GuardValue::from("Bash")),
+            (
+                "tool_input",
+                object([("command", GuardValue::from("echo hi > /tmp/x/out.md"))]),
+            ),
+            ("dispatch", dispatch_out_of_scope()),
+        ]),
+    );
+    assert_eq!(bash_verdict.decision, Decision::Allow);
+
+    // Half 3: the negative control. `Bash` is not simply unguarded -- a git
+    // write verb from the same role still denies under `git-custody`, which
+    // IS reachable from `evaluate_bash_tool`. `Bash` skips `write-boundary`
+    // specifically; it does not skip enforcement generally.
+    let bash_git_verdict = evaluate(
+        &engine,
+        &object([
+            ("role", GuardValue::from("auditor")),
+            ("tool_name", GuardValue::from("Bash")),
+            (
+                "tool_input",
+                object([("command", GuardValue::from("git commit -am x"))]),
+            ),
+        ]),
+    );
+    assert_eq!(bash_git_verdict.decision, Decision::Deny);
+    assert_eq!(bash_git_verdict.predicate.as_deref(), Some("git-custody"));
+    assert_eq!(
+        bash_git_verdict.rule.as_deref(),
+        Some("implementer-never-writes-git")
+    );
+    assert_eq!(
+        bash_git_verdict.halt_code.as_deref(),
+        Some("CODER-GIT-WRITE")
+    );
+}
