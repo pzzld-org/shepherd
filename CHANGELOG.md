@@ -4,7 +4,7 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
-## v6.5.2 — unreleased
+## v6.5.2 — 2026-08-19
 
 ### Fixed — the Pi adapter has never been loadable by Pi
 
