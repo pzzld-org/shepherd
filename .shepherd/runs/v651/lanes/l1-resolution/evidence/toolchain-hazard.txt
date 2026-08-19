@@ -1,0 +1,33 @@
+# `grep` on this host is ugrep, and it disagrees with POSIX on -q + -v
+#
+# Recorded by the l1-resolution conductor because the master plan's L1-S2
+# acceptance block relies on `grep -qv`, and because lane `l7-assertions` is
+# about to write ONE shared assertion helper for 118 call sites. If that helper
+# combines -q with -v it inherits this.
+
+$ grep --version | head -1
+ugrep 7.5.0 aarch64-apple-macosx +neon/AArch64; -P:pcre2jit; -z:zlib,...
+
+# Against evidence/pre-fix.txt, which has 88 lines NOT containing 'os error 2':
+
+  grep    -q  'os error 2'   -> 0   (correct: pattern present)
+  grep    -q  'zzz-absent'   -> 1   (correct: pattern absent)
+  grep    -qv 'os error 2'   -> 1   (WRONG: 88 non-matching lines exist)
+  grep -q --invert-match ... -> 1   (same, long form)
+  grep    -qv 'zzz-absent'   -> 0   (correct only because ALL lines qualify)
+  grep    -v  'os error 2'   -> 0   (correct, and prints the 88 lines)
+  /usr/bin/grep -qv 'os error 2' -> 0   (POSIX-correct)
+
+# Reading: ugrep applies -v to the overall found/not-found result rather than
+# to line selection when -q is present, so `grep -qv X` behaves like
+# `! grep -q X`. Note -q alone and -v alone are both correct; only the
+# combination diverges, which is what makes it easy to ship.
+#
+# Blast radius as of c7cc9c0: zero existing `grep -qv` call sites under hooks/
+# or scripts/ (9 uses of `grep -v`, none quiet). Nothing pins /usr/bin/grep.
+# So this is a hazard to AVOID, not a bug to repair -- provided l7 knows.
+#
+# hooks/tests/lib/ guidance: assert by testing the exit status of a plain
+# `grep -q` in the shell, never by inverting inside grep. sandbox.sh already
+# does this -- see assert_not_contains, which calls `grep -qF` and inverts in
+# bash.

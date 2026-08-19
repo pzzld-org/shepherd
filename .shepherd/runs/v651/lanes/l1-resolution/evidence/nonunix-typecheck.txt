@@ -1,0 +1,64 @@
+# Type-checking the #[cfg(not(unix))] twin — the one gap no local gate covers
+
+The collapse in d5df3c3 edited BOTH platform copies of the resolver, but only
+the unix copy is compiled on this macOS host. An edit to the non-unix twin that
+does not compile would ship green. Closing that gap by hand:
+
+## Attempt 1 — the obvious route, and why it fails
+
+  $ rustup target add x86_64-pc-windows-msvc      # already installed
+  $ cargo check -p shepherd-cli --target x86_64-pc-windows-msvc --locked
+  EXIT=101
+
+  cargo:warning=.../mm_malloc.h:13:10: fatal error: 'stdlib.h' file not found
+  error occurred in cc-rs: ... "--target=x86_64-pc-windows-msvc" ... sqlite3.c
+
+`libsqlite3-sys` compiles C and there is no Windows C toolchain on this host,
+so the build dies in a dependency and NEVER TYPE-CHECKS shepherd-cli. A green
+run here would have been meaningless; a red one says nothing about our code.
+
+## Attempt 2 — compile the twin on a unix host instead
+
+In a throwaway copy of d5df3c3 (the worktree was not touched):
+
+  crates/cli/src/dispatch_store.rs
+    #[cfg(not(unix))] mod platform {   ->   mod platform_nonunix_probe {
+  crates/cli/src/lib.rs
+    #[cfg(not(unix))] mod safe_fs;     ->   mod safe_fs;
+  crates/cli/src/safe_fs.rs
+    #![cfg(not(unix))]                 ->   (stripped)
+
+Nothing else changed; no call site was redirected. rustc simply reads the twin.
+
+  $ CARGO_TARGET_DIR=... cargo check -p shepherd-cli --locked
+  EXIT=0
+  Finished `dev` profile [optimized + debuginfo] target(s) in 1.92s
+
+  errors: none. errors in dispatch_store.rs: none.
+
+## What that actually proves
+
+1. `platform::open_runs_root` returning `()` type-checks, and the shared
+   resolver binding it as an anchor type-checks against that.
+2. `platform::read_run_document(store, _root: &(), run)` type-checks against
+   the shared call site.
+3. **`is_not_found` still resolves inside the twin.** This was the real risk of
+   the collapse: both platform-local `fn is_not_found` copies were deleted and
+   one was hoisted to the outer module. The twin CALLS it twice and DEFINES it
+   zero times:
+
+     twin call sites            : 2   (`if is_not_found(&error)`, `Err(error) if is_not_found(&error)`)
+     twin local definitions     : 0
+     definitions in whole file  : 1   (outer module, dispatch_store.rs:285)
+
+   So `use super::*;` in a child module does reach the parent's private fn, and
+   the clean check is the proof rather than an assumption.
+
+## What it does NOT prove
+
+Behaviour. This is a type-check, not a test: no non-unix test was executed and
+none can be on this host. The twin's RUNTIME agreement with the unix copy for
+the new skip is argued from `safe_fs` mapping absence to `Io { NotFound }` and
+type confusion to `UnsafePath`, not measured. That residual risk is exactly why
+the choosing logic was de-duplicated: what remains twinned is two small
+anchoring functions, not the decision.

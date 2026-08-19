@@ -1,0 +1,168 @@
+# POST-FIX verification — lane l1-resolution, run v651, deliverable D2 (#330)
+# captured by the lane conductor, 2026-08-19T07:09:33Z
+# binary: /Users/jo3/src/pzzld/shepherd/.worktrees/v651-l1-resolution/target/debug/shepherd (built from this worktree WITH the fix)
+
+================ sandbox.sh --mode expect-fixed  (must exit 0) ================
+shepherd #330 reproduction sandbox
+mode      : expect-fixed
+binary    : /Users/jo3/src/pzzld/shepherd/.worktrees/v651-l1-resolution/target/debug/shepherd
+sandbox   : /var/folders/98/hw9cxq3d29sdw5nb5gv0b9wh0000gn/T/shepherd-330-dXqoAo
+version   : shepherd-cli 6.5.1
+
+=== STEP 1 · scaffold the layout-v5 namespace ===
+initialized layout-v5 namespace: /private/var/folders/98/hw9cxq3d29sdw5nb5gv0b9wh0000gn/T/shepherd-330-dXqoAo/.shepherd
+registry: /private/var/folders/98/hw9cxq3d29sdw5nb5gv0b9wh0000gn/T/shepherd-330-dXqoAo/.shepherd/shepherd.db
+
+=== STEP 2 · plant the legacy namespace: plan.md, no run.json ===
+plan.md
+
+=== STEP 3 · create one healthy run beside it ===
+/private/var/folders/98/hw9cxq3d29sdw5nb5gv0b9wh0000gn/T/shepherd-330-dXqoAo/.shepherd/runs/v651/run.json
+{
+  "base": "",
+  "branch": "",
+  "kind": "sprint",
+  "lanes": [],
+  "plan": "",
+  "run": "v651",
+  "schema_version": 1,
+  "seed": "",
+  "status": "planted",
+  "updated_at": 1787123373
+}
+
+=== PROBE 1 · PreToolUse with v651 status=planted (expect ADVISORY, tool allowed) ===
+{"hookSpecificOutput":{"additionalContext":"[shepherd] no usable run namespace (no executing shepherd run exists); tool allowed. Repair with `shepherd run layout <run> --repair` then `shepherd run set <run> --status executing`.","hookEventName":"PreToolUse"}}
+[exit 0]
+
+=== STEP 4 · raise v651 to executing (SANDBOX ONLY — mesh R36d) ===
+updated v651
+run v651 status -> executing
+
+=== PROBE 2 · PreToolUse with v651 status=executing (expect HARD DENY) ===
+{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[shepherd] dispatch filesystem operation `open regular file` failed for /private/var/folders/98/hw9cxq3d29sdw5nb5gv0b9wh0000gn/T/shepherd-330-dXqoAo/.shepherd/runs/v651/dispatch/.root-session.probe-330.json: No such file or directory (os error 2)"}}
+[exit 0]
+
+=== STEP 5 · lower v651 back to planted ===
+updated v651
+run v651 status -> planted
+
+=== PROBE 3 · PreToolUse with v651 status=planted again (expect ADVISORY) ===
+{"hookSpecificOutput":{"additionalContext":"[shepherd] no usable run namespace (no executing shepherd run exists); tool allowed. Repair with `shepherd run layout <run> --repair` then `shepherd run set <run> --status executing`.","hookEventName":"PreToolUse"}}
+[exit 0]
+
+=== STEP 6 · safe mitigation (mesh R36i): give the legacy namespace a run.json ===
+{"run":"v500","status":"closed"}
+
+=== PROBE 4 · PreToolUse after the mitigation (expect the correct banner) ===
+{"hookSpecificOutput":{"additionalContext":"[shepherd] no usable run namespace (no executing shepherd run exists); tool allowed. Repair with `shepherd run layout <run> --repair` then `shepherd run set <run> --status executing`.","hookEventName":"PreToolUse"}}
+[exit 0]
+
+=== ASSERTIONS · mode=expect-fixed ===
+PASS  planted/1 no longer names the legacy run.json
+PASS  planted/1 no longer reports a filesystem abort
+PASS  planted/1 reaches the pre-existing NoActiveRun message
+PASS  planted/1 still allows the tool
+PASS  executing no longer names the legacy run.json
+PASS  executing no longer aborts over any run.json
+PASS  planted/2 no longer names the legacy run.json
+PASS  planted/2 no longer reports a filesystem abort
+PASS  planted/2 reaches the pre-existing NoActiveRun message
+PASS  mitigated no longer names the legacy run.json
+PASS  mitigated keeps the NoActiveRun message
+
+=== NOTES · not verdicts, not counted ===
+  NOTE  #315 is now observable: status=executing still denies
+        over /private/var/folders/98/hw9cxq3d29sdw5nb5gv0b9wh0000gn/T/shepherd-330-dXqoAo/.shepherd/runs/v651/dispatch/.root-session.probe-330.json
+  NOTE  that path is inside a REAL run, not a stale namespace
+        issue #315, lane l4-diagnostics -- out of scope for D2, not a #330 regression
+
+=== RESULT ===
+mode=expect-fixed passed=11 failed=0
+#330 is fixed: the legacy namespace is inert at every status, and
+the resolver reaches the pre-existing "no executing shepherd run
+exists". Any deny above is #315 (lane l4-diagnostics), not this.
+[sandbox exit 0]
+
+================ sandbox.sh --mode expect-abort against the SAME fixed binary
+================ (must FAIL — this is the falsification proving the harness
+================  can fail, i.e. that expect-fixed passing means something)
+shepherd #330 reproduction sandbox
+mode      : expect-abort
+binary    : /Users/jo3/src/pzzld/shepherd/.worktrees/v651-l1-resolution/target/debug/shepherd
+sandbox   : /var/folders/98/hw9cxq3d29sdw5nb5gv0b9wh0000gn/T/shepherd-330-9on7Rw
+version   : shepherd-cli 6.5.1
+
+=== STEP 1 · scaffold the layout-v5 namespace ===
+initialized layout-v5 namespace: /private/var/folders/98/hw9cxq3d29sdw5nb5gv0b9wh0000gn/T/shepherd-330-9on7Rw/.shepherd
+registry: /private/var/folders/98/hw9cxq3d29sdw5nb5gv0b9wh0000gn/T/shepherd-330-9on7Rw/.shepherd/shepherd.db
+
+=== STEP 2 · plant the legacy namespace: plan.md, no run.json ===
+plan.md
+
+=== STEP 3 · create one healthy run beside it ===
+/private/var/folders/98/hw9cxq3d29sdw5nb5gv0b9wh0000gn/T/shepherd-330-9on7Rw/.shepherd/runs/v651/run.json
+{
+  "base": "",
+  "branch": "",
+  "kind": "sprint",
+  "lanes": [],
+  "plan": "",
+  "run": "v651",
+  "schema_version": 1,
+  "seed": "",
+  "status": "planted",
+  "updated_at": 1787123373
+}
+
+=== PROBE 1 · PreToolUse with v651 status=planted (expect ADVISORY, tool allowed) ===
+{"hookSpecificOutput":{"additionalContext":"[shepherd] no usable run namespace (no executing shepherd run exists); tool allowed. Repair with `shepherd run layout <run> --repair` then `shepherd run set <run> --status executing`.","hookEventName":"PreToolUse"}}
+[exit 0]
+
+=== STEP 4 · raise v651 to executing (SANDBOX ONLY — mesh R36d) ===
+updated v651
+run v651 status -> executing
+
+=== PROBE 2 · PreToolUse with v651 status=executing (expect HARD DENY) ===
+{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"[shepherd] dispatch filesystem operation `open regular file` failed for /private/var/folders/98/hw9cxq3d29sdw5nb5gv0b9wh0000gn/T/shepherd-330-9on7Rw/.shepherd/runs/v651/dispatch/.root-session.probe-330.json: No such file or directory (os error 2)"}}
+[exit 0]
+
+=== STEP 5 · lower v651 back to planted ===
+updated v651
+run v651 status -> planted
+
+=== PROBE 3 · PreToolUse with v651 status=planted again (expect ADVISORY) ===
+{"hookSpecificOutput":{"additionalContext":"[shepherd] no usable run namespace (no executing shepherd run exists); tool allowed. Repair with `shepherd run layout <run> --repair` then `shepherd run set <run> --status executing`.","hookEventName":"PreToolUse"}}
+[exit 0]
+
+=== STEP 6 · safe mitigation (mesh R36i): give the legacy namespace a run.json ===
+{"run":"v500","status":"closed"}
+
+=== PROBE 4 · PreToolUse after the mitigation (expect the correct banner) ===
+{"hookSpecificOutput":{"additionalContext":"[shepherd] no usable run namespace (no executing shepherd run exists); tool allowed. Repair with `shepherd run layout <run> --repair` then `shepherd run set <run> --status executing`.","hookEventName":"PreToolUse"}}
+[exit 0]
+
+=== ASSERTIONS · mode=expect-abort ===
+PASS  planted/1 reports no usable run namespace
+FAIL  planted/1 names the missing legacy run.json
+      expected output to contain: runs/v500/run.json
+FAIL  planted/1 names the failing filesystem operation
+      expected output to contain: open regular file
+PASS  planted/1 states the tool was allowed
+PASS  planted/1 is advisory, not a denial
+PASS  executing hard-denies the tool
+FAIL  executing denies over the missing legacy run.json
+      expected output to contain: runs/v500/run.json
+PASS  executing offers no advisory escape
+PASS  planted/2 returns to no usable run namespace
+FAIL  planted/2 names the missing legacy run.json
+      expected output to contain: runs/v500/run.json
+PASS  planted/2 is advisory again, not a denial
+PASS  mitigated banner drops the filesystem abort
+PASS  mitigated banner no longer names the legacy run.json
+
+=== RESULT ===
+mode=expect-abort passed=9 failed=4
+#330 did NOT reproduce as specified. This harness is only
+meaningful while it fails loudly, so this is exit 1.
+[sandbox exit non-zero, as required]

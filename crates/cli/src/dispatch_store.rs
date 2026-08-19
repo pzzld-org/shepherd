@@ -96,7 +96,7 @@ impl DispatchStore {
     }
 
     pub fn resolve_active_run(&self) -> DispatchStoreResult<RunId> {
-        platform::resolve_active_run(self)
+        resolve_active_run(self)
     }
 
     pub fn publish_active(&self, record: &DispatchRecord) -> DispatchStoreResult<()> {
@@ -217,6 +217,79 @@ fn root_binding_name(session_id: &SessionId) -> String {
     format!(".root-session.{}.json", session_id.as_str())
 }
 
+/// Resolve the single `status == "executing"` run beneath the runs root.
+///
+/// Enumeration is deliberately tolerant of what it finds. `.shepherd/runs/`
+/// accumulates directories that are not runs -- a legacy namespace holding
+/// only `plan.md`, an empty tree, a scratch tree carrying `dispatch/` and no
+/// `run.json` -- and that set is unbounded, so repairing one only reveals the
+/// next. A namespace whose `run.json` is *absent* is therefore passed over
+/// exactly as a name that does not parse as a `RunId` already is.
+///
+/// Absence is the only tolerated failure. A corrupt document still raises
+/// `InvalidRunDocument` and a linked or non-regular one still raises
+/// `UnsafePath`: swallowing those would trade a loud abort for a silent
+/// `NoActiveRun` and delete the diagnosis, which is the same deadlock with
+/// less to go on (#330).
+///
+/// Everything above the anchoring is platform-free and lives here once. The
+/// `platform` twins contribute only `open_runs_root` and `read_run_document`.
+fn resolve_active_run(store: &DispatchStore) -> DispatchStoreResult<RunId> {
+    let root = platform::open_runs_root(store)?;
+    let mut names = Vec::new();
+    let entries = std::fs::read_dir(&store.runs_root).map_err(|source| {
+        DispatchStoreError::io("read runs directory", store.runs_root.clone(), source)
+    })?;
+    for entry in entries {
+        let entry = entry.map_err(|source| {
+            DispatchStoreError::io("read runs directory", store.runs_root.clone(), source)
+        })?;
+        let name = entry.file_name();
+        let name = name
+            .to_str()
+            .ok_or_else(|| DispatchStoreError::UnsafePath {
+                path: store.runs_root.join("<non-utf8>"),
+            })?;
+        if name == "." || name == ".." {
+            continue;
+        }
+        if let Ok(run) = RunId::new(name) {
+            names.push(run);
+        }
+    }
+    names.sort();
+    names.dedup();
+
+    let mut active = Vec::new();
+    for run in names {
+        let state = match platform::read_run_document(store, &root, &run) {
+            Ok(state) => state,
+            Err(error) if is_not_found(&error) => continue,
+            Err(error) => return Err(error),
+        };
+        if state.status == "executing" {
+            active.push(run);
+        }
+    }
+    match active.len() {
+        0 => Err(DispatchStoreError::NoActiveRun),
+        1 => Ok(active.remove(0)),
+        _ => Err(DispatchStoreError::AmbiguousActiveRuns { runs: active }),
+    }
+}
+
+/// Whether `error` is the filesystem reporting that a name does not exist.
+///
+/// `unsafe_path_or_io` sends `ELOOP` and `ENOTDIR` to `UnsafePath`, so what
+/// reaches `Io { NotFound }` really is "no such entry" and nothing else.
+fn is_not_found(error: &DispatchStoreError) -> bool {
+    matches!(
+        error,
+        DispatchStoreError::Io { source, .. }
+            if source.kind() == std::io::ErrorKind::NotFound
+    )
+}
+
 #[cfg(unix)]
 mod platform {
     use std::fs::TryLockError;
@@ -232,47 +305,6 @@ mod platform {
     const LOCK_RETRY_INTERVAL: Duration = Duration::from_millis(10);
     const MAX_TEMP_ATTEMPTS: u32 = 100;
     static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
-
-    pub(super) fn resolve_active_run(store: &DispatchStore) -> DispatchStoreResult<RunId> {
-        let root = open_runs_root(store)?;
-        let mut names = Vec::new();
-        let entries = std::fs::read_dir(&store.runs_root).map_err(|source| {
-            DispatchStoreError::io("read runs directory", store.runs_root.clone(), source)
-        })?;
-        for entry in entries {
-            let entry = entry.map_err(|source| {
-                DispatchStoreError::io("read runs directory", store.runs_root.clone(), source)
-            })?;
-            let name = entry.file_name();
-            let name = name
-                .to_str()
-                .ok_or_else(|| DispatchStoreError::UnsafePath {
-                    path: store.runs_root.join("<non-utf8>"),
-                })?;
-            if name == "." || name == ".." {
-                continue;
-            }
-            if let Ok(run) = RunId::new(name) {
-                names.push(run);
-            }
-        }
-        names.sort();
-        names.dedup();
-
-        let mut active = Vec::new();
-        for run in names {
-            let run_fd = open_run_dir(store, &root, &run)?;
-            let state = read_run_document(store, &run_fd, &run)?;
-            if state.status == "executing" {
-                active.push(run);
-            }
-        }
-        match active.len() {
-            0 => Err(DispatchStoreError::NoActiveRun),
-            1 => Ok(active.remove(0)),
-            _ => Err(DispatchStoreError::AmbiguousActiveRuns { runs: active }),
-        }
-    }
 
     pub(super) fn publish(
         store: &DispatchStore,
@@ -405,7 +437,11 @@ mod platform {
         Ok(resumed)
     }
 
-    fn open_runs_root(store: &DispatchStore) -> DispatchStoreResult<OwnedFd> {
+    /// Walk `/` down to the runs root one `O_NOFOLLOW` descriptor at a time.
+    ///
+    /// Also the anchor the shared resolver holds across enumeration, which is
+    /// why an unsafe runs root is `UnsafePath` before a single entry is read.
+    pub(super) fn open_runs_root(store: &DispatchStore) -> DispatchStoreResult<OwnedFd> {
         reject_parent_components(&store.runs_root)?;
         let mut descriptor = open(
             "/",
@@ -475,13 +511,22 @@ mod platform {
         }
     }
 
-    fn read_run_document(
+    /// Read `<runs_root>/<run>/run.json` through the runs-root descriptor.
+    ///
+    /// Opening the run directory is part of the read, not a separate step the
+    /// caller sequences: a run whose directory vanished between enumeration
+    /// and here is *absent*, which is the one failure the shared resolver
+    /// skips. A linked run directory is `ELOOP` and a non-directory is
+    /// `ENOTDIR`; `unsafe_path_or_io` renders both as `UnsafePath`, so an
+    /// escape attempt can never be mistaken for absence.
+    pub(super) fn read_run_document(
         store: &DispatchStore,
-        run_fd: &OwnedFd,
+        root: &OwnedFd,
         run: &RunId,
     ) -> DispatchStoreResult<RunState> {
+        let run_fd = open_run_dir(store, root, run)?;
         let path = store.runs_root.join(run.as_str()).join("run.json");
-        let file = open_regular_at(run_fd, "run.json", &path)?;
+        let file = open_regular_at(&run_fd, "run.json", &path)?;
         let bytes = read_bounded(file, MAX_RECORD_BYTES)
             .map_err(|source| DispatchStoreError::io("read run document", path.clone(), source))?;
         let state: RunState = serde_json::from_slice(&bytes).map_err(|error| {
@@ -845,14 +890,6 @@ mod platform {
         }
     }
 
-    fn is_not_found(error: &DispatchStoreError) -> bool {
-        matches!(
-            error,
-            DispatchStoreError::Io { source, .. }
-                if source.kind() == std::io::ErrorKind::NotFound
-        )
-    }
-
     struct DispatchLock(File);
 
     impl Drop for DispatchLock {
@@ -866,7 +903,7 @@ mod platform {
 mod platform {
     //! The non-unix twin of the descriptor-anchored dispatch ledger.
     //!
-    //! Every public function performs the SAME sequence as the unix module --
+    //! Every ledger operation performs the SAME sequence as the unix module --
     //! validate the runs root, resolve the run directory, resolve the dispatch
     //! directory, take the exclusive dispatch lock, then operate -- and returns
     //! the SAME error variants, because callers and the hook fixtures branch on
@@ -876,6 +913,14 @@ mod platform {
     //! The anchoring differs, and only the anchoring: paths with per-component
     //! link rejection instead of a chain of directory descriptors. See
     //! `crate::safe_fs` for exactly what that does and does not guarantee.
+    //!
+    //! Active-run resolution is deliberately NOT twinned. Enumerating the runs
+    //! root, filtering names, sorting, and choosing among the candidates is
+    //! platform-free, so it lives once in `super::resolve_active_run` and this
+    //! module contributes only the anchoring residue that resolver calls:
+    //! `open_runs_root` and `read_run_document`. A twin of the choosing logic
+    //! is a twin that drifts, because only one of the two is ever compiled
+    //! here.
 
     use std::fs::{File, TryLockError};
 
@@ -885,44 +930,19 @@ mod platform {
     const MAX_RECORD_BYTES: u64 = 1_048_576;
     const LOCK_RETRY_INTERVAL: Duration = Duration::from_millis(10);
 
-    pub(super) fn resolve_active_run(store: &DispatchStore) -> DispatchStoreResult<RunId> {
-        reject_parent_components(&store.runs_root)?;
-        let mut names = Vec::new();
-        let entries = std::fs::read_dir(&store.runs_root).map_err(|source| {
-            DispatchStoreError::io("read runs directory", store.runs_root.clone(), source)
-        })?;
-        for entry in entries {
-            let entry = entry.map_err(|source| {
-                DispatchStoreError::io("read runs directory", store.runs_root.clone(), source)
-            })?;
-            let name = entry.file_name();
-            let name = name
-                .to_str()
-                .ok_or_else(|| DispatchStoreError::UnsafePath {
-                    path: store.runs_root.join("<non-utf8>"),
-                })?;
-            if name == "." || name == ".." {
-                continue;
-            }
-            if let Ok(run) = RunId::new(name) {
-                names.push(run);
-            }
-        }
-        names.sort();
-        names.dedup();
+    /// The anchor the shared resolver holds across enumeration.
+    ///
+    /// The unix twin hands back a directory descriptor that every later
+    /// `openat` resolves against. There is no descriptor here -- anchoring is
+    /// per-component and re-checked at each open -- so this carries no data
+    /// and exists only as proof that the runs root was validated before a
+    /// single entry was enumerated. Only [`open_runs_root`] can mint one.
+    pub(super) struct RunsRoot;
 
-        let mut active = Vec::new();
-        for run in names {
-            let state = read_run_document(store, &run)?;
-            if state.status == "executing" {
-                active.push(run);
-            }
-        }
-        match active.len() {
-            0 => Err(DispatchStoreError::NoActiveRun),
-            1 => Ok(active.remove(0)),
-            _ => Err(DispatchStoreError::AmbiguousActiveRuns { runs: active }),
-        }
+    /// Validate the runs root and mint the resolver's anchor.
+    pub(super) fn open_runs_root(store: &DispatchStore) -> DispatchStoreResult<RunsRoot> {
+        reject_parent_components(&store.runs_root)?;
+        Ok(RunsRoot)
     }
 
     pub(super) fn publish(
@@ -1073,7 +1093,19 @@ mod platform {
         Ok(dispatch)
     }
 
-    fn read_run_document(store: &DispatchStore, run: &RunId) -> DispatchStoreResult<RunState> {
+    /// Read `<runs_root>/<run>/run.json`.
+    ///
+    /// The anchor carries nothing, so it is named `_root`: every open below
+    /// re-walks and re-checks its own components (`crate::safe_fs`), which is
+    /// exactly the guarantee the module header refuses to overstate. An absent
+    /// document surfaces as `Io { NotFound }` and a linked or non-regular one
+    /// as `UnsafePath`, so the shared resolver can tell "not a run" apart from
+    /// "unreadable".
+    pub(super) fn read_run_document(
+        store: &DispatchStore,
+        _root: &RunsRoot,
+        run: &RunId,
+    ) -> DispatchStoreResult<RunState> {
         let path = store.runs_root.join(run.as_str()).join("run.json");
         let bytes = read_document(&path, "read run document")?;
         let state: RunState = serde_json::from_slice(&bytes).map_err(|error| {
@@ -1265,14 +1297,6 @@ mod platform {
             });
         }
         Ok(())
-    }
-
-    fn is_not_found(error: &DispatchStoreError) -> bool {
-        matches!(
-            error,
-            DispatchStoreError::Io { source, .. }
-                if source.kind() == std::io::ErrorKind::NotFound
-        )
     }
 
     struct DispatchLock(File);
