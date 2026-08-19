@@ -104,12 +104,17 @@ proven correct by its three surviving controls; only the corpus needs to become 
 | R35 | The banner is emitted by the hook, not by the read-only commands. Issue #330's framing is off by one layer. | `crates/cli/src/cmd/native_hook.rs:536-542` builds the string. It reaches the operator via `HookOutput::Context` on PreToolUse — it fires for `ls`, for `Agent`, for every tool, not only for `shepherd` subcommands. |
 | R36 | **#330 MASKS #315 and #314: neither is currently observable.** | `printf '{"hook_event_name":"PreToolUse","session_id":"stranger-v651",...}' \| shepherd claude-hook` -> the v500 banner, **not** the unbound-session denial #315 describes. `printf '{"hook_event_name":"SessionStart","session_id":"replay-v651-probe"}' \| shepherd claude-hook`, run twice -> byte-identical v500 rejection both times, **not** the `dispatch record already exists` rejection #314 describes. |
 
-**R28–R36 verdict: confirmed with a correction and two escalations. The correction: the defect
+| R36a | **The preemption reaches the lifecycle surface, not just tool calls. Observed twice in the wild during this very planting session.** | Session open, real harness `SubagentStart` payload -> `[shepherd] native lifecycle hook rejected: dispatch filesystem operation \`open regular file\` failed for …/runs/v500/run.json: No such file or directory (os error 2)`. Session close, real harness `Stop` payload -> byte-identical text. Synthetic minimal payloads do NOT reproduce it (`printf '{"hook_event_name":"Stop","session_id":"v651-probe"}' \| shepherd claude-hook` -> empty), because the binding lookup that reaches `resolve_active_run` only runs when the envelope carries a dispatch binding. Synthetic sweep with a tool-shaped payload: `PreToolUse`, `PostToolUse`, `SessionStart` -> PREEMPTED; `Stop`, `SubagentStop`, `SubagentStart`, `SessionEnd`, `UserPromptSubmit`, `PreCompact`, `Notification` -> clean at that payload shape only. |
+| R36b | **On `SubagentStop` this same error is a HARD BLOCK, not an advisory banner.** | `crates/cli/src/cmd/native_hook.rs:147-153` -> `Err(error) if hook_event_name == "SubagentStop" => emit_json(&block(&format!("native lifecycle hook rejected: {}", cli_error_detail(&error))), host)`. Every other event falls to `:154-163`, which emits advisory `context`. Demonstrated shape: `printf '{"hook_event_name":"SubagentStop","session_id":"v651-probe"}' \| shepherd claude-hook` -> `{"decision":"block","reason":"[shepherd] native lifecycle hook rejected: missing dispatch binding"}`. The `v500` read failure is the same `Err` value on the same branch, so a stale directory that is not a run can hard-block subagent completion. |
+
+**R28–R36b verdict: confirmed with a correction and three escalations. The correction: the defect
 is not "read-only commands warn", it is "the hook's dispatch resolution aborts on the first
 directory that is not a run". The escalations: (a) it reproduces on every clone because
 `run.json` is git-ignored while the namespace directories are tracked; (b) it preempts the
-lifecycle path entirely, so #314 and #315 cannot be measured until it is fixed. That is a hard
-ordering constraint on the sprint.**
+lifecycle path entirely, so #314 and #315 cannot be measured until it is fixed — a hard
+ordering constraint on the sprint; (c) on `SubagentStop` it is a blocking decision, so this is
+not a cosmetic banner defect. It was observed rejecting both the `SubagentStart` that opened
+this planting session and the `Stop` that closed it (R36a, R36b).**
 
 ---
 

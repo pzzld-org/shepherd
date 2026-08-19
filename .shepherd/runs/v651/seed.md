@@ -154,9 +154,16 @@ that is not a run, in both platform modules (R30, R31). A directory without `run
 a run and must be skipped exactly as a non-conforming name already is. The two duplicated
 copies collapse to one shared implementation.
 
+This is not a cosmetic banner. On `SubagentStop` the same error becomes a blocking decision
+at `crates/cli/src/cmd/native_hook.rs:147-153`, while every other event degrades to advisory
+context at `:154-163` (R36b). It rejected both the `SubagentStart` opening and the `Stop`
+closing of the session that authored this seed (R36a).
+
 - **Acceptance:** in a tree containing `.shepherd/runs/v500/` with only `plan.md` and one
   namespace with `status: executing`, `shepherd claude-hook` fed a PreToolUse envelope emits
   no `no usable run namespace` text; exit 0.
+- **Acceptance:** the same tree fed a `SubagentStop` envelope carrying a valid dispatch
+  binding does not emit `"decision":"block"`; the probe script exits 0.
 - **Acceptance:** `grep -c "fn resolve_active_run" crates/cli/src/dispatch_store.rs` returns
   a value strictly less than 3.
 - **Acceptance:** `cargo test -p shepherd-cli --test dispatch_store` exits 0, with a new case
