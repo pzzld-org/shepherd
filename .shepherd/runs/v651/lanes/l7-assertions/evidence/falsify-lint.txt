@@ -1,0 +1,32 @@
+  -- Part A: two-sided falsification against the CLEAN fixture --
+    baseline (clean.sh alone): files_scanned=1 bare_total=0 excluded_return=2 (expect 1, 0, 2)
+  PASS  baseline side: the unmutated clean fixture is CLEAN for the rule (BARE_TOTAL=0, 2 function-return exclusions)
+  PASS  guarded [[ -n "$a" && -f "$b" ]] || { ...; } is NOT flagged (inside-operator case, R2/R3)
+  PASS  function-return [[ ]] before } is NOT flagged as BARE (the _lib.sh case)
+  PASS  function-return [[ -n "$ns" && -f ... ]] before } is excluded as RETURN
+    injected bare [[ ]]: bare_total=1 (expect 1)
+  PASS  injected bare [[ ]] -> flagged
+    injected bare (( )): bare_total=1 (expect 1)
+  PASS  injected bare (( )) -> flagged
+    injected bare rg -Fq: bare_total=1 (expect 1)
+  PASS  injected bare rg -Fq -> flagged
+    injected bare rg -q: bare_total=1 (expect 1)
+  PASS  injected bare rg -q -> flagged
+  -- Part B: empty scan set is a hard failure --
+    empty dir: files_scanned=0
+  PASS  classifier reports FILES_SCANNED=0 for an empty scan target
+  PASS  require_nonempty_scan() returns failure (hard failure) for an empty scan target
+  -- Part C: hooks/scripts/_lib.sh function-return sites report clean --
+  PASS  hooks/scripts/_lib.sh:120 reports clean (RETURN, excluded from conversion)
+  PASS  hooks/scripts/_lib.sh:369 reports clean (RETURN, excluded from conversion)
+  PASS  hooks/scripts/_lib.sh:450 reports clean (RETURN, excluded from conversion)
+  -- Part D: fixtures-directory exclusion is not vacuous --
+    bare_reference.sh alone: bare_total=4 bare_bracket=2 bare_rg=2 (expect 4, 2, 2)
+  PASS  the classifier flags all 4 committed bare shapes when pointed at bare_reference.sh directly
+  -- Part E: real-tree enforcement (hooks/**, scripts/**) --
+    files_scanned=80 bare_total=0 excluded_return=3
+  PASS  the fixtures-directory exclusion removes it from the real-tree scan (0 contribution from hooks/tests/fixtures/assertion-hygiene)
+  PASS  hooks/** and scripts/** scan is non-empty (80 files)
+  PASS  hooks/** and scripts/** contain zero bare assertions
+17/17 passed
+PASS: lint_shell_assertions

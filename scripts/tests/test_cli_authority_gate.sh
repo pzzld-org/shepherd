@@ -54,16 +54,16 @@ hooks = [
 ]
 assert hooks and all(hook == {"type": "command", "command": "shepherd", "args": ["claude-hook"]} for hook in hooks)
 PY
-rg -q 'plan_lifecycle' "$claude_hook"
-rg -q 'DispatchService::with_context' "$claude_hook"
-rg -q 'GuardValue::from' "$claude_hook"
+rg -q 'plan_lifecycle' "$claude_hook" || { rc=$?; printf 'FAIL: claude_hook.rs must reference plan_lifecycle (rg rc=%s)\n' "$rc" >&2; exit 1; }
+rg -q 'DispatchService::with_context' "$claude_hook" || { rc=$?; printf 'FAIL: claude_hook.rs must reference DispatchService::with_context (rg rc=%s)\n' "$rc" >&2; exit 1; }
+rg -q 'GuardValue::from' "$claude_hook" || { rc=$?; printf 'FAIL: claude_hook.rs must reference GuardValue::from (rg rc=%s)\n' "$rc" >&2; exit 1; }
 
 # Published adapters resolve one native CLI contract: an explicit
 # SHEPHERD_NATIVE_BIN wins, otherwise the bare `shepherd` command is handed to
 # the host PATH. They must not bake a source-checkout repository path into the
 # published lifecycle.
-rg -q 'SHEPHERD_NATIVE_BIN' "$transport"
-rg -q '[:?] "shepherd"' "$transport"
+rg -q 'SHEPHERD_NATIVE_BIN' "$transport" || { rc=$?; printf 'FAIL: native-transport.mjs must honor SHEPHERD_NATIVE_BIN (rg rc=%s)\n' "$rc" >&2; exit 1; }
+rg -q '[:?] "shepherd"' "$transport" || { rc=$?; printf 'FAIL: native-transport.mjs must fall back to the bare shepherd command (rg rc=%s)\n' "$rc" >&2; exit 1; }
 if rg -n 'repositoryRoot|join\([^)]*bin[^)]*shepherd|/bin/shepherd' "$transport"; then
   printf '%s\n' 'published native transport contains a checkout-specific CLI path' >&2
   exit 1

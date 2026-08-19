@@ -51,8 +51,8 @@ done
 asset_list="$tmp_dir/release-files.txt"
 "$verifier" "$asset_dir" "$asset_list" 6.5.1
 [[ $(wc -l < "$asset_list" | tr -d ' ') == 32 ]] || fail 'expected 32 publishable files'
-rg -Fxq "$asset_dir/shepherd-6.5.1-aarch64-apple-darwin.tar.gz" "$asset_list"
-rg -Fxq "$asset_dir/shepherd-6.5.1-aarch64-apple-darwin.tar.gz.sha256" "$asset_list"
+rg -Fxq "$asset_dir/shepherd-6.5.1-aarch64-apple-darwin.tar.gz" "$asset_list" || { rc=$?; printf 'FAIL: release asset manifest must list the aarch64-apple-darwin tarball (rg rc=%s)\n' "$rc" >&2; exit 1; }
+rg -Fxq "$asset_dir/shepherd-6.5.1-aarch64-apple-darwin.tar.gz.sha256" "$asset_list" || { rc=$?; printf 'FAIL: release asset manifest must list the aarch64-apple-darwin tarball checksum sidecar (rg rc=%s)\n' "$rc" >&2; exit 1; }
 
 cp -R "$asset_dir" "$tmp_dir/missing"
 find "$tmp_dir/missing" -name '*.sha256' -exec rm -f {} +

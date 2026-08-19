@@ -27,12 +27,12 @@ python3 scripts/generate-third-party-notices.py --scope component --target wasm3
   --output "$closure_dir/component.md" --licenses-dir "$closure_dir/component-licenses"
 python3 scripts/generate-third-party-notices.py --scope npm-harness-claude \
   --output "$closure_dir/npm.md" --licenses-dir "$closure_dir/npm-licenses"
-rg -Fq '`wit-bindgen`' "$closure_dir/component.md"
+rg -Fq '`wit-bindgen`' "$closure_dir/component.md" || { rc=$?; printf 'FAIL: component notice must list the wit-bindgen crate (rg rc=%s)\n' "$rc" >&2; exit 1; }
 if rg -Fq '`wit-bindgen`' "$closure_dir/native.md"; then
   printf 'native notice must exclude the component-only Rust closure\n' >&2
   exit 1
 fi
-rg -Fq '`@bytecodealliance/preview2-shim`' "$closure_dir/npm.md"
+rg -Fq '`@bytecodealliance/preview2-shim`' "$closure_dir/npm.md" || { rc=$?; printf 'FAIL: npm harness notice must list the @bytecodealliance/preview2-shim package (rg rc=%s)\n' "$rc" >&2; exit 1; }
 if rg -Fq '`@babel/parser`' "$closure_dir/npm.md"; then
   printf 'npm notice must exclude root build tooling\n' >&2
   exit 1
@@ -41,8 +41,8 @@ fi
 # Every producer must place the same legal material inside its payload. The
 # archive-inspection gates below exercise the byte-level result in CI.
 workflow='.github/workflows/release.yml'
-rg -Fq 'scripts/stage-distribution-legal.sh "$staging"' "$workflow"
-rg -Fq 'scripts/stage-distribution-legal.sh stage' "$workflow"
+rg -Fq 'scripts/stage-distribution-legal.sh "$staging"' "$workflow" || { rc=$?; printf 'FAIL: release workflow must invoke stage-distribution-legal.sh against the staging directory (rg rc=%s)\n' "$rc" >&2; exit 1; }
+rg -Fq 'scripts/stage-distribution-legal.sh stage' "$workflow" || { rc=$?; printf 'FAIL: release workflow must invoke stage-distribution-legal.sh with the stage subcommand (rg rc=%s)\n' "$rc" >&2; exit 1; }
 
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/shepherd-release-license.XXXXXX")
 trap 'find "$closure_dir" "$tmp_dir" -depth -delete' EXIT
