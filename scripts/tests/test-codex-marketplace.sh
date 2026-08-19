@@ -7,8 +7,8 @@ codex_bin="${CODEX_BIN:-$(command -v codex)}"
 shepherd_bin="${SHEPHERD_NATIVE_BIN:-$root/target/debug/shepherd}"
 version=$(python3 -c 'import json; print(json.load(open(".claude-plugin/plugin.json"))["version"])')
 
-[[ "$($codex_bin --version)" == "codex-cli 0.147.0" ]]
-[[ -x "$shepherd_bin" ]]
+[[ "$($codex_bin --version)" == "codex-cli 0.147.0" ]] || { printf 'FAIL: Codex CLI must report version codex-cli 0.147.0\n' >&2; exit 1; }
+[[ -x "$shepherd_bin" ]] || { printf 'FAIL: native shepherd binary must be executable at SHEPHERD_NATIVE_BIN or target/debug/shepherd\n' >&2; exit 1; }
 python3 - "$root" <<'PY'
 import json, pathlib, sys
 root = pathlib.Path(sys.argv[1])
@@ -59,17 +59,17 @@ trap 'find "$fixture" -depth -delete' EXIT
 mkdir -p "$fixture/home" "$fixture/codex"
 run_codex() { env HOME="$fixture/home" CODEX_HOME="$fixture/codex" "$codex_bin" "$@"; }
 
-[[ "$(run_codex plugin marketplace list --json | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["marketplaces"]))')" == 0 ]]
+[[ "$(run_codex plugin marketplace list --json | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["marketplaces"]))')" == 0 ]] || { printf 'FAIL: a fresh CODEX_HOME must start with zero registered marketplaces\n' >&2; exit 1; }
 run_codex plugin marketplace add "$root" --json >"$fixture/add.json"
 run_codex plugin add shepherd@shepherd --json >"$fixture/install.json"
 cache=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["installedPath"])' "$fixture/install.json")
-[[ "$cache" == "$fixture/codex/plugins/cache/shepherd/shepherd/$version" || "$cache" == "/private$fixture/codex/plugins/cache/shepherd/shepherd/$version" ]]
+[[ "$cache" == "$fixture/codex/plugins/cache/shepherd/shepherd/$version" || "$cache" == "/private$fixture/codex/plugins/cache/shepherd/shepherd/$version" ]] || { printf 'FAIL: codex plugin add must install shepherd under plugins/cache/shepherd/shepherd/<version>\n' >&2; exit 1; }
 cache=${cache#/private}
-[[ -f "$cache/.codex-plugin/plugin.json" ]]
-[[ -f "$cache/codex/hooks/hooks.json" ]]
-[[ "$(find "$cache/codex/skills" -mindepth 2 -maxdepth 2 -name SKILL.md | wc -l | tr -d ' ')" == 7 ]]
-[[ -z "$(find "$cache" -type l -print -quit)" ]]
-[[ ! -e "$cache/package.json" && ! -e "$cache/node_modules" ]]
+[[ -f "$cache/.codex-plugin/plugin.json" ]] || { printf 'FAIL: Codex plugin cache must contain the .codex-plugin/plugin.json manifest\n' >&2; exit 1; }
+[[ -f "$cache/codex/hooks/hooks.json" ]] || { printf 'FAIL: Codex plugin cache must contain the codex/hooks/hooks.json manifest\n' >&2; exit 1; }
+[[ "$(find "$cache/codex/skills" -mindepth 2 -maxdepth 2 -name SKILL.md | wc -l | tr -d ' ')" == 7 ]] || { printf 'FAIL: Codex plugin cache must ship exactly 7 SKILL.md files under codex/skills\n' >&2; exit 1; }
+[[ -z "$(find "$cache" -type l -print -quit)" ]] || { printf 'FAIL: Codex plugin cache must not contain any symlinks\n' >&2; exit 1; }
+[[ ! -e "$cache/package.json" && ! -e "$cache/node_modules" ]] || { printf 'FAIL: Codex plugin cache must not contain package.json or node_modules\n' >&2; exit 1; }
 
 bin_dir=$(dirname "$shepherd_bin")
 repo="$fixture/project"

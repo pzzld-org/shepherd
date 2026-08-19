@@ -13,7 +13,7 @@ fail() {
   exit 1
 }
 
-rg -Fq 'ready=$(mktemp "$destination_dir/.shepherd-ready.XXXXXX")' "$installer"
+rg -Fq 'ready=$(mktemp "$destination_dir/.shepherd-ready.XXXXXX")' "$installer" || { rc=$?; printf 'FAIL: release installer must stage the ready file via mktemp under the destination directory (rg rc=%s)\n' "$rc" >&2; exit 1; }
 if rg -Fq 'mv -f "$temporary/$binary.ready" "$destination"' "$installer"; then
   fail 'publication candidate must live on the destination filesystem'
 fi
