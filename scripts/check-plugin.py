@@ -28,14 +28,6 @@ not plugin roots. Each manifest's `${CLAUDE_PLUGIN_ROOT}` refs are then
 resolved against THAT manifest's own root, never the repo root. See
 `_plugin_roots` and `_hook_files`.
 
-A third blind spot: `hooks/hooks.json` invokes the bare `shepherd` command at
-several call sites -- deliberately, that is the harness's documented native
-adapter contract, not a defect -- and the harness resolves it by putting
-`<plugin-root>/bin` on PATH for every hook subprocess. Nothing checked that a
-shipped carrier actually packages that directory. Between v6.4.5 and v6.5.0
-it did not, and every native hook silently no-oped.
-`rule_carrier_bin_shepherd_resolves` closes that hole.
-
 The plugin root layout is an interface contract with the harness, not a
 repository-organisation preference. This checks it.
 
@@ -60,17 +52,18 @@ ROOT = Path(__file__).resolve().parent.parent
 # reference, `${CLAUDE_PLUGIN_ROOT}` is "the plugin's installation directory",
 # i.e. the ROOT -- relocating hooks.json does NOT re-base the paths inside it.
 COMPONENT_DIRS = ("agents", "skills", "hooks")
-# The thin carrier's canonical symlinks. `bin` and `hooks/scripts` are part
-# of the carrier contract, not incidental: `bin` is what puts the native
-# `shepherd` binary on PATH for hook subprocesses, and `hooks/scripts` is
-# what every `${CLAUDE_PLUGIN_ROOT}/hooks/scripts/...` ref in hooks.json
-# resolves through. Enforced by `rule_thin_carrier_projects_canonical_content`.
+# The thin carrier's canonical symlinks. `hooks/scripts` is part of the
+# carrier contract, not incidental: it is what every
+# `${CLAUDE_PLUGIN_ROOT}/hooks/scripts/...` ref in hooks.json resolves
+# through. Enforced by `rule_thin_carrier_projects_canonical_content`. There
+# is deliberately no `bin` link: the compatibility launcher is retired (D4 in
+# scripts/check-cli-authority.py) and the native binary resolved from
+# PATH/SHEPHERD_NATIVE_BIN is the sole CLI authority, carrier included.
 CARRIER_LINKS = {
     "hooks/hooks.json": "../../../hooks/hooks.json",
     "hooks/scripts": "../../../hooks/scripts",
     "agents": "../../agents",
     "skills": "../../skills",
-    "bin": "../../bin",
 }
 CLAUDE_MARKETPLACE = Path(".claude-plugin/marketplace.json")
 CODEX_MARKETPLACE = Path(".agents/plugins/marketplace.json")
@@ -247,47 +240,6 @@ def rule_hook_commands_resolve(root: Path) -> list[str]:
                 bad.append(f"{where} -> {ref} does not exist (rooted at {rooted_at})")
             elif target.is_file() and not target.stat().st_mode & 0o111:
                 bad.append(f"{where} -> {ref} is not executable (rooted at {rooted_at})")
-    return bad
-
-
-def rule_carrier_bin_shepherd_resolves(root: Path) -> list[str]:
-    """Every hooks.json that invokes bare `shepherd` ships an executable
-    `bin/shepherd` reachable through that same plugin root.
-
-    The bare `"command": "shepherd"` in hooks.json is the harness's
-    documented native-adapter contract, not a defect -- it is pinned by
-    `hooks/tests/test_legacy_policy_retirement.sh` and must not be rewritten.
-    The harness resolves it by putting `<plugin-root>/bin` on PATH for every
-    hook subprocess. Nothing checked that a shipped carrier actually packages
-    that directory: between v6.4.5 and v6.5.0 it did not, and every native
-    hook silently no-oped. Executability follows symlinks (`Path.stat()`,
-    not `lstat()`), because the carrier reaches its binary through
-    `plugins/shepherd/bin -> ../../bin`.
-    """
-    files, bad = _hook_files(root)
-    for plugin_root, path in files:
-        try:
-            manifest = json.loads(path.read_text())
-        except (OSError, json.JSONDecodeError) as exc:
-            bad.append(f"{_rel(path, root)} is malformed: {exc}")
-            continue
-        handlers = [
-            hook
-            for groups in manifest.get("hooks", {}).values()
-            for group in groups
-            for hook in group.get("hooks", [])
-        ]
-        if not any(hook.get("command") == "shepherd" for hook in handlers):
-            continue
-        rooted_at = _rel(plugin_root, root) or "."
-        target = plugin_root / "bin" / "shepherd"
-        if not target.is_file():
-            bad.append(
-                f"{rooted_at}/bin/shepherd is missing -- {_rel(path, root)} "
-                "invokes the bare `shepherd` command, resolved via PATH"
-            )
-        elif not target.stat().st_mode & 0o111:
-            bad.append(f"{rooted_at}/bin/shepherd is not executable")
     return bad
 
 
@@ -553,7 +505,6 @@ RULES = [
     rule_retired_command_surface_is_absent,
     rule_hooks_json_is_discoverable,
     rule_hook_commands_resolve,
-    rule_carrier_bin_shepherd_resolves,
     rule_plugin_root_refs_resolve,
     rule_skills_are_shaped_correctly,
     rule_generated_skills_are_thin,
@@ -623,9 +574,6 @@ def self_test(root: Path) -> int:
         (tmp / "hooks" / "scripts").mkdir()
         (tmp / "skills" / "demo").mkdir()
         (tmp / "skills" / "demo" / "SKILL.md").write_text("# demo")
-        (tmp / "bin").mkdir()
-        (tmp / "bin" / "shepherd").write_text("#!/bin/sh\necho shepherd-cli\n")
-        (tmp / "bin" / "shepherd").chmod(0o755)
         carrier = tmp / "plugins" / "shepherd"
         (carrier / ".claude-plugin").mkdir(parents=True)
         (carrier / ".claude-plugin" / "plugin.json").write_bytes(
@@ -636,7 +584,6 @@ def self_test(root: Path) -> int:
         (carrier / "hooks" / "scripts").symlink_to("../../../hooks/scripts")
         (carrier / "agents").symlink_to("../../agents")
         (carrier / "skills").symlink_to("../../skills")
-        (carrier / "bin").symlink_to("../../bin")
         (tmp / ".agents" / "plugins").mkdir(parents=True)
         (tmp / CODEX_MARKETPLACE).write_text(
             '{"name":"shepherd","plugins":[{"name":"shepherd","source":{"source":"local","path":"./plugins/shepherd"}}]}'
@@ -689,12 +636,6 @@ def self_test(root: Path) -> int:
         (tmp / CLAUDE_MARKETPLACE).unlink()
         (tmp / CODEX_MARKETPLACE).unlink()
 
-    def bin_shepherd_not_executable(tmp: Path) -> None:
-        (tmp / "bin" / "shepherd").chmod(0o644)
-
-    def bin_symlink_missing(tmp: Path) -> None:
-        (tmp / "plugins" / "shepherd" / "bin").unlink()
-
     def hooks_scripts_link_retargeted(tmp: Path) -> None:
         (tmp / "plugins" / "shepherd" / "hooks" / "scripts").unlink()
         (tmp / "plugins" / "shepherd" / "hooks" / "scripts").symlink_to("../../../hooks")
@@ -736,16 +677,12 @@ def self_test(root: Path) -> int:
             rule_hook_commands_resolve,
             [dangling_hook, carrier_hook_ref_mis_rooted, all_marketplaces_missing],
         ),
-        (
-            rule_carrier_bin_shepherd_resolves,
-            [bin_shepherd_not_executable, bin_symlink_missing],
-        ),
         (rule_plugin_root_refs_resolve, [stale_plugin_root_ref]),
         (rule_skills_are_shaped_correctly, [skill_without_body]),
         (rule_generated_skills_are_thin, [duplicate_skill_authority]),
         (
             rule_thin_carrier_projects_canonical_content,
-            [carrier_manifest_drift, bin_symlink_missing, hooks_scripts_link_retargeted],
+            [carrier_manifest_drift, hooks_scripts_link_retargeted],
         ),
         (rule_codex_carrier_is_regular_and_canonical, [codex_carrier_drift]),
         (rule_configured_gates_resolve, [broken_gate]),
