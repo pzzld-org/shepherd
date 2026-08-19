@@ -67,10 +67,15 @@ fn usage_and_validation_have_stable_streams_and_exit_codes() {
 
 #[test]
 fn universal_hard_checks_preserve_order_and_quiet_only_suppresses_output() {
+    // Footprint stays HARD here only because the body crosses the 400-line
+    // ceiling (L5-S2 / #319): `kind: patch-seed` alone no longer HARD-blocks
+    // between 200 and 400 lines, so the fixture must cross the ceiling
+    // itself to keep exercising the HARD-ordering + quiet-suppression this
+    // test is for.
     let root = fixture("hard");
     let body = format!(
         "kind: patch-seed\nTODO: resolve\nLane 4 is prescriptive\n{}\n",
-        (0..205)
+        (0..402)
             .map(|index| format!("line {index}"))
             .collect::<Vec<_>>()
             .join("\n")
@@ -207,6 +212,170 @@ fn shell_style_globs_preserve_ranges_parent_components_and_dangling_links() {
     assert!(output.stderr.is_empty());
     fs::remove_dir_all(root).expect("cleanup root");
     fs::remove_dir_all(sibling).expect("cleanup sibling");
+}
+
+// -- Negative controls for the closed-run relaxation (L5-S2 / #319) --------
+//
+// The relaxation must be impossible to mistake for a disabled check. Every
+// test below builds its own fixture in a temp dir via the helpers above.
+// `closed_run_...` (items 1+2 from the brief) proves the verdict flips on
+// ONE fact — a sibling `close.md` beside a `runs/<id>/seed.md` — with the
+// seed's own bytes held constant. The footprint tests (items 3-5) prove the
+// HARD ceiling cannot be relabelled away while the patch mislabel warn keeps
+// reporting. `todo_marker_stays_hard_even_under_a_closed_run` (item 6) and
+// `close_md_beside_a_non_run_shaped_seed_path_does_not_relax_anything`
+// (item 7) prove the rule is scoped to one site and one path shape, not a
+// global "historical seed" bypass.
+
+#[test]
+fn closed_run_sibling_close_md_downgrades_only_the_scope_resolution_hard_failure() {
+    let root = fixture("closed-scope");
+    let missing = root.join("bin");
+    let content = format!(
+        "kind: patch-seed\nmilestone: v1\nfile_scope:\n  - {}\n---\n",
+        missing.display()
+    );
+    let seed = write(&root, "runs/v999/seed.md", &content);
+
+    // Live: no sibling close.md yet -> today's exact HARD message, unchanged.
+    let live = run(&root, &["seed", "verify", &seed.to_string_lossy()]);
+    assert_eq!(live.status.code(), Some(1));
+    let live_stdout = String::from_utf8_lossy(&live.stdout);
+    assert!(
+        live_stdout.contains(&format!(
+            "HARD  file_scope path does not resolve and is not marked (NEW): {}",
+            missing.display()
+        )),
+        "stdout={live_stdout}"
+    );
+    assert!(live_stdout.ends_with("FAIL: 1 hard failure(s), 0 warning(s)\n"));
+    assert!(live.stderr.is_empty());
+
+    // Same bytes, only a sibling close.md differs -> warn, exit 0, and the
+    // message says why.
+    write(&root, "runs/v999/close.md", "closed\n");
+    let closed = run(&root, &["seed", "verify", &seed.to_string_lossy()]);
+    assert_eq!(closed.status.code(), Some(0));
+    let closed_stdout = String::from_utf8_lossy(&closed.stdout);
+    assert!(
+        closed_stdout.contains(&format!(
+            "warn  file_scope path does not resolve: {} (run closed — close.md present; a closed run's seed is a record, not a proposal)",
+            missing.display()
+        )),
+        "stdout={closed_stdout}"
+    );
+    assert!(closed_stdout.ends_with("OK: 0 hard failures, 1 warning(s)\n"));
+    assert!(closed.stderr.is_empty());
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
+/// Build seed content with `kind:` as its first line and `total_lines - 1`
+/// filler lines after it, so the seed's total line count is exactly
+/// `total_lines` (matching how `wave_b2_seed.rs::verify` counts lines: the
+/// trailing newline is trimmed before `split('\n')`).
+fn seed_with_footprint(kind: &str, total_lines: usize) -> String {
+    let filler = (0..total_lines - 1)
+        .map(|index| format!("line {index}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!("kind: {kind}\n{filler}\n")
+}
+
+#[test]
+fn live_sprint_seed_over_the_ceiling_is_still_hard() {
+    let root = fixture("ceiling-sprint");
+    let content = seed_with_footprint("sprint-seed", 401);
+    let seed = write(&root, "over.seed.md", &content);
+    let output = run(&root, &["seed", "verify", &seed.to_string_lossy()]);
+    assert_eq!(output.status.code(), Some(1));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("HARD  footprint 401 lines > cap 400 (kind=sprint-seed)"),
+        "stdout={stdout}"
+    );
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn live_patch_seed_over_the_ceiling_cannot_relabel_its_way_out() {
+    let root = fixture("ceiling-patch");
+    let content = seed_with_footprint("patch-seed", 401);
+    let seed = write(&root, "over.seed.md", &content);
+    let output = run(&root, &["seed", "verify", &seed.to_string_lossy()]);
+    assert_eq!(output.status.code(), Some(1));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("HARD  footprint 401 lines > cap 400 (kind=patch-seed)"),
+        "stdout={stdout}"
+    );
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn live_patch_seed_under_the_ceiling_still_reports_the_mislabel_warn() {
+    let root = fixture("mislabel-patch");
+    let content = seed_with_footprint("patch-seed", 250);
+    let seed = write(&root, "sprint-shaped.seed.md", &content);
+    let output = run(&root, &["seed", "verify", &seed.to_string_lossy()]);
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains(
+            "warn  footprint 250 lines > patch cap 200 (kind=patch-seed) — sprint-shaped; relabel or move evidence to mesh.md"
+        ),
+        "stdout={stdout}"
+    );
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn todo_marker_stays_hard_even_under_a_closed_run() {
+    let root = fixture("closed-todo");
+    let content = "kind: patch-seed\nTODO: resolve before commit\n";
+    let seed = write(&root, "runs/v998/seed.md", content);
+    write(&root, "runs/v998/close.md", "closed\n");
+    let output = run(&root, &["seed", "verify", &seed.to_string_lossy()]);
+    assert_eq!(output.status.code(), Some(1));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("HARD  TODO:/FIXME: marker(s) present — resolve before commit"),
+        "closed-run relaxation leaked past the file_scope site: stdout={stdout}"
+    );
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn close_md_beside_a_non_run_shaped_seed_path_does_not_relax_anything() {
+    // Mirrors what hooks/scripts/seed_preflight_check.sh actually produces:
+    // `mktemp -t shep-seed.XXXXXX` writes a bare file directly under a temp
+    // dir — not named `seed.md`, not inside a `runs/<id>/` directory. A
+    // stray close.md sitting beside it (e.g. left over from an unrelated
+    // closed run in the same $TMPDIR) must not downgrade this seed's verdict.
+    let root = fixture("non-run-shaped");
+    let missing = root.join("bin");
+    let content = format!(
+        "kind: patch-seed\nmilestone: v1\nfile_scope:\n  - {}\n---\n",
+        missing.display()
+    );
+    let seed = write(&root, "shep-seed.ABC123", &content);
+    write(&root, "close.md", "closed\n");
+    let output = run(&root, &["seed", "verify", &seed.to_string_lossy()]);
+    assert_eq!(output.status.code(), Some(1));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains(&format!(
+            "HARD  file_scope path does not resolve and is not marked (NEW): {}",
+            missing.display()
+        )),
+        "stdout={stdout}"
+    );
+    fs::remove_dir_all(root).expect("cleanup");
 }
 
 #[test]

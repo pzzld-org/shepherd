@@ -199,8 +199,151 @@ fn models_negative_inputs_keep_the_oracle_messages_and_exit_code() {
     assert!(unknown.stdout.is_empty());
     assert_eq!(
         unknown.stderr,
-        b"ERROR: unknown role: invalid (valid: root planter engineer conductor critic discovery coder auditor worker)\n"
+        b"ERROR: unknown role: invalid (valid: root planter engineer conductor critic discovery coder auditor worker; alias: shepherd -> root)\n"
     );
+
+    fs::remove_dir_all(root).expect("cleanup fixture");
+}
+
+#[test]
+fn models_resolve_shepherd_alias_matches_the_canonical_root_output_across_every_harness() {
+    let root = repository("shepherd-alias");
+
+    // Compare live outputs rather than hardcoding a hint value: the value
+    // that answers `resolve root` is config/profile-derived (see
+    // `models_resolve_delegates_harness_translation_to_the_compiler_profiles`
+    // above, which already covers what each harness spells root as), and
+    // hardcoding it here would just be a second fitted assertion of the same
+    // fact the `root` row already encodes.
+    for harness in [None, Some("claude"), Some("codex"), Some("pi")] {
+        let mut shepherd_args = vec!["models", "resolve", "shepherd"];
+        let mut root_args = vec!["models", "resolve", "root"];
+        if let Some(harness) = harness {
+            shepherd_args.extend(["--harness", harness]);
+            root_args.extend(["--harness", harness]);
+        }
+
+        let shepherd_out = run(&root, &shepherd_args);
+        let root_out = run(&root, &root_args);
+
+        assert!(
+            shepherd_out.status.success(),
+            "{harness:?}: stderr={}",
+            String::from_utf8_lossy(&shepherd_out.stderr)
+        );
+        assert!(
+            root_out.status.success(),
+            "{harness:?}: stderr={}",
+            String::from_utf8_lossy(&root_out.stderr)
+        );
+        assert_eq!(
+            shepherd_out.stdout, root_out.stdout,
+            "{harness:?}: `resolve shepherd` must print byte-identical stdout to `resolve root`"
+        );
+        assert!(shepherd_out.stderr.is_empty(), "{harness:?}");
+        assert!(root_out.stderr.is_empty(), "{harness:?}");
+    }
+
+    fs::remove_dir_all(root).expect("cleanup fixture");
+}
+
+#[test]
+fn models_show_lists_exactly_the_canonical_roles_and_never_a_shepherd_row() {
+    let root = repository("show-no-shepherd-row");
+
+    let plain = run(&root, &["models", "show"]);
+    assert!(
+        plain.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&plain.stderr)
+    );
+    let plain_text = String::from_utf8_lossy(&plain.stdout);
+    // Table rows are the only lines with the renderer's two-space indent
+    // (`"  {role:<10} {model:<10} (…)"`); the footer's `root is advisory...`
+    // sentence starts flush left and must not be miscounted as a row.
+    let plain_role_lines = plain_text
+        .lines()
+        .filter(|line| {
+            line.strip_prefix("  ")
+                .is_some_and(|rest| ROLES.iter().any(|role| rest.starts_with(role)))
+        })
+        .count();
+    assert_eq!(plain_role_lines, ROLES.len(), "{plain_text}");
+    // Row-shaped, not a bare substring check: the table title itself is
+    // "shepherd model map (resolved)", which legitimately contains the word
+    // without being a role row.
+    assert!(
+        !plain_text.lines().any(|line| line
+            .strip_prefix("  ")
+            .is_some_and(|rest| rest.starts_with("shepherd"))),
+        "{plain_text}"
+    );
+
+    let markdown = run(&root, &["models", "show", "--md"]);
+    assert!(
+        markdown.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&markdown.stderr)
+    );
+    let markdown_text = String::from_utf8_lossy(&markdown.stdout);
+    let markdown_role_rows = markdown_text
+        .lines()
+        .filter(|line| {
+            line.starts_with('|')
+                && ROLES
+                    .iter()
+                    .any(|role| line.contains(&format!("| {role} |")))
+        })
+        .count();
+    assert_eq!(markdown_role_rows, ROLES.len(), "{markdown_text}");
+    assert!(!markdown_text.contains("shepherd"), "{markdown_text}");
+
+    let json = run(&root, &["models", "show", "--json"]);
+    assert!(
+        json.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&json.stderr)
+    );
+    let json_text = String::from_utf8_lossy(&json.stdout);
+    let json_role_keys = json_text
+        .lines()
+        .filter(|line| {
+            let trimmed = line.trim_start();
+            ROLES
+                .iter()
+                .any(|role| trimmed.starts_with(&format!("\"{role}\":")))
+        })
+        .count();
+    assert_eq!(json_role_keys, ROLES.len(), "{json_text}");
+    assert!(!json_text.contains("\"shepherd\""), "{json_text}");
+
+    for harness in ["claude", "codex", "pi"] {
+        let harnessed = run(&root, &["models", "show", "--harness", harness, "--json"]);
+        assert!(
+            harnessed.status.success(),
+            "{harness}: stderr={}",
+            String::from_utf8_lossy(&harnessed.stderr)
+        );
+        let harnessed_text = String::from_utf8_lossy(&harnessed.stdout);
+        let harnessed_role_keys = harnessed_text
+            .lines()
+            .filter(|line| {
+                let trimmed = line.trim_start();
+                ROLES
+                    .iter()
+                    .any(|role| trimmed.starts_with(&format!("\"{role}\":")))
+            })
+            .count();
+        assert_eq!(
+            harnessed_role_keys,
+            ROLES.len(),
+            "{harness}: {harnessed_text}"
+        );
+        assert!(
+            !harnessed_text.contains("\"shepherd\""),
+            "{harness}: {harnessed_text}"
+        );
+    }
 
     fs::remove_dir_all(root).expect("cleanup fixture");
 }

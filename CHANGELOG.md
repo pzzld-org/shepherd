@@ -39,6 +39,53 @@ drift between call sites rather than a missing decision.
   now runs it in the gate lane (0.45s, both the plain scan and `--self-test`), and falsifies
   itself by drifting a scratch carrier and requiring a non-zero exit.
 
+- **The root role answered to two names and only one of them worked.** `shepherd models
+  resolve shepherd` printed `unknown role: shepherd` and exited 2 while `shepherd models
+  resolve root` printed `opus[1m]` and exited 0, because two crates each hardcoded their own
+  vocabulary: `crates/cli/src/cmd/wave_a_models.rs` `const ROLES` says `root`, and
+  `crates/core/src/guard/engine.rs` `role_tier` says `shepherd` with no `root` arm at all.
+  `content/`, `agents/`, `skills/` and the `shepherd:shepherd` subagent type all spell the
+  role `shepherd`. `root` is canonical on the `models` surface and `shepherd` is a
+  documented INPUT alias resolving to it, in that direction and not the reverse: `root` is
+  the literal `[models]` TOML key operators write (`ModelsConfig::root`,
+  `crates/core/src/settings.rs:546`), and `docs/configuration.md`'s default table is
+  cross-checked against that field name by `scripts/check-workspace.sh`'s
+  `rule_model_defaults_match_the_docs`, so renaming would ripple into `crates/core` and
+  `docs/`, both outside this change's scope. `ROLES` stays 9 entries and `models show` never
+  grows a `shepherd` row; the alias is input-only. The `unknown role` text is now built from
+  `ROLES` and `ROLE_ALIASES` instead of being hand-typed a third time, and a unit test
+  iterates both consts against the USAGE string rather than checking today's nine literal
+  names, so adding a role or an alias without updating the usage text turns it red.
+
+- **`shepherd seed verify` HARD-failed this project's own seeds.**
+  `shepherd seed verify .shepherd/runs/v646/seed.md` exited 1 on `footprint 393 lines > cap
+  200 (kind=patch-seed)` and on `file_scope path does not resolve and is not marked (NEW):
+  bin`, where `bin` is a directory v6.4.6's own decision D4 deleted after that seed was
+  written: the gate was validating a historical artifact against the live tree. Two written
+  rules now bound that. First, an unresolved `file_scope` path degrades to a warning only
+  when the seed's run has closed, and "closed" requires both a sibling `close.md` and the
+  path shape `runs/<id>/seed.md`; every other seed keeps today's HARD failure byte-identical.
+  Second, the declared `kind` selects the smell threshold, not the ceiling: 400 lines is the
+  HARD ceiling for every seed whatever its label, so relabelling a seed down buys no slack,
+  and a `patch-seed` over 200 lines now gets a warning naming the mislabel. Neither
+  `SPRINT_FOOTPRINT_CAP` nor `PATCH_FOOTPRINT_CAP` changed value; the v6.4.6 carry-forward
+  required that no number move. The path-shape half is the safety property:
+  `hooks/scripts/seed_preflight_check.sh` runs the live SEED-GATE against a bare
+  `mktemp -t shep-seed.XXXXXX` file in `$TMPDIR`, so a sibling-`close.md` test alone would
+  let any stray `close.md` in `$TMPDIR` silently downgrade that gate for every seed a
+  planter writes; the temp copy is never named `seed.md` and never sits inside a
+  `runs/<id>/` directory, which makes the hook structurally immune. Rejected: a
+  frontmatter-date comparison (the verdict would change with the calendar) and resolving
+  paths against the commit the seed names (`base: main` is a moving ref, and the hook's
+  temp-dir copy has no commit at all). v646 now exits 0 with 2 warnings and v651 exits 0
+  with 1 warning, while v645, historical but with no `close.md` on disk, keeps both of its
+  unresolved-path HARD failures byte-for-byte: "historical" is not a bypass, "closed" is a
+  fact on disk. A relaxation is only distinguishable from a disabled check by what still
+  fails, so forcing the path-shape predicate to return `true` turns exactly one test red
+  (`close_md_beside_a_non_run_shaped_seed_path_does_not_relax_anything`), a closed run's
+  seed carrying a `TODO:` marker still HARD-fails, and a 401-line seed is HARD over the
+  ceiling whether it is labelled `sprint-seed` or `patch-seed`.
+
 ### Fixed — the root skill had no entry condition
 
 `skills/spawn` and `skills/start` both open with `## Preconditions` stated as commands.
