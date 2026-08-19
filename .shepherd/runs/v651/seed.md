@@ -61,74 +61,74 @@ file_scope:
 
 This repo does not have a shortage of gates. It has a shortage of gates that run.
 
-`hooks/tests/run.sh` executes 28 tests, discovers them by glob specifically so a hand-written
-array cannot drift, fails loudly on zero discovery — and no workflow and no git hook invokes
-it (mesh R14, R15). Two of its 28 have been red on HEAD since v6.4.6 and no build ever went
-red (R16). `scripts/gate.sh:92` runs the Codex carrier projection check; nothing runs
-`scripts/gate.sh` (R13), so this sprint's own first commit shipped a drifted carrier and put
-PR #328 into the red (R11, R12).
+`hooks/tests/run.sh` executes 28 tests, discovers them by glob so a hand-written array cannot
+drift, fails loudly on zero discovery — and no workflow and no git hook invokes it (R14, R15).
+Two of its 28 have been red on HEAD since v6.4.6 with no red build (R16). `scripts/gate.sh:92`
+runs the Codex carrier check; nothing runs `scripts/gate.sh` (R13), so this branch's own first
+commit shipped a drifted carrier and reddened PR #328 (R11, R12).
 
 The theme is **connect and subtract**. Nothing here is a new capability. The largest single
 change deletes a duplicated resolver.
 
 ## B. Why this sprint
 
-One sentence explains the whole board: **work that is verified by a script no automated path
-invokes is not verified.** Three independent failures this seed measured are all that one
-sentence.
+One sentence covers the board: **work verified by a script no automated path invokes is not
+verified.** Three independent failures measured here are all that sentence.
 
-The second finding is an ordering constraint, and it is not optional. `resolve_active_run`
-scans `.shepherd/runs/`, sorts lexically, and propagates the read error from the first
-directory that has no `run.json` (R30). Eight tracked namespaces ship without one, because
-`.gitignore:35` ignores `.shepherd/runs/**` and its allowlist never re-includes `run.json`
-(R32, R33). So `v500` aborts dispatch resolution on **every clone**, not just this machine.
-That abort preempts the lifecycle path entirely: probes for #315 and #314 both return the
-v500 error rather than their own defect (R36). Neither is measurable until resolution is
-fixed. A plan that schedules them concurrently will produce two partitions that cannot write
-a failing test.
+Two findings constrain the plan and are not negotiable. First, ordering:
+`resolve_active_run` scans `.shepherd/runs/`, sorts lexically, and propagates the read error
+from the first directory lacking `run.json` (R30). Eight tracked namespaces ship without one
+because `.gitignore:35` never re-includes it (R32, R33), so `v500` aborts dispatch resolution
+on **every clone**. That abort preempts the lifecycle path, so #314 cannot be measured until
+it is fixed (R36, R46). Scheduling them concurrently produces a partition that cannot write a
+failing test.
+
+Second, severity: the banner is a symptom, and the repair text it prints converts an allowed
+session into a denied one (R36d, R36e). An operator who follows shepherd's instructions ends
+up worse off than one who ignores them. That is the sprint's highest-value single fix.
 
 ## C. Priors and lessons carried forward
 
-1. **"Gates that cannot fail" was v6.4.6's named repeating failure class. It recurred, one
-   level out.** v646 seed prior C2 made every gate prove it could fail. It worked — the three
-   surviving controls in `check-workflow-meta.sh` are exactly that discipline (R27). The class
-   mutated: these gates *can* fail, and are never asked to. Proving a gate can fail is
-   necessary and is not sufficient; it must also be reachable from CI.
-2. **v6.4.6 deleted `bin/` by decision D4, which made its own shipped seed unverifiable.**
-   `shepherd seed verify .shepherd/runs/v646/seed.md` now hard-fails on a `file_scope` path
-   the sprint itself removed (R43). A gate that validates against the live tree cannot
-   validate a historical artifact. This is half of #319 and the half nobody filed.
-3. **Do not trust an issue's own numbers.** #318 says 52 bare `rg -Fq`; measured 118 (R44).
-   The task brief says 52 open issues; measured 50 (R75). Every count in this seed was
-   re-measured.
+1. **"Gates that cannot fail" was v6.4.6's named failure class. It recurred one level out.**
+   v646 prior C2 made every gate prove it could fail, and it worked — the three surviving
+   controls in `check-workflow-meta.sh` are that discipline (R27). The class mutated: these
+   gates *can* fail and are never asked to. Provable failure is necessary, not sufficient; the
+   gate must also be reachable from CI.
+2. **v6.4.6 deleted `bin/` by its decision D4, making its own shipped seed unverifiable.**
+   `shepherd seed verify .shepherd/runs/v646/seed.md` hard-fails on a `file_scope` path that
+   sprint removed (R43). A gate validating against the live tree cannot validate a historical
+   artifact. This is half of #319, and the half nobody filed.
+3. **A remediation string is a contract, and this repo keeps breaking it.** `cc07276` fixed
+   five that named a command exiting 2. R36d found one that runs, exits 0, and escalates the
+   failure. The lint from `cc07276` cannot catch it (R36f).
+4. **Do not trust an issue's own numbers.** #318 says 52 bare `rg -Fq`; measured 118 (R44).
+   The brief says 52 open issues; measured 50 (R75). Every count here was re-measured.
 
 ## D. Engineering decisions (locked)
 
 Changing one of these is a critic-RED escalation, not a sprint-time judgement.
 
-1. **The Workflow guard is not fail-open, and the fix is test-side, not engine-side.** The
-   assertion at `hooks/tests/test_native_cli_contract.sh:82-88` was authored in `ee682ec`
-   (v6.4.5). The carve-out it now contradicts, `crates/core/src/guard/engine.rs:401`
-   `&& tool_name != "Workflow"`, was authored deliberately in `f3d44b0` (v6.4.6) with an
-   explaining comment, and the test was never updated (R21). A tier sweep proves the guard
-   denies `conductor`, `coder` and `auditor` and allows only root-tier roles (R22). Do not
-   remove the carve-out. Rewrite the assertion to encode the v6.4.6 contract and add the
-   restricted-tier denial as its negative control.
-2. **`planter -> allow` for an undeclared-target Workflow is a separate, real defect and it
-   belongs to #323, not to decision D1.** The planter's only sanctioned dispatch is
-   `shepherd:discovery`; today a conductor may also dispatch `planter` and `shepherd`
-   outright (R41). Fix it in `content/predicates/dispatch-scope.toml` by extending the
-   target-keyed restriction, not by touching the Workflow branch.
+1. **The Workflow guard is not fail-open; the fix is test-side.** The assertion at
+   `hooks/tests/test_native_cli_contract.sh:82-88` is `ee682ec` (v6.4.5). The carve-out it
+   contradicts, `crates/core/src/guard/engine.rs:401` `&& tool_name != "Workflow"`, is
+   `f3d44b0` (v6.4.6), deliberate and commented; the test was never updated (R21). A tier
+   sweep proves the guard denies `conductor`, `coder`, `auditor` and allows only root tier
+   (R22). Do not remove the carve-out — rewrite the assertion to the v6.4.6 contract and add
+   the restricted-tier denial as its negative control.
+2. **`planter -> allow` for an undeclared-target Workflow belongs to #323, not to D1.** The
+   planter's only sanctioned dispatch is `shepherd:discovery`, yet a conductor may dispatch
+   `planter` and `shepherd` outright (R41). Fix it in
+   `content/predicates/dispatch-scope.toml` by extending the target-keyed restriction, not by
+   touching the Workflow branch.
 3. **Replace the git-archaeology control with an in-repo fixture; do not restore the commit.**
-   `scripts/check-workflow-meta.sh:259` shells `git show 686084d:workflows/wave.js` and the
-   object does not exist in a 93-commit clone (R26). Restoring history is not available and
-   would not survive the next transfer. The rejected corpus becomes a checked-in file.
+   `scripts/check-workflow-meta.sh:259` shells `git show 686084d:workflows/wave.js`; the
+   object is absent from a 93-commit clone (R26) and restoring it would not survive the next
+   transfer. The rejected corpus becomes a checked-in file.
 4. **`shepherd ready`'s errno is one helper pair, not N call sites.** `errno` and `errno_path`
-   in `crates/cli/src/run_store.rs` govern 16 call sites (R38). Fix the helpers. Do not
-   hand-patch `ready`.
+   in `crates/cli/src/run_store.rs` govern 16 sites (R38). Fix the helpers, not `ready`.
 5. **Publishing to npm is an operator action, not a partition.** `component-runtime@6.5.1`
-   gates `pi-claude`, `pi-codex` and `pi-shepherd` simultaneously (R53, R54). This sprint
-   ships the *detector* for the lag, and the operator ships the packages.
+   gates `pi-claude`, `pi-codex` and `pi-shepherd` at once (R53, R54). This sprint ships the
+   detector; the operator ships the packages.
 
 ## E. Deliverables
 
@@ -149,21 +149,28 @@ PR #328 and it blocks every other item's evidence.
 **Priority:** CRITICAL
 **GH:** #330
 
-`resolve_active_run` propagates the `run.json` read error instead of skipping a namespace
-that is not a run, in both platform modules (R30, R31). A directory without `run.json` is not
-a run and must be skipped exactly as a non-conforming name already is. The two duplicated
-copies collapse to one shared implementation.
+`resolve_active_run` propagates the `run.json` read error instead of skipping a namespace that
+is not a run, in both platform modules (R30, R31). A directory without `run.json` is not a run
+and must be skipped exactly as a non-conforming name already is; the two duplicated copies
+collapse to one implementation. Not cosmetic: on `SubagentStop` the same error becomes a
+blocking decision at `crates/cli/src/cmd/native_hook.rs:147-153` while every other event
+degrades to advisory context at `:154-163` (R36b), and it rejected both the `SubagentStart`
+opening and the `Stop` closing of the session that authored this seed (R36a).
 
-This is not a cosmetic banner. On `SubagentStop` the same error becomes a blocking decision
-at `crates/cli/src/cmd/native_hook.rs:147-153`, while every other event degrades to advisory
-context at `:154-163` (R36b). It rejected both the `SubagentStart` opening and the `Stop`
-closing of the session that authored this seed (R36a).
+**The remediation this defect prints is actively harmful and is fixed in the same change.**
+Running the two commands the banner names flips `run_namespace_is_usable` (`:549-563`) true,
+routing the same unchanged error to the deny arm at `:532-535`: allowed-with-a-banner becomes
+every tool denied, and `v500` never gains a `run.json` (R36d, R36e). The lint from `cc07276`
+cannot catch it — the command is runnable, just wrong (R36f).
 
 - **Acceptance:** in a tree containing `.shepherd/runs/v500/` with only `plan.md` and one
   namespace with `status: executing`, `shepherd claude-hook` fed a PreToolUse envelope emits
   no `no usable run namespace` text; exit 0.
 - **Acceptance:** the same tree fed a `SubagentStop` envelope carrying a valid dispatch
   binding does not emit `"decision":"block"`; the probe script exits 0.
+- **Acceptance:** following the remediation text the hook prints, verbatim and in order,
+  never converts an allowed decision into `"permissionDecision":"deny"`; the sandbox script
+  from R36c asserts this and exits 0.
 - **Acceptance:** `grep -c "fn resolve_active_run" crates/cli/src/dispatch_store.rs` returns
   a value strictly less than 3.
 - **Acceptance:** `cargo test -p shepherd-cli --test dispatch_store` exits 0, with a new case
@@ -174,9 +181,13 @@ closing of the session that authored this seed (R36a).
 **Priority:** HIGH
 **GH:** #315, #314, #306
 
-Both are unobservable today because the previous deliverable's defect preempts them (R36,
-R46, R47). Once resolution is fixed, reproduce each first, then fix. #306 may already be
-satisfied by `crates/cli/src/cmd/native_hook.rs:521-531`; re-measure before writing code.
+#314 remains unobservable in this repo because the previous deliverable's defect preempts it
+(R36, R46). #315 is now **measured**: the R36c sandbox unmasks it, and its denial reason is
+`dispatch filesystem operation \`open regular file\` failed for …/runs/<run>/dispatch/
+.root-session.<id>.json: No such file or directory (os error 2)` — correctly fail-closed, with
+a bare errno naming an internal dispatch file (R36g). Use that sandbox as the harness. #306
+may already be satisfied by `crates/cli/src/cmd/native_hook.rs:521-531`; re-measure before
+writing code.
 
 - **Acceptance:** the #315 denial reason names the session-binding condition and a command;
   `printf '{"hook_event_name":"PreToolUse","session_id":"stranger",...}' | shepherd
@@ -323,55 +334,47 @@ why 6.5.0 ran against a 6.5.1 tree.
 
 ## F. Recommended topology
 
-Recommendation only. The engineer's Stage Graph is binding, and partition-to-executor mapping
-is the engineer's call, not this seed's.
+Recommendation only. The Stage Graph is binding, and partition-to-executor mapping is the
+engineer's call, not this seed's.
 
-Seven file-disjoint scope partitions (mesh R64–R71). No file appears twice; `CHANGELOG.md` is
-additive and shared by convention.
+Seven file-disjoint partitions — **carrier**, **resolution**, **diagnostics**,
+**dispatch-scope**, **vocabulary**, **gate-wiring**, **clone-fidelity**. Their exact exclusive
+file lists are enumerated once in mesh R64–R71 and are not restated here, so the scope has a
+single source of truth. No file appears in two partitions; `CHANGELOG.md` is additive and
+shared by convention.
 
-| Partition | Exclusive file scope | Ordering |
-|---|---|---|
-| carrier | `plugins/shepherd/codex`, `scripts/generate-codex-carrier.py` | first — unblocks all evidence |
-| resolution | `crates/cli/src/dispatch_store.rs`, `crates/cli/tests/dispatch_store.rs` | before diagnostics |
-| diagnostics | `crates/cli/src/run_store.rs`, `crates/cli/src/cmd/native_hook.rs`, `crates/cli/src/cmd/wave_h_execution.rs`, `crates/cli/tests/claude_hook_cli.rs` | after resolution |
-| dispatch-scope | `content/predicates/*.toml`, `crates/core/src/guard/engine.rs`, `crates/core/tests/guard.rs`, `hooks/tests/test_native_cli_contract.sh` | independent |
-| vocabulary | `crates/cli/src/cmd/wave_a_models.rs`, `crates/cli/src/cmd/wave_b2_seed.rs`, and their two test files | independent |
-| gate-wiring | `.github/workflows/rust.yml`, `scripts/check-workflow-meta.sh`, `hooks/tests/test_workflow_meta_gate.sh`, `hooks/tests/fixtures`, `hooks/tests/lib` | last — needs every other partition green |
-| clone-fidelity | `.gitignore`, `.shepherd/ctx/.gitkeep`, `crates/cli/src/cmd/wave_c_bootstrap.rs`, `scripts/check-version-lag.py` | independent |
-
-Only two orderings are real: **carrier before everything** (its red hides all other CI
-evidence), and **resolution before diagnostics** (#330 preempts #314 and #315 — mesh R36).
-Everything else is parallel-safe.
+Only two orderings are real. **carrier first** — its red hides every other partition's CI
+evidence. **resolution before diagnostics** — #330 preempts #314 (R36, R46), and it is what
+makes the harmful remediation reachable at all. Everything else is parallel-safe;
+gate-wiring lands last because it needs the other partitions green to go green itself.
 
 ## G. Explicitly out of scope, each with its reason
 
-- **#327 shepherd-agents Rust framework** — a net-new subsystem; contradicts this sprint's
-  negative-LOC premise outright.
+- **#327 shepherd-agents Rust framework** — net-new subsystem; contradicts the negative-LOC
+  premise outright.
 - **#325 GitHub Pages site** — net-new surface, not a correctness defect reachable in v6.5.1.
 - **#326 FL03 -> pzzld-org URL flip** — gated on an external org-transfer step this sprint
-  does not control; flipping URLs before it completes breaks both install paths.
-- **#321 Windows 94/384 failures** — refuted as a v6.5.1 blocker: `test (windows-latest,
-  default)` and `test (windows-latest, full)` both PASS on PR #328 (mesh R10). Needs its own
-  measurement sprint against a real Windows host, not a seat here.
+  does not control; flipping early breaks both install paths.
+- **#321 Windows 94/384 failures** — refuted as a blocker: both `test (windows-latest, …)`
+  jobs PASS on #328 (R10). Needs its own sprint on a real host.
 - **#308 obsidian-vault nightly.yml** — filed against a different repository.
-- **#301 cargo xtask consolidation** — a net-new build-orchestration subsystem; the same
-  premise violation as #327.
-- **#298 denied dispatch reserves task_name** — a dispatch state-machine change, not a repair;
-  no reproduction exists on this branch and producing one is itself a sprint.
-- **#307 `~/.local/target/debug/shepherd` resolution** — refuted against this tree:
-  `git grep -n "\.local/target"` returns no hits (mesh R50). It describes a shipped artifact
-  not present here; re-file against a version that reproduces.
-- **#284–#298 SQL-injection cluster (15 issues)** — real, and scoped to retired shell surfaces
-  that the native CLI replaced; folding them in triples the sprint and reopens deleted code.
-- **npm publication of `component-runtime@6.5.1` and the three harness packages** — an
-  operator release action per decision D5. This sprint ships the detector; the operator ships
-  the packages.
+- **#301 cargo xtask consolidation** — net-new build-orchestration subsystem; same premise
+  violation as #327.
+- **#298 denied dispatch reserves task_name** — state-machine change, not a repair; no
+  reproduction exists on this branch and producing one is itself a sprint.
+- **#307 `~/.local/target/debug/shepherd`** — refuted: `git grep "\.local/target"` returns no
+  hits (R50). Describes an artifact absent from this tree; re-file where it reproduces.
+- **#284–#298 SQL-injection cluster (15 issues)** — real, scoped to retired shell surfaces the
+  native CLI replaced; folding them in triples the sprint and reopens deleted code.
+- **npm publication of `component-runtime@6.5.1` and the three harness packages** — operator
+  release action per D5.
 
 ## H. Gates
 
 1. **W0-GATE** — the CRITICAL and HIGH deliverables each reproduce as a failure, with the
-   exact failing output recorded, before any fix lands. #314 and #315 reproduce only after
-   the resolution deliverable, which is why the ordering in §F is binding rather than advisory.
+   exact failing output recorded, before any fix lands. #314 reproduces only after the
+   resolution deliverable, which is why the §F ordering is binding rather than advisory. The
+   R36c sandbox is the harness for #330, #315 and the harmful remediation.
 2. **GATE-REACHABILITY** — for every gate this sprint touches or adds, the artifact records
    both the command that runs it in CI and the falsification proving it fails on purpose.
    Proving a gate can fail is not sufficient; unreachable from CI, it is not a gate. This is
