@@ -187,6 +187,17 @@ secrets.
   to `v6.4.5`, release archives were still attributed to `release.yml`, and the Claude plugin
   was described as having "four Claude hooks" when it registers 11 across 7 lifecycle events
   (4 native dispatch, 7 carrier scripts).
+- **`docs/cargo-distribution.md` described a pipeline that no longer existed**, and
+  had for some time. It claimed `cargo-publish.yml` triggers on
+  `push: branches: [main, master]`, citing `cargo-publish.yml:3-5` — that trigger
+  was already gone — and that the two workflows are "independent Actions runs
+  triggered by the same push, not chained with `needs:`", which stopped being true
+  when publication moved into `release.yml`. Rewritten to what exists, including
+  the trigger table and the reason there is deliberately **no** `push` trigger: a
+  push-triggered run has no `needs:` edge to the asset build, which is precisely
+  how publication once raced the build and burned two patch versions. The first
+  draft of that table listed a push row that does not exist, which is the same
+  defect being fixed, caught before commit.
 - The README never documented the **skill surface** at all — the ten `/shepherd:*` entry
   points that are the plugin's actual user-facing contract, and whose disappearance started
   this sprint. It now does, including why `plant` and `spawn` are two skills rather than one
