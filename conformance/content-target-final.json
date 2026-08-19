@@ -234,13 +234,17 @@
           2315,
           "db72c1be317d95fa897702d66a8cc4b19adf1e551984061f060cfae627ba3908"
         ],
+        "skills/plant/SKILL.md": [
+          2442,
+          "dd4f0dc9412e9f41fac6c67591181dada5f4dc4d3a465ff6d30838eb85d2d284"
+        ],
         "skills/shepherd/SKILL.md": [
-          1951,
-          "9c482279a9e9bea5f1ade26bcd24232db27059a84b91f75d97166f5650e4d6e0"
+          2566,
+          "461c51d781a5bb5de0749fd7ec4945c5c78952f2376411754811d8ca4425ddc3"
         ],
         "skills/spawn/SKILL.md": [
-          2477,
-          "2c84b4983e7036c360cf3e45c957ce2523e959b9d806b6938d3a522f11134ec7"
+          2604,
+          "74ea04bb40df9cac506c159c24a07f0a02d89abc1754a5cb7e12db4558be8d0a"
         ],
         "skills/start/SKILL.md": [
           1674,
@@ -251,7 +255,7 @@
           "464768041f6f32bc14cec18ba0d428e0a60b86ba45f652e1cb0cd3956245bf81"
         ]
       },
-      "tree_digest": "4caee5f76169908d4593f5217a4c1bde7929d735b87d1859ff3826f1afa80512"
+      "tree_digest": "6e4112852a26b31e662bbcabc024ae36d5ca671a827210e0e23d8385eeabb2db"
     },
     "codex": {
       "files": {
@@ -275,13 +279,17 @@
           2315,
           "db72c1be317d95fa897702d66a8cc4b19adf1e551984061f060cfae627ba3908"
         ],
+        "skills/plant/SKILL.md": [
+          2442,
+          "dd4f0dc9412e9f41fac6c67591181dada5f4dc4d3a465ff6d30838eb85d2d284"
+        ],
         "skills/shepherd/SKILL.md": [
-          1951,
-          "9c482279a9e9bea5f1ade26bcd24232db27059a84b91f75d97166f5650e4d6e0"
+          2566,
+          "461c51d781a5bb5de0749fd7ec4945c5c78952f2376411754811d8ca4425ddc3"
         ],
         "skills/spawn/SKILL.md": [
-          2477,
-          "2c84b4983e7036c360cf3e45c957ce2523e959b9d806b6938d3a522f11134ec7"
+          2604,
+          "74ea04bb40df9cac506c159c24a07f0a02d89abc1754a5cb7e12db4558be8d0a"
         ],
         "skills/start/SKILL.md": [
           1674,
@@ -292,7 +300,7 @@
           "464768041f6f32bc14cec18ba0d428e0a60b86ba45f652e1cb0cd3956245bf81"
         ]
       },
-      "tree_digest": "693d70a523a491b43ec0294db5f3272064217f333791d1fded54357d3a12e5e1"
+      "tree_digest": "553e1d7df5ed31ad9682adbc84e70a754fc4feae1017fe8ea1cd0f083bc1b1c9"
     },
     "pi": {
       "files": {
@@ -348,13 +356,17 @@
           2315,
           "db72c1be317d95fa897702d66a8cc4b19adf1e551984061f060cfae627ba3908"
         ],
+        "skills/plant/SKILL.md": [
+          2442,
+          "dd4f0dc9412e9f41fac6c67591181dada5f4dc4d3a465ff6d30838eb85d2d284"
+        ],
         "skills/shepherd/SKILL.md": [
-          1951,
-          "9c482279a9e9bea5f1ade26bcd24232db27059a84b91f75d97166f5650e4d6e0"
+          2566,
+          "461c51d781a5bb5de0749fd7ec4945c5c78952f2376411754811d8ca4425ddc3"
         ],
         "skills/spawn/SKILL.md": [
-          2477,
-          "2c84b4983e7036c360cf3e45c957ce2523e959b9d806b6938d3a522f11134ec7"
+          2604,
+          "74ea04bb40df9cac506c159c24a07f0a02d89abc1754a5cb7e12db4558be8d0a"
         ],
         "skills/start/SKILL.md": [
           1674,
@@ -365,7 +377,7 @@
           "464768041f6f32bc14cec18ba0d428e0a60b86ba45f652e1cb0cd3956245bf81"
         ]
       },
-      "tree_digest": "2aa766cce9b09bcc488ddfb3ae3a056066c73bf6021b2385fd4d470a4580ced1"
+      "tree_digest": "ad010109fd107024536ae56c004726676f020908fe324fb6bc26876e0762950d"
     }
   }
 }
