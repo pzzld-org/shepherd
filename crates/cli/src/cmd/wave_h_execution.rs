@@ -783,6 +783,64 @@ fn render_issues(
 #[cfg(test)]
 mod tests {
     use super::{IssueRow, issue_bucket};
+    // Used only by the `#[cfg(unix)]` regression test below: the
+    // missing-run message text it asserts on is produced by run_store.rs's
+    // `mod platform`, which is `#[cfg(unix)]`-only.
+    #[cfg(unix)]
+    use super::{RunStore, run_error};
+
+    /// #331 regression: `run_error` must keep mapping every `RunStoreError`
+    /// to exit 5 (this is what `shepherd ready --run dummy` and every other
+    /// run-gated command relies on), even now that the missing-run message
+    /// text has changed -- and that new text must never leak a bare
+    /// `os error N` while still pointing at `shepherd run list`. Both
+    /// halves are asserted together: absence of `os error` alone would also
+    /// pass a binary that had simply stopped erroring.
+    #[cfg(unix)]
+    #[test]
+    fn run_error_keeps_exit_5_and_names_the_run_list_command() {
+        let root = std::env::temp_dir().join(format!(
+            "shepherd-run-error-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock is after epoch")
+                .as_nanos()
+        ));
+        // `root` is created and canonicalized so the fixture path itself has
+        // no symlink component to trip the store's NOFOLLOW-guarded
+        // traversal (on macOS the system temp dir lives under `/var`, which
+        // is a symlink to `/private/var`; leaving it unresolved would make
+        // the very first path component fail as a real fault instead of the
+        // `root/dummy` ENOENT this test means to exercise). `root/dummy`
+        // itself is never created, matching the exact `shepherd ready --run
+        // dummy` repro from issue #331.
+        std::fs::create_dir_all(&root).expect("create fixture root");
+        let root = std::fs::canonicalize(&root).expect("canonicalize fixture root");
+        let store = RunStore::new(root.join("dummy").join("run.json"));
+        let store_error = store
+            .load()
+            .expect_err("a never-created run must fail to load");
+        let cli_error = run_error(store_error);
+        assert_eq!(
+            cli_error.exit_code(),
+            5,
+            "run-gated commands must keep exiting 5"
+        );
+        let message = cli_error
+            .message_text()
+            .expect("run_error always carries a message");
+        assert!(
+            !message.contains("os error"),
+            "message must not leak a bare errno: {message}"
+        );
+        assert!(
+            message.contains("shepherd run list"),
+            "message must point at the discovery command: {message}"
+        );
+        std::fs::remove_dir_all(&root).expect("remove fixture");
+    }
+
     #[test]
     fn classifier_follows_the_declared_precedence() {
         let row = IssueRow {

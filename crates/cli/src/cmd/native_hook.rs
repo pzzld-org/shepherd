@@ -17,12 +17,12 @@ use shepherd::{
     GuardValue, Harness,
     dispatch::{
         AgentId, DispatchBinding, DispatchPlan, DispatchRequest, LaneId, RawIdentity, Role, RunId,
-        plan_lifecycle,
+        SessionId, plan_lifecycle,
     },
 };
 
 use crate::{
-    ContextInputs, DispatchService, DispatchStore, ExecutionContext,
+    BindRootDispatchRequest, ContextInputs, DispatchService, DispatchStore, ExecutionContext,
     cmd::{dispatch::read_project_id, guard::load_engine},
     interface::{CliError, CliGlobals},
 };
@@ -250,12 +250,25 @@ fn run_hook(
     let now = context.now_unix_millis();
     match request {
         DispatchRequest::BindRoot(request) => {
-            let request = decode_request(&request)?;
-            let response = service.bind_root(request, now).map_err(service_error)?;
-            Ok(HookOutput::Context {
-                event: input.hook_event_name,
-                detail: format!("bound root session to run {}", response.run),
-            })
+            let request: BindRootDispatchRequest = decode_request(&request)?;
+            match service.bind_root(request.clone(), now) {
+                Ok(response) => Ok(HookOutput::Context {
+                    event: input.hook_event_name,
+                    detail: format!("bound root session to run {}", response.run),
+                }),
+                // The no-clobber write behind `bind_root` always collides with
+                // this session's OWN prior binding (the path is keyed by
+                // session id, so two different session ids can never collide
+                // here) -- either a harmless replay of the exact same
+                // identity, which a dropped response or a supervisor restart
+                // can legitimately produce, or the same session id now
+                // claiming a different identity. Reading the existing record
+                // back is what tells them apart.
+                Err(crate::DispatchServiceError::Store(
+                    crate::DispatchStoreError::AlreadyExists { .. },
+                )) => root_binding_reaffirmation(&context, &input, &request),
+                Err(error) => Err(service_error(error)),
+            }
         }
         DispatchRequest::Start(request) => {
             let request = decode_request(&request)?;
@@ -455,6 +468,52 @@ fn service_error(error: crate::DispatchServiceError) -> CliError {
     CliError::message(error.to_string())
 }
 
+/// Decide whether a second `BindRoot` that collided with this session's own
+/// existing binding is a harmless replay or a genuine conflict.
+///
+/// `DispatchStoreError::AlreadyExists` only tells us that
+/// `.root-session.<session id>.json` already exists; it says nothing about
+/// whether the request that just collided with it agrees with what is
+/// already recorded there. Loading the existing record back and comparing it
+/// is what makes that distinction: identical identity (harness, role, mode)
+/// is exactly what a dropped response or a supervisor restart legitimately
+/// replays, so it becomes a non-rejection re-affirmation; anything else --
+/// including a load failure, which is `dispatch_store.rs`'s own integrity
+/// check reporting that the record's embedded identity disagrees with the
+/// canonical path it was found at -- stays a refusal, and the message says
+/// which case fired.
+fn root_binding_reaffirmation(
+    context: &ExecutionContext,
+    input: &NativeHookInput,
+    request: &BindRootDispatchRequest,
+) -> Result<HookOutput, CliError> {
+    let session_id = SessionId::new(input.session_id.clone())
+        .map_err(|error| CliError::message(error.to_string()))?;
+    let requested_role = Role::from_carrier(&request.role_carrier)
+        .map_err(|error| CliError::message(error.to_string()))?;
+    let store = DispatchStore::new(&context.runs_root);
+    let existing = store.load_active_root_binding(&session_id).map_err(|error| {
+        CliError::message(format!(
+            "root session binding for {session_id} belongs to a different session or run: {error}"
+        ))
+    })?;
+    if existing.harness == request.harness
+        && existing.role == requested_role
+        && existing.mode == request.mode
+    {
+        Ok(HookOutput::Context {
+            event: input.hook_event_name.clone(),
+            detail: format!("root session already bound to run {}", existing.run),
+        })
+    } else {
+        Err(CliError::message(format!(
+            "root session already bound to run {} with a different identity \
+(harness, role, or mode changed); refusing to silently rebind it",
+            existing.run
+        )))
+    }
+}
+
 fn cli_error_detail(error: &CliError) -> &str {
     error
         .message_text()
@@ -531,16 +590,63 @@ fn unresolved_pre_tool_use(
     }
     if run_namespace_is_usable(&context.runs_root) {
         return HookOutput::Deny {
-            detail: error.to_string(),
+            detail: unbound_session_reason(error),
         };
     }
+    // No command is named here on purpose. `shepherd run layout <run>
+    // --repair` and `shepherd run set <run> --status executing` are exactly
+    // the two conditions `run_namespace_is_usable` checks, so printing them
+    // as the remedy lets an operator who follows them verbatim flip this
+    // very advisory into the fail-closed `Deny` arm above -- raising a run's
+    // status without also binding this session only creates standing to
+    // refuse, never standing to allow. Nothing in this codebase can bind the
+    // session from a bare `shepherd <cmd> --run <run>` one-liner either:
+    // `shepherd dispatch bind-root` takes no arguments at all and reads a
+    // full JSON request (session id, harness, role, lease) from stdin, so
+    // printing it with an invented `--run` flag would be a command that does
+    // not exist. `/shepherd:start` is the real, complete entry point -- it is
+    // what performs the whole sequence, session binding included.
     HookOutput::Context {
         event: "PreToolUse".into(),
         detail: format!(
-            "no usable run namespace ({error}); tool allowed. \
-Repair with `shepherd run layout <run> --repair` \
-then `shepherd run set <run> --status executing`."
+            "no usable run namespace ({error}); tool allowed. No shepherd \
+run is both executing and holding a dispatch directory yet, so there is \
+nothing for this session to bind to. Raising a run's status without also \
+binding this session only creates standing to refuse, not standing to \
+allow -- start execution properly, for example with /shepherd:start, \
+rather than repairing run state by hand."
         ),
+    }
+}
+
+/// The reason text for a fail-closed `PreToolUse` denial, once shepherd's own
+/// run bookkeeping is confirmed usable.
+///
+/// An absent `.root-session.<id>.json` -- `DispatchStoreError::Io` whose
+/// `source` is `ErrorKind::NotFound` -- is the normal on-disk representation
+/// of "this session was never bound," not a filesystem fault, and deserves a
+/// remedy an operator can act on rather than a bare errno. Every other `Io`
+/// variant (`EACCES`, `EIO`, a record that exists but will not parse, ...)
+/// stays a genuine fault and keeps its raw `Display`, errno included, exactly
+/// as before: conflating the two would send an operator chasing a security
+/// incident that is not one, or bury a real one behind reassuring prose.
+/// Modeled on `crates/cli/src/cmd/dispatch.rs`'s `classify_nofollow_open_error`,
+/// which draws the identical ENOENT/genuine-fault line for the same reason --
+/// that function classifies a different error type (`rustix::io::Errno`) over
+/// a different read (the project-identity document), so it is not called
+/// directly here, only its pattern.
+fn unbound_session_reason(error: &crate::DispatchServiceError) -> String {
+    let is_unbound_session = matches!(
+        error,
+        crate::DispatchServiceError::Store(crate::DispatchStoreError::Io { source, .. })
+            if source.kind() == io::ErrorKind::NotFound
+    );
+    if is_unbound_session {
+        "this session is not bound to a shepherd run. Bind it with \
+/shepherd:start before mutating the workspace."
+            .into()
+    } else {
+        error.to_string()
     }
 }
 
