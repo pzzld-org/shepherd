@@ -133,10 +133,83 @@ fn pretooluse_denies_unresolved_or_unbound_requests() {
         serde_json::from_slice(&denied.stdout).expect("denial output is JSON");
     assert_eq!(output["hookSpecificOutput"]["hookEventName"], "PreToolUse");
     assert_eq!(output["hookSpecificOutput"]["permissionDecision"], "deny");
+    let reason = output["hookSpecificOutput"]["permissionDecisionReason"]
+        .as_str()
+        .expect("denial carries a non-empty reason");
+    assert!(!reason.is_empty());
+    // #315: the unbound-session denial must stay fail-closed, but the reason
+    // must name the remedy instead of leaking `DispatchStoreError::Io`'s raw
+    // `os error` display -- an absent `.root-session.<id>.json` is the
+    // normal representation of "never bound," not a filesystem fault.
     assert!(
-        output["hookSpecificOutput"]["permissionDecisionReason"]
-            .as_str()
-            .is_some_and(|reason| !reason.is_empty())
+        !reason.contains("os error"),
+        "the unbound-session denial must not leak a raw errno: {reason}"
+    );
+    assert!(
+        !reason.contains("No such file or directory"),
+        "the unbound-session denial must not leak the raw io::Error text: {reason}"
+    );
+    assert!(
+        reason.contains("not bound") && reason.contains("/shepherd:start"),
+        "the unbound-session denial must name the remedy: {reason}"
+    );
+    fs::remove_dir_all(root).expect("remove fixture directory");
+}
+
+/// A GENUINE dispatch I/O failure -- distinct from "this session was never
+/// bound" -- must keep its raw errno. `EACCES` on the root-session binding
+/// file proves `unbound_session_reason` (native_hook.rs) discriminates by
+/// `io::ErrorKind` rather than blanket-rewriting every `DispatchStoreError::Io`.
+/// Unix only: permission bits are what makes this reproducible without
+/// mocking the filesystem, and the classifier this test exercises only
+/// special-cases the unix `open_regular_at` -> `DispatchStoreError::Io` path
+/// (the non-unix twin reports the same "never bound" family of outcomes
+/// through a different code path entirely, `crate::safe_fs`).
+#[cfg(unix)]
+#[test]
+fn pretooluse_denial_keeps_the_errno_for_a_genuine_io_fault() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let root = repository("genuine-io-fault");
+    let binding_path = root.join(".shepherd/runs/v645/dispatch/.root-session.locked-session.json");
+    fs::write(&binding_path, b"{}").expect("plant an unreadable root-session record");
+    fs::set_permissions(&binding_path, fs::Permissions::from_mode(0o000))
+        .expect("strip read permission to force a genuine EACCES");
+
+    let denied = hook(
+        &root,
+        serde_json::json!({
+            "hook_event_name": "PreToolUse",
+            "session_id": "locked-session",
+            "tool_use_id": "deny-tool-locked",
+            "tool_name": "Write",
+            "tool_input": {"file_path": "README.md", "content": "nope"}
+        }),
+    );
+    // Restore permissions before `remove_dir_all` below has to delete it.
+    fs::set_permissions(&binding_path, fs::Permissions::from_mode(0o644))
+        .expect("restore permissions for cleanup");
+
+    assert!(
+        denied.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&denied.stderr)
+    );
+    let output: serde_json::Value =
+        serde_json::from_slice(&denied.stdout).expect("denial output is JSON");
+    assert_eq!(output["hookSpecificOutput"]["permissionDecision"], "deny");
+    let reason = output["hookSpecificOutput"]["permissionDecisionReason"]
+        .as_str()
+        .expect("denial carries a reason");
+    assert!(
+        reason.contains("os error"),
+        "a genuine I/O fault (EACCES, not ENOENT) must keep its raw errno, \
+not the unbound-session remedy: {reason}"
+    );
+    assert!(
+        !reason.contains("/shepherd:start"),
+        "a genuine I/O fault must not be mistaken for the unbound-session \
+remedy: {reason}"
     );
     fs::remove_dir_all(root).expect("remove fixture directory");
 }
@@ -332,11 +405,161 @@ fn broken_run_namespace_allows_tools_instead_of_stranding_the_session() {
         output["hookSpecificOutput"]["permissionDecision"], "deny",
         "a broken run namespace must not deny the tools that repair it: {output}"
     );
+    let detail = output["hookSpecificOutput"]["additionalContext"]
+        .as_str()
+        .expect("the advisory banner carries additionalContext");
     assert!(
-        output["hookSpecificOutput"]["additionalContext"]
-            .as_str()
-            .is_some_and(|detail| detail.contains("no usable run namespace")),
+        detail.contains("no usable run namespace"),
         "the fault must be surfaced, not swallowed: {output}"
+    );
+    // The banner used to print `Repair with `shepherd run layout <run>
+    // --repair` then `shepherd run set <run> --status executing`.` -- both
+    // of which are exactly the two conditions `run_namespace_is_usable`
+    // checks, so an operator following that advice verbatim flips this very
+    // advisory into a hard `Deny` without ever binding the session. The fix
+    // prints no command at all here; a backtick anywhere in this banner
+    // would be exactly that regression recurring.
+    assert!(
+        !detail.contains('`'),
+        "the advisory banner must name no command, backtick-fenced or \
+otherwise: {detail}"
+    );
+    assert!(
+        !detail.contains("Repair with"),
+        "the advisory banner must not point at the two-command remediation \
+that flips allow into deny: {detail}"
+    );
+    fs::remove_dir_all(root).expect("remove fixture directory");
+}
+
+/// #314: a replayed `SessionStart` for a session that already owns the
+/// binding is a non-rejection re-affirmation, not
+/// `native lifecycle hook rejected: dispatch record already exists: ...`.
+#[test]
+fn session_start_is_idempotent_for_the_same_session() {
+    let root = repository("session-start-idempotent");
+    let envelope = serde_json::json!({
+        "hook_event_name": "SessionStart",
+        "session_id": "replay-session"
+    });
+
+    let first = hook(&root, envelope.clone());
+    assert!(
+        first.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+    let first_out: serde_json::Value =
+        serde_json::from_slice(&first.stdout).expect("first SessionStart output is JSON");
+    let first_detail = first_out["hookSpecificOutput"]["additionalContext"]
+        .as_str()
+        .expect("first SessionStart carries additionalContext");
+    assert!(
+        !first_detail.contains("rejected"),
+        "first SessionStart must not be a rejection: {first_detail}"
+    );
+    assert!(
+        first_detail.contains("bound root session to run v645"),
+        "first SessionStart must bind: {first_detail}"
+    );
+
+    let second = hook(&root, envelope);
+    assert!(
+        second.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&second.stderr)
+    );
+    let second_out: serde_json::Value =
+        serde_json::from_slice(&second.stdout).expect("second SessionStart output is JSON");
+    let second_detail = second_out["hookSpecificOutput"]["additionalContext"]
+        .as_str()
+        .expect("second SessionStart carries additionalContext");
+
+    // The idempotency property this fix implements is a NAMED
+    // re-affirmation ("root session already bound to run v645"), not a
+    // byte-identical replay of the bind confirmation -- and, above all, not
+    // a rejection.
+    assert!(
+        !second_detail.contains("rejected"),
+        "a replayed SessionStart must not be rejected: {second_detail}"
+    );
+    assert!(
+        second_detail.contains("root session already bound to run v645"),
+        "a replayed SessionStart must name the re-affirmation: {second_detail}"
+    );
+    assert_ne!(
+        first_out, second_out,
+        "the re-affirmation is a named, distinct response, not a byte-for-byte \
+replay of the bind confirmation: first={first_out} second={second_out}"
+    );
+    fs::remove_dir_all(root).expect("remove fixture directory");
+}
+
+/// #314's other half: idempotency must not become amnesia. A second
+/// `SessionStart` for the SAME session id that asks to bind as a different
+/// identity (role) than the one already on record must still refuse.
+///
+/// A literal *different session id* can never collide with an existing
+/// binding in the first place: `dispatch_store.rs`'s no-clobber write keys
+/// the binding file by session id
+/// (`.root-session.<session id>.json`), so two distinct session ids resolve
+/// to two distinct paths and just bind independently -- there is no
+/// `AlreadyExists` to discriminate. The reachable form of "the record
+/// belongs to a different session" is the SAME session id reused by what is,
+/// in substance, a different actor, which is exactly what a changed `role`
+/// on a replayed `SessionStart` looks like from shepherd's side, and exactly
+/// what `root_binding_reaffirmation` (native_hook.rs) checks the loaded
+/// on-disk record against.
+#[test]
+fn session_start_refuses_a_replay_with_a_different_identity() {
+    let root = repository("session-start-different-identity");
+    let first = hook(
+        &root,
+        serde_json::json!({
+            "hook_event_name": "SessionStart",
+            "session_id": "reused-session"
+        }),
+    );
+    assert!(
+        first.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+    let first_out: serde_json::Value =
+        serde_json::from_slice(&first.stdout).expect("first SessionStart output is JSON");
+    assert!(
+        first_out["hookSpecificOutput"]["additionalContext"]
+            .as_str()
+            .is_some_and(|detail| detail.contains("bound root session to run v645")),
+        "{first_out}"
+    );
+
+    let conflicting = hook(
+        &root,
+        serde_json::json!({
+            "hook_event_name": "SessionStart",
+            "session_id": "reused-session",
+            "shepherd_dispatch": {"role": "planter"}
+        }),
+    );
+    assert!(
+        conflicting.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&conflicting.stderr)
+    );
+    let conflicting_out: serde_json::Value =
+        serde_json::from_slice(&conflicting.stdout).expect("conflicting output is JSON");
+    let detail = conflicting_out["hookSpecificOutput"]["additionalContext"]
+        .as_str()
+        .expect("conflicting SessionStart carries additionalContext");
+    assert!(
+        detail.contains("rejected"),
+        "a same-session replay claiming a different identity must still \
+refuse: {detail}"
+    );
+    assert!(
+        detail.contains("different identity"),
+        "the refusal must name which case fired: {detail}"
     );
     fs::remove_dir_all(root).expect("remove fixture directory");
 }
