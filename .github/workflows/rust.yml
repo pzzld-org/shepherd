@@ -512,7 +512,9 @@ jobs:
           cache: false
           target: wasm32-unknown-unknown
       - name: Setup wasm-tools
-        run: cargo install wasm-tools --version "${WASM_TOOLS_VERSION}" --locked
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-tools@${{ env.WASM_TOOLS_VERSION }}
       - name: Verify runner clang
         run: clang --version
       - name: cross-target feature matrix
