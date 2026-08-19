@@ -1,5 +1,5 @@
 {
-  "name": "@pzzld/pi-claude",
+  "name": "@pzzld/claude-shepherd",
   "version": "6.5.4",
   "description": "Thin Claude Code adapter for native per-agent identity, lifecycle dispatch, and the shared Rust guard engine.",
   "type": "module",

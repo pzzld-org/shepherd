@@ -168,12 +168,12 @@ def seed_fixture(root: Path) -> None:
             "version": CURRENT,
         },
         "harness-claude": {
-            "name": "@pzzld/pi-claude",
+            "name": "@pzzld/claude-shepherd",
             "version": CURRENT,
             "dependencies": {"@pzzld/component-runtime": CURRENT},
         },
         "harness-codex": {
-            "name": "@pzzld/pi-codex",
+            "name": "@pzzld/codex-shepherd",
             "version": CURRENT,
             "dependencies": {"@pzzld/component-runtime": CURRENT},
         },
@@ -200,12 +200,12 @@ def seed_fixture(root: Path) -> None:
                     "version": CURRENT,
                 },
                 "packages/harness-claude": {
-                    "name": "@pzzld/pi-claude",
+                    "name": "@pzzld/claude-shepherd",
                     "version": CURRENT,
                     "dependencies": {"@pzzld/component-runtime": CURRENT},
                 },
                 "packages/harness-codex": {
-                    "name": "@pzzld/pi-codex",
+                    "name": "@pzzld/codex-shepherd",
                     "version": CURRENT,
                     "dependencies": {"@pzzld/component-runtime": CURRENT},
                 },

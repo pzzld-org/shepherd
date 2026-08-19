@@ -64,8 +64,8 @@ keep project-only explanatory prose in the flat `.shepherd/docs/` root.
 Claude, Codex, and Pi may have host-specific metadata, but it must remain at the
 adapter boundary:
 
-- Claude hook response names stay in `@pzzld/pi-claude`.
-- Codex hook response names stay in `@pzzld/pi-codex`.
+- Claude hook response names stay in `@pzzld/claude-shepherd`.
+- Codex hook response names stay in `@pzzld/codex-shepherd`.
 - Pi provider discovery stays in `@pzzld/pi-shepherd` and its
   `shepherd.pi.json` contract.
 

@@ -1,4 +1,4 @@
-# `@pzzld/pi-codex`
+# `@pzzld/codex-shepherd`
 
 The Codex adapter translates native hook envelopes into the typed
 `fl03:shepherd@6.5.4` Component Model contract. The Rust component owns

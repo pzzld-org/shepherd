@@ -140,8 +140,8 @@ cat > "$fixture/packages/component-runtime/package.json" <<EOF
 EOF
 for package in claude codex pi; do
   case "$package" in
-    claude) published='pi-claude' ;;
-    codex) published='pi-codex' ;;
+    claude) published='claude-shepherd' ;;
+    codex) published='codex-shepherd' ;;
     pi) published='pi-shepherd' ;;
   esac
   cat > "$fixture/packages/harness-$package/package.json" <<EOF

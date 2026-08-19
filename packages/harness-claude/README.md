@@ -1,4 +1,4 @@
-# `@pzzld/pi-claude`
+# `@pzzld/claude-shepherd`
 
 This npm package is an optional Component Model embedding adapter. It is not
 the Claude marketplace runtime. The normal Claude plugin is installed through

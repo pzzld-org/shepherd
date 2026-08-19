@@ -37,8 +37,8 @@ for package in component-runtime harness-claude harness-codex harness-pi; do
   )
 done
 test -f "$tarballs/pzzld-component-runtime-6.5.4.tgz"
-test -f "$tarballs/pzzld-pi-claude-6.5.4.tgz"
-test -f "$tarballs/pzzld-pi-codex-6.5.4.tgz"
+test -f "$tarballs/pzzld-claude-shepherd-6.5.4.tgz"
+test -f "$tarballs/pzzld-codex-shepherd-6.5.4.tgz"
 test -f "$tarballs/pzzld-pi-shepherd-6.5.4.tgz"
 component_listing="$tmp_dir/component-runtime.list"
 tar -tzf "$tarballs/pzzld-component-runtime-6.5.4.tgz" > "$component_listing"
@@ -47,8 +47,8 @@ grep -Fq 'package/runtime/shepherd-component.wasm' "$component_listing"
 for package in component-runtime harness-claude harness-codex harness-pi; do
   case "$package" in
     component-runtime) archive='pzzld-component-runtime' ;;
-    harness-claude) archive='pzzld-pi-claude' ;;
-    harness-codex) archive='pzzld-pi-codex' ;;
+    harness-claude) archive='pzzld-claude-shepherd' ;;
+    harness-codex) archive='pzzld-codex-shepherd' ;;
     harness-pi) archive='pzzld-pi-shepherd' ;;
   esac
   listing="$tmp_dir/${package}.list"
@@ -63,8 +63,8 @@ mkdir -p "$install"
 npm_config_cache="$tmp_dir/npm-cache" \
   npm install --prefix "$install" --ignore-scripts --no-audit --no-fund --no-save \
   "$tarballs/pzzld-component-runtime-6.5.4.tgz" \
-  "$tarballs/pzzld-pi-claude-6.5.4.tgz" \
-  "$tarballs/pzzld-pi-codex-6.5.4.tgz" \
+  "$tarballs/pzzld-claude-shepherd-6.5.4.tgz" \
+  "$tarballs/pzzld-codex-shepherd-6.5.4.tgz" \
   "$tarballs/pzzld-pi-shepherd-6.5.4.tgz" >/dev/null
 test -s "$install/node_modules/@pzzld/component-runtime/runtime/shepherd-component.js"
 test -s "$install/node_modules/@pzzld/component-runtime/runtime/shepherd-component.wasm"

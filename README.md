@@ -300,8 +300,8 @@ artifact names do not repeat the run or date prefix. `run.json` is written by
 
 | Harness | Package | Constraint |
 | --- | --- | --- |
-| Claude Code | `@pzzld/pi-claude` | Hook envelopes and lifecycle events only. |
-| Codex | `@pzzld/pi-codex` | Embedding adapter translates typed lifecycle envelopes; the regular marketplace carrier registers SessionStart and guarded PreToolUse only. |
+| Claude Code | `@pzzld/claude-shepherd` | Hook envelopes and lifecycle events only. |
+| Codex | `@pzzld/codex-shepherd` | Embedding adapter translates typed lifecycle envelopes; the regular marketplace carrier registers SessionStart and guarded PreToolUse only. |
 | Pi | `@pzzld/pi-shepherd` | Requires a `SubagentProvider`-compatible extension such as `pi-subagents`; absent or unready providers fail closed. |
 
 The npm embedding adapters load the adjacent `@pzzld/component-runtime` package.

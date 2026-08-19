@@ -4,6 +4,44 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v6.5.4 — 2026-08-19
+
+### Changed — the npm adapters are named for the harness they adapt
+
+`@pzzld/pi-claude` and `@pzzld/pi-codex` were wrong and read as nonsense: "Pi's
+Claude adapter" describes nothing true, and neither package has anything to do
+with Pi. The convention is `<harness>-shepherd`, which `@pzzld/pi-shepherd`
+already followed by accident of Pi's own `pi-*` package convention.
+
+| was | is |
+| --- | --- |
+| `@pzzld/pi-claude` | `@pzzld/claude-shepherd` |
+| `@pzzld/pi-codex` | `@pzzld/codex-shepherd` |
+| `@pzzld/pi-shepherd` | unchanged |
+
+**The rename immediately silenced two dependency rules, and they said nothing
+about it.** `packages/scripts/check-deps.mjs` identified an adapter by the name
+prefix `@pzzld/pi-`, so under the correct names two of the three adapters simply
+stopped being adapters — including for the reverse-edge rule that keeps the
+shared component runtime from depending on the adapters above it. Adapter
+identity is now an explicit, closed set.
+
+Its self-test fixtures had the same defect from the other side: they used
+synthetic `@pzzld/pi-a`, `pi-b` and `pi-c` names that were only ever adapters
+*because* the check was a prefix match. They now use the real adapter names,
+which is a more faithful violation regardless.
+
+**Not yet done, and it needs your npm credentials:** the old names are still
+published (through 6.5.3) and are not deprecated. Run
+
+```sh
+npm deprecate @pzzld/pi-claude "renamed to @pzzld/claude-shepherd"
+npm deprecate @pzzld/pi-codex "renamed to @pzzld/codex-shepherd"
+```
+
+Nothing depended on either package outside this repository, so no consumer
+breaks; the deprecation is a signpost, not a migration.
+
 ## v6.5.3 — 2026-08-19
 
 ### Fixed — the Pi adapter ran for the first time, and nothing about it worked

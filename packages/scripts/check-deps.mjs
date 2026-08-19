@@ -4,7 +4,7 @@
 //
 // WHY THIS EXISTS.
 //
-// Three harness adapters (@pzzld/pi-claude, @pzzld/pi-codex,
+// Three harness adapters (@pzzld/claude-shepherd, @pzzld/codex-shepherd,
 // @pzzld/pi-shepherd) sit over one shared Component Model runtime. That split only holds if no adapter ever
 // depends on another adapter -- the moment `harness-codex` names
 // `harness-claude` in its `dependencies`, installing the Codex adapter drags
@@ -46,7 +46,24 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, "..", "..");
 const PACKAGES_DIR = join(REPO_ROOT, "packages");
 
-const ADAPTER_PREFIX = "@pzzld/pi-";
+// Adapters are identified by an explicit SET, not a name prefix.
+//
+// `@pzzld/pi-` only ever worked by accident: the Claude and Codex adapters were
+// published as `pi-claude` and `pi-codex`, names that read as "Pi's Claude
+// adapter" and describe nothing true. Correcting them to `claude-shepherd` and
+// `codex-shepherd` immediately silenced two of these rules, because neither new
+// name carries the prefix -- the reverse-edge check protecting the runtime
+// stopped seeing two of the three adapters it guards, and said nothing.
+//
+// A prefix is a guess about identity. This membership is small, closed and
+// known, so it is stated.
+const ADAPTER_NAMES = new Set([
+  "@pzzld/claude-shepherd",
+  "@pzzld/codex-shepherd",
+  "@pzzld/pi-shepherd",
+]);
+
+const isAdapter = (name) => typeof name === "string" && ADAPTER_NAMES.has(name);
 const COMPONENT_RUNTIME_NAME = "@pzzld/component-runtime";
 const SCOPE_PREFIX = "@pzzld/";
 
@@ -279,13 +296,13 @@ function owningPackageForPath(path, pkgs) {
 
 function adapterImportViolation({ pkgs, manifest, path, specifier }) {
   const barePackage = packageNameFromBareSpecifier(specifier);
-  if (barePackage?.startsWith(ADAPTER_PREFIX) && barePackage !== manifest.name) {
+  if (isAdapter(barePackage) && barePackage !== manifest.name) {
     return `${manifest.name}: imports adapter package \`${barePackage}\` via \`${specifier}\` from \`${path}\` -- adapters must not import each other`;
   }
   if (!specifier.startsWith(".") && !specifier.startsWith("/")) return null;
   const resolved = canonicalPath(resolve(dirname(path), specifier.split(/[?#]/, 1)[0]));
   const owner = owningPackageForPath(resolved, pkgs);
-  if (owner?.manifest.name.startsWith(ADAPTER_PREFIX) && owner.manifest.name !== manifest.name) {
+  if (isAdapter(owner?.manifest.name) && owner.manifest.name !== manifest.name) {
     return `${manifest.name}: imports adapter path \`${specifier}\` from \`${path}\` (resolved to \`${owner.manifest.name}\`) -- adapters must not import each other`;
   }
   return null;
@@ -301,10 +318,10 @@ function ruleNoAdapterToAdapter(pkgs) {
   for (const pkg of pkgs) {
     const { manifest } = pkg;
     const name = manifest.name;
-    if (!name.startsWith(ADAPTER_PREFIX)) continue;
+    if (!isAdapter(name)) continue;
     for (const { field, dependencyName, version } of allDependencyEntries(manifest)) {
       for (const target of dependencyTargetNames(pkg, dependencyName, version, pkgs)) {
-        if (target !== name && target.startsWith(ADAPTER_PREFIX)) {
+        if (target !== name && isAdapter(target)) {
           bad.push(`${name}: ${field} depends on adapter package \`${target}\` via \`${dependencyName}\` -- adapters must not depend on each other`);
         }
       }
@@ -316,7 +333,7 @@ function ruleNoAdapterToAdapter(pkgs) {
 function ruleNoAdapterToAdapterImports(pkgs) {
   const bad = [];
   for (const { dir, manifest } of pkgs) {
-    if (!manifest.name.startsWith(ADAPTER_PREFIX)) continue;
+    if (!isAdapter(manifest.name)) continue;
     if (manifest.type !== "module") {
       bad.push(`${manifest.name}: package.json must declare \"type\": \"module\" so adapter .js source cannot silently become CommonJS`);
     }
@@ -350,7 +367,7 @@ function ruleAdapterScopedDepsAllowlisted(pkgs) {
   for (const pkg of pkgs) {
     const { manifest } = pkg;
     const name = manifest.name;
-    if (!name.startsWith(ADAPTER_PREFIX)) continue;
+    if (!isAdapter(name)) continue;
     for (const { field, dependencyName, version } of allDependencyEntries(manifest)) {
       for (const target of dependencyTargetNames(pkg, dependencyName, version, pkgs)) {
         if (!target.startsWith(SCOPE_PREFIX)) continue; // real npm deps are out of scope for this rule
@@ -372,7 +389,7 @@ function ruleComponentRuntimeDoesNotDependOnAdapters(pkgs) {
   const bad = [];
   for (const { field, dependencyName, version } of allDependencyEntries(compiler.manifest)) {
     for (const target of dependencyTargetNames(compiler, dependencyName, version, pkgs)) {
-      if (target.startsWith(ADAPTER_PREFIX)) {
+      if (isAdapter(target)) {
         bad.push(`${COMPONENT_RUNTIME_NAME}: ${field} depends on adapter package \`${target}\` via \`${dependencyName}\` -- the runtime is the shared core beneath the adapters, never the reverse`);
       }
     }
@@ -455,11 +472,11 @@ function selfTest() {
   // Fixture 1: an adapter depends directly on another adapter.
   withTempPackagesDir((tmp) => {
     writeFixturePackage(join(tmp, "harness-a"), {
-      name: "@pzzld/pi-a",
+      name: "@pzzld/claude-shepherd",
       version: "0.0.0",
-      dependencies: { "@pzzld/pi-b": "0.0.0" },
+      dependencies: { "@pzzld/codex-shepherd": "0.0.0" },
     });
-    writeFixturePackage(join(tmp, "harness-b"), { name: "@pzzld/pi-b", version: "0.0.0" });
+    writeFixturePackage(join(tmp, "harness-b"), { name: "@pzzld/codex-shepherd", version: "0.0.0" });
     writeFixturePackage(join(tmp, "component-runtime"), { name: COMPONENT_RUNTIME_NAME, version: "0.0.0" });
     const violations = ruleNoAdapterToAdapter(loadPackages(tmp));
     reportFixture("no adapter depends on another adapter", violations.length > 0);
@@ -474,40 +491,40 @@ function selfTest() {
   // cases: they are not imports and must not be reported.
   withTempPackagesDir((tmp) => {
     const harnessA = join(tmp, "harness-a");
-    writeFixturePackage(harnessA, { name: "@pzzld/pi-a", version: "0.0.0", type: "module" });
-    writeFileSync(join(harnessA, "index.mjs"), 'import "@pzzld/pi-b";\nimport "../harness-b/src/guard.mjs";\n');
-    writeFileSync(join(harnessA, "cross.jsx"), 'import "@pzzld/pi-b/guard-jsx";\n');
+    writeFixturePackage(harnessA, { name: "@pzzld/claude-shepherd", version: "0.0.0", type: "module" });
+    writeFileSync(join(harnessA, "index.mjs"), 'import "@pzzld/codex-shepherd";\nimport "../harness-b/src/guard.mjs";\n');
+    writeFileSync(join(harnessA, "cross.jsx"), 'import "@pzzld/codex-shepherd/guard-jsx";\n');
     writeFileSync(join(harnessA, "cross.mts"), 'import "../harness-b/src/guard.mts";\n');
-    writeFileSync(join(harnessA, "cross.tsx"), 'import "@pzzld/pi-b/guard";\n');
-    writeFileSync(join(harnessA, "re-export.mjs"), 'export { guard } from "@pzzld/pi-b";\n');
+    writeFileSync(join(harnessA, "cross.tsx"), 'import "@pzzld/codex-shepherd/guard";\n');
+    writeFileSync(join(harnessA, "re-export.mjs"), 'export { guard } from "@pzzld/codex-shepherd";\n');
     writeFileSync(join(harnessA, "dynamic.ts"), 'await import("../harness-b/src/dynamic.mts");\n');
-    writeFileSync(join(harnessA, "dynamic-template-specifier.mjs"), 'await import(`@pzzld/pi-b`);\n');
-    writeFileSync(join(harnessA, "division-dynamic.mjs"), 'const ratio = 1 / import("@pzzld/pi-b");\n');
-    writeFileSync(join(harnessA, "postfix-division-dynamic.mjs"), 'let value = 1; const ratio = value++ / import("@pzzld/pi-b");\n');
-    writeFileSync(join(harnessA, "template-dynamic.mjs"), 'const ratio = `${1 / import("@pzzld/pi-b")}`;\n');
-    writeFileSync(join(harnessA, "type-import-equals.ts"), 'import Guard = require("@pzzld/pi-b");\nvoid Guard;\n');
-    writeFileSync(join(harnessA, "parse-error.mjs"), 'import { from "@pzzld/pi-b";\n');
-    writeFileSync(join(harnessA, "common.cjs"), 'require("@pzzld/pi-b");\n');
-    writeFileSync(join(harnessA, "common.cts"), 'require("@pzzld/pi-b");\n');
+    writeFileSync(join(harnessA, "dynamic-template-specifier.mjs"), 'await import(`@pzzld/codex-shepherd`);\n');
+    writeFileSync(join(harnessA, "division-dynamic.mjs"), 'const ratio = 1 / import("@pzzld/codex-shepherd");\n');
+    writeFileSync(join(harnessA, "postfix-division-dynamic.mjs"), 'let value = 1; const ratio = value++ / import("@pzzld/codex-shepherd");\n');
+    writeFileSync(join(harnessA, "template-dynamic.mjs"), 'const ratio = `${1 / import("@pzzld/codex-shepherd")}`;\n');
+    writeFileSync(join(harnessA, "type-import-equals.ts"), 'import Guard = require("@pzzld/codex-shepherd");\nvoid Guard;\n');
+    writeFileSync(join(harnessA, "parse-error.mjs"), 'import { from "@pzzld/codex-shepherd";\n');
+    writeFileSync(join(harnessA, "common.cjs"), 'require("@pzzld/codex-shepherd");\n');
+    writeFileSync(join(harnessA, "common.cts"), 'require("@pzzld/codex-shepherd");\n');
     writeFileSync(
       join(harnessA, "non-imports.mjs"),
-      '// import "@pzzld/pi-b";\nconst ordinary = "import \\"@pzzld/pi-b\\"";\nconst template = `import "@pzzld/pi-b"`;\nconst matcher = /import "@fl03\\/harness-b"/;\nif (ready) /import\\("@fl03\\/harness-b"\\)/.test(source);\nif (ready) {} /import\\("@fl03\\/harness-b"\\)/.test(source);\nconst member = { import() {} }; member.import("@pzzld/pi-b");\nconst require = () => {}; require("@pzzld/pi-b");\n'
+      '// import "@pzzld/codex-shepherd";\nconst ordinary = "import \\"@pzzld/codex-shepherd\\"";\nconst template = `import "@pzzld/codex-shepherd"`;\nconst matcher = /import "@fl03\\/harness-b"/;\nif (ready) /import\\("@fl03\\/harness-b"\\)/.test(source);\nif (ready) {} /import\\("@fl03\\/harness-b"\\)/.test(source);\nconst member = { import() {} }; member.import("@pzzld/codex-shepherd");\nconst require = () => {}; require("@pzzld/codex-shepherd");\n'
     );
-    writeFileSync(join(harnessA, "jsx-text.jsx"), 'const view = <div>import("@pzzld/pi-b")</div>;\n');
+    writeFileSync(join(harnessA, "jsx-text.jsx"), 'const view = <div>import("@pzzld/codex-shepherd")</div>;\n');
     writeFileSync(join(harnessA, "same-adapter.mjs"), 'import "./harness-helper.mjs";\n');
     writeFileSync(join(harnessA, "harness-helper.mjs"), 'export const helper = true;\n');
     const harnessB = join(tmp, "harness-b");
-    writeFixturePackage(harnessB, { name: "@pzzld/pi-b", version: "0.0.0", type: "module" });
+    writeFixturePackage(harnessB, { name: "@pzzld/codex-shepherd", version: "0.0.0", type: "module" });
     mkdirSync(join(harnessB, "src"), { recursive: true });
     writeFileSync(join(harnessB, "src", "guard.mjs"), "export const guard = true;\n");
     symlinkSync("../harness-b", join(harnessA, "linked-harness-b"), "dir");
     writeFileSync(join(harnessA, "symlinked-relative.mjs"), 'import "./linked-harness-b/src/guard.mjs";\n');
     const externalSource = join(tmp, "external-source");
     mkdirSync(externalSource);
-    writeFileSync(join(externalSource, "symlinked-source.mjs"), 'import "@pzzld/pi-b";\n');
+    writeFileSync(join(externalSource, "symlinked-source.mjs"), 'import "@pzzld/codex-shepherd";\n');
     symlinkSync("../external-source", join(harnessA, "linked-source"), "dir");
     const linkedWorkspaceTarget = join(harnessA, "linked-workspace-target");
-    writeFixturePackage(linkedWorkspaceTarget, { name: "@pzzld/pi-c", version: "0.0.0", type: "module" });
+    writeFixturePackage(linkedWorkspaceTarget, { name: "@pzzld/pi-shepherd", version: "0.0.0", type: "module" });
     mkdirSync(join(linkedWorkspaceTarget, "src"), { recursive: true });
     writeFileSync(join(linkedWorkspaceTarget, "src", "guard.mjs"), "export const guard = true;\n");
     symlinkSync("harness-a/linked-workspace-target", join(tmp, "harness-c-root"), "dir");
@@ -515,11 +532,11 @@ function selfTest() {
     writeFixturePackage(join(tmp, "component-runtime"), { name: COMPONENT_RUNTIME_NAME, version: "0.0.0" });
     const violations = ruleNoAdapterToAdapterImports(loadPackages(tmp));
     const catchesEveryForbiddenEdge = [
-      "imports adapter package `@pzzld/pi-b` via `@pzzld/pi-b`",
+      "imports adapter package `@pzzld/codex-shepherd` via `@pzzld/codex-shepherd`",
       "imports adapter path `../harness-b/src/guard.mjs`",
-      "imports adapter package `@pzzld/pi-b` via `@pzzld/pi-b/guard-jsx`",
+      "imports adapter package `@pzzld/codex-shepherd` via `@pzzld/codex-shepherd/guard-jsx`",
       "imports adapter path `../harness-b/src/guard.mts`",
-      "imports adapter package `@pzzld/pi-b` via `@pzzld/pi-b/guard`",
+      "imports adapter package `@pzzld/codex-shepherd` via `@pzzld/codex-shepherd/guard`",
       "re-export.mjs",
       "imports adapter path `../harness-b/src/dynamic.mts`",
       "dynamic-template-specifier.mjs",
@@ -546,7 +563,7 @@ function selfTest() {
   // not changed by Node's default CommonJS interpretation.
   withTempPackagesDir((tmp) => {
     const harnessA = join(tmp, "harness-a");
-    writeFixturePackage(harnessA, { name: "@pzzld/pi-a", version: "0.0.0" });
+    writeFixturePackage(harnessA, { name: "@pzzld/claude-shepherd", version: "0.0.0" });
     writeFixturePackage(join(tmp, "component-runtime"), { name: COMPONENT_RUNTIME_NAME, version: "0.0.0" });
     const violations = ruleNoAdapterToAdapterImports(loadPackages(tmp));
     reportFixture("adapter packages declare type=module", violations.length === 1);
@@ -556,7 +573,7 @@ function selfTest() {
   // Fixture 4: an adapter depends on an un-allowlisted @fl03-scoped package.
   withTempPackagesDir((tmp) => {
     writeFixturePackage(join(tmp, "harness-a"), {
-      name: "@pzzld/pi-a",
+      name: "@pzzld/claude-shepherd",
       version: "0.0.0",
       dependencies: { "@pzzld/cli-unreviewed": "0.0.0" },
     });
@@ -571,7 +588,7 @@ function selfTest() {
     writeFixturePackage(join(tmp, "component-runtime"), {
       name: COMPONENT_RUNTIME_NAME,
       version: "0.0.0",
-      dependencies: { "@pzzld/pi-claude": "0.0.0" },
+      dependencies: { "@pzzld/claude-shepherd": "0.0.0" },
     });
     const violations = ruleComponentRuntimeDoesNotDependOnAdapters(loadPackages(tmp));
     reportFixture("component runtime does not depend on adapters", violations.length > 0);
@@ -582,18 +599,18 @@ function selfTest() {
   // workspace owner, not merely trust an arbitrary dependency key.
   withTempPackagesDir((tmp) => {
     writeFixturePackage(join(tmp, "harness-a"), {
-      name: "@pzzld/pi-a",
+      name: "@pzzld/claude-shepherd",
       version: "0.0.0",
       dependencies: {
-        "adapter-npm-alias": "npm:@pzzld/pi-b@0.0.0",
+        "adapter-npm-alias": "npm:@pzzld/codex-shepherd@0.0.0",
         "adapter-file-alias": "file:../harness-b",
         "adapter-workspace-alias": "workspace:../harness-b",
       },
     });
-    writeFixturePackage(join(tmp, "harness-b"), { name: "@pzzld/pi-b", version: "0.0.0" });
+    writeFixturePackage(join(tmp, "harness-b"), { name: "@pzzld/codex-shepherd", version: "0.0.0" });
     writeFixturePackage(join(tmp, "component-runtime"), { name: COMPONENT_RUNTIME_NAME, version: "0.0.0" });
     const violations = ruleNoAdapterToAdapter(loadPackages(tmp));
-    const passes = violations.length === 3 && violations.every((violation) => violation.includes("@pzzld/pi-b"));
+    const passes = violations.length === 3 && violations.every((violation) => violation.includes("@pzzld/codex-shepherd"));
     reportFixture("adapter aliases resolve to adapter owners", passes);
     if (!passes) failures += 1;
   });
@@ -601,7 +618,7 @@ function selfTest() {
   // Fixture 7: aliases must not hide an unreviewed @fl03 package from the adapter allowlist.
   withTempPackagesDir((tmp) => {
     writeFixturePackage(join(tmp, "harness-a"), {
-      name: "@pzzld/pi-a",
+      name: "@pzzld/claude-shepherd",
       version: "0.0.0",
       dependencies: {
         "platform-npm-alias": "npm:@pzzld/cli-unreviewed@0.0.0",
@@ -621,11 +638,11 @@ function selfTest() {
     writeFixturePackage(join(tmp, "component-runtime"), {
       name: COMPONENT_RUNTIME_NAME,
       version: "0.0.0",
-      dependencies: { "adapter-alias": "npm:@pzzld/pi-claude@0.0.0" },
+      dependencies: { "adapter-alias": "npm:@pzzld/claude-shepherd@0.0.0" },
     });
-    writeFixturePackage(join(tmp, "harness-claude"), { name: "@pzzld/pi-claude", version: "0.0.0" });
+    writeFixturePackage(join(tmp, "harness-claude"), { name: "@pzzld/claude-shepherd", version: "0.0.0" });
     const violations = ruleComponentRuntimeDoesNotDependOnAdapters(loadPackages(tmp));
-    const passes = violations.length === 1 && violations[0].includes("@pzzld/pi-claude");
+    const passes = violations.length === 1 && violations[0].includes("@pzzld/claude-shepherd");
     reportFixture("component runtime aliases preserve reverse-edge rule", passes);
     if (!passes) failures += 1;
   });
@@ -634,16 +651,16 @@ function selfTest() {
   // field must not overwrite and hide a forbidden production edge from an earlier field.
   withTempPackagesDir((tmp) => {
     writeFixturePackage(join(tmp, "harness-a"), {
-      name: "@pzzld/pi-a",
+      name: "@pzzld/claude-shepherd",
       version: "0.0.0",
-      dependencies: { alias: "npm:@pzzld/pi-b@0.0.0" },
+      dependencies: { alias: "npm:@pzzld/codex-shepherd@0.0.0" },
       devDependencies: { alias: "npm:@pzzld/component-runtime@0.0.0" },
     });
-    writeFixturePackage(join(tmp, "harness-b"), { name: "@pzzld/pi-b", version: "0.0.0" });
+    writeFixturePackage(join(tmp, "harness-b"), { name: "@pzzld/codex-shepherd", version: "0.0.0" });
     writeFixturePackage(join(tmp, "component-runtime"), { name: COMPONENT_RUNTIME_NAME, version: "0.0.0" });
     const pkgs = loadPackages(tmp);
     const adapterViolations = ruleNoAdapterToAdapter(pkgs);
-    const passes = adapterViolations.length === 1 && adapterViolations[0].includes("dependencies") && adapterViolations[0].includes("@pzzld/pi-b");
+    const passes = adapterViolations.length === 1 && adapterViolations[0].includes("dependencies") && adapterViolations[0].includes("@pzzld/codex-shepherd");
     reportFixture("dependency fields cannot mask each other", passes);
     if (!passes) failures += 1;
   });

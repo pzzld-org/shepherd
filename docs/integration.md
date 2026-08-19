@@ -82,7 +82,7 @@ codex plugin add shepherd@shepherd
 ```
 
 The cache contains no Node, npm, Wasm, or source-checkout dependency.
-`@pzzld/pi-codex` remains the Component-backed npm embedding adapter; it
+`@pzzld/codex-shepherd` remains the Component-backed npm embedding adapter; it
 does not own this marketplace path or import Claude's private hooks.
 
 ### Pi

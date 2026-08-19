@@ -39,8 +39,8 @@ for name in \
   shepherd-component-6.5.4-wasm32-wasip2.tar.gz \
   shepherd-component-wasm32-wasip2.tar.gz \
   pzzld-component-runtime-6.5.4.tgz \
-  pzzld-pi-claude-6.5.4.tgz \
-  pzzld-pi-codex-6.5.4.tgz \
+  pzzld-claude-shepherd-6.5.4.tgz \
+  pzzld-codex-shepherd-6.5.4.tgz \
   pzzld-pi-shepherd-6.5.4.tgz; do
   printf 'fixture %s\n' "$name" > "$asset_dir/$name"
 done

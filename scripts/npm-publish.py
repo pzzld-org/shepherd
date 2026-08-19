@@ -6,8 +6,8 @@ WHY THIS EXISTS.
 There has never been an `npm publish` anywhere in this repository's CI. The
 release pipeline runs `npm pack`, attaches the four tarballs to the GitHub
 release, and stops. `@pzzld/pi-shepherd` and `@pzzld/component-runtime` were
-published by hand once at 6.4.5 and never again; `@pzzld/pi-claude` and
-`@pzzld/pi-codex` have never been published at all. Seven releases
+published by hand once at 6.4.5 and never again; `@pzzld/claude-shepherd` and
+`@pzzld/codex-shepherd` have never been published at all. Seven releases
 (6.4.6 through 6.5.1) shipped crates to crates.io and nothing to npm.
 
 The visible cost: `pi install npm:@pzzld/pi-shepherd` installs 6.4.5, which
@@ -55,7 +55,7 @@ import urllib.request
 #
 # Everything else is DISCOVERED from the tarballs, never listed here. The
 # directory names and the published names differ -- packages/harness-claude
-# publishes as @pzzld/pi-claude -- so a hardcoded list is a second source of
+# publishes as @pzzld/claude-shepherd -- so a hardcoded list is a second source of
 # truth that is wrong the moment either side is renamed. It already was: the
 # first version of this file assumed the directory names and resolved zero of
 # the three adapters.

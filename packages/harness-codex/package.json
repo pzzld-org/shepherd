@@ -1,5 +1,5 @@
 {
-  "name": "@pzzld/pi-codex",
+  "name": "@pzzld/codex-shepherd",
   "version": "6.5.4",
   "description": "Thin Codex CLI adapter for native per-agent identity, lifecycle dispatch, and the shared Rust guard engine.",
   "type": "module",

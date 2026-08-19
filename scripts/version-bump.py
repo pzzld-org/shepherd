@@ -47,8 +47,8 @@ INTERNAL_CARGO_PACKAGE_ALIASES = {"shepherd": "shepherd-sdk"}
 
 NPM_PACKAGES = {
     "packages/component-runtime/package.json": "@pzzld/component-runtime",
-    "packages/harness-claude/package.json": "@pzzld/pi-claude",
-    "packages/harness-codex/package.json": "@pzzld/pi-codex",
+    "packages/harness-claude/package.json": "@pzzld/claude-shepherd",
+    "packages/harness-codex/package.json": "@pzzld/codex-shepherd",
     "packages/harness-pi/package.json": "@pzzld/pi-shepherd",
 }
 
