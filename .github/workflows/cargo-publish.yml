@@ -109,9 +109,13 @@ jobs:
             python3 scripts/version-bump.py check --root . --version "$version"
             proceed=true
           else
-            # Ordinary push to the default branch: publish only for a genuine
-            # release commit, using the exact same predicate release.yml gates
-            # on. Everything else publishes nothing.
+            # No version was named. This is reachable only from a
+            # `repository_dispatch` whose payload omitted one -- there is
+            # deliberately no `push` trigger on this workflow, because a
+            # push-triggered run has no `needs:` edge to the asset build and
+            # that is exactly how publication once raced the build and burned
+            # two patch versions. Fall back to the same release-commit
+            # predicate release.yml gates on; anything else publishes nothing.
             subject=$(git log -1 --format=%s HEAD)
             detect_output=$(scripts/detect-release-commit.sh \
               --subject "$subject" \
