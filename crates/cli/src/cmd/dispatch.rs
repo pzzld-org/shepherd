@@ -134,7 +134,20 @@ fn read_request<T: DeserializeOwned>(context: &mut ExecutionContext) -> Result<T
             ));
         }
     }
-    serde_json::from_str(&input).map_err(|_| CliError::message(MALFORMED_JSON_MESSAGE))
+    // Distinguish "not JSON at all" from "well-formed JSON that does not match
+    // the request schema". Collapsing both into MALFORMED_JSON_MESSAGE reported
+    // a missing `schema` field as a syntax error, which sent debugging after a
+    // JSON encoding bug that did not exist while the real cause -- the
+    // transport never stamping the wire envelope -- stayed invisible. serde
+    // already knows which case it is; `classify` just stops throwing that away.
+    serde_json::from_str(&input).map_err(|error| {
+        CliError::message(match error.classify() {
+            serde_json::error::Category::Syntax | serde_json::error::Category::Eof => {
+                MALFORMED_JSON_MESSAGE.to_string()
+            }
+            _ => format!("request is valid JSON but does not match the dispatch schema: {error}"),
+        })
+    })
 }
 
 fn write_response<T: serde::Serialize>(

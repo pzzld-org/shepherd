@@ -93,6 +93,25 @@ export function planWithComponent(engine, identity, binding = undefined) {
   return requireEngine(engine).planLifecycle(identity, binding);
 }
 
+// The wire envelope the native CLI validates before it will look at anything
+// else. Every dispatch request type in crates/core/src/dispatch/portable.rs
+// declares `pub schema: String` and is `#[serde(deny_unknown_fields)]`, and
+// crates/cli/src/dispatch_service.rs:20 compares it against exactly this value.
+//
+// The WIT record deliberately does NOT carry it: the component owns the
+// semantic payload and the transport owns the wire framing. That split is
+// correct, but nothing was stamping the envelope, so every request the
+// component produced was rejected -- bind-root, start, resolve, stop and
+// resume alike. The Pi adapter therefore failed at session bind AND had a
+// non-functional guard, and it went unnoticed for as long as it did because
+// the extension was never loaded at all (no `pi` key in package.json).
+//
+// The CLI reports the omission as "request must be one valid RFC 8259 JSON
+// value", because it deserializes straight into the typed struct and maps any
+// serde failure to that one message. The JSON is well-formed; the schema field
+// is missing. That message cost real debugging time and is corrected too.
+export const DISPATCH_REQUEST_SCHEMA = "shepherd.dispatch-request/1";
+
 export function planToNativeDispatch(plan) {
   if (plan?.tag === "ignored") return null;
   if (plan?.tag === "blocked") {
@@ -103,8 +122,33 @@ export function planToNativeDispatch(plan) {
   }
   return {
     operation: plan.val.tag,
-    request: camelToSnake(plan.val.val),
+    request: toWireRequest(plan.val.val),
   };
+}
+
+// The WIT contract and the native request structs disagree on exactly one field
+// name: WIT `tool-use-id` (which camelToSnake renders `tool_use_id`) against
+// Rust `tool_call_id` in ResolveRequest. Because every request struct is
+// `#[serde(deny_unknown_fields)]`, that one name made EVERY resolve request
+// rejected, so the Pi guard denied every write, edit and bash call it was asked
+// about -- fail-closed, and completely unusable.
+//
+// A repo-wide diff of the six shared records found this to be the only naming
+// divergence, so the map is exhaustive rather than a first instalment.
+//
+// Reconciling here, not in the WIT: the WIT is the published component contract
+// (`fl03:shepherd@...`) and renaming a field in it is a breaking change to every
+// embedder. The transport already owns wire framing -- it stamps the schema
+// envelope for the same reason -- so it owns this too.
+const WIRE_FIELD_RENAMES = new Map([["tool_use_id", "tool_call_id"]]);
+
+function toWireRequest(value) {
+  const snake = camelToSnake(value);
+  const request = { schema: DISPATCH_REQUEST_SCHEMA };
+  for (const [key, entry] of Object.entries(snake)) {
+    request[WIRE_FIELD_RENAMES.get(key) ?? key] = entry;
+  }
+  return request;
 }
 
 export function componentBinding(binding = {}) {

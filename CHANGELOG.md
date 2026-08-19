@@ -4,6 +4,73 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v6.5.3 — 2026-08-19
+
+### Fixed — the Pi adapter ran for the first time, and nothing about it worked
+
+v6.5.2 made the extension **loadable**. This release makes it **work**. Loading
+it was what finally executed the code, and executing it found three defects that
+had been sitting in shipped bytes the whole time, unreachable and therefore
+unfalsified.
+
+The visible symptom was worse than the original bug: with the extension loading
+and throwing, Pi could not initialize a session at all. Inert became blocking.
+
+**1. No dispatch request the transport built was ever accepted.** Every request
+struct in `crates/core/src/dispatch/portable.rs` declares `pub schema: String`
+and is `#[serde(deny_unknown_fields)]`; `crates/cli/src/dispatch_service.rs`
+validates it against one constant. The WIT records deliberately omit it — the
+component owns the semantic payload, the transport owns the wire framing — and
+nothing filled the gap. `bind-root`, `start`, `resolve`, `stop`, `resume`: all
+rejected. `planToNativeDispatch` now stamps the envelope.
+
+**2. WIT says `tool-use-id`; the native struct says `tool_call_id`.** With
+`deny_unknown_fields`, every `resolve` was rejected, so the Pi guard denied
+every write, edit and bash call it was consulted about — fail-closed, and
+unusable. A repo-wide diff of all six shared records confirmed this is the
+**only** naming divergence, so the reconciliation map is exhaustive rather than
+a first instalment. It is reconciled in the transport, not the WIT, because the
+WIT is a published contract and renaming a field there breaks every embedder.
+
+**3. A binding failure took the whole session down.** `session_start` rethrew,
+which Pi surfaces during `bindExtensions` and which prevents the session from
+initializing. One unreadable `run.json` in a project made Pi unusable in that
+directory. Shepherd's contract is that an unbound session may not **mutate**,
+not that the host may not run — the Claude path has always returned
+`additionalContext` on SessionStart and reserved `deny` for PreToolUse. The
+failure is now recorded and the guard denies every mutating tool while it is
+set, which preserves fail-closed without taking the session with it.
+
+### Fixed — an error message that described the wrong defect
+
+`shepherd dispatch` deserializes straight into the typed struct and mapped
+**any** serde failure to `request must be one valid RFC 8259 JSON value`. The
+JSON was well-formed; a required field was missing. That message sent debugging
+after an encoding bug that did not exist. It now distinguishes the two cases and
+names the field:
+
+```
+ERROR: request is valid JSON but does not match the dispatch schema:
+       missing field `schema` at line 1 column 100
+```
+
+### Added — the boundary is now gated from both sides
+
+- `scripts/check-wire-contract.py` diffs every WIT record against its native
+  struct. Divergences must be **declared** (`WIRE_ONLY` framing, or an explicit
+  `RENAMES` entry that the transport is verified to implement) — a new one
+  cannot appear silently. 4 self-test cases.
+- `scripts/tests/test-native-dispatch-wire.sh` feeds a real request to the real
+  CLI and requires it to be accepted, then strips the envelope and requires
+  refusal. Its first draft passed vacuously because the scratch project was not
+  scaffolded, so the CLI refused before ever parsing stdin; it now scaffolds and
+  asserts it got past that check.
+
+What existed and did not catch any of this:
+`packages/component-runtime/test/native-transport.test.mjs` asserts only how the
+CLI **binary name** is resolved. Two green tests, zero coverage of whether a
+request was ever accepted.
+
 ## v6.5.2 — 2026-08-19
 
 ### Fixed — the Pi adapter has never been loadable by Pi

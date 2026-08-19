@@ -28,14 +28,37 @@ export default async function shepherdGuardExtension(pi, options = {}) {
   }
   const nativeLauncher = nativeShepherdBin(options.shepherdBin);
 
+  // FAIL CLOSED, DO NOT FAIL THE SESSION. A binding failure here used to
+  // rethrow, which Pi surfaces as an extension error during bindExtensions and
+  // which prevents the session from initializing AT ALL -- one unreadable
+  // run.json in a project made Pi unusable in that directory.
+  //
+  // Shepherd's contract is that an unbound session may not MUTATE, not that the
+  // host may not run. The other two harnesses already behave this way: the
+  // Claude path returns additionalContext on SessionStart and reserves `deny`
+  // for PreToolUse. The guard below already denies every write, edit and bash
+  // call while `startupFailure` is set, so recording the failure preserves the
+  // fail-closed property without taking the session down with it.
   pi.on("session_start", async (event, context) => {
-    if (!component) throw new Error(`Pi component unavailable: ${startupFailure}`);
-    const identity = normalizeWithComponent(component, componentIdentityInput({
-      harness: "pi",
-      event: "SessionStart",
-      sessionId: context.sessionManager.getSessionId(),
-    }));
-    const dispatch = planToNativeDispatch(planWithComponent(component, identity));
+    if (!component) {
+      startupFailure = `Pi component unavailable: ${startupFailure}`;
+      return;
+    }
+    let identity;
+    let dispatch;
+    try {
+      identity = normalizeWithComponent(component, componentIdentityInput({
+        harness: "pi",
+        event: "SessionStart",
+        sessionId: context.sessionManager.getSessionId(),
+      }));
+      dispatch = planToNativeDispatch(planWithComponent(component, identity));
+    } catch (error) {
+      // Identity normalization and lifecycle planning are as fatal to the
+      // session as the dispatch itself if they escape. Same rule applies.
+      startupFailure = `Pi SessionStart planning failed closed: ${String(error)}`;
+      return;
+    }
     if (dispatch === null) return;
     try {
       const result = invokeNativeDispatch({
@@ -51,7 +74,7 @@ export default async function shepherdGuardExtension(pi, options = {}) {
       }
     } catch (error) {
       startupFailure = `Pi SessionStart binding failed closed (${event.reason}): ${String(error)}`;
-      throw error;
+      // Deliberately not rethrown. See the note above this handler.
     }
   });
 

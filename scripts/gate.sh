@@ -67,6 +67,13 @@ gate_fast() {
   # @pzzld/pi-shepherd shipped with no `pi` key for its entire history, so Pi
   # loaded nothing from it -- not the nine skills, not src/extension.mjs. The
   # package installed cleanly and was inert. Nothing asked what Pi ships.
+  # Two field-level breaks shipped across the WIT/native boundary and no test
+  # noticed: the missing `schema` envelope (every operation rejected) and
+  # tool_use_id vs tool_call_id (every resolve rejected, so the Pi guard denied
+  # everything). Both were invisible because the extension never loaded at all.
+  step "wire contract parity is falsifiable" python3 scripts/check-wire-contract.py --self-test
+  step "wire contract parity" python3 scripts/check-wire-contract.py
+  step "native dispatch wire contract" bash scripts/tests/test-native-dispatch-wire.sh
   step "Pi package surface is falsifiable" bash scripts/tests/test-pi-package-surface.sh --self-test
   step "Pi package surface" bash scripts/tests/test-pi-package-surface.sh
   # The cross-harness claim itself. Each harness was checked in isolation and
