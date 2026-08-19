@@ -36,6 +36,31 @@ env:
   CARGO_NET_GIT_FETCH_WITH_CLI: true
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: full
+  # ripgrep is NOT installed on the GitHub-hosted runner images, and the gate
+  # tiers wired below depend on it: scripts under scripts/tests/ and
+  # hooks/tests/ call `rg` directly, and every one of them is outside this
+  # lane's file scope, so rewriting those call sites onto `grep` was not
+  # available. The runner gets the tool instead.
+  #
+  # The dependent set is deliberately NOT enumerated here. A list of filenames
+  # in a comment is wrong the first time someone adds an `rg` call and nothing
+  # catches it, which is the drift this sprint is closing. Re-derive it:
+  #
+  #   grep -rl '\brg\b' scripts/ hooks/ --include='*.sh'
+  #
+  # (10 files when this was wired: 2 under hooks/tests/, 8 under scripts/tests/.)
+  #
+  # Pinned to an exact release and its published checksum, the way this
+  # repository pins wasm-tools, rather than `apt-get install -y ripgrep`: apt
+  # resolves to whatever the runner image happens to ship that week, which
+  # makes the gate's own toolchain a hidden variable that changes with no
+  # commit behind it. taiki-e/install-action is this repo's usual pin vehicle
+  # and cannot be used here -- ripgrep is not one of its 102 tool manifests.
+  #
+  # Because that dependency is broad and shared by two jobs, the pin lives at
+  # workflow scope: the version and its checksum exist in exactly ONE place.
+  RIPGREP_VERSION: "15.2.0"
+  RIPGREP_SHA256: "33e15bcf1624b25cdd2a55813a47a2f95dbe126268203e76aa6a585d1e7b149c"
 
 permissions:
   contents: read
@@ -89,23 +114,303 @@ jobs:
         with:
           cache: false
           components: rustfmt
-      - name: cargo fmt
-        run: cargo fmt --all --check
-      # Every rule here is currently true because someone held it in their head
-      # while writing the manifests. Six sprints and several agents from now,
-      # that is not a guarantee -- so the rules are checked instead.
-      - name: workspace invariants are falsifiable
-        run: ./scripts/check-workspace.sh --self-test
-      - name: workspace invariants hold
-        run: ./scripts/check-workspace.sh
-      # The plugin layout is an interface contract with the harness, and the
-      # official validator does not check it: it parses hooks.json as JSON and
-      # never opens the `command` strings inside. A tree with every hook wired
-      # to a deleted script reports "Validation passed".
-      - name: plugin contract is falsifiable
-        run: ./scripts/check-plugin.py --self-test
-      - name: plugin contract holds
-        run: ./scripts/check-plugin.py
+      - name: Install pinned ripgrep
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="ripgrep-${RIPGREP_VERSION}-x86_64-unknown-linux-musl"
+          url="https://github.com/BurntSushi/ripgrep/releases/download/${RIPGREP_VERSION}/${archive}.tar.gz"
+          work="$(mktemp -d)"
+          curl --fail --silent --show-error --location --retry 3 \
+            --output "${work}/rg.tar.gz" "${url}"
+          # A corrupted or substituted download must stop the job, not quietly
+          # install something else. --strict rejects a malformed checksum line
+          # rather than treating it as "nothing to verify".
+          printf '%s  %s\n' "${RIPGREP_SHA256}" "${work}/rg.tar.gz" > "${work}/rg.sha256"
+          sha256sum --check --strict "${work}/rg.sha256"
+          tar -xzf "${work}/rg.tar.gz" -C "${work}"
+          mkdir -p "${RUNNER_TEMP}/gate-bin"
+          install -m 0755 "${work}/${archive}/rg" "${RUNNER_TEMP}/gate-bin/rg"
+          # GITHUB_PATH applies from the NEXT step, so prove the binary here
+          # by its full path rather than assuming the export already took.
+          "${RUNNER_TEMP}/gate-bin/rg" --version
+          printf '%s\n' "${RUNNER_TEMP}/gate-bin" >> "${GITHUB_PATH}"
+      # `gate.sh fast` runs four Node-backed steps (packages/scripts/check-deps.mjs
+      # both halves, the release legal-material check that reads
+      # node_modules/@bytecodealliance/preview2-shim, and the Cargo publisher
+      # recovery contract downstream of it). Without this step those fail on a
+      # bare runner for an environmental reason and say nothing about the tree.
+      # `npm ci --ignore-scripts` is the install this repo already uses, at
+      # .github/workflows/release.yml:324 and .github/workflows/rust-wasm.yml:304.
+      - name: Install locked Node dependencies
+        run: npm ci --ignore-scripts
+      # WHY THIS IS ASSERTED AND NOT INSTALLED. Nine branches across eight hook
+      # tests exit 0 with a `SKIP` line when jq or python3 is absent. That is
+      # CORRECT on a laptop -- a missing optional tool is not a failed rule --
+      # and it is wrong on a runner, where a skipped check is a green step that
+      # verified nothing. `apt-get install -y jq` would hide the interesting
+      # case: a runner image that stopped shipping jq would then pass silently,
+      # which is the same paper-over one layer down. You cannot install your way
+      # to a guarantee, only check it. The remediation is printed on failure.
+      - name: Gate toolchain resolves
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=0
+          for tool in jq python3 node npm rg; do
+            if command -v "${tool}" >/dev/null 2>&1; then
+              printf 'ok       %-8s %s\n' "${tool}" "$(command -v "${tool}")"
+            else
+              printf '::error::gate toolchain is incomplete: %s is not on PATH\n' "${tool}"
+              missing=$((missing + 1))
+            fi
+          done
+          if [ "${missing}" -ne 0 ]; then
+            printf 'A gate that SKIPs on a runner is a check that did not run.\n' >&2
+            printf 'Install the missing tools on the runner, e.g. sudo apt-get install -y jq\n' >&2
+            exit 1
+          fi
+      # WHAT CHANGED AND WHY. Five steps used to stand here: cargo fmt, both
+      # check-workspace.sh halves, and both check-plugin.py halves. They were a
+      # hand-copied SUBSET of what `scripts/gate.sh fast` already runs, so CI
+      # enforced 5 rules while the pre-commit hook enforced roughly 35, and
+      # nothing structural kept the two lists in agreement. Naming the RUNNER
+      # instead of its contents makes adding a check one edit rather than two,
+      # and makes the subset impossible to re-create by accident.
+      #
+      # The command string is verbatim `.shepherd/shepherd.toml` [gates] check,
+      # so scripts/check-plugin.py's `configured gates resolve` rule already
+      # proves this path exists. The falsifiable/holds pairing the old steps
+      # established is preserved rather than dropped: gate.sh fast runs BOTH
+      # halves of every pair it owns, including the two that were copied here.
+      #
+      # No `continue-on-error`, no `|| true`, no narrower tier. This tier is
+      # currently red on this branch and that is the gate working: a gate
+      # weakened to stay green is the exact defect this job exists to close.
+      - name: sprint gate (fast tier)
+        shell: bash
+        run: scripts/gate.sh fast
+      # The projection generator's falsifiable half already runs inside
+      # gate.sh fast (`compiler package projection is falsifiable`). Its holds
+      # half ran nowhere, so a drifted projection was only ever caught at
+      # package time. This completes the pair.
+      - name: compiler package projection holds
+        run: python3 scripts/generate-compiler-package-content.py --check
+  # ------------------------------------------------------------------ #
+  # The gates that need the binary THIS TREE builds.                    #
+  #                                                                     #
+  # These do not belong in `lint` (its charter above is "seconds, no    #
+  # compilation") because both of them compile: the hook suite shells   #
+  # out to `cargo run -p shepherd-cli` from test_native_cli_contract.sh #
+  # and test_dups_write_guard.sh, and builds target/debug/shepherd in   #
+  # test_seed_preflight_check.sh:15. They do not belong in the `test`   #
+  # matrix either -- that axis includes windows-latest, where `bash` is #
+  # Git Bash and these POSIX shell tests do not hold. One ubuntu job,   #
+  # one `cargo build`, shared by both gates.                            #
+  # ------------------------------------------------------------------ #
+  carrier:
+    name: hook carrier + version authority
+    needs: resolve
+    runs-on: ubuntu-latest
+    env:
+      # A FLOOR, never an equality. hooks/tests/run.sh discovers its suite with
+      # a glob precisely so a hand-maintained list cannot drift from the
+      # directory (`ffd9aea` shipped green with 21 of 27 tests unexecuted). An
+      # exact count would turn every new test file red; a floor still catches a
+      # pathspec change that silently drops half the suite.
+      MIN_HOOK_TESTS: "29"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7 # v7.0.1
+        with:
+          fetch-depth: 1
+          ref: ${{ needs.resolve.outputs.ref }}
+          repository: ${{ github.repository }}
+      - name: Setup rust-cache
+        uses: Swatinem/rust-cache@v2 # v2.9.2
+        with:
+          key: carrier
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache: false
+      - name: Install pinned ripgrep
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="ripgrep-${RIPGREP_VERSION}-x86_64-unknown-linux-musl"
+          url="https://github.com/BurntSushi/ripgrep/releases/download/${RIPGREP_VERSION}/${archive}.tar.gz"
+          work="$(mktemp -d)"
+          curl --fail --silent --show-error --location --retry 3 \
+            --output "${work}/rg.tar.gz" "${url}"
+          printf '%s  %s\n' "${RIPGREP_SHA256}" "${work}/rg.tar.gz" > "${work}/rg.sha256"
+          sha256sum --check --strict "${work}/rg.sha256"
+          tar -xzf "${work}/rg.tar.gz" -C "${work}"
+          mkdir -p "${RUNNER_TEMP}/gate-bin"
+          install -m 0755 "${work}/${archive}/rg" "${RUNNER_TEMP}/gate-bin/rg"
+          "${RUNNER_TEMP}/gate-bin/rg" --version
+          printf '%s\n' "${RUNNER_TEMP}/gate-bin" >> "${GITHUB_PATH}"
+      - name: Gate toolchain resolves
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=0
+          for tool in jq python3 git rg; do
+            if command -v "${tool}" >/dev/null 2>&1; then
+              printf 'ok       %-8s %s\n' "${tool}" "$(command -v "${tool}")"
+            else
+              printf '::error::gate toolchain is incomplete: %s is not on PATH\n' "${tool}"
+              missing=$((missing + 1))
+            fi
+          done
+          if [ "${missing}" -ne 0 ]; then
+            printf 'A gate that SKIPs on a runner is a check that did not run.\n' >&2
+            printf 'Install the missing tools on the runner, e.g. sudo apt-get install -y jq\n' >&2
+            exit 1
+          fi
+      # Binary provenance. Every hook and gate in this repository runs the
+      # `shepherd` binary, so a binary that is not this tree's makes every green
+      # gate a statement about some OTHER version. The binary under test is
+      # therefore built here and named explicitly through SHEPHERD_BIN, which
+      # scripts/check-version-lag.py honours ahead of PATH -- no step below is
+      # allowed to resolve an ambient `shepherd` and call it provenance. Building
+      # it once here also spares test_seed_preflight_check.sh its own build.
+      - name: Build the binary under test
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build --locked --package shepherd-cli --bin shepherd
+          test -x target/debug/shepherd
+          printf 'SHEPHERD_BIN=%s\n' "${PWD}/target/debug/shepherd" >> "${GITHUB_ENV}"
+          printf '%s\n' "${PWD}/target/debug" >> "${GITHUB_PATH}"
+      # THE SILENT-SKIP CLASS, ENFORCED IN ONE PLACE.
+      #
+      # Nine branches across eight files under hooks/tests/ exit 0 with a `SKIP`
+      # line when jq, python3, or a prior artifact is missing. The plan proposed
+      # adding an env flag and editing all nine; that is a list hand-copied into
+      # nine call sites, which is the same defect class this sprint exists to
+      # kill, and hooks/tests/** is outside this lane's file scope besides. The
+      # equivalent guarantee is enforced here instead, once: the tools are
+      # asserted present above, and the suite's output must contain ZERO `SKIP`
+      # lines. A skip is CORRECT locally and only ever wrong on a runner, which
+      # is exactly why the rule belongs to CI and not to the test files.
+      #
+      # Three assertions, because the runner's exit code alone is not enough:
+      # the suite must report `0 failed`, must have discovered at least
+      # MIN_HOOK_TESTS files, and must not have skipped anything.
+      - name: hook carrier suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          log="${RUNNER_TEMP}/hook-carrier-suite.log"
+          status=0
+          bash hooks/tests/run.sh > "${log}" 2>&1 || status=$?
+          cat "${log}"
+
+          # G5 throughout: grep exit 1 is "found nothing", exit 2 is "could not
+          # look". Collapsing the two would report an unreadable log as a clean
+          # suite, which is the vacuous pass this whole step is about.
+          skips=""
+          skip_status=0
+          skips="$(grep -n 'SKIP' "${log}")" || skip_status=$?
+          if [ "${skip_status}" -gt 1 ]; then
+            printf '::error::could not search %s for SKIP lines (grep exit %s)\n' "${log}" "${skip_status}"
+            exit 1
+          fi
+          if [ "${skip_status}" -eq 0 ]; then
+            printf '::error::the hook suite skipped work on a runner; a skipped check is not a passing check\n'
+            printf '%s\n' "${skips}"
+            exit 1
+          fi
+
+          summary=""
+          summary_status=0
+          summary="$(grep -E '^(PASS|FAIL): hooks/tests/run\.sh \([0-9]+/[0-9]+ tests ran, [0-9]+ failed\)$' "${log}" | tail -n 1)" \
+            || summary_status=$?
+          if [ "${summary_status}" -gt 1 ]; then
+            printf '::error::could not search %s for the suite summary (grep exit %s)\n' "${log}" "${summary_status}"
+            exit 1
+          fi
+          if [ "${summary_status}" -ne 0 ]; then
+            printf '::error::the hook suite printed no summary line, so it did not run to completion\n'
+            exit 1
+          fi
+          printf 'summary: %s\n' "${summary}"
+
+          ran="$(printf '%s\n' "${summary}" | sed -n 's|^[A-Z]*: hooks/tests/run\.sh (\([0-9]*\)/[0-9]* tests ran, [0-9]* failed)$|\1|p')"
+          failed="$(printf '%s\n' "${summary}" | sed -n 's|^[A-Z]*: hooks/tests/run\.sh ([0-9]*/[0-9]* tests ran, \([0-9]*\) failed)$|\1|p')"
+          if [ -z "${ran}" ] || [ -z "${failed}" ]; then
+            printf '::error::could not parse the hook suite summary: %s\n' "${summary}"
+            exit 1
+          fi
+          if [ "${status}" -ne 0 ] || [ "${failed}" -ne 0 ]; then
+            printf '::error::hook suite: %s of %s tests failed (runner exit %s)\n' "${failed}" "${ran}" "${status}"
+            exit 1
+          fi
+          if [ "${ran}" -lt "${MIN_HOOK_TESTS}" ]; then
+            printf '::error::hook suite ran %s tests, below the floor of %s -- discovery lost files\n' "${ran}" "${MIN_HOOK_TESTS}"
+            exit 1
+          fi
+          printf 'hook suite: %s tests ran, 0 failed, 0 skipped\n' "${ran}"
+      - name: version authority is falsifiable
+        run: python3 scripts/check-version-lag.py --self-test
+      # THE HONEST LIMIT OF THIS STEP, STATED RATHER THAN HIDDEN.
+      #
+      # The binary was built from this tree two steps up, so its version equals
+      # the manifest version BY CONSTRUCTION and the comparison cannot fail
+      # here. The lag this tool was written for -- a developer whose installed
+      # binary is a PREVIOUS release's while the tree under test is this one's
+      # -- is caught by the pre-commit hook, not by CI. What this step genuinely
+      # enforces is therefore narrower, and worth naming rather than leaving a
+      # future reader to assume it proves something about installed binaries:
+      # it enforces that the check RAN and compared something.
+      #
+      # (No version literal appears in this comment on purpose. Any workflow
+      # line carrying the workspace version makes this file a release authority
+      # that version-bump.py must rewrite, and GITHUB_TOKEN has no `workflows`
+      # scope to push that -- scripts/check-github-actions.py gates it, and it
+      # caught exactly that mistake in an earlier draft of this comment.)
+      #
+      # That distinction is the whole reason the step exists. The tool exits 0
+      # with `checked: 0` when no binary resolves, which is correct for a script
+      # that may legitimately run where none is installed, and is a vacuous pass
+      # for a gate. On a runner with no `shepherd` installed -- the default --
+      # this step would otherwise be green forever having compared nothing. So
+      # `checked: 0` fails here, and exit 2 ("could not look") is reported as
+      # the error it is rather than folded into the mismatch verdict.
+      - name: version authority holds
+        shell: bash
+        run: |
+          set -euo pipefail
+          report="${RUNNER_TEMP}/version-lag.txt"
+          status=0
+          python3 scripts/check-version-lag.py > "${report}" 2>&1 || status=$?
+          cat "${report}"
+          if [ "${status}" -eq 2 ]; then
+            printf '::error::check-version-lag could not look; that is an error, not a verdict\n'
+            exit 1
+          fi
+          if [ "${status}" -ne 0 ]; then
+            printf '::error::check-version-lag reported a version mismatch (exit %s)\n' "${status}"
+            exit 1
+          fi
+          checked=""
+          checked_status=0
+          checked="$(grep -E '^checked: [0-9]+$' "${report}" | tail -n 1)" || checked_status=$?
+          if [ "${checked_status}" -gt 1 ]; then
+            printf '::error::could not search %s for the checked count (grep exit %s)\n' "${report}" "${checked_status}"
+            exit 1
+          fi
+          if [ "${checked_status}" -ne 0 ]; then
+            printf '::error::check-version-lag printed no "checked:" count\n'
+            exit 1
+          fi
+          count="${checked##*: }"
+          if [ "${count}" -eq 0 ]; then
+            printf '::error::check-version-lag compared nothing (checked: 0) -- no shepherd binary resolved, so this step proved nothing\n'
+            exit 1
+          fi
+          printf 'version authority: %s comparison(s) made\n' "${count}"
   test:
     name: test (${{ matrix.os }}, ${{ matrix.features }})
     needs: resolve

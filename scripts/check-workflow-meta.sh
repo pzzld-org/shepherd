@@ -4,9 +4,9 @@
 #
 # WHY THIS EXISTS.
 #
-# `workflows/wave.js` was committed in 686084d with `meta.whenToUse` built by
-# `+` string concatenation across three fragments. The Workflow tool's
-# contract is explicit: "The `meta` object must be a PURE LITERAL — no
+# `workflows/wave.js` once shipped with `meta.whenToUse` built by `+` string
+# concatenation across three fragments, and stayed unloadable. The Workflow
+# tool's contract is explicit: "The `meta` object must be a PURE LITERAL — no
 # variables, function calls, spreads, or template interpolation." The loader
 # rejects a violation with `meta must be a pure literal: non-literal node
 # type in meta: BinaryExpression` — and it rejects it at DISPATCH time, after
@@ -151,6 +151,20 @@ scan_masked() {
   { [[ "${flat}" == *'('* ]] || [[ "${flat}" == *')'* ]]; } &&
     printf '      CallExpression: a parenthesis is present outside any string literal\n'
 
+  # G5: `grep` exit 1 means "looked, matched nothing", which is the healthy
+  # case here. Anything above 1 means it could not look at all, and a `|| true`
+  # that folds the two together turns a broken scan into a clean bill of
+  # health. Fail the file instead — emitting a violation line is how this
+  # function says no.
+  local ids ids_rc
+  ids="$(printf '%s' "${flat}" |
+    grep -Eo ':[[:space:]]*[A-Za-z_$][A-Za-z0-9_$]*[[:space:]]*[,}]')"
+  ids_rc=$?
+  if [[ "${ids_rc}" -gt 1 ]]; then
+    printf '      internal error: the bare-identifier scan could not run (grep exit %d)\n' "${ids_rc}"
+    return 0
+  fi
+
   local match word
   while IFS= read -r match; do
     [[ -n "${match}" ]] || continue
@@ -161,8 +175,7 @@ scan_masked() {
         printf '      Identifier: bare identifier `%s` in value position\n' "${word}"
         ;;
     esac
-  done < <(printf '%s' "${flat}" |
-    grep -Eo ':[[:space:]]*[A-Za-z_$][A-Za-z0-9_$]*[[:space:]]*[,}]' || true)
+  done <<< "${ids}"
 }
 
 # check_file <path>
@@ -239,34 +252,72 @@ scan_workflows() {
 # self_test
 #
 # The point of this script. Three mandatory controls plus one DF-59 pin:
-#   NEGATIVE          — the real 686084d concatenated form must be REJECTED.
+#   NEGATIVE          — the checked-in concatenated form must be REJECTED, and
+#                        the stated reason must name the concatenation itself
+#                        (`BinaryExpression`), not some unrelated parse
+#                        failure. The corpus is a tracked fixture, not a
+#                        commit pulled back out of git history — the fixture's
+#                        own header records why archaeology cannot be a
+#                        control.
 #   POSITIVE          — the current shipped workflows/wave.js must PASS.
 #   FALSE-POSITIVE     — a description legitimately containing `+ ( ) '`
 #                        must PASS (the regression pin for the bug this run
 #                        already hit once).
 #   ZERO-FILES (DF-59) — scanning an empty directory must exit non-zero.
 # A control that cannot fail is not proof of anything; each is graded on
-# whether the gate behaved as the control demands, not on vibes.
+# whether the gate behaved as the control demands, not on vibes. The number of
+# controls actually run is reported and refused when zero (G4): a self-test
+# that silently runs nothing is the same defect one level up.
 self_test() {
   printf 'self-test: prove the gate can both FAIL and PASS\n\n'
-  local fails=0 tmp
+  local fails=0 controls=0 tmp
 
   tmp="$(mktemp -d -t check-workflow-meta-selftest.XXXXXX)"
   TMP_DIRS+=("${tmp}")
 
   # --- NEGATIVE control -----------------------------------------------------
-  local negative="${tmp}/negative.js"
-  if ! git -C "${ROOT}" show 686084d:workflows/wave.js >"${negative}" 2>/dev/null; then
-    printf '  FAIL  NEGATIVE control: could not recover 686084d:workflows/wave.js from git history\n'
-    fails=$((fails + 1))
-  elif check_file "${negative}" >/dev/null 2>&1; then
-    printf '  FAIL  NEGATIVE control: the 686084d concatenated `whenToUse` was ACCEPTED — the gate cannot fire\n'
+  #
+  # The corpus is a tracked file that deliberately carries the `+`-concatenated
+  # `whenToUse` this gate exists to catch. Reading it costs nothing and works in
+  # a shallow CI checkout; recovering the same bytes from an old commit works in
+  # neither — `actions/checkout` defaults to `fetch-depth: 1`, and the object is
+  # already absent from this clone.
+  #
+  # Rejection alone is not enough. A fixture rejected because it failed to parse,
+  # or for some construct other than the concatenation, is a vacuous control: it
+  # would keep printing PASS long after the `+` check itself broke. So the REASON
+  # is asserted too, and it must be `BinaryExpression`.
+  controls=$((controls + 1))
+  local negative="${ROOT}/hooks/tests/fixtures/df69-concatenated-meta.js"
+  local neg_out neg_rc neg_reason neg_grep_rc
+  if [[ ! -f "${negative}" ]]; then
+    printf '  FAIL  NEGATIVE control: the corpus fixture is missing: %s\n' "${negative}"
     fails=$((fails + 1))
   else
-    printf '  PASS  NEGATIVE control: the 686084d concatenated `whenToUse` is correctly REJECTED\n'
+    neg_out="$(check_file "${negative}" 2>&1)"
+    neg_rc=$?
+    # G5 again: 0 found, 1 looked-and-absent, >1 could-not-look. The last of
+    # those must not be reported as either of the first two.
+    neg_reason="$(printf '%s\n' "${neg_out}" | grep -F -- 'BinaryExpression')"
+    neg_grep_rc=$?
+    if [[ "${neg_rc}" -eq 0 ]]; then
+      printf '  FAIL  NEGATIVE control: the concatenated `whenToUse` fixture was ACCEPTED — the gate cannot fire\n'
+      fails=$((fails + 1))
+    elif [[ "${neg_grep_rc}" -gt 1 ]]; then
+      printf '  FAIL  NEGATIVE control: could not inspect the rejection reason (grep exit %d)\n' "${neg_grep_rc}"
+      fails=$((fails + 1))
+    elif [[ "${neg_grep_rc}" -ne 0 ]]; then
+      printf '  FAIL  NEGATIVE control: the fixture was rejected, but NOT for its concatenation:\n'
+      printf '%s\n' "${neg_out}" | sed 's/^/        /'
+      fails=$((fails + 1))
+    else
+      printf '  PASS  NEGATIVE control: the concatenated `whenToUse` fixture is REJECTED, for the concatenation:\n'
+      printf '%s\n' "${neg_reason}" | sed 's/^[[:space:]]*/        /'
+    fi
   fi
 
   # --- POSITIVE control ------------------------------------------------------
+  controls=$((controls + 1))
   local shipped="${ROOT}/workflows/wave.js"
   if [[ ! -f "${shipped}" ]]; then
     printf '  FAIL  POSITIVE control: %s does not exist\n' "${shipped}"
@@ -280,6 +331,7 @@ self_test() {
   fi
 
   # --- FALSE-POSITIVE GUARD ---------------------------------------------------
+  controls=$((controls + 1))
   local falsepos="${tmp}/falsepos.js"
   cat >"${falsepos}" <<'FIXTURE_EOF'
 export const meta = {
@@ -297,22 +349,30 @@ FIXTURE_EOF
     fails=$((fails + 1))
   fi
 
-  # --- ZERO-FILES guard (DF-59) -----------------------------------------------
+  # --- ZERO-FILES guard (DF-59 / G4) ------------------------------------------
+  controls=$((controls + 1))
   local empty_dir="${tmp}/empty-workflows"
   mkdir -p "${empty_dir}"
   if scan_workflows "${empty_dir}" >/dev/null 2>&1; then
-    printf '  FAIL  ZERO-FILES guard (DF-59): scanning an empty directory exited 0\n'
+    printf '  FAIL  ZERO-FILES guard (DF-59): an empty scan set exited 0\n'
     fails=$((fails + 1))
   else
-    printf '  PASS  ZERO-FILES guard (DF-59): scanning an empty directory exits non-zero\n'
+    printf '  PASS  ZERO-FILES guard (DF-59): an empty scan set exits non-zero\n'
   fi
 
   printf '\n'
-  if [[ "${fails}" -gt 0 ]]; then
-    printf '::error::%d self-test control(s) failed — the gate is not trustworthy.\n' "${fails}"
+  # G4: say how many things were checked, and refuse when that number is zero.
+  # A self-test that runs no controls is the same shape of lie as a checker that
+  # scans no files.
+  if [[ "${controls}" -eq 0 ]]; then
+    printf '::error::the self-test ran 0 controls — a self-test that checks nothing cannot fail.\n'
     return 1
   fi
-  printf 'ok: every self-test control behaved as designed.\n'
+  if [[ "${fails}" -gt 0 ]]; then
+    printf '::error::%d of %d self-test control(s) failed — the gate is not trustworthy.\n' "${fails}" "${controls}"
+    return 1
+  fi
+  printf 'ok: all %d self-test control(s) behaved as designed.\n' "${controls}"
   return 0
 }
 
