@@ -53,6 +53,11 @@ on:
         type: string
   repository_dispatch:
     types: [cargo-build]
+  # A tag push builds that tag's assets. This does NOT double-build on release:
+  # release.yml pushes its tag with GITHUB_TOKEN, and GitHub does not create new
+  # workflow runs from GITHUB_TOKEN-triggered events (workflow_dispatch and
+  # repository_dispatch are the only exceptions). So this fires for a tag pushed
+  # by a human or a PAT, and stays quiet for the one the release just made.
   push:
     tags:
       - latest
