@@ -75,9 +75,9 @@ trap 'rm -rf "${SCRATCH_DIRS[@]:-}"' EXIT
 
 # Build a fresh scratch copy of the whole plugin-contract surface. `cp -R`
 # preserves symlinks as symlinks on macOS (the thin carrier is symlink-based:
-# plugins/shepherd/hooks/scripts, plugins/shepherd/bin, plugins/shepherd/
-# {agents,skills}), which each falsification below verifies rather than
-# trusts, before it relies on that symlink existing. Prints the new scratch
+# plugins/shepherd/hooks/scripts, plugins/shepherd/{agents,skills}), which
+# each falsification below verifies rather than trusts, before it relies on
+# that symlink existing. Prints the new scratch
 # root's path on stdout; callers must NOT call this from inside another
 # function whose own output is captured, since command substitution runs
 # this in a subshell and any state mutated here (besides the printed path)
