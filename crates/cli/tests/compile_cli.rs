@@ -61,7 +61,15 @@ fn standalone_binary_compiles_embedded_content_without_a_checkout() {
     let manifest: serde_json::Value = serde_json::from_slice(&output.stdout).expect("manifest");
     assert_eq!(manifest["schema"], "shepherd.compiled-tree/2");
     assert_eq!(manifest["target"], "claude");
-    assert_eq!(manifest["files"].as_array().expect("files").len(), 18);
+    // This count is a deliberate literal, not a value to derive: the whole
+    // point of this test is that it compiles the binary's EMBEDDED content
+    // with no checkout on disk. Deriving the count from content/ would read
+    // the exact thing this test exists to prove it does not need, and it
+    // would still pass if a skill silently vanished from the embedded copy.
+    // v651 added skills/plant, which moved this from 18 to 19. When a new
+    // skill lands and this goes red, bump the literal after confirming why
+    // the file count moved -- never replace it with a derived count.
+    assert_eq!(manifest["files"].as_array().expect("files").len(), 19);
     assert_eq!(manifest["roles"].as_array().expect("roles").len(), 9);
     let coder = manifest["roles"]
         .as_array()
@@ -273,7 +281,16 @@ fn stale_generated_files_are_removed_only_with_intact_prior_provenance() {
         &fs::read(output_root.join(".shepherd-generated.json")).expect("manifest"),
     )
     .expect("manifest JSON");
-    assert_eq!(manifest["files"].as_array().expect("files").len(), 17);
+    // Same rule as the embedded-content test above: this count is a
+    // deliberate literal, not derived, because this test's job is to verify
+    // the compiled manifest against something independent of content/, not
+    // to reread content/ and agree with itself. v651's skills/plant moved
+    // this from 17 to 18. It sits ONE LOWER than the embedded-content
+    // test's 19 because this test's own setup deletes skills/adaptation
+    // from the authored copy and asserts it was removed as stale -- that
+    // subtraction is intentional, not a second literal to reconcile away.
+    // Bump after naming what changed; never derive.
+    assert_eq!(manifest["files"].as_array().expect("files").len(), 18);
     fs::remove_dir_all(root).expect("cleanup");
 }
 

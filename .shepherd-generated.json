@@ -1,7 +1,7 @@
 {
   "schema": "shepherd.compiled-tree/2",
   "target": "claude",
-  "tree_digest": "4caee5f76169908d4593f5217a4c1bde7929d735b87d1859ff3826f1afa80512",
+  "tree_digest": "6e4112852a26b31e662bbcabc024ae36d5ca671a827210e0e23d8385eeabb2db",
   "tokenizer_version": "shepherd-prompt-v1-uax29",
   "roles": [
     {
@@ -481,26 +481,37 @@
       "prompt_tokens": 717
     },
     {
+      "path": "skills/plant/SKILL.md",
+      "kind": "skill",
+      "source_path": "content/skills/plant/SKILL.md",
+      "source_sha256": "50804195be90a75b0e0eb5c703501f90a191b1ef96fe6f359a6dc6344b78e50e",
+      "content_sha256": "dd4f0dc9412e9f41fac6c67591181dada5f4dc4d3a465ff6d30838eb85d2d284",
+      "lines": 58,
+      "words": 366,
+      "utf8_bytes": 2442,
+      "prompt_tokens": 788
+    },
+    {
       "path": "skills/shepherd/SKILL.md",
       "kind": "skill",
       "source_path": "content/skills/shepherd/SKILL.md",
-      "source_sha256": "14fe732df1c7fceb5e52b8a55c83913b8e1c53b3ecaf4be44f366aef21cf59c5",
-      "content_sha256": "9c482279a9e9bea5f1ade26bcd24232db27059a84b91f75d97166f5650e4d6e0",
-      "lines": 41,
-      "words": 268,
-      "utf8_bytes": 1951,
-      "prompt_tokens": 612
+      "source_sha256": "85a7d2000ccee5636606b953f53e060a1d57c6947728ca245479dc000444adca",
+      "content_sha256": "461c51d781a5bb5de0749fd7ec4945c5c78952f2376411754811d8ca4425ddc3",
+      "lines": 53,
+      "words": 361,
+      "utf8_bytes": 2566,
+      "prompt_tokens": 795
     },
     {
       "path": "skills/spawn/SKILL.md",
       "kind": "skill",
       "source_path": "content/skills/spawn/SKILL.md",
-      "source_sha256": "4e7e66df605ab308729b0067bf443f85140d2f34495eb3aea6db7b99c0800ff5",
-      "content_sha256": "2c84b4983e7036c360cf3e45c957ce2523e959b9d806b6938d3a522f11134ec7",
-      "lines": 60,
-      "words": 378,
-      "utf8_bytes": 2477,
-      "prompt_tokens": 755
+      "source_sha256": "cb0bbd2201d676c3e3d084ee96cdc3d231d572ba916e0a10d3111b3338e022c0",
+      "content_sha256": "74ea04bb40df9cac506c159c24a07f0a02d89abc1754a5cb7e12db4558be8d0a",
+      "lines": 61,
+      "words": 395,
+      "utf8_bytes": 2604,
+      "prompt_tokens": 794
     },
     {
       "path": "skills/start/SKILL.md",
