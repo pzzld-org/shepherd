@@ -1,7 +1,149 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd "$(dirname "${BASH_SOURCE[0]}")/../.."
+self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+self="${self_dir}/${BASH_SOURCE[0]##*/}"
+cd "${self_dir}/../.."
+
+# Self-lint, first thing: no assertion in this file may be a bare `[[ ... ]]` or
+# `(( ... ))` compound command, because macOS bash 3.2 does not honour `set -e`
+# for those. Measured, not inferred:
+#   /bin/bash -c 'set -e; [[ 2 -eq 3 ]]; echo SURVIVED'  # 3.2.57 -> SURVIVED, rc=0
+#   bash       -c 'set -e; [[ 2 -eq 3 ]]; echo SURVIVED' # 5.2.21 -> aborts, rc=1
+# (same split for `(( 0 ))`; ordinary commands such as `false` abort on both).
+# So a bare assertion is VACUOUS on every developer Mac and LIVE on Linux CI,
+# and when it does fire it prints nothing at all. That is exactly how the
+# create-release-tar.sh count below shipped wrong from v6.4.6 (f3d44b0, which
+# bumped it to `-eq 3` against a workflow that had 2 matching lines then and
+# has 2 now) until CI first ran this file on Linux and failed with no reason
+# given. Guarded forms -- `[[ ... ]] || { printf ...; exit 1; }` and
+# `if [[ ... ]]; then` -- are correct and are what the rest of this file uses.
+#
+# What makes a statement bare is what follows its CLOSER, never what appears
+# somewhere on the line. The first cut of this lint filtered candidate lines
+# through `grep -vE '(\|\||&&)'`, which reads the whole line, so an `&&` or `||`
+# INSIDE the brackets bought the line an exemption it had not earned. Measured
+# against this file: `[[ 1 -eq 2 ]]` caught, `(( 1 == 2 ))` caught,
+# `[[ -n "$x" && -f "$y" ]]` MISSED -- and that missed shape is the house idiom
+# (scripts/create-release-tar.sh:42,56), so the lint would have passed clean
+# while the exact defect it exists to catch walked past it. The same whole-line
+# filter, pointed at the repo, also over-counted guarded `[[ cond ]] && action`
+# lines and `[[ cond ]] \` continuations, and missed three live sites.
+#
+# The classifier below instead finds the opener at the head of the statement,
+# walks to the closer that MATCHES it (depth-counted, so a nested `$(( ))` or a
+# `[[ ]]` inside a command substitution cannot end the scan early), and calls
+# the statement bare only when nothing that could consume its exit status
+# follows that closer -- end of line, a `;`, or a comment. `if [[ ... ]]; then`
+# and `while [[ ... ]]; do` never become candidates, because the statement does
+# not start with the opener. The scan is line-scoped: a condition split across
+# physical lines by a mid-condition `\` is not classified, so keep assertions
+# on one line.
+if [[ ! -f "$self" ]]; then
+  printf '%s: cannot self-lint; resolved script path does not exist\n' "$self" >&2
+  exit 1
+fi
+
+bare_compound_awk='
+{
+  statement = $0
+  sub(/^[ \t]*/, "", statement)
+  opener = substr(statement, 1, 2)
+  if (opener != "[[" && opener != "((") next
+  closer = (opener == "[[") ? "]]" : "))"
+
+  depth = 0
+  matched = 0
+  tail = ""
+  n = length(statement)
+  for (i = 1; i < n; ) {
+    pair = substr(statement, i, 2)
+    if (pair == opener) { depth += 1; i += 2; continue }
+    if (pair == closer) {
+      depth -= 1
+      i += 2
+      if (depth == 0) { matched = 1; tail = substr(statement, i); break }
+      continue
+    }
+    i += 1
+  }
+  if (matched == 0) next
+
+  sub(/^[ \t]*/, "", tail)
+  if (tail == "\\") next
+  if (tail ~ /^#/) tail = ""
+  sub(/[ \t;]*$/, "", tail)
+  if (tail == "") printf "%d:%s\n", FNR, $0
+}
+'
+
+# Emits `LINENO:TEXT` for every bare compound statement in the named file.
+bare_compound_assertions_in() {
+  awk "$bare_compound_awk" "$1"
+}
+
+# Negative control for the classifier itself, run every time, for the same
+# reason the hand-rolled-tar detector below carries one: a checker never shown
+# to fail is not known to check anything. Every line of the first probe must be
+# flagged; no line of the second may be. The probes are files run through the
+# identical `bare_compound_assertions_in` code path this file uses on itself,
+# and they are built with printf rather than a heredoc for a reason specific to
+# this check: a heredoc would put literal bare assertions at the head of lines
+# in the very file the lint scans, and the lint would fail on its own fixtures.
+selflint_probe_dir=$(mktemp -d)
+trap 'rm -rf "$selflint_probe_dir"' EXIT
+printf '%s\n' \
+  '[[ 1 -eq 2 ]]' \
+  '(( 1 == 2 ))' \
+  '[[ -n "$x" && -f "$y" ]]' \
+  '[[ "$a" == "b" || "$a" == "c" ]]' \
+  '[[ $(rg -Fc "scripts/create-release-tar.sh" "$workflow") -eq 3 ]]' \
+  '(( count == $((one + two)) ))' \
+  '    [[ -f "$f" ]]' \
+  '[[ -f "$f" ]];' \
+  '[[ -f "$f" ]]  # a trailing comment consumes no exit status' \
+  > "$selflint_probe_dir/should-flag"
+printf '%s\n' \
+  '[[ "$rc" -eq 0 ]] || { printf "why\n" >&2; exit 1; }' \
+  '[[ -n "$x" ]] && printf "why\n" >&2' \
+  '[[ -d "$d" && ! -L "$d" ]] || { printf "why\n" >&2; exit 1; }' \
+  '[[ -d "$d" && ! -L "$d" ]] || \' \
+  '  fail "source directory is missing, not a directory, or a symlink: $d"' \
+  '[[ -d "$d" && ! -L "$d" ]] \' \
+  '  || { printf "why\n" >&2; exit 1; }' \
+  '(( a == b )) || { printf "why\n" >&2; exit 1; }' \
+  'if [[ -n "$x" && -f "$y" ]]; then :; fi' \
+  'if (( a >= b )); then :; fi' \
+  'while [[ -n "$x" ]]; do :; done' \
+  > "$selflint_probe_dir/should-not-flag"
+
+selflint_flagged=$(bare_compound_assertions_in "$selflint_probe_dir/should-flag")
+selflint_flagged_lines=$(printf '%s\n' "$selflint_flagged" | cut -d: -f1 | tr '\n' ' ')
+selflint_missed=$(awk -v flagged="$selflint_flagged_lines" '
+  BEGIN { split(flagged, nums, " "); for (i in nums) seen[nums[i]] = 1 }
+  !(FNR in seen) { printf "%d:%s\n", FNR, $0 }
+' "$selflint_probe_dir/should-flag")
+selflint_false_positives=$(bare_compound_assertions_in "$selflint_probe_dir/should-not-flag")
+rm -rf "$selflint_probe_dir"
+trap - EXIT
+
+if [[ -n "$selflint_missed" ]]; then
+  printf '%s: the bare-assertion classifier let a known-vacuous form through, so it is not known to check anything and cannot be trusted against this file. Undetected:\n%s\n' \
+    "$self" "$selflint_missed" >&2
+  exit 1
+fi
+if [[ -n "$selflint_false_positives" ]]; then
+  printf '%s: the bare-assertion classifier fires on a correctly guarded assertion, so it would fail this file for no reason:\n%s\n' \
+    "$self" "$selflint_false_positives" >&2
+  exit 1
+fi
+
+bare_compound_assertions=$(bare_compound_assertions_in "$self")
+if [[ -n "$bare_compound_assertions" ]]; then
+  printf '%s: assertion(s) below are written as a bare [[ ]] / (( )) compound command. macOS bash 3.2 ignores set -e for those, so they never fail locally, and on Linux CI they fail with no stated reason. Guard each one: `[[ ... ]] || { printf "why\\n" >&2; exit 1; }`\n%s\n' \
+    "$self" "$bare_compound_assertions" >&2
+  exit 1
+fi
 
 workflow='.github/workflows/release.yml'
 packed_probe='scripts/test-packed-plugin.sh'
@@ -267,8 +409,96 @@ if ! rg -Fq 'expected="shepherd-cli ${VERSION}"' "$workflow"; then
   printf '%s: release workflow must assert the built binary reports shepherd-cli ${VERSION}\n' "$workflow" >&2
   exit 1
 fi
-[[ $(rg -Fc 'scripts/create-release-tar.sh' "$workflow") -eq 3 ]]
-[[ $(rg -Fc 'TZ=UTC find' "$workflow") -eq 2 ]]
+# The property is that EVERY release tarball is produced by
+# scripts/create-release-tar.sh -- the single place that pins member order,
+# ownership, and mtimes -- and that no step hand-rolls tar to build one. It is
+# NOT that there are N call-site lines, for the same reason the checkout check
+# above counts a property: a literal count fails the moment a job is added, and
+# a reader cannot tell a correct literal from a wrong one. This was `-eq 3` and
+# had never been true; release.yml has had exactly 2 call-site LINES since
+# v6.4.6. The 3 was most likely the runtime ARCHIVE count -- 1 native archive
+# per matrix target, plus 2 component archives from the two-iteration
+# `for asset in ...` loop -- which a line count can never observe.
+#
+# The pattern matches an archive-CREATING tar in command position, in the
+# spellings a runner might have (GNU tar, bsdtar, gtar; `--create`, clustered
+# `-czf`, or the bare mode word `czf`). The leading separator class is what
+# keeps it off the two benign `tar` substrings release.yml legitimately
+# contains -- `create-release-tar.sh` (preceded by `-`) and the `*.tar.gz`
+# asset names (preceded by `.`) -- and the create-mode tail is what keeps it
+# off read-only `tar -tzf` / `tar -xzf` verification calls.
+raw_tar_pattern='(^|[[:space:];&|(])(bsdtar|gtar|tar)[[:space:]]+(--create|-[[:alnum:]-]*c|c[acfjJvxz]*[[:space:]])'
+
+# Negative control for the pattern itself, run every time: a checker never shown
+# to fail is not known to check anything. Every line of the first probe must be
+# caught; no line of the second may be. The second is verbatim release.yml text
+# plus the read-only tar calls that must stay legal.
+#
+# The probes are files, not here-string variables, for two reasons: the check
+# then runs the identical `grep -nE` code path it runs against release.yml, and
+# `var=$(cat <<'EOF' ...)` silently eats a trailing-backslash line continuation
+# even with a quoted delimiter -- which would have dropped the `\` from the
+# `scripts/create-release-tar.sh \` line, the single most important negative.
+raw_tar_probe_dir=$(mktemp -d)
+trap 'rm -rf "$raw_tar_probe_dir"' EXIT
+cat <<'PROBE' > "$raw_tar_probe_dir/should-match"
+tar -czf dist/shepherd.tar.gz -C stage .
+bsdtar --create --file dist/shepherd.tar stage
+          tar czf dist/shepherd.tar.gz stage
+run: cd stage && tar -cf - . | gzip -9 > ../out.tar.gz
+gtar --create --gzip --file out.tar.gz stage
+PROBE
+cat <<'PROBE' > "$raw_tar_probe_dir/should-not-match"
+          scripts/create-release-tar.sh \
+          versioned="shepherd-${VERSION}-${TARGET}.tar.gz"
+          stable="shepherd-${TARGET}.tar.gz"
+            'shepherd-component-wasm32-wasip2.tar.gz'; do
+          tar -tzf "$archive" > listing.txt
+          tar -xzf "$archive" -C "$probe"
+          # member order in the tar is pinned by the shared script
+PROBE
+raw_tar_expected=$(grep -c '' "$raw_tar_probe_dir/should-match")
+raw_tar_caught=$(grep -cE "$raw_tar_pattern" "$raw_tar_probe_dir/should-match" || true)
+if [[ "$raw_tar_caught" -ne "$raw_tar_expected" ]]; then
+  printf '%s: the hand-rolled-tar detector missed a known-bad invocation (caught %s of %s); it cannot be trusted against %s. Undetected:\n%s\n' \
+    "$self" "$raw_tar_caught" "$raw_tar_expected" "$workflow" \
+    "$(grep -vE "$raw_tar_pattern" "$raw_tar_probe_dir/should-match" || true)" >&2
+  exit 1
+fi
+raw_tar_false_positives=$(grep -nE "$raw_tar_pattern" "$raw_tar_probe_dir/should-not-match" || true)
+if [[ -n "$raw_tar_false_positives" ]]; then
+  printf '%s: the hand-rolled-tar detector fires on legitimate text (a create-release-tar.sh call site, a .tar.gz asset name, or a read-only tar listing/extraction), so it would fail %s for no reason:\n%s\n' \
+    "$self" "$workflow" "$raw_tar_false_positives" >&2
+  exit 1
+fi
+
+hand_rolled_tar=$(grep -nE "$raw_tar_pattern" "$workflow" || true)
+if [[ -n "$hand_rolled_tar" ]]; then
+  printf '%s: a release step hand-rolls tar to build an archive. Every release tarball must be produced by scripts/create-release-tar.sh, the only place that pins member order, ownership, and mtimes; a hand-rolled tar silently breaks byte reproducibility:\n%s\n' \
+    "$workflow" "$hand_rolled_tar" >&2
+  exit 1
+fi
+create_release_tar_calls=$(rg -Fc 'scripts/create-release-tar.sh' "$workflow") || true
+create_release_tar_calls="${create_release_tar_calls:-0}"
+if [[ "$create_release_tar_calls" -lt 1 ]]; then
+  printf '%s: release workflow never calls scripts/create-release-tar.sh, and hand-rolls no tar either, so it cannot produce a release tarball at all\n' \
+    "$workflow" >&2
+  exit 1
+fi
+
+# Every staging tree that becomes a tarball must have its mtimes normalized
+# before packing, or the archive stops being byte-reproducible across reruns.
+# Two such trees exist today: the native per-target staging dir and the wasm32
+# component staging dir. `-lt 2`, not `-eq 2`, on the same reasoning as above:
+# adding a third staging tree must not fail the gate, dropping a normalization
+# must.
+mtime_normalizations=$(rg -Fc 'TZ=UTC find' "$workflow") || true
+mtime_normalizations="${mtime_normalizations:-0}"
+if [[ "$mtime_normalizations" -lt 2 ]]; then
+  printf '%s: every staging tree that becomes a release tarball must normalize mtimes with TZ=UTC find ... -exec touch -t 198001010000; expected at least 2 (native staging and wasm32 component staging), found %s\n' \
+    "$workflow" "$mtime_normalizations" >&2
+  exit 1
+fi
 if rg -Fq -- '--uid 0' "$workflow" || rg -Fq -- '--gid 0' "$workflow"; then
   printf 'release workflow must not use BSD-only tar ownership flags\n' >&2
   exit 1
