@@ -86,6 +86,20 @@ drift between call sites rather than a missing decision.
   seed carrying a `TODO:` marker still HARD-fails, and a 401-line seed is HARD over the
   ceiling whether it is labelled `sprint-seed` or `patch-seed`.
 
+- **80 shell assertions that could not say what they enforced, and 10 that could not fail.**
+  A bare `rg -q` prints nothing, so `set -e` killed the script and named no requirement.
+  Worse, **bash 3.2 does not honour `set -e` for a failing `[[ ]]`** and macOS cannot ship
+  newer, so ten assertions were inert on the platform where development happens. That class
+  had already hidden a false count in `test-release-workflow.sh` since v6.4.6, invisible
+  until `gate.sh fast` was wired into Linux CI. All 80 now name their requirement, and
+  `hooks/tests/lint_shell_assertions.sh` bans both forms.
+  Three sites in `hooks/scripts/_lib.sh` were **deliberately left alone**: they are the final
+  expression of predicate functions, where the exit status is the boolean result, and guarding
+  them would hard-exit on the negative branch — `quiet_warnings` defaults to false, so every
+  hook would have died whenever an operator had not opted in. The lint carries that exclusion.
+  Every conversion is append-only: the original command byte-identical plus a guard, verified
+  mechanically at 80 conversions and 0 violations.
+
 ### Fixed — the root skill had no entry condition
 
 `skills/spawn` and `skills/start` both open with `## Preconditions` stated as commands.
