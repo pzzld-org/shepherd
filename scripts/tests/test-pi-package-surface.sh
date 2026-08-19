@@ -70,6 +70,19 @@ else:
 if "pi-package" not in (manifest.get("keywords") or []):
     problems.append("keywords must include `pi-package` for discovery")
 
+# Declaring `files` at all makes npm pack ONLY that list plus package.json,
+# README and LICENSE. The legal material staged by stage-distribution-legal.sh
+# is not in that automatic set, so an allowlist that omits it ships a tarball
+# with no third-party notices -- a distribution defect, and the one that broke
+# rust-wasm when `files` was first introduced here.
+if isinstance(files, list):
+    for required in ("THIRD_PARTY_NOTICES.md", "THIRD_PARTY_LICENSES"):
+        if required not in files:
+            problems.append(
+                f"`files` omits {required}; declaring `files` excludes the staged "
+                "legal material npm does not add automatically"
+            )
+
 if problems:
     print("; ".join(problems))
     sys.exit(1)
@@ -86,7 +99,7 @@ if [[ "${1:-}" == "--self-test" ]]; then
   cat >"$scratch/good.json" <<'JSON'
 {"name":"x","keywords":["pi-package"],
  "pi":{"extensions":["./src/extension.mjs"],"skills":["./skills"],"prompts":["./prompts"]},
- "files":["src","skills","prompts"]}
+ "files":["src","skills","prompts","THIRD_PARTY_NOTICES.md","THIRD_PARTY_LICENSES"]}
 JSON
   if check_manifest "$scratch/good.json" >/dev/null 2>&1; then
     pass "self-test: a correct manifest is accepted"
@@ -114,6 +127,20 @@ JSON
     fail "self-test: pi.skills naming a directory `files` omits was accepted"
   else
     pass "self-test: a declared-but-unpacked carrier is rejected"
+  fi
+
+  # The regression that broke rust-wasm: a complete `pi` surface whose `files`
+  # allowlist drops the staged legal material. npm adds package.json, README and
+  # LICENSE automatically and nothing else, so this ships without notices.
+  cat >"$scratch/nolegal.json" <<'JSON'
+{"name":"x","keywords":["pi-package"],
+ "pi":{"extensions":["./src/extension.mjs"],"skills":["./skills"],"prompts":["./prompts"]},
+ "files":["src","skills","prompts"]}
+JSON
+  if check_manifest "$scratch/nolegal.json" >/dev/null 2>&1; then
+    fail "self-test: a files allowlist omitting the legal material was accepted"
+  else
+    pass "self-test: an allowlist without THIRD_PARTY notices is rejected"
   fi
 
   printf '%s/%s passed\n' "$((checks - fails))" "$checks"

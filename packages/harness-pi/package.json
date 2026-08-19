@@ -37,6 +37,9 @@
     "skills",
     "prompts",
     "shepherd.pi.json",
-    "README.md"
+    "README.md",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md",
+    "THIRD_PARTY_LICENSES"
   ]
 }
