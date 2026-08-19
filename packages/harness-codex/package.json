@@ -1,13 +1,13 @@
 {
   "name": "@pzzld/codex-shepherd",
-  "version": "6.5.4",
+  "version": "6.5.5",
   "description": "Thin Codex CLI adapter for native per-agent identity, lifecycle dispatch, and the shared Rust guard engine.",
   "type": "module",
   "scripts": {
     "test": "node test.mjs"
   },
   "dependencies": {
-    "@pzzld/component-runtime": "6.5.4"
+    "@pzzld/component-runtime": "6.5.5"
   },
   "engines": {
     "node": ">=20"

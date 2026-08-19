@@ -310,7 +310,7 @@ gate_wasm() {
     local resolved_import_count
     wasm-tools component wit "${artifact}" > "${wit_output}"
     test -s "${wit_output}"
-    grep -Fq 'export fl03:shepherd/engine@6.5.4;' "${wit_output}"
+    grep -Fq 'export fl03:shepherd/engine@6.5.5;' "${wit_output}"
     sed -n 's/^  import \(wasi:[^;]*\);$/\1/p' "${wit_output}" \
       | LC_ALL=C sort > "${resolved_imports}"
     resolved_import_count=$(wc -l < "${resolved_imports}" | tr -d ' ')
