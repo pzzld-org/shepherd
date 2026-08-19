@@ -44,7 +44,8 @@ import sys
 REPO = pathlib.Path(__file__).resolve().parent.parent
 WIT_DIR = REPO / "crates/component/wit"
 PORTABLE = REPO / "crates/core/src/dispatch/portable.rs"
-TRANSPORT = REPO / "packages/component-runtime/src/index.mjs"
+# Framing lives where the wire is written, not where the plan is built.
+TRANSPORT = REPO / "packages/component-runtime/src/native-transport.mjs"
 
 # Framing the transport adds. Present in Rust, absent from WIT, by design:
 # the component owns the semantic payload, the transport owns the envelope.

@@ -76,7 +76,7 @@ process.stdin.on("end", () => {
       session_id: process.env.SHEPHERD_TEST_NATIVE_SESSION ?? request.session_id,
       write_scope: root ? ["**"] : ["crates/**"], capabilities: ${JSON.stringify(engineerCapabilities)},
       write_paths: ["crates/core/src/lib.rs"], path_in_write_scope: true,
-      tool_use_id: process.env.SHEPHERD_TEST_NATIVE_TOOL ?? request.tool_use_id ?? "tool-a", mode: "execution",
+      tool_call_id: process.env.SHEPHERD_TEST_NATIVE_TOOL ?? request.tool_call_id ?? "tool-a", mode: "execution",
     }));
     return;
   }

@@ -32,6 +32,12 @@ test("native dispatch defaults to the canonical CLI name", () => {
   assert.deepEqual(command, {
     binary: "shepherd",
     args: ["dispatch", "resolve"],
-    input: '{"harness":"claude"}\n',
+    // The wire envelope is part of the contract, not decoration. This
+    // expectation used to be '{"harness":"claude"}' -- no schema -- which
+    // ENSHRINED the defect: the native CLI rejects an unenveloped request
+    // outright, so this test asserted that the transport must keep producing
+    // something the CLI would never accept. It passed for as long as the
+    // adapter was broken.
+    input: '{"schema":"shepherd.dispatch-request/1","harness":"claude"}\n',
   });
 });

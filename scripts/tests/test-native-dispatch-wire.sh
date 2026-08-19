@@ -57,7 +57,7 @@ fi
 # A literal in this file would be a second source of truth that drifts exactly
 # like the one this gate exists to catch.
 EXPECTED_SCHEMA="$(rg -o 'const REQUEST_SCHEMA: &str = "([^"]+)"' -r '$1' \
-  "$ROOT/crates/cli/src/dispatch_service.rs" | head -1)"
+  "$ROOT/crates/cli/src/dispatch_service.rs" 2>/dev/null | head -1 || true)"
 if [[ -z "$EXPECTED_SCHEMA" ]]; then
   fail "could not read REQUEST_SCHEMA from crates/cli/src/dispatch_service.rs"
   printf '%s/%s passed\n' "$((checks - fails))" "$checks"
@@ -65,8 +65,13 @@ if [[ -z "$EXPECTED_SCHEMA" ]]; then
 fi
 
 # ...and the JS side must agree with it, statically, before anything runs.
+# native-transport.mjs, not index.mjs: framing is applied where the wire is
+# written. `|| true` because a bare `rg` that matches nothing exits 1 and, under
+# `set -e`, kills this script with NO output at all -- which is exactly what it
+# did when the constant moved, and exactly the failure class this sprint spent
+# the week deleting. A missing constant must be a stated FAIL, not silence.
 JS_SCHEMA="$(rg -o 'DISPATCH_REQUEST_SCHEMA = "([^"]+)"' -r '$1' \
-  "$ROOT/packages/component-runtime/src/index.mjs" | head -1)"
+  "$ROOT/packages/component-runtime/src/native-transport.mjs" 2>/dev/null | head -1 || true)"
 if [[ "$JS_SCHEMA" == "$EXPECTED_SCHEMA" ]]; then
   pass "transport and CLI agree on the wire schema ($EXPECTED_SCHEMA)"
 else
