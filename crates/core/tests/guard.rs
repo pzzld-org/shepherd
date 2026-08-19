@@ -564,7 +564,7 @@ fn explicit_content_loader_discovers_every_live_predicate() {
                 .len()
         })
         .sum();
-    assert_eq!(example_count, 17);
+    assert_eq!(example_count, 18);
 }
 
 #[derive(Clone, Copy)]
@@ -798,7 +798,17 @@ const LIVE_EXPECTATIONS: &[ExpectedExample] = &[
         rule: Some("plan-authorship-and-gating-are-root-tier-exclusive"),
         halt_code: Some("WRONG-TIER-DISPATCH"),
         reason: Some(
-            "Only the root orchestrator (shepherd) may dispatch the plan-author (engineer) or gating (critic) roles for sprint-plan authorship/gating; a lane-executor lead (conductor) invoking either directly is refused.",
+            "A lane-executor lead (conductor) may not dispatch the plan-author (engineer), the gating role (critic), the operator-channel role (planter), or the root orchestrator (shepherd); plan authorship, gating, operator contact and root orchestration are reserved to the root tier.",
+        ),
+    },
+    ExpectedExample {
+        predicate: "dispatch-scope",
+        name: "conductor-attempts-to-dispatch-the-planter",
+        decision: Decision::Deny,
+        rule: Some("plan-authorship-and-gating-are-root-tier-exclusive"),
+        halt_code: Some("WRONG-TIER-DISPATCH"),
+        reason: Some(
+            "A lane-executor lead (conductor) may not dispatch the plan-author (engineer), the gating role (critic), the operator-channel role (planter), or the root orchestrator (shepherd); plan authorship, gating, operator contact and root orchestration are reserved to the root tier.",
         ),
     },
     ExpectedExample {
@@ -906,7 +916,7 @@ const LIVE_EXPECTATIONS: &[ExpectedExample] = &[
 ];
 
 #[test]
-fn all_seventeen_live_examples_match_complete_verdicts_and_fields() {
+fn all_live_examples_match_complete_verdicts_and_fields() {
     let content_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../content");
     let engine = GuardEngine::load_content(&content_dir).expect("live content loads");
     let predicate_ids = live_predicate_ids(&content_dir);
@@ -975,7 +985,7 @@ fn all_seventeen_live_examples_match_complete_verdicts_and_fields() {
         }
     }
 
-    assert_eq!(checked, 17, "the live corpus size changed");
+    assert_eq!(checked, 18, "the live corpus size changed");
     assert_eq!(LIVE_EXPECTATIONS.len(), checked, "stale expectation rows");
 }
 
@@ -2172,5 +2182,77 @@ fn a_lane_lead_must_declare_its_dispatch_targets() {
             .decision
             .as_str(),
         "deny"
+    );
+}
+
+/// #323: a lane lead must not reach `planter` (the operator channel,
+/// `AskUserQuestion`) or `shepherd` (the root orchestrator) by dispatching
+/// either directly. `root` is refused too, but by a DIFFERENT mechanism --
+/// `root` is a TIER, not a role id, so `conductor -> root` is refused by
+/// `closed-flock-only`, not by the rule this test is otherwise about. The
+/// sanctioned `conductor -> coder` dispatch is the regression guard against
+/// over-widening the `matches!` arm this fix touches.
+#[test]
+fn conductor_cannot_dispatch_the_planter_or_the_root_orchestrator() {
+    let engine = live_engine();
+    let eval = |request: &str| {
+        engine
+            .evaluate_json(request)
+            .expect("dispatch request is evaluable")
+    };
+
+    let to_planter = eval(
+        r#"{"tool_name":"Agent","role":"conductor","tool_input":{"subagent_type":"planter"}}"#,
+    );
+    assert_eq!(to_planter.decision.as_str(), "deny");
+    assert_eq!(
+        to_planter.rule.as_deref(),
+        Some("plan-authorship-and-gating-are-root-tier-exclusive")
+    );
+    assert_eq!(to_planter.halt_code.as_deref(), Some("WRONG-TIER-DISPATCH"));
+
+    let to_shepherd = eval(
+        r#"{"tool_name":"Agent","role":"conductor","tool_input":{"subagent_type":"shepherd"}}"#,
+    );
+    assert_eq!(to_shepherd.decision.as_str(), "deny");
+    assert_eq!(
+        to_shepherd.rule.as_deref(),
+        Some("plan-authorship-and-gating-are-root-tier-exclusive")
+    );
+    assert_eq!(
+        to_shepherd.halt_code.as_deref(),
+        Some("WRONG-TIER-DISPATCH")
+    );
+
+    // The sanctioned dispatch still works -- the regression guard against
+    // over-widening this rule's `matches!` arm.
+    let to_coder =
+        eval(r#"{"tool_name":"Agent","role":"conductor","tool_input":{"subagent_type":"coder"}}"#);
+    assert_eq!(to_coder.decision.as_str(), "allow");
+
+    // `root` is not a role id -- `shepherd` is the id whose tier is `root` --
+    // so `conductor -> root` is refused by `deny_if_target_outside_flock`
+    // instead. Pinning only `decision == "deny"` here would pin the wrong
+    // mechanism and leave the real one untested.
+    let to_root =
+        eval(r#"{"tool_name":"Agent","role":"conductor","tool_input":{"subagent_type":"root"}}"#);
+    assert_eq!(to_root.decision.as_str(), "deny");
+    assert_eq!(to_root.rule.as_deref(), Some("closed-flock-only"));
+    assert_eq!(to_root.halt_code.as_deref(), Some("DISPATCH-OFF-FLOCK"));
+
+    // Real hook payloads arrive carrier-prefixed (`shepherd:planter`), and
+    // `carrier_role` strips the `shepherd:` prefix before this rule ever sees
+    // the target, so the hole is not a prefix-parsing artifact either.
+    let carrier_to_planter = eval(
+        r#"{"tool_name":"Agent","role":"conductor","tool_input":{"subagent_type":"shepherd:planter"}}"#,
+    );
+    assert_eq!(carrier_to_planter.decision.as_str(), "deny");
+    assert_eq!(
+        carrier_to_planter.rule.as_deref(),
+        Some("plan-authorship-and-gating-are-root-tier-exclusive")
+    );
+    assert_eq!(
+        carrier_to_planter.halt_code.as_deref(),
+        Some("WRONG-TIER-DISPATCH")
     );
 }

@@ -660,9 +660,13 @@ fn effect_fires<'a>(
             .is_some_and(|target| !role_facts.contains_key(target)),
         "deny_if_dispatcher_is_lane_lead_and_target_is_plan_or_gate_role" => {
             context.get("dispatcher_tier").and_then(GuardValue::as_str) == Some("lane-lead")
+                // `planter` holds the operator channel (`AskUserQuestion`) and
+                // `shepherd` is the root orchestrator itself -- a lane lead
+                // reaching either inverts the dispatch tier the same way
+                // reaching `engineer`/`critic` does (#323).
                 && matches!(
                     context.get("target_role").and_then(GuardValue::as_str),
-                    Some("engineer" | "critic")
+                    Some("engineer" | "critic" | "planter" | "shepherd")
                 )
         }
         "deny_if_dispatcher_is_implementer" => {

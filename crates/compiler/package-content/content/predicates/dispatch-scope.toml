@@ -18,7 +18,7 @@ effect = "deny_if_target_outside_flock"
 
 [[rule]]
 id = "plan-authorship-and-gating-are-root-tier-exclusive"
-description = "Only the root orchestrator (shepherd) may dispatch the plan-author (engineer) or gating (critic) roles for sprint-plan authorship/gating; a lane-executor lead (conductor) invoking either directly is refused."
+description = "A lane-executor lead (conductor) may not dispatch the plan-author (engineer), the gating role (critic), the operator-channel role (planter), or the root orchestrator (shepherd); plan authorship, gating, operator contact and root orchestration are reserved to the root tier."
 subject = "dispatch.dispatcher_tier"
 action = "dispatch"
 effect = "deny_if_dispatcher_is_lane_lead_and_target_is_plan_or_gate_role"
@@ -54,6 +54,16 @@ kind = "deny"
 role = "conductor"
 action = "dispatch"
 target_role = "engineer"
+context = { dispatcher_tier = "lane-lead" }
+result = "deny"
+halt_code = "WRONG-TIER-DISPATCH"
+
+[[example]]
+name = "conductor-attempts-to-dispatch-the-planter"
+kind = "deny"
+role = "conductor"
+action = "dispatch"
+target_role = "planter"
 context = { dispatcher_tier = "lane-lead" }
 result = "deny"
 halt_code = "WRONG-TIER-DISPATCH"
