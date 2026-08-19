@@ -1,48 +1,48 @@
 ---
 name: start
-description: "Dispatch one conductor from root to execute one planned lane, with no root fan-out. Use to begin lane execution once a plan is gated."
+description: "Begin execution from a gated plan. Root perspective by default, where root drives every wave itself; --lane hands one lane to one conductor."
 source: skills/start/SKILL.md
 portability: cross-harness
 ---
 
-# start — root hands one lane to one conductor
+# start — perspective decides who dispatches
 
-```
-plan --[start]--> conductor
-```
-
-A direct dispatch. Root spawns no wave, runs no workflow, and adds no orientation pass.
-Whatever fan-out the lane needs, the conductor owns.
+The flag picks who owns fan-out.
 
 ## Preconditions
 
-- `shepherd run show <run>` reports status `planned` or `executing`.
+- `shepherd run show <run>` reports `planned` or `executing`.
 - `shepherd plan verify --run <run>` exits 0.
-- The named lane exists in the plan and is not already closed.
-- The lane's file scope is disjoint from every lane currently in flight.
 
-## The dispatch
+## Root perspective, the default
 
-Register the lane, then dispatch it:
+Root drives. One `shepherd:engineer` ledgers the plan and stops; it authors no execution.
+Root then runs the waves itself — discovery and initialization, then execution —
+dispatching each implementer at `shepherd models resolve <role>` under one bounded
+workflow per wave. No conductor, no lane ledger.
 
-- `shepherd run lane add <run> <lane>`, passing `--worktree` and `--branch` when the lane
+Use it when splitting into lanes would cost more than it saves.
+
+## Lane perspective, `--lane <lane>`
+
+One lane, one conductor, no root fan-out.
+
+- The lane exists in the plan, is not closed, and its file scope is disjoint from every
+  lane in flight.
+- `shepherd run lane add <run> <lane>`, passing `--worktree` and `--branch` when it
   executes outside the root checkout.
-- One `shepherd:conductor` at the tier `shepherd models resolve conductor` returns. The
-  brief carries the run, the lane, its file scope, its acceptance, and its gate, and
-  references the plan rather than restating it.
+- One `shepherd:conductor` at `shepherd models resolve conductor`. Orientation is
+  abbreviated: `lanes/<lane>/plan.md` already carries the phases, so the brief names the
+  run, lane, scope, acceptance, and gate, and references the plan.
 
-Then root stops. Root is not the conductor's supervisor loop; it records the transition
-and waits.
+The conductor drives; it owns lane outcomes and output fidelity.
+`shepherd:worker` and `shepherd:coder` execute tasks, an adversarial
+`shepherd:auditor` verifies behind them, and a failed verification forces redo. It may not dispatch plan-author or gate roles — those escalate to root.
 
-## Conductor custody
-
-The conductor owns its implementation waves, its reviews, its redo, and its lane handoff,
-and dispatches implementers at their own tier. It may not dispatch plan-author or gate
-roles — those escalate to root.
+Then root stops and waits.
 
 ## Close
 
-The conductor returns lane evidence. Root runs
-`shepherd close-lane --run <run> <lane> --status clean`, and the verdict lands in the
-ledger. A lane that failed closes with its real status, not `clean`. Root closes lanes;
-conductors never close themselves.
+Root closes lanes; conductors never close themselves.
+`shepherd close-lane --run <run> <lane> --status clean`. A lane that failed closes with
+its real status.

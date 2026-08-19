@@ -124,6 +124,10 @@ gate_fast() {
   step "plugin contract is falsifiable" ./scripts/check-plugin.py --self-test
   step "plugin contract" ./scripts/check-plugin.py
   step "Codex regular carrier projection" python3 scripts/generate-codex-carrier.py --check
+  # The target-final oracle had no generator (#341), so every content change
+  # meant hand-editing three trees of hashes -- which produced a wrong-shaped
+  # file once and a regenerated-but-uncommitted one once, five red CI checks.
+  step "content oracle matches the live compiler" python3 scripts/generate-content-oracle.py --check
   # Reusable-workflow wiring (workflow_call inputs, forwarded secrets, needs:
   # targets) parses fine when it is wrong and fails only at dispatch time.
   # actionlint is the checker for that. It is optional locally, but a SKIP is

@@ -246,9 +246,23 @@ fn parse_layer(path: &Path, contents: &str, mode: LoadMode) -> ConfigResult<Map<
         .parse(Some(&origin), contents)
         .map_err(|error| sanitize_parse_error(&origin, error.as_ref()))?;
 
-    if mode == LoadMode::LayoutV5Migration {
-        strip_retired_layout_v5(path, &mut table)?;
-    }
+    // The retired-key registry is consulted in EVERY mode, not only during
+    // migration.
+    //
+    // A key shepherd itself once wrote is not a typo, and refusing to load a
+    // config because it still carries one is a deadlock: `shepherd.codex.toml`
+    // in a real project retained the retired `spawn.max_concurrent_children`,
+    // which made the config unloadable, which aborted `doctor`, `migrate` AND
+    // `init` alike -- so every tool capable of repairing it was blocked by the
+    // thing it repairs. Deprecation has to be possible without stranding the
+    // documents already in the field.
+    //
+    // Typo protection is untouched, because the registry is a CLOSED, TYPED
+    // set: each entry is verified against its historical type before it is
+    // dropped, and any key that was never part of the schema still reaches the
+    // strict decode and still produces the did-you-mean list.
+    strip_retired_layout_v5(path, &mut table)?;
+    let _ = mode;
     validate_gate_entries(path, &table)?;
     validate_open_bool_map(path, &table, "mcp")?;
     validate_open_bool_map(path, &table, "cli")?;
@@ -355,6 +369,13 @@ fn strip_retired_layout_v5(path: &Path, root: &mut Map<String, Value>) -> Config
         validate_retired_memory(path, &memory)?;
     }
 
+    // Retired with the spawn-concurrency rework: the value was an integer cap
+    // on concurrent children. Projects configured before its removal still
+    // carry it, and it is what proved the deadlock described in `parse_layer`.
+    if let Some(spawn) = root.get_mut("spawn").and_then(as_table_mut) {
+        remove_legacy_integer(path, spawn, "spawn", "max_concurrent_children")?;
+    }
+
     if let Some(context) = root.get_mut("context").and_then(as_table_mut) {
         remove_legacy_bool(path, context, "context", "enabled")?;
         for field in ["db_path", "lock_path", "project_id_path"] {
@@ -363,6 +384,27 @@ fn strip_retired_layout_v5(path: &Path, root: &mut Map<String, Value>) -> Config
         remove_legacy_string(path, context, "context", "announce_shctx_path")?;
     }
     Ok(())
+}
+
+/// Remove a retired integer key, verifying its historical type first so a
+/// malformed legacy value still fails loudly instead of being discarded.
+fn remove_legacy_integer(
+    path: &Path,
+    table: &mut Map<String, Value>,
+    section: &str,
+    field: &str,
+) -> ConfigResult {
+    let Some(value) = table.remove(field) else {
+        return Ok(());
+    };
+    match value.kind {
+        ValueKind::I64(_) | ValueKind::I128(_) | ValueKind::U64(_) | ValueKind::U128(_) => Ok(()),
+        _ => Err(config_error(
+            path,
+            &alloc::format!("{section}.{field}"),
+            "expected an integer",
+        )),
+    }
 }
 
 fn validate_retired_memory(path: &Path, memory: &Value) -> ConfigResult {

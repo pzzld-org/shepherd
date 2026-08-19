@@ -41,6 +41,73 @@ not that the host may not run — the Claude path has always returned
 failure is now recorded and the guard denies every mutating tool while it is
 set, which preserves fail-closed without taking the session with it.
 
+### Fixed — two deadlocks where the repair tool was blocked by the thing it repairs
+
+Both were reproduced against a real project (`~/src/fl03/axiom`), not constructed.
+
+- **A retired config key made every command fail, including the ones that fix
+  it.** `shepherd.codex.toml` still carried `spawn.max_concurrent_children`,
+  retired with the spawn-concurrency rework. `deny_unknown_fields` made the
+  config unloadable, which aborted `doctor`, `migrate` **and** `init` alike — so
+  nothing capable of repairing it could run. The closed, typed retired-key
+  registry (`strip_retired_layout_v5`) already existed but was consulted only in
+  migration mode; it now applies in every mode. **Typo protection is unchanged**,
+  because the registry is closed and typed: a key shepherd itself once wrote is
+  recognized, type-checked and dropped, while a key that was never in the schema
+  still fails with the did-you-mean list. A retired key carrying the wrong
+  historical type still fails too, so tolerance never becomes silent discard.
+- **`run migrate` could not migrate the documents it exists for.** It already
+  performed all three transforms an old run needs (`run_id`→`run`, `lanes`
+  dict→list, `updated_at`→epoch), but re-inserted the dict key verbatim as the
+  lane `id`, and `RunStore::validate_id` — a **write**-side lowercase rule —
+  rejected the historical upper-case ids on read. One case-fold repairs it.
+
+A correction worth recording: the `run.json` failure was **not** a
+`deny_unknown_fields` problem, though it looked like one. `RunState` has no such
+attribute and already carries `#[serde(flatten)] extra`. It was a structural
+change — `lanes` was a dict, the struct wants a list — which is why a migration,
+not a relaxation, was the fix.
+
+### Added — `/shepherd:start` is perspective-bound
+
+The flag now picks who owns fan-out:
+
+- **Root perspective (default).** One `shepherd:engineer` ledgers the plan and
+  stops; it authors no execution. Root then runs the waves itself — discovery
+  and initialization, then execution — dispatching each implementer at
+  `shepherd models resolve <role>` under one bounded workflow per wave. No
+  conductor, no lane ledger. For work where splitting into lanes costs more than
+  it saves.
+- **Lane perspective (`--lane <lane>`).** The previous behaviour, made
+  repeatable and explicit. Orientation is abbreviated **on purpose** because
+  `lanes/<lane>/plan.md` already carries the phases. The conductor drives rather
+  than authors: `worker` and `coder` execute, an adversarial `auditor` verifies
+  behind them, and a failed verification forces redo.
+
+This is a pure skill-contract change — there is no `shepherd start` CLI command
+and no existing level flag to reuse. It landed inside a **15-word** budget: the
+compiled Claude skill bundle is capped at 3,500 UAX-29 words and the first draft
+came in at 3,515.
+
+### Added — the target-final oracle has a generator (#341)
+
+`conformance/content-target-final.json` freezes what the compiler emits for all
+three harnesses — a tree digest plus every file's byte length and hash — and had
+**no generator**. Every content change meant hand-editing three trees of hashes,
+which failed the way hand-editing generated data always does: once written as an
+array when the schema is an object keyed by path, and once regenerated correctly
+but pushed without the file, turning five CI checks red.
+
+`scripts/generate-content-oracle.py --write|--check` reads the live compiler.
+`--write` refuses to proceed if a file whose byte length did not change now
+hashes differently, which is what separates "regenerate because content changed"
+from "bless whatever the compiler now emits". `--check` is wired into the gate.
+
+A **third** hand-maintained copy of the Codex digest lived in
+`crates/component/tests/component.rs`, and its own comment admitted the copies
+were allowed to disagree with the oracle. A digest permitted to disagree with
+what it mirrors is not an assertion; it now reads the oracle.
+
 ### Fixed — an error message that described the wrong defect
 
 `shepherd dispatch` deserializes straight into the typed struct and mapped
