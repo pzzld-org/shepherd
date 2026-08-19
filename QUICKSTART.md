@@ -96,10 +96,26 @@ npm, no Wasm.
 
 ### Pi
 
-`@pzzld/pi-shepherd` is a host extension, not a standalone runtime. It needs a
-`SubagentProvider`-compatible extension such as `pi-subagents` to resolve
-dispatch identity. If no provider is present or ready, Shepherd fails closed
-rather than degrading silently.
+```sh
+pi install npm:pi-subagents
+pi install npm:@pzzld/pi-shepherd
+```
+
+Install `pi-subagents` first. `@pzzld/pi-shepherd` is a host extension, not a
+standalone runtime, and it needs a `SubagentProvider`-compatible extension to
+resolve dispatch identity. If no provider is present or ready, Shepherd fails
+closed rather than degrading silently.
+
+Confirm the surface loaded:
+
+```sh
+pi config
+```
+
+Under `@pzzld/pi-shepherd` you should see one extension, nine skills, and nine
+role prompts. If the package lists no resources, the install did not take —
+Shepherd contributes all three or none, because Pi reads them from a single
+`pi` key in the package manifest.
 
 ## Run your first sprint
 

@@ -60,6 +60,11 @@ gate_fast() {
   step "component Node boundary is falsifiable" bash scripts/tests/test-component-node-gate.sh
   step "package distribution boundary is falsifiable" bash scripts/tests/test-package-boundary.sh
   step "generated carrier authority" bash scripts/tests/test-generated-carrier-authority.sh
+  # @pzzld/pi-shepherd shipped with no `pi` key for its entire history, so Pi
+  # loaded nothing from it -- not the nine skills, not src/extension.mjs. The
+  # package installed cleanly and was inert. Nothing asked what Pi ships.
+  step "Pi package surface is falsifiable" bash scripts/tests/test-pi-package-surface.sh --self-test
+  step "Pi package surface" bash scripts/tests/test-pi-package-surface.sh
   step "native CLI authority inventory is falsifiable" python3 scripts/check-cli-authority.py --self-test
   step "native CLI authority inventory" python3 scripts/check-cli-authority.py
   # This harness shipped correct, falsifiable, and referenced by NOTHING, so it

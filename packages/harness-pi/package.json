@@ -12,5 +12,31 @@
   "engines": {
     "node": ">=20"
   },
-  "license": "Apache-2.0"
+  "license": "Apache-2.0",
+  "pi": {
+    "extensions": [
+      "./src/extension.mjs"
+    ],
+    "skills": [
+      "./skills"
+    ],
+    "prompts": [
+      "./prompts"
+    ]
+  },
+  "keywords": [
+    "pi-package",
+    "pi",
+    "pi-coding-agent",
+    "shepherd",
+    "agents",
+    "cli"
+  ],
+  "files": [
+    "src",
+    "skills",
+    "prompts",
+    "shepherd.pi.json",
+    "README.md"
+  ]
 }

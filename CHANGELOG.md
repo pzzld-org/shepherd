@@ -4,6 +4,64 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v6.5.2 — unreleased
+
+### Fixed — the Pi adapter has never been loadable by Pi
+
+**`@pzzld/pi-shepherd` shipped with no `pi` key in `package.json`, for its entire
+history.** Pi discovers everything a package contributes from that one key:
+
+```json
+"pi": { "extensions": [...], "skills": ["./skills"], "prompts": ["./prompts"] }
+```
+
+With it absent, Pi loaded **nothing** — not the nine skills, not the nine role
+prompts, and not `src/extension.mjs`, which means the lifecycle hooks, the guard,
+and native dispatch never ran either. The package installed cleanly and was
+completely inert. `/shepherd:shepherd` resolved to nothing in the Pi TUI while
+every other installed package listed its skills normally. Confirmed absent in
+every commit that has ever touched that manifest.
+
+This was never a content problem. `shepherd compile --target pi` has always
+emitted exactly the shape Pi wants — `skills/<name>/SKILL.md` and
+`prompts/<role>.md`, 19 files. Nothing put that output inside the package, and
+nothing declared it.
+
+Measured before and after, by resource count in Pi's own resolver:
+
+| | Resources Pi registers |
+| --- | --- |
+| before | **86** (shepherd contributes 0) |
+| after | **105** (shepherd contributes 19) |
+
+19 = 9 skills + 9 role prompts + 1 extension.
+
+The fix is three parts:
+
+- `packages/harness-pi/package.json` declares `pi.extensions`, `pi.skills`,
+  `pi.prompts`, the `pi-package` keyword, and a `files` list that actually packs
+  the generated directories. A `pi` key naming `./skills` while `files` omits it
+  is inert in the same way and harder to see, so the gate checks both.
+- `scripts/stage-pi-carrier.sh` compiles the carrier into the **staged** package
+  immediately before `npm pack`. It is not committed:
+  `test-generated-carrier-authority.sh` fails if `packages/harness-pi/skills`
+  appears in the repository, and that gate is correct — a hand-copied generated
+  tree is a second, inevitably stale authority. The staging script states its
+  counts and fails on zero, and cross-checks them against `content/skills`
+  (minus `portability: claude-only`) and `content/roles` rather than hardcoding.
+- `scripts/tests/test-pi-package-surface.sh` asserts the declaration, wired into
+  `gate.sh`, falsifiable in three directions: a correct manifest passes, a
+  manifest with no `pi` key fails (the exact shipped defect), and a
+  declared-but-unpacked carrier fails.
+
+**Why it went unnoticed for so long.** No gate ever asked what Pi ships.
+`check-plugin.py` derives its roots from the Claude and Codex shipping manifests
+only, so "Claude 10 skills, Codex 9, Pi 0" was not an assertion anywhere. The
+v6.5.1 sprint audited gates extensively and did not catch this, because it
+checked whether existing gates worked rather than whether the cross-harness
+claim was true. Verifying the three harnesses are actually at parity was the
+sprint's headline goal and it was never tested end to end.
+
 ## v6.5.1 — 2026-08-19
 
 **Five remediation messages named a command that refuses to run.** `shepherd init` is gated
