@@ -1,0 +1,47 @@
+# RED measurement — the new tests against the UNMODIFIED resolver
+# crates/cli/src/dispatch_store.rs is byte-identical to c7cc9c0 and to 1c39f4c here.
+# captured by the lane conductor, 2026-08-19T06:21:55Z
+# command: cargo test -p shepherd-cli --test dispatch_store --locked
+
+    Finished `test` profile [optimized + debuginfo] target(s) in 0.04s
+     Running tests/dispatch_store.rs (target/debug/deps/dispatch_store-22106aabcd67bfa2)
+
+running 12 tests
+test stale_non_run_directories_resolve_to_no_active_run_not_an_io_error ... FAILED
+test malformed_nested_and_non_object_run_documents_never_activate ... ok
+test non_run_directories_under_the_runs_root_are_inert_for_active_run_resolution ... FAILED
+test malformed_records_and_arbitrary_roles_resolve_typed_unknown ... ok
+test native_resolution_is_fail_closed_for_missing_wrong_run_wrong_lane_and_stale_records ... ok
+test active_run_resolution_is_exact_and_rejects_multiple_executing_runs ... ok
+test root_session_binding_is_durable_no_clobber_and_primary_run_scoped ... ok
+test oversized_publication_fails_before_exposing_a_record ... ok
+test publication_is_no_clobber_and_stop_is_expected_revision_atomic ... ok
+test unreadable_run_documents_are_never_skipped_into_no_active_run ... ok
+test symlinked_roots_runs_dispatch_dirs_and_records_are_rejected_without_escape ... ok
+test primary_store_ignores_a_linked_shadow_record ... ok
+
+failures:
+
+---- stale_non_run_directories_resolve_to_no_active_run_not_an_io_error stdout ----
+
+thread 'stale_non_run_directories_resolve_to_no_active_run_not_an_io_error' (26093244) panicked at crates/cli/tests/dispatch_store.rs:497:5:
+assertion `left == right` failed
+  left: "dispatch filesystem operation `open regular file` failed for /private/var/folders/98/hw9cxq3d29sdw5nb5gv0b9wh0000gn/T/shepherd-dispatch-store-stale-no-active-run-62952-18cd20a412a58a18/primary/.shepherd/runs/v500/run.json: No such file or directory (os error 2)"
+ right: "no executing shepherd run exists"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- non_run_directories_under_the_runs_root_are_inert_for_active_run_resolution stdout ----
+
+thread 'non_run_directories_under_the_runs_root_are_inert_for_active_run_resolution' (26093239) panicked at crates/cli/tests/dispatch_store.rs:472:14:
+the executing run resolves past every non-run directory: Io { operation: "open regular file", path: "/private/var/folders/98/hw9cxq3d29sdw5nb5gv0b9wh0000gn/T/shepherd-dispatch-store-inert-non-run-dirs-62952-18cd20a4129ff468/primary/.shepherd/runs/v500/run.json", source: Os { code: 2, kind: NotFound, message: "No such file or directory" } }
+
+
+failures:
+    non_run_directories_under_the_runs_root_are_inert_for_active_run_resolution
+    stale_non_run_directories_resolve_to_no_active_run_not_an_io_error
+
+test result: FAILED. 10 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+
+error: test failed, to rerun pass `-p shepherd-cli --test dispatch_store`
+
+# exit status: ?

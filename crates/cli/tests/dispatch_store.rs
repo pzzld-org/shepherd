@@ -441,3 +441,116 @@ fn primary_store_ignores_a_linked_shadow_record() {
     );
     cleanup(&dir);
 }
+
+/// Issue #330: a directory under `.shepherd/runs/` that is not a run must be
+/// inert. Both `resolve_active_run` copies enumerate every entry whose name
+/// parses as a `RunId`, then propagate `read_run_document` with `?`, so one
+/// legacy namespace with no `run.json` aborts the whole resolver with
+/// `Io { NotFound }` instead of being skipped. The set of such directories is
+/// unbounded — repairing one reveals the next — so every non-run shape seen in
+/// the wild is present at once, and they straddle the real run in sort order so
+/// that skipping only the leading entries is not enough to pass.
+#[test]
+fn non_run_directories_under_the_runs_root_are_inert_for_active_run_resolution() {
+    let dir = fixture_dir("inert-non-run-dirs");
+    let runs = dir.join("primary/.shepherd/runs");
+    write_run(&runs, "v645", "executing");
+
+    // A legacy namespace holding only a plan; sorts before `v645`.
+    std::fs::create_dir_all(runs.join("v500")).expect("legacy namespace dir");
+    std::fs::write(runs.join("v500/plan.md"), b"# legacy plan\n").expect("legacy plan");
+    // A directory left completely empty; also sorts before `v645`.
+    std::fs::create_dir_all(runs.join("v512-dev0")).expect("empty namespace dir");
+    // A directory carrying dispatch state but still no `run.json`; sorts after
+    // `v645`, so the real run resolving first cannot mask it.
+    std::fs::create_dir_all(runs.join("v700-scratch/dispatch")).expect("scratch dispatch dir");
+
+    let store = DispatchStore::new(&runs);
+    assert_eq!(
+        store
+            .resolve_active_run()
+            .expect("the executing run resolves past every non-run directory"),
+        RunId::new("v645").expect("run id")
+    );
+    cleanup(&dir);
+}
+
+/// Issue #330, negative control: with no executing run, stale non-run
+/// directories must leave the terminal error alone. `NoActiveRun` renders as
+/// guidance the session can act on; the `Io { NotFound }` the defect returned
+/// instead escalated into a hard DENY of Bash/Write/Edit and deadlocked the
+/// session. The rendered message is asserted because that string is what the
+/// operator actually reads.
+#[test]
+fn stale_non_run_directories_resolve_to_no_active_run_not_an_io_error() {
+    let dir = fixture_dir("stale-no-active-run");
+    let runs = dir.join("primary/.shepherd/runs");
+    std::fs::create_dir_all(runs.join("v500")).expect("legacy namespace dir");
+    std::fs::write(runs.join("v500/plan.md"), b"# legacy plan\n").expect("legacy plan");
+    std::fs::create_dir_all(runs.join("v512-dev0")).expect("empty namespace dir");
+    std::fs::create_dir_all(runs.join("v700-scratch/dispatch")).expect("scratch dispatch dir");
+    let store = DispatchStore::new(&runs);
+
+    let stale_only = store
+        .resolve_active_run()
+        .expect_err("non-run directories never activate");
+    assert_eq!(stale_only.to_string(), "no executing shepherd run exists");
+    assert!(matches!(stale_only, DispatchStoreError::NoActiveRun));
+
+    write_run(&runs, "v645", "closed");
+    let with_closed_run = store
+        .resolve_active_run()
+        .expect_err("a closed run never activates");
+    assert_eq!(
+        with_closed_run.to_string(),
+        "no executing shepherd run exists"
+    );
+    assert!(matches!(with_closed_run, DispatchStoreError::NoActiveRun));
+    cleanup(&dir);
+}
+
+/// Issue #330, the other direction: the skip must cover "absent", never
+/// "unreadable". A repair that swallowed every per-run failure would turn the
+/// abort into a silent `NoActiveRun` — the same deadlock with the diagnosis
+/// deleted. All three unreadable shapes coexist with a skippable non-run
+/// directory, so the guard holds under the repair rather than only in
+/// isolation. Every shape sorts before `v900-legacy`, so this test is already
+/// green against the defective resolver: it is a regression guard, not a
+/// falsification of the defect.
+#[test]
+fn unreadable_run_documents_are_never_skipped_into_no_active_run() {
+    let dir = fixture_dir("unreadable-run-doc");
+    let runs = dir.join("primary/.shepherd/runs");
+    let run_dir = runs.join("v645");
+    std::fs::create_dir_all(&run_dir).expect("run dir");
+    std::fs::create_dir_all(runs.join("v900-legacy")).expect("legacy namespace dir");
+    std::fs::write(runs.join("v900-legacy/plan.md"), b"# legacy plan\n").expect("legacy plan");
+    let store = DispatchStore::new(&runs);
+
+    // Unparseable bytes are corrupt, not absent.
+    let document = run_dir.join("run.json");
+    std::fs::write(&document, b"{\"run\":\"v645\"").expect("write truncated run");
+    assert!(matches!(
+        store.resolve_active_run(),
+        Err(DispatchStoreError::InvalidRunDocument { .. })
+    ));
+
+    // A well-formed document naming a different run is a mismatch, not absent.
+    std::fs::write(&document, br#"{"run":"v999","status":"executing"}"#)
+        .expect("write mismatched run identity");
+    assert!(matches!(
+        store.resolve_active_run(),
+        Err(DispatchStoreError::InvalidRunDocument { .. })
+    ));
+
+    // A `run.json` that is a directory is refused by type on both platform
+    // copies: `open_regular_at` rejects a non-regular file, and `safe_fs`
+    // reports `InvalidInput`, which maps to the same variant.
+    std::fs::remove_file(&document).expect("remove mismatched run");
+    std::fs::create_dir(&document).expect("run document as a directory");
+    assert!(matches!(
+        store.resolve_active_run(),
+        Err(DispatchStoreError::UnsafePath { .. })
+    ));
+    cleanup(&dir);
+}

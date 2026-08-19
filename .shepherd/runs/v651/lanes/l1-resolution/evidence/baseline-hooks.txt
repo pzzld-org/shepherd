@@ -1,0 +1,7 @@
+# Baseline gate state at c7cc9c0, before any l1-resolution change
+# captured by the lane conductor, 2026-08-19T06:18:35Z
+# command: bash hooks/tests/run.sh
+
+  PASS  normal-mode scan of the real workflows/*.js exits 0
+  FAIL  2 workflow-meta-gate assertion(s) failed
+FAIL: hooks/tests/run.sh (29/29 tests ran, 2 failed)
