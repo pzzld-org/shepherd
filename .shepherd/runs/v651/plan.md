@@ -193,7 +193,7 @@ lane: l7-assertions
 | Lane | Wave | Deliverables | `file_scope.exclusive` |
 |---|---|---|---|
 | `l1-resolution` | 1 | D2 (#330) | `crates/cli/src/dispatch_store.rs`, `crates/cli/tests/dispatch_store.rs` |
-| `l2-dispatch-scope` | 1 | D5 (#323), D6 (#320) | `content/predicates/dispatch-scope.toml`, `content/predicates/write-boundary.toml`, `crates/compiler/package-content/content/predicates/dispatch-scope.toml`, `crates/core/src/guard/engine.rs`, `crates/core/tests/guard.rs`, `hooks/tests/test_native_cli_contract.sh` |
+| `l2-dispatch-scope` | 1 | D5 (#323), D6 (#320) | `content/predicates/dispatch-scope.toml`, `content/predicates/write-boundary.toml`, `crates/compiler/package-content/**` (as produced by `scripts/generate-compiler-package-content.py --write`), `crates/core/src/guard/engine.rs`, `crates/core/tests/guard.rs`, `crates/cli/tests/guard_cli.rs`, `hooks/tests/test_native_cli_contract.sh` |
 | `l3-clone-fidelity` | 1 | D12 (#316, #317) | `.gitignore`, `.shepherd/ctx/.gitkeep`, `crates/cli/src/cmd/wave_c_bootstrap.rs`, `scripts/check-version-lag.py` |
 | `l4-diagnostics` | 2 | D3 (#315, #314, #306), D4 (#331) | `crates/cli/src/cmd/native_hook.rs`, `crates/cli/src/run_store.rs`, `crates/cli/src/cmd/wave_h_execution.rs`, `crates/cli/tests/claude_hook_cli.rs` |
 | `l5-vocabulary` | 2 | D10 (#324), D11 (#319) | `crates/cli/src/cmd/wave_a_models.rs`, `crates/cli/tests/wave_a_models_cli.rs`, `crates/cli/src/cmd/wave_b2_seed.rs`, `crates/cli/tests/wave_b2_seed_cli.rs` |
@@ -210,6 +210,32 @@ lane: l7-assertions
 - `crates/compiler/package-content/content/predicates/dispatch-scope.toml` is the generated
   projection of an in-scope source and is byte-identical to it today. It is named in
   `l2-dispatch-scope` explicitly so the regeneration is owned rather than incidental.
+**Two further scope amendments by root, at l2's escalation (2026-08-19).** Both are the
+same shape as the `wave_h_execution.rs` correction below: disjointness held, coverage was
+never actually claimed.
+
+- **`crates/compiler/package-content/**` replaces the single enumerated projection file.**
+  `scripts/generate-compiler-package-content.py --write` emits the projection AND
+  `SHA256SUMS` in one write (`:52` builds the lines, `:64` writes the manifest, `:79`
+  re-derives it for `--check`). The manifest is a pure function of the projected content,
+  so naming two of a generator's three outputs and omitting the third is the Class B defect
+  this sprint exists to kill — the same shape as CI hand-copying `scripts/gate.sh`'s step
+  list. Verified by l2: `shasum -a 256` of the new projection equals its `SHA256SUMS` row,
+  the other 22 rows are byte-unchanged, and `--check` reports `23 byte-exact sources`,
+  exit 0. Wave 2's `l6` and `l7` touch generated surfaces and inherit this rule.
+- **`crates/cli/tests/guard_cli.rs` is granted to `l2-dispatch-scope`.** It is assigned to
+  no lane anywhere in this map, and `l4`/`l5` own different `crates/cli` files in wave 2, so
+  there is no live conflict. L2-S1 action 2 adds an `[[example]]`, taking the corpus 17 → 18,
+  and that count is hardcoded in FOUR places across TWO crates — `crates/core/tests/guard.rs:567`
+  and `:988` (in scope) plus `guard_cli.rs:456` and `:544` (previously unowned). The
+  prescribed action therefore necessarily broke two tests the lane was forbidden to fix.
+  Root's ruling: do NOT bump `17` to `18`. Parse the `N/M examples passed` line and assert
+  `N == M` and `N > 0`. A literal count is a gate fitted so tightly to the artifact that
+  improving the artifact breaks it, and bumping it merely re-arms the trap for example 19.
+  `GATE-EXECUTION` is satisfied better by the parse, not worse: `crates/cli/src/cmd/guard.rs:424-430`
+  already fails closed on `total == 0` with an explicit refusal, and `guard_cli.rs:502-523`
+  pins that, so "checked nothing" stays distinguishable from "checked everything and passed".
+
 - `hooks/tests/lib/` is mesh R69's `gate-wiring` file, but the lane map above assigns it to
   `l7-assertions`, because the shared assertion helper it holds is what D9's 118 call sites
   consume. Recording it here rather than leaving it to Q1: a reassignment that appears only
