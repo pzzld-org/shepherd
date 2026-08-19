@@ -10,8 +10,12 @@ fixed with a lint that derives the gated-subcommand map from the CLI's own
 refusal text rather than a hardcoded list, so the class cannot recur silently.
 
 What the sprint actually turned out to be about was not the founding bug. It was
-about **gates that existed and did not gate**. Fifteen were found. Three of them
-I authored during this sprint, which is the part worth remembering.
+about **gates that existed and did not gate**. The ones enumerated below are the
+distinct instances I can point at in the diff; three of them I authored during
+this sprint, which is the part worth remembering. I am deliberately not giving a
+total, because I miscounted the bare-assertion set three times before landing on
+80 convertible plus 3 that must not be touched, and a confident wrong number is
+the same failure mode as a confident wrong gate.
 
 ## Measured against plan
 
