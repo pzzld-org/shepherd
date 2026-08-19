@@ -112,12 +112,17 @@ gate_full() {
   # and every `required-features` in the workspace is `std`/`parse`/`json`/
   # `bundled`/`layout`, all satisfied by that unification. Measured directly
   # under plain `cargo test --workspace --locked`: shepherd_core 5, dispatch
-  # 15, guard 69, loader 25, portable_dispatch 7, run_state 6 -- 127 core
-  # tests, including all 69 guard-engine tests. The "3 of 126, none of the
+  # 15, guard 69, loader 25, portable_dispatch 7, run_state 6, and the
+  # `default` integration target (`crates/core/tests/default.rs`,
+  # `required-features = []`, so it runs under every invocation) 4 -- 131 core
+  # tests, including all 69 guard-engine tests. This comment previously totaled
+  # 127, four short, because the enumeration omitted `default`; the miscount
+  # was caught by re-deriving the count from `crates/core/Cargo.toml`'s
+  # `[[test]]` list rather than trusting the prose. The "3 of 126, none of the
   # guard engine's 66" figure this comment used to cite does not reproduce
   # under `--workspace`; it only reproduces for a single-crate invocation
-  # (`cargo test -p shepherd-core`), which drops feature unification and is
-  # not what this gate runs. Trusting that single-crate number instead of
+  # (`cargo test -p shepherd-core`), which drops feature unification and is not
+  # what this gate runs. Trusting that single-crate number instead of
   # remeasuring under the actual gate command is, verbatim, how this comment
   # went stale in the first place -- do not repeat it.
   step "build typed component for adapter package suites" \

@@ -39,15 +39,20 @@ is warranted; none could be justified by measurement.
    | core target | tests executed |
    |---|---|
    | `shepherd_core` (lib) | 5 |
+   | `tests/default.rs` | 4 |
    | `tests/dispatch.rs` | 15 |
    | `tests/guard.rs` | 69 |
    | `tests/loader.rs` | 25 |
    | `tests/portable_dispatch.rs` | 7 |
    | `tests/run_state.rs` | 6 |
-   | **total** | **127** |
+   | **total** | **131** |
 
-   All five feature-gated targets run, including every guard-engine test. The comment is
-   stale in every particular for the invocation it annotates.
+   All five feature-gated targets run, including every guard-engine test, plus
+   `tests/default.rs` (`required-features = []`, so it runs under every invocation
+   regardless of feature unification). This table originally totaled 127: it omitted
+   `tests/default.rs` from the enumeration, and the gate.sh comment this table fed
+   inherited the same omission before both were corrected. The comment is stale in every
+   other particular for the invocation it annotates.
 3. The 3-of-126 skip reproduces ONLY single-crate: `cargo test -p shepherd-core --locked`
    → 3 passed.
 4. No target `:101` misses could be constructed. Every `required-features` in the workspace
@@ -120,7 +125,7 @@ distinction, so it is not left implicit.
 |---|---|---|---|---|
 | 1 | workflow-meta pure-literal `meta` check (`scripts/check-workflow-meta.sh --self-test`) | `carrier` job -> `bash hooks/tests/run.sh` -> `test_workflow_meta_gate.sh` | NEGATIVE control rejects `hooks/tests/fixtures/df69-concatenated-meta.js`, naming the reason: `BinaryExpression: a '+' operator is present outside any string literal`. At base the self-test itself failed: `FAIL  --self-test exited 1` | **live** |
 | 2 | hook carrier suite (`bash hooks/tests/run.sh`) | `carrier` job, step 7 | At base `b0ad8aa`: `FAIL: hooks/tests/run.sh (29/29 tests ran, 1 failed)`, exit 1. `run.sh:22-25` additionally fails loudly on zero discovered tests | **live** |
-| 3 | no-SKIP assertion (the silent-skip class) | `carrier` job, step 7 — greps the captured log, `grep` exit 2 handled separately from exit 1 | With `jq` removed from `PATH` the suite emits 7 `SKIP` lines and 7 tests pass vacuously | **contrived** |
+| 3 | no-SKIP assertion (the silent-skip class) | `carrier` job, step 7 — greps the captured log, `grep` exit 2 handled separately from exit 1 | Temporarily move `.shepherd/runs/v646/harness-parity.md` out of the tree -- the artifact `hooks/tests/test_harness_parity_generator.sh:463`'s SKIP branch checks for. With `jq`, `python3`, `git` and `rg` all genuinely present, `bash hooks/tests/run.sh` prints the deceptively clean `PASS: hooks/tests/run.sh (29/29 tests ran, 0 failed)` while emitting one real `SKIP` line, and the assertion fires: `::error::the hook suite skipped work on a runner; a skipped check is not a passing check`, exit 1. (Removing `jq` from `PATH` does not reach this row: the earlier "Gate toolchain resolves" step (row 5) fails first with `::error::gate toolchain is incomplete: jq is not on PATH`, exit 1, before the hook-suite step ever runs -- do not re-try that path expecting it to reach the SKIP-grep logic.) | **contrived** |
 | 4 | hook-count floor (`>= 29`, `MIN_HOOK_TESTS`) | `carrier` job, step 7 | Parsed from the summary line; fires when discovery loses files. Historical precedent is real: `ffd9aea` shipped a hand-maintained array covering 6 of 27 files (`run.sh:4-9`) | **contrived** |
 | 5 | gate toolchain resolves (`jq python3 node npm rg`) | `lint` step 5 and `carrier` step 5 | Remove any one tool from `PATH`; the step exits 1 rather than letting a downstream gate skip | **contrived** |
 | 6 | `scripts/gate.sh fast` — the declared tier, replacing five hand-copied steps | `lint` job, step 6 | At base: `gate (fast): 5 check(s) failed in 16s`, exit 1 — including two failures CI structurally could not see | **live** |
