@@ -356,7 +356,11 @@ cp crates/cli/tests/dispatch_store.rs "$wt/crates/cli/tests/dispatch_store.rs"
 (cd "$wt" && ! cargo test -p shepherd-cli --test dispatch_store --locked)
 git worktree remove --force "$wt"
 # and the sandbox no longer aborts
-bash .shepherd/runs/v651/lanes/l1-resolution/sandbox.sh 2>&1 | grep -qv 'os error 2'
+# ROOT FIX: was `| grep -qv 'os error 2'`, which passes when ANY line differs
+# from the pattern -- true of almost any output -- and which also discards the
+# script's exit code. Capture both.
+l1out=$(bash .shepherd/runs/v651/lanes/l1-resolution/sandbox.sh 2>&1); test $? -eq 0
+printf '%s' "$l1out" | { ! grep -q 'os error 2'; }
 ```
 
 **Actions**
@@ -690,11 +694,15 @@ unresolvable binding is correct. Do not widen `run_namespace_is_usable`.
 cargo build --locked -p shepherd-cli --bin shepherd
 export PATH="$PWD/target/debug:$PATH"
 # following the printed remediation verbatim never turns allow into deny
-bash .shepherd/runs/v651/lanes/l1-resolution/sandbox.sh --follow-remediation 2>&1 \
-  | grep -qv '"permissionDecision": *"deny"'
+# ROOT FIX: `--follow-remediation` does NOT exist in l1's sandbox.sh -- it hits
+# `die "unknown option"` and exits 2, and `grep -qv` then returned 0, so this
+# acceptance PASSED WITHOUT THE SCRIPT EVER RUNNING. Class A, in this plan.
+# l4 implements the flag in its OWN sandbox; point at that and check the exit.
+remout=$(bash .shepherd/runs/v651/lanes/l4-diagnostics/sandbox.sh --follow-remediation 2>&1); test $? -eq 0
+printf '%s' "$remout" | { ! grep -q '"permissionDecision": *"deny"'; }
 # the unbound-session denial names a condition and a command, not only an errno
 printf '{"hook_event_name":"PreToolUse","session_id":"stranger","tool_name":"Bash","tool_input":{}}' \
-  | shepherd claude-hook | grep -qv 'os error'
+  | shepherd claude-hook | { ! grep -q 'os error'; }   # ROOT FIX: was `grep -qv`
 cargo test -p shepherd-cli --test claude_hook_cli --locked 2>&1 \
   | grep -E 'test result: ok\. [1-9][0-9]* passed'
 ```
@@ -1043,7 +1051,7 @@ filter excludes those deliberately.
 ```bash
 grep -rn 'rg -Fq' hooks/ scripts/ | grep -vE '\|\||if |&&|! rg' | wc -l | grep -qx 0
 # the helper is not itself collected as a test
-bash hooks/tests/run.sh 2>&1 | grep -qv '== lib'
+bash hooks/tests/run.sh 2>&1 | { ! grep -q '== lib'; }   # ROOT FIX: was `grep -qv`
 bash hooks/tests/run.sh; test $? -eq 0
 # a deliberately broken assertion prints its requirement text
 bash .shepherd/runs/v651/lanes/l7-assertions/evidence/falsify.sh 2>&1 \
