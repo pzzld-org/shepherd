@@ -703,7 +703,7 @@ fi
 
 # S4: no step may reference a secret outside the known set (an undefined secret resolves
 # to empty and fails at runtime in a way no local gate catches).
-known_secrets=$'secrets.GITHUB_TOKEN\nsecrets.CARGO_REGISTRY_TOKEN\nsecrets.ANTHROPIC_API_KEY\nsecrets.NPM_TOKEN'
+known_secrets=$'secrets.GITHUB_TOKEN\nsecrets.CARGO_REGISTRY_TOKEN\nsecrets.ANTHROPIC_API_KEY\nsecrets.NPM_REGISTRY_TOKEN'
 unknown_secrets=$(rg -o 'secrets\.[A-Z_]+' "${pipeline[@]}" | sed 's/^[^:]*://' | sort -u | comm -23 - <(printf '%s\n' "$known_secrets" | sort))
 if [[ -n "$unknown_secrets" ]]; then
   printf 'release pipeline references an undefined secret:\n%s\n' "$unknown_secrets" >&2
@@ -723,14 +723,14 @@ if ! rg -Fq 'CARGO_REGISTRY_TOKEN:' "$publish_workflow"; then
   exit 1
 fi
 # Same rule for npm: a called workflow inherits no secrets, so an unforwarded
-# NPM_TOKEN publishes with an empty credential and fails at upload time.
-if ! rg -Fq 'NPM_TOKEN: ${{ secrets.NPM_TOKEN }}' "$workflow"; then
-  printf '%s: must forward NPM_TOKEN to %s; workflow_call does not inherit secrets\n' \
+# NPM_REGISTRY_TOKEN publishes with an empty credential and fails at upload time.
+if ! rg -Fq 'NPM_REGISTRY_TOKEN: ${{ secrets.NPM_REGISTRY_TOKEN }}' "$workflow"; then
+  printf '%s: must forward NPM_REGISTRY_TOKEN to %s; workflow_call does not inherit secrets\n' \
     "$workflow" "$npm_workflow" >&2
   exit 1
 fi
-if ! rg -Fq 'NPM_TOKEN:' "$npm_workflow"; then
-  printf '%s: must declare NPM_TOKEN as a workflow_call secret\n' "$npm_workflow" >&2
+if ! rg -Fq 'NPM_REGISTRY_TOKEN:' "$npm_workflow"; then
+  printf '%s: must declare NPM_REGISTRY_TOKEN as a workflow_call secret\n' "$npm_workflow" >&2
   exit 1
 fi
 # Publication must be held behind the build, on BOTH registries. An npm version

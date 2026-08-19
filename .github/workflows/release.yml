@@ -128,7 +128,7 @@ jobs:
       version: ${{ needs.release-metadata.outputs.current }}
       ref: ${{ github.sha }}
     secrets:
-      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+      NPM_REGISTRY_TOKEN: ${{ secrets.NPM_REGISTRY_TOKEN }}
 
   release:
     name: Publish verified release

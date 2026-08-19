@@ -38,7 +38,7 @@ on:
         required: false
         type: string
     secrets:
-      NPM_TOKEN:
+      NPM_REGISTRY_TOKEN:
         required: true
   workflow_dispatch:
     inputs:
@@ -171,7 +171,7 @@ jobs:
           github.event_name != 'workflow_dispatch' || inputs.publish == true
         shell: bash
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_REGISTRY_TOKEN }}
           VERSION: ${{ steps.release.outputs.version }}
           ASSET_DIR: ${{ runner.temp }}/npm-assets
         run: python3 scripts/npm-publish.py --assets "$ASSET_DIR" --version "$VERSION" --confirm
