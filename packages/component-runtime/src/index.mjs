@@ -5,7 +5,7 @@ import {
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-export const COMPONENT_CONTRACT_VERSION = "fl03:shepherd@6.5.2";
+export const COMPONENT_CONTRACT_VERSION = "fl03:shepherd@6.5.3";
 export const COMPONENT_MODULE_ENV = "SHEPHERD_COMPONENT_MODULE";
 export const DEFAULT_COMPONENT_MODULE = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -101,6 +101,14 @@ export function planToNativeDispatch(plan) {
   if (plan?.tag !== "request" || !plan.val?.tag) {
     throw new ComponentRuntimeError("component_invalid", "component returned an invalid dispatch plan");
   }
+  // The SEMANTIC request, in WIT naming and without wire framing. The
+  // component's validateNativeExchange consumes this same object to correlate
+  // the response, so it must stay in the shape the component understands.
+  // Wire framing -- the schema envelope and the tool_call_id rename -- is
+  // applied by invokeNativeDispatch at serialization time. Applying it here
+  // instead silently broke the Claude correlation check: the validator compared
+  // undefined against undefined and stopped denying a response meant for a
+  // different tool call.
   return {
     operation: plan.val.tag,
     request: camelToSnake(plan.val.val),

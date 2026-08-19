@@ -8,6 +8,13 @@ import shepherdGuardExtension from "../src/extension.mjs";
 const fixtureDir = mkdtempSync(join(tmpdir(), "shepherd-pi-extension-"));
 const dispatcher = join(fixtureDir, "shepherd-native.mjs");
 const dispatchLog = join(fixtureDir, "operations.log");
+// The stub below must speak the protocol of the REAL native CLI, which names
+// the correlation field tool_call_id on both sides of the exchange (see
+// crates/core/src/dispatch/portable.rs). It previously read and echoed
+// tool_use_id -- the component's name -- so it emulated a binary that has never
+// existed, and the genuine divergence between the two namings was unobservable
+// through this test. A stub that speaks a protocol nothing implements validates
+// a fiction.
 writeFileSync(dispatcher, `#!/usr/bin/env node
 import { appendFileSync } from "node:fs";
 let input = "";
@@ -31,7 +38,7 @@ process.stdin.on("end", () => {
       session_id: process.env.SHEPHERD_PI_TEST_RESOLVE_SESSION ?? request.session_id,
       write_scope: ["**"],
       capabilities: null,
-      tool_use_id: process.env.SHEPHERD_PI_TEST_RESOLVE_TOOL ?? request.tool_use_id,
+      tool_call_id: process.env.SHEPHERD_PI_TEST_RESOLVE_TOOL ?? request.tool_call_id,
       mode: "execution",
       write_paths: [path],
       path_in_write_scope: true,

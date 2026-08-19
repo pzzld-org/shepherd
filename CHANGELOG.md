@@ -4,6 +4,140 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v6.5.3 — 2026-08-19
+
+### Fixed — the Pi adapter ran for the first time, and nothing about it worked
+
+v6.5.2 made the extension **loadable**. This release makes it **work**. Loading
+it was what finally executed the code, and executing it found three defects that
+had been sitting in shipped bytes the whole time, unreachable and therefore
+unfalsified.
+
+The visible symptom was worse than the original bug: with the extension loading
+and throwing, Pi could not initialize a session at all. Inert became blocking.
+
+**1. No dispatch request the transport built was ever accepted.** Every request
+struct in `crates/core/src/dispatch/portable.rs` declares `pub schema: String`
+and is `#[serde(deny_unknown_fields)]`; `crates/cli/src/dispatch_service.rs`
+validates it against one constant. The WIT records deliberately omit it — the
+component owns the semantic payload, the transport owns the wire framing — and
+nothing filled the gap. `bind-root`, `start`, `resolve`, `stop`, `resume`: all
+rejected. `planToNativeDispatch` now stamps the envelope.
+
+**2. WIT says `tool-use-id`; the native struct says `tool_call_id`.** With
+`deny_unknown_fields`, every `resolve` was rejected, so the Pi guard denied
+every write, edit and bash call it was consulted about — fail-closed, and
+unusable. A repo-wide diff of all six shared records confirmed this is the
+**only** naming divergence, so the reconciliation map is exhaustive rather than
+a first instalment. It is reconciled in the transport, not the WIT, because the
+WIT is a published contract and renaming a field there breaks every embedder.
+
+**3. A binding failure took the whole session down.** `session_start` rethrew,
+which Pi surfaces during `bindExtensions` and which prevents the session from
+initializing. One unreadable `run.json` in a project made Pi unusable in that
+directory. Shepherd's contract is that an unbound session may not **mutate**,
+not that the host may not run — the Claude path has always returned
+`additionalContext` on SessionStart and reserved `deny` for PreToolUse. The
+failure is now recorded and the guard denies every mutating tool while it is
+set, which preserves fail-closed without taking the session with it.
+
+### Fixed — two deadlocks where the repair tool was blocked by the thing it repairs
+
+Both were reproduced against a real project (`~/src/fl03/axiom`), not constructed.
+
+- **A retired config key made every command fail, including the ones that fix
+  it.** `shepherd.codex.toml` still carried `spawn.max_concurrent_children`,
+  retired with the spawn-concurrency rework. `deny_unknown_fields` made the
+  config unloadable, which aborted `doctor`, `migrate` **and** `init` alike — so
+  nothing capable of repairing it could run. The closed, typed retired-key
+  registry (`strip_retired_layout_v5`) already existed but was consulted only in
+  migration mode; it now applies in every mode. **Typo protection is unchanged**,
+  because the registry is closed and typed: a key shepherd itself once wrote is
+  recognized, type-checked and dropped, while a key that was never in the schema
+  still fails with the did-you-mean list. A retired key carrying the wrong
+  historical type still fails too, so tolerance never becomes silent discard.
+- **`run migrate` could not migrate the documents it exists for.** It already
+  performed all three transforms an old run needs (`run_id`→`run`, `lanes`
+  dict→list, `updated_at`→epoch), but re-inserted the dict key verbatim as the
+  lane `id`, and `RunStore::validate_id` — a **write**-side lowercase rule —
+  rejected the historical upper-case ids on read. One case-fold repairs it.
+
+A correction worth recording: the `run.json` failure was **not** a
+`deny_unknown_fields` problem, though it looked like one. `RunState` has no such
+attribute and already carries `#[serde(flatten)] extra`. It was a structural
+change — `lanes` was a dict, the struct wants a list — which is why a migration,
+not a relaxation, was the fix.
+
+### Added — `/shepherd:start` is perspective-bound
+
+The flag now picks who owns fan-out:
+
+- **Root perspective (default).** One `shepherd:engineer` ledgers the plan and
+  stops; it authors no execution. Root then runs the waves itself — discovery
+  and initialization, then execution — dispatching each implementer at
+  `shepherd models resolve <role>` under one bounded workflow per wave. No
+  conductor, no lane ledger. For work where splitting into lanes costs more than
+  it saves.
+- **Lane perspective (`--lane <lane>`).** The previous behaviour, made
+  repeatable and explicit. Orientation is abbreviated **on purpose** because
+  `lanes/<lane>/plan.md` already carries the phases. The conductor drives rather
+  than authors: `worker` and `coder` execute, an adversarial `auditor` verifies
+  behind them, and a failed verification forces redo.
+
+This is a pure skill-contract change — there is no `shepherd start` CLI command
+and no existing level flag to reuse. It landed inside a **15-word** budget: the
+compiled Claude skill bundle is capped at 3,500 UAX-29 words and the first draft
+came in at 3,515.
+
+### Added — the target-final oracle has a generator (#341)
+
+`conformance/content-target-final.json` freezes what the compiler emits for all
+three harnesses — a tree digest plus every file's byte length and hash — and had
+**no generator**. Every content change meant hand-editing three trees of hashes,
+which failed the way hand-editing generated data always does: once written as an
+array when the schema is an object keyed by path, and once regenerated correctly
+but pushed without the file, turning five CI checks red.
+
+`scripts/generate-content-oracle.py --write|--check` reads the live compiler.
+`--write` refuses to proceed if a file whose byte length did not change now
+hashes differently, which is what separates "regenerate because content changed"
+from "bless whatever the compiler now emits". `--check` is wired into the gate.
+
+A **third** hand-maintained copy of the Codex digest lived in
+`crates/component/tests/component.rs`, and its own comment admitted the copies
+were allowed to disagree with the oracle. A digest permitted to disagree with
+what it mirrors is not an assertion; it now reads the oracle.
+
+### Fixed — an error message that described the wrong defect
+
+`shepherd dispatch` deserializes straight into the typed struct and mapped
+**any** serde failure to `request must be one valid RFC 8259 JSON value`. The
+JSON was well-formed; a required field was missing. That message sent debugging
+after an encoding bug that did not exist. It now distinguishes the two cases and
+names the field:
+
+```
+ERROR: request is valid JSON but does not match the dispatch schema:
+       missing field `schema` at line 1 column 100
+```
+
+### Added — the boundary is now gated from both sides
+
+- `scripts/check-wire-contract.py` diffs every WIT record against its native
+  struct. Divergences must be **declared** (`WIRE_ONLY` framing, or an explicit
+  `RENAMES` entry that the transport is verified to implement) — a new one
+  cannot appear silently. 4 self-test cases.
+- `scripts/tests/test-native-dispatch-wire.sh` feeds a real request to the real
+  CLI and requires it to be accepted, then strips the envelope and requires
+  refusal. Its first draft passed vacuously because the scratch project was not
+  scaffolded, so the CLI refused before ever parsing stdin; it now scaffolds and
+  asserts it got past that check.
+
+What existed and did not catch any of this:
+`packages/component-runtime/test/native-transport.test.mjs` asserts only how the
+CLI **binary name** is resolved. Two green tests, zero coverage of whether a
+request was ever accepted.
+
 ## v6.5.2 — 2026-08-19
 
 ### Fixed — the Pi adapter has never been loadable by Pi

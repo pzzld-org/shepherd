@@ -1,8 +1,8 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
   "name": "shepherd",
-  "version": "6.5.2",
-  "description": "Harness-neutral sprint execution and governance powered by one Rust CLI and the typed fl03:shepherd@6.5.2 WebAssembly Component Model.",
+  "version": "6.5.3",
+  "description": "Harness-neutral sprint execution and governance powered by one Rust CLI and the typed fl03:shepherd@6.5.3 WebAssembly Component Model.",
   "owner": {
     "name": "pzzld-org",
     "email": "joe@pzzld.org",
@@ -14,7 +14,7 @@
       "category": "development",
       "description": "Harness-neutral sprint execution and governance through one Rust core with Claude Code, Codex, and Pi adapters.",
       "homepage": "https://github.com/FL03/shepherd",
-      "version": "6.5.2",
+      "version": "6.5.3",
       "source": "./plugins/shepherd"
     }
   ]

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "contract": "fl03:shepherd@6.5.2",
+  "contract": "fl03:shepherd@6.5.3",
   "adapter": "pi",
   "extension": "./src/extension.mjs",
   "provider": {

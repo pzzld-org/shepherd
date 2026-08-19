@@ -19,7 +19,7 @@ your-project/
 Keep each doctrine bounded and avoid copying the same rule into `content/roles`,
 `content/skills`, and a run brief. The native content compiler enforces the
 per-surface limits; the project owns the meaning. The old `[memory]` table is a
-layout-migration input only and is not a v6.5.2 configuration surface.
+layout-migration input only and is not a v6.5.3 configuration surface.
 
 Do not place project doctrine in `~/.shepherd` unless it is intentionally a
 user-wide default. Do not place run-specific decisions in a cross-run doctrine.

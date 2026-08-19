@@ -1,7 +1,7 @@
 {
   "schema": "shepherd.compiled-tree/2",
   "target": "claude",
-  "tree_digest": "6e4112852a26b31e662bbcabc024ae36d5ca671a827210e0e23d8385eeabb2db",
+  "tree_digest": "3825dd430cfad374acd3ebbf07e9a2db4756b93ee5ff7ad7b410ba1407fe8b7a",
   "tokenizer_version": "shepherd-prompt-v1-uax29",
   "roles": [
     {
@@ -517,12 +517,12 @@
       "path": "skills/start/SKILL.md",
       "kind": "skill",
       "source_path": "content/skills/start/SKILL.md",
-      "source_sha256": "4451bb024511d60164ab07af1df99a0fa4ee6e56e3b6c4879dc719edfe8beaa4",
-      "content_sha256": "e5161df5dea5f82f74bfbcba2d1f1869de20b7cf9373ce39eb3125c2e671897f",
+      "source_sha256": "92e3037292d8d18b5722b336548802cdb0a6d2a69dfb3a8eb9a959fb52b88c6a",
+      "content_sha256": "2bfa2a9e79d4e436eab96c6d7ca99fb5cdcd3ddd84c63ac46ecadcfa90ed4847",
       "lines": 46,
-      "words": 256,
-      "utf8_bytes": 1674,
-      "prompt_tokens": 520
+      "words": 264,
+      "utf8_bytes": 1827,
+      "prompt_tokens": 574
     },
     {
       "path": "skills/thinking/SKILL.md",

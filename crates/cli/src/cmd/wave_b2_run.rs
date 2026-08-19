@@ -1199,13 +1199,27 @@ fn normalize_document(raw: serde_json::Value) -> Result<(RunState, Vec<String>),
             .iter()
             .map(|(id, value)| {
                 let mut value = value.as_object().cloned().unwrap_or_default();
-                value.insert("id".into(), serde_json::Value::String(id.clone()));
+                // Case-fold the dict key on the way in. Historical documents
+                // used upper-case lane ids (`V01-STATIC-CONTRACT`), and
+                // `RunStore::validate_id` -- a WRITE-side naming rule --
+                // rejects them on read. That single mismatch is what stopped
+                // `run migrate` from repairing the very documents it exists to
+                // repair: the migrator produced a correct list and the store
+                // then refused it. Normalizing here is the repair.
+                let normalized = id.to_ascii_lowercase();
+                value.insert("id".into(), serde_json::Value::String(normalized));
                 serde_json::Value::Object(value)
             })
             .collect::<Vec<_>>();
         entries.sort_by(|left, right| left["id"].as_str().cmp(&right["id"].as_str()));
         object.insert("lanes".into(), serde_json::Value::Array(entries));
         applied.push("lanes dict -> list".into());
+        if lanes
+            .keys()
+            .any(|id| id.chars().any(|c| c.is_ascii_uppercase()))
+        {
+            applied.push("lane ids case-folded to lower-case".into());
+        }
     }
     match object.get("updated_at").cloned() {
         Some(value) if !value.is_i64() && !value.is_u64() => {

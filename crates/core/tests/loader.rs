@@ -204,11 +204,15 @@ fn canonical_context_cli_announcement_has_no_shctx_alias() {
     .expect("the one native CLI has a canonical announcement key");
     assert_eq!(canonical.context.announce_cli_path, Toggle::Off);
 
+    // The retired spelling is now TOLERATED in every mode and dropped, rather
+    // than rejected. Rejecting it stranded any project configured before the
+    // second CLI was retired, including from `doctor` and `migrate`. What must
+    // NOT happen is the retired key influencing the canonical one, so that is
+    // what is asserted: it loads, and the canonical value keeps its default.
     let legacy = "[context]\nannounce_shctx_path = \"off\"\n";
     let strict = loader::load([(Path::new("legacy-context.toml"), legacy)])
-        .expect_err("ordinary loading must reject the retired second-CLI spelling")
-        .to_string();
-    assert!(strict.contains("announce_shctx_path"), "{strict}");
+        .expect("ordinary loading tolerates the retired second-CLI spelling");
+    assert_eq!(strict.config.context.announce_cli_path, Toggle::On);
 
     let migrated =
         loader::load_for_layout_v5_migration([(Path::new("legacy-context.toml"), legacy)])
@@ -433,21 +437,6 @@ fn every_validation_failure_names_the_file_and_dotted_key() {
             "[dups]\ndups_threshold = 1.1\n",
             "dups.dups_threshold",
         ),
-        (
-            "deprecated.toml",
-            "[paths]\nplans = \".shepherd/plans\"\n",
-            "paths.plans",
-        ),
-        (
-            "retired-memory.toml",
-            "[memory]\nproject_memory = \"x\"\n",
-            "memory",
-        ),
-        (
-            "retired-context-path.toml",
-            "[context]\ndb_path = \".shepherd/other.db\"\n",
-            "context.db_path",
-        ),
     ];
 
     for (file, text, dotted) in cases {
@@ -457,6 +446,40 @@ fn every_validation_failure_names_the_file_and_dotted_key() {
         assert!(error.contains(file), "missing file in: {error}");
         assert!(error.contains(dotted), "missing {dotted} in: {error}");
     }
+
+    // The RETIRED subset is deliberately not in the list above. These are keys
+    // shepherd itself once wrote, so refusing to load a document that still
+    // carries one strands every project configured before their removal -- and
+    // blocks `doctor`, `migrate` and `init`, the tools that would fix it. They
+    // are recognized, type-checked, and dropped.
+    //
+    // This is a CLOSED set, which is what keeps the distinction meaningful: a
+    // key that was never in the schema is still a hard error above.
+    for (file, text) in [
+        ("deprecated.toml", "[paths]\nplans = \".shepherd/plans\"\n"),
+        (
+            // Both keys: the retired `[memory]` table is validated as a WHOLE
+            // before it is dropped, so a half-written one is still an error.
+            // That is the discipline that keeps tolerance from becoming
+            // silent discard, and it caught this fixture.
+            "retired-memory.toml",
+            "[memory]\nproject_memory = \"x\"\nproject_doctrines = \"y\"\n",
+        ),
+        (
+            "retired-context-path.toml",
+            "[context]\ndb_path = \".shepherd/other.db\"\n",
+        ),
+    ] {
+        loader::validate(Path::new(file), text)
+            .unwrap_or_else(|error| panic!("retired key in {file} must be tolerated: {error}"));
+    }
+
+    // ...and a retired key carrying the WRONG historical type still fails, so
+    // tolerance never becomes silent discard.
+    let malformed = loader::validate(Path::new("bad-retired.toml"), "[paths]\nplans = false\n")
+        .expect_err("a retired key with the wrong type must still fail")
+        .to_string();
+    assert!(malformed.contains("paths.plans"), "{malformed}");
 }
 
 #[test]
@@ -480,12 +503,26 @@ project_id_path = ".shepherd/project.json"
 announce_shctx_path = "off"
 "#;
 
-    let strict = loader::load([(path, legacy)]).expect_err("ordinary loading stays strict");
-    assert!(
-        strict.to_string().contains("legacy-layout.toml"),
-        "{strict}"
+    // CONTRACT CHANGE. Ordinary loading used to REJECT the retired subset, and
+    // that produced a deadlock in the field: a project whose shepherd.toml
+    // still carried a retired key could not run `doctor`, `migrate` or `init`
+    // -- every tool capable of repairing the config was blocked by the config.
+    // A key shepherd itself once wrote is not a typo, so the closed, typed
+    // registry is now consulted in every mode.
+    let strict =
+        loader::load([(path, legacy)]).expect("ordinary loading tolerates the retired subset");
+    assert_eq!(
+        strict.config.paths.runs,
+        PathBuf::from(".shepherd/executions")
     );
-    assert!(strict.to_string().contains("unknown field"), "{strict}");
+
+    // ...and typo protection is UNCHANGED, which is the half that matters. A
+    // key that was never part of the schema still fails, and still names the
+    // candidates.
+    let typo = loader::load([(path, "[paths]\nrunz = \".shepherd/executions\"\n")])
+        .expect_err("a key that was never in the schema must still fail");
+    assert!(typo.to_string().contains("legacy-layout.toml"), "{typo}");
+    assert!(typo.to_string().contains("unknown field"), "{typo}");
 
     let loaded = loader::load_for_layout_v5_migration([(path, legacy)])
         .expect("migration may load the closed retired subset");
@@ -623,13 +660,13 @@ fn absolute_and_namespace_escape_paths_are_rejected_at_the_named_key() {
         ("/tmp/docs", "paths.docs"),
         (".shepherd/../outside", "paths.docs"),
         ("docs", "paths.docs"),
-        ("/tmp/registry.db", "context.db_path"),
+        // `context.db_path` was a case here and is gone: it is a RETIRED key,
+        // stripped before the schema sees it, so escape-validating it asserts
+        // nothing about live behaviour. Escape rejection is still covered by
+        // the three `paths.docs` cases above, which are keys that exist.
+        ("runs", "paths.runs"),
     ] {
-        let section = if key.starts_with("context") {
-            "context"
-        } else {
-            "paths"
-        };
+        let section = "paths";
         let field = key.split('.').nth(1).expect("test key has a field");
         let text = format!("[{section}]\n{field} = {value:?}\n");
         let error = loader::validate(Path::new("escape.toml"), &text)

@@ -67,6 +67,13 @@ gate_fast() {
   # @pzzld/pi-shepherd shipped with no `pi` key for its entire history, so Pi
   # loaded nothing from it -- not the nine skills, not src/extension.mjs. The
   # package installed cleanly and was inert. Nothing asked what Pi ships.
+  # Two field-level breaks shipped across the WIT/native boundary and no test
+  # noticed: the missing `schema` envelope (every operation rejected) and
+  # tool_use_id vs tool_call_id (every resolve rejected, so the Pi guard denied
+  # everything). Both were invisible because the extension never loaded at all.
+  step "wire contract parity is falsifiable" python3 scripts/check-wire-contract.py --self-test
+  step "wire contract parity" python3 scripts/check-wire-contract.py
+  step "native dispatch wire contract" bash scripts/tests/test-native-dispatch-wire.sh
   step "Pi package surface is falsifiable" bash scripts/tests/test-pi-package-surface.sh --self-test
   step "Pi package surface" bash scripts/tests/test-pi-package-surface.sh
   # The cross-harness claim itself. Each harness was checked in isolation and
@@ -117,6 +124,10 @@ gate_fast() {
   step "plugin contract is falsifiable" ./scripts/check-plugin.py --self-test
   step "plugin contract" ./scripts/check-plugin.py
   step "Codex regular carrier projection" python3 scripts/generate-codex-carrier.py --check
+  # The target-final oracle had no generator (#341), so every content change
+  # meant hand-editing three trees of hashes -- which produced a wrong-shaped
+  # file once and a regenerated-but-uncommitted one once, five red CI checks.
+  step "content oracle matches the live compiler" python3 scripts/generate-content-oracle.py --check
   # Reusable-workflow wiring (workflow_call inputs, forwarded secrets, needs:
   # targets) parses fine when it is wrong and fails only at dispatch time.
   # actionlint is the checker for that. It is optional locally, but a SKIP is
@@ -152,6 +163,9 @@ gate_fast() {
 gate_full() {
   gate_fast
   step "cold Cargo Binstall metadata fixture" python3 scripts/tests/test-cargo-binstall-local.py
+  # The fast tier can only SKIP this (it compiles nothing by contract); here a
+  # binary is guaranteed, so it runs for real.
+  step "content oracle matches the live compiler (full)" python3 scripts/generate-content-oracle.py --check
   step "clippy (default)" env RUSTFLAGS="-D warnings" cargo clippy --workspace --all-targets --locked
   step "clippy (full)" env RUSTFLAGS="-D warnings" cargo clippy --workspace --all-targets --locked --features full
   step "tests" cargo test --workspace --locked
@@ -296,7 +310,7 @@ gate_wasm() {
     local resolved_import_count
     wasm-tools component wit "${artifact}" > "${wit_output}"
     test -s "${wit_output}"
-    grep -Fq 'export fl03:shepherd/engine@6.5.2;' "${wit_output}"
+    grep -Fq 'export fl03:shepherd/engine@6.5.3;' "${wit_output}"
     sed -n 's/^  import \(wasi:[^;]*\);$/\1/p' "${wit_output}" \
       | LC_ALL=C sort > "${resolved_imports}"
     resolved_import_count=$(wc -l < "${resolved_imports}" | tr -d ' ')
