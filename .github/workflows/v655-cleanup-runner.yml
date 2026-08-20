@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - automation/v655-cleanup-runner
+  pull_request:
+    branches:
+      - automation/v655-cleanup-runner
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
 
 permissions:
@@ -11,7 +15,7 @@ permissions:
 
 concurrency:
   group: v655-cleanup-runner
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   cleanup:
