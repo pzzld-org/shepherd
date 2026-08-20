@@ -1,78 +1,52 @@
 #!/usr/bin/env bash
-# shepherd hook — PreToolUse(Write) seed pre-flight gate (v6.2.1).
-#
-# Blocks a *.seed.md Write whose content fails the deterministic seed gate
-# (`shepherd seed verify`). The framework's highest-precision artifact gets a
-# structural floor at authorship time instead of prose self-policing — a
-# hallucinated file_scope path, an oversized footprint, a leftover TODO, or
-# prescriptive Lane-N numbering can no longer reach a multi-lane spawn.
-#
-# Scope: Write only. A fresh seed is authored with Write (full content in
-# tool_input.content); Edit refinements are incremental fragments and are left
-# to the explicit `shepherd seed verify` / SEED-GATE node. One focused hook.
-#
-# Config: [seed].seed_gate = block (default) | warn | off.
-#   off   — never runs.
-#   warn  — emits additionalContext on a hard failure; never blocks.
-#   block — denies the Write on a hard failure (verify exit 1).
-#
-# Fails OPEN at every step (non-shepherd repo, non-seed path, no content,
-# missing shepherd binary, any internal/verify error) — only ever blocks on a CLEAN
-# verify exit 1. Never blocks authorship on a tooling hiccup.
-#
-# Input  (stdin): PreToolUse JSON { tool_name, tool_input.{file_path, content}, ... }
-# Output (stdout): {"permissionDecision":"deny",...} | {"additionalContext":...} | nothing.
-set -euo pipefail
-HERE="$(cd "$(dirname "$0")" && pwd)"
-source "$HERE/_lib.sh"
+# Seed preflight check — blocks/warns when a written seed fails native verification.
+# Input: Claude Code PreToolUse JSON on stdin.
+# Config: seed_gate = "block" | "warn" | "off" (default: block)
+set -uo pipefail
+source "$(dirname "$0")/_lib.sh"
 
 input=$(cat)
-is_shepherd_project || exit 0
 shepherd_require_jq_policy || exit 0
 
-tool=$(json_field "$input" '.tool_name')
+tool=$(printf '%s' "$input" | jq -r '.tool_name // ""' 2>/dev/null || echo "")
+file_path=$(printf '%s' "$input" | jq -r '.tool_input.file_path // ""' 2>/dev/null || echo "")
+
 [[ "$tool" == "Write" ]] || exit 0
+[[ "$file_path" == */.shepherd/runs/*/seed.md ]] || exit 0
 
-file_path=$(json_field "$input" '.tool_input.file_path')
-[[ -z "$file_path" ]] && file_path=$(json_field "$input" '.tool_input.path')
-# Two naming shapes are gated (v6.4.1 — the rename hazard, res_12 §3): the
-# legacy `{slug}.seed.md` suffix AND the run-scoped `runs/{run}/seed.md`
-# (path-segment match on `runs/<run>/` + basename `seed.md`, so moving the
-# seed into the run dir cannot silently disable this gate).
-case "$file_path" in
-  *.seed.md) ;;
-  */runs/*/seed.md|runs/*/seed.md) ;;
-  *) exit 0 ;;
-esac
+payload_dir=$(dirname "$file_path")
+while [[ ! -d "$payload_dir" && "$payload_dir" != "/" && "$payload_dir" != "." ]]; do
+  payload_dir=$(dirname "$payload_dir")
+done
+is_shepherd_project "$payload_dir" || exit 0
+project_root="$(primary_worktree_root "$payload_dir" 2>/dev/null || true)"
+[[ -n "$project_root" ]] || exit 0
 
-mode="$(cfg_get seed_gate)"; [[ -n "$mode" ]] || mode="block"
+mode="$(cfg_get seed_gate "$project_root")"
+[[ -z "$mode" ]] && mode="block"
 [[ "$mode" == "off" ]] && exit 0
 
-content=$(json_field "$input" '.tool_input.content')
+content=$(printf '%s' "$input" | jq -r '.tool_input.content // ""' 2>/dev/null || echo "")
 [[ -n "$content" ]] || exit 0
 
-session=$(json_field "$input" '.session_id')
+tmp="$(mktemp "${TMPDIR:-/tmp}/shepherd-seed.XXXXXX")" || exit 0
+trap 'rm -f "$tmp"' EXIT
+printf '%s' "$content" > "$tmp"
 
 shepherd_bin="$(shepherd_cli 2>/dev/null || true)"
-[[ -n "$shepherd_bin" ]] || exit 0
+if [[ -z "$shepherd_bin" ]]; then
+  emit_context "seed preflight skipped: native shepherd binary unavailable"
+fi
+report="$(cd "$project_root" && "$shepherd_bin" seed verify "$tmp" 2>/dev/null || true)"
 
-tmp="$(mktemp -t shep-seed.XXXXXX 2>/dev/null)" || exit 0
-trap 'rm -f "$tmp"' EXIT
-printf '%s' "$content" > "$tmp" 2>/dev/null || exit 0
+if printf '%s' "$report" | jq -e '.ok == true' >/dev/null 2>&1; then
+  exit 0
+fi
 
-rc=0
-report="$("$shepherd_bin" seed verify "$tmp" 2>/dev/null)" || rc=$?
-# Only a CLEAN hard-failure (exit 1) blocks. Usage/internal errors (2+) fail open.
-[[ "$rc" -eq 1 ]] || exit 0
-
-msg="[shepherd] SEED-GATE — $file_path fails the deterministic seed pre-flight:"$'\n'
-msg+="$report"$'\n\n'
-msg+="Fix the HARD item(s) above, then re-write the seed."$'\n'
-msg+="  - a path that will exist at Phase 0: mark it with a trailing (NEW)"$'\n'
-msg+="  - lane numbering / sequencing: drop it — that is engineer territory (#67)"$'\n'
-msg+="The native shepherd seed verifier is the single source of truth; see seed-template.md §Verification."
+summary=$(printf '%s' "$report" | jq -r '[.errors[]?, .warnings[]?] | join("; ")' 2>/dev/null || echo "seed verification failed")
+[[ -z "$summary" ]] && summary="seed verification failed"
 
 if [[ "$mode" == "warn" ]]; then
-  emit_context "$msg" "seed_preflight_check" "$tool" "planter" "$session"
+  emit_context "Seed preflight warning: $summary"
 fi
-emit_deny "$msg" "seed_preflight_check" "$tool" "planter" "$session"
+emit_deny "Seed preflight failed: $summary"
