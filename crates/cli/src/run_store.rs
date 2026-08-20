@@ -128,7 +128,9 @@ impl RunStore {
         {
             self.ensure_state_file()?;
             let _lock = self.acquire(LockMode::Shared, false)?;
-            let state = RunState::load(&self.path)?;
+            let bytes = std::fs::read(&self.path)
+                .map_err(|source| RunStoreError::io("read state", &self.path, source))?;
+            let state = decode_compatible(&bytes, &self.path)?;
             self.validate_readable(&state)?;
             Ok(state)
         }
@@ -145,7 +147,9 @@ impl RunStore {
         {
             self.ensure_state_file()?;
             let _lock = self.acquire(LockMode::Exclusive, false)?;
-            let mut state = RunState::load(&self.path)?;
+            let bytes = std::fs::read(&self.path)
+                .map_err(|source| RunStoreError::io("read state", &self.path, source))?;
+            let mut state = decode_compatible(&bytes, &self.path)?;
             self.validate_writable(&state)?;
             let value = mutate(&mut state)?;
             self.validate_writable(&state)?;
@@ -292,7 +296,7 @@ impl RunStore {
 
         let mut lane_ids = BTreeSet::new();
         for lane in &state.lanes {
-            validate_id("lane", &lane.id)?;
+            validate_lane_id(&lane.id)?;
             if !lane_ids.insert(&lane.id) {
                 return Err(RunStoreError::Validation(format!(
                     "duplicate lane id `{}`",
@@ -325,6 +329,144 @@ impl RunStore {
             }
         }
         Ok(())
+    }
+}
+
+fn decode_compatible(bytes: &[u8], path: &Path) -> RunStoreResult<RunState> {
+    let mut document: serde_json::Value = serde_json::from_slice(bytes)
+        .map_err(|error| RunStoreError::Validation(format!("{}: {error}", path.display())))?;
+    normalize_legacy_run_document(&mut document, path)?;
+    serde_json::from_value(document)
+        .map_err(|error| RunStoreError::Validation(format!("{}: {error}", path.display())))
+}
+
+/// Normalize the pre-v1 map-shaped run document without discarding unknown
+/// top-level or lane fields. Canonical bytes are written only after a caller
+/// performs a legitimate locked mutation.
+fn normalize_legacy_run_document(
+    document: &mut serde_json::Value,
+    path: &Path,
+) -> RunStoreResult<()> {
+    let object = document.as_object_mut().ok_or_else(|| {
+        RunStoreError::Validation(format!(
+            "{}: run document must be a JSON object",
+            path.display()
+        ))
+    })?;
+
+    let canonical_run = object.get("run").cloned();
+    let legacy_run = object.remove("run_id");
+    match (canonical_run, legacy_run) {
+        (None, Some(value)) => {
+            object.insert("run".into(), value);
+        }
+        (Some(canonical), Some(legacy)) if canonical != legacy => {
+            return Err(RunStoreError::Validation(format!(
+                "{}: conflicting `run` and legacy `run_id` values",
+                path.display()
+            )));
+        }
+        _ => {}
+    }
+
+    let Some(lanes) = object.get_mut("lanes") else {
+        return Ok(());
+    };
+    if !lanes.is_object() {
+        return Ok(());
+    }
+    let serde_json::Value::Object(legacy_lanes) = std::mem::take(lanes) else {
+        unreachable!("object shape checked above")
+    };
+    let mut rows: Vec<_> = legacy_lanes.into_iter().collect();
+    rows.sort_by(|left, right| left.0.cmp(&right.0));
+    let mut normalized = Vec::with_capacity(rows.len());
+
+    for (lane_key, mut value) in rows {
+        let lane = value.as_object_mut().ok_or_else(|| {
+            RunStoreError::Validation(format!(
+                "{}: legacy lane `{lane_key}` must be a JSON object",
+                path.display()
+            ))
+        })?;
+        match lane.get("id") {
+            None => {
+                lane.insert("id".into(), serde_json::Value::String(lane_key.clone()));
+            }
+            Some(serde_json::Value::String(id)) if id == &lane_key => {}
+            Some(serde_json::Value::String(id)) => {
+                return Err(RunStoreError::Validation(format!(
+                    "{}: legacy lane key `{lane_key}` conflicts with embedded id `{id}`",
+                    path.display()
+                )));
+            }
+            Some(_) => {
+                return Err(RunStoreError::Validation(format!(
+                    "{}: legacy lane `{lane_key}` has a non-string id",
+                    path.display()
+                )));
+            }
+        }
+
+        if let Some(status_value) = lane.remove("status") {
+            let status = status_value.as_str().ok_or_else(|| {
+                RunStoreError::Validation(format!(
+                    "{}: legacy lane `{lane_key}` has a non-string status",
+                    path.display()
+                ))
+            })?;
+            let mapped = legacy_lane_state(status);
+            match lane.get("state") {
+                None => {
+                    lane.insert("state".into(), serde_json::Value::String(mapped.into()));
+                }
+                Some(serde_json::Value::String(state)) if state == mapped => {}
+                Some(serde_json::Value::String(state)) => {
+                    return Err(RunStoreError::Validation(format!(
+                        "{}: legacy lane `{lane_key}` status `{status}` conflicts with state `{state}`",
+                        path.display()
+                    )));
+                }
+                Some(_) => {
+                    return Err(RunStoreError::Validation(format!(
+                        "{}: legacy lane `{lane_key}` has a non-string state",
+                        path.display()
+                    )));
+                }
+            }
+        }
+        normalized.push(value);
+    }
+    *lanes = serde_json::Value::Array(normalized);
+    Ok(())
+}
+
+fn legacy_lane_state(status: &str) -> &str {
+    match status {
+        "passed" | "pass" | "completed" | "done" => "complete",
+        "failed" | "failure" | "fail" => "error",
+        "running" | "active" | "executing" | "in_progress" => "in-progress",
+        "blocked" | "queued" | "not_started" => "pending",
+        other => other,
+    }
+}
+
+/// Legacy orchestration lane ids used upper-case phase labels. They remain
+/// path-safe, while new lane creation continues to use the stricter canonical
+/// lower-case validator in the command surface.
+fn validate_lane_id(value: &str) -> RunStoreResult<()> {
+    let bytes = value.as_bytes();
+    let valid = (1..=64).contains(&bytes.len()) && bytes[0].is_ascii_alphanumeric();
+    let valid = valid
+        && bytes
+            .iter()
+            .all(|byte| byte.is_ascii_alphanumeric() || *byte == b'-');
+    if valid {
+        Ok(())
+    } else {
+        Err(RunStoreError::Validation(format!(
+            "unsafe lane id `{value}`"
+        )))
     }
 }
 
@@ -501,9 +643,7 @@ mod platform {
     }
 
     fn decode(store: &RunStore, parent: &OwnedFd) -> RunStoreResult<RunState> {
-        serde_json::from_slice(&read_regular(store, parent, "run.json")?).map_err(|error| {
-            RunStoreError::Validation(format!("{}: {error}", store.path.display()))
-        })
+        decode_compatible(&read_regular(store, parent, "run.json")?, &store.path)
     }
     fn read_regular(store: &RunStore, parent: &OwnedFd, name: &str) -> RunStoreResult<Vec<u8>> {
         let fd = openat(

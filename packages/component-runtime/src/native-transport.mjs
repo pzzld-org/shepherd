@@ -1,4 +1,6 @@
 import { spawnSync } from "node:child_process";
+import { constants, accessSync } from "node:fs";
+import { delimiter, join } from "node:path";
 
 const OPERATIONS = new Set(["bind-root", "start", "resolve", "stop", "resume"]);
 
@@ -7,10 +9,45 @@ const OPERATIONS = new Set(["bind-root", "start", "resolve", "stop", "resume"]);
  * source checkout or publish their own launcher. Explicit embedding/test
  * overrides win, followed by the process override, then normal PATH lookup.
  */
-export function nativeShepherdBin(override = undefined, environment = process.env) {
+function executable(candidate) {
+  try {
+    accessSync(candidate, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function nativeShepherdBin(
+  override = undefined,
+  environment = process.env,
+  isExecutable = executable,
+) {
   if (typeof override === "string" && override.length > 0) return override;
   const configured = environment?.SHEPHERD_NATIVE_BIN;
-  return typeof configured === "string" && configured.length > 0 ? configured : "shepherd";
+  if (typeof configured === "string" && configured.length > 0) return configured;
+
+  const names = process.platform === "win32"
+    ? ["shepherd.exe", "shepherd.cmd", "shepherd"]
+    : ["shepherd"];
+  const path = typeof environment?.PATH === "string" ? environment.PATH : "";
+  for (const directory of path.split(delimiter).filter(Boolean)) {
+    for (const name of names) {
+      const candidate = join(directory, name);
+      if (isExecutable(candidate)) return candidate;
+    }
+  }
+
+  const home = environment?.HOME || environment?.USERPROFILE;
+  if (typeof home === "string" && home.length > 0) {
+    for (const directory of [join(home, ".cargo", "bin"), join(home, ".local", "bin"), join(home, "bin")]) {
+      for (const name of names) {
+        const candidate = join(directory, name);
+        if (isExecutable(candidate)) return candidate;
+      }
+    }
+  }
+  return "shepherd";
 }
 
 /**

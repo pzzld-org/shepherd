@@ -1,33 +1,18 @@
 #!/usr/bin/env bash
-# shepherd hook — PreToolUse(Write) seed pre-flight gate (v6.2.1).
+# shepherd hook — PreToolUse(Write) seed pre-flight gate.
 #
-# Blocks a *.seed.md Write whose content fails the deterministic seed gate
-# (`shepherd seed verify`). The framework's highest-precision artifact gets a
-# structural floor at authorship time instead of prose self-policing — a
-# hallucinated file_scope path, an oversized footprint, a leftover TODO, or
-# prescriptive Lane-N numbering can no longer reach a multi-lane spawn.
-#
-# Scope: Write only. A fresh seed is authored with Write (full content in
-# tool_input.content); Edit refinements are incremental fragments and are left
-# to the explicit `shepherd seed verify` / SEED-GATE node. One focused hook.
+# Blocks a legacy *.seed.md or run-scoped runs/{run}/seed.md Write whose full
+# content fails the native deterministic verifier. The payload path, not the
+# hook process cwd, determines which Shepherd project and config apply.
 #
 # Config: [seed].seed_gate = block (default) | warn | off.
-#   off   — never runs.
-#   warn  — emits additionalContext on a hard failure; never blocks.
-#   block — denies the Write on a hard failure (verify exit 1).
-#
-# Fails OPEN at every step (non-shepherd repo, non-seed path, no content,
-# missing shepherd binary, any internal/verify error) — only ever blocks on a CLEAN
-# verify exit 1. Never blocks authorship on a tooling hiccup.
-#
-# Input  (stdin): PreToolUse JSON { tool_name, tool_input.{file_path, content}, ... }
-# Output (stdout): {"permissionDecision":"deny",...} | {"additionalContext":...} | nothing.
+# Only a clean verifier exit 1 is policy evidence. Missing tools, malformed
+# payloads, non-project paths, and verifier usage/internal errors fail open.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 source "$HERE/_lib.sh"
 
 input=$(cat)
-is_shepherd_project || exit 0
 shepherd_require_jq_policy || exit 0
 
 tool=$(json_field "$input" '.tool_name')
@@ -35,22 +20,30 @@ tool=$(json_field "$input" '.tool_name')
 
 file_path=$(json_field "$input" '.tool_input.file_path')
 [[ -z "$file_path" ]] && file_path=$(json_field "$input" '.tool_input.path')
-# Two naming shapes are gated (v6.4.1 — the rename hazard, res_12 §3): the
-# legacy `{slug}.seed.md` suffix AND the run-scoped `runs/{run}/seed.md`
-# (path-segment match on `runs/<run>/` + basename `seed.md`, so moving the
-# seed into the run dir cannot silently disable this gate).
 case "$file_path" in
   *.seed.md) ;;
   */runs/*/seed.md|runs/*/seed.md) ;;
   *) exit 0 ;;
 esac
 
-mode="$(cfg_get seed_gate)"; [[ -n "$mode" ]] || mode="block"
+case "$file_path" in
+  /*) payload_dir=$(dirname "$file_path") ;;
+  *) payload_dir=$(dirname "$PWD/$file_path") ;;
+esac
+# A Write may target a run directory that has not been created yet. Walk to the
+# nearest existing ancestor before asking Git for the primary checkout.
+while [[ ! -e "$payload_dir" && "$payload_dir" != "/" && "$payload_dir" != "." ]]; do
+  payload_dir=$(dirname "$payload_dir")
+done
+is_shepherd_project "$payload_dir" || exit 0
+project_root="$(primary_worktree_root "$payload_dir" 2>/dev/null || true)"
+[[ -n "$project_root" ]] || exit 0
+
+mode="$(cfg_get seed_gate "$project_root")"; [[ -n "$mode" ]] || mode="block"
 [[ "$mode" == "off" ]] && exit 0
 
 content=$(json_field "$input" '.tool_input.content')
 [[ -n "$content" ]] || exit 0
-
 session=$(json_field "$input" '.session_id')
 
 shepherd_bin="$(shepherd_cli 2>/dev/null || true)"
@@ -61,8 +54,9 @@ trap 'rm -f "$tmp"' EXIT
 printf '%s' "$content" > "$tmp" 2>/dev/null || exit 0
 
 rc=0
-report="$("$shepherd_bin" seed verify "$tmp" 2>/dev/null)" || rc=$?
-# Only a CLEAN hard-failure (exit 1) blocks. Usage/internal errors (2+) fail open.
+report="$(cd "$project_root" && "$shepherd_bin" seed verify "$tmp" 2>/dev/null)" || rc=$?
+# Only a clean deterministic hard failure blocks. Usage/internal failures (2+)
+# are infrastructure faults and retain the hook's established fail-open rule.
 [[ "$rc" -eq 1 ]] || exit 0
 
 msg="[shepherd] SEED-GATE — $file_path fails the deterministic seed pre-flight:"$'\n'

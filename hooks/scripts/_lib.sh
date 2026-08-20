@@ -115,8 +115,8 @@ shepherd_config_files() {
 
 # True only when the primary worktree has the canonical project config.
 is_shepherd_project() {
-  local ns
-  ns="$(resolve_namespace 2>/dev/null || true)"
+  local start="${1:-.}" ns
+  ns="$(resolve_namespace "$start" 2>/dev/null || true)"
   [[ -n "$ns" && -f "$ns/shepherd.toml" ]]
 }
 
@@ -175,13 +175,13 @@ hook_db_path() {
 # Contract source of truth: docs/configuration.md §config-resolution. MUST agree
 # with `shepherd_core::loader::candidates` — the same files in the same order.
 cfg_get() {
-  local key="$1" f v
+  local key="$1" repo="${2:-}" f v
   while IFS= read -r f; do
     [[ -n "$f" && -f "$f" ]] || continue
     v="$(grep -E "^[[:space:]]*${key}[[:space:]]*=" "$f" 2>/dev/null | tail -1 \
           | sed -E 's/^[^=]*=[[:space:]]*//; s/[[:space:]]+#.*$//; s/^"//; s/"$//' 2>/dev/null || true)"
     if [[ -n "$v" ]]; then printf '%s' "$v"; return 0; fi
-  done < <(shepherd_config_files)
+  done < <(shepherd_config_files "$repo")
   printf '%s' ""
   return 0
 }

@@ -65,12 +65,12 @@ else
 fi
 
 if jq -e '
-  [.. | objects | select(.type? == "command" and .command == "shepherd" and .args == ["claude-hook"])]
+  [.. | objects | select(.type? == "command" and .command == "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/shepherd_native.sh" and .args == ["claude-hook"])]
   | length == 4
 ' "$CONFIG" >/dev/null; then
-  pass "registry has exactly four exec-form native CLI adapters"
+  pass "registry has exactly four native resolver adapters"
 else
-  fail "registry has exactly four exec-form native CLI adapters"
+  fail "registry has exactly four native resolver adapters"
 fi
 
 if strict="$(python3 "$AUDIT" --strict 2>&1)" \
