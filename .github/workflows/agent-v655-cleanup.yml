@@ -36,6 +36,9 @@ jobs:
         if: steps.guard.outputs.applied != 'true'
         with:
           node-version: 22
+      - name: Correct the temporary patch runner anchor
+        if: steps.guard.outputs.applied != 'true'
+        run: python3 scripts/fix_apply_v655_runner.py
       - name: Apply production patch
         if: steps.guard.outputs.applied != 'true'
         run: python3 scripts/apply_v655_harness_cleanup.py
