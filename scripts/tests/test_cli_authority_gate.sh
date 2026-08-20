@@ -87,7 +87,7 @@ import sys
 
 manifest = json.loads(pathlib.Path(sys.argv[1]).read_text())
 root = pathlib.Path(sys.argv[2])
-NATIVE = {"type": "command", "command": "shepherd", "args": ["claude-hook"]}
+NATIVE = {"type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/shepherd_native.sh", "args": ["claude-hook"]}
 PREFIX = "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/"
 
 hooks = [
@@ -126,12 +126,12 @@ rg -q 'plan_lifecycle' "$native_hook" || { rc=$?; printf 'FAIL: native_hook.rs m
 rg -q 'DispatchService::with_context' "$native_hook" || { rc=$?; printf 'FAIL: native_hook.rs must reference DispatchService::with_context (rg rc=%s)\n' "$rc" >&2; exit 1; }
 rg -q 'GuardValue::from' "$native_hook" || { rc=$?; printf 'FAIL: native_hook.rs must reference GuardValue::from (rg rc=%s)\n' "$rc" >&2; exit 1; }
 
-# Published adapters resolve one native CLI contract: an explicit
-# SHEPHERD_NATIVE_BIN wins, otherwise the bare `shepherd` command is handed to
-# the host PATH. They must not bake a source-checkout repository path into the
-# published lifecycle.
+# Published adapters resolve one native CLI contract: an explicit override
+# wins, then SHEPHERD_NATIVE_BIN, PATH, and standard per-user install roots.
+# The bare `shepherd` name remains the final host-resolution fallback, and no
+# source-checkout repository path may enter the published lifecycle.
 rg -q 'SHEPHERD_NATIVE_BIN' "$transport" || { rc=$?; printf 'FAIL: native-transport.mjs must honor SHEPHERD_NATIVE_BIN (rg rc=%s)\n' "$rc" >&2; exit 1; }
-rg -q '[:?] "shepherd"' "$transport" || { rc=$?; printf 'FAIL: native-transport.mjs must fall back to the bare shepherd command (rg rc=%s)\n' "$rc" >&2; exit 1; }
+rg -q 'return[[:space:]]+"shepherd"' "$transport" || { rc=$?; printf 'FAIL: native-transport.mjs must retain the bare shepherd final fallback (rg rc=%s)\n' "$rc" >&2; exit 1; }
 if rg -n 'repositoryRoot|join\([^)]*bin[^)]*shepherd|/bin/shepherd' "$transport"; then
   printf '%s\n' 'published native transport contains a checkout-specific CLI path' >&2
   exit 1

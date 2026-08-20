@@ -42,7 +42,7 @@ manifest = json.load(open(config_path, encoding="utf-8"))
 # The one reviewed native authority. Any command that is not exactly this
 # exec-form tuple must be a `hooks/scripts/*.sh` target the inventory
 # classifies; anything else resolves policy through an unaudited runtime.
-NATIVE_TARGET = "crates/cli/src/cmd/claude_hook.rs"
+NATIVE_TARGET = "hooks/scripts/shepherd_native.sh"
 SCRIPT_RE = re.compile(r"^(?P<target>hooks/scripts/[A-Za-z0-9_.-]+\.sh)$")
 
 native = 0
@@ -54,7 +54,7 @@ for groups in manifest["hooks"].values():
                 continue
             command = hook["command"]
             args = tuple(hook.get("args", []))
-            if command == "shepherd" and args == ("claude-hook",):
+            if command == "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/shepherd_native.sh" and args == ("claude-hook",):
                 native += 1
                 continue
             match = SCRIPT_RE.search(command.replace("${CLAUDE_PLUGIN_ROOT}/", ""))
@@ -65,7 +65,7 @@ for groups in manifest["hooks"].values():
             script_targets.add(match.group("target"))
 
 if native == 0:
-    sys.exit("no native `shepherd claude-hook` adapter is registered")
+    sys.exit("no native Shepherd resolver adapter is registered")
 
 result = subprocess.run(
     [sys.executable, audit_path, "--root", audit_root, "--json"],
