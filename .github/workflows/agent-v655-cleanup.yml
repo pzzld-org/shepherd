@@ -1,49 +1,69 @@
 name: Apply v6.5.5 harness cleanup
 
 on:
-  push:
+  pull_request:
     branches:
-      - work/v6.5.5-harness-agnostic-cleanup
-    paths:
-      - .github/workflows/agent-v655-cleanup.yml
+      - v6.5.5
+    types:
+      - synchronize
 
 permissions:
   contents: write
 
 jobs:
   apply-and-verify:
-    if: github.actor != 'github-actions[bot]'
+    if: github.head_ref == 'work/v6.5.5-harness-agnostic-cleanup'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: work/v6.5.5-harness-agnostic-cleanup
           fetch-depth: 0
+      - name: Detect an already-applied patch
+        id: guard
+        shell: bash
+        run: |
+          if git log -1 --pretty=%s | grep -qF 'restore harness-agnostic plugin contracts'; then
+            echo 'applied=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'applied=false' >> "$GITHUB_OUTPUT"
+          fi
       - uses: dtolnay/rust-toolchain@stable
+        if: steps.guard.outputs.applied != 'true'
         with:
           components: rustfmt
       - uses: actions/setup-node@v4
+        if: steps.guard.outputs.applied != 'true'
         with:
           node-version: 22
       - name: Apply production patch
+        if: steps.guard.outputs.applied != 'true'
         run: python3 scripts/apply_v655_harness_cleanup.py
       - name: Preserve executable hook entrypoints
+        if: steps.guard.outputs.applied != 'true'
         run: chmod +x hooks/scripts/shepherd_native.sh hooks/scripts/seed_preflight_check.sh
       - name: Format Rust
+        if: steps.guard.outputs.applied != 'true'
         run: cargo fmt --all
       - name: Verify Rust regressions
+        if: steps.guard.outputs.applied != 'true'
         run: cargo test --locked -p shepherd-cli --test harness_agnostic_regressions
       - name: Verify seed payload-root policy
+        if: steps.guard.outputs.applied != 'true'
         run: bash hooks/tests/test_seed_preflight_payload_root.sh
       - name: Verify source hook native resolver
+        if: steps.guard.outputs.applied != 'true'
         run: bash hooks/tests/test_shepherd_native_resolver.sh
       - name: Verify package native resolver
+        if: steps.guard.outputs.applied != 'true'
         run: node --test packages/component-runtime/test/native-transport.test.mjs packages/component-runtime/test/native-resolution-regression.test.mjs
       - name: Check patch hygiene
+        if: steps.guard.outputs.applied != 'true'
         run: |
           cargo fmt --all -- --check
           git diff --check
       - name: Commit and push verified production changes
+        if: steps.guard.outputs.applied != 'true'
         run: |
           git config user.name "shepherd-ci"
           git config user.email "actions@users.noreply.github.com"
