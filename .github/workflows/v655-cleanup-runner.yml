@@ -1,0 +1,185 @@
+name: v655-cleanup-runner
+
+on:
+  push:
+    branches:
+      - automation/v655-cleanup-runner
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: v655-cleanup-runner
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: full
+      TARGET_BRANCH: work/harness-agnostic-v6.5.5
+      EXPECTED_BASE: 5714198c90d0fd3e2044d0c193bfcf7e4954b54a
+    steps:
+      - name: Checkout automation driver
+        uses: actions/checkout@v7
+        with:
+          ref: automation/v655-cleanup-runner
+          path: automation
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Checkout isolated target branch
+        uses: actions/checkout@v7
+        with:
+          ref: work/harness-agnostic-v6.5.5
+          path: target
+          fetch-depth: 0
+          submodules: recursive
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify target custody
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual="$(git -C target rev-parse HEAD)"
+          if [[ "$actual" != "$EXPECTED_BASE" ]]; then
+            printf '::error::target branch moved: expected %s, found %s\n' "$EXPECTED_BASE" "$actual"
+            exit 1
+          fi
+          git -C target status --short
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          components: clippy,rustfmt
+          cache: true
+          cache-workspaces: target
+
+      - name: Verify runner prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 --version
+          cargo --version
+          node --version
+          npm --version
+          jq --version
+
+      - name: Apply regression tests only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 automation/.github/scripts/apply_v655_cleanup.py tests-only target
+          git -C target diff --stat
+
+      - name: Prove regressions fail before implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target
+
+          set +e
+          cargo test -p shepherd-core --test run_state --features json \
+            legacy_map_lanes_normalize_to_sequence_and_preserve_audits \
+            2>&1 | tee /tmp/core-red.log
+          core_status=${PIPESTATUS[0]}
+          set -e
+          [[ "$core_status" -ne 0 ]]
+          grep -F 'legacy map-keyed run state parses' /tmp/core-red.log
+
+          set +e
+          cargo test -p shepherd-cli --test wave_b2_run_cli \
+            lifecycle_lane_wave_layout_and_read_only_routes_cover_the_native_surface \
+            2>&1 | tee /tmp/run-set-red.log
+          run_set_status=${PIPESTATUS[0]}
+          set -e
+          [[ "$run_set_status" -ne 0 ]]
+          grep -F "unexpected argument '--kind'" /tmp/run-set-red.log
+
+          set +e
+          bash hooks/tests/test_seed_preflight_target_project.sh \
+            > /tmp/seed-target-red.log 2>&1
+          seed_status=$?
+          set -e
+          cat /tmp/seed-target-red.log
+          [[ "$seed_status" -ne 0 ]]
+
+          printf '%s\n' 'RED CONFIRMED: all three missing behaviors failed before production edits.'
+
+      - name: Apply minimal production changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 automation/.github/scripts/apply_v655_cleanup.py implementation target
+          cd target
+          cargo fmt --all
+          git diff --check
+          git diff --stat
+
+      - name: Run targeted Rust regressions
+        shell: bash
+        working-directory: target
+        run: |
+          set -euo pipefail
+          cargo test -p shepherd-core --test run_state --features json
+          cargo test -p shepherd-cli --test run_store
+          cargo test -p shepherd-cli --test wave_b2_run_cli
+          cargo test -p shepherd-cli --test claude_hook_cli
+          cargo test -p shepherd-cli --test codex_hook_cli
+
+      - name: Run hook carrier tests
+        shell: bash
+        working-directory: target
+        run: |
+          set -euo pipefail
+          bash hooks/tests/run.sh
+
+      - name: Verify harness package boundaries
+        shell: bash
+        working-directory: target
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts
+          node packages/scripts/check-deps.mjs
+          node packages/scripts/check-deps.mjs --self-test
+          npm test --workspaces --if-present
+
+      - name: Run complete Rust workspace validation
+        shell: bash
+        working-directory: target
+        run: |
+          set -euo pipefail
+          cargo fmt --all -- --check
+          cargo test --workspace --all-features --locked
+          cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+
+      - name: Commit and push isolated work branch
+        shell: bash
+        working-directory: target
+        run: |
+          set -euo pipefail
+          git diff --check
+          git status --short
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            crates/core/src/run.rs \
+            crates/core/tests/run_state.rs \
+            crates/cli/src/run_store.rs \
+            crates/cli/src/cmd/wave_b2_run.rs \
+            crates/cli/tests/run_store.rs \
+            crates/cli/tests/wave_b2_run_cli.rs \
+            crates/cli/tests/claude_hook_cli.rs \
+            crates/cli/tests/codex_hook_cli.rs \
+            hooks/scripts/_lib.sh \
+            hooks/scripts/seed_preflight_check.sh \
+            hooks/tests/test_seed_preflight_target_project.sh
+          git diff --cached --stat
+          git commit \
+            -m 'fix(v6.5.5): recover legacy runs and portable seed gates' \
+            -m 'Normalize retired run documents, expose complete run metadata mutation, resolve seed policy from the Write target, and pin fail-open repair behavior across native harnesses.'
+          git push origin "HEAD:refs/heads/$TARGET_BRANCH"
