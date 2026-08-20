@@ -348,7 +348,7 @@ render_claude_generic() {
   : > "$WORKDIR/claude_shell.txt"
   while IFS=$'\t' read -r cmd args matcher; do
     [[ -z "$cmd" ]] && continue
-    if [[ "$cmd" == "shepherd" ]] && printf '%s' "$args" | grep -qF 'claude-hook'; then
+    if [[ "$cmd" == "shepherd" || "$cmd" == '${CLAUDE_PLUGIN_ROOT}/hooks/scripts/shepherd_native.sh' ]] && printf '%s' "$args" | grep -qF 'claude-hook'; then
       native=1
     else
       target="$(printf '%s' "$cmd" | sed -E 's#.*\$\{CLAUDE_PLUGIN_ROOT\}/##')"

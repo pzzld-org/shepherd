@@ -119,6 +119,10 @@ enum RunAction {
         seed: String,
         #[arg(long, default_value = "")]
         plan: String,
+        #[arg(long, default_value = "")]
+        branch: String,
+        #[arg(long, default_value = "")]
+        base: String,
     },
     Lane {
         #[command(subcommand)]
@@ -264,7 +268,9 @@ impl WaveB2RunCmd {
                 status,
                 seed,
                 plan,
-            } => set(&mut context, &run, &status, &seed, &plan),
+                branch,
+                base,
+            } => set(&mut context, &run, &status, &seed, &plan, &branch, &base),
             RunAction::Lane { action } => lane(&mut context, action),
             RunAction::Wave { action } => wave(&mut context, action),
             RunAction::Ledger { action } => ledger(&mut context, action),
@@ -409,9 +415,16 @@ fn set(
     status: &str,
     seed: &str,
     plan: &str,
+    branch: &str,
+    base: &str,
 ) -> Result<(), CliError> {
-    if status.is_empty() && seed.is_empty() && plan.is_empty() {
-        return usage("nothing to set (pass --status, --seed, and/or --plan)");
+    if status.is_empty()
+        && seed.is_empty()
+        && plan.is_empty()
+        && branch.is_empty()
+        && base.is_empty()
+    {
+        return usage("nothing to set (pass --status, --seed, --plan, --branch, and/or --base)");
     }
     if !status.is_empty() && !RUN_STATUSES.contains(&status) {
         return usage(format!(
@@ -428,6 +441,12 @@ fn set(
         }
         if !plan.is_empty() {
             state.plan = plan.into();
+        }
+        if !branch.is_empty() {
+            state.branch = branch.into();
+        }
+        if !base.is_empty() {
+            state.base = base.into();
         }
         Ok(())
     })?;

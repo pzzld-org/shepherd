@@ -23,6 +23,7 @@ use shepherd::{
 
 use crate::{
     BindRootDispatchRequest, ContextInputs, DispatchService, DispatchStore, ExecutionContext,
+    RunStore,
     cmd::{dispatch::read_project_id, guard::load_engine},
     interface::{CliError, CliGlobals},
 };
@@ -661,10 +662,10 @@ fn run_namespace_is_usable(runs_root: &Path) -> bool {
     entries.filter_map(Result::ok).any(|entry| {
         let run = entry.path();
         run.join("dispatch").is_dir()
-            && fs::read(run.join("run.json"))
+            && RunStore::new(run.join("run.json"))
+                .load()
                 .ok()
-                .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
-                .is_some_and(|document| document["status"] == "executing")
+                .is_some_and(|document| document.status == "executing")
     })
 }
 

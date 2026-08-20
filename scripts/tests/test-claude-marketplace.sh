@@ -71,9 +71,9 @@ hooks = [
 # may resolve POLICY through a plugin-local runtime. v6.4.6 re-registered seven
 # telemetry-only shell hooks that v6.4.5 had left inert, so a literal TOTAL is
 # no longer the property: it counted registrations instead of testing one.
-native = {"type": "command", "command": "shepherd", "args": ["claude-hook"]}
+native = {"type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/shepherd_native.sh", "args": ["claude-hook"]}
 adapters = [hook for hook in hooks if hook == native]
-assert len(adapters) == 4, f"expected 4 native `shepherd claude-hook` adapters, found {len(adapters)}"
+assert len(adapters) == 4, f"expected 4 native resolver adapters, found {len(adapters)}"
 launchers = [
     hook
     for hook in hooks
@@ -132,9 +132,9 @@ hooks = [hook for groups in manifest["hooks"].values() for group in groups for h
 # may resolve POLICY through a plugin-local runtime. v6.4.6 re-registered seven
 # telemetry-only shell hooks that v6.4.5 had left inert, so a literal TOTAL is
 # no longer the property: it counted registrations instead of testing one.
-native = {"type": "command", "command": "shepherd", "args": ["claude-hook"]}
+native = {"type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/shepherd_native.sh", "args": ["claude-hook"]}
 adapters = [hook for hook in hooks if hook == native]
-assert len(adapters) == 4, f"expected 4 native `shepherd claude-hook` adapters, found {len(adapters)}"
+assert len(adapters) == 4, f"expected 4 native resolver adapters, found {len(adapters)}"
 launchers = [
     hook
     for hook in hooks

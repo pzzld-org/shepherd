@@ -65,33 +65,33 @@ fi
 cp LICENSE "$payload/THIRD_PARTY_LICENSES/$legal_hash.txt"
 printf '# fixture notices\n\nTHIRD_PARTY_LICENSES/%s.txt\n' "$legal_hash" > "$payload/THIRD_PARTY_NOTICES.md"
 for target in aarch64-apple-darwin aarch64-unknown-linux-gnu x86_64-apple-darwin x86_64-unknown-linux-gnu; do
-  for name in "shepherd-6.5.4-${target}.tar.gz" "shepherd-${target}.tar.gz"; do
+  for name in "shepherd-6.5.5-${target}.tar.gz" "shepherd-${target}.tar.gz"; do
     tar -C "$payload" -czf "$assets/$name" LICENSE THIRD_PARTY_NOTICES.md THIRD_PARTY_LICENSES shepherd
   done
 done
-for name in shepherd-6.5.4-x86_64-pc-windows-msvc.zip shepherd-x86_64-pc-windows-msvc.zip; do
+for name in shepherd-6.5.5-x86_64-pc-windows-msvc.zip shepherd-x86_64-pc-windows-msvc.zip; do
   (cd "$payload" && zip -qr "$assets/$name" LICENSE THIRD_PARTY_NOTICES.md THIRD_PARTY_LICENSES shepherd.exe)
 done
-for name in shepherd-component-6.5.4-wasm32-wasip2.tar.gz shepherd-component-wasm32-wasip2.tar.gz; do
+for name in shepherd-component-6.5.5-wasm32-wasip2.tar.gz shepherd-component-wasm32-wasip2.tar.gz; do
   tar -C "$payload" -czf "$assets/$name" LICENSE THIRD_PARTY_NOTICES.md THIRD_PARTY_LICENSES shepherd-component.wasm
 done
 mkdir -p "$payload/package"
 printf '{}\n' > "$payload/package/package.json"
 cp "$payload/LICENSE" "$payload/THIRD_PARTY_NOTICES.md" "$payload/package/"
 cp -R "$payload/THIRD_PARTY_LICENSES" "$payload/package/"
-package_tarballs=$(release_package_names 6.5.4)
+package_tarballs=$(release_package_names 6.5.5)
 while IFS= read -r tarball; do
   tar -C "$payload" -czf "$assets/$tarball" package
 done <<<"$package_tarballs"
-scripts/verify-release-distribution.sh "$assets" 6.5.4
+scripts/verify-release-distribution.sh "$assets" 6.5.5
 
 cp -R "$assets" "$tmp_dir/tampered"
 tampered_payload="$tmp_dir/tampered-payload"
 cp -R "$payload" "$tampered_payload"
 printf 'tampered\n' >> "$tampered_payload/THIRD_PARTY_LICENSES/$legal_hash.txt"
-tar -C "$tampered_payload" -czf "$tmp_dir/tampered/shepherd-component-6.5.4-wasm32-wasip2.tar.gz" \
+tar -C "$tampered_payload" -czf "$tmp_dir/tampered/shepherd-component-6.5.5-wasm32-wasip2.tar.gz" \
   LICENSE THIRD_PARTY_NOTICES.md THIRD_PARTY_LICENSES shepherd-component.wasm
-if scripts/verify-release-distribution.sh "$tmp_dir/tampered" 6.5.4 >/dev/null 2>&1; then
+if scripts/verify-release-distribution.sh "$tmp_dir/tampered" 6.5.5 >/dev/null 2>&1; then
   printf 'tampered legal component archive must fail verification\n' >&2
   exit 1
 fi

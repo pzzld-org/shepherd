@@ -4,6 +4,22 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
+## v6.5.5 — unreleased
+
+### Fixed — the npm publisher believed an exit code instead of the registry
+
+`npm publish` returned 0 for two brand-new package names and `npm-publish.py`
+reported "4 published, 0 already present". Both names read 404 for several
+minutes afterwards. They had in fact landed — new scoped packages take time to
+surface on the public endpoint — but nothing in the pipeline could tell that
+apart from a publish that silently did nothing, because the publisher only ever
+consulted the exit status.
+
+An exit code is a claim about a command; the registry is the fact. Publication
+is now verified against the registry after the fact, with a bounded retry so
+propagation lag is tolerated and a genuine no-op still fails loudly with the
+likely cause (a token scoped to existing packages cannot create new ones).
+
 ## v6.5.4 — 2026-08-19
 
 ### Changed — the npm adapters are named for the harness they adapt

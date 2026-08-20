@@ -11,30 +11,30 @@
     },
     "packages/component-runtime": {
       "name": "@pzzld/component-runtime",
-      "version": "6.5.4",
+      "version": "6.5.5",
       "dependencies": {
         "@bytecodealliance/preview2-shim": "0.20.1",
       },
     },
     "packages/harness-claude": {
       "name": "@pzzld/claude-shepherd",
-      "version": "6.5.4",
+      "version": "6.5.5",
       "dependencies": {
-        "@pzzld/component-runtime": "6.5.4",
+        "@pzzld/component-runtime": "6.5.5",
       },
     },
     "packages/harness-codex": {
       "name": "@pzzld/codex-shepherd",
-      "version": "6.5.4",
+      "version": "6.5.5",
       "dependencies": {
-        "@pzzld/component-runtime": "6.5.4",
+        "@pzzld/component-runtime": "6.5.5",
       },
     },
     "packages/harness-pi": {
       "name": "@pzzld/pi-shepherd",
-      "version": "6.5.4",
+      "version": "6.5.5",
       "dependencies": {
-        "@pzzld/component-runtime": "6.5.4",
+        "@pzzld/component-runtime": "6.5.5",
       },
     },
   },

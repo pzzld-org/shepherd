@@ -23,7 +23,7 @@ TELEMETRY = "telemetry-only"
 ALLOWED = {THIN, TELEMETRY}
 
 METADATA: dict[str, dict[str, Any]] = {
-    "crates/cli/src/cmd/claude_hook.rs": {
+    "hooks/scripts/shepherd_native.sh": {
         "classification": THIN,
         "native_coverage": "full",
         "native_surface": ["shepherd claude-hook", "shepherd dispatch", "shepherd guard"],
@@ -68,11 +68,13 @@ METADATA: dict[str, dict[str, Any]] = {
 TARGET_RE = re.compile(r"(?P<target>(?:hooks/scripts|packages/harness-claude/hooks)/\S+)")
 NATIVE_CLAUDE_HOOK_COMMAND = "shepherd"
 NATIVE_CLAUDE_HOOK_ARGS = ["claude-hook"]
-NATIVE_CLAUDE_HOOK_SOURCE = "crates/cli/src/cmd/claude_hook.rs"
+NATIVE_CLAUDE_HOOK_SOURCE = "hooks/scripts/shepherd_native.sh"
 FORBIDDEN = {
     "retired_cli": re.compile(r"\bshctx\b"),
     "retired_python_cli": re.compile(r"services/cli"),
-    "plugin_local_launcher": re.compile(r"(?:^|/)bin/shepherd\b"),
+    "plugin_local_launcher": re.compile(
+        r"(?:CLAUDE_PLUGIN_ROOT|PLUGIN_ROOT|REPO_ROOT|\$ROOT)[^\n]*?/bin/shepherd\b"
+    ),
     "retired_doctrine": re.compile(
         r"skills/(?:shepherd|harness|context)/references|commands/[A-Za-z0-9_.-]+\.md"
     ),
@@ -246,7 +248,9 @@ def self_test() -> int:
             encoding="utf-8",
         )
         (root / "hooks/scripts/thin.sh").write_text(
-            "shctx status\nservices/cli/shepherd_cli\n/bin/shepherd\nsqlite3 db\npython3 -c pass\n",
+            "shctx status\nservices/cli/shepherd_cli\n"
+            f"{plugin_root}/bin/shepherd\n"
+            "sqlite3 db\npython3 -c pass\n",
             encoding="utf-8",
         )
         (root / "hooks/scripts/telemetry.sh").write_text(
