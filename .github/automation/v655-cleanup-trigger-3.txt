@@ -1,0 +1,1 @@
+Third control commit: rerun with ripgrep installed for the hook suite.
