@@ -1,0 +1,60 @@
+name: Apply v6.5.5 harness cleanup
+
+on:
+  push:
+    branches:
+      - work/v6.5.5-harness-agnostic-cleanup
+    paths:
+      - .github/workflows/agent-v655-cleanup.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: work/v6.5.5-harness-agnostic-cleanup
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply production patch
+        run: python3 scripts/apply_v655_harness_cleanup.py
+      - name: Preserve executable hook entrypoints
+        run: chmod +x hooks/scripts/shepherd_native.sh hooks/scripts/seed_preflight_check.sh
+      - name: Format Rust
+        run: cargo fmt --all
+      - name: Verify Rust regressions
+        run: cargo test --locked -p shepherd-cli --test harness_agnostic_regressions
+      - name: Verify seed payload-root policy
+        run: bash hooks/tests/test_seed_preflight_payload_root.sh
+      - name: Verify source hook native resolver
+        run: bash hooks/tests/test_shepherd_native_resolver.sh
+      - name: Verify package native resolver
+        run: node --test packages/component-runtime/test/native-transport.test.mjs packages/component-runtime/test/native-resolution-regression.test.mjs
+      - name: Check patch hygiene
+        run: |
+          cargo fmt --all -- --check
+          git diff --check
+      - name: Commit and push verified production changes
+        run: |
+          git config user.name "shepherd-ci"
+          git config user.email "actions@users.noreply.github.com"
+          git config commit.gpgsign false
+          git add crates/cli/src/run_store.rs \
+                  crates/cli/src/cmd/wave_b2_run.rs \
+                  crates/cli/src/cmd/native_hook.rs \
+                  hooks/hooks.json \
+                  hooks/scripts/_lib.sh \
+                  hooks/scripts/seed_preflight_check.sh \
+                  hooks/scripts/shepherd_native.sh \
+                  packages/component-runtime/src/native-transport.mjs
+          git commit -m "fix(v6.5.5): restore harness-agnostic plugin contracts"
+          git push origin HEAD:work/v6.5.5-harness-agnostic-cleanup
