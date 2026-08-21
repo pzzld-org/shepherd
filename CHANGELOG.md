@@ -4,7 +4,21 @@ Per-version history for the `shepherd` plugin (this repo). Format loosely based 
 
 ---
 
-## v6.5.5 — unreleased
+## v6.5.6 — unreleased
+
+### Changed — Cargo is the crates.io publisher
+
+The release path now delegates workspace packaging, dependency ordering,
+package verification, upload, and registry polling to Cargo itself.
+`cargo-publish.yml` retains only release-SHA/version custody, a dry-run and
+explicit missing-package recovery surface, and bounded reconciliation of the
+exact versions reported by crates.io metadata.
+
+The publication-critical path no longer downloads each published archive.
+A transient CDN or archive-read failure therefore cannot redefine an artifact
+Cargo already uploaded and crates.io already accepted as a failed publication.
+
+## v6.5.5 — 2026-08-20
 
 ### Fixed — the npm publisher believed an exit code instead of the registry
 

@@ -122,10 +122,10 @@ function selfTest() {
   const fixtureDir = "/tmp/package-boundary-fixture";
   const clean = {
     name: "@pzzld/fixture",
-    version: "6.5.5",
+    version: "6.5.6",
     description: "fixture",
     type: "module",
-    dependencies: { "@pzzld/core": "6.5.5" },
+    dependencies: { "@pzzld/core": "6.5.6" },
   };
   assertSelfTest(manifestViolations(clean, fixtureDir).length === 1, "README absence is detected");
   const privateManifest = { ...clean, private: true };
@@ -134,7 +134,7 @@ function selfTest() {
   assertSelfTest(manifestViolations(workspaceManifest, fixtureDir).some((item) => item.includes("workspace-local reference")), "workspace references are blocked");
   const secondCli = { ...clean, bin: { other: "bin/other.mjs" } };
   assertSelfTest(manifestViolations(secondCli, fixtureDir).some((item) => item.includes("second CLI")), "secondary package CLIs are blocked");
-  const invalidVersion = { ...clean, version: "^6.5.5" };
+  const invalidVersion = { ...clean, version: "^6.5.6" };
   assertSelfTest(manifestViolations(invalidVersion, fixtureDir).some((item) => item.includes("exact semver")), "non-exact versions are blocked");
   console.log("ok: package boundary self-test");
 }

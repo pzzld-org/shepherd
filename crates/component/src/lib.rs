@@ -13,7 +13,7 @@ use shepherd::{
     guard::{parse_predicate_toml, parse_role_markdown},
 };
 
-pub const COMPONENT_CONTRACT_VERSION: &str = "fl03:shepherd@6.5.5";
+pub const COMPONENT_CONTRACT_VERSION: &str = "fl03:shepherd@6.5.6";
 
 pub mod bindings {
     wit_bindgen::generate!({
