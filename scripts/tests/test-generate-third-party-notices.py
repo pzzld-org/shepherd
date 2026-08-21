@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Focused gate tests for the third-party notice generator."""
+"""Focused tests for legal generation and repository source-authority hygiene."""
 
 from __future__ import annotations
 
@@ -114,6 +114,36 @@ class BuildTests(unittest.TestCase):
             notices, _ = NOTICES.build("full", "wasm32-wasip2")
         self.assertEqual(notices.count("| Rust crate | `shared` |"), 1)
         self.assertEqual(notices.count("| Rust crate | `component-only` |"), 1)
+
+
+class SourceAuthorityTests(unittest.TestCase):
+    def test_default_legal_output_is_build_owned(self) -> None:
+        output_root = ROOT / "target" / "legal" / "full"
+        self.assertEqual(
+            NOTICES.DEFAULT_OUTPUT,
+            output_root / "THIRD_PARTY_NOTICES.md",
+        )
+        self.assertEqual(
+            NOTICES.DEFAULT_LICENSES_DIR,
+            output_root / "THIRD_PARTY_LICENSES",
+        )
+
+    def test_repository_root_has_no_generated_or_provider_runtime_authority(self) -> None:
+        self.assertEqual(NOTICES.repository_source_authority_violations(ROOT), [])
+
+    def test_guard_rejects_every_retired_root(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "THIRD_PARTY_NOTICES.md").write_text("generated\n", encoding="utf-8")
+            (root / "THIRD_PARTY_LICENSES").mkdir()
+            (root / "workflows").mkdir()
+
+            violations = NOTICES.repository_source_authority_violations(root)
+
+        self.assertEqual(len(violations), 3)
+        self.assertTrue(any("THIRD_PARTY_NOTICES.md" in item for item in violations))
+        self.assertTrue(any("THIRD_PARTY_LICENSES" in item for item in violations))
+        self.assertTrue(any("workflows" in item for item in violations))
 
 
 if __name__ == "__main__":

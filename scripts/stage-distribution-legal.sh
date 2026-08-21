@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Copy the one canonical legal inventory into a staging tree. The copies are
-# distribution payloads, not independently authored sources.
+# Generate an artifact-scoped legal inventory into a staging tree. Lockfiles,
+# dependency sources, and the generator are authoritative; emitted files are
+# distribution payloads, never independently authored repository source.
 set -euo pipefail
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)

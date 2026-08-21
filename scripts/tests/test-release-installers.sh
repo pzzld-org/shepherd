@@ -81,8 +81,21 @@ cat >"$payload" <<'EOF'
 printf 'shepherd fixture 6.5.6\n'
 EOF
 chmod 755 "$payload"
-cp LICENSE THIRD_PARTY_NOTICES.md "$tmp_dir/payload/"
-cp -R THIRD_PARTY_LICENSES "$tmp_dir/payload/"
+
+# Installer behavior needs a valid archive shape, not the repository's complete
+# dependency inventory. Build an isolated legal fixture so this test remains
+# independent of generated release payloads committed at repository root.
+cp LICENSE "$tmp_dir/payload/"
+mkdir -p "$tmp_dir/payload/THIRD_PARTY_LICENSES"
+if command -v sha256sum >/dev/null 2>&1; then
+  legal_hash=$(sha256sum LICENSE | awk '{print $1}')
+else
+  legal_hash=$(shasum -a 256 LICENSE | awk '{print $1}')
+fi
+cp LICENSE "$tmp_dir/payload/THIRD_PARTY_LICENSES/$legal_hash.txt"
+printf '# fixture notices\n\nTHIRD_PARTY_LICENSES/%s.txt\n' "$legal_hash" \
+  >"$tmp_dir/payload/THIRD_PARTY_NOTICES.md"
+
 legal_entries=()
 while IFS= read -r entry; do
   legal_entries+=("$entry")
@@ -234,8 +247,9 @@ fi
 bad_dir="$release_root/download/v6.5.7"
 mkdir -p "$bad_dir" "$tmp_dir/extra-payload"
 cp "$payload" "$tmp_dir/extra-payload/shepherd"
-cp LICENSE THIRD_PARTY_NOTICES.md "$tmp_dir/extra-payload/"
-cp -R THIRD_PARTY_LICENSES "$tmp_dir/extra-payload/"
+cp LICENSE "$tmp_dir/extra-payload/"
+cp "$tmp_dir/payload/THIRD_PARTY_NOTICES.md" "$tmp_dir/extra-payload/"
+cp -R "$tmp_dir/payload/THIRD_PARTY_LICENSES" "$tmp_dir/extra-payload/"
 bad_legal_entries=()
 while IFS= read -r entry; do
   bad_legal_entries+=("$entry")
