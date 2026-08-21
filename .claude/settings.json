@@ -29,6 +29,7 @@
     }
   },
   "model": "sonnet",
+  "outputStyle": "concise",
   "enableWorkflows": true,
   "workflowKeywordTriggerEnabled": true,
   "autoMemoryEnabled": true,
