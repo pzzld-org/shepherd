@@ -6,10 +6,25 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 source scripts/lib/release-package-names.sh
 
-notices='THIRD_PARTY_NOTICES.md'
 test -s LICENSE
-test -s "$notices"
-python3 scripts/generate-third-party-notices.py --check --output "$notices" --licenses-dir THIRD_PARTY_LICENSES
+python3 scripts/tests/test-generate-third-party-notices.py
+
+closure_dir=$(mktemp -d "${TMPDIR:-/tmp}/shepherd-legal-closure.XXXXXX")
+tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/shepherd-release-license.XXXXXX")
+trap 'find "$closure_dir" "$tmp_dir" -depth -delete' EXIT
+
+# The repository carries the generator and locked inputs, not a generated legal
+# snapshot. Build the broad fixture in scratch space and prove it is reproducible.
+full_dir="$closure_dir/full"
+mkdir -p "$full_dir"
+python3 scripts/generate-third-party-notices.py --scope full --target wasm32-wasip2 \
+  --output "$full_dir/THIRD_PARTY_NOTICES.md" \
+  --licenses-dir "$full_dir/THIRD_PARTY_LICENSES"
+python3 scripts/generate-third-party-notices.py --scope full --target wasm32-wasip2 --check \
+  --output "$full_dir/THIRD_PARTY_NOTICES.md" \
+  --licenses-dir "$full_dir/THIRD_PARTY_LICENSES"
+notices="$full_dir/THIRD_PARTY_NOTICES.md"
+
 # Version bumps change first-party package records in both lockfiles. The legal
 # inventory must remain stable across that transaction: it records registry
 # crates and locked shipped Node closure only, never a raw lockfile digest or
@@ -18,9 +33,7 @@ if rg -Fq '## Locked inputs' "$notices"; then
   printf 'legal inventory must not couple itself to a whole-lock digest\n' >&2
   exit 1
 fi
-python3 scripts/tests/test-generate-third-party-notices.py
 
-closure_dir=$(mktemp -d "${TMPDIR:-/tmp}/shepherd-legal-closure.XXXXXX")
 python3 scripts/generate-third-party-notices.py --scope native --target x86_64-apple-darwin \
   --output "$closure_dir/native.md" --licenses-dir "$closure_dir/native-licenses"
 python3 scripts/generate-third-party-notices.py --scope component --target wasm32-wasip2 \
@@ -47,8 +60,6 @@ workflow='.github/workflows/cargo-build.yml'
 rg -Fq 'scripts/stage-distribution-legal.sh "$staging"' "$workflow" || { rc=$?; printf 'FAIL: build workflow must invoke stage-distribution-legal.sh against the staging directory (rg rc=%s)\n' "$rc" >&2; exit 1; }
 rg -Fq 'scripts/stage-distribution-legal.sh stage' "$workflow" || { rc=$?; printf 'FAIL: build workflow must invoke stage-distribution-legal.sh with the stage subcommand (rg rc=%s)\n' "$rc" >&2; exit 1; }
 
-tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/shepherd-release-license.XXXXXX")
-trap 'find "$closure_dir" "$tmp_dir" -depth -delete' EXIT
 assets="$tmp_dir/assets"
 payload="$tmp_dir/payload"
 mkdir -p "$assets" "$payload"
@@ -95,7 +106,6 @@ if scripts/verify-release-distribution.sh "$tmp_dir/tampered" 6.5.6 >/dev/null 2
   printf 'tampered legal component archive must fail verification\n' >&2
   exit 1
 fi
-
 
 # ---------------------------------------------------------------------------
 # Line endings. LICENSE is a byte-for-byte payload inside all 16 assets:
@@ -157,4 +167,4 @@ if rg -Fq 'LICENSE carries CR bytes' <<<"$lf_output"; then
 fi
 cmp -s "$eol_root/LICENSE" "$eol_stage/LICENSE"
 
-printf 'ok: release sources carry locked notices and package license copies\n'
+printf 'ok: release staging generates locked notices and package license copies\n'
