@@ -1,0 +1,29 @@
+{
+  "kind": "first-run",
+  "subject": "Explicit, non-mutating first-run recovery and typed legacy configuration compatibility.",
+  "scale": 5,
+  "threshold": 80,
+  "dimensions": [
+    {
+      "key": "explicit_transition",
+      "weight": 3,
+      "desc": "Names run initialization, planting, and later spawn as one ordered operator-owned recovery action."
+    },
+    {
+      "key": "no_silent_mutation",
+      "weight": 3,
+      "desc": "Stops rather than initializing, planting, retrying, or running shepherd init --confirm as a spawn side effect."
+    },
+    {
+      "key": "typed_compatibility",
+      "weight": 2,
+      "desc": "Accepts typed legacy paths.reports in ordinary and migration loading while rejecting wrong types with source and dotted-key provenance, without another parser."
+    },
+    {
+      "key": "projection_evidence",
+      "weight": 2,
+      "desc": "Requires authored and generated carrier parity plus a deterministic removal mutation that fails."
+    }
+  ],
+  "guidance": "Reward the exact explicit run-init \u2192 plant \u2192 later-spawn transition, operator ownership, fail-loud typed compatibility, and byte-consistent compiler-owned projections. Penalize silent init/retry, implicit shepherd init --confirm, conflated lifecycle states, wrong-type tolerance, second parsers, hand-edited carriers, and prose-only checks."
+}

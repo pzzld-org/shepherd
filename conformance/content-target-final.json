@@ -252,8 +252,8 @@
           "17525e6e9628e3374188b0948c8877a0e9d4900a6df9256e4eb60f2488473dac"
         ],
         "skills/spawn/SKILL.md": [
-          2544,
-          "8d63ea6abc68037689fd752f343cf2be5526384acc072357361edb442a3ef7f2"
+          2920,
+          "6ec17bc33f55f23ac9010f51586d095edd3a3321c4aa0291e5e36920041352c5"
         ],
         "skills/start/SKILL.md": [
           1839,
@@ -264,7 +264,7 @@
           "464768041f6f32bc14cec18ba0d428e0a60b86ba45f652e1cb0cd3956245bf81"
         ]
       },
-      "tree_digest": "fa696cd0cb6b781febb519d39ec6bb40fcb9b2e12bf5291301c1958c77c2b2ce"
+      "tree_digest": "2df4cb8aeaf60313d5fde4b2265d1d143906fc1184423123d52772126e906493"
     },
     "codex": {
       "files": {
@@ -297,8 +297,8 @@
           "17525e6e9628e3374188b0948c8877a0e9d4900a6df9256e4eb60f2488473dac"
         ],
         "skills/spawn/SKILL.md": [
-          2544,
-          "8d63ea6abc68037689fd752f343cf2be5526384acc072357361edb442a3ef7f2"
+          2920,
+          "6ec17bc33f55f23ac9010f51586d095edd3a3321c4aa0291e5e36920041352c5"
         ],
         "skills/start/SKILL.md": [
           1839,
@@ -309,7 +309,7 @@
           "464768041f6f32bc14cec18ba0d428e0a60b86ba45f652e1cb0cd3956245bf81"
         ]
       },
-      "tree_digest": "284bac4e4dfa62ba417a0c15590e7b2c64296d6234c11fdd94267815c462db6e"
+      "tree_digest": "d59b9ac29e512c8f7992f52c649e4720f766a99d6f5cc883436935857b2c1f74"
     },
     "pi": {
       "files": {
@@ -374,8 +374,8 @@
           "17525e6e9628e3374188b0948c8877a0e9d4900a6df9256e4eb60f2488473dac"
         ],
         "skills/spawn/SKILL.md": [
-          2544,
-          "8d63ea6abc68037689fd752f343cf2be5526384acc072357361edb442a3ef7f2"
+          2920,
+          "6ec17bc33f55f23ac9010f51586d095edd3a3321c4aa0291e5e36920041352c5"
         ],
         "skills/start/SKILL.md": [
           1839,
@@ -386,7 +386,7 @@
           "464768041f6f32bc14cec18ba0d428e0a60b86ba45f652e1cb0cd3956245bf81"
         ]
       },
-      "tree_digest": "bb2f6c16722bd9582d2d683bebda96ff359c8e83bedadc9483dc1b286397786d"
+      "tree_digest": "abf2fd228f9fcfc24f15c27bb6f3455a97813e29e4e61013e8bbbb54c9a92078"
     }
   }
 }

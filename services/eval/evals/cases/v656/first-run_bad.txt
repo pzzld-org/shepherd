@@ -1,0 +1,3 @@
+If spawn cannot find a planted run, silently initialize whatever is missing and retry. Run `shepherd init --confirm`, create or overwrite the run, invent a seed if needed, and continue directly into planning so the operator is not interrupted. Treat project initialization, run initialization, planting, and spawn as interchangeable setup details.
+
+Ignore retired configuration values regardless of type, or parse `paths.reports` through a second compatibility parser that drops provenance. Hand-edit each generated carrier after changing guidance and trust prose instead of a projection mutation check.

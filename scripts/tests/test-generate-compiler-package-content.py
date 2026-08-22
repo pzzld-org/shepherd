@@ -76,6 +76,33 @@ class ProjectionTests(unittest.TestCase):
                 self.assertNotEqual(checked.returncode, 0)
                 self.assertIn(mutation, checked.stderr.lower())
 
+    def test_first_run_spawn_sequence_survives_every_committed_projection(self) -> None:
+        marker = "`shepherd run init <run>` → invoke `plant` → invoke `spawn` again"
+        paths = [
+            ROOT / "content/skills/spawn/SKILL.md",
+            ROOT / "skills/spawn/SKILL.md",
+            ROOT / "plugins/shepherd/codex/skills/spawn/SKILL.md",
+            ROOT / "crates/compiler/package-content/content/skills/spawn/SKILL.md",
+        ]
+        for path in paths:
+            with self.subTest(path=path):
+                text = " ".join(path.read_text().split())
+                self.assertIn(marker, text)
+                self.assertIn("Never run `shepherd init --confirm` as a spawn side effect", text)
+
+    def test_projection_check_rejects_removed_first_run_action(self) -> None:
+        marker = "`shepherd run init <run>` → invoke `plant` → invoke `spawn` again"
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            output = seed(root)
+            spawn = root / "content/skills/spawn/SKILL.md"
+            write(spawn, f"before\n{marker}\nafter\n")
+            self.assertEqual(run(root, output, "--write").returncode, 0)
+            write(spawn, "before\nafter\n")
+            checked = run(root, output, "--check")
+            self.assertNotEqual(checked.returncode, 0)
+            self.assertIn("byte drift: content/skills/spawn/SKILL.md", checked.stderr)
+
     def test_repository_projection_has_exactly_twenty_four_sources(self) -> None:
         checked = run(ROOT, ROOT / "crates/compiler/package-content", "--check")
         self.assertEqual(checked.returncode, 0, checked.stderr)

@@ -580,6 +580,27 @@ announce_shctx_path = "off"
 }
 
 #[test]
+fn legacy_paths_reports_is_typed_and_source_named_in_every_loader_mode() {
+    let path = Path::new("legacy-reports.toml");
+    let typed = "[paths]\nreports = \".shepherd/docs/reports\"\n";
+
+    loader::load([(path, typed)]).expect("ordinary loading accepts typed retired paths.reports");
+    loader::load_for_layout_v5_migration([(path, typed)])
+        .expect("migration loading accepts typed retired paths.reports");
+
+    let malformed = "[paths]\nreports = false\n";
+    for error in [
+        loader::load([(path, malformed)]).expect_err("ordinary loading rejects a wrong type"),
+        loader::load_for_layout_v5_migration([(path, malformed)])
+            .expect_err("migration loading rejects a wrong type"),
+    ] {
+        let error = error.to_string();
+        assert!(error.contains("legacy-reports.toml"), "{error}");
+        assert!(error.contains("paths.reports"), "{error}");
+    }
+}
+
+#[test]
 fn layout_v5_migration_loader_rejects_malformed_or_unknown_legacy_keys() {
     let cases = [
         (

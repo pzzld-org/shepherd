@@ -54,6 +54,7 @@ _pair dispatch   dispatch_good.txt   dispatch_bad.txt
 _pair pi-tool-correlation pi_tool_call_id_good.txt pi_tool_call_id_bad.txt
 _pair pi-bootstrap pi-bootstrap_good.txt pi-bootstrap_bad.txt
 _pair least-authority v656/least-authority_good.txt v656/least-authority_bad.txt
+_pair first-run v656/first-run_good.txt v656/first-run_bad.txt
 _pair content    content_good.txt    content_bad.txt
 _pair plugin-distribution plugin_distribution_good.txt plugin_distribution_bad.txt
 _pair cargo-native-distribution cargo_native_distribution_good.txt cargo_native_distribution_bad.txt

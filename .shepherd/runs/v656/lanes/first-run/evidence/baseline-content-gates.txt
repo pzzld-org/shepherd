@@ -1,0 +1,23 @@
+$ python3 scripts/tests/test-generate-compiler-package-content.py
+...
+----------------------------------------------------------------------
+Ran 3 tests in 0.482s
+
+OK
+$ python3 scripts/generate-content-oracle.py --check
+content-oracle: SKIP -- no shepherd binary (build it, or rely on the full tier and cargo test, which both check this)
+$ python3 scripts/check-plugin.py
+checking the plugin layout contract
+
+  component dirs are at the root               ok
+  retired command surface is absent            ok
+  hooks json is discoverable                   ok
+  hook commands resolve                        ok
+  plugin root refs resolve                     ok
+  skills are shaped correctly                  ok
+  generated skills are thin                    ok
+  thin carrier projects canonical content      ok
+  codex carrier is regular and canonical       ok
+  configured gates resolve                     ok
+
+ok: all 10 plugin contract rules hold.

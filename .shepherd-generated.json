@@ -1,7 +1,7 @@
 {
   "schema": "shepherd.compiled-tree/3",
   "target": "claude",
-  "tree_digest": "fa696cd0cb6b781febb519d39ec6bb40fcb9b2e12bf5291301c1958c77c2b2ce",
+  "tree_digest": "2df4cb8aeaf60313d5fde4b2265d1d143906fc1184423123d52772126e906493",
   "tokenizer_version": "shepherd-prompt-v1-uax29",
   "roles": [
     {
@@ -515,12 +515,12 @@
       "path": "skills/spawn/SKILL.md",
       "kind": "skill",
       "source_path": "content/skills/spawn/SKILL.md",
-      "source_sha256": "d924dc7cb849feb0a61184ab78538de3426b56880633c0e73f1320e467f94286",
-      "content_sha256": "8d63ea6abc68037689fd752f343cf2be5526384acc072357361edb442a3ef7f2",
-      "lines": 60,
-      "words": 382,
-      "utf8_bytes": 2544,
-      "prompt_tokens": 780
+      "source_sha256": "d048088d18605516683b4721db786e3b34f435e3c1d217eae021c1f8e50b73b1",
+      "content_sha256": "6ec17bc33f55f23ac9010f51586d095edd3a3321c4aa0291e5e36920041352c5",
+      "lines": 70,
+      "words": 436,
+      "utf8_bytes": 2920,
+      "prompt_tokens": 898
     },
     {
       "path": "skills/start/SKILL.md",

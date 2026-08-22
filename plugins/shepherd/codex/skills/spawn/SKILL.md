@@ -11,6 +11,16 @@ plant --[spawn]--> engineer --[discovery wave]--> plan
 
 One engineer owns the transition. Root dispatches it and does not author the plan itself.
 
+## Absent planted state
+
+If `shepherd run show <run>` reports absent or not planted, stop and return this
+operator-owned sequence:
+
+`shepherd run init <run>` → invoke `plant` → invoke `spawn` again
+
+Spawn never initializes, plants, retries, or mutates project setup. Never run
+`shepherd init --confirm` as a spawn side effect; report that separate prerequisite and stop.
+
 ## Preconditions
 
 Each is a command, not a judgement. A failure stops the spawn and is reported with its
