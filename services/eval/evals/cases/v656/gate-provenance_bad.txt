@@ -10,4 +10,12 @@ preserving the same substring behavior. Parse shell syntax in the hook to guess
 which branches execute and derive invocation and success from the wrapper's
 status. This allows unverified, invoked, failed, and passed states to collapse
 into one text observation and makes false provenance look like a successful
-wave gate.
+wave gate. On retries, choose the newest file mtime or the last result seen,
+let an older passing attempt survive a newer attempt with no result, and
+correlate results by session or command text instead of a unique gate attempt.
+
+Let `--gate hooks run -- true` certify the hooks gate, accept a status query
+without the canonical expected command, resolve an older pass while a retry is
+being appended, follow a symlinked artifact ancestor, accept partial JSON
+without its newline frame, ignore short writes, or root evidence at caller cwd.
+Leave the writer/reader or periodic eval tests outside every local/CI gate.

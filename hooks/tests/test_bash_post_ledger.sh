@@ -48,13 +48,20 @@ run_case() {
   printf '%s' "$payload" | bash "$HOOK" >/dev/null 2>&1 || true
 
   # Only ordinary hook telemetry may exist. A renamed ledger is still command
-  # authority, so inspect the complete event directory rather than one name.
+  # authority, so inspect every path below the event directory, not just its
+  # immediate children. Only direct hooks-*.jsonl files are allowed.
   events=".shepherd/runs/v100-dev0/events"
-  unexpected="$(find "$events" -mindepth 1 -maxdepth 1 ! -name 'hooks-*.jsonl' -print -quit)"
+  unexpected=""
+  while IFS= read -r artifact; do
+    case "$artifact" in
+      "$events"/hooks-*.jsonl) ;;
+      *) unexpected="$artifact"; break ;;
+    esac
+  done < <(find "$events" -mindepth 1 -print | sort)
   while IFS= read -r telemetry_file; do
     [[ -n "$telemetry_file" ]] || continue
     telemetry_files+=("$telemetry_file")
-  done < <(find "$events" -mindepth 1 -maxdepth 1 -type f -name 'hooks-*.jsonl' -print | sort)
+  done < <(find "$events" -mindepth 1 -type f -name 'hooks-*.jsonl' -print | sort)
   if [[ -n "$unexpected" ]]; then
     fail "$label does not create gate provenance" "unexpected non-telemetry artifact=$unexpected"
   elif [[ "${#telemetry_files[@]}" -eq 0 ]] || ! jq -e -s '    length > 0
@@ -87,7 +94,7 @@ run_case "outer success status" 'cargo test -p shepherd-core' '{"exit_code":0,"s
 # Positive control: ordinary Bash post telemetry still records the hook event,
 # but the event is not gate provenance and carries no command-derived claim.
 events=".shepherd/runs/v100-dev0/events"
-if find "$events" -maxdepth 1 -name 'hooks-*.jsonl' -type f -print -quit | grep -q . \
+if find "$events" -mindepth 1 -type f -name 'hooks-*.jsonl' -print -quit | grep -q . \
   && jq -e 'select(.hook == "bash_post" and .decision == "pass" and .fields == {})' \
     "$events"/hooks-*.jsonl >/dev/null; then
   pass "ordinary post-hook telemetry remains non-authoritative"

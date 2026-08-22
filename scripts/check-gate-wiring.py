@@ -42,7 +42,7 @@ import tempfile
 REPO = pathlib.Path(__file__).resolve().parent.parent
 
 # Directories holding files that are tests, not helpers of tests.
-TEST_DIRS = ("scripts/tests", "hooks/tests")
+TEST_DIRS = ("scripts/tests", "hooks/tests", "services/eval/tests")
 
 # A test is a file that a runner could execute. `fixtures/` holds inputs, and
 # `run.sh` is itself the runner.
@@ -129,7 +129,11 @@ def glob_runners(root: pathlib.Path, evidence: dict[pathlib.Path, str]) -> dict[
         directory = str(rel.parent)
         if directory not in TEST_DIRS:
             continue
-        globs = "find " in text and "-name '*.sh'" in text
+        globs = (
+            "find " in text and "-name '*.sh'" in text
+        ) or (
+            "for f in test_*.sh" in text and 'bash "$f"' in text
+        )
         if not globs:
             continue
         # The runner itself must be executed by something, or the whole
