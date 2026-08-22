@@ -64,7 +64,10 @@ chmodSync(dispatcher, 0o755);
 process.env.SHEPHERD_NATIVE_BIN = dispatcher;
 
 const handlers = {};
-const pi = { on(event, handler) { handlers[event] = handler; } };
+const pi = {
+  getAllTools() { return [{ name: "subagent" }]; },
+  on(event, handler) { handlers[event] = handler; },
+};
 const context = {
   cwd: process.cwd(),
   sessionManager: { getSessionId: () => "pi-root-session-1" },

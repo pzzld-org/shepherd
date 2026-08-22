@@ -97,8 +97,8 @@ lane: pi-bootstrap
 - `scripts/stage-pi-carrier.sh`
 - `scripts/tests/test-pi-package-surface.sh`
 - `scripts/tests/test-generated-carrier-authority.sh`
-- `services/eval/evals/cases/v656/pi-bootstrap_good.txt` (NEW)
-- `services/eval/evals/cases/v656/pi-bootstrap_bad.txt` (NEW)
+- `services/eval/evals/cases/pi-bootstrap_good.txt` (NEW)
+- `services/eval/evals/cases/pi-bootstrap_bad.txt` (NEW)
 
 ### Work
 

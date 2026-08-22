@@ -8,7 +8,10 @@ if (!modulePath || !extensionPath) {
 }
 const { default: shepherdGuardExtension } = await import(pathToFileURL(extensionPath).href);
 const handlers = {};
-const pi = { on(event, handler) { handlers[event] = handler; } };
+const pi = {
+  getAllTools() { return [{ name: "subagent" }]; },
+  on(event, handler) { handlers[event] = handler; },
+};
 const options = {
   componentModule: modulePath.startsWith("file:") ? fileURLToPath(modulePath) : modulePath,
 };

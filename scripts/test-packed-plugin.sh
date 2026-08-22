@@ -25,6 +25,7 @@ for package in component-runtime harness-claude harness-codex harness-pi; do
 done
 SHEPHERD_COMPONENT_NODE_ROOT="$node_root" SHEPHERD_COMPONENT_WASM="$artifact" \
   scripts/stage-component-runtime.sh "$stage"
+scripts/stage-pi-carrier.sh "$stage"
 scripts/stage-distribution-legal.sh "$stage"
 ln -s "$node_root/node_modules" "$stage/packages/component-runtime/node_modules"
 
@@ -56,6 +57,36 @@ for package in component-runtime harness-claude harness-codex harness-pi; do
   grep -Fxq 'package/LICENSE' "$listing"
   grep -Fxq 'package/THIRD_PARTY_NOTICES.md' "$listing"
   grep -Eq '^package/THIRD_PARTY_LICENSES/[0-9a-f]{64}\.txt$' "$listing"
+done
+
+pi_listing="$tmp_dir/harness-pi.list"
+canonical_roles=(auditor coder conductor critic discovery engineer planter shepherd worker)
+dispatchable_roles=(auditor coder conductor critic discovery engineer worker)
+for role in "${canonical_roles[@]}"; do
+  grep -Fxq "package/prompts/$role.md" "$pi_listing"
+done
+prompt_count=$(grep -Ec '^package/prompts/[^/]+\.md$' "$pi_listing")
+test "$prompt_count" -eq 9
+for role in "${dispatchable_roles[@]}"; do
+  grep -Fxq "package/agents/$role.md" "$pi_listing"
+done
+agent_count=$(grep -Ec '^package/agents/[^/]+\.md$' "$pi_listing")
+test "$agent_count" -eq 7
+! grep -Fxq 'package/agents/shepherd.md' "$pi_listing"
+! grep -Fxq 'package/agents/planter.md' "$pi_listing"
+pi_extract="$tmp_dir/pi-package"
+mkdir -p "$pi_extract"
+tar -xzf "$tarballs/pzzld-pi-shepherd-6.5.6.tgz" -C "$pi_extract"
+for role in "${dispatchable_roles[@]}"; do
+  grep -Fxq "name: \"shepherd:$role\"" "$pi_extract/package/agents/$role.md"
+  grep -Fxq 'subagentOnlyExtensions: ../src/extension.mjs' "$pi_extract/package/agents/$role.md"
+  ! grep -Eq '^model: (sonnet|haiku)$' "$pi_extract/package/agents/$role.md"
+done
+for role in conductor engineer; do
+  grep -Fxq 'maxSubagentDepth: 2' "$pi_extract/package/agents/$role.md"
+done
+for role in auditor coder critic discovery worker; do
+  ! grep -Fq 'maxSubagentDepth:' "$pi_extract/package/agents/$role.md"
 done
 
 install="$tmp_dir/install"

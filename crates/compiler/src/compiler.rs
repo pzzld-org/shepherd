@@ -165,16 +165,7 @@ fn validate_model_resolution(
                 && resolution.profile.is_some()
                 && resolution.reasoning_effort.is_some()
         }
-        Target::Pi if inherited => {
-            resolution.model.is_none()
-                && resolution.profile.is_none()
-                && resolution.reasoning_effort.is_none()
-        }
-        Target::Pi => {
-            resolution.model.is_some()
-                && resolution.profile.is_none()
-                && resolution.reasoning_effort.is_none()
-        }
+        Target::Pi => resolution.profile.is_none() && resolution.reasoning_effort.is_none(),
     };
     if !valid {
         let detail =

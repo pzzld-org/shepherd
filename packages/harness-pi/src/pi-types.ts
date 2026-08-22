@@ -1,39 +1,13 @@
-// packages/harness-pi/src/pi-types.ts -- a minimal, hand-rolled subset of
-// @earendil-works/pi-coding-agent's extension type surface -- ONLY the shapes
-// src/extension.mjs actually uses. Transcribed verbatim (field names, not paraphrased) from
-// the real installed 0.84.1 package's own declarations at
-// /opt/homebrew/lib/node_modules/@earendil-works/pi-coding-agent/dist/core/extensions/
-// types.d.ts, confirmed on this box, not guessed or inferred from prose docs. No dependency
-// on that package is added (packages/harness-pi/package.json has none) -- Pi loads
-// extensions via jiti at runtime and supplies the REAL ExtensionAPI object; this file only
-// types this package's OWN source against the same shapes so `tsc`-style tooling (and
-// Node's own erasable-syntax check) can catch a mismatch before Pi ever loads the extension.
-//
-// The async handler shape is intentional. Pi awaits this callback before a tool executes,
-// allowing the component-backed guard evaluation to finish before the host proceeds. The
-// installed 0.84.1 declarations use the same promise-capable handler contract:
-//   `export type ExtensionHandler<E, R> = (event: E, ctx: ExtensionContext) =>
-//    Promise<R | void> | R | void;`
-//   `on(event: "tool_call", handler: ExtensionHandler<ToolCallEvent, ToolCallEventResult>): void;`
-// -- async IS supported. `dist/core/extensions/runner.js`'s `emitToolCall` (`await
-// handler(event, ctx)`) and `dist/core/agent-session.js`'s `_installAgentToolHooks`
-// (`this.agent.beforeToolCall = async (...) => { ... await runner.emitToolCall(...) ... }`)
-// both genuinely await it before the tool executes -- not fire-and-forget. The bundled
-// `docs/extensions.md` documents this as the first-class pattern
-// (`pi.on("tool_call", async (event, ctx) => {...})`) and states the concurrency bound this
-// package's component callback depends on: "In the default parallel tool execution mode,
-// sibling tool calls from the same assistant message are preflighted sequentially, then
-// executed concurrently" -- so the extension can perform one bounded evaluation at a time.
+// Minimal subset of the installed Pi 0.84.1 extension surface used by
+// src/extension.mjs. Field names follow Pi's declarations and pi-subagents
+// 0.53.0 public event payloads. This package adds no runtime Pi dependency.
 
 export interface ToolCallEventResult {
-  /** Block tool execution. */
   block?: boolean;
   reason?: string;
-  /** Early-terminate hint; applies only if every finalized result in the batch sets it. */
   terminate?: boolean;
 }
 
-/** Verbatim shape of the real `SessionShutdownEvent`. */
 export interface SessionShutdownEvent {
   type: "session_shutdown";
   reason: "quit" | "reload" | "new" | "resume" | "fork";
@@ -46,7 +20,7 @@ export interface SessionStartEvent {
   previousSessionFile?: string;
 }
 
-export interface SessionStartContext {
+export interface ExtensionContext {
   cwd: string;
   sessionManager: { getSessionId(): string };
 }
@@ -78,22 +52,110 @@ export interface OtherToolCallEvent extends ToolCallEventBase {
 
 export type ToolCallEvent = BashToolCallEvent | WriteToolCallEvent | EditToolCallEvent | OtherToolCallEvent;
 
-/** The subset of `ExtensionHandler<ToolCallEvent, ToolCallEventResult>` this package needs -- async included. */
-export type ToolCallHandler = (
-  event: ToolCallEvent,
-  context: SessionStartContext
-) => ToolCallEventResult | undefined | Promise<ToolCallEventResult | undefined>;
-
-/** The subset of ExtensionAPI this package's guard layer registers against. */
-export interface ExtensionAPI {
-  on(
-    event: "session_start",
-    handler: (event: SessionStartEvent, context: SessionStartContext) => void | Promise<void>
-  ): void;
-  on(event: "tool_call", handler: ToolCallHandler): void;
-  /** Registered once for session cleanup and future host resources. */
-  on(event: "session_shutdown", handler: (event: SessionShutdownEvent) => void | Promise<void>): void;
+export interface SubagentToolResultChild {
+  runId?: string;
+  index: number;
+  agent: string;
+  detached?: boolean;
+  sessionFile?: string;
 }
 
-/** Extension factory function type -- `(pi: ExtensionAPI) => void | Promise<void>`. */
+export interface SubagentWorkflowResult {
+  runId?: string;
+  results?: SubagentToolResultChild[];
+}
+
+export interface SubagentToolResultEvent {
+  type: "tool_result";
+  toolName: "subagent";
+  toolCallId: string;
+  input: Record<string, unknown>;
+  content: unknown[];
+  isError: boolean;
+  details?: {
+    runId?: string;
+    background?: boolean;
+    results: SubagentToolResultChild[];
+    workflow?: { value?: SubagentWorkflowResult | SubagentWorkflowResult[] };
+  };
+}
+
+export interface MessageEndEvent {
+  type: "message_end";
+  message: {
+    role: string;
+    stopReason?: string;
+    content?: { type?: string }[];
+  };
+}
+
+export interface ForegroundCompleteEvent {
+  runId?: string;
+  taskIndex?: number;
+  agent?: string;
+  sessionFile?: string;
+  cwd?: string;
+  sessionId?: string;
+}
+
+export interface AsyncCompleteResult {
+  runId?: string;
+  index?: number;
+  agent?: string;
+  sessionFile?: string;
+  sessionPath?: string;
+  artifactPaths?: { outputPath?: string };
+}
+
+export interface AsyncCompleteEvent {
+  runId?: string;
+  results?: AsyncCompleteResult[];
+  cwd?: string;
+  sessionId?: string;
+}
+
+export type ToolCallHandler = (
+  event: ToolCallEvent,
+  context: ExtensionContext,
+) => ToolCallEventResult | undefined | Promise<ToolCallEventResult | undefined>;
+
+export interface EventBus {
+  emit(channel: string, data: unknown): void;
+  on(channel: "subagent:foreground-complete", handler: (event: ForegroundCompleteEvent) => void): () => void;
+  on(channel: "subagent:async-complete", handler: (event: AsyncCompleteEvent) => void): () => void;
+}
+
+export interface ConfiguredTool {
+  name: string;
+  description: string;
+  parameters: unknown;
+  promptGuidelines?: string[];
+  sourceInfo: {
+    path: string;
+    source: string;
+    scope: "user" | "project" | "temporary";
+    origin: "package" | "top-level";
+  };
+}
+
+export interface ExtensionAPI {
+  events: EventBus;
+  getAllTools(): ConfiguredTool[];
+  on(
+    event: "session_start",
+    handler: (event: SessionStartEvent, context: ExtensionContext) => void | Promise<void>,
+  ): void;
+  on(event: "tool_call", handler: ToolCallHandler): void;
+  on(
+    event: "tool_result",
+    handler: (event: SubagentToolResultEvent, context: ExtensionContext) => void | Promise<void>,
+  ): void;
+  on(event: "message_end", handler: (event: MessageEndEvent, context: ExtensionContext) => void | Promise<void>): void;
+  on(event: "agent_settled", handler: (event: unknown, context: ExtensionContext) => void | Promise<void>): void;
+  on(
+    event: "session_shutdown",
+    handler: (event: SessionShutdownEvent, context: ExtensionContext) => void | Promise<void>,
+  ): void;
+}
+
 export type ExtensionFactory = (pi: ExtensionAPI) => void | Promise<void>;

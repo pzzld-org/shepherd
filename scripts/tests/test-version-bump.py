@@ -409,6 +409,25 @@ class VersionBumpTests(unittest.TestCase):
             text=True,
         )
 
+    def test_packed_plugin_release_archive_count_is_eleven(self) -> None:
+        self.assertEqual(whole_authority_count("scripts/test-packed-plugin.sh"), 11)
+
+    def test_pi_runtime_state_is_excluded_without_disabling_source_scan(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="shepherd-version-pi-state-") as temporary:
+            root = Path(temporary)
+            seed_fixture(root)
+            write(root, ".pi/tasks/runtime.json", f'{{"version":"{CURRENT}"}}\n')
+            write(root, "notes/current.mjs", f'export const version = "{CURRENT}";\n')
+
+            result = self.run_tool(root, "check", "--version", CURRENT)
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn(
+                f"notes/current.mjs: unclassified {CURRENT} version surface",
+                result.stderr,
+            )
+            self.assertNotIn(".pi/tasks/runtime.json", result.stderr)
+
     def test_bump_updates_every_authority_and_preserves_history(self) -> None:
         with tempfile.TemporaryDirectory(prefix="shepherd-version-bump-") as temporary:
             root = Path(temporary)

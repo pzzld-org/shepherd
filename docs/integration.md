@@ -87,11 +87,16 @@ does not own this marketplace path or import Claude's private hooks.
 
 ### Pi
 
-`@pzzld/pi-shepherd` is a host extension, not a standalone Pi agent runtime. It
-requires a `SubagentProvider`-compatible extension, such as `pi-subagents`, to
-resolve mutation identity and spawn/resume/stop operations. The provider must
-advertise the required methods and readiness. Missing or unready provider
-capability fails closed. Pi's contract is documented in
+`@pzzld/pi-shepherd` is a host extension, not a standalone Pi agent runtime. At
+root and child `session_start`, it calls Pi's public `pi.getAllTools()` API and
+accepts any compatible registered subagent system whose configured tool name is
+exactly `subagent`. It checks all configured tools, not only active tools, so a
+critic or auditor can keep the provider inactive. An absent or malformed tool
+inventory leaves reads available but blocks Write, Edit, and Bash with:
+`Pi subagent provider unavailable. Run \`pi install npm:pi-subagents\`, then restart Pi.`
+The extension does not import or depend on `pi-subagents`; that command is the
+supported install or upgrade path for the reference provider. Pi's contract is
+documented in
 [`packages/harness-pi/shepherd.pi.json`](../packages/harness-pi/shepherd.pi.json).
 
 ## Install generated adapter trees
@@ -167,7 +172,7 @@ Adapters must report host limitations instead of guessing:
 | --- | --- | --- |
 | Claude Code | Hooks and Agent Teams may be available. | If a hook or identity correlation is unavailable, the adapter reports the limitation and preserves its documented fail-closed posture. |
 | Codex | The regular marketplace carrier supports SessionStart and guarded PreToolUse. | Native subagent lifecycle hooks are not registered because the host does not expose a trusted spawn-to-child correlation; direct lifecycle inputs are rejected, never fabricated into a role. |
-| Pi | A ready `SubagentProvider` is supplied by the host extension. | Missing provider, method, or readiness blocks mutation operations. |
+| Pi | `pi.getAllTools()` reports a configured tool named exactly `subagent`. | Missing or malformed configured-tool metadata blocks Write, Edit, and Bash while reads remain available. |
 
 Host-specific limits belong in adapter diagnostics and run evidence. They do
 not change the Component Model contract.

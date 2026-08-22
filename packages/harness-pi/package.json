@@ -22,7 +22,12 @@
     ],
     "prompts": [
       "./prompts"
-    ]
+    ],
+    "subagents": {
+      "agents": [
+        "./agents"
+      ]
+    }
   },
   "keywords": [
     "pi-package",
@@ -36,6 +41,7 @@
     "src",
     "skills",
     "prompts",
+    "agents",
     "shepherd.pi.json",
     "README.md",
     "LICENSE",

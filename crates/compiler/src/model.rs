@@ -196,6 +196,7 @@ impl HarnessProfile {
             ("report-write".into(), vec!["write".into()]),
             ("search".into(), vec!["grep".into(), "find".into()]),
             ("shell".into(), vec!["bash".into()]),
+            ("dispatch".into(), vec!["subagent".into()]),
             ("write".into(), vec!["write".into(), "edit".into()]),
         ]);
         Self {
@@ -205,7 +206,6 @@ impl HarnessProfile {
             unsupported_capabilities: BTreeSet::from([
                 "ask-operator".into(),
                 "code-intelligence".into(),
-                "dispatch".into(),
                 "message-peer".into(),
                 "schedule-wakeup".into(),
                 "skill-load".into(),
@@ -213,29 +213,15 @@ impl HarnessProfile {
                 "tool-discovery".into(),
                 "web-research".into(),
             ]),
+            // Pi model names are provider/model registry identifiers. Authored
+            // portability hints have no provider-neutral Pi spelling, so every
+            // role inherits the active/default model instead of emitting an
+            // alias Pi rejects at launch.
             model_by_hint: BTreeMap::from([
                 ("inherit-caller".into(), ModelResolution::default()),
-                (
-                    "reasoning-high".into(),
-                    ModelResolution {
-                        model: Some("opus".into()),
-                        ..ModelResolution::default()
-                    },
-                ),
-                (
-                    "standard".into(),
-                    ModelResolution {
-                        model: Some("sonnet".into()),
-                        ..ModelResolution::default()
-                    },
-                ),
-                (
-                    "economy".into(),
-                    ModelResolution {
-                        model: Some("haiku".into()),
-                        ..ModelResolution::default()
-                    },
-                ),
+                ("reasoning-high".into(), ModelResolution::default()),
+                ("standard".into(), ModelResolution::default()),
+                ("economy".into(), ModelResolution::default()),
             ]),
         }
     }

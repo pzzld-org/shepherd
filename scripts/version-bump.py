@@ -102,6 +102,7 @@ TEXT_SUFFIXES = frozenset(
 SCAN_EXCLUDED_DIRECTORIES = frozenset(
     {
         ".git",
+        ".pi",
         ".remember",
         ".shepherd",
         ".superpowers",
@@ -343,7 +344,7 @@ def version_rules(current: SemVer, next_version: SemVer) -> tuple[TextRule, ...]
         # the bump rewrite a workflow file, and GITHUB_TOKEN cannot push such a
         # change -- there is no `workflows` permission scope to grant. Any new
         # version literal in a workflow file recreates that dead end.
-        _whole("scripts/test-packed-plugin.sh", current, next_version, 10),
+        _whole("scripts/test-packed-plugin.sh", current, next_version, 11),
         TextRule(
             "scripts/tests/test-release-installers.sh",
             str(next_version),

@@ -228,9 +228,9 @@ fn target_final_role_carriers_resolve_models_profiles_and_pi_tools_in_core() {
         .iter()
         .find(|role| role.role == "coder")
         .expect("Pi coder contract");
-    assert_eq!(coder_contract.model.as_deref(), Some("sonnet"));
-    assert_eq!(coder_contract.tools, ["read", "grep", "find"]);
-    assert_eq!(coder_contract.unsupported_capabilities, ["dispatch"]);
+    assert_eq!(coder_contract.model, None);
+    assert_eq!(coder_contract.tools, ["read", "grep", "find", "subagent"]);
+    assert!(coder_contract.unsupported_capabilities.is_empty());
     let root_contract = pi
         .roles
         .iter()
@@ -271,7 +271,7 @@ fn economy_hint_resolves_and_matches_target_shape_on_all_canonical_profiles() {
                 assert_eq!(coder.reasoning_effort.as_deref(), Some("low"));
             }
             Target::Pi => {
-                assert_eq!(coder.model.as_deref(), Some("haiku"));
+                assert_eq!(coder.model, None);
                 assert_eq!(coder.profile, None);
                 assert_eq!(coder.reasoning_effort, None);
             }

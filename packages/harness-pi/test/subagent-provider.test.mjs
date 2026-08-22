@@ -7,8 +7,10 @@ import { fileURLToPath } from "node:url";
 
 const contract = JSON.parse(readFileSync(join(fileURLToPath(new URL("..", import.meta.url)), "shepherd.pi.json"), "utf8"));
 assert.equal(contract.contract, "fl03:shepherd@6.5.6");
-assert.equal(contract.provider.failClosedWhenAbsent, true);
-assert.deepEqual(contract.provider.requiredMethods, ["capabilities", "spawn", "resume", "stop"]);
+assert.equal(contract.provider.publicApi, "pi.getAllTools()");
+assert.equal(contract.provider.configuredToolName, "subagent");
+assert.equal(contract.provider.includesInactiveTools, true);
+assert.equal(contract.provider.failClosedForMutationWhenAbsentOrMalformed, true);
 assert.deepEqual(contract.component.requiredExports, [
   "canonicalProfile",
   "compileCanonical",

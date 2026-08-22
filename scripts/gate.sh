@@ -53,6 +53,7 @@ gate_fast() {
   step "workspace invariants are falsifiable" ./scripts/check-workspace.sh --self-test
   step "workspace invariants" ./scripts/check-workspace.sh
   step "compiler package projection is falsifiable" python3 scripts/tests/test-generate-compiler-package-content.py
+  step "Pi agent generation" python3 scripts/tests/test-generate-pi-agents.py
   step "Cargo distribution contract" python3 scripts/tests/test-cargo-distribution.py
   step "Cargo distribution inventory" python3 scripts/check-cargo-distribution.py
   step "Cargo publisher recovery contract" python3 scripts/tests/test-cargo-publish.py
