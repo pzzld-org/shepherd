@@ -97,6 +97,8 @@ gate_fast() {
   # of that shape; it is now the gate's problem, not a reviewer's.
   step "every test is reachable from a runner (falsifiable)" python3 scripts/check-gate-wiring.py --self-test
   step "every test is reachable from a runner" python3 scripts/check-gate-wiring.py
+  step "conformance gate wiring is falsifiable" python3 scripts/tests/test-conformance-gate.py --self-test
+  step "conformance gate wiring" python3 scripts/tests/test-conformance-gate.py
   step "release asset inventory" bash scripts/tests/test-release-assets.sh
   step "release installers" bash scripts/tests/test-release-installers.sh
   step "PowerShell installer contract" bash scripts/tests/test-release-installer-powershell-contract.sh
@@ -170,6 +172,7 @@ gate_full() {
   step "clippy (default)" env RUSTFLAGS="-D warnings" cargo clippy --workspace --all-targets --locked
   step "clippy (full)" env RUSTFLAGS="-D warnings" cargo clippy --workspace --all-targets --locked --features full
   step "tests" cargo test --workspace --locked
+  step "native conformance corpus" conformance/run.sh --impl=rust
   # Do not "fix" this by adding `cargo test --workspace --locked --all-features`
   # below. That was tried and measured wrong twice: `--all-features` on this
   # workspace turns on `nightly` (crates/core/Cargo.toml), which gates
