@@ -100,22 +100,50 @@ def emit(target: str, binary: str) -> dict:
 
         if not files:
             sys.exit(f"FAIL: {target} emitted zero files")
-        return {"files": files, "tree_digest": manifest["tree_digest"]}
+        return {
+            "files": files,
+            "roles": manifest["roles"],
+            "tree_digest": manifest["tree_digest"],
+        }
 
 
 def build(binary: str) -> dict:
     existing = json.loads(ORACLE.read_text()) if ORACLE.is_file() else {}
-    document = {
+    emitted = {target: emit(target, binary) for target in TARGETS}
+    by_target = {
+        target: {role["role"]: role for role in output.pop("roles")}
+        for target, output in emitted.items()
+    }
+    role_names = sorted(by_target["claude"])
+    if any(sorted(by_target[target]) != role_names for target in TARGETS):
+        sys.exit("FAIL: compiler targets disagree on the emitted role set")
+    roles = {}
+    for role in role_names:
+        claude = by_target["claude"][role]
+        codex = by_target["codex"][role]
+        pi = by_target["pi"][role]
+        hints = {target: by_target[target][role]["model_hint"] for target in TARGETS}
+        if len(set(hints.values())) != 1:
+            sys.exit(f"FAIL: compiler targets disagree on {role} model_hint: {hints}")
+        roles[role] = {
+            "claude_model": claude["model"],
+            "codex_effort": codex["reasoning_effort"],
+            "codex_profile": codex["profile"],
+            "model_hint": pi["model_hint"],
+            "pi_model": pi["model"],
+            "pi_tools": pi["tools"],
+            "pi_unsupported": pi["unsupported_capabilities"],
+        }
+    return {
         "contract_note": existing.get(
             "contract_note",
             "Frozen target-final projection of content/. Regenerate with "
             "scripts/generate-content-oracle.py --write, never by hand.",
         ),
         "schema": SCHEMA,
-        "roles": existing.get("roles", 9),
-        "targets": {target: emit(target, binary) for target in TARGETS},
+        "roles": roles,
+        "targets": emitted,
     }
-    return document
 
 
 def unchanged_entries_still_match(fresh: dict, frozen: dict) -> list[str]:

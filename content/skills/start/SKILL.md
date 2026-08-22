@@ -17,9 +17,9 @@ The flag picks who owns fan-out.
 ## Root perspective, the default
 
 Root drives. One `shepherd:engineer` ledgers the plan and stops; it authors no execution.
-Root then runs the waves itself — discovery and initialization, then execution —
-dispatching each implementer at `shepherd models resolve <role>` under one bounded
-workflow per wave. No conductor, no lane ledger.
+Root runs discovery, initialization, then execution. Each implementer's generic subagent
+`model` is the exact `shepherd models resolve ROLE --harness HARNESS` output. Use one
+bounded workflow per wave. No conductor, no lane ledger.
 
 Use it when splitting into lanes would cost more than it saves.
 
@@ -31,9 +31,9 @@ One lane, one conductor, no root fan-out.
   lane in flight.
 - `shepherd run lane add <run> <lane>`, passing `--worktree` and `--branch` when it
   executes outside the root checkout.
-- One `shepherd:conductor` at `shepherd models resolve conductor`. Orientation is
-  abbreviated: `lanes/<lane>/plan.md` already carries the phases, so the brief names the
-  run, lane, scope, acceptance, and gate, and references the plan.
+- One `shepherd:conductor`, with generic subagent `model` set to the exact
+  `shepherd models resolve conductor --harness HARNESS` output. Its brief references
+  `lanes/<lane>/plan.md` and names run, lane, scope, acceptance, and gate.
 
 The conductor drives; it owns lane outcomes and output fidelity.
 `shepherd:worker` and `shepherd:coder` execute tasks, an adversarial

@@ -2,12 +2,20 @@ shepherd models <resolve|show> [args]
 
   resolve <role>        Echo the portable model hint for one role.
   resolve <role> --harness <claude|codex|pi>
-                        Resolve the hint through the compiler's canonical
-                        harness profile.
+                        Resolve the hint to a harness-native target. Pi uses
+                        the closed model_targets.pi config map.
                         Roles: root planter engineer conductor critic
                                discovery coder auditor worker
+                        Alias: shepherd -> root (the [models] root config key
+                               is canonical here; content/, the guard engine,
+                               and the agent cards spell this same role
+                               shepherd).
   show [--md|--json]    Print the full resolved 9-role hint table + source.
+  show --harness <claude|codex|pi> [--md|--json]
+                        Render every role's harness-native model spelling
+                        instead of the portable hint.
 
 The [models] block in .shepherd/shepherd.toml is the one project map. Unset
-roles use portable defaults: root = inherit-caller; planter/engineer =
-reasoning-high; all other roles = standard. See docs/configuration.md §models.
+roles use portable defaults: root/planter/engineer/conductor =
+reasoning-high; discovery = economy; all others = standard. See
+docs/configuration.md §models.

@@ -76,13 +76,25 @@ for role in auditor coder conductor critic discovery engineer worker; do
   {
     printf '%s\n' '---'
     printf 'name: "shepherd:%s"\n' "$role"
+    printf '%s\n' 'tools: read, subagent'
+    printf '%s\n' 'model: model-required/model-required'
     printf '%s\n' 'subagentOnlyExtensions: ../src/extension.mjs'
-    if [[ "$role" == conductor || "$role" == engineer ]]; then
-      printf '%s\n' 'maxSubagentDepth: 2'
-    fi
+    printf '%s\n' 'maxSubagentDepth: 2'
     printf '%s\n' '---' "fixture agent for $role"
   } > "$package_root/agents/$role.md"
 done
+cat > "$package_root/.shepherd-generated.json" <<'JSON'
+{
+  "schema": "shepherd.compiled-tree/3",
+  "target": "pi",
+  "roles": [
+    {"role": "conductor", "model_hint": "reasoning-high", "model": null, "capabilities": ["dispatch"]},
+    {"role": "critic", "model_hint": "standard", "model": null, "capabilities": ["read"]},
+    {"role": "engineer", "model_hint": "reasoning-high", "model": null, "capabilities": ["dispatch"]},
+    {"role": "worker", "model_hint": "standard", "model": null, "capabilities": ["read"]}
+  ]
+}
+JSON
 EOF
 cat > "$fixture/scripts/stage-distribution-legal.sh" <<'EOF'
 #!/usr/bin/env bash

@@ -10,8 +10,8 @@ use shepherd_cli::shepherd::{
     registry::Registry,
 };
 use shepherd_cli::{
-    BindRootDispatchRequest, DispatchService, DispatchStore, ResolveDispatchRequest,
-    ResumeDispatchRequest, StartDispatchRequest, StopDispatchRequest,
+    BindRootDispatchRequest, DispatchService, DispatchServiceError, DispatchStore,
+    ResolveDispatchRequest, ResumeDispatchRequest, StartDispatchRequest, StopDispatchRequest,
 };
 
 fn fixture_dir(label: &str) -> PathBuf {
@@ -70,6 +70,74 @@ fn session_start_binding_is_durable_and_required_for_root_resolution() {
     assert_eq!(binding.schema, "shepherd.root-session/1");
     assert_eq!(binding.bound_at, 1_000);
     assert_eq!(binding.expires_at, 61_000);
+
+    let resumed = service
+        .bind_root(
+            BindRootDispatchRequest {
+                schema: "shepherd.dispatch-request/1".into(),
+                run: Some("v645".into()),
+                harness: Harness::ClaudeCode,
+                session_id: "root-session-1".into(),
+                role_carrier: "shepherd:shepherd".into(),
+                mode: "execution".into(),
+                lease_ms: 60_000,
+            },
+            2_000,
+        )
+        .expect("resumed SessionStart returns the existing root binding");
+    assert_eq!(resumed, binding);
+    assert_eq!(resumed.bound_at, 1_000, "resume must not renew the binding");
+
+    for (harness, role_carrier, mode) in [
+        (Harness::Codex, "shepherd:shepherd", "execution"),
+        (Harness::ClaudeCode, "shepherd:planter", "execution"),
+        (Harness::ClaudeCode, "shepherd:shepherd", "planning"),
+    ] {
+        let conflict = service.bind_root(
+            BindRootDispatchRequest {
+                schema: "shepherd.dispatch-request/1".into(),
+                run: Some("v645".into()),
+                harness,
+                session_id: "root-session-1".into(),
+                role_carrier: role_carrier.into(),
+                mode: mode.into(),
+                lease_ms: 60_000,
+            },
+            3_000,
+        );
+        assert!(
+            matches!(
+                conflict,
+                Err(DispatchServiceError::RootBindingConflict { .. })
+            ),
+            "a resumed SessionStart must not change harness, role, or mode: {conflict:?}"
+        );
+    }
+    assert_eq!(
+        service
+            .store()
+            .load_active_root_binding(&binding.session_id)
+            .expect("conflicts leave the original binding readable"),
+        binding,
+        "conflicts must not overwrite the durable identity"
+    );
+
+    let unrelated = service
+        .bind_root(
+            BindRootDispatchRequest {
+                schema: "shepherd.dispatch-request/1".into(),
+                run: Some("v645".into()),
+                harness: Harness::Pi,
+                session_id: "root-session-2".into(),
+                role_carrier: "shepherd:shepherd".into(),
+                mode: "execution".into(),
+                lease_ms: 60_000,
+            },
+            4_000,
+        )
+        .expect("an unrelated root session still publishes");
+    assert_eq!(unrelated.session_id.as_str(), "root-session-2");
+    assert_eq!(unrelated.bound_at, 4_000);
 
     let resolved = service
         .resolve(

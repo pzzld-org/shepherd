@@ -54,6 +54,7 @@ interface engine {
     role: string,
     carrier-path: string,
     description: string,
+    model-hint: string,
     model: option<string>,
     profile: option<string>,
     reasoning-effort: option<string>,

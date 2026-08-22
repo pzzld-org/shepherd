@@ -28,15 +28,30 @@ class AuthorityContractTests(unittest.TestCase):
             case = self.write_case(Path(temporary), None)
             self.assertEqual(case.authority, "native-v6.4.5")
 
+    def test_v646_native_recording_authority_is_accepted(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            case = self.write_case(Path(temporary), "native-v6.4.6")
+            self.assertEqual(case.authority, "native-v6.4.6")
+
     def test_legacy_authority_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            with self.assertRaisesRegex(ValueError, "only native-v6.4.5 authority"):
+            with self.assertRaisesRegex(ValueError, "supported native authorities"):
                 self.write_case(Path(temporary), "python-legacy")
 
     def test_unknown_recording_authority_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            with self.assertRaisesRegex(ValueError, "only native-v6.4.5 authority"):
+            with self.assertRaisesRegex(ValueError, "supported native authorities"):
                 self.write_case(Path(temporary), "latest-wins")
+
+    def test_case_environment_prefers_the_exact_rust_binary(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            scratch = Path(temporary)
+            cwd = scratch / "cwd"
+            rust_bin = scratch / "target" / "debug" / "shepherd"
+            environment = harness._build_env(
+                cwd, cwd / ".shepherd", cwd / ".shepherd" / "shepherd.db", rust_bin=rust_bin
+            )
+            self.assertEqual(environment["PATH"].split(harness.os.pathsep)[0], str(rust_bin.parent))
 
     def test_case_environment_uses_an_isolated_user_home_and_no_legacy_overrides(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

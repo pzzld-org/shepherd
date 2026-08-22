@@ -21,9 +21,9 @@ use crate::{
     interface::CliError,
 };
 
-const MANIFEST_SCHEMA: &str = "shepherd.compiled-tree/2";
+const MANIFEST_SCHEMA: &str = "shepherd.compiled-tree/3";
 const MANIFEST_NAME: &str = ".shepherd-generated.json";
-const LEGACY_MANIFEST_SCHEMA: &str = "shepherd.compiled-tree/1";
+const LEGACY_MANIFEST_SCHEMAS: [&str; 2] = ["shepherd.compiled-tree/1", "shepherd.compiled-tree/2"];
 const MAX_MANIFEST_BYTES: usize = 4 * 1_048_576;
 
 #[derive(
@@ -118,6 +118,8 @@ struct GeneratedRole {
     role: String,
     carrier_path: String,
     description: String,
+    #[serde(default)]
+    model_hint: String,
     model: Option<String>,
     profile: Option<String>,
     reasoning_effort: Option<String>,
@@ -156,10 +158,9 @@ impl GeneratedManifest {
     }
 
     fn validate(&self) -> Result<(), CliError> {
-        if !matches!(
-            self.schema.as_str(),
-            MANIFEST_SCHEMA | LEGACY_MANIFEST_SCHEMA
-        ) {
+        if self.schema != MANIFEST_SCHEMA
+            && !LEGACY_MANIFEST_SCHEMAS.contains(&self.schema.as_str())
+        {
             return Err(CliError::message(
                 "generated manifest has an unsupported schema",
             ));
@@ -185,6 +186,7 @@ impl GeneratedManifest {
                 validate_manifest_token("role", &role.role, 64)?;
                 validate_relative(&role.carrier_path)?;
                 validate_manifest_text("role description", &role.description, 500)?;
+                validate_manifest_token("model hint", &role.model_hint, 64)?;
                 validate_optional_manifest_token("model", role.model.as_deref(), 128)?;
                 validate_optional_manifest_token("profile", role.profile.as_deref(), 64)?;
                 validate_optional_manifest_token(
@@ -239,6 +241,7 @@ impl GeneratedRole {
             role: role.role.clone(),
             carrier_path: role.carrier_path.clone(),
             description: role.description.clone(),
+            model_hint: role.model_hint.clone(),
             model: role.model.clone(),
             profile: role.profile.clone(),
             reasoning_effort: role.reasoning_effort.clone(),

@@ -9,6 +9,10 @@
     "<SCRATCH>/cwd/.shepherd/shepherd.toml"
   ],
   "registry_schema": 21,
+  "resolved_shepherd_path": "<REPO_ROOT>/target/debug/shepherd",
+  "resolved_shepherd_native": true,
+  "resolved_shepherd_skew_seconds": 0,
   "findings": [],
+  "warnings": [],
   "ok": true
 }

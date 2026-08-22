@@ -23,9 +23,9 @@ exact output.
 
 ## Step 1 — dispatch the engineer
 
-Exactly one `shepherd:engineer`, at the tier `shepherd models resolve engineer` returns.
-Root passes the run id and the seed path. Root does not summarize the seed; the engineer
-reads it whole.
+Exactly one `shepherd:engineer`, with generic subagent `model` set to the exact
+`shepherd models resolve engineer --harness HARNESS` output. Root passes the run id and
+seed path, which the engineer reads whole.
 
 ## Step 2 — the engineer orients before it plans
 
@@ -38,10 +38,9 @@ dynamic workflow of two agent kinds running concurrently against one run:
 - **discovery** — resolve the external unknowns the seed names: upstream documentation,
   release notes, API surfaces, prior art.
 
-Width follows tier. `auditor` runs at the tier `shepherd models resolve auditor` returns,
-and `discovery` at the tier `shepherd models resolve discovery` returns, both lower tiers,
-so the wave is wide and every agent carries one bounded brief. An agent returning prose
-instead of evidence is re-dispatched once, then dropped.
+For `auditor` and `discovery`, set generic subagent `model` to the exact
+`shepherd models resolve ROLE --harness HARNESS` output. Use wide ordinary-tier fanout
+with one bounded brief per agent. Re-dispatch prose without evidence once, then drop it.
 
 ## Step 3 — the plan
 

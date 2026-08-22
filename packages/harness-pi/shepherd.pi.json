@@ -28,7 +28,7 @@
       "validateNativeExchange"
     ]
   },
-  "hooksDispatchModel": "Pi loads src/extension.mjs once. At session_start the extension uses Pi's public pi.getAllTools() API and accepts any configured tool named exactly subagent, whether active or inactive. Missing or malformed tool metadata leaves the session readable and blocks Write/Edit/Bash with the declared remediation. Parent terminal observers keep bounded nonblocking candidates until exact component/native correlation succeeds; only validated exact stop failures enter the mutation-blocking pending set.",
+  "hooksDispatchModel": "Pi loads src/extension.mjs once. At session_start the extension uses Pi's public pi.getAllTools() API and accepts any configured tool named exactly subagent, whether active or inactive. Generated child carriers register that transport at maxSubagentDepth 2, while Component-compiled canonical capabilities remain dispatch authority. Missing or malformed tool metadata leaves the session readable and blocks Write/Edit/Bash with the declared remediation. Parent terminal observers keep bounded nonblocking candidates until exact component/native correlation succeeds; only validated exact stop failures enter the mutation-blocking pending set.",
   "hooks": {
     "session_start": {
       "canonicalEvent": "SessionStart|SubagentStart",
@@ -69,7 +69,7 @@
     "tool_call": {
       "canonicalEvent": "PreToolUse",
       "surface": "pi.on",
-      "behavior": "blocks on provider readiness or exact correlated stop failures, retries bounded nonblocking pre-correlation candidates, then resolves exact native identity and evaluates the component guard",
+      "behavior": "before normal mutation guarding, blocks managed-child subagent calls when the already-resolved Component canonical capabilities omit dispatch; otherwise blocks on provider readiness or exact correlated stop failures, retries bounded nonblocking pre-correlation candidates, then resolves exact native identity and evaluates the component guard",
       "guardedTools": ["write", "edit", "bash"]
     },
     "session_shutdown": {

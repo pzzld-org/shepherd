@@ -17,7 +17,7 @@ use shepherd::{
     GuardValue, Harness,
     dispatch::{
         AgentId, DispatchBinding, DispatchPlan, DispatchRequest, LaneId, RawIdentity, Role, RunId,
-        SessionId, plan_lifecycle,
+        plan_lifecycle,
     },
 };
 
@@ -252,24 +252,11 @@ fn run_hook(
     match request {
         DispatchRequest::BindRoot(request) => {
             let request: BindRootDispatchRequest = decode_request(&request)?;
-            match service.bind_root(request.clone(), now) {
-                Ok(response) => Ok(HookOutput::Context {
-                    event: input.hook_event_name,
-                    detail: format!("bound root session to run {}", response.run),
-                }),
-                // The no-clobber write behind `bind_root` always collides with
-                // this session's OWN prior binding (the path is keyed by
-                // session id, so two different session ids can never collide
-                // here) -- either a harmless replay of the exact same
-                // identity, which a dropped response or a supervisor restart
-                // can legitimately produce, or the same session id now
-                // claiming a different identity. Reading the existing record
-                // back is what tells them apart.
-                Err(crate::DispatchServiceError::Store(
-                    crate::DispatchStoreError::AlreadyExists { .. },
-                )) => root_binding_reaffirmation(&context, &input, &request),
-                Err(error) => Err(service_error(error)),
-            }
+            let response = service.bind_root(request, now).map_err(service_error)?;
+            Ok(HookOutput::Context {
+                event: input.hook_event_name,
+                detail: format!("bound root session to run {}", response.run),
+            })
         }
         DispatchRequest::Start(request) => {
             let request = decode_request(&request)?;
@@ -467,52 +454,6 @@ fn decode_request<T: serde::de::DeserializeOwned>(
 
 fn service_error(error: crate::DispatchServiceError) -> CliError {
     CliError::message(error.to_string())
-}
-
-/// Decide whether a second `BindRoot` that collided with this session's own
-/// existing binding is a harmless replay or a genuine conflict.
-///
-/// `DispatchStoreError::AlreadyExists` only tells us that
-/// `.root-session.<session id>.json` already exists; it says nothing about
-/// whether the request that just collided with it agrees with what is
-/// already recorded there. Loading the existing record back and comparing it
-/// is what makes that distinction: identical identity (harness, role, mode)
-/// is exactly what a dropped response or a supervisor restart legitimately
-/// replays, so it becomes a non-rejection re-affirmation; anything else --
-/// including a load failure, which is `dispatch_store.rs`'s own integrity
-/// check reporting that the record's embedded identity disagrees with the
-/// canonical path it was found at -- stays a refusal, and the message says
-/// which case fired.
-fn root_binding_reaffirmation(
-    context: &ExecutionContext,
-    input: &NativeHookInput,
-    request: &BindRootDispatchRequest,
-) -> Result<HookOutput, CliError> {
-    let session_id = SessionId::new(input.session_id.clone())
-        .map_err(|error| CliError::message(error.to_string()))?;
-    let requested_role = Role::from_carrier(&request.role_carrier)
-        .map_err(|error| CliError::message(error.to_string()))?;
-    let store = DispatchStore::new(&context.runs_root);
-    let existing = store.load_active_root_binding(&session_id).map_err(|error| {
-        CliError::message(format!(
-            "root session binding for {session_id} belongs to a different session or run: {error}"
-        ))
-    })?;
-    if existing.harness == request.harness
-        && existing.role == requested_role
-        && existing.mode == request.mode
-    {
-        Ok(HookOutput::Context {
-            event: input.hook_event_name.clone(),
-            detail: format!("root session already bound to run {}", existing.run),
-        })
-    } else {
-        Err(CliError::message(format!(
-            "root session already bound to run {} with a different identity \
-(harness, role, or mode changed); refusing to silently rebind it",
-            existing.run
-        )))
-    }
 }
 
 fn cli_error_detail(error: &CliError) -> &str {

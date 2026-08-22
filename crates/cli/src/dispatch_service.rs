@@ -35,6 +35,10 @@ pub enum DispatchServiceError {
     Identity(#[from] IdentityError),
     #[error("cannot materialize resume context: {0}")]
     ResumeContext(String),
+    #[error(
+        "root session `{session_id}` is already bound to run `{run}` with a different identity"
+    )]
+    RootBindingConflict { run: RunId, session_id: SessionId },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
@@ -232,8 +236,21 @@ impl DispatchService {
             expires_at: lease_expires_at,
         };
         binding.validate()?;
-        self.store.publish_root_binding(&binding)?;
-        Ok(binding)
+        match self.store.publish_root_binding(&binding) {
+            Ok(()) => Ok(binding),
+            Err(DispatchStoreError::AlreadyExists { .. }) => {
+                let existing = self.store.load_active_root_binding(&binding.session_id)?;
+                if same_root_identity(&existing, &binding) {
+                    Ok(existing)
+                } else {
+                    Err(DispatchServiceError::RootBindingConflict {
+                        run: existing.run,
+                        session_id: existing.session_id,
+                    })
+                }
+            }
+            Err(error) => Err(error.into()),
+        }
     }
 
     pub fn resolve(
@@ -465,6 +482,15 @@ impl DispatchService {
             resumes_agent_id,
         })
     }
+}
+
+fn same_root_identity(existing: &RootSessionBinding, requested: &RootSessionBinding) -> bool {
+    existing.project_id == requested.project_id
+        && existing.run == requested.run
+        && existing.harness == requested.harness
+        && existing.session_id == requested.session_id
+        && existing.role == requested.role
+        && existing.mode == requested.mode
 }
 
 fn lease_expires_at(lease_ms: u64, now: i64) -> DispatchServiceResult<i64> {

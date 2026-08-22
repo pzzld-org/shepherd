@@ -432,9 +432,8 @@ that flips allow into deny: {detail}"
     fs::remove_dir_all(root).expect("remove fixture directory");
 }
 
-/// #314: a replayed `SessionStart` for a session that already owns the
-/// binding is a non-rejection re-affirmation, not
-/// `native lifecycle hook rejected: dispatch record already exists: ...`.
+/// A replayed `SessionStart` for a session that already owns the exact
+/// binding returns the durable binding instead of rejecting the native caller.
 #[test]
 fn session_start_is_idempotent_for_the_same_session() {
     let root = repository("session-start-idempotent");
@@ -475,27 +474,22 @@ fn session_start_is_idempotent_for_the_same_session() {
         .as_str()
         .expect("second SessionStart carries additionalContext");
 
-    // The idempotency property this fix implements is a NAMED
-    // re-affirmation ("root session already bound to run v645"), not a
-    // byte-identical replay of the bind confirmation -- and, above all, not
-    // a rejection.
     assert!(
         !second_detail.contains("rejected"),
         "a replayed SessionStart must not be rejected: {second_detail}"
     );
     assert!(
-        second_detail.contains("root session already bound to run v645"),
-        "a replayed SessionStart must name the re-affirmation: {second_detail}"
+        second_detail.contains("bound root session to run v645"),
+        "a replayed SessionStart must return the durable binding: {second_detail}"
     );
-    assert_ne!(
+    assert_eq!(
         first_out, second_out,
-        "the re-affirmation is a named, distinct response, not a byte-for-byte \
-replay of the bind confirmation: first={first_out} second={second_out}"
+        "the native adapter must not need a separate replay suppression path"
     );
     fs::remove_dir_all(root).expect("remove fixture directory");
 }
 
-/// #314's other half: idempotency must not become amnesia. A second
+/// Idempotency must not become amnesia. A second
 /// `SessionStart` for the SAME session id that asks to bind as a different
 /// identity (role) than the one already on record must still refuse.
 ///
@@ -507,9 +501,8 @@ replay of the bind confirmation: first={first_out} second={second_out}"
 /// `AlreadyExists` to discriminate. The reachable form of "the record
 /// belongs to a different session" is the SAME session id reused by what is,
 /// in substance, a different actor, which is exactly what a changed `role`
-/// on a replayed `SessionStart` looks like from shepherd's side, and exactly
-/// what `root_binding_reaffirmation` (native_hook.rs) checks the loaded
-/// on-disk record against.
+/// on a replayed `SessionStart` looks like from shepherd's side. The dispatch
+/// service compares that claim against the loaded durable identity.
 #[test]
 fn session_start_refuses_a_replay_with_a_different_identity() {
     let root = repository("session-start-different-identity");

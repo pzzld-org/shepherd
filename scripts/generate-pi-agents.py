@@ -12,6 +12,7 @@ from typing import Any, NoReturn, cast
 
 ROLE_PATTERN = re.compile(r"[a-z][a-z0-9-]*")
 TOOL_PATTERN = re.compile(r"[A-Za-z0-9_.:-]+")
+MODEL_REQUIRED_SENTINEL = "model-required/model-required"
 
 
 def fail(message: str) -> NoReturn:
@@ -27,8 +28,8 @@ def load_outputs(package_root: Path) -> dict[str, str]:
     if not isinstance(manifest, dict):
         fail("compiled Pi manifest must be an object")
     document = cast(dict[str, Any], manifest)
-    if document.get("schema") != "shepherd.compiled-tree/2" or document.get("target") != "pi":
-        fail("compiled carrier must use shepherd.compiled-tree/2 for target pi")
+    if document.get("schema") != "shepherd.compiled-tree/3" or document.get("target") != "pi":
+        fail("compiled carrier must use shepherd.compiled-tree/3 for target pi")
     roles = document.get("roles")
     if not isinstance(roles, list):
         fail("compiled Pi manifest roles must be an array")
@@ -56,24 +57,41 @@ def load_outputs(package_root: Path) -> dict[str, str]:
         role_name = cast(str, role)
         role_description = cast(str, description)
         role_tools = cast(list[str], tools)
+        transport_tools = list(dict.fromkeys([*role_tools, "subagent"]))
         carrier_path = raw.get("carrier_path")
         if carrier_path != f"prompts/{role_name}.md":
             fail(f"dispatchable role {role} has unexpected carrier path: {carrier_path!r}")
         prompt_path = package_root / cast(str, carrier_path)
         if not prompt_path.is_file() or prompt_path.is_symlink():
             fail(f"missing role prompt: {carrier_path}")
+        model_hint = raw.get("model_hint")
+        if not isinstance(model_hint, str) or ROLE_PATTERN.fullmatch(model_hint) is None:
+            fail(f"dispatchable role {role} has invalid model hint")
         model = raw.get("model")
-        if model is not None and (not isinstance(model, str) or not model.strip()):
+        if model is not None and (
+            not isinstance(model, str)
+            or not model.strip()
+            or any(character.isspace() or character in {'"', "\\"} for character in model)
+        ):
             fail(f"dispatchable role {role} has invalid model")
+        if model_hint == "inherit-caller":
+            if model != "inherit":
+                fail(f"dispatchable role {role} inherit-caller hint must emit model inherit")
+        else:
+            if model is not None:
+                fail(
+                    f"dispatchable role {role} non-inherit hint {model_hint} "
+                    f"must emit model null, got {model!r}"
+                )
+            model = MODEL_REQUIRED_SENTINEL
 
         frontmatter = [
             "---",
             f"name: {json.dumps(f'shepherd:{role_name}')}",
             f"description: {json.dumps(role_description)}",
-            f"tools: {', '.join(role_tools)}",
+            f"tools: {', '.join(transport_tools)}",
         ]
-        if model is not None:
-            frontmatter.append(f"model: {model}")
+        frontmatter.append(f"model: {model}")
         frontmatter.extend(
             [
                 "systemPromptMode: replace",
@@ -83,8 +101,7 @@ def load_outputs(package_root: Path) -> dict[str, str]:
                 f"acceptanceRole: {'writer' if raw.get('write_eligible') is True else 'read-only'}",
             ]
         )
-        if "subagent" in role_tools:
-            frontmatter.append("maxSubagentDepth: 2")
+        frontmatter.append("maxSubagentDepth: 2")
         if raw.get("write_eligible") is not True:
             frontmatter.append("completionGuard: false")
         prompt = prompt_path.read_text(encoding="utf-8")

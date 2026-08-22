@@ -1,19 +1,25 @@
-//! Context-free native model-map command.
+//! Read-only native model-map command.
 //!
-//! The legacy `models` family is a pure inspection surface. Its default path
-//! must therefore work in an isolated directory without creating a repository,
-//! user home, database, or configuration file. An explicit canonical config
-//! remains opt-in through the shared global `--config` switch.
+//! The `models` family is a read-only inspection surface. In a project it loads
+//! canonical model configuration for the requested or environment harness. In
+//! an isolated directory with no explicit config it remains context-free and
+//! materializes typed defaults without creating any filesystem state.
 
 use std::{
     collections::BTreeSet,
+    fs,
     io::{self, Write},
+    path::Path,
 };
 
-use shepherd::{compiler::HarnessProfile, settings::ModelsConfig};
+use shepherd::{
+    Harness,
+    compiler::HarnessProfile,
+    settings::{ModelsConfig, PiModelTargetsConfig},
+};
 
 use crate::{
-    ContextInputs, ExecutionContext,
+    ContextError, ContextInputs, ExecutionContext,
     interface::{CliError, CliGlobals},
 };
 
@@ -42,8 +48,8 @@ const HARNESSES: [&str; 3] = ["claude", "codex", "pi"];
 // `shepherd` is a documented INPUT alias that resolves to `root`, never a
 // tenth entry in `ROLES` and never a second canonical spelling.
 const ROLE_ALIASES: [(&str, &str); 1] = [("shepherd", "root")];
-const USAGE: &str = "shepherd models <resolve|show> [args]\n\n  resolve <role>        Echo the portable model hint for one role.\n  resolve <role> --harness <claude|codex|pi>\n                        Resolve the hint through the compiler's canonical\n                        harness profile.\n                        Roles: root planter engineer conductor critic\n                               discovery coder auditor worker\n                        Alias: shepherd -> root (the [models] root config key\n                               is canonical here; content/, the guard engine,\n                               and the agent cards spell this same role\n                               shepherd).\n  show [--md|--json]    Print the full resolved 9-role hint table + source.\n  show --harness <claude|codex|pi> [--md|--json]\n                        Render every role's harness-native model spelling\n                        instead of the portable hint.\n\nThe [models] block in .shepherd/shepherd.toml is the one project map. Unset\nroles use portable defaults: root/planter/engineer/conductor =\nreasoning-high; all other roles = standard. See docs/configuration.md §models.";
-const TEXT_FOOTER: &str = "root is advisory (your live session model). Spawned roles resolve their\nportable hint through the Rust compiler's Claude, Codex, or Pi profile.\nSee docs/configuration.md §models.";
+const USAGE: &str = "shepherd models <resolve|show> [args]\n\n  resolve <role>        Echo the portable model hint for one role.\n  resolve <role> --harness <claude|codex|pi>\n                        Resolve the hint to a harness-native target. Pi uses\n                        the closed model_targets.pi config map.\n                        Roles: root planter engineer conductor critic\n                               discovery coder auditor worker\n                        Alias: shepherd -> root (the [models] root config key\n                               is canonical here; content/, the guard engine,\n                               and the agent cards spell this same role\n                               shepherd).\n  show [--md|--json]    Print the full resolved 9-role hint table + source.\n  show --harness <claude|codex|pi> [--md|--json]\n                        Render every role's harness-native model spelling\n                        instead of the portable hint.\n\nThe [models] block in .shepherd/shepherd.toml is the one project map. Unset\nroles use portable defaults: root/planter/engineer/conductor =\nreasoning-high; discovery = economy; all others = standard. See\ndocs/configuration.md §models.";
+const TEXT_FOOTER: &str = "root is advisory (your live session model). Spawned roles resolve their\nportable hint through compiler-owned harness policy plus configured concrete targets.\nSee docs/configuration.md §models.";
 const MD_FOOTER: &str = "_root is advisory: it names the model your live session should run; a config key cannot rebind a running main-chat session._";
 
 #[derive(
@@ -174,7 +180,10 @@ impl WaveAModelsCmd {
             Some(ModelsAction::Help) => write_stdout(USAGE),
             Some(ModelsAction::Resolve(command)) => command.run(globals),
             Some(ModelsAction::Show(command)) => command.run(globals),
-            None => write_stdout(&render_text(&resolve_rows(&globals)?)),
+            None => {
+                let (rows, _) = resolve_rows(&globals, None)?;
+                write_stdout(&render_text(&rows))
+            }
         }
     }
 }
@@ -209,12 +218,14 @@ impl ModelsResolveCmd {
             ));
         }
 
-        let row = resolve_rows(&globals)?
+        let requested_harness = self.harness.as_deref().map(harness_from_name);
+        let (rows, pi_targets) = resolve_rows(&globals, requested_harness)?;
+        let row = rows
             .into_iter()
             .find(|row| row.role == role)
             .expect("validated role exists in the fixed role map");
         let model = match self.harness.as_deref() {
-            Some(harness) => translate_for_harness(&row.model, harness)?,
+            Some(harness) => translate_for_harness(&row.model, harness, &pi_targets)?,
             None => row.model.clone(),
         };
         if self.json {
@@ -254,10 +265,11 @@ impl ModelsShowCmd {
             ));
         }
 
-        let mut rows = resolve_rows(&globals)?;
+        let requested_harness = self.harness.as_deref().map(harness_from_name);
+        let (mut rows, pi_targets) = resolve_rows(&globals, requested_harness)?;
         if let Some(harness) = self.harness.as_deref() {
             for row in &mut rows {
-                row.model = translate_for_harness(&row.model, harness)?;
+                row.model = translate_for_harness(&row.model, harness, &pi_targets)?;
             }
         }
         if self.json {
@@ -270,14 +282,48 @@ impl ModelsShowCmd {
     }
 }
 
-fn resolve_rows(globals: &CliGlobals) -> Result<Vec<ModelRow>, CliError> {
-    // Default inspection remains side-effect-free and does not require a git
-    // checkout. `--config` opts into the canonical discovery boundary.
-    let (models, configured_roles) = match &globals.config {
-        None => (ModelsConfig::default(), BTreeSet::new()),
-        Some(_) => explicit_models(globals)?,
+fn resolve_rows(
+    globals: &CliGlobals,
+    requested_harness: Option<Harness>,
+) -> Result<(Vec<ModelRow>, PiModelTargetsConfig), CliError> {
+    let cwd = std::env::current_dir()
+        .map_err(|error| CliError::message(format!("cannot resolve current directory: {error}")))?;
+    let outside_repository = !has_repository_marker(&cwd)?;
+    let mut inputs = ContextInputs::from_environment(cwd)
+        .map_err(|error| CliError::message(error.to_string()))?;
+    inputs.explicit_config = globals.config.clone();
+    if let Some(harness) = requested_harness {
+        inputs.active_harness = Some(harness);
+    }
+    inputs.verbosity = globals.verbosity;
+    let context = match ExecutionContext::discover(inputs) {
+        Ok(context) => Some(context),
+        Err(ContextError::Primary(_)) if globals.config.is_none() && outside_repository => None,
+        Err(error) => return Err(CliError::message(error.to_string())),
     };
-    Ok(ROLES
+    let (models, configured_roles, pi_targets) = if let Some(context) = context {
+        // The loader already walked every merged layer's parsed table once to
+        // build `explicit_keys` (see `shepherd_core::loader::LoadedConfig`); a
+        // role is "configured" exactly when its dotted `models.<role>` key was
+        // present in some layer, never by comparing the merged value against
+        // `ModelsConfig::default()`.
+        let configured_roles = ROLES
+            .into_iter()
+            .filter(|role| context.explicit_keys.contains(&format!("models.{role}")))
+            .collect();
+        (
+            context.config.models,
+            configured_roles,
+            context.config.model_targets.pi,
+        )
+    } else {
+        (
+            ModelsConfig::default(),
+            BTreeSet::new(),
+            PiModelTargetsConfig::default(),
+        )
+    };
+    let rows = ROLES
         .into_iter()
         .map(|role| ModelRow {
             role,
@@ -288,31 +334,33 @@ fn resolve_rows(globals: &CliGlobals) -> Result<Vec<ModelRow>, CliError> {
                 ModelSource::Default
             },
         })
-        .collect())
+        .collect();
+    Ok((rows, pi_targets))
 }
 
-fn explicit_models(
-    globals: &CliGlobals,
-) -> Result<(ModelsConfig, BTreeSet<&'static str>), CliError> {
-    let cwd = std::env::current_dir()
-        .map_err(|error| CliError::message(format!("cannot resolve current directory: {error}")))?;
-    let mut inputs = ContextInputs::from_environment(cwd)
-        .map_err(|error| CliError::message(error.to_string()))?;
-    inputs.explicit_config = globals.config.clone();
-    inputs.verbosity = globals.verbosity;
-    let context =
-        ExecutionContext::discover(inputs).map_err(|error| CliError::message(error.to_string()))?;
-    // The loader already walked every merged layer's parsed table once to
-    // build `explicit_keys` (see `shepherd_core::loader::LoadedConfig`); a
-    // role is "configured" exactly when its dotted `models.<role>` key was
-    // present in some layer, never by comparing the merged value against
-    // `ModelsConfig::default()` (a config that explicitly sets a role to its
-    // default value must still report `source: config`).
-    let configured_roles = ROLES
-        .into_iter()
-        .filter(|role| context.explicit_keys.contains(&format!("models.{role}")))
-        .collect();
-    Ok((context.config.models, configured_roles))
+fn has_repository_marker(start: &Path) -> Result<bool, CliError> {
+    for ancestor in start.ancestors() {
+        match fs::symlink_metadata(ancestor.join(".git")) {
+            Ok(_) => return Ok(true),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(CliError::message(format!(
+                    "cannot inspect repository marker below {}: {error}",
+                    ancestor.display()
+                )));
+            }
+        }
+    }
+    Ok(false)
+}
+
+fn harness_from_name(harness: &str) -> Harness {
+    match harness {
+        "claude" => Harness::ClaudeCode,
+        "codex" => Harness::Codex,
+        "pi" => Harness::Pi,
+        _ => unreachable!("callers validate against the fixed harness map"),
+    }
 }
 
 /// Map an input role spelling to its canonical `ROLES` spelling through
@@ -356,7 +404,11 @@ fn model_for<'a>(models: &'a ModelsConfig, role: &str) -> &'a str {
     }
 }
 
-fn translate_for_harness(model_hint: &str, harness: &str) -> Result<String, CliError> {
+fn translate_for_harness(
+    model_hint: &str,
+    harness: &str,
+    pi_targets: &PiModelTargetsConfig,
+) -> Result<String, CliError> {
     let profile = HarnessProfile::canonical()
         .into_iter()
         .find(|profile| profile.target.as_str() == harness)
@@ -367,6 +419,23 @@ fn translate_for_harness(model_hint: &str, harness: &str) -> Result<String, CliE
             2,
         )
     })?;
+    if harness == "pi" {
+        if model_hint == "inherit-caller" {
+            return Ok("inherit".into());
+        }
+        return pi_targets
+            .get(model_hint)
+            .map(ToOwned::to_owned)
+            .ok_or_else(|| {
+                CliError::message_with_code(
+                    format!(
+                        "Pi model target missing for portable hint `{model_hint}`. Set \
+                         `model_targets.pi.{model_hint} = \"provider/model:thinking\"` in Shepherd configuration."
+                    ),
+                    2,
+                )
+            });
+    }
     Ok(resolution
         .model
         .as_ref()
@@ -434,6 +503,8 @@ fn write_stdout(text: &str) -> Result<(), CliError> {
 
 #[cfg(test)]
 mod tests {
+    use shepherd::settings::PiModelTargetsConfig;
+
     use super::{
         ModelRow, ModelSource, ROLE_ALIASES, ROLES, USAGE, canonical_role, render_json,
         render_markdown, render_text, translate_for_harness, unknown_role_message,
@@ -467,19 +538,31 @@ mod tests {
 
     #[test]
     fn harness_translation_fails_closed_for_unknown_claude_models() {
+        let pi_targets = PiModelTargetsConfig {
+            inherit_caller: "inherit".into(),
+            reasoning_high: "openai-codex/gpt-5.6-sol:xhigh".into(),
+            standard: "openai-codex/gpt-5.6-luna:max".into(),
+            economy: "openai-codex/gpt-5.6-luna:max".into(),
+        };
         assert_eq!(
-            translate_for_harness("reasoning-high", "claude").expect("known hint"),
+            translate_for_harness("reasoning-high", "claude", &pi_targets).expect("known hint"),
             "opus[1m]"
         );
         assert_eq!(
-            translate_for_harness("reasoning-high", "codex").expect("known hint"),
+            translate_for_harness("reasoning-high", "codex", &pi_targets).expect("known hint"),
             "reasoning-high"
         );
         assert_eq!(
-            translate_for_harness("reasoning-high", "pi").expect("known hint"),
-            "opus"
+            translate_for_harness("reasoning-high", "pi", &pi_targets).expect("known hint"),
+            "openai-codex/gpt-5.6-sol:xhigh"
         );
-        assert!(translate_for_harness("custom", "claude").is_err());
+        assert_eq!(
+            translate_for_harness("inherit-caller", "pi", &PiModelTargetsConfig::default())
+                .expect("Pi inheritance is concrete"),
+            "inherit"
+        );
+        assert!(translate_for_harness("standard", "pi", &PiModelTargetsConfig::default()).is_err());
+        assert!(translate_for_harness("custom", "claude", &pi_targets).is_err());
     }
 
     /// Anti-drift tripwire: `ROLES` and the USAGE text are two of the three

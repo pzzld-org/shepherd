@@ -67,7 +67,8 @@ process.stdin.on("end", () => {
       run: stored.run, harness: "pi", agent_id: request.agent_id, agent_type: stored.carrier,
       role: stored.role, lane: null, session_id: stored.session, write_scope: [".shepherd/runs/**"],
       capabilities: capabilities(stored.role), tool_call_id: request.tool_call_id ?? null, mode: null,
-      write_paths: [], path_in_write_scope: null,
+      write_paths: request.tool_name === "Write" ? [request.tool_input.path] : [],
+      path_in_write_scope: request.tool_name === "Write" ? true : null,
     }));
     return;
   }
@@ -89,12 +90,14 @@ process.stdin.on("end", () => {
 function capabilities(role = "engineer") {
   const byRole = {
     auditor: ["code-intelligence", "read", "report-write", "search", "shell", "skill-load", "subagent-provider", "tool-discovery"],
+    conductor: ["dispatch", "message-peer", "read", "schedule-wakeup", "search", "shell", "skill-load", "subagent-provider", "task-tracking", "tool-discovery", "web-research"],
     critic: ["read", "search", "shell", "skill-load", "subagent-provider"],
     discovery: ["read", "report-write", "search", "shell", "skill-load", "subagent-provider", "tool-discovery", "web-research"],
     engineer: ["dispatch", "message-peer", "read", "search", "shell", "skill-load", "subagent-provider", "tool-discovery", "write"],
+    worker: ["read", "search", "shell", "skill-load", "subagent-provider", "tool-discovery", "write"],
   };
   const observed = byRole[role] ?? byRole.engineer;
-  return { declared: observed, observed, present: observed, missing: [], missing_required: [], missing_optional: [], extra: [], forbidden_extra: [], source: "pi-subagents-child-env", harness_version: "unknown", provider_version: null, probed_at: 0 };
+  return { declared: observed, observed, present: observed, missing: [], missing_required: [], missing_optional: [], extra: [], forbidden_extra: [], source: "pi-child-environment", harness_version: "unknown", provider_version: null, probed_at: 0 };
 }
 function record(request, stored, agentId) {
   return {
@@ -121,7 +124,7 @@ function childEnvironment(overrides = {}) {
   };
 }
 
-async function register(environment = {}, allTools = [{ name: "subagent" }]) {
+async function register(environment = {}, allTools = [{ name: "subagent" }], options = {}) {
   const handlers = {};
   const eventHandlers = {};
   const pi = {
@@ -142,6 +145,7 @@ async function register(environment = {}, allTools = [{ name: "subagent" }]) {
     componentModule: process.env.SHEPHERD_COMPONENT_MODULE,
     shepherdBin: dispatcher,
     environment,
+    ...options,
   });
   return { handlers, eventHandlers };
 }
@@ -237,6 +241,117 @@ test("root and child sessions use the same generic provider probe", async () => 
   assert.deepEqual(verdict, { block: true, reason: remediation });
   assert.deepEqual(operationsFor("provider-child", 2), []);
   await shutdown(handlers, "provider-child-session");
+});
+
+test("Component canonical capabilities allow worker mutation but block worker and critic dispatch", async () => {
+  const noDispatch = (role) => `Pi Component role ${role} no-dispatch contract blocks subagent`;
+  for (const role of ["worker", "critic"]) {
+    const runId = `no-dispatch-${role}`;
+    const sessionId = `no-dispatch-${role}-session`;
+    const { handlers } = await register(childEnvironment({
+      PI_SUBAGENT_RUN_ID: runId,
+      PI_SUBAGENT_CHILD_AGENT: `shepherd:${role}`,
+    }));
+    await handlers.session_start({ reason: "startup" }, context(sessionId));
+    if (role === "worker") {
+      const writeVerdict = await handlers.tool_call(
+        { toolName: "write", toolCallId: "worker-write", input: { path: ".shepherd/runs/worker-marker" } },
+        context(sessionId),
+      );
+      assert.equal(writeVerdict, undefined, "a registered transport must not remove canonical worker write authority");
+    }
+    const before = requests().length;
+    const dispatchVerdict = await handlers.tool_call(
+      { toolName: "subagent", toolCallId: `${role}-subagent`, input: { agent: "shepherd:worker" } },
+      context(sessionId),
+    );
+    assert.deepEqual(dispatchVerdict, { block: true, reason: noDispatch(role) });
+    assert.equal(requests().length, before, "no-dispatch must block before provider or native execution");
+    await shutdown(handlers, sessionId);
+  }
+});
+
+test("managed engineer and conductor retain canonical dispatch authority", async () => {
+  for (const role of ["engineer", "conductor"]) {
+    const runId = `dispatch-${role}`;
+    const sessionId = `dispatch-${role}-session`;
+    const { handlers } = await register(childEnvironment({
+      PI_SUBAGENT_RUN_ID: runId,
+      PI_SUBAGENT_CHILD_AGENT: `shepherd:${role}`,
+    }));
+    await handlers.session_start({ reason: "startup" }, context(sessionId));
+    const verdict = await handlers.tool_call(
+      { toolName: "subagent", toolCallId: `${role}-subagent`, input: { agent: "shepherd:worker" } },
+      context(sessionId),
+    );
+    assert.equal(verdict, undefined);
+    await shutdown(handlers, sessionId);
+  }
+});
+
+test("absent provider blocks synthetic subagent calls before role authorization", async () => {
+  const remediation = "Pi subagent provider unavailable. Run `pi install npm:pi-subagents`, then restart Pi.";
+  const { handlers } = await register(childEnvironment({
+    PI_SUBAGENT_RUN_ID: "no-provider-worker",
+    PI_SUBAGENT_CHILD_AGENT: "shepherd:worker",
+  }), []);
+  await handlers.session_start({ reason: "startup" }, context("no-provider-worker-session"));
+  const before = requests().length;
+  const verdict = await handlers.tool_call(
+    { toolName: "subagent", toolCallId: "no-provider-worker-subagent", input: { agent: "shepherd:worker" } },
+    context("no-provider-worker-session"),
+  );
+  assert.deepEqual(verdict, { block: true, reason: remediation });
+  assert.equal(requests().length, before);
+  await shutdown(handlers, "no-provider-worker-session");
+});
+
+test("component and child startup failures block subagent before provider execution", async () => {
+  const unavailable = await register({}, [{ name: "subagent" }], {
+    componentModule: join(fixtureDir, "missing-component.mjs"),
+  });
+  await unavailable.handlers.session_start({ reason: "startup" }, context("component-unavailable"));
+  let before = requests().length;
+  let verdict = await unavailable.handlers.tool_call(
+    { toolName: "subagent", toolCallId: "component-unavailable-subagent", input: { agent: "shepherd:worker" } },
+    context("component-unavailable"),
+  );
+  assert.equal(verdict.block, true);
+  assert.match(verdict.reason, /^Pi component unavailable:/);
+  assert.equal(requests().length, before);
+  await shutdown(unavailable.handlers, "component-unavailable");
+
+  const failed = await register(childEnvironment({ PI_SUBAGENT_RUN_ID: "startup-failed" }));
+  await failed.handlers.session_start({ reason: "startup" }, context("publish-fail"));
+  before = requests().length;
+  verdict = await failed.handlers.tool_call(
+    { toolName: "subagent", toolCallId: "startup-failed-subagent", input: { agent: "shepherd:worker" } },
+    context("publish-fail"),
+  );
+  assert.equal(verdict.block, true);
+  assert.match(verdict.reason, /^Pi SessionStart binding failed closed \(startup\):/);
+  assert.equal(requests().length, before);
+  await shutdown(failed.handlers, "publish-fail");
+});
+
+test("malformed and unmanaged children cannot reach synthetic subagent transport", async () => {
+  for (const [name, environment, reason] of [
+    ["malformed", childEnvironment({ PI_SUBAGENT_CHILD_INDEX: "bad" }), /^Pi child environment failed closed:/],
+    ["unmanaged", childEnvironment({ PI_SUBAGENT_CHILD_AGENT: "reviewer" }), /^non-Shepherd Pi child is not a Shepherd dispatch$/],
+  ]) {
+    const { handlers } = await register(environment);
+    const sessionId = `${name}-subagent-child`;
+    await handlers.session_start({ reason: "startup" }, context(sessionId));
+    const before = requests().length;
+    const verdict = await handlers.tool_call(
+      { toolName: "subagent", toolCallId: `${name}-child-subagent`, input: { agent: "shepherd:worker" } },
+      context(sessionId),
+    );
+    assert.equal(verdict.block, true);
+    assert.match(verdict.reason, reason);
+    assert.equal(requests().length, before);
+    await shutdown(handlers, sessionId);
+  }
 });
 
 test("attached success and terminal failures resolve exact children then stop", async () => {
@@ -477,7 +592,9 @@ test("nested parent identity comes only from validated parent path", async () =>
   const { handlers } = await register(environment);
   await handlers.session_start({ reason: "startup" }, context("nested-positive"));
   const start = requests().find(({ operation, request }) => operation === "start" && request.session_id === "nested-positive");
+  assert.ok(start, "managed child session_start must issue a native start request");
   assert.equal(start.request.parent_agent_id, agentId(parent.runId, parent.stepIndex));
+  assert.equal(start.request.capability_source, "pi-child-environment");
   await shutdown(handlers, "nested-positive");
 });
 

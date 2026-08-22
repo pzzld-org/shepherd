@@ -26,6 +26,16 @@ done
 SHEPHERD_COMPONENT_NODE_ROOT="$node_root" SHEPHERD_COMPONENT_WASM="$artifact" \
   scripts/stage-component-runtime.sh "$stage"
 scripts/stage-pi-carrier.sh "$stage"
+python3 - "$stage/packages/harness-pi/.shepherd-generated.json" <<'PY'
+import json
+import sys
+
+roles = {role["role"]: role for role in json.load(open(sys.argv[1], encoding="utf-8"))["roles"]}
+for role in ("critic", "worker"):
+    assert "dispatch" not in roles[role]["capabilities"], f"canonical {role} unexpectedly gained dispatch authority"
+for role in ("conductor", "engineer"):
+    assert "dispatch" in roles[role]["capabilities"], f"canonical {role} lost dispatch authority"
+PY
 scripts/stage-distribution-legal.sh "$stage"
 ln -s "$node_root/node_modules" "$stage/packages/component-runtime/node_modules"
 
@@ -59,7 +69,9 @@ for package in component-runtime harness-claude harness-codex harness-pi; do
   grep -Eq '^package/THIRD_PARTY_LICENSES/[0-9a-f]{64}\.txt$' "$listing"
 done
 
+pi_archive="$tarballs/pzzld-pi-shepherd-6.5.6.tgz"
 pi_listing="$tmp_dir/harness-pi.list"
+tar -tzf "$pi_archive" > "$pi_listing"
 canonical_roles=(auditor coder conductor critic discovery engineer planter shepherd worker)
 dispatchable_roles=(auditor coder conductor critic discovery engineer worker)
 for role in "${canonical_roles[@]}"; do
@@ -76,17 +88,17 @@ test "$agent_count" -eq 7
 ! grep -Fxq 'package/agents/planter.md' "$pi_listing"
 pi_extract="$tmp_dir/pi-package"
 mkdir -p "$pi_extract"
-tar -xzf "$tarballs/pzzld-pi-shepherd-6.5.6.tgz" -C "$pi_extract"
+tar -xzf "$pi_archive" -C "$pi_extract"
 for role in "${dispatchable_roles[@]}"; do
   grep -Fxq "name: \"shepherd:$role\"" "$pi_extract/package/agents/$role.md"
   grep -Fxq 'subagentOnlyExtensions: ../src/extension.mjs' "$pi_extract/package/agents/$role.md"
+  grep -Eq '^tools: .*\bsubagent\b' "$pi_extract/package/agents/$role.md"
+  grep -Fxq 'maxSubagentDepth: 2' "$pi_extract/package/agents/$role.md"
   ! grep -Eq '^model: (sonnet|haiku)$' "$pi_extract/package/agents/$role.md"
 done
-for role in conductor engineer; do
-  grep -Fxq 'maxSubagentDepth: 2' "$pi_extract/package/agents/$role.md"
-done
-for role in auditor coder critic discovery worker; do
-  ! grep -Fq 'maxSubagentDepth:' "$pi_extract/package/agents/$role.md"
+for role in "${dispatchable_roles[@]}"; do
+  grep -Fxq 'model: model-required/model-required' "$pi_extract/package/agents/$role.md"
+  ! grep -Fxq 'model: inherit' "$pi_extract/package/agents/$role.md"
 done
 
 install="$tmp_dir/install"

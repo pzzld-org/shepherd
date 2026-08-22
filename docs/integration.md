@@ -90,9 +90,12 @@ does not own this marketplace path or import Claude's private hooks.
 `@pzzld/pi-shepherd` is a host extension, not a standalone Pi agent runtime. At
 root and child `session_start`, it calls Pi's public `pi.getAllTools()` API and
 accepts any compatible registered subagent system whose configured tool name is
-exactly `subagent`. It checks all configured tools, not only active tools, so a
-critic or auditor can keep the provider inactive. An absent or malformed tool
-inventory leaves reads available but blocks Write, Edit, and Bash with:
+exactly `subagent`. It checks all configured tools, not only active tools. Every
+generated child carrier includes that transport tool and `maxSubagentDepth: 2`
+so the provider registers below root. This does not grant dispatch authority:
+managed children may execute `subagent` only when their Component-compiled
+canonical capabilities contain `dispatch`. An absent or malformed tool inventory leaves
+reads available but blocks Write, Edit, and Bash with:
 `Pi subagent provider unavailable. Run \`pi install npm:pi-subagents\`, then restart Pi.`
 The extension does not import or depend on `pi-subagents`; that command is the
 supported install or upgrade path for the reference provider. Pi's contract is
@@ -172,7 +175,7 @@ Adapters must report host limitations instead of guessing:
 | --- | --- | --- |
 | Claude Code | Hooks and Agent Teams may be available. | If a hook or identity correlation is unavailable, the adapter reports the limitation and preserves its documented fail-closed posture. |
 | Codex | The regular marketplace carrier supports SessionStart and guarded PreToolUse. | Native subagent lifecycle hooks are not registered because the host does not expose a trusted spawn-to-child correlation; direct lifecycle inputs are rejected, never fabricated into a role. |
-| Pi | `pi.getAllTools()` reports a configured tool named exactly `subagent`. | Missing or malformed configured-tool metadata blocks Write, Edit, and Bash while reads remain available. |
+| Pi | `pi.getAllTools()` reports a configured tool named exactly `subagent`; child carriers register that transport at depth 2. | Missing or malformed configured-tool metadata blocks Write, Edit, and Bash while reads remain available. Component canonical capabilities independently block no-dispatch children before provider execution. |
 
 Host-specific limits belong in adapter diagnostics and run evidence. They do
 not change the Component Model contract.

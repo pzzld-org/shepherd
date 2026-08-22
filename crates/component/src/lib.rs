@@ -721,6 +721,7 @@ fn tree_to_wit(tree: compiler::EmittedTree) -> wit::EmittedTree {
                 role: role.role,
                 carrier_path: role.carrier_path,
                 description: role.description,
+                model_hint: role.model_hint,
                 model: role.model,
                 profile: role.profile,
                 reasoning_effort: role.reasoning_effort,

@@ -191,6 +191,7 @@ fn target_final_role_carriers_resolve_models_profiles_and_pi_tools_in_core() {
         .iter()
         .find(|role| role.role == "coder")
         .expect("Claude coder contract");
+    assert_eq!(coder_contract.model_hint, "standard");
     assert_eq!(coder_contract.model.as_deref(), Some("sonnet"));
     assert_eq!(coder_contract.profile, None);
 
@@ -209,6 +210,7 @@ fn target_final_role_carriers_resolve_models_profiles_and_pi_tools_in_core() {
         .iter()
         .find(|role| role.role == "coder")
         .expect("Codex coder contract");
+    assert_eq!(coder_contract.model_hint, "standard");
     assert_eq!(coder_contract.model, None);
     assert_eq!(coder_contract.profile.as_deref(), Some("standard"));
     assert_eq!(coder_contract.reasoning_effort.as_deref(), Some("medium"));
@@ -228,6 +230,7 @@ fn target_final_role_carriers_resolve_models_profiles_and_pi_tools_in_core() {
         .iter()
         .find(|role| role.role == "coder")
         .expect("Pi coder contract");
+    assert_eq!(coder_contract.model_hint, "standard");
     assert_eq!(coder_contract.model, None);
     assert_eq!(coder_contract.tools, ["read", "grep", "find", "subagent"]);
     assert!(coder_contract.unsupported_capabilities.is_empty());
@@ -236,7 +239,8 @@ fn target_final_role_carriers_resolve_models_profiles_and_pi_tools_in_core() {
         .iter()
         .find(|role| role.role == "shepherd")
         .expect("Pi root contract");
-    assert_eq!(root_contract.model, None);
+    assert_eq!(root_contract.model_hint, "inherit-caller");
+    assert_eq!(root_contract.model.as_deref(), Some("inherit"));
 }
 
 #[test]

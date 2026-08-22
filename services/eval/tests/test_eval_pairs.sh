@@ -15,4 +15,5 @@ while read -r _ kind good bad; do
 done < <(grep '^_pair ' "$RUNNER")
 
 (( count > 0 )) || { echo "no periodic eval pairs discovered" >&2; exit 1; }
+
 echo "ok: $count periodic eval pair(s) are complete"

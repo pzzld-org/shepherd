@@ -1,10 +1,10 @@
 {
-  "root": {"model": "inherit-caller", "source": "default"},
+  "root": {"model": "reasoning-high", "source": "default"},
   "planter": {"model": "reasoning-high", "source": "default"},
   "engineer": {"model": "reasoning-high", "source": "default"},
-  "conductor": {"model": "standard", "source": "default"},
+  "conductor": {"model": "reasoning-high", "source": "default"},
   "critic": {"model": "standard", "source": "default"},
-  "discovery": {"model": "standard", "source": "default"},
+  "discovery": {"model": "economy", "source": "default"},
   "coder": {"model": "standard", "source": "default"},
   "auditor": {"model": "standard", "source": "default"},
   "worker": {"model": "standard", "source": "default"}

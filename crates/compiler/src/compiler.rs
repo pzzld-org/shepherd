@@ -119,6 +119,7 @@ fn resolve_roles(
                     Target::Pi => format!("prompts/{}.md", role.role),
                 },
                 description: role.description.clone(),
+                model_hint: role.model_hint.clone(),
                 model: resolution.model.clone(),
                 profile: resolution.profile.clone(),
                 reasoning_effort: resolution.reasoning_effort.clone(),
@@ -165,7 +166,16 @@ fn validate_model_resolution(
                 && resolution.profile.is_some()
                 && resolution.reasoning_effort.is_some()
         }
-        Target::Pi => resolution.profile.is_none() && resolution.reasoning_effort.is_none(),
+        Target::Pi if inherited => {
+            resolution.model.as_deref() == Some("inherit")
+                && resolution.profile.is_none()
+                && resolution.reasoning_effort.is_none()
+        }
+        Target::Pi => {
+            resolution.model.is_none()
+                && resolution.profile.is_none()
+                && resolution.reasoning_effort.is_none()
+        }
     };
     if !valid {
         let detail =

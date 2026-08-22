@@ -9,10 +9,13 @@ Pi contributes only its extension API and provider transport. At every root or
 child `session_start`, after tools are registered, the production extension
 calls Pi's public `pi.getAllTools()` API. Any compatible registered subagent
 system is accepted when the configured tool metadata contains a tool named
-exactly `subagent`. The probe intentionally does not use `getActiveTools()`:
-roles such as critic and auditor may keep a registered provider inactive. A
-missing or malformed tool inventory leaves the session readable but blocks
-Write, Edit, and Bash with one remediation:
+exactly `subagent`. The probe intentionally does not use `getActiveTools()`. Every generated child
+carrier includes `subagent` as a transport-registration tool and sets
+`maxSubagentDepth: 2`, including roles that cannot dispatch. The Component's
+compiled canonical role capabilities remain the policy authority: a managed child
+whose canonical capabilities omit `dispatch` receives the exact no-dispatch block
+before provider execution. A missing or malformed tool inventory leaves the
+session readable but blocks Write, Edit, and Bash with one remediation:
 
 ```text
 Pi subagent provider unavailable. Run `pi install npm:pi-subagents`, then restart Pi.
@@ -43,7 +46,7 @@ Pi discovers everything this package contributes from the `pi` key in
 that declaration absent Pi loads no Shepherd agent definitions even when the
 role prompts are present.
 
-The nine skills, nine role prompts, and seven dispatchable pi-subagents definitions are
+The nine skills, nine role prompts, and seven dispatchable agent definitions are
 **generated**, not committed. The Rust compiler is their only authority, and a hand-copied
 tree in this package would be a second, inevitably stale one -- `scripts/tests/test-generated-carrier-authority.sh`
 fails if `skills/`, `prompts/`, or `agents/` appears in the repository. Release staging runs
@@ -51,11 +54,22 @@ fails if `skills/`, `prompts/`, or `agents/` appears in the repository. Release 
 the staged package immediately before `npm pack`, so the published tarball
 carries the carrier and the repository does not.
 
-Each generated agent explicitly reloads `src/extension.mjs` in nested children. The extension
-recognizes only `PI_SUBAGENT_CHILD=1` sessions with a compiler-emitted dispatchable
-`shepherd:<role>` carrier. It derives bounded child identities from explicit provider run/index
-fields and derives nested parents only from a validated `PI_SUBAGENT_PARENT_PATH`; missing or
-mismatched ancestry fails closed.
+The published carrier is project-neutral. An `inherit-caller` role carries
+`model: inherit`. Every other role carries `model: model-required/model-required`,
+a generic intentionally impossible sentinel that prevents direct provider launch from
+falling back to a parent or global default. Supported dispatch passes the exact concrete
+`provider/model:thinking` result of `shepherd models resolve ROLE --harness pi` as a
+per-run model override; the reference provider gives that override precedence.
+
+Each generated agent explicitly reloads `src/extension.mjs` in nested children, registers the
+`subagent` transport tool, and sets `maxSubagentDepth: 2`. Transport registration does not grant
+dispatch authority. Before normal mutation guarding, the extension blocks a managed child's
+`subagent` call unless that child's already-resolved Component canonical capabilities contain
+`dispatch`; it does not infer a role from prompts, environment policy flags, or an adapter-owned
+role list. The extension recognizes only `PI_SUBAGENT_CHILD=1` sessions with a compiler-emitted
+dispatchable `shepherd:<role>` carrier. It derives bounded child identities from explicit provider
+run/index fields and derives nested parents only from a validated `PI_SUBAGENT_PARENT_PATH`;
+missing or mismatched ancestry fails closed.
 
 Child-local terminal callbacks remain an early best effort. Each parent process also observes its
 immediate descendants through Pi's public `tool_result`, `subagent:foreground-complete`, and

@@ -4,8 +4,10 @@ docs: <SCRATCH>/cwd/.shepherd/docs
 ctx: <SCRATCH>/cwd/.shepherd/ctx
 runs: <SCRATCH>/cwd/.shepherd/runs
 registry: <SCRATCH>/cwd/.shepherd/shepherd.db
+resolved shepherd: <REPO_ROOT>/target/debug/shepherd (native)
 status: failed
 issue: docs directory is absent: <SCRATCH>/cwd/.shepherd/docs
-issue: ctx directory is absent: <SCRATCH>/cwd/.shepherd/ctx
 issue: runs directory is absent: <SCRATCH>/cwd/.shepherd/runs
 issue: cannot open registry read-only: unable to open database file: <SCRATCH>/cwd/.shepherd/shepherd.db
+issue: project identity is absent: run `shepherd init --confirm` (.shepherd/project.json)
+warning: ctx directory is absent on a project that is not scaffolded — run `shepherd init --confirm` to create it: <SCRATCH>/cwd/.shepherd/ctx

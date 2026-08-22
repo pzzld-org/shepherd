@@ -67,7 +67,7 @@ ignored. The principal groups are:
 | `[context]` | Refresh, lock, naming, and context selection policy. |
 | `[hooks]` | Host hook toggles. Hook mechanics remain adapter-local. |
 | `[spawn]`, `[autorun]`, `[compaction]`, `[focus]`, `[close]` | Execution lifecycle policies. |
-| `[eval]`, `[models]`, `[prune]` | Recorded evaluation metadata, model labels, and retention policy. |
+| `[eval]`, `[models]`, `[model_targets]`, `[prune]` | Evaluation metadata, portable model hints, concrete harness targets, and retention policy. |
 
 The layout roots are not a second policy language. A valid v6.5.6 configuration
 must resolve `docs`, `ctx`, and `runs` beneath the project `.shepherd/` namespace
@@ -81,8 +81,7 @@ Defaults are:
 
 | Role | Hint | Why |
 | --- | --- | --- |
-| root, planter | `reasoning-high` | a sprint's expensive thinking is its seeding and its top-level orchestration |
-| engineer, conductor | `inherit-caller` | a lane costs what the run it belongs to is worth, rather than pinning the top tier on every lead |
+| root, planter, engineer, conductor | `reasoning-high` | orchestration and lane leadership require an explicit reasoning model and effort, never an ambient inherited default |
 | critic, coder, auditor, worker | `standard` | judgement and authorship, where a miss costs more than the tier saved |
 | discovery | `economy` | the widest fan-out role: bounded research, many at once, where width beats depth |
 
@@ -90,10 +89,32 @@ Every one is overridable per project. `worker` is the usual one to move to
 `economy` when a run's workers are doing volume rather than synthesis.
 
 `shepherd models resolve <role>` returns the portable hint. Add
-`--harness claude`, `--harness codex`, or `--harness pi` to resolve that hint
-through the compiler's typed `HarnessProfile`. The CLI imports that Rust table;
-adapters and configuration do not maintain a second model map. Unknown hints
-fail when a harness-native value is requested.
+`--harness claude`, `--harness codex`, or `--harness pi` to resolve that hint.
+Both `resolve` and `show` load the canonical project/user configuration for the
+requested harness, so no harness ignores `[models]` overrides. Without
+`--harness`, configuration selection preserves the environment harness. Outside
+a project, a call with no explicit config stays context-free and uses defaults.
+Claude and Codex use the compiler's typed `HarnessProfile` unchanged. Pi combines
+the compiler-owned portable hint with the closed `[model_targets.pi]` config map:
+
+```toml
+[model_targets.pi]
+inherit-caller = "inherit"
+reasoning-high = "openai-codex/gpt-5.6-sol:xhigh"
+standard = "openai-codex/gpt-5.6-luna:max"
+economy = "openai-codex/gpt-5.6-luna:max"
+```
+
+The suffix is Pi's canonical thinking level. Supported values are `off`,
+`minimal`, `low`, `medium`, `high`, `xhigh`, and `max`; literal `ultra` is
+invalid. Missing model or thinking data fails closed with the exact config key
+to set. Generated project-neutral Pi carriers use `model: inherit` only for an
+authored `inherit-caller` hint. Every other role, including reasoning-high
+engineer and conductor leads, uses the documented
+`model-required/model-required` sentinel. The sentinel is intentionally
+impossible so direct provider launch cannot silently inherit. Normal dispatch
+passes the resolver's concrete output as the per-run `model`, and that explicit
+override wins.
 
 ## Layout-v5 paths
 

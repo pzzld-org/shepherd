@@ -137,15 +137,23 @@
     "eval_on_close": "off"
   },
   "models": {
-    "root": "inherit-caller",
+    "root": "reasoning-high",
     "planter": "reasoning-high",
     "engineer": "reasoning-high",
-    "conductor": "standard",
+    "conductor": "reasoning-high",
     "critic": "standard",
-    "discovery": "standard",
+    "discovery": "economy",
     "coder": "standard",
     "auditor": "standard",
     "worker": "standard"
+  },
+  "model_targets": {
+    "pi": {
+      "inherit-caller": "",
+      "reasoning-high": "",
+      "standard": "",
+      "economy": ""
+    }
   },
   "prune": {
     "logs_days": 60,

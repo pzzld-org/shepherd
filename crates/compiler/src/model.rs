@@ -68,8 +68,8 @@ pub struct CompileInput {
 /// Harness-native resolution for one authored `model_hint`.
 ///
 /// A Claude or Pi profile resolves to `model`; a Codex profile resolves to
-/// `profile` plus `reasoning_effort`. The root `inherit-caller` resolution may
-/// leave all three absent for targets that cannot rebind an active session.
+/// `profile` plus `reasoning_effort`. Concrete provider-specific Pi targets stay
+/// in runtime configuration, so only `inherit-caller` has a canonical Pi model.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct ModelResolution {
     pub model: Option<String>,
@@ -213,12 +213,17 @@ impl HarnessProfile {
                 "tool-discovery".into(),
                 "web-research".into(),
             ]),
-            // Pi model names are provider/model registry identifiers. Authored
-            // portability hints have no provider-neutral Pi spelling, so every
-            // role inherits the active/default model instead of emitting an
-            // alias Pi rejects at launch.
+            // Provider-specific Pi targets are project configuration, not
+            // compiler policy. Inheritance is the only provider-neutral launch
+            // instruction; every other portable hint remains unresolved here.
             model_by_hint: BTreeMap::from([
-                ("inherit-caller".into(), ModelResolution::default()),
+                (
+                    "inherit-caller".into(),
+                    ModelResolution {
+                        model: Some("inherit".into()),
+                        ..ModelResolution::default()
+                    },
+                ),
                 ("reasoning-high".into(), ModelResolution::default()),
                 ("standard".into(), ModelResolution::default()),
                 ("economy".into(), ModelResolution::default()),
@@ -259,6 +264,7 @@ pub struct EmittedRole {
     pub role: String,
     pub carrier_path: String,
     pub description: String,
+    pub model_hint: String,
     pub model: Option<String>,
     pub profile: Option<String>,
     pub reasoning_effort: Option<String>,

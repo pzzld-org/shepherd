@@ -170,6 +170,7 @@
 # *.lock
 *-lock.json
 !.github/actions-lock.json
+!/conformance/cases/core/lock/reap/stale-lock.json
 !/package-lock.json
 
 ## Node.JS

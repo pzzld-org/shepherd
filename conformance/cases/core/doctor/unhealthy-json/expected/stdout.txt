@@ -7,11 +7,17 @@
   "registry": "<SCRATCH>/cwd/.shepherd/shepherd.db",
   "config_sources": [],
   "registry_schema": null,
+  "resolved_shepherd_path": "<REPO_ROOT>/target/debug/shepherd",
+  "resolved_shepherd_native": true,
+  "resolved_shepherd_skew_seconds": 0,
   "findings": [
     "docs directory is absent: <SCRATCH>/cwd/.shepherd/docs",
-    "ctx directory is absent: <SCRATCH>/cwd/.shepherd/ctx",
     "runs directory is absent: <SCRATCH>/cwd/.shepherd/runs",
-    "cannot open registry read-only: unable to open database file: <SCRATCH>/cwd/.shepherd/shepherd.db"
+    "cannot open registry read-only: unable to open database file: <SCRATCH>/cwd/.shepherd/shepherd.db",
+    "project identity is absent: run `shepherd init --confirm` (.shepherd/project.json)"
+  ],
+  "warnings": [
+    "ctx directory is absent on a project that is not scaffolded — run `shepherd init --confirm` to create it: <SCRATCH>/cwd/.shepherd/ctx"
   ],
   "ok": false
 }

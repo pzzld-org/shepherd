@@ -422,6 +422,20 @@ export default async function shepherdGuardExtension(pi, options = {}) {
   });
 
   pi.on("tool_call", async (event, context) => {
+    if (event.toolName === "subagent") {
+      if (providerFailure) return { block: true, reason: providerFailure };
+      if (startupFailure) return { block: true, reason: startupFailure };
+      if (childSession && managedChild === null) {
+        return { block: true, reason: childEnvironmentFailure || "non-Shepherd Pi child is not a Shepherd dispatch" };
+      }
+      if (managedChild !== null && !managedChild.canonicalCapabilities.includes("dispatch")) {
+        return {
+          block: true,
+          reason: `Pi Component role ${managedChild.role} no-dispatch contract blocks subagent`,
+        };
+      }
+      return undefined;
+    }
     if (!GUARDED_TOOL_NAMES.has(event.toolName)) return undefined;
     if (providerFailure) return { block: true, reason: providerFailure };
     if (managedTerminalPending) stopManagedChild(context);
@@ -592,12 +606,13 @@ function childBinding(environment, carrier, role) {
     agentId: childAgentId(runId, childIndex),
     carrier,
     role: role.role,
+    canonicalCapabilities: role.capabilities,
     binding: {
       role: role.role,
       parentAgentId,
       writeScope: [".shepherd/runs/**"],
       observedCapabilities: [...new Set([...role.capabilities, "subagent-provider"])].sort(),
-      capabilitySource: "pi-subagents-child-env",
+      capabilitySource: "pi-child-environment",
       harnessVersion: "unknown",
     },
   };

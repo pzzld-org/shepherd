@@ -16,4 +16,4 @@ for (const forbidden of [
   assert.equal(source.includes(forbidden), false, `Pi adapter must not contain ${forbidden}`);
 }
 
-console.log("ok: Pi extension contains transport mapping only, with no predicate or role policy");
+console.log("ok: Pi extension contains transport mapping plus Component-owned role policy only");
