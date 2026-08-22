@@ -1,0 +1,29 @@
+{
+  "kind": "release-trust",
+  "subject": "Truthful release identity, contributor-safe defaults, and owned dependency risk.",
+  "scale": 5,
+  "threshold": 80,
+  "dimensions": [
+    {
+      "key": "version_compatibility",
+      "weight": 3,
+      "desc": "Requires one exact report across native CLI, Component contract, npm manifests, and staged carriers while ignoring only untracked runtime state, not tracked .pi source."
+    },
+    {
+      "key": "identity_and_settings",
+      "weight": 2,
+      "desc": "Moves current URLs to pzzld-org, preserves historical/contributor attribution, and removes bypass, unrestricted shell, prompt suppression, and personal automation from shared Claude settings."
+    },
+    {
+      "key": "dependency_ownership",
+      "weight": 3,
+      "desc": "Classifies measured findings by closure, reachability, affected/fixed versions, paths, and shipped artifacts; derives npm production closure from the lock and gates reachable high/critical findings."
+    },
+    {
+      "key": "waiver_and_process",
+      "weight": 2,
+      "desc": "Requires owner/reason/tracking/future expiry for waivers, Dependabot coverage for npm/Cargo/Actions, SECURITY.md, measured-only upgrades, and honest cargo-deny availability."
+    }
+  ],
+  "guidance": "Reward tracked authority, a concrete compatibility report, current-vs-historical identity distinction, minimal shared settings, lock-derived reachability, explicit finding ownership, expiring waivers, and synthetic failure controls. Penalize directory-wide source exclusions, raw audit-count suppression, speculative upgrades, permanent waivers, unsafe shared permissions, missing disclosure process, or fabricated tool evidence."
+}

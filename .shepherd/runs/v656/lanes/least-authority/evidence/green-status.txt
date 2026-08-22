@@ -1,0 +1,8 @@
+format-check=1
+full-core-guard=0
+lane-core-gate=0
+dispatch-cli=0
+claude-hook-cli=0
+core-check=0
+cli-check=0
+diff-check=0

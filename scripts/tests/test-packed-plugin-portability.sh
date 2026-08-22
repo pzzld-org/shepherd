@@ -64,6 +64,38 @@ mkdir -p "$runtime"
 printf 'export const fixture = true;\n' > "$runtime/shepherd-component.js"
 printf 'fixture component\n' > "$runtime/shepherd-component.wasm"
 EOF
+cat > "$fixture/scripts/stage-pi-carrier.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+package_root="$1/packages/harness-pi"
+mkdir -p "$package_root/prompts" "$package_root/agents"
+for role in auditor coder conductor critic discovery engineer planter shepherd worker; do
+  printf 'fixture prompt for %s\n' "$role" > "$package_root/prompts/$role.md"
+done
+for role in auditor coder conductor critic discovery engineer worker; do
+  {
+    printf '%s\n' '---'
+    printf 'name: "shepherd:%s"\n' "$role"
+    printf '%s\n' 'tools: read, subagent'
+    printf '%s\n' 'model: model-required/model-required'
+    printf '%s\n' 'subagentOnlyExtensions: ../src/extension.mjs'
+    printf '%s\n' 'maxSubagentDepth: 2'
+    printf '%s\n' '---' "fixture agent for $role"
+  } > "$package_root/agents/$role.md"
+done
+cat > "$package_root/.shepherd-generated.json" <<'JSON'
+{
+  "schema": "shepherd.compiled-tree/3",
+  "target": "pi",
+  "roles": [
+    {"role": "conductor", "model_hint": "reasoning-high", "model": null, "capabilities": ["dispatch"]},
+    {"role": "critic", "model_hint": "standard", "model": null, "capabilities": ["read"]},
+    {"role": "engineer", "model_hint": "reasoning-high", "model": null, "capabilities": ["dispatch"]},
+    {"role": "worker", "model_hint": "standard", "model": null, "capabilities": ["read"]}
+  ]
+}
+JSON
+EOF
 cat > "$fixture/scripts/stage-distribution-legal.sh" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -79,6 +111,7 @@ EOF
 chmod +x \
   "$fixture/node-root/node_modules/.bin/jco" \
   "$fixture/scripts/stage-component-runtime.sh" \
+  "$fixture/scripts/stage-pi-carrier.sh" \
   "$fixture/scripts/stage-distribution-legal.sh" \
   "$fixture/scripts/test-packed-plugin.sh"
 

@@ -65,7 +65,7 @@ fn hook(root: &Path, input: serde_json::Value) -> Output {
 }
 
 #[test]
-fn session_start_binds_root_and_safe_pretooluse_allows() {
+fn session_start_binds_root_and_opaque_bash_denies() {
     let root = repository("root-allow");
     let session = hook(
         &root,
@@ -105,7 +105,18 @@ fn session_start_binds_root_and_safe_pretooluse_allows() {
         "stderr={}",
         String::from_utf8_lossy(&safe.stderr)
     );
-    assert!(safe.stdout.is_empty(), "safe tool use must emit no denial");
+    let denial: serde_json::Value =
+        serde_json::from_slice(&safe.stdout).expect("opaque Bash denial is JSON");
+    assert_eq!(
+        denial["hookSpecificOutput"]["permissionDecision"], "deny",
+        "root shell capability must not bypass its structured Markdown scope: {denial}"
+    );
+    assert!(
+        denial["hookSpecificOutput"]["permissionDecisionReason"]
+            .as_str()
+            .is_some_and(|reason| reason.contains("opaque Bash effects")),
+        "denial must name the opaque effect boundary: {denial}"
+    );
     fs::remove_dir_all(root).expect("remove fixture directory");
 }
 
@@ -432,9 +443,8 @@ that flips allow into deny: {detail}"
     fs::remove_dir_all(root).expect("remove fixture directory");
 }
 
-/// #314: a replayed `SessionStart` for a session that already owns the
-/// binding is a non-rejection re-affirmation, not
-/// `native lifecycle hook rejected: dispatch record already exists: ...`.
+/// A replayed `SessionStart` for a session that already owns the exact
+/// binding returns the durable binding instead of rejecting the native caller.
 #[test]
 fn session_start_is_idempotent_for_the_same_session() {
     let root = repository("session-start-idempotent");
@@ -475,27 +485,22 @@ fn session_start_is_idempotent_for_the_same_session() {
         .as_str()
         .expect("second SessionStart carries additionalContext");
 
-    // The idempotency property this fix implements is a NAMED
-    // re-affirmation ("root session already bound to run v645"), not a
-    // byte-identical replay of the bind confirmation -- and, above all, not
-    // a rejection.
     assert!(
         !second_detail.contains("rejected"),
         "a replayed SessionStart must not be rejected: {second_detail}"
     );
     assert!(
-        second_detail.contains("root session already bound to run v645"),
-        "a replayed SessionStart must name the re-affirmation: {second_detail}"
+        second_detail.contains("bound root session to run v645"),
+        "a replayed SessionStart must return the durable binding: {second_detail}"
     );
-    assert_ne!(
+    assert_eq!(
         first_out, second_out,
-        "the re-affirmation is a named, distinct response, not a byte-for-byte \
-replay of the bind confirmation: first={first_out} second={second_out}"
+        "the native adapter must not need a separate replay suppression path"
     );
     fs::remove_dir_all(root).expect("remove fixture directory");
 }
 
-/// #314's other half: idempotency must not become amnesia. A second
+/// Idempotency must not become amnesia. A second
 /// `SessionStart` for the SAME session id that asks to bind as a different
 /// identity (role) than the one already on record must still refuse.
 ///
@@ -507,9 +512,8 @@ replay of the bind confirmation: first={first_out} second={second_out}"
 /// `AlreadyExists` to discriminate. The reachable form of "the record
 /// belongs to a different session" is the SAME session id reused by what is,
 /// in substance, a different actor, which is exactly what a changed `role`
-/// on a replayed `SessionStart` looks like from shepherd's side, and exactly
-/// what `root_binding_reaffirmation` (native_hook.rs) checks the loaded
-/// on-disk record against.
+/// on a replayed `SessionStart` looks like from shepherd's side. The dispatch
+/// service compares that claim against the loaded durable identity.
 #[test]
 fn session_start_refuses_a_replay_with_a_different_identity() {
     let root = repository("session-start-different-identity");
@@ -731,6 +735,7 @@ fn dispatched_agents_are_recorded_and_their_role_rules_enforce() {
     for (agent, agent_type) in [
         ("cond-1", "shepherd:conductor"),
         ("code-1", "shepherd:coder"),
+        ("critic-1", "shepherd:critic"),
     ] {
         let started = hook(
             &root,
@@ -742,12 +747,31 @@ fn dispatched_agents_are_recorded_and_their_role_rules_enforce() {
                 "model": "test-model"
             }),
         );
-        assert!(started.status.success());
         assert!(
-            root.join(format!(".shepherd/runs/v645/dispatch/{agent}.json"))
-                .is_file(),
+            started.status.success(),
+            "{agent_type} start failed: {}",
+            String::from_utf8_lossy(&started.stderr)
+        );
+        let record_path = root.join(format!(".shepherd/runs/v645/dispatch/{agent}.json"));
+        assert!(
+            record_path.is_file(),
             "{agent_type} must be recorded in the dispatch ledger"
         );
+        let record: serde_json::Value =
+            serde_json::from_slice(&fs::read(&record_path).expect("read dispatch record"))
+                .expect("dispatch record is JSON");
+        assert!(
+            !(record["lane"].is_null() && record["write_scope"] == serde_json::json!(["**"])),
+            "{agent_type} must not inherit the universal root fallback: {record}"
+        );
+        assert_eq!(
+            record["write_scope"],
+            serde_json::json!([]),
+            "a host-only start without a declared scope must stay non-writable: {record}"
+        );
+        if agent_type == "shepherd:critic" {
+            assert_eq!(record["role"], "critic");
+        }
     }
 
     // Tool calls carry agent_id only; the record supplies the type.
@@ -767,14 +791,22 @@ fn dispatched_agents_are_recorded_and_their_role_rules_enforce() {
         String::from_utf8_lossy(&out.stdout).into_owned()
     };
 
+    let conductor_bash = decision(
+        "cond-1",
+        "Bash",
+        serde_json::json!({"command": "printf hi"}),
+    );
+    let conductor_bash: serde_json::Value =
+        serde_json::from_str(&conductor_bash).expect("bounded Bash denial is JSON");
+    assert_eq!(
+        conductor_bash["hookSpecificOutput"]["permissionDecision"], "deny",
+        "a synthesized conductor fallback must deny arbitrary Bash because no shell-text inference is attempted: {conductor_bash}"
+    );
     assert!(
-        decision(
-            "cond-1",
-            "Bash",
-            serde_json::json!({"command": "printf hi"})
-        )
-        .is_empty(),
-        "a recorded conductor may run a safe shell command"
+        conductor_bash["hookSpecificOutput"]["permissionDecisionReason"]
+            .as_str()
+            .is_some_and(|reason| reason.contains("without shell-text inference")),
+        "the bounded Bash denial must explain its fail-closed shell policy: {conductor_bash}"
     );
     assert!(
         decision(
@@ -802,6 +834,16 @@ fn dispatched_agents_are_recorded_and_their_role_rules_enforce() {
         )
         .contains("deny"),
         "an implementer must not dispatch at all"
+    );
+
+    assert!(
+        decision(
+            "critic-1",
+            "Write",
+            serde_json::json!({"file_path": "crates/core/src/dispatch/identity.rs", "content": "no"})
+        )
+        .contains("deny"),
+        "native critic role facts must keep the fallback record non-writable"
     );
 
     // An agent shepherd never recorded is shepherd's own gap, not a claim by

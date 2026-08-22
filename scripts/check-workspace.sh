@@ -260,7 +260,7 @@ def rule_component_contract(root: Path, crates: dict[str, dict]) -> list[str]:
     wit = directory / "wit" / "shepherd.wit"
     if not wit.is_file():
         bad.append(f"{COMPONENT}: missing wit/shepherd.wit")
-    elif "package fl03:shepherd@6.5.5;" not in wit.read_text():
+    elif "package fl03:shepherd@6.5.6;" not in wit.read_text():
         bad.append(f"{COMPONENT}: WIT package/version does not match the workspace")
     tests = directory / "tests" / "component.rs"
     if not tests.is_file():
@@ -432,7 +432,7 @@ FIXTURES = {
     },
     rule_version_inherited: {
         "shepherd-core": {
-            "package": {"name": "shepherd-core", "version": "6.5.5"},
+            "package": {"name": "shepherd-core", "version": "6.5.6"},
             "lints": {"workspace": True},
             "__dir__": Path("/nonexistent"),
         },

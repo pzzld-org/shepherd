@@ -138,20 +138,23 @@ fn empty_document_materializes_the_canonical_defaults() {
         config.dups.dups_registry,
         PathBuf::from("dups-registry.json")
     );
-    // root and planter hold the reasoning tier; the team leads INHERIT the
-    // caller so a lane costs what the run it belongs to is worth; everything
-    // dispatched beneath them is standard, which is what makes wide fan-out
-    // affordable. All nine are overridable through `[models]`.
+    // Root, planter, and both reasoning leads hold the reasoning tier. Fresh
+    // lead dispatch must never inherit an ambient model with unknown effort.
+    // All nine remain overridable through `[models]`.
     assert_eq!(config.models.root, "reasoning-high");
     assert_eq!(config.models.planter, "reasoning-high");
-    assert_eq!(config.models.engineer, "inherit-caller");
-    assert_eq!(config.models.conductor, "inherit-caller");
+    assert_eq!(config.models.engineer, "reasoning-high");
+    assert_eq!(config.models.conductor, "reasoning-high");
     assert_eq!(config.models.critic, "standard");
     // the widest fan-out role: width beats depth for bounded research
     assert_eq!(config.models.discovery, "economy");
     assert_eq!(config.models.coder, "standard");
     assert_eq!(config.models.auditor, "standard");
     assert_eq!(config.models.worker, "standard");
+    assert_eq!(config.model_targets.pi.inherit_caller, "");
+    assert_eq!(config.model_targets.pi.reasoning_high, "");
+    assert_eq!(config.model_targets.pi.standard, "");
+    assert_eq!(config.model_targets.pi.economy, "");
     assert_eq!(config.release.driver, ReleaseDriver::GithubWorkflow);
     assert_eq!(config.context.refresh.ttl_minutes, 30);
     assert_eq!(config.context.lock.stale_after_minutes, 120);
@@ -159,6 +162,49 @@ fn empty_document_materializes_the_canonical_defaults() {
     assert_eq!(config.prune.dispatch_days, 30);
     assert_eq!(config.prune.snapshots_keep, 20);
     assert_eq!(config.prune.findings_sprints, 6);
+}
+
+#[test]
+fn pi_model_targets_are_closed_and_loaded_by_the_canonical_schema() {
+    let config = loader::layer([(
+        Path::new("pi-model-targets.toml"),
+        "[model_targets.pi]\ninherit-caller = \"inherit\"\nreasoning-high = \"openai-codex/gpt-5.6-sol:xhigh\"\nstandard = \"openai-codex/gpt-5.6-luna:max\"\neconomy = \"openai-codex/gpt-5.6-luna:max\"\n",
+    )])
+    .expect("closed Pi model target map loads through the canonical schema");
+
+    assert_eq!(config.model_targets.pi.inherit_caller, "inherit");
+    assert_eq!(
+        config.model_targets.pi.reasoning_high,
+        "openai-codex/gpt-5.6-sol:xhigh"
+    );
+    assert_eq!(
+        config.model_targets.pi.standard,
+        "openai-codex/gpt-5.6-luna:max"
+    );
+    assert_eq!(
+        config.model_targets.pi.economy,
+        "openai-codex/gpt-5.6-luna:max"
+    );
+
+    let error = loader::validate(
+        Path::new("unknown-pi-model-target.toml"),
+        "[model_targets.pi]\nstandard = \"openai-codex/gpt-5.6-luna:max\"\ncustom = \"provider/model:max\"\n",
+    )
+    .expect_err("portable target map must reject unknown hints");
+    assert!(error.to_string().contains("custom"));
+
+    for invalid in [
+        "[model_targets.pi]\nstandard = \"openai-codex/gpt-5.6-luna\"\n",
+        "[model_targets.pi]\nstandard = \"openai-codex/gpt-5.6-luna:ultra\"\n",
+        "[model_targets.pi]\ninherit-caller = \"openai-codex/gpt-5.6-sol:xhigh\"\n",
+    ] {
+        let error = loader::validate(Path::new("invalid-pi-model-target.toml"), invalid)
+            .expect_err("Pi targets require a concrete model plus supported effort");
+        assert!(
+            error.to_string().contains("model_targets.pi"),
+            "unexpected validation error: {error}"
+        );
+    }
 }
 
 #[test]
@@ -531,6 +577,27 @@ announce_shctx_path = "off"
         PathBuf::from(".shepherd/executions")
     );
     assert_eq!(loaded.config.context.announce_cli_path, Toggle::On);
+}
+
+#[test]
+fn legacy_paths_reports_is_typed_and_source_named_in_every_loader_mode() {
+    let path = Path::new("legacy-reports.toml");
+    let typed = "[paths]\nreports = \".shepherd/docs/reports\"\n";
+
+    loader::load([(path, typed)]).expect("ordinary loading accepts typed retired paths.reports");
+    loader::load_for_layout_v5_migration([(path, typed)])
+        .expect("migration loading accepts typed retired paths.reports");
+
+    let malformed = "[paths]\nreports = false\n";
+    for error in [
+        loader::load([(path, malformed)]).expect_err("ordinary loading rejects a wrong type"),
+        loader::load_for_layout_v5_migration([(path, malformed)])
+            .expect_err("migration loading rejects a wrong type"),
+    ] {
+        let error = error.to_string();
+        assert!(error.contains("legacy-reports.toml"), "{error}");
+        assert!(error.contains("paths.reports"), "{error}");
+    }
 }
 
 #[test]

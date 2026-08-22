@@ -1,0 +1,1 @@
+Relax Shepherd's shared SessionId validator to accept pipes and any printable provider string, then pass Pi's raw call_*|fc_* value through every native identity and persistence surface. Reuse the relaxed validator for session, run, lane, role, and agent IDs so every harness accepts the same provider-native format.

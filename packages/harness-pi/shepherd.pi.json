@@ -1,14 +1,17 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "contract": "fl03:shepherd@6.5.5",
+  "contract": "fl03:shepherd@6.5.6",
   "adapter": "pi",
   "extension": "./src/extension.mjs",
   "provider": {
-    "name": "subagent-provider",
-    "package": "pi-subagents",
-    "requiredMethods": ["capabilities", "spawn", "resume", "stop"],
-    "failClosedWhenAbsent": true,
-    "failClosedWhenNotReady": true
+    "capability": "generic-subagent-provider",
+    "publicApi": "pi.getAllTools()",
+    "configuredToolName": "subagent",
+    "referencePackage": "pi-subagents",
+    "remediation": "Pi subagent provider unavailable. Run `pi install npm:pi-subagents`, then restart Pi.",
+    "probeAt": "session_start",
+    "includesInactiveTools": true,
+    "failClosedForMutationWhenAbsentOrMalformed": true
   },
   "component": {
     "moduleEnv": "SHEPHERD_COMPONENT_MODULE",
@@ -25,27 +28,54 @@
       "validateNativeExchange"
     ]
   },
-  "hooksDispatchModel": "Pi does not spawn the shepherd binary once per event the way hooks/hooks.json's command/args exec form does. src/extension.mjs is loaded once and registers in-process pi.on(event, handler) callbacks for the life of the session; each handler below calls into the fl03:shepherd component and the native shepherd binary directly (invokeNativeDispatch). This block declares what src/extension.mjs already implements — it adds no new enforcement. hooks/tests/test_pi_manifest_drift.sh is the tripwire that keeps this declaration and src/extension.mjs from drifting apart.",
+  "hooksDispatchModel": "Pi loads src/extension.mjs once. At session_start the extension uses Pi's public pi.getAllTools() API and accepts any configured tool named exactly subagent, whether active or inactive. Generated child carriers register that transport at maxSubagentDepth 2, while Component-compiled canonical capabilities remain dispatch authority. Missing or malformed tool metadata leaves the session readable and blocks Write/Edit/Bash with the declared remediation. Parent terminal observers keep bounded nonblocking candidates until exact component/native correlation succeeds; only validated exact stop failures enter the mutation-blocking pending set.",
   "hooks": {
     "session_start": {
-      "canonicalEvent": "SessionStart",
-      "dispatch": "in-process",
-      "handler": "src/extension.mjs:31 pi.on(\"session_start\", ...)",
-      "behavior": "normalizes identity, plans lifecycle, calls shepherd dispatch bind-root; throws (fail-closed) if the component is unavailable",
+      "canonicalEvent": "SessionStart|SubagentStart",
+      "surface": "pi.on",
+      "behavior": "probes configured generic subagent readiness through pi.getAllTools, then binds a root session or publishes a validated immediate Shepherd child start; failures leave mutation blocked",
+      "guardedTools": []
+    },
+    "message_end": {
+      "canonicalEvent": "SubagentStop",
+      "surface": "pi.on",
+      "behavior": "best-effort child-local stop only for Pi terminal assistant messages with stopReason stop and no tool call",
+      "guardedTools": []
+    },
+    "agent_settled": {
+      "canonicalEvent": "SubagentStop",
+      "surface": "pi.on",
+      "behavior": "retries child-local and parent-observed terminal work at a safe lifecycle boundary",
+      "guardedTools": []
+    },
+    "tool_result": {
+      "canonicalEvent": "SubagentStop",
+      "surface": "pi.on",
+      "behavior": "observes attached foreground subagent terminal results and closes each explicitly indexed validated child",
+      "guardedTools": []
+    },
+    "subagent:foreground-complete": {
+      "canonicalEvent": "SubagentStop",
+      "surface": "pi.events.on",
+      "behavior": "observes detached foreground completion without treating the earlier detached tool result as terminal",
+      "guardedTools": []
+    },
+    "subagent:async-complete": {
+      "canonicalEvent": "SubagentStop",
+      "surface": "pi.events.on",
+      "behavior": "observes explicitly indexed async child results; async-started is never stop authority",
       "guardedTools": []
     },
     "tool_call": {
       "canonicalEvent": "PreToolUse",
-      "dispatch": "in-process",
-      "handler": "src/extension.mjs:59 pi.on(\"tool_call\", ...)",
-      "behavior": "calls shepherd dispatch resolve then guardWithComponent; returns {block: true, reason} on every error path (fail-closed)",
+      "surface": "pi.on",
+      "behavior": "before normal mutation guarding, blocks managed-child subagent calls when the already-resolved Component canonical capabilities omit dispatch; otherwise blocks on provider readiness or exact correlated stop failures, retries bounded nonblocking pre-correlation candidates, then resolves exact native identity and evaluates the component guard",
       "guardedTools": ["write", "edit", "bash"]
     },
     "session_shutdown": {
-      "canonicalEvent": "SessionShutdown",
-      "dispatch": "in-process",
-      "handler": "src/extension.mjs:58 pi.on(\"session_shutdown\", ...)",
-      "behavior": "no-op, declared for lifecycle parity with the other two harnesses",
+      "canonicalEvent": "SubagentStop",
+      "surface": "pi.on",
+      "behavior": "performs a final terminal retry and removes process and public-event listeners",
       "guardedTools": []
     }
   },

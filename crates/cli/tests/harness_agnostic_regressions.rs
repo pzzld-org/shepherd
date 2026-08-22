@@ -18,7 +18,7 @@ fn fixture(label: &str) -> PathBuf {
         std::process::id()
     ));
     fs::create_dir_all(&root).expect("create fixture root");
-    root
+    fs::canonicalize(root).expect("canonical fixture root")
 }
 
 fn initialize_git(root: &Path) {

@@ -1,0 +1,29 @@
+{
+  "kind": "least-authority",
+  "subject": "Native dispatch scope and guard authorization across structured writes and opaque shell effects.",
+  "scale": 5,
+  "threshold": 80,
+  "dimensions": [
+    {
+      "key": "native_scope",
+      "weight": 3,
+      "desc": "Rejects universal dispatch scopes, represents absent child authority as an explicit empty scope, and limits root structured writes to root-level Markdown through complete native facts."
+    },
+    {
+      "key": "effect_equivalence",
+      "weight": 3,
+      "desc": "Applies one Rust-owned decision to Write, Edit/apply_patch, and opaque Bash so bounded or non-writable dispatches cannot switch carriers to escape scope."
+    },
+    {
+      "key": "report_exception",
+      "weight": 2,
+      "desc": "Allows report-write only for one exact non-glob dispatch-declared output path matching the sole resolved write target."
+    },
+    {
+      "key": "fail_closed_inputs",
+      "weight": 2,
+      "desc": "Rejects malformed root facts and missing, null, non-string, or empty Bash commands without shell parsing, token inference, or adapter-owned policy."
+    }
+  ],
+  "guidance": "Reward explicit empty non-writable scope, exact report paths, complete root facts, root-level *.md matching, universal-scope rejection, and equivalent fail-closed behavior across write carriers. Penalize invented report paths, broad report globs, lane-less ** fallbacks, missing root facts, shell parsing, safe-command allowlists, and adapter-side policy maps."
+}

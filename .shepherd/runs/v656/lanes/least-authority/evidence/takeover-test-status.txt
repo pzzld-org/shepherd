@@ -1,0 +1,6 @@
+full-core-guard=101
+dispatch-cli=0
+claude-hook-cli=101
+core-check=0
+cli-check=0
+diff-check=0

@@ -1,0 +1,178 @@
+[1m[92m    Finished[0m `test` profile [optimized + debuginfo] target(s) in 0.08s
+[1m[92m     Running[0m tests/guard.rs (target/debug/deps/guard-85ef6c5a8cef44f1)
+
+running 69 tests
+test compatibility_ascii_escapes_outside_printable_boundaries ... ok
+test compatibility_shell_whitespace_is_space_tab_cr_lf_only ... ok
+test a_non_git_bash_tool_call_allows_without_predicate_data ... ok
+test compatibility_unterminated_quote_falls_back_to_whitespace_splitting ... ok
+test compatibility_unknown_git_subcommand_allows ... ok
+test compatibility_glued_separator_hides_following_git_write ... ok
+test deny_serializer_emits_halt_code_in_contract_field_order ... ok
+test conflicting_singleton_halt_codes_reject_the_corpus ... ok
+test empty_and_malformed_predicate_content_returns_typed_errors ... ok
+test git_tokenizer_handles_options_paths_separators_and_nested_wrappers ... ok
+test json_request_uses_normalized_precedence_when_both_discriminators_exist ... ok
+test a_lane_lead_must_declare_its_dispatch_targets ... ok
+test conductor_cannot_dispatch_the_planter_or_the_root_orchestrator ... ok
+test lane_lead_branch_allows_implementation_target ... ok
+test lane_lead_branch_denies_critic_gate_target ... ok
+test compatibility_raw_missing_or_null_role_is_unresolved_when_role_is_consumed ... ok
+test dispatch_target_accepts_the_plugin_carrier_form ... ok
+test lane_lead_branch_denies_engineer_plan_target ... ok
+test lane_lead_write_allows_its_own_lane_branch ... ok
+test lane_lead_write_denies_a_branch_outside_its_own_lane ... ok
+test every_hardcoded_role_tier_has_exact_raw_tool_behavior ... ok
+test malformed_role_content_returns_typed_errors ... ok
+test explicit_content_loader_discovers_every_live_predicate ... ok
+test normalized_deny_fires_rules_and_harvests_singleton_halt_code ... ok
+test predicate_toml_rejects_an_empty_predicate_id ... ok
+test predicate_toml_parses_into_typed_declaration_order ... ok
+test raw_bash_integrate_verb_takes_precedence_over_plain_write ... ok
+test role_frontmatter_accepts_quoted_capability_lookalikes_as_strings ... ok
+test every_live_role_id_and_guard_fact_matches_frontmatter ... ok
+test role_frontmatter_accepts_quoted_scalar_lookalikes_as_strings ... ok
+test role_frontmatter_decodes_yaml_single_quote_doubling ... ok
+test malformed_raw_tool_calls_are_unresolved_and_bash_command_shapes_fail_closed ... ok
+test role_frontmatter_rejects_commas_inside_quoted_capabilities ... ok
+test malformed_json_is_an_engine_error_not_a_verdict ... ok
+test role_frontmatter_rejects_double_quoted_unicode_escape_capability ... ok
+test role_frontmatter_rejects_double_quoted_unicode_escape_role ... ok
+test role_frontmatter_rejects_every_yaml_1_1_implicit_word ... ok
+test role_frontmatter_rejects_falsy_non_string_role ... ok
+test malformed_and_missing_normalized_fields_are_unresolved ... ok
+test role_frontmatter_rejects_trailing_comma_empty_capability ... ok
+test role_frontmatter_rejects_typed_capability_items ... ok
+test role_frontmatter_rejects_unquoted_yaml_float ... ok
+test role_frontmatter_rejects_unquoted_yaml_no_boolean ... ok
+test role_frontmatter_rejects_unquoted_yaml_off_boolean ... ok
+test role_frontmatter_rejects_unquoted_yaml_signed_integer ... ok
+test role_frontmatter_rejects_unquoted_yaml_zero_integer ... ok
+test role_frontmatter_rejects_unsupported_block_capability_sequences ... ok
+test role_frontmatter_rejects_unterminated_double_quote ... ok
+test role_frontmatter_rejects_unterminated_single_quote ... ok
+test role_markdown_parses_frontmatter_facts ... ok
+test raw_write_and_dispatch_tool_mappings_match_the_oracle ... ok
+test round_four_role_frontmatter_comments_require_space_and_stay_literal_in_quotes ... ok
+test round_four_role_frontmatter_rejects_glued_hash_after_branch_eligible ... ok
+test round_four_role_frontmatter_rejects_glued_hash_after_capabilities ... ok
+test round_four_role_frontmatter_rejects_glued_hash_after_role ... ok
+test round_four_role_frontmatter_rejects_glued_hash_after_write_eligible ... ok
+test round_four_role_frontmatter_rejects_tab_after_mapping_colon ... ok
+test round_four_role_frontmatter_rejects_tab_indentation ... ok
+test round_four_role_frontmatter_requires_mapping_value_separation ... ok
+test tokenizer_matches_global_option_wrapper_fallback_and_depth_edges ... ok
+test unresolved_serializer_emits_nonempty_missing_after_reason ... ok
+test unsupported_effect_becomes_an_unresolved_verdict ... ok
+test round_four_raw_non_string_role_is_oracle_unresolved_for_role_consuming_tools ... ok
+test verdict_serializer_matches_guard_wire_bytes_and_field_presence ... ok
+test round_four_raw_shape_validation_precedes_role_consumption ... ok
+test round_four_safe_and_read_only_bash_fail_closed_for_bounded_dispatches ... ok
+test write_boundary_denies_equivalent_write_carriers_under_truthful_dispatch ... ok
+test workflow_dispatch_is_governed_by_tier_without_a_target_role ... ok
+test all_live_examples_match_complete_verdicts_and_fields ... FAILED
+
+failures:
+
+---- all_live_examples_match_complete_verdicts_and_fields stdout ----
+
+thread 'all_live_examples_match_complete_verdicts_and_fields' (41478906) panicked at crates/core/tests/guard.rs:1006:13:
+assertion `left == right` failed: write-boundary/discovery-writes-outside-its-declared-output-path reason
+  left: Some("fs.write is denied unless native role facts grant structured write (write_eligible plus write) or the narrow report-write capability. / Even a write_eligible = true role's write is denied when the target path falls outside the write_scope this specific dispatch's brief declares (a general write grant is not a blanket grant — the brief's file scope narrows it per dispatch).")
+ right: Some("fs.write is denied outright when the role's content/roles/<role>.md declares write_eligible: false. / Even a write_eligible = true role's write is denied when the target path falls outside the write_scope this specific dispatch's brief declares (a general write grant is not a blanket grant — the brief's file scope narrows it per dispatch).")
+stack backtrace:
+   0:        0x10295e7f0 - std[b23ccf54642dae0e]::backtrace_rs::backtrace::libunwind::trace
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/../../backtrace/src/backtrace/libunwind.rs:117:9
+   1:        0x10295e7f0 - std[b23ccf54642dae0e]::backtrace_rs::backtrace::trace_unsynchronized::<std[b23ccf54642dae0e]::sys::backtrace::_print_fmt::{closure#1}>
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/../../backtrace/src/backtrace/mod.rs:66:14
+   2:        0x10295e7f0 - std[b23ccf54642dae0e]::sys::backtrace::_print_fmt
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/sys/backtrace.rs:74:9
+   3:        0x10295e7f0 - <<std[b23ccf54642dae0e]::sys::backtrace::BacktraceLock>::print::DisplayBacktrace as core[eea836d19939cdd9]::fmt::Display>::fmt
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/sys/backtrace.rs:44:26
+   4:        0x1029714c4 - <core[eea836d19939cdd9]::fmt::rt::Argument>::fmt
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/fmt/rt.rs:152:76
+   5:        0x1029714c4 - core[eea836d19939cdd9]::fmt::write
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/fmt/mod.rs:1687:22
+   6:        0x102962218 - std[b23ccf54642dae0e]::io::default_write_fmt::<alloc[501706ae67335b2d]::vec::Vec<u8>>
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/io/mod.rs:622:11
+   7:        0x102962218 - <alloc[501706ae67335b2d]::vec::Vec<u8> as std[b23ccf54642dae0e]::io::Write>::write_fmt
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/io/mod.rs:1977:13
+   8:        0x1029458e0 - <std[b23ccf54642dae0e]::sys::backtrace::BacktraceLock>::print
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/sys/backtrace.rs:47:25
+   9:        0x1029458e0 - std[b23ccf54642dae0e]::panicking::default_hook::{closure#0}
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/panicking.rs:292:27
+  10:        0x1029581ac - std[b23ccf54642dae0e]::panicking::default_hook
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/panicking.rs:316:9
+  11:        0x1028ba354 - <alloc[501706ae67335b2d]::boxed::Box<dyn for<'a, 'b> core[eea836d19939cdd9]::ops::function::Fn<(&'a std[b23ccf54642dae0e]::panic::PanicHookInfo<'b>,), Output = ()> + core[eea836d19939cdd9]::marker::Send + core[eea836d19939cdd9]::marker::Sync> as core[eea836d19939cdd9]::ops::function::Fn<(&std[b23ccf54642dae0e]::panic::PanicHookInfo,)>>::call
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/alloc/src/boxed.rs:2289:9
+  12:        0x1028ba354 - test[ae24abad27a77d2a]::test_main_inner::<test[ae24abad27a77d2a]::test_main_static::{closure#0}>::{closure#0}
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/test/src/lib.rs:155:21
+  13:        0x102958564 - <alloc[501706ae67335b2d]::boxed::Box<dyn for<'a, 'b> core[eea836d19939cdd9]::ops::function::Fn<(&'a std[b23ccf54642dae0e]::panic::PanicHookInfo<'b>,), Output = ()> + core[eea836d19939cdd9]::marker::Send + core[eea836d19939cdd9]::marker::Sync> as core[eea836d19939cdd9]::ops::function::Fn<(&std[b23ccf54642dae0e]::panic::PanicHookInfo,)>>::call
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/alloc/src/boxed.rs:2289:9
+  14:        0x102958564 - std[b23ccf54642dae0e]::panicking::panic_with_hook
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/panicking.rs:833:13
+  15:        0x102945974 - std[b23ccf54642dae0e]::panicking::panic_handler::{closure#0}
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/panicking.rs:698:13
+  16:        0x10293af9c - std[b23ccf54642dae0e]::sys::backtrace::__rust_end_short_backtrace::<std[b23ccf54642dae0e]::panicking::panic_handler::{closure#0}, !>
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/sys/backtrace.rs:182:18
+  17:        0x102946044 - __rustc[6c289b9f9c454d21]::rust_begin_unwind
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/panicking.rs:689:5
+  18:        0x10298147c - core[eea836d19939cdd9]::panicking::panic_fmt
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/panicking.rs:80:14
+  19:        0x1029813cc - core[eea836d19939cdd9]::panicking::assert_failed_inner
+  20:        0x10297957c - core[eea836d19939cdd9]::panicking::assert_failed::<core[eea836d19939cdd9]::option::Option<&str>, core[eea836d19939cdd9]::option::Option<&str>>
+                               at /Users/jo3/.rustup/toolchains/1.97.0-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/panicking.rs:394:5
+  21:        0x1028941c4 - guard[21ed215747455b9b]::all_live_examples_match_complete_verdicts_and_fields
+  22:        0x1028941c4 - guard[21ed215747455b9b]::all_live_examples_match_complete_verdicts_and_fields::{closure#0}
+                               at /Users/jo3/src/pzzld/shepherd/.worktrees/v656-least-authority/crates/core/tests/guard.rs:962:58
+  23:        0x1028941c4 - <guard[21ed215747455b9b]::all_live_examples_match_complete_verdicts_and_fields::{closure#0} as core[eea836d19939cdd9]::ops::function::FnOnce<()>>::call_once
+                               at /Users/jo3/.rustup/toolchains/1.97.0-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/function.rs:250:5
+  24:        0x1028af4c0 - <fn() -> core[eea836d19939cdd9]::result::Result<(), alloc[501706ae67335b2d]::string::String> as core[eea836d19939cdd9]::ops::function::FnOnce<()>>::call_once
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/ops/function.rs:250:5
+  25:        0x1028af4c0 - test[ae24abad27a77d2a]::__rust_begin_short_backtrace::<core[eea836d19939cdd9]::result::Result<(), alloc[501706ae67335b2d]::string::String>, fn() -> core[eea836d19939cdd9]::result::Result<(), alloc[501706ae67335b2d]::string::String>>
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/test/src/lib.rs:724:18
+  26:        0x1028ba908 - test[ae24abad27a77d2a]::run_test_in_process::{closure#0}
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/test/src/lib.rs:747:74
+  27:        0x1028ba908 - <core[eea836d19939cdd9]::panic::unwind_safe::AssertUnwindSafe<test[ae24abad27a77d2a]::run_test_in_process::{closure#0}> as core[eea836d19939cdd9]::ops::function::FnOnce<()>>::call_once
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/panic/unwind_safe.rs:275:9
+  28:        0x1028ba908 - std[b23ccf54642dae0e]::panicking::catch_unwind::do_call::<core[eea836d19939cdd9]::panic::unwind_safe::AssertUnwindSafe<test[ae24abad27a77d2a]::run_test_in_process::{closure#0}>, core[eea836d19939cdd9]::result::Result<(), alloc[501706ae67335b2d]::string::String>>
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/panicking.rs:581:40
+  29:        0x1028ba908 - std[b23ccf54642dae0e]::panicking::catch_unwind::<core[eea836d19939cdd9]::result::Result<(), alloc[501706ae67335b2d]::string::String>, core[eea836d19939cdd9]::panic::unwind_safe::AssertUnwindSafe<test[ae24abad27a77d2a]::run_test_in_process::{closure#0}>>
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/panicking.rs:544:19
+  30:        0x1028ba908 - std[b23ccf54642dae0e]::panic::catch_unwind::<core[eea836d19939cdd9]::panic::unwind_safe::AssertUnwindSafe<test[ae24abad27a77d2a]::run_test_in_process::{closure#0}>, core[eea836d19939cdd9]::result::Result<(), alloc[501706ae67335b2d]::string::String>>
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/panic.rs:359:14
+  31:        0x1028ba908 - test[ae24abad27a77d2a]::run_test_in_process
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/test/src/lib.rs:747:27
+  32:        0x1028ba908 - test[ae24abad27a77d2a]::run_test::{closure#0}
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/test/src/lib.rs:668:43
+  33:        0x1028b5790 - test[ae24abad27a77d2a]::run_test::{closure#1}
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/test/src/lib.rs:698:41
+  34:        0x1028b5790 - std[b23ccf54642dae0e]::sys::backtrace::__rust_begin_short_backtrace::<test[ae24abad27a77d2a]::run_test::{closure#1}, ()>
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/sys/backtrace.rs:166:18
+  35:        0x1028bce60 - std[b23ccf54642dae0e]::thread::lifecycle::spawn_unchecked::<test[ae24abad27a77d2a]::run_test::{closure#1}, ()>::{closure#1}::{closure#0}
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/thread/lifecycle.rs:70:13
+  36:        0x1028bce60 - <core[eea836d19939cdd9]::panic::unwind_safe::AssertUnwindSafe<std[b23ccf54642dae0e]::thread::lifecycle::spawn_unchecked<test[ae24abad27a77d2a]::run_test::{closure#1}, ()>::{closure#1}::{closure#0}> as core[eea836d19939cdd9]::ops::function::FnOnce<()>>::call_once
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/panic/unwind_safe.rs:275:9
+  37:        0x1028bce60 - std[b23ccf54642dae0e]::panicking::catch_unwind::do_call::<core[eea836d19939cdd9]::panic::unwind_safe::AssertUnwindSafe<std[b23ccf54642dae0e]::thread::lifecycle::spawn_unchecked<test[ae24abad27a77d2a]::run_test::{closure#1}, ()>::{closure#1}::{closure#0}>, ()>
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/panicking.rs:581:40
+  38:        0x1028bce60 - std[b23ccf54642dae0e]::panicking::catch_unwind::<(), core[eea836d19939cdd9]::panic::unwind_safe::AssertUnwindSafe<std[b23ccf54642dae0e]::thread::lifecycle::spawn_unchecked<test[ae24abad27a77d2a]::run_test::{closure#1}, ()>::{closure#1}::{closure#0}>>
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/panicking.rs:544:19
+  39:        0x1028bce60 - std[b23ccf54642dae0e]::panic::catch_unwind::<core[eea836d19939cdd9]::panic::unwind_safe::AssertUnwindSafe<std[b23ccf54642dae0e]::thread::lifecycle::spawn_unchecked<test[ae24abad27a77d2a]::run_test::{closure#1}, ()>::{closure#1}::{closure#0}>, ()>
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/panic.rs:359:14
+  40:        0x1028bce60 - std[b23ccf54642dae0e]::thread::lifecycle::spawn_unchecked::<test[ae24abad27a77d2a]::run_test::{closure#1}, ()>::{closure#1}
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/thread/lifecycle.rs:68:26
+  41:        0x1028bce60 - <std[b23ccf54642dae0e]::thread::lifecycle::spawn_unchecked<test[ae24abad27a77d2a]::run_test::{closure#1}, ()>::{closure#1} as core[eea836d19939cdd9]::ops::function::FnOnce<()>>::call_once::{shim:vtable#0}
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/ops/function.rs:250:5
+  42:        0x10295df48 - <alloc[501706ae67335b2d]::boxed::Box<dyn core[eea836d19939cdd9]::ops::function::FnOnce<(), Output = ()> + core[eea836d19939cdd9]::marker::Send> as core[eea836d19939cdd9]::ops::function::FnOnce<()>>::call_once
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/alloc/src/boxed.rs:2275:9
+  43:        0x10295df48 - <std[b23ccf54642dae0e]::sys::thread::unix::Thread>::new::thread_start
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/sys/thread/unix.rs:118:17
+  44:        0x186355c58 - __pthread_cond_wait
+
+
+failures:
+    all_live_examples_match_complete_verdicts_and_fields
+
+test result: FAILED. 68 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+[1m[91merror[0m: test failed, to rerun pass `-p shepherd-core --test guard`

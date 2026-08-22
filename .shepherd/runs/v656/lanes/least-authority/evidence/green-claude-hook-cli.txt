@@ -1,0 +1,20 @@
+[1m[92m   Compiling[0m shepherd-cli v6.5.6 (/Users/jo3/src/pzzld/shepherd/.worktrees/v656-least-authority/crates/cli)
+[1m[92m    Finished[0m `test` profile [optimized + debuginfo] target(s) in 0.96s
+[1m[92m     Running[0m tests/claude_hook_cli.rs (target/debug/deps/claude_hook_cli-bcec3854eba14995)
+
+running 13 tests
+test malformed_input_and_unbound_subagent_events_have_safe_host_outputs ... ok
+test broken_run_namespace_allows_tools_instead_of_stranding_the_session ... ok
+test pretooluse_denies_unresolved_or_unbound_requests ... ok
+test pretooluse_denial_keeps_the_errno_for_a_genuine_io_fault ... ok
+test session_start_is_idempotent_for_the_same_session ... ok
+test session_start_binds_root_and_safe_pretooluse_allows ... ok
+test post_tool_use_records_without_running_the_pre_flight_guard ... ok
+test session_start_refuses_a_replay_with_a_different_identity ... ok
+test subagent_stop_blocks_when_dispatch_cannot_be_resolved ... ok
+test root_session_may_write_inside_the_repository_but_not_outside_it ... ok
+test lifecycle_start_and_stop_follow_the_native_dispatch_ledger ... ok
+test shepherd_self_repair_is_always_permitted ... ok
+test dispatched_agents_are_recorded_and_their_role_rules_enforce ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.72s

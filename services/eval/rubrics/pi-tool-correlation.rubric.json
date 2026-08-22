@@ -1,0 +1,29 @@
+{
+  "kind": "pi-tool-correlation",
+  "subject": "A Pi adapter decision for safely correlating opaque provider tool-call identifiers with the native Shepherd component.",
+  "scale": 5,
+  "threshold": 80,
+  "dimensions": [
+    {
+      "key": "adapter_boundary",
+      "weight": 3,
+      "desc": "Normalizes opaque Pi/OpenAI tool-call identifiers only at the Pi adapter boundary into a fixed-length native-safe correlation token using standard library primitives and no new authority."
+    },
+    {
+      "key": "identity_isolation",
+      "weight": 3,
+      "desc": "Leaves project, session, run, lane, role, agent, and agent-type validators unchanged; never treats a tool-call identifier as session or agent identity."
+    },
+    {
+      "key": "exchange_correlation",
+      "weight": 2,
+      "desc": "Uses the same normalized token in native request and response validation, rejects mismatched responses, and preserves fail-closed behavior for missing or malformed provider input."
+    },
+    {
+      "key": "falsifiable_evidence",
+      "weight": 2,
+      "desc": "Reproduces standard call_*|fc_* failure before the fix, proves it passes afterward, and covers distinct IDs plus mismatched-response negatives without claiming a practical hash collision fixture."
+    }
+  ],
+  "guidance": "Reward the smallest adapter-only correlation mapping. Penalize weakening shared identifier validation, forwarding raw provider IDs into durable identity, adding dependencies, hand-parsing provider syntax, or accepting mismatched native responses."
+}

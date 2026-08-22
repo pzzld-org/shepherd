@@ -11,7 +11,7 @@ Claude hooks → shepherd claude-hook → native Rust core ─────┐
 Codex hooks  → shepherd codex-hook  → native Rust core ─────┤
                                                              │
 Pi extension → thin host adapter → @pzzld/component-runtime  │
-                                  → fl03:shepherd@6.5.5     │
+                                  → fl03:shepherd@6.5.6     │
                                            WebAssembly component
                                                              │
                         identity, guard, lifecycle, response,
@@ -35,7 +35,7 @@ guard also compares the host tool target with the native resolved write paths.
 This keeps project custody in the native filesystem boundary instead of
 letting an adapter assert an arbitrary project ID.
 
-The WIT package is `fl03:shepherd@6.5.5` in
+The WIT package is `fl03:shepherd@6.5.6` in
 [`crates/component/wit/shepherd.wit`](../crates/component/wit/shepherd.wit).
 Generated JavaScript bindings are release artifacts, not a second source of
 logic. The adapter packages must remain thin and must not grow policy parsers,
@@ -55,7 +55,7 @@ Install the native `shepherd` executable on `PATH`, then install the plugin
 normally from the GitHub marketplace source:
 
 ```sh
-claude plugin marketplace add FL03/shepherd
+claude plugin marketplace add pzzld-org/shepherd
 claude plugin install shepherd@shepherd --scope user
 ```
 
@@ -77,7 +77,7 @@ Its `.codex-plugin/plugin.json` selects a byte-gated regular-file projection
 because Codex does not copy source symlinks. Install it with:
 
 ```sh
-codex plugin marketplace add FL03/shepherd --ref v6.5.5
+codex plugin marketplace add pzzld-org/shepherd --ref v6.5.6
 codex plugin add shepherd@shepherd
 ```
 
@@ -87,11 +87,19 @@ does not own this marketplace path or import Claude's private hooks.
 
 ### Pi
 
-`@pzzld/pi-shepherd` is a host extension, not a standalone Pi agent runtime. It
-requires a `SubagentProvider`-compatible extension, such as `pi-subagents`, to
-resolve mutation identity and spawn/resume/stop operations. The provider must
-advertise the required methods and readiness. Missing or unready provider
-capability fails closed. Pi's contract is documented in
+`@pzzld/pi-shepherd` is a host extension, not a standalone Pi agent runtime. At
+root and child `session_start`, it calls Pi's public `pi.getAllTools()` API and
+accepts any compatible registered subagent system whose configured tool name is
+exactly `subagent`. It checks all configured tools, not only active tools. Every
+generated child carrier includes that transport tool and `maxSubagentDepth: 2`
+so the provider registers below root. This does not grant dispatch authority:
+managed children may execute `subagent` only when their Component-compiled
+canonical capabilities contain `dispatch`. An absent or malformed tool inventory leaves
+reads available but blocks Write, Edit, and Bash with:
+`Pi subagent provider unavailable. Run \`pi install npm:pi-subagents\`, then restart Pi.`
+The extension does not import or depend on `pi-subagents`; that command is the
+supported install or upgrade path for the reference provider. Pi's contract is
+documented in
 [`packages/harness-pi/shepherd.pi.json`](../packages/harness-pi/shepherd.pi.json).
 
 ## Install generated adapter trees
@@ -159,6 +167,83 @@ only the bounded, validated context bundle returned by native Rust. Codex's
 regular marketplace carrier does not register subagent lifecycle hooks until
 the host exposes a trusted correlation contract.
 
+## Gate provenance
+
+The Bash `PostToolUse` carrier is telemetry, not gate authority. It may emit the
+normal `bash_post` hook event and a worktree-cwd warning, but it does not read
+`tool_input.command` or `tool_response` to claim that a configured gate ran. It
+also does not infer execution or success from the outer Bash status. There is no
+command-text gate ledger.
+
+Command text is an observation only. Comments, `echo`, `printf`, quoted text,
+concatenation, aliases, wrappers, missing commands, and failing gates remain
+unverified from this hook. The hook does not parse shell syntax. A wrapper can
+mention a command without invoking it, and a process can be invoked without
+passing.
+
+Gate state is distinguishable only from a wave-owned execution artifact.
+These states are mutually exclusive and ordered by explicit evidence, not by
+text observed by this hook:
+
+| State | Required artifact evidence |
+| --- | --- |
+| Unverified | No valid invocation record exists for the gate identity; an orphan result is ignored or rejected |
+| Invoked | The latest valid attempt has an invocation record but no matching result record |
+| Failed | The latest valid attempt has an invocation record plus its matching non-zero result |
+| Passed | The latest valid attempt has an invocation record plus its matching zero result |
+
+### Attempt correlation and retry resolution
+
+The gate identity is the tuple `run`, `wave`, `lane`, and `gate`.
+`scripts/gate-artifact.py` assigns every invocation a unique `attempt_id`,
+appends that invocation before starting the process, and appends its matching
+result only after the process returns. The invocation append order is the
+attempt order. A retry gets a new `attempt_id` and never overwrites prior
+records. Unknown, cross-gate, contradictory, and duplicate results fail closed.
+
+State resolution selects the last valid invocation, not file mtime or the last
+result record. A retry with no result is therefore `Invoked`, even when an older
+attempt passed. A matching non-zero result is `Failed`; zero is `Passed`. A
+delayed result for an older attempt cannot revive a stale pass.
+
+### Wave-owned writer and reader
+
+Run a gate through the writer from the repository root:
+
+```sh
+python3 scripts/gate-artifact.py \
+  --run v656 --wave w1 --lane gate-provenance --gate hooks \
+  run -- bash hooks/tests/run.sh
+```
+
+Read the same artifact without executing a process:
+
+```sh
+python3 scripts/gate-artifact.py \
+  --run v656 --wave w1 --lane gate-provenance --gate hooks \
+  status -- bash hooks/tests/run.sh
+```
+
+The derived artifact path is
+`.shepherd/runs/<run>/lanes/<lane>/evidence/gates/<wave>-<gate>.jsonl`.
+`run` preserves the gate process exit code. `status` returns 0 for `Passed`, 1
+for `Failed`, 3 for `Unverified`, 4 for `Invoked`, and 2 for malformed,
+mismatched, or command-mismatched evidence. The reader requires the expected
+command after `--`; a successful `true` process cannot certify the declared
+hooks gate. The script location owns the repository root regardless of caller
+cwd. Descriptor-relative no-follow traversal rejects symlinked parents and
+files, an exclusive artifact lock linearizes readers with retries, every append
+writes the complete payload, and every accepted JSONL record ends in a newline.
+Records and artifacts are bounded. `scripts/tests/test-gate-artifact.py` proves
+invocation precedes execution, command binding, result correlation, exit
+preservation, concurrent latest-invocation retry semantics, complete newline
+framing, repository-root ownership, malformed evidence refusal, and symlink
+refusal. The fast gate executes this suite and `services/eval/tests/run.sh`; the
+wiring checker discovers both service and repository test runners.
+
+The ordinary `hooks-YYYY-MM-DD.jsonl` event proves only that the host adapter
+completed its own telemetry path. It is not evidence for any gate state.
+
 ## Host capability limits
 
 Adapters must report host limitations instead of guessing:
@@ -167,7 +252,7 @@ Adapters must report host limitations instead of guessing:
 | --- | --- | --- |
 | Claude Code | Hooks and Agent Teams may be available. | If a hook or identity correlation is unavailable, the adapter reports the limitation and preserves its documented fail-closed posture. |
 | Codex | The regular marketplace carrier supports SessionStart and guarded PreToolUse. | Native subagent lifecycle hooks are not registered because the host does not expose a trusted spawn-to-child correlation; direct lifecycle inputs are rejected, never fabricated into a role. |
-| Pi | A ready `SubagentProvider` is supplied by the host extension. | Missing provider, method, or readiness blocks mutation operations. |
+| Pi | `pi.getAllTools()` reports a configured tool named exactly `subagent`; child carriers register that transport at depth 2. | Missing or malformed configured-tool metadata blocks Write, Edit, and Bash while reads remain available. Component canonical capabilities independently block no-dispatch children before provider execution. |
 
 Host-specific limits belong in adapter diagnostics and run evidence. They do
 not change the Component Model contract.

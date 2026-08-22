@@ -53,6 +53,9 @@ gate_fast() {
   step "workspace invariants are falsifiable" ./scripts/check-workspace.sh --self-test
   step "workspace invariants" ./scripts/check-workspace.sh
   step "compiler package projection is falsifiable" python3 scripts/tests/test-generate-compiler-package-content.py
+  step "gate execution artifact contract" python3 scripts/tests/test-gate-artifact.py
+  step "periodic eval contracts" bash services/eval/tests/run.sh
+  step "Pi agent generation" python3 scripts/tests/test-generate-pi-agents.py
   step "Cargo distribution contract" python3 scripts/tests/test-cargo-distribution.py
   step "Cargo distribution inventory" python3 scripts/check-cargo-distribution.py
   step "Cargo publisher recovery contract" python3 scripts/tests/test-cargo-publish.py
@@ -96,6 +99,8 @@ gate_fast() {
   # of that shape; it is now the gate's problem, not a reviewer's.
   step "every test is reachable from a runner (falsifiable)" python3 scripts/check-gate-wiring.py --self-test
   step "every test is reachable from a runner" python3 scripts/check-gate-wiring.py
+  step "conformance gate wiring is falsifiable" python3 scripts/tests/test-conformance-gate.py --self-test
+  step "conformance gate wiring" python3 scripts/tests/test-conformance-gate.py
   step "release asset inventory" bash scripts/tests/test-release-assets.sh
   step "release installers" bash scripts/tests/test-release-installers.sh
   step "PowerShell installer contract" bash scripts/tests/test-release-installer-powershell-contract.sh
@@ -169,6 +174,7 @@ gate_full() {
   step "clippy (default)" env RUSTFLAGS="-D warnings" cargo clippy --workspace --all-targets --locked
   step "clippy (full)" env RUSTFLAGS="-D warnings" cargo clippy --workspace --all-targets --locked --features full
   step "tests" cargo test --workspace --locked
+  step "native conformance corpus" conformance/run.sh --impl=rust
   # Do not "fix" this by adding `cargo test --workspace --locked --all-features`
   # below. That was tried and measured wrong twice: `--all-features` on this
   # workspace turns on `nightly` (crates/core/Cargo.toml), which gates
@@ -310,7 +316,7 @@ gate_wasm() {
     local resolved_import_count
     wasm-tools component wit "${artifact}" > "${wit_output}"
     test -s "${wit_output}"
-    grep -Fq 'export fl03:shepherd/engine@6.5.5;' "${wit_output}"
+    grep -Fq 'export fl03:shepherd/engine@6.5.6;' "${wit_output}"
     sed -n 's/^  import \(wasi:[^;]*\);$/\1/p' "${wit_output}" \
       | LC_ALL=C sort > "${resolved_imports}"
     resolved_import_count=$(wc -l < "${resolved_imports}" | tr -d ' ')

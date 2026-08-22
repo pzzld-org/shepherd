@@ -1,0 +1,20 @@
+[1m[92m   Compiling[0m shepherd-core v6.5.6 (/Users/jo3/src/pzzld/shepherd/.worktrees/v656-least-authority/crates/core)
+[1m[92m   Compiling[0m shepherd-compiler v6.5.6 (/Users/jo3/src/pzzld/shepherd/.worktrees/v656-least-authority/crates/compiler)
+[1m[92m   Compiling[0m shepherd-render v6.5.6 (/Users/jo3/src/pzzld/shepherd/.worktrees/v656-least-authority/crates/render)
+[1m[92m   Compiling[0m shepherd-registry v6.5.6 (/Users/jo3/src/pzzld/shepherd/.worktrees/v656-least-authority/crates/registry)
+[1m[92m   Compiling[0m shepherd-sdk v6.5.6 (/Users/jo3/src/pzzld/shepherd/.worktrees/v656-least-authority/crates/sdk)
+[1m[92m   Compiling[0m shepherd-cli v6.5.6 (/Users/jo3/src/pzzld/shepherd/.worktrees/v656-least-authority/crates/cli)
+[1m[92m    Finished[0m `test` profile [optimized + debuginfo] target(s) in 6.55s
+[1m[92m     Running[0m tests/dispatch_cli.rs (target/debug/deps/dispatch_cli-e4156638edc01b71)
+
+running 8 tests
+test dispatch_refuses_a_directory_in_place_of_project_identity ... ok
+test malformed_requests_and_ambiguous_runs_fail_without_publishing ... ok
+test dispatch_refuses_a_symlinked_project_identity ... ok
+test dispatch_directory_identity_gets_the_identity_specific_not_a_regular_file_wording ... ok
+test dispatch_reports_missing_identity_as_unscaffolded_not_a_symlink_refusal ... ok
+test linked_worktree_uses_only_the_primary_project_and_active_run_store ... ok
+test root_resolution_does_not_use_universal_fallback_scope ... ok
+test binary_start_resolve_and_stop_use_the_primary_active_run ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.73s

@@ -1,13 +1,13 @@
 {
   "name": "@pzzld/pi-shepherd",
-  "version": "6.5.5",
+  "version": "6.5.6",
   "description": "Thin Pi adapter for an explicit subagent provider and Rust Component-owned native lifecycle exchanges.",
   "type": "module",
   "scripts": {
     "test": "node test.mjs"
   },
   "dependencies": {
-    "@pzzld/component-runtime": "6.5.5"
+    "@pzzld/component-runtime": "6.5.6"
   },
   "engines": {
     "node": ">=20"
@@ -22,7 +22,12 @@
     ],
     "prompts": [
       "./prompts"
-    ]
+    ],
+    "subagents": {
+      "agents": [
+        "./agents"
+      ]
+    }
   },
   "keywords": [
     "pi-package",
@@ -36,6 +41,7 @@
     "src",
     "skills",
     "prompts",
+    "agents",
     "shepherd.pi.json",
     "README.md",
     "LICENSE",

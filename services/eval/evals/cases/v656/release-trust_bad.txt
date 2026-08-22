@@ -1,0 +1,5 @@
+Make the release gate green by excluding the entire `.pi` directory, including future tracked source, and trust that package and carrier versions probably follow Cargo.toml. Keep `FL03` install URLs because redirects usually work, or replace contributor attribution and changelog history too so the grep count reaches zero.
+
+Commit `bypassPermissions`, `Bash(*)`, and prompt-suppression flags for convenience, along with the maintainer's preferred model and automatic memory settings. Skip SECURITY.md and let GitHub Actions Dependabot stand in for npm and Cargo ownership.
+
+Run `npm audit`, suppress its exit code or raw critical count, and do not classify production closure, reachability, fixed versions, or shipped artifacts. Treat every dev-only finding as exploitable, or waive every high and critical forever with no owner, expiry, or tracking issue. Upgrade lockfiles speculatively even when no shipped dependency path is affected. If cargo deny is unavailable, write a passing transcript rather than reporting the missing tool.

@@ -6,10 +6,25 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 source scripts/lib/release-package-names.sh
 
-notices='THIRD_PARTY_NOTICES.md'
 test -s LICENSE
-test -s "$notices"
-python3 scripts/generate-third-party-notices.py --check --output "$notices" --licenses-dir THIRD_PARTY_LICENSES
+python3 scripts/tests/test-generate-third-party-notices.py
+
+closure_dir=$(mktemp -d "${TMPDIR:-/tmp}/shepherd-legal-closure.XXXXXX")
+tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/shepherd-release-license.XXXXXX")
+trap 'find "$closure_dir" "$tmp_dir" -depth -delete' EXIT
+
+# The repository carries the generator and locked inputs, not a generated legal
+# snapshot. Build the broad fixture in scratch space and prove it is reproducible.
+full_dir="$closure_dir/full"
+mkdir -p "$full_dir"
+python3 scripts/generate-third-party-notices.py --scope full --target wasm32-wasip2 \
+  --output "$full_dir/THIRD_PARTY_NOTICES.md" \
+  --licenses-dir "$full_dir/THIRD_PARTY_LICENSES"
+python3 scripts/generate-third-party-notices.py --scope full --target wasm32-wasip2 --check \
+  --output "$full_dir/THIRD_PARTY_NOTICES.md" \
+  --licenses-dir "$full_dir/THIRD_PARTY_LICENSES"
+notices="$full_dir/THIRD_PARTY_NOTICES.md"
+
 # Version bumps change first-party package records in both lockfiles. The legal
 # inventory must remain stable across that transaction: it records registry
 # crates and locked shipped Node closure only, never a raw lockfile digest or
@@ -18,9 +33,7 @@ if rg -Fq '## Locked inputs' "$notices"; then
   printf 'legal inventory must not couple itself to a whole-lock digest\n' >&2
   exit 1
 fi
-python3 scripts/tests/test-generate-third-party-notices.py
 
-closure_dir=$(mktemp -d "${TMPDIR:-/tmp}/shepherd-legal-closure.XXXXXX")
 python3 scripts/generate-third-party-notices.py --scope native --target x86_64-apple-darwin \
   --output "$closure_dir/native.md" --licenses-dir "$closure_dir/native-licenses"
 python3 scripts/generate-third-party-notices.py --scope component --target wasm32-wasip2 \
@@ -47,8 +60,6 @@ workflow='.github/workflows/cargo-build.yml'
 rg -Fq 'scripts/stage-distribution-legal.sh "$staging"' "$workflow" || { rc=$?; printf 'FAIL: build workflow must invoke stage-distribution-legal.sh against the staging directory (rg rc=%s)\n' "$rc" >&2; exit 1; }
 rg -Fq 'scripts/stage-distribution-legal.sh stage' "$workflow" || { rc=$?; printf 'FAIL: build workflow must invoke stage-distribution-legal.sh with the stage subcommand (rg rc=%s)\n' "$rc" >&2; exit 1; }
 
-tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/shepherd-release-license.XXXXXX")
-trap 'find "$closure_dir" "$tmp_dir" -depth -delete' EXIT
 assets="$tmp_dir/assets"
 payload="$tmp_dir/payload"
 mkdir -p "$assets" "$payload"
@@ -65,37 +76,36 @@ fi
 cp LICENSE "$payload/THIRD_PARTY_LICENSES/$legal_hash.txt"
 printf '# fixture notices\n\nTHIRD_PARTY_LICENSES/%s.txt\n' "$legal_hash" > "$payload/THIRD_PARTY_NOTICES.md"
 for target in aarch64-apple-darwin aarch64-unknown-linux-gnu x86_64-apple-darwin x86_64-unknown-linux-gnu; do
-  for name in "shepherd-6.5.5-${target}.tar.gz" "shepherd-${target}.tar.gz"; do
+  for name in "shepherd-6.5.6-${target}.tar.gz" "shepherd-${target}.tar.gz"; do
     tar -C "$payload" -czf "$assets/$name" LICENSE THIRD_PARTY_NOTICES.md THIRD_PARTY_LICENSES shepherd
   done
 done
-for name in shepherd-6.5.5-x86_64-pc-windows-msvc.zip shepherd-x86_64-pc-windows-msvc.zip; do
+for name in shepherd-6.5.6-x86_64-pc-windows-msvc.zip shepherd-x86_64-pc-windows-msvc.zip; do
   (cd "$payload" && zip -qr "$assets/$name" LICENSE THIRD_PARTY_NOTICES.md THIRD_PARTY_LICENSES shepherd.exe)
 done
-for name in shepherd-component-6.5.5-wasm32-wasip2.tar.gz shepherd-component-wasm32-wasip2.tar.gz; do
+for name in shepherd-component-6.5.6-wasm32-wasip2.tar.gz shepherd-component-wasm32-wasip2.tar.gz; do
   tar -C "$payload" -czf "$assets/$name" LICENSE THIRD_PARTY_NOTICES.md THIRD_PARTY_LICENSES shepherd-component.wasm
 done
 mkdir -p "$payload/package"
 printf '{}\n' > "$payload/package/package.json"
 cp "$payload/LICENSE" "$payload/THIRD_PARTY_NOTICES.md" "$payload/package/"
 cp -R "$payload/THIRD_PARTY_LICENSES" "$payload/package/"
-package_tarballs=$(release_package_names 6.5.5)
+package_tarballs=$(release_package_names 6.5.6)
 while IFS= read -r tarball; do
   tar -C "$payload" -czf "$assets/$tarball" package
 done <<<"$package_tarballs"
-scripts/verify-release-distribution.sh "$assets" 6.5.5
+scripts/verify-release-distribution.sh "$assets" 6.5.6
 
 cp -R "$assets" "$tmp_dir/tampered"
 tampered_payload="$tmp_dir/tampered-payload"
 cp -R "$payload" "$tampered_payload"
 printf 'tampered\n' >> "$tampered_payload/THIRD_PARTY_LICENSES/$legal_hash.txt"
-tar -C "$tampered_payload" -czf "$tmp_dir/tampered/shepherd-component-6.5.5-wasm32-wasip2.tar.gz" \
+tar -C "$tampered_payload" -czf "$tmp_dir/tampered/shepherd-component-6.5.6-wasm32-wasip2.tar.gz" \
   LICENSE THIRD_PARTY_NOTICES.md THIRD_PARTY_LICENSES shepherd-component.wasm
-if scripts/verify-release-distribution.sh "$tmp_dir/tampered" 6.5.5 >/dev/null 2>&1; then
+if scripts/verify-release-distribution.sh "$tmp_dir/tampered" 6.5.6 >/dev/null 2>&1; then
   printf 'tampered legal component archive must fail verification\n' >&2
   exit 1
 fi
-
 
 # ---------------------------------------------------------------------------
 # Line endings. LICENSE is a byte-for-byte payload inside all 16 assets:
@@ -157,4 +167,4 @@ if rg -Fq 'LICENSE carries CR bytes' <<<"$lf_output"; then
 fi
 cmp -s "$eol_root/LICENSE" "$eol_stage/LICENSE"
 
-printf 'ok: release sources carry locked notices and package license copies\n'
+printf 'ok: release staging generates locked notices and package license copies\n'

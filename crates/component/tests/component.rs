@@ -13,6 +13,7 @@ fn canonical_compilation_binds_the_host_to_a_canonical_target_profile() {
         let tree = <Component as wit::Guest>::compile_canonical(target).expect("canonical compile");
         assert_eq!(tree.target, target);
         assert_eq!(tree.roles.len(), 9);
+        assert!(tree.roles.iter().all(|role| !role.model_hint.is_empty()));
         assert!(tree.files.iter().all(|file| file.source_sha256.len() == 64));
         assert_eq!(tree.digest.len(), 64);
     }
@@ -89,7 +90,7 @@ fn canonical_guard_uses_the_embedded_predicate_and_role_corpus() {
 #[test]
 fn wit_contract_metadata_matches_the_component_package() {
     let wit = include_str!("../wit/shepherd.wit");
-    assert!(wit.contains("package fl03:shepherd@6.5.5;"));
+    assert!(wit.contains("package fl03:shepherd@6.5.6;"));
     assert!(wit.contains("world shepherd-core"));
     for function in [
         "canonical-profile",
@@ -105,6 +106,7 @@ fn wit_contract_metadata_matches_the_component_package() {
     assert!(!wit.contains("record role-input"));
     assert!(!wit.contains("record skill-input"));
     assert!(wit.contains("record harness-profile"));
+    assert!(wit.contains("model-hint: string"));
     assert!(wit.contains(
         "compile-canonical: func(target: target) -> result<emitted-tree, engine-error>;"
     ));

@@ -5,7 +5,8 @@
       "claude_model": "sonnet",
       "codex_effort": "medium",
       "codex_profile": "standard",
-      "pi_model": "sonnet",
+      "model_hint": "standard",
+      "pi_model": null,
       "pi_tools": [
         "read",
         "grep",
@@ -23,7 +24,8 @@
       "claude_model": "sonnet",
       "codex_effort": "medium",
       "codex_profile": "standard",
-      "pi_model": "sonnet",
+      "model_hint": "standard",
+      "pi_model": null,
       "pi_tools": [
         "read",
         "grep",
@@ -38,20 +40,21 @@
       ]
     },
     "conductor": {
-      "claude_model": "inherit",
-      "codex_effort": null,
-      "codex_profile": null,
+      "claude_model": "opus[1m]",
+      "codex_effort": "high",
+      "codex_profile": "reasoning-high",
+      "model_hint": "reasoning-high",
       "pi_model": null,
       "pi_tools": [
         "read",
         "grep",
         "find",
-        "bash"
+        "bash",
+        "subagent"
       ],
       "pi_unsupported": [
         "skill-load",
         "tool-discovery",
-        "dispatch",
         "schedule-wakeup",
         "message-peer",
         "task-tracking",
@@ -62,7 +65,8 @@
       "claude_model": "sonnet",
       "codex_effort": "medium",
       "codex_profile": "standard",
-      "pi_model": "sonnet",
+      "model_hint": "standard",
+      "pi_model": null,
       "pi_tools": [
         "read",
         "grep",
@@ -77,7 +81,8 @@
       "claude_model": "haiku",
       "codex_effort": "low",
       "codex_profile": "economy",
-      "pi_model": "haiku",
+      "model_hint": "economy",
+      "pi_model": null,
       "pi_tools": [
         "read",
         "grep",
@@ -92,9 +97,10 @@
       ]
     },
     "engineer": {
-      "claude_model": "inherit",
-      "codex_effort": null,
-      "codex_profile": null,
+      "claude_model": "opus[1m]",
+      "codex_effort": "high",
+      "codex_profile": "reasoning-high",
+      "model_hint": "reasoning-high",
       "pi_model": null,
       "pi_tools": [
         "read",
@@ -102,12 +108,12 @@
         "find",
         "bash",
         "write",
-        "edit"
+        "edit",
+        "subagent"
       ],
       "pi_unsupported": [
         "skill-load",
         "tool-discovery",
-        "dispatch",
         "message-peer"
       ]
     },
@@ -115,19 +121,20 @@
       "claude_model": "opus[1m]",
       "codex_effort": "high",
       "codex_profile": "reasoning-high",
-      "pi_model": "opus",
+      "model_hint": "reasoning-high",
+      "pi_model": null,
       "pi_tools": [
         "read",
         "grep",
         "find",
         "bash",
         "write",
-        "edit"
+        "edit",
+        "subagent"
       ],
       "pi_unsupported": [
         "skill-load",
         "tool-discovery",
-        "dispatch",
         "ask-operator",
         "task-tracking",
         "web-research"
@@ -137,19 +144,20 @@
       "claude_model": "inherit",
       "codex_effort": null,
       "codex_profile": null,
-      "pi_model": null,
+      "model_hint": "inherit-caller",
+      "pi_model": "inherit",
       "pi_tools": [
         "read",
         "grep",
         "find",
         "bash",
         "write",
-        "edit"
+        "edit",
+        "subagent"
       ],
       "pi_unsupported": [
         "skill-load",
         "tool-discovery",
-        "dispatch",
         "message-peer",
         "task-tracking",
         "web-research"
@@ -159,7 +167,8 @@
       "claude_model": "sonnet",
       "codex_effort": "medium",
       "codex_profile": "standard",
-      "pi_model": "sonnet",
+      "model_hint": "standard",
+      "pi_model": null,
       "pi_tools": [
         "read",
         "grep",
@@ -187,8 +196,8 @@
           "e4e3764dc21530feea2349a05ebec68fa88facc2112268899790108499cc9d3f"
         ],
         "agents/conductor.md": [
-          3720,
-          "b49e310cc44ed9349369e27001215b350e480fc6a95c16f7fa4edc434794a307"
+          3924,
+          "cdefe3d17090611ca5921781ba1887dcd6016d4550dac8933385cbc41cba58d5"
         ],
         "agents/critic.md": [
           2134,
@@ -199,8 +208,8 @@
           "af6f877b9b9806ca17b401cb6f5a8abe0601a8d69416e2ab75a67653a00757e8"
         ],
         "agents/engineer.md": [
-          2792,
-          "963a45b3b9d05d341cfe1ed2b08224126aecb6411d5772902e6d62216c4c0515"
+          2793,
+          "08b3db211ac059cefacaf13a36f9ca6e656c1cc4c05a1752819a459f09677036"
         ],
         "agents/planter.md": [
           3077,
@@ -239,29 +248,29 @@
           "dd4f0dc9412e9f41fac6c67591181dada5f4dc4d3a465ff6d30838eb85d2d284"
         ],
         "skills/shepherd/SKILL.md": [
-          2566,
-          "461c51d781a5bb5de0749fd7ec4945c5c78952f2376411754811d8ca4425ddc3"
+          2358,
+          "17525e6e9628e3374188b0948c8877a0e9d4900a6df9256e4eb60f2488473dac"
         ],
         "skills/spawn/SKILL.md": [
-          2604,
-          "74ea04bb40df9cac506c159c24a07f0a02d89abc1754a5cb7e12db4558be8d0a"
+          2920,
+          "6ec17bc33f55f23ac9010f51586d095edd3a3321c4aa0291e5e36920041352c5"
         ],
         "skills/start/SKILL.md": [
-          1827,
-          "2bfa2a9e79d4e436eab96c6d7ca99fb5cdcd3ddd84c63ac46ecadcfa90ed4847"
+          1839,
+          "01395422369512261ba07a0a24446707c5613d8742dc49e6d830dfd360a2351a"
         ],
         "skills/thinking/SKILL.md": [
           2111,
           "464768041f6f32bc14cec18ba0d428e0a60b86ba45f652e1cb0cd3956245bf81"
         ]
       },
-      "tree_digest": "3825dd430cfad374acd3ebbf07e9a2db4756b93ee5ff7ad7b410ba1407fe8b7a"
+      "tree_digest": "2df4cb8aeaf60313d5fde4b2265d1d143906fc1184423123d52772126e906493"
     },
     "codex": {
       "files": {
         "shepherd.codex.toml": [
-          645,
-          "bc41c0b79ae67e1f8203b6082752c0f96a536e958067283935e5a0d78dd78da7"
+          702,
+          "04c30c77a4671f39777958f01e2a644b54783fe74ab0aff089cab3ae4450d20a"
         ],
         "skills/adaptation/SKILL.md": [
           2700,
@@ -284,23 +293,23 @@
           "dd4f0dc9412e9f41fac6c67591181dada5f4dc4d3a465ff6d30838eb85d2d284"
         ],
         "skills/shepherd/SKILL.md": [
-          2566,
-          "461c51d781a5bb5de0749fd7ec4945c5c78952f2376411754811d8ca4425ddc3"
+          2358,
+          "17525e6e9628e3374188b0948c8877a0e9d4900a6df9256e4eb60f2488473dac"
         ],
         "skills/spawn/SKILL.md": [
-          2604,
-          "74ea04bb40df9cac506c159c24a07f0a02d89abc1754a5cb7e12db4558be8d0a"
+          2920,
+          "6ec17bc33f55f23ac9010f51586d095edd3a3321c4aa0291e5e36920041352c5"
         ],
         "skills/start/SKILL.md": [
-          1827,
-          "2bfa2a9e79d4e436eab96c6d7ca99fb5cdcd3ddd84c63ac46ecadcfa90ed4847"
+          1839,
+          "01395422369512261ba07a0a24446707c5613d8742dc49e6d830dfd360a2351a"
         ],
         "skills/thinking/SKILL.md": [
           2111,
           "464768041f6f32bc14cec18ba0d428e0a60b86ba45f652e1cb0cd3956245bf81"
         ]
       },
-      "tree_digest": "5d12d031bd6190db7877a9d954a3b83f7f7758277bfabb2f2b37526c64e0eb22"
+      "tree_digest": "d59b9ac29e512c8f7992f52c649e4720f766a99d6f5cc883436935857b2c1f74"
     },
     "pi": {
       "files": {
@@ -313,8 +322,8 @@
           "20366f8a865db671ec533e0f2a457cbb8388e7df17ad2150268eebc778266800"
         ],
         "prompts/conductor.md": [
-          3664,
-          "388221da74216b0837617c35776003e7ad2b63f3b3cbf64ec19796cf2708b28f"
+          3867,
+          "596be6ed4354c9ede61338efe2028f84d66ce10553470044ff8ff266f8a8a670"
         ],
         "prompts/critic.md": [
           2115,
@@ -361,23 +370,23 @@
           "dd4f0dc9412e9f41fac6c67591181dada5f4dc4d3a465ff6d30838eb85d2d284"
         ],
         "skills/shepherd/SKILL.md": [
-          2566,
-          "461c51d781a5bb5de0749fd7ec4945c5c78952f2376411754811d8ca4425ddc3"
+          2358,
+          "17525e6e9628e3374188b0948c8877a0e9d4900a6df9256e4eb60f2488473dac"
         ],
         "skills/spawn/SKILL.md": [
-          2604,
-          "74ea04bb40df9cac506c159c24a07f0a02d89abc1754a5cb7e12db4558be8d0a"
+          2920,
+          "6ec17bc33f55f23ac9010f51586d095edd3a3321c4aa0291e5e36920041352c5"
         ],
         "skills/start/SKILL.md": [
-          1827,
-          "2bfa2a9e79d4e436eab96c6d7ca99fb5cdcd3ddd84c63ac46ecadcfa90ed4847"
+          1839,
+          "01395422369512261ba07a0a24446707c5613d8742dc49e6d830dfd360a2351a"
         ],
         "skills/thinking/SKILL.md": [
           2111,
           "464768041f6f32bc14cec18ba0d428e0a60b86ba45f652e1cb0cd3956245bf81"
         ]
       },
-      "tree_digest": "a4425c03719a3bf78ed786b507da00ae09869fb3632bef82b7a8cdc8afcc1f6b"
+      "tree_digest": "abf2fd228f9fcfc24f15c27bb6f3455a97813e29e4e61013e8bbbb54c9a92078"
     }
   }
 }

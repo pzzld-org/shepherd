@@ -44,6 +44,7 @@ REPO_ROOT = CONFORMANCE_ROOT.parent
 SCHEMA_DIR = REPO_ROOT / "crates" / "registry" / "src" / "migrate" / "sql"
 SCHEMA_BASE_SQL = SCHEMA_DIR / "0001_init.sql"
 MIGRATIONS_DIR = SCHEMA_DIR / "migrations"
+SUPPORTED_AUTHORITIES = frozenset({"native-v6.4.5", "native-v6.4.6"})
 
 #: Every shepherd-specific override a case controls explicitly must never
 #: leak in from whatever happens to be set in the host environment this
@@ -117,8 +118,8 @@ class Case:
             2 FTS5 external-content tables tokenized
             ``unicode61 remove_diacritics 2`` -- verified empirically against
             a freshly-built schema DB while authoring this corpus).
-        authority: The frozen contract authority. It must be
-            ``native-v6.4.5``. Legacy authority values are rejected so a
+        authority: The frozen contract authority. It must be a member of
+            ``SUPPORTED_AUTHORITIES``. Legacy authority values are rejected so a
             deleted implementation cannot become a hidden recording path.
     """
 
@@ -204,8 +205,9 @@ def load_case(case_json_path: Path, cases_dir: Path) -> Case:
     stdin_file = data.get("stdin_file")
     stdin = (case_dir / stdin_file).read_text() if stdin_file else None
     authority = data.get("authority", "native-v6.4.5")
-    if authority != "native-v6.4.5":
-        raise ValueError(f"{case_json_path}: only native-v6.4.5 authority is supported")
+    if authority not in SUPPORTED_AUTHORITIES:
+        supported = ", ".join(sorted(SUPPORTED_AUTHORITIES))
+        raise ValueError(f"{case_json_path}: supported native authorities: {supported}")
     return Case(
         case_id=case_dir.relative_to(cases_dir).as_posix(),
         case_dir=case_dir,
@@ -334,7 +336,9 @@ def normalize(text: str, *, scratch: Path) -> str:
 # --------------------------------------------------------------------------
 # Execution.
 # --------------------------------------------------------------------------
-def _build_env(cwd_dir: Path, workdir: Path, db_path: Path) -> dict[str, str]:
+def _build_env(
+    cwd_dir: Path, workdir: Path, db_path: Path, *, rust_bin: Path | None = None
+) -> dict[str, str]:
     """The isolated environment every case runs under.
 
     Strip every Shepherd override the host environment might carry, then pin
@@ -351,6 +355,8 @@ def _build_env(cwd_dir: Path, workdir: Path, db_path: Path) -> dict[str, str]:
         env.pop(key, None)
     env["CLAUDE_PLUGIN_ROOT"] = str(REPO_ROOT)
     env["SHEPHERD_HOME"] = str(cwd_dir / ".shepherd-user")
+    if rust_bin is not None:
+        env["PATH"] = f"{rust_bin.parent}{os.pathsep}{env.get('PATH', '')}"
     env["LC_ALL"] = "C"
     env["TZ"] = "UTC"
     return env
@@ -431,7 +437,7 @@ def run_case(case: Case, *, impl: str = "rust", rust_bin: Path | None = None) ->
         elif case.db_fixture != "none":
             raise ValueError(f"{case.case_id}: unknown db_fixture {case.db_fixture!r}")
 
-        env = _build_env(cwd_dir, workdir, db_path)
+        env = _build_env(cwd_dir, workdir, db_path, rust_bin=rust_bin)
 
         for setup_args in case.setup:
             setup_proc = _run_cli(
@@ -499,7 +505,7 @@ def record_case(
     case. This is the ONE place that decides what "correct" means for a
     case; everything else compares against what it wrote.
     """
-    if case.authority != "native-v6.4.5" or impl != "rust":
+    if case.authority not in SUPPORTED_AUTHORITIES or impl != "rust":
         raise ValueError(f"{case.case_id}: conformance recording is Rust-only")
     result = run_case(case, impl=impl, rust_bin=rust_bin)
     expected = case.expected_dir

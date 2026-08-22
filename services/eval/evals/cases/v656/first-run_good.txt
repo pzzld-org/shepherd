@@ -1,0 +1,9 @@
+When spawn finds no planted run, it stops before dispatch and returns one explicit operator-owned transition:
+
+`shepherd run init <run>` → invoke `plant` → invoke `spawn` again
+
+These are distinct lifecycle steps. Run initialization creates the durable run, plant authors and verifies the seed, and a later spawn plans from that planted seed. Spawn never initializes, plants, retries itself, or runs `shepherd init --confirm` as a side effect. If project initialization is missing, it reports that separate confirmation-gated prerequisite and stops.
+
+Legacy `paths.reports` remains a closed typed compatibility key. A string is accepted by ordinary and migration loaders without a parallel parser; `false` fails loudly and names both the source file and `paths.reports`.
+
+Authored, canonical Claude, Codex, and compiler-package spawn carriers all preserve the same explicit action. Removing it makes the deterministic projection check fail.

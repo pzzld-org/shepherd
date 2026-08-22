@@ -1,0 +1,20 @@
+$ cargo test -p shepherd-cli --test dispatch_cli
+   Compiling shepherd-core v6.5.6 (/Users/jo3/src/pzzld/shepherd/.worktrees/v656-least-authority/crates/core)
+   Compiling shepherd-compiler v6.5.6 (/Users/jo3/src/pzzld/shepherd/.worktrees/v656-least-authority/crates/compiler)
+   Compiling shepherd-registry v6.5.6 (/Users/jo3/src/pzzld/shepherd/.worktrees/v656-least-authority/crates/registry)
+   Compiling shepherd-render v6.5.6 (/Users/jo3/src/pzzld/shepherd/.worktrees/v656-least-authority/crates/render)
+   Compiling shepherd-sdk v6.5.6 (/Users/jo3/src/pzzld/shepherd/.worktrees/v656-least-authority/crates/sdk)
+   Compiling shepherd-cli v6.5.6 (/Users/jo3/src/pzzld/shepherd/.worktrees/v656-least-authority/crates/cli)
+    Finished `test` profile [optimized + debuginfo] target(s) in 10.57s
+     Running tests/dispatch_cli.rs (target/debug/deps/dispatch_cli-e4156638edc01b71)
+
+running 7 tests
+test dispatch_reports_missing_identity_as_unscaffolded_not_a_symlink_refusal ... ok
+test dispatch_refuses_a_directory_in_place_of_project_identity ... ok
+test dispatch_directory_identity_gets_the_identity_specific_not_a_regular_file_wording ... ok
+test dispatch_refuses_a_symlinked_project_identity ... ok
+test malformed_requests_and_ambiguous_runs_fail_without_publishing ... ok
+test linked_worktree_uses_only_the_primary_project_and_active_run_store ... ok
+test binary_start_resolve_and_stop_use_the_primary_active_run ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.47s

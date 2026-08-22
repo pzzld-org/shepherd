@@ -1,0 +1,78 @@
+{
+  "schema": 1,
+  "activeSurfaces": [
+    {
+      "path": ".claude-plugin/marketplace.json",
+      "kind": "release-trust-active-surface"
+    },
+    {
+      "path": ".claude-plugin/plugin.json",
+      "kind": "release-trust-active-surface"
+    },
+    {
+      "path": ".claude/settings.json",
+      "kind": "release-trust-active-surface"
+    },
+    {
+      "path": ".github/workflows/release.yml",
+      "kind": "release-trust-active-surface"
+    },
+    {
+      "path": "Cargo.toml",
+      "kind": "release-trust-active-surface"
+    },
+    {
+      "path": "QUICKSTART.md",
+      "kind": "release-trust-active-surface"
+    },
+    {
+      "path": "README.md",
+      "kind": "release-trust-active-surface"
+    },
+    {
+      "path": "docs/integration.md",
+      "kind": "release-trust-active-surface"
+    },
+    {
+      "path": "package.json",
+      "kind": "release-trust-active-surface"
+    },
+    {
+      "path": "packages/harness-claude/README.md",
+      "kind": "release-trust-active-surface"
+    },
+    {
+      "path": "plugins/shepherd/.claude-plugin/plugin.json",
+      "kind": "release-trust-active-surface"
+    },
+    {
+      "path": "plugins/shepherd/.codex-plugin/plugin.json",
+      "kind": "release-trust-active-surface"
+    },
+    {
+      "path": "scripts/install-shepherd.ps1",
+      "kind": "release-trust-active-surface"
+    },
+    {
+      "path": "scripts/install-shepherd.sh",
+      "kind": "release-trust-active-surface"
+    }
+  ],
+  "historicalPaths": [
+    "CHANGELOG.md"
+  ],
+  "historicalPrefixes": [
+    ".shepherd/runs/",
+    "conformance/"
+  ],
+  "preservedContributorIdentity": [
+    {
+      "path": ".github/FUNDING.yml",
+      "requiredText": "FL03"
+    },
+    {
+      "path": "CODEOWNERS",
+      "requiredText": "@FL03"
+    }
+  ]
+}

@@ -1,22 +1,12 @@
 name: cargo-publish
 
-# Crates.io publication, isolated from both the asset build and the tag.
+# Cargo owns package construction, dependency ordering, upload, and registry
+# polling. This workflow owns only release input validation, exact checkout
+# custody, and post-command reconciliation against crates.io metadata.
 #
-# Ordinary releases reach this through release.yml's `workflow_call`, which
-# holds it behind every asset job. That ordering is not cosmetic: publication
-# ran as its own push-triggered workflow once, raced the asset builds, and won.
-# Two consecutive patch versions were burned that way -- crates uploaded, a
-# native target failed minutes later, no tag and no release. A crates.io
-# version is not reissuable, so a failed asset build must cost a re-run, never
-# a version.
-#
-# The same jobs are reachable manually (`workflow_dispatch`) for recovery when
-# the automatic path did not complete, and by `repository_dispatch` for
-# out-of-band orchestration. Both name the version explicitly.
-
-concurrency:
-  group: cargo-publish-${{ github.ref }}
-  cancel-in-progress: false
+# Ordinary releases call this workflow from release.yml after every release
+# asset has passed. Manual dispatch is the recovery surface for a partially
+# published workspace; pass only the missing package names through `packages`.
 
 on:
   workflow_call:
@@ -26,158 +16,234 @@ on:
         required: true
         type: string
       ref:
-        description: Commit to publish from (defaults to the calling event's SHA)
+        description: Exact 40-character commit SHA to publish from
         required: false
         type: string
+      packages:
+        description: Comma- or space-separated recovery package names; blank selects the public workspace
+        required: false
+        default: ''
+        type: string
+      publish:
+        description: Upload after validation; false performs Cargo's dry run
+        required: false
+        default: true
+        type: boolean
     secrets:
       CARGO_REGISTRY_TOKEN:
         required: true
   workflow_dispatch:
     inputs:
       version:
-        description: Exact MAJOR.MINOR.PATCH version to recover
+        description: Exact MAJOR.MINOR.PATCH version to verify or recover
         required: true
         type: string
+      ref:
+        description: Exact 40-character commit SHA; blank uses the dispatched ref's SHA
+        required: false
+        default: ''
+        type: string
+      packages:
+        description: Comma- or space-separated missing packages; blank selects the public workspace
+        required: false
+        default: ''
+        type: string
       publish:
-        description: Publish absent crates after checksum verification
+        description: Upload after validation
         required: true
         default: false
         type: boolean
-  repository_dispatch:
-    types: [cargo-publish]
-  # The modular hook, symmetric with npm-publish.yml: when cargo-build finishes
-  # on its own (a tag push, a dispatch), publish what it just built. Guarded on
-  # a successful conclusion below, and idempotent regardless -- cargo-publish.py
-  # compares the prepared .crate against the published one and resumes rather
-  # than erroring on a version already on crates.io.
-  workflow_run:
-    workflows: [cargo-build]
-    types: [completed]
+
+concurrency:
+  group: cargo-publish-${{ inputs.version }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
 
 jobs:
   publish:
-    name: Publish crates
-    # A failed or cancelled build must not publish its partial output.
-    if: >-
-      github.event_name != 'workflow_run' ||
-      github.event.workflow_run.conclusion == 'success'
+    name: Publish crates with Cargo
     runs-on: ubuntu-24.04
     environment: crates-io
     permissions:
       contents: read
     steps:
-      # `client_payload.*` is authored by whoever sends the dispatch, and that
-      # permission is grantable WITHOUT `contents: write`. Resolve the checkout
-      # ref through a fail-closed allowlist, via `env:` so the untrusted value
-      # is never spliced into the shell command itself (FL03/axiom#2578).
-      - name: Resolve a trusted checkout ref
+      - name: Resolve exact checkout SHA
         id: dispatch_ref
         shell: bash
         env:
-          CALL_REF: ${{ inputs.ref }}
-          DISPATCH_REF: ${{ github.event.client_payload.ref }}
-          RUN_REF: ${{ github.event.workflow_run.head_sha }}
-          FALLBACK_REF: ${{ github.sha }}
+          REQUESTED_REF: ${{ inputs.ref }}
+          EVENT_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          candidate="${CALL_REF:-${DISPATCH_REF:-${RUN_REF:-}}}"
-          if [[ -z "$candidate" ]]; then
-            printf 'ref=%s\n' "$FALLBACK_REF" >> "$GITHUB_OUTPUT"
-            exit 0
+          candidate="${REQUESTED_REF:-$EVENT_SHA}"
+          if [[ ! "$candidate" =~ ^[0-9a-f]{40}$ ]]; then
+            printf '::error::publish ref must be an exact 40-character commit SHA; found %s\n' "$candidate"
+            exit 1
           fi
-          if [[ "$candidate" =~ ^(refs/heads/|refs/tags/)?(main|master|latest|v[0-9]+\.[0-9]+\.[0-9]+(-dev\.[0-9]+)?)$ ]] \
-            || [[ "$candidate" =~ ^[0-9a-f]{40}$ ]]; then
-            printf 'ref=%s\n' "$candidate" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          printf '::error::rejected publish ref: not an allowlisted branch, tag, or commit SHA\n'
-          exit 1
-      - name: Checkout exact event commit
+          printf 'ref=%s\n' "$candidate" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout exact release commit
         uses: actions/checkout@v7 # v7.0.1
         with:
           fetch-depth: 0
           ref: ${{ steps.dispatch_ref.outputs.ref }}
           persist-credentials: false
-      - name: Resolve exact version and detect release commit
-        id: release
+
+      - name: Validate release authority
         shell: bash
         env:
-          REQUESTED_VERSION: ${{ inputs.version || github.event.client_payload.version }}
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          if [[ -n "$REQUESTED_VERSION" ]]; then
-            # A caller named the version: release.yml passing through its own
-            # release-metadata, an operator recovering by hand, or a dispatch.
-            # Not gated on detect-release-commit.sh -- a recovery run may
-            # target a version whose release commit already merged and moved on.
-            version="$REQUESTED_VERSION"
-            [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
-              printf '::error::requested version %s is not MAJOR.MINOR.PATCH\n' "$version"
-              exit 1
-            }
-            python3 scripts/version-bump.py check --root . --version "$version"
-            proceed=true
-          else
-            # No version was named. This is reachable only from a
-            # `repository_dispatch` whose payload omitted one -- there is
-            # deliberately no `push` trigger on this workflow, because a
-            # push-triggered run has no `needs:` edge to the asset build and
-            # that is exactly how publication once raced the build and burned
-            # two patch versions. Fall back to the same release-commit
-            # predicate release.yml gates on; anything else publishes nothing.
-            subject=$(git log -1 --format=%s HEAD)
-            detect_output=$(scripts/detect-release-commit.sh \
-              --subject "$subject" \
-              --ref "$GITHUB_REF" \
-              --default-branch "$DEFAULT_BRANCH" \
-              --plugin-json .claude-plugin/plugin.json)
-            verdict=''
-            version=''
-            while IFS= read -r line; do
-              case "$line" in
-                verdict=*) verdict="${line#verdict=}" ;;
-                version=*) version="${line#version=}" ;;
-              esac
-            done <<<"$detect_output"
-            if [[ "$verdict" == proceed ]]; then
-              python3 scripts/version-bump.py check --root . --version "$version"
-              proceed=true
-            else
-              proceed=false
-            fi
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            printf '::error::version must be exact MAJOR.MINOR.PATCH; found %s\n' "$VERSION"
+            exit 1
           fi
-          {
-            printf 'version=%s\n' "$version"
-            printf 'proceed=%s\n' "$proceed"
-          } >> "$GITHUB_OUTPUT"
+          python3 scripts/version-bump.py check --root . --version "$VERSION"
+          python3 scripts/check-cargo-distribution.py
+
       - name: Setup pinned Rust toolchain
-        if: steps.release.outputs.proceed == 'true'
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           cache: false
           toolchain: 1.97.0
-      - name: Prepare and verify immutable crate bytes
-        if: steps.release.outputs.proceed == 'true'
+
+      - name: Build Cargo publication plan
         shell: bash
         env:
-          VERSION: ${{ steps.release.outputs.version }}
-          STATE: ${{ runner.temp }}/shepherd-cargo-state.json
-        run: python3 scripts/cargo-publish.py prepare --version "$VERSION" --state "$STATE"
-      # `workflow_dispatch` defaults `publish` to false so a recovery run can
-      # verify crate bytes WITHOUT uploading. Every other trigger publishes:
-      # release.yml only calls in once every asset has verified, and a push or
-      # dispatch that reached here already passed the release-commit predicate.
-      - name: Publish or resume dependency waves
-        if: >-
-          steps.release.outputs.proceed == 'true' &&
-          (github.event_name != 'workflow_dispatch' || inputs.publish == true)
+          REQUESTED_PACKAGES: ${{ inputs.packages }}
+          SELECTED_FILE: ${{ runner.temp }}/cargo-publish-selected.txt
+          ARGS_FILE: ${{ runner.temp }}/cargo-publish-args.txt
+        run: |
+          set -euo pipefail
+
+          public_packages=(
+            shepherd-core
+            shepherd-compiler
+            shepherd-registry
+            shepherd-render
+            shepherd-sdk
+            shepherd-cli
+          )
+
+          raw="${REQUESTED_PACKAGES//,/ }"
+          selected=()
+          cargo_args=()
+
+          if [[ -z "${raw//[[:space:]]/}" ]]; then
+            selected=("${public_packages[@]}")
+            cargo_args=(--workspace --exclude shepherd-component)
+          else
+            read -r -a requested <<< "$raw"
+            declare -A seen=()
+            for package in "${requested[@]}"; do
+              allowed=false
+              for public_package in "${public_packages[@]}"; do
+                if [[ "$package" == "$public_package" ]]; then
+                  allowed=true
+                  break
+                fi
+              done
+              if [[ "$allowed" != true ]]; then
+                printf '::error::unknown or non-public Cargo package: %s\n' "$package"
+                exit 1
+              fi
+              if [[ -z "${seen[$package]+x}" ]]; then
+                selected+=("$package")
+                cargo_args+=(--package "$package")
+                seen[$package]=1
+              fi
+            done
+          fi
+
+          if ((${#selected[@]} == 0)); then
+            printf '::error::publication plan selected no packages\n'
+            exit 1
+          fi
+
+          printf '%s\n' "${selected[@]}" > "$SELECTED_FILE"
+          printf '%s\n' "${cargo_args[@]}" > "$ARGS_FILE"
+          printf 'Cargo publication selection: %s\n' "${selected[*]}"
+
+      - name: Verify packages with Cargo dry run
+        if: ${{ ! inputs.publish }}
+        shell: bash
+        env:
+          ARGS_FILE: ${{ runner.temp }}/cargo-publish-args.txt
+        run: |
+          set -euo pipefail
+          mapfile -t cargo_args < "$ARGS_FILE"
+          cargo publish --locked --dry-run "${cargo_args[@]}"
+
+      - name: Publish packages with Cargo
+        if: ${{ inputs.publish }}
+        id: cargo_publish
+        continue-on-error: true
         shell: bash
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-          VERSION: ${{ steps.release.outputs.version }}
-          STATE: ${{ runner.temp }}/shepherd-cargo-state.json
-        run: python3 scripts/cargo-publish.py publish --version "$VERSION" --state "$STATE" --confirm
+          ARGS_FILE: ${{ runner.temp }}/cargo-publish-args.txt
+        run: |
+          set -euo pipefail
+          mapfile -t cargo_args < "$ARGS_FILE"
+          cargo publish --locked "${cargo_args[@]}"
+
+      # Cargo can return non-zero after an upload when its own visibility poll
+      # times out. Reconcile the exact versions once, through metadata only.
+      # Never download archives here: a transient CDN/read failure must not
+      # redefine a registry-accepted publication as a failed upload.
+      - name: Reconcile exact crates.io versions
+        if: ${{ inputs.publish }}
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+          CARGO_OUTCOME: ${{ steps.cargo_publish.outcome }}
+          SELECTED_FILE: ${{ runner.temp }}/cargo-publish-selected.txt
+          PUBLISH_REF: ${{ steps.dispatch_ref.outputs.ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          mapfile -t selected < "$SELECTED_FILE"
+          missing=("${selected[@]}")
+          max_attempts=12
+          retry_seconds=10
+          user_agent='shepherd-release-workflow (+https://github.com/pzzld-org/shepherd)'
+
+          for ((attempt = 1; attempt <= max_attempts; attempt++)); do
+            next_missing=()
+            for crate in "${missing[@]}"; do
+              body=$(curl --silent --show-error --fail --location \
+                --retry 2 --retry-all-errors --retry-delay 2 \
+                --max-time 20 \
+                --header "User-Agent: ${user_agent}" \
+                "https://crates.io/api/v1/crates/${crate}/${VERSION}") || body=''
+              if [[ -n "$body" ]] \
+                && jq -e --arg version "$VERSION" \
+                  '.version.num == $version' <<< "$body" >/dev/null 2>&1; then
+                printf 'Verified %s@%s in crates.io metadata.\n' "$crate" "$VERSION"
+              else
+                next_missing+=("$crate")
+              fi
+            done
+
+            missing=("${next_missing[@]}")
+            if ((${#missing[@]} == 0)); then
+              if [[ "$CARGO_OUTCOME" != success ]]; then
+                printf '::notice::Cargo returned %s, but every selected exact version is present on crates.io; publication is complete.\n' "$CARGO_OUTCOME"
+              fi
+              exit 0
+            fi
+
+            printf 'crates.io has not reported all exact versions (attempt %s/%s): %s\n' \
+              "$attempt" "$max_attempts" "${missing[*]}" >&2
+            if ((attempt < max_attempts)); then
+              sleep "$retry_seconds"
+            fi
+          done
+
+          missing_csv=$(IFS=,; printf '%s' "${missing[*]}")
+          printf '::error title=Incomplete crates.io publication::Cargo outcome=%s; missing exact version %s for: %s. Recover from the same commit with: gh workflow run cargo-publish.yml --ref %s -f version=%s -f ref=%s -f publish=true -f packages=%s\n' \
+            "$CARGO_OUTCOME" "$VERSION" "${missing[*]}" "$DEFAULT_BRANCH" "$VERSION" "$PUBLISH_REF" "$missing_csv"
+          exit 1

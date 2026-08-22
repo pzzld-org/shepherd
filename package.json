@@ -1,6 +1,6 @@
 {
   "name": "@pzzld/shepherd-workspace",
-  "version": "6.5.5",
+  "version": "6.5.6",
   "private": true,
   "description": "npm workspace root for the generated Shepherd Component runtime and three thin harness adapters. Not published itself; the Rust workspace version is the single authority every package.json tracks.",
   "workspaces": [
@@ -18,6 +18,126 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/FL03/shepherd.git"
+    "url": "https://github.com/pzzld-org/shepherd.git"
+  },
+  "shepherdReleaseTrust": {
+    "schema": 2,
+    "measuredOn": "2026-08-22",
+    "sources": {
+      "npm": "npm audit --json",
+      "cargoDeny": "cargo deny --workspace --all-features check",
+      "cargoAdvisories": "cargo deny --format json --workspace --all-features check advisories --audit-compatible-output",
+      "cargoMetadata": "cargo metadata --format-version 1 --locked --all-features"
+    },
+    "observedFindings": [
+      {
+        "id": "npm:@bytecodealliance/componentize-js:node_modules/@bytecodealliance/componentize-js",
+        "ecosystem": "npm",
+        "package": "@bytecodealliance/componentize-js",
+        "version": "0.22.0",
+        "node": "node_modules/@bytecodealliance/componentize-js",
+        "severity": "moderate",
+        "affected": "0.13.0 - 0.18.5 || >=0.19.4-rc.1",
+        "advisories": [
+          "package:@bytecodealliance/weval"
+        ],
+        "fix": {
+          "status": "semver-major",
+          "package": "@bytecodealliance/jco",
+          "version": "1.17.9"
+        }
+      },
+      {
+        "id": "npm:@bytecodealliance/jco:node_modules/@bytecodealliance/jco",
+        "ecosystem": "npm",
+        "package": "@bytecodealliance/jco",
+        "version": "1.28.1",
+        "node": "node_modules/@bytecodealliance/jco",
+        "severity": "moderate",
+        "affected": "1.7.0 - 1.15.0 || >=1.18.0",
+        "advisories": [
+          "package:@bytecodealliance/componentize-js"
+        ],
+        "fix": {
+          "status": "semver-major",
+          "package": "@bytecodealliance/jco",
+          "version": "1.17.9"
+        }
+      },
+      {
+        "id": "npm:@bytecodealliance/weval:node_modules/@bytecodealliance/weval",
+        "ecosystem": "npm",
+        "package": "@bytecodealliance/weval",
+        "version": "0.4.1",
+        "node": "node_modules/@bytecodealliance/weval",
+        "severity": "moderate",
+        "affected": "*",
+        "advisories": [
+          "package:decompress"
+        ],
+        "fix": {
+          "status": "semver-major",
+          "package": "@bytecodealliance/jco",
+          "version": "1.17.9"
+        }
+      },
+      {
+        "id": "npm:decompress:node_modules/decompress",
+        "ecosystem": "npm",
+        "package": "decompress",
+        "version": "4.2.1",
+        "node": "node_modules/decompress",
+        "severity": "critical",
+        "affected": "*",
+        "advisories": [
+          "GHSA-h39j-r5qq-r9mm",
+          "GHSA-jwp9-9v96-94mx",
+          "GHSA-mp2f-45pm-3cg9"
+        ],
+        "fix": {
+          "status": "semver-major",
+          "package": "@bytecodealliance/jco",
+          "version": "1.17.9"
+        }
+      }
+    ],
+    "classifications": [
+      {
+        "id": "npm:@bytecodealliance/componentize-js:node_modules/@bytecodealliance/componentize-js",
+        "productionClosure": false,
+        "reachable": false,
+        "dependencyPath": [],
+        "shippedArtifacts": [],
+        "rationale": "Componentization runs only while building generated Wasm; no published npm package depends on or contains this package.",
+        "disposition": "not-shipped"
+      },
+      {
+        "id": "npm:@bytecodealliance/jco:node_modules/@bytecodealliance/jco",
+        "productionClosure": false,
+        "reachable": false,
+        "dependencyPath": [],
+        "shippedArtifacts": [],
+        "rationale": "JCO is a root development tool and is absent from every published package production dependency closure.",
+        "disposition": "not-shipped"
+      },
+      {
+        "id": "npm:@bytecodealliance/weval:node_modules/@bytecodealliance/weval",
+        "productionClosure": false,
+        "reachable": false,
+        "dependencyPath": [],
+        "shippedArtifacts": [],
+        "rationale": "Weval is transitive build tooling below JCO and does not enter a staged or published Shepherd package.",
+        "disposition": "not-shipped"
+      },
+      {
+        "id": "npm:decompress:node_modules/decompress",
+        "productionClosure": false,
+        "reachable": false,
+        "dependencyPath": [],
+        "shippedArtifacts": [],
+        "rationale": "The vulnerable archive extractor is reachable only through development-time JCO tooling and is absent from every shipped package closure.",
+        "disposition": "not-shipped"
+      }
+    ]
   }
 }

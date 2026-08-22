@@ -1,6 +1,6 @@
 {
   "name": "shepherd",
-  "version": "6.5.5",
+  "version": "6.5.6",
   "description": "Harness-neutral sprint execution and governance through one native Shepherd CLI.",
   "keywords": [
     "shepherd",
@@ -15,6 +15,6 @@
     "shortDescription": "Native sprint execution and governance for Codex",
     "developerName": "pzzld-org",
     "category": "development",
-    "websiteURL": "https://github.com/FL03/shepherd"
+    "websiteURL": "https://github.com/pzzld-org/shepherd"
   }
 }

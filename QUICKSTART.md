@@ -16,9 +16,9 @@ No Cargo Binstall? Use the checksum-verifying installer:
 
 ```sh
 curl --fail --location \
-  https://raw.githubusercontent.com/FL03/shepherd/v6.5.5/scripts/install-shepherd.sh \
+  https://raw.githubusercontent.com/pzzld-org/shepherd/v6.5.6/scripts/install-shepherd.sh \
   --output /tmp/install-shepherd.sh
-SHEPHERD_VERSION=6.5.5 bash /tmp/install-shepherd.sh
+SHEPHERD_VERSION=6.5.6 bash /tmp/install-shepherd.sh
 ```
 
 Windows PowerShell, and building from source, are covered in the
@@ -69,7 +69,7 @@ Pick the one you use. Each installs the same skills over the same binary.
 ### Claude Code
 
 ```sh
-claude plugin marketplace add FL03/shepherd
+claude plugin marketplace add pzzld-org/shepherd
 claude plugin install shepherd@shepherd --scope user
 ```
 
@@ -86,7 +86,7 @@ binary, or the reverse.
 ### Codex
 
 ```sh
-codex plugin marketplace add FL03/shepherd --ref v6.5.5
+codex plugin marketplace add pzzld-org/shepherd --ref v6.5.6
 codex plugin add shepherd@shepherd
 ```
 
@@ -102,9 +102,12 @@ pi install npm:@pzzld/pi-shepherd
 ```
 
 Install `pi-subagents` first. `@pzzld/pi-shepherd` is a host extension, not a
-standalone runtime, and it needs a `SubagentProvider`-compatible extension to
-resolve dispatch identity. If no provider is present or ready, Shepherd fails
-closed rather than degrading silently.
+standalone runtime. It accepts any compatible registered subagent system whose
+Pi-configured tool name is exactly `subagent`; `pi-subagents` is the supported
+reference install or upgrade path, not a Shepherd dependency. If Pi's public
+`getAllTools()` inventory is absent, malformed, or lacks that exact tool,
+Shepherd keeps reads available and blocks Write, Edit, and Bash until you run
+`pi install npm:pi-subagents` and restart Pi.
 
 Confirm the surface loaded:
 

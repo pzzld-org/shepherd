@@ -67,12 +67,25 @@ jobs:
             printf '::notice::%s\n' "$reason"
             exit 0
           fi
-          python3 scripts/version-bump.py check --root . --version "$current"
           {
             printf 'proceed=true\n'
             printf 'current=%s\n' "$current"
             printf 'tag=v%s\n' "$current"
           } >> "$GITHUB_OUTPUT"
+      - name: Verify version authority
+        if: steps.detect.outputs.proceed == 'true'
+        run: python3 scripts/version-bump.py check --root . --version "${{ steps.detect.outputs.current }}"
+      - name: Verify dependency policy mutations
+        if: steps.detect.outputs.proceed == 'true'
+        run: python3 scripts/tests/test-dependency-policy.py
+      - name: Setup cargo-deny
+        if: steps.detect.outputs.proceed == 'true'
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny
+      - name: Verify live dependency trust
+        if: steps.detect.outputs.proceed == 'true'
+        run: node scripts/check-deps.mjs
   # ─── Asset production, delegated ───────────────────────────────────────
   # These jobs used to be inlined here, which made the entire build reachable
   # through exactly one event: a patch branch merging into main. They now live
@@ -262,7 +275,7 @@ jobs:
         run: |
           set -euo pipefail
           CRATE='shepherd-cli'
-          USER_AGENT='shepherd-release-workflow (+https://github.com/FL03/shepherd)'
+          USER_AGENT='shepherd-release-workflow (+https://github.com/pzzld-org/shepherd)'
           MAX_ATTEMPTS=6
           RETRY_SECONDS=20
           REQUEST_TIMEOUT=15

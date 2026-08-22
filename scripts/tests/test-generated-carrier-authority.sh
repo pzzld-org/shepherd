@@ -19,7 +19,8 @@ for retired in \
   packages/harness-codex/shepherd.codex.toml \
   packages/harness-codex/skills \
   packages/harness-pi/prompts \
-  packages/harness-pi/skills; do
+  packages/harness-pi/skills \
+  packages/harness-pi/agents; do
   [[ ! -e "$retired" && ! -L "$retired" ]] \
     || fail "adapter contains a duplicate generated carrier: $retired"
 done

@@ -104,5 +104,21 @@ if [[ "$expected_prompts" -gt 0 && "$prompt_count" -ne "$expected_prompts" ]]; t
   exit 1
 fi
 
-printf 'staged Pi carrier: %s skills, %s role prompts under %s\n' \
-  "$skill_count" "$prompt_count" "$DEST"
+python3 "$REPO_ROOT/scripts/generate-pi-agents.py" "$DEST"
+agent_count=$(find "$DEST/agents" -maxdepth 1 -name '*.md' 2>/dev/null | wc -l | tr -d ' ')
+expected_agents=$(python3 - "$DEST/.shepherd-generated.json" <<'PY'
+import json
+import sys
+
+manifest = json.loads(open(sys.argv[1], encoding="utf-8").read())
+print(sum(role.get("dispatchable") is True for role in manifest.get("roles", [])))
+PY
+)
+if [[ "$agent_count" -ne "$expected_agents" ]]; then
+  printf 'FAIL: staged Pi carrier has %s agents, expected %s dispatchable roles\n' \
+    "$agent_count" "$expected_agents" >&2
+  exit 1
+fi
+
+printf 'staged Pi carrier: %s skills, %s role prompts, %s agents under %s\n' \
+  "$skill_count" "$prompt_count" "$agent_count" "$DEST"

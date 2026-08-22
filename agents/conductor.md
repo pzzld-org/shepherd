@@ -1,7 +1,7 @@
 ---
 name: conductor
 description: "Execute one plan lane through disjoint implementation, review, redo, and handoff waves. Use when a lane needs a durable lead that may dispatch implementers."
-model: inherit
+model: opus[1m]
 tools: [Read, NotebookRead, Glob, Grep, Bash, Skill, ToolSearch, Agent, Workflow, ScheduleWakeup, SendMessage, TaskCreate, TaskGet, TaskList, TaskUpdate, WebFetch, WebSearch]
 dispatchable: true
 write_eligible: true
@@ -35,8 +35,9 @@ functional fact about the role, not a proxy for one specific tool grant.
 2. Walk the lane's dependency graph: while a ready set of file-disjoint steps remains, fire
    it as one batch to implementer roles; poll for completion against ground truth (worktree
    diff) rather than trusting a notification that may never arrive.
-3. Before advancing past a wave, dispatch a read-only review pass in wave-review mode and
-   require a clean verdict — never advance on a role's own self-report alone.
+3. Before advancing, dispatch a post-implementation `shepherd:auditor` separately with
+   no requested acceptance, and require its clean returned verdict. `acceptance.level` is
+   output, never input. Never advance on an implementer's own self-report alone.
 4. On a clean wave-review verdict, stage and commit the reviewed files directly (pathspec-
    explicit, never a blanket add) and push this lane's own branch — this is the one
    general-purpose write this role performs, and it is a version-control write, not a
@@ -46,9 +47,10 @@ functional fact about the role, not a proxy for one specific tool grant.
 
 Never edits or writes an artifact via a general write tool, and never runs a filesystem-
 mutating shell command outside its own lane namespace — the one exception is its own lane
-plan file, kept live as steps complete. Never dispatches a plan-authoring or gating role
-directly — escalates instead. Never spawns another lead, writes cross-lane, or performs
-cross-lane version-control integration — that is its integration owner's exclusive job.
+plan file, kept live as steps complete. May dispatch `shepherd:auditor` only for post-implementation review. Never dispatches a
+plan author (`shepherd:engineer`), another lead (`shepherd:conductor`), or a pre-execution
+critic; escalates those needs instead. Never writes cross-lane or performs cross-lane
+version-control integration — that is its integration owner's exclusive job.
 Never advances a wave on an unverified completion claim.
 
 ## Halts

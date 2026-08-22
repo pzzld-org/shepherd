@@ -1,0 +1,7 @@
+HEAD: 6837e109ab618e3d22cb34c637de8ed7b7da7c69
+COMMAND: git diff --check
+EXIT_CODE: 0
+--- STDOUT BEGIN ---
+--- STDOUT END ---
+--- STDERR BEGIN ---
+--- STDERR END ---

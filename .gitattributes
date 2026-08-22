@@ -1,18 +1,9 @@
-# Every checkout must materialize identical bytes on every platform. GitHub's
-# Windows runners check out with core.autocrlf=true, which rewrote LICENSE to
-# CRLF; scripts/stage-distribution-legal.sh then copied those bytes into the
-# Windows release zip while the four tarballs carried LF. The v6.4.8 release
-# job failed at "LICENSE differs in ...windows-msvc.zip.d" only after all five
-# native targets, the component job, and the crates.io publication had already
-# succeeded. No tracked file carries a CR byte; pin that so no checkout can add
-# one. Overrides below win because later patterns take precedence.
+# Every checkout must materialize the same text bytes. This is release-critical:
+# LICENSE, shell installers, WIT and generated carrier text are copied directly
+# into cross-platform archives, then verified byte-for-byte. Windows runners
+# otherwise default to core.autocrlf=true and silently produce divergent payloads.
 * text=auto eol=lf
 
-# Append-only audit ledger: union-merge so a lane branch merge can never
-# drop a sibling lane's verdict rows (#261).
+# Append-only audit ledger: concurrent worktrees may both add verdict lines.
+# Git's union driver preserves both additions instead of choosing one side.
 .shepherd/runs/*/auditor-verdicts.txt merge=union
-
-# These files are named by the SHA-256 of their exact upstream bytes. Treat
-# them as binary so Git never rewrites line endings or flags an upstream
-# license's whitespace as authored source drift.
-THIRD_PARTY_LICENSES/*.txt binary

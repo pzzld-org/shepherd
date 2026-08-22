@@ -275,15 +275,16 @@ def seed_fixture(root: Path) -> None:
         f"""# Shepherd v{CURRENT}
 
 The v{CURRENT} component is published as `fl03:shepherd@{CURRENT}`.
-https://raw.githubusercontent.com/FL03/shepherd/v{CURRENT}/scripts/install-shepherd.sh
+https://raw.githubusercontent.com/pzzld-org/shepherd/v{CURRENT}/scripts/install-shepherd.sh
 SHEPHERD_VERSION={CURRENT} bash /tmp/install-shepherd.sh
-https://raw.githubusercontent.com/FL03/shepherd/v{CURRENT}/scripts/install-shepherd.ps1
+https://raw.githubusercontent.com/pzzld-org/shepherd/v{CURRENT}/scripts/install-shepherd.ps1
 $env:SHEPHERD_VERSION = '{CURRENT}'
 Claude installs the thin marketplace carrier normally.
-codex plugin marketplace add FL03/shepherd --ref v{CURRENT}
+codex plugin marketplace add pzzld-org/shepherd --ref v{CURRENT}
 
 For an existing pre-v{CURRENT} namespace, preserve the migration threshold.
 The command families are owned by the Rust CLI in v{CURRENT}:
+python3 scripts/version-bump.py check --root . --version {CURRENT}
 """,
     )
 
@@ -294,9 +295,9 @@ The command families are owned by the Rust CLI in v{CURRENT}:
         "QUICKSTART.md",
         f"""# Shepherd Quickstart
 
-https://raw.githubusercontent.com/FL03/shepherd/v{CURRENT}/scripts/install-shepherd.sh
+https://raw.githubusercontent.com/pzzld-org/shepherd/v{CURRENT}/scripts/install-shepherd.sh
 SHEPHERD_VERSION={CURRENT} bash /tmp/install-shepherd.sh
-codex plugin marketplace add FL03/shepherd --ref v{CURRENT}
+codex plugin marketplace add pzzld-org/shepherd --ref v{CURRENT}
 """,
     )
 
@@ -400,6 +401,11 @@ def snapshot(root: Path) -> dict[str, bytes]:
     }
 
 
+def initialize_git_fixture(root: Path) -> None:
+    subprocess.run(["git", "init", "--quiet", str(root)], check=True)
+    subprocess.run(["git", "-C", str(root), "add", "."], check=True)
+
+
 class VersionBumpTests(unittest.TestCase):
     def run_tool(self, root: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
@@ -408,6 +414,76 @@ class VersionBumpTests(unittest.TestCase):
             capture_output=True,
             text=True,
         )
+
+    def test_packed_plugin_release_archive_count_is_eleven(self) -> None:
+        self.assertEqual(whole_authority_count("scripts/test-packed-plugin.sh"), 11)
+
+    def test_ignored_pi_runtime_state_does_not_create_false_drift(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="shepherd-version-pi-runtime-") as temporary:
+            root = Path(temporary)
+            seed_fixture(root)
+            write(root, ".gitignore", ".pi/\n")
+            initialize_git_fixture(root)
+            write(root, ".pi/tasks/current.json", f'{{"version":"{CURRENT}"}}\n')
+
+            result = self.run_tool(root, "check", "--version", CURRENT)
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertNotIn(".pi/tasks/current.json", result.stderr)
+
+    def test_tracked_pi_source_remains_an_unclassified_version_surface(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="shepherd-version-pi-source-") as temporary:
+            root = Path(temporary)
+            seed_fixture(root)
+            write(root, ".gitignore", ".pi/\n")
+            initialize_git_fixture(root)
+            write(root, ".pi/tasks/current.json", f'{{"version":"{CURRENT}"}}\n')
+            write(root, ".pi/extensions/release-authority.mjs", f'export const version = "{CURRENT}";\n')
+            subprocess.run(
+                ["git", "-C", str(root), "add", "--force", ".pi/extensions/release-authority.mjs"],
+                check=True,
+            )
+
+            result = self.run_tool(root, "check", "--version", CURRENT)
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn(
+                f".pi/extensions/release-authority.mjs: unclassified {CURRENT} version surface",
+                result.stderr,
+            )
+            self.assertNotIn(".pi/tasks/current.json", result.stderr)
+
+    def test_check_emits_one_cross_surface_compatibility_report(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="shepherd-version-report-") as temporary:
+            root = Path(temporary)
+            seed_fixture(root)
+
+            result = self.run_tool(root, "check", "--version", CURRENT)
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            reports = [
+                line.removeprefix("compatibility-report: ")
+                for line in result.stdout.splitlines()
+                if line.startswith("compatibility-report: ")
+            ]
+            self.assertEqual(len(reports), 1, result.stdout)
+            report = json.loads(reports[0])
+            self.assertEqual(report["version"], CURRENT)
+            self.assertEqual(report["native_cli"], f"shepherd-cli@{CURRENT}")
+            self.assertEqual(report["component"], f"fl03:shepherd@{CURRENT}")
+            self.assertEqual(
+                report["packages"],
+                {
+                    "@pzzld/claude-shepherd": CURRENT,
+                    "@pzzld/codex-shepherd": CURRENT,
+                    "@pzzld/component-runtime": CURRENT,
+                    "@pzzld/pi-shepherd": CURRENT,
+                },
+            )
+            self.assertEqual(
+                report["staged_carriers"],
+                {"claude": CURRENT, "codex": CURRENT, "pi": CURRENT},
+            )
 
     def test_bump_updates_every_authority_and_preserves_history(self) -> None:
         with tempfile.TemporaryDirectory(prefix="shepherd-version-bump-") as temporary:
@@ -452,7 +528,7 @@ class VersionBumpTests(unittest.TestCase):
             self.assertNotIn(f"owned by the Rust CLI in v{CURRENT}", readme)
             # QUICKSTART's install surfaces move with the version too.
             quickstart = (root / "QUICKSTART.md").read_text(encoding="utf-8")
-            self.assertIn(f"FL03/shepherd/v{NEXT}/scripts/install-shepherd.sh", quickstart)
+            self.assertIn(f"pzzld-org/shepherd/v{NEXT}/scripts/install-shepherd.sh", quickstart)
             self.assertIn(f"SHEPHERD_VERSION={NEXT} bash", quickstart)
             self.assertNotIn(CURRENT, quickstart)
             history = (root / "conformance/cases/history/case.json").read_text()

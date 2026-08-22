@@ -3,7 +3,7 @@
     Created At: 2026.08.14:00:00:00
     Contrib: @FL03
 */
-//! Byte-exact verdict serialization for the v6.5.5 guard wire.
+//! Byte-exact verdict serialization for the v6.5.6 guard wire.
 
 use alloc::{collections::BTreeMap, fmt::Write, string::String};
 

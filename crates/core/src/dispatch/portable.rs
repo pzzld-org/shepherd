@@ -390,9 +390,6 @@ impl DispatchBinding {
     }
 
     fn validate_common(&self) -> DispatchResult<()> {
-        if self.write_scope.is_empty() {
-            return Err(DispatchError::InvalidWriteScope(String::new()));
-        }
         for scope in &self.write_scope {
             validate_write_scope_pattern(scope)?;
         }

@@ -9,15 +9,12 @@ Bind role dispatch, gates, artifacts, and resume into one harness-neutral sprint
 
 ## Preconditions
 
-Each is a command, not a judgement. A failure stops the sprint before any dispatch and is
-reported with its exact output.
+A failing precondition stops dispatch and is reported verbatim.
 
 - `shepherd doctor` reports a dispatchable namespace. On an unscaffolded project it exits 3
   and names the absent artifact.
-- The project is scaffolded. `shepherd init --confirm` mints `.shepherd/project.json`, the
-  registry, and the `projects` row, and it is gated precisely because it mutates. Root
-  never runs it on the operator's behalf: surface the command and halt. Scaffolding a
-  namespace is the operator's decision, not a side effect of loading this contract.
+- The project is scaffolded. `shepherd init --confirm` mints project state. Root never
+  runs it for the operator; surface the command and halt.
 
 ## The flock is closed
 
@@ -26,9 +23,11 @@ The flock is exactly `shepherd`, `planter`, `engineer`, `conductor`, `critic`, `
 
 ## Dispatch law
 
-Every dispatch binds native agent identity, explicit role, capability contract, lane,
-scope, acceptance, and result path. Pin the resolved model and reference the brief instead
-of restating it. A conductor cannot dispatch plan-author or gate roles; it escalates.
+Every dispatch binds identity, role, capabilities, lane, scope, acceptance, and result.
+Set generic subagent `model` to the exact output of
+`shepherd models resolve ROLE --harness HARNESS`; Pi suffixes carry effort. Reference the
+brief. Conductors escalate plan-author and gate roles. Escalate one bounded ordinary task
+only after its agent returns concrete inability evidence.
 
 ## Root contract
 
@@ -40,14 +39,14 @@ only in a transcript.
 
 ## Principles
 
-**Durable artifact** — every top-tier dispatch ends in one canonical run artifact or
-registry record. Transcript-only reasoning has no operational effect.
+**Durable artifact** — every top-tier dispatch ends in one canonical artifact or registry
+record. Transcript-only reasoning has no effect.
 
 **Subtract** — prefer replacement over parallel authority. Inline single callers, collapse
 hollow wrappers, retire superseded shims in the same slice, and justify net-new surface.
 
-**External writes** — use a connected managed API within its deadline. If absent or timed
-out, use only the sanctioned fallback and record why; a hung tool is unavailable.
+**External writes** — use a connected managed API by its deadline. Otherwise use only the
+sanctioned fallback and record why.
 
 **Capability discovery** — trust measured startup facts, not provider names or environment
 guesses. Missing required capability fails closed; supported extras remain adapter-local.

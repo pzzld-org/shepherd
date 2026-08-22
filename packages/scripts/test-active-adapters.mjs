@@ -153,7 +153,11 @@ const claudeGuard = runHook(claudeGuardScript, {
   hook_event_name: "PreToolUse", session_id: "session-a", tool_use_id: "tool-a",
   tool_name: "Bash", tool_input: { command: "printf safe" },
 });
-assert.equal(claudeGuard, null);
+assert.equal(
+  claudeGuard?.hookSpecificOutput?.permissionDecision,
+  "deny",
+  "Claude must fail closed when no writable dispatch scope exists",
+);
 const wrongClaudeSession = runHook(claudeGuardScript, {
   hook_event_name: "PreToolUse", session_id: "session-a", tool_use_id: "tool-a",
   tool_name: "Bash", tool_input: { command: "printf safe" },
@@ -187,7 +191,11 @@ const rootGitWrite = runHook(claudeGuardScript, {
   hook_event_name: "PreToolUse", session_id: "root-session", tool_use_id: "root-git-write",
   tool_name: "Bash", tool_input: { command: "git commit -m root-write" },
 }, rootEnv);
-assert.equal(rootGitWrite, null, "root Bash mutation must use the authoritative resolved native role");
+assert.equal(
+  rootGitWrite?.hookSpecificOutput?.permissionDecision,
+  "deny",
+  "root identity alone must not authorize opaque Bash mutation",
+);
 const invalidRoleEnv = { ...env, SHEPHERD_TEST_NATIVE_ROLE: "" };
 const invalidNativeRole = runHook(claudeGuardScript, {
   hook_event_name: "PreToolUse", session_id: "root-session", tool_use_id: "invalid-native-role",
@@ -272,7 +280,11 @@ const codexGuard = runHook(codexHookScript, {
   hook_event_name: "PreToolUse", session_id: "session-a", tool_use_id: "tool-a",
   tool_name: "Bash", tool_input: { command: "printf safe" },
 });
-assert.equal(codexGuard, null);
+assert.equal(
+  codexGuard?.hookSpecificOutput?.permissionDecision,
+  "deny",
+  "Codex must fail closed when no writable dispatch scope exists",
+);
 const codexRootWrite = runHook(codexHookScript, {
   hook_event_name: "PreToolUse", session_id: "root-session", tool_use_id: "codex-root-write",
   tool_name: "Write", tool_input: { file_path: "crates/core/src/lib.rs", content: "root write" },
@@ -353,12 +365,12 @@ const pathEnv = { ...env, PATH: `${pathBin}:${env.PATH ?? ""}` };
 delete pathEnv.SHEPHERD_NATIVE_BIN;
 const pathResolved = runHook(claudeGuardScript, {
   hook_event_name: "PreToolUse", session_id: "session-a", tool_use_id: "tool-path",
-  tool_name: "Bash", tool_input: { command: "printf safe" },
+  tool_name: "Write", tool_input: { file_path: "crates/core/src/lib.rs", content: "path resolution" },
 }, pathEnv);
 assert.equal(pathResolved, null, "installed adapter must resolve the one shepherd CLI from PATH");
 const codexPathResolved = runHook(codexHookScript, {
   hook_event_name: "PreToolUse", session_id: "session-a", tool_use_id: "tool-path",
-  tool_name: "Bash", tool_input: { command: "printf safe" },
+  tool_name: "Write", tool_input: { file_path: "crates/core/src/lib.rs", content: "path resolution" },
 }, pathEnv);
 assert.equal(codexPathResolved, null, "installed Codex adapter must resolve the one shepherd CLI from PATH");
 const missingEnv = { ...env, SHEPHERD_COMPONENT_MODULE: join(temp, "missing-component.mjs") };

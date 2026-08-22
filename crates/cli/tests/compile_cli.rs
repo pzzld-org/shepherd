@@ -59,7 +59,7 @@ fn standalone_binary_compiles_embedded_content_without_a_checkout() {
         String::from_utf8_lossy(&output.stderr)
     );
     let manifest: serde_json::Value = serde_json::from_slice(&output.stdout).expect("manifest");
-    assert_eq!(manifest["schema"], "shepherd.compiled-tree/2");
+    assert_eq!(manifest["schema"], "shepherd.compiled-tree/3");
     assert_eq!(manifest["target"], "claude");
     // This count is a deliberate literal, not a value to derive: the whole
     // point of this test is that it compiles the binary's EMBEDDED content
@@ -78,6 +78,7 @@ fn standalone_binary_compiles_embedded_content_without_a_checkout() {
         .find(|role| role["role"] == "coder")
         .expect("coder role contract");
     assert_eq!(coder["carrier_path"], "agents/coder.md");
+    assert_eq!(coder["model_hint"], "standard");
     assert_eq!(coder["model"], "sonnet");
     assert!(coder["profile"].is_null());
     assert!(

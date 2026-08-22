@@ -1,7 +1,7 @@
 # `@pzzld/codex-shepherd`
 
 The Codex adapter translates native hook envelopes into the typed
-`fl03:shepherd@6.5.5` Component Model contract. The Rust component owns
+`fl03:shepherd@6.5.6` Component Model contract. The Rust component owns
 identity normalization, guard policy, lifecycle planning, provider facts,
 response validation, and canonical emission. Codex hooks only load the
 adjacent packaged runtime, translate the hook envelope, and hand a typed

@@ -1,0 +1,31 @@
+Treat the Bash PostToolUse hook as a non-authoritative observation adapter. It
+may record its ordinary bash_post telemetry and a cwd warning, but it must not
+read command text, parse shell syntax, inspect an outer Bash status, or create a
+successful gate claim from tool_input.command or tool_response.
+
+Comments, echo, printf, quoted text, concatenation, aliases, wrappers, missing
+commands, and a failing gate are all unverified at this boundary. A command
+appearing in text does not prove that a process was invoked, and a process
+invoked by a wrapper does not prove that it passed. The obsolete command-text
+ledger is removed rather than renamed into another authority.
+
+The wave-owned execution artifact is the only source of gate state.
+`scripts/gate-artifact.py` derives its path from run, wave, lane, and gate,
+appends an invocation with a unique attempt_id before process execution, and
+appends the correlated result afterward while preserving the process exit code.
+Invocation append order defines the latest attempt: no result is Invoked even
+when an older attempt Passed, a non-zero result is Failed, and a zero result is
+Passed. Orphaned, cross-gate, contradictory, duplicate, impossible-exit, partial, or
+non-newline-terminated results fail closed. The status reader requires the expected command, so another successful command
+cannot certify the declared gate. Descriptor-relative no-follow traversal rejects symlinked parents and
+files; locking makes status linearizable with concurrent retries; full writes
+and bounded records preserve valid JSONL framing. The script location, not the
+caller cwd, owns the repository artifact root.
+
+The adapter's ordinary hook event is not a gate result. Deterministic tests run
+every adversarial command-text form and require zero command-derived
+provenance, then restore substring matching as a negative control and require
+that control to fail. Separate gate-wired writer/reader and eval tests prove invocation-before-run,
+exact command binding, result correlation, exit preservation, concurrent
+latest-invocation retry semantics, complete newline framing, repository-root
+ownership, malformed-evidence refusal, and ancestor/final symlink refusal.

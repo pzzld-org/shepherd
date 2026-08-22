@@ -49,6 +49,12 @@ devlast_guard = "block"
 max_parallel = 3
 lead_effort = "high"
 
+[model_targets.pi]
+inherit-caller = "inherit"
+reasoning-high = "openai-codex/gpt-5.6-sol:xhigh"
+standard = "openai-codex/gpt-5.6-luna:max"
+economy = "openai-codex/gpt-5.6-luna:max"
+
 [mcp]
 github = true
 

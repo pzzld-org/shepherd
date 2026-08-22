@@ -1,4 +1,4 @@
-package fl03:shepherd@6.5.5;
+package fl03:shepherd@6.5.6;
 
 interface engine {
   enum target {
@@ -54,6 +54,7 @@ interface engine {
     role: string,
     carrier-path: string,
     description: string,
+    model-hint: string,
     model: option<string>,
     profile: option<string>,
     reasoning-effort: option<string>,

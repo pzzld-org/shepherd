@@ -1,0 +1,111 @@
+$ cargo test -p shepherd-core --features full --test guard write_boundary_denies_equivalent_write_carriers_under_truthful_dispatch -- --exact
+    Finished `test` profile [optimized + debuginfo] target(s) in 0.03s
+     Running tests/guard.rs (target/debug/deps/guard-85ef6c5a8cef44f1)
+
+running 1 test
+test write_boundary_denies_equivalent_write_carriers_under_truthful_dispatch ... FAILED
+
+failures:
+
+---- write_boundary_denies_equivalent_write_carriers_under_truthful_dispatch stdout ----
+
+thread 'write_boundary_denies_equivalent_write_carriers_under_truthful_dispatch' (41322093) panicked at crates/core/tests/guard.rs:2534:13:
+assertion `left != right` failed: bounded writer cannot bypass scope through an equivalent Bash write: Verdict { decision: Allow, predicate: None, rule: None, halt_code: None, reason: None, missing: [] }
+  left: Allow
+ right: Allow
+stack backtrace:
+   0:        0x10298244c - std[b23ccf54642dae0e]::backtrace_rs::backtrace::libunwind::trace
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/../../backtrace/src/backtrace/libunwind.rs:117:9
+   1:        0x10298244c - std[b23ccf54642dae0e]::backtrace_rs::backtrace::trace_unsynchronized::<std[b23ccf54642dae0e]::sys::backtrace::_print_fmt::{closure#1}>
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/../../backtrace/src/backtrace/mod.rs:66:14
+   2:        0x10298244c - std[b23ccf54642dae0e]::sys::backtrace::_print_fmt
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/sys/backtrace.rs:74:9
+   3:        0x10298244c - <<std[b23ccf54642dae0e]::sys::backtrace::BacktraceLock>::print::DisplayBacktrace as core[eea836d19939cdd9]::fmt::Display>::fmt
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/sys/backtrace.rs:44:26
+   4:        0x102995120 - <core[eea836d19939cdd9]::fmt::rt::Argument>::fmt
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/fmt/rt.rs:152:76
+   5:        0x102995120 - core[eea836d19939cdd9]::fmt::write
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/fmt/mod.rs:1687:22
+   6:        0x102985e74 - std[b23ccf54642dae0e]::io::default_write_fmt::<alloc[501706ae67335b2d]::vec::Vec<u8>>
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/io/mod.rs:622:11
+   7:        0x102985e74 - <alloc[501706ae67335b2d]::vec::Vec<u8> as std[b23ccf54642dae0e]::io::Write>::write_fmt
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/io/mod.rs:1977:13
+   8:        0x10296953c - <std[b23ccf54642dae0e]::sys::backtrace::BacktraceLock>::print
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/sys/backtrace.rs:47:25
+   9:        0x10296953c - std[b23ccf54642dae0e]::panicking::default_hook::{closure#0}
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/panicking.rs:292:27
+  10:        0x10297be08 - std[b23ccf54642dae0e]::panicking::default_hook
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/panicking.rs:316:9
+  11:        0x1028de354 - <alloc[501706ae67335b2d]::boxed::Box<dyn for<'a, 'b> core[eea836d19939cdd9]::ops::function::Fn<(&'a std[b23ccf54642dae0e]::panic::PanicHookInfo<'b>,), Output = ()> + core[eea836d19939cdd9]::marker::Send + core[eea836d19939cdd9]::marker::Sync> as core[eea836d19939cdd9]::ops::function::Fn<(&std[b23ccf54642dae0e]::panic::PanicHookInfo,)>>::call
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/alloc/src/boxed.rs:2289:9
+  12:        0x1028de354 - test[ae24abad27a77d2a]::test_main_inner::<test[ae24abad27a77d2a]::test_main_static::{closure#0}>::{closure#0}
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/test/src/lib.rs:155:21
+  13:        0x10297c1c0 - <alloc[501706ae67335b2d]::boxed::Box<dyn for<'a, 'b> core[eea836d19939cdd9]::ops::function::Fn<(&'a std[b23ccf54642dae0e]::panic::PanicHookInfo<'b>,), Output = ()> + core[eea836d19939cdd9]::marker::Send + core[eea836d19939cdd9]::marker::Sync> as core[eea836d19939cdd9]::ops::function::Fn<(&std[b23ccf54642dae0e]::panic::PanicHookInfo,)>>::call
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/alloc/src/boxed.rs:2289:9
+  14:        0x10297c1c0 - std[b23ccf54642dae0e]::panicking::panic_with_hook
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/panicking.rs:833:13
+  15:        0x1029695d0 - std[b23ccf54642dae0e]::panicking::panic_handler::{closure#0}
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/panicking.rs:698:13
+  16:        0x10295ebf8 - std[b23ccf54642dae0e]::sys::backtrace::__rust_end_short_backtrace::<std[b23ccf54642dae0e]::panicking::panic_handler::{closure#0}, !>
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/sys/backtrace.rs:182:18
+  17:        0x102969ca0 - __rustc[6c289b9f9c454d21]::rust_begin_unwind
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/panicking.rs:689:5
+  18:        0x1029a50d8 - core[eea836d19939cdd9]::panicking::panic_fmt
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/panicking.rs:80:14
+  19:        0x1029a5028 - core[eea836d19939cdd9]::panicking::assert_failed_inner
+  20:        0x10299d324 - core[eea836d19939cdd9]::panicking::assert_failed::<shepherd_core[35d9c86dd29b3263]::guard::model::Decision, shepherd_core[35d9c86dd29b3263]::guard::model::Decision>
+                               at /Users/jo3/.rustup/toolchains/1.97.0-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/panicking.rs:394:5
+  21:        0x1028c38d8 - guard[21ed215747455b9b]::write_boundary_denies_equivalent_write_carriers_under_truthful_dispatch
+  22:        0x1028c38d8 - guard[21ed215747455b9b]::write_boundary_denies_equivalent_write_carriers_under_truthful_dispatch::{closure#0}
+                               at /Users/jo3/src/pzzld/shepherd/.worktrees/v656-least-authority/crates/core/tests/guard.rs:2378:77
+  23:        0x1028c38d8 - <guard[21ed215747455b9b]::write_boundary_denies_equivalent_write_carriers_under_truthful_dispatch::{closure#0} as core[eea836d19939cdd9]::ops::function::FnOnce<()>>::call_once
+                               at /Users/jo3/.rustup/toolchains/1.97.0-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/function.rs:250:5
+  24:        0x1028d34c0 - <fn() -> core[eea836d19939cdd9]::result::Result<(), alloc[501706ae67335b2d]::string::String> as core[eea836d19939cdd9]::ops::function::FnOnce<()>>::call_once
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/ops/function.rs:250:5
+  25:        0x1028d34c0 - test[ae24abad27a77d2a]::__rust_begin_short_backtrace::<core[eea836d19939cdd9]::result::Result<(), alloc[501706ae67335b2d]::string::String>, fn() -> core[eea836d19939cdd9]::result::Result<(), alloc[501706ae67335b2d]::string::String>>
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/test/src/lib.rs:724:18
+  26:        0x1028de908 - test[ae24abad27a77d2a]::run_test_in_process::{closure#0}
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/test/src/lib.rs:747:74
+  27:        0x1028de908 - <core[eea836d19939cdd9]::panic::unwind_safe::AssertUnwindSafe<test[ae24abad27a77d2a]::run_test_in_process::{closure#0}> as core[eea836d19939cdd9]::ops::function::FnOnce<()>>::call_once
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/panic/unwind_safe.rs:275:9
+  28:        0x1028de908 - std[b23ccf54642dae0e]::panicking::catch_unwind::do_call::<core[eea836d19939cdd9]::panic::unwind_safe::AssertUnwindSafe<test[ae24abad27a77d2a]::run_test_in_process::{closure#0}>, core[eea836d19939cdd9]::result::Result<(), alloc[501706ae67335b2d]::string::String>>
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/panicking.rs:581:40
+  29:        0x1028de908 - std[b23ccf54642dae0e]::panicking::catch_unwind::<core[eea836d19939cdd9]::result::Result<(), alloc[501706ae67335b2d]::string::String>, core[eea836d19939cdd9]::panic::unwind_safe::AssertUnwindSafe<test[ae24abad27a77d2a]::run_test_in_process::{closure#0}>>
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/panicking.rs:544:19
+  30:        0x1028de908 - std[b23ccf54642dae0e]::panic::catch_unwind::<core[eea836d19939cdd9]::panic::unwind_safe::AssertUnwindSafe<test[ae24abad27a77d2a]::run_test_in_process::{closure#0}>, core[eea836d19939cdd9]::result::Result<(), alloc[501706ae67335b2d]::string::String>>
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/panic.rs:359:14
+  31:        0x1028de908 - test[ae24abad27a77d2a]::run_test_in_process
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/test/src/lib.rs:747:27
+  32:        0x1028de908 - test[ae24abad27a77d2a]::run_test::{closure#0}
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/test/src/lib.rs:668:43
+  33:        0x1028d9790 - test[ae24abad27a77d2a]::run_test::{closure#1}
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/test/src/lib.rs:698:41
+  34:        0x1028d9790 - std[b23ccf54642dae0e]::sys::backtrace::__rust_begin_short_backtrace::<test[ae24abad27a77d2a]::run_test::{closure#1}, ()>
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/sys/backtrace.rs:166:18
+  35:        0x1028e0e60 - std[b23ccf54642dae0e]::thread::lifecycle::spawn_unchecked::<test[ae24abad27a77d2a]::run_test::{closure#1}, ()>::{closure#1}::{closure#0}
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/thread/lifecycle.rs:70:13
+  36:        0x1028e0e60 - <core[eea836d19939cdd9]::panic::unwind_safe::AssertUnwindSafe<std[b23ccf54642dae0e]::thread::lifecycle::spawn_unchecked<test[ae24abad27a77d2a]::run_test::{closure#1}, ()>::{closure#1}::{closure#0}> as core[eea836d19939cdd9]::ops::function::FnOnce<()>>::call_once
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/panic/unwind_safe.rs:275:9
+  37:        0x1028e0e60 - std[b23ccf54642dae0e]::panicking::catch_unwind::do_call::<core[eea836d19939cdd9]::panic::unwind_safe::AssertUnwindSafe<std[b23ccf54642dae0e]::thread::lifecycle::spawn_unchecked<test[ae24abad27a77d2a]::run_test::{closure#1}, ()>::{closure#1}::{closure#0}>, ()>
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/panicking.rs:581:40
+  38:        0x1028e0e60 - std[b23ccf54642dae0e]::panicking::catch_unwind::<(), core[eea836d19939cdd9]::panic::unwind_safe::AssertUnwindSafe<std[b23ccf54642dae0e]::thread::lifecycle::spawn_unchecked<test[ae24abad27a77d2a]::run_test::{closure#1}, ()>::{closure#1}::{closure#0}>>
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/panicking.rs:544:19
+  39:        0x1028e0e60 - std[b23ccf54642dae0e]::panic::catch_unwind::<core[eea836d19939cdd9]::panic::unwind_safe::AssertUnwindSafe<std[b23ccf54642dae0e]::thread::lifecycle::spawn_unchecked<test[ae24abad27a77d2a]::run_test::{closure#1}, ()>::{closure#1}::{closure#0}>, ()>
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/panic.rs:359:14
+  40:        0x1028e0e60 - std[b23ccf54642dae0e]::thread::lifecycle::spawn_unchecked::<test[ae24abad27a77d2a]::run_test::{closure#1}, ()>::{closure#1}
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/thread/lifecycle.rs:68:26
+  41:        0x1028e0e60 - <std[b23ccf54642dae0e]::thread::lifecycle::spawn_unchecked<test[ae24abad27a77d2a]::run_test::{closure#1}, ()>::{closure#1} as core[eea836d19939cdd9]::ops::function::FnOnce<()>>::call_once::{shim:vtable#0}
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/ops/function.rs:250:5
+  42:        0x102981ba4 - <alloc[501706ae67335b2d]::boxed::Box<dyn core[eea836d19939cdd9]::ops::function::FnOnce<(), Output = ()> + core[eea836d19939cdd9]::marker::Send> as core[eea836d19939cdd9]::ops::function::FnOnce<()>>::call_once
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/alloc/src/boxed.rs:2275:9
+  43:        0x102981ba4 - <std[b23ccf54642dae0e]::sys::thread::unix::Thread>::new::thread_start
+                               at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/sys/thread/unix.rs:118:17
+  44:        0x186355c58 - __pthread_cond_wait
+
+
+failures:
+    write_boundary_denies_equivalent_write_carriers_under_truthful_dispatch
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 68 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p shepherd-core --test guard`

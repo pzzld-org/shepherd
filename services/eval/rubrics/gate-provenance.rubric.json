@@ -1,0 +1,29 @@
+{
+  "kind": "gate-provenance",
+  "subject": "A truthful gate-verification boundary and wave-owned execution evidence contract.",
+  "scale": 5,
+  "threshold": 80,
+  "dimensions": [
+    {
+      "key": "authority_boundary",
+      "weight": 3,
+      "desc": "Keeps command text, shell syntax, hook telemetry, and outer tool status non-authoritative; does not add a shell parser or a second policy authority."
+    },
+    {
+      "key": "execution_evidence",
+      "weight": 3,
+      "desc": "Requires wave-owned invocation/result records bound to the verifier-supplied expected command, with locked linearizable reads, complete newline-framed writes, and distinct unverified, invoked, failed, and passed states."
+    },
+    {
+      "key": "correlation_retry",
+      "weight": 2,
+      "desc": "Defines a stable run/wave/lane/gate identity, exact attempt correlation, append-only retries, and latest-attempt result resolution including an incomplete retry."
+    },
+    {
+      "key": "truthful_scope",
+      "weight": 2,
+      "desc": "Requires gate-reachable adversarial and negative-control tests; bounded descriptor-relative no-follow evidence; exact repository-root ownership; and rejection of malformed, mismatched, partial, oversized, impossible-exit, concurrent-stale, and symlinked evidence."
+    }
+  ],
+  "guidance": "Reward command-bound correlated evidence, gate-wired executable writer/reader and eval tests, locked latest-attempt resolution, complete newline framing, descriptor-relative no-follow traversal, preserved process exits, and script-owned repository roots. Penalize arbitrary-command gate labels, substring matching, shell parsing, wrapper inference, stale concurrent passes, partial writes, symlink traversal, cwd-owned evidence, uncorrelated results, and prose or telemetry substituted for executable evidence."
+}

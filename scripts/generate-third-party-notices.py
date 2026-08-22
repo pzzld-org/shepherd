@@ -13,11 +13,29 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_OUTPUT_ROOT = ROOT / "target" / "legal" / "full"
+DEFAULT_OUTPUT = DEFAULT_OUTPUT_ROOT / "THIRD_PARTY_NOTICES.md"
+DEFAULT_LICENSES_DIR = DEFAULT_OUTPUT_ROOT / "THIRD_PARTY_LICENSES"
 LICENSE_PREFIXES = ("license", "copying", "notice", "copyright", "unlicense")
+RETIRED_ROOT_AUTHORITIES = {
+    "THIRD_PARTY_NOTICES.md": "generated legal notice belongs in build/release staging",
+    "THIRD_PARTY_LICENSES": "generated upstream license texts belong in build/release staging",
+    "workflows": "provider-specific workflow runtime duplicates native orchestration authority",
+}
 
 
 def digest(content: bytes) -> str:
     return hashlib.sha256(content).hexdigest()
+
+
+def repository_source_authority_violations(root: Path) -> list[str]:
+    """Return generated or provider-local authorities committed at repository root."""
+    violations = []
+    for relative, reason in RETIRED_ROOT_AUTHORITIES.items():
+        path = root / relative
+        if path.exists() or path.is_symlink():
+            violations.append(f"{relative}: {reason}")
+    return violations
 
 
 def license_texts(package_root: Path, declared_license: str | None) -> list[tuple[str, bytes]]:
@@ -233,8 +251,8 @@ def main() -> int:
         default="full",
     )
     parser.add_argument("--target", default="wasm32-wasip2")
-    parser.add_argument("--output", type=Path, default=ROOT / "THIRD_PARTY_NOTICES.md")
-    parser.add_argument("--licenses-dir", type=Path, default=ROOT / "THIRD_PARTY_LICENSES")
+    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument("--licenses-dir", type=Path, default=DEFAULT_LICENSES_DIR)
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
     try:
@@ -247,6 +265,7 @@ def main() -> int:
             print("third-party notices are stale or incomplete", file=sys.stderr)
             return 1
         return 0
+    args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(notices, encoding="utf-8")
     write_tree(args.licenses_dir, texts)
     return 0

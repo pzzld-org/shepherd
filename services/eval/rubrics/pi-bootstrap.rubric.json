@@ -1,0 +1,29 @@
+{
+  "kind": "pi-bootstrap",
+  "subject": "A deterministic Pi bootstrap design for Shepherd role registration and opaque tool-call correlation.",
+  "scale": 5,
+  "threshold": 80,
+  "dimensions": [
+    {
+      "key": "single_authority",
+      "weight": 3,
+      "desc": "Generates staged Pi agents from compiler-owned role metadata and prompts, never from a tracked hand-copied role tree or a second parser authority."
+    },
+    {
+      "key": "provider_contract",
+      "weight": 3,
+      "desc": "Uses pi.getAllTools for provider-neutral readiness, accepts an inactive configured tool named exactly subagent, fails mutation closed with exact remediation when absent or malformed, and exposes exactly seven literal shepherd:<role> identities while keeping shepherd plus planter non-spawnable."
+    },
+    {
+      "key": "runtime_proof",
+      "weight": 2,
+      "desc": "Requires clean-package inventory, a fresh provider-free Pi write lockout proof, and a fresh provider-backed process that lists all seven roles and completes the engineer to auditor/discovery to critic nested wave; post-implementation auditor review is a separate read-only run with no requested acceptance level."
+    },
+    {
+      "key": "policy_boundary",
+      "weight": 2,
+      "desc": "Preserves Rust Component policy and portable model hints across typed boundaries; requires concrete provider/model:thinking resolution, Luna:max ordinary leaves, Sol:xhigh leads, impossible carrier sentinels, strict identifiers, and nonblocking uncorrelated terminal evidence."
+    }
+  ],
+  "guidance": "Reward one generated carrier authority, exact role identity, public provider-neutral readiness, post-correlation terminal lockout, fail-closed model plus thinking resolution, Luna:max fanout, Sol:xhigh leads, and live session-metadata evidence. Penalize silent inheritance, sonnet/haiku aliases, Spark/Terra defaults, Sol leaves without concrete Luna inability evidence, hand-copied agents, nine spawnable roles, provider imports or wrappers, active-only probes, pre-correlation lockout, requested acceptance.level on read-only review, relaxed shared identifiers, and install-only claims."
+}

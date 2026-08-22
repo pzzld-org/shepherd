@@ -5,7 +5,8 @@
   "run": "v910-dev0",
   "run_dir": "<SCRATCH>/cwd/.shepherd/runs/v910-dev0",
   "subdirs": [
-    "lanes"
+    "lanes",
+    "dispatch"
   ],
   "tracked_files_present": []
 }

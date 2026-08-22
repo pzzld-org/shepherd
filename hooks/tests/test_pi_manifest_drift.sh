@@ -8,8 +8,9 @@
 # hooks/hooks.json's command/args exec form). This test is the tripwire that
 # keeps the declaration and the implementation from drifting apart, in either
 # direction:
-#   1. every event the manifest declares has a matching pi.on(...) handler
-#   2. every pi.on(...) handler in extension.mjs is declared in the manifest
+#   1. every event the manifest declares has a matching pi.on(...) or
+#      pi.events.on(...) handler
+#   2. every public Pi handler in extension.mjs is declared in the manifest
 #      (catches an orphaned handler)
 #   3. the manifest's guarded-tool list matches GUARDED_TOOL_NAMES exactly,
 #      in both directions
@@ -74,33 +75,36 @@ else
   fail "manifest declares a non-empty hooks block" "no keys under .hooks in $MANIFEST"
 fi
 
-# --- extension.mjs pi.on(...) handlers --------------------------------------
-grep -oE 'pi\.on\("[^"]+"' "$EXTENSION" 2>/dev/null \
-  | sed -E 's/^pi\.on\("//; s/"$//' \
-  | sort -u > "$tmp/extension_events"
+# --- extension.mjs public handlers ------------------------------------------
+{
+  grep -oE 'pi\.on\("[^"]+"' "$EXTENSION" 2>/dev/null \
+    | sed -E 's/^pi\.on\("//; s/"$//'
+  grep -oE 'pi\.events\.on\("[^"]+"' "$EXTENSION" 2>/dev/null \
+    | sed -E 's/^pi\.events\.on\("//; s/"$//'
+} | sort -u > "$tmp/extension_events"
 
 if [[ -s "$tmp/extension_events" ]]; then
-  pass "extension.mjs registers pi.on(...) handlers"
+  pass "extension.mjs registers public Pi handlers"
 else
-  fail "extension.mjs registers pi.on(...) handlers" "no pi.on(...) calls found in $EXTENSION"
+  fail "extension.mjs registers public Pi handlers" "no pi.on(...) or pi.events.on(...) calls found in $EXTENSION"
 fi
 
-# 1. every manifest-declared event has a matching pi.on(...) handler
+# 1. every manifest-declared event has a matching public handler
 missing_handlers="$(comm -23 "$tmp/manifest_events" "$tmp/extension_events")"
 if [[ -z "$missing_handlers" ]]; then
-  pass "every manifest-declared event has a pi.on(...) handler"
+  pass "every manifest-declared event has a public Pi handler"
 else
-  fail "every manifest-declared event has a pi.on(...) handler" \
-    "declared in manifest but no pi.on(...) handler in extension.mjs: $(printf '%s' "$missing_handlers" | tr '\n' ' ')"
+  fail "every manifest-declared event has a public Pi handler" \
+    "declared in manifest but no public handler in extension.mjs: $(printf '%s' "$missing_handlers" | tr '\n' ' ')"
 fi
 
-# 2. every pi.on(...) handler is declared in the manifest (catches an orphan)
+# 2. every public handler is declared in the manifest (catches an orphan)
 orphaned_handlers="$(comm -13 "$tmp/manifest_events" "$tmp/extension_events")"
 if [[ -z "$orphaned_handlers" ]]; then
-  pass "every pi.on(...) handler is declared in the manifest"
+  pass "every public Pi handler is declared in the manifest"
 else
-  fail "every pi.on(...) handler is declared in the manifest" \
-    "pi.on(...) handler exists but is undeclared in manifest: $(printf '%s' "$orphaned_handlers" | tr '\n' ' ')"
+  fail "every public Pi handler is declared in the manifest" \
+    "public handler exists but is undeclared in manifest: $(printf '%s' "$orphaned_handlers" | tr '\n' ' ')"
 fi
 
 # --- guarded tool set --------------------------------------------------------

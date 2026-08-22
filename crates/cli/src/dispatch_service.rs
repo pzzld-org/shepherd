@@ -35,6 +35,10 @@ pub enum DispatchServiceError {
     Identity(#[from] IdentityError),
     #[error("cannot materialize resume context: {0}")]
     ResumeContext(String),
+    #[error(
+        "root session `{session_id}` is already bound to run `{run}` with a different identity"
+    )]
+    RootBindingConflict { run: RunId, session_id: SessionId },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
@@ -232,8 +236,21 @@ impl DispatchService {
             expires_at: lease_expires_at,
         };
         binding.validate()?;
-        self.store.publish_root_binding(&binding)?;
-        Ok(binding)
+        match self.store.publish_root_binding(&binding) {
+            Ok(()) => Ok(binding),
+            Err(DispatchStoreError::AlreadyExists { .. }) => {
+                let existing = self.store.load_active_root_binding(&binding.session_id)?;
+                if same_root_identity(&existing, &binding) {
+                    Ok(existing)
+                } else {
+                    Err(DispatchServiceError::RootBindingConflict {
+                        run: existing.run,
+                        session_id: existing.session_id,
+                    })
+                }
+            }
+            Err(error) => Err(error.into()),
+        }
     }
 
     pub fn resolve(
@@ -286,7 +303,10 @@ impl DispatchService {
                 role,
                 lane: None,
                 session_id,
-                write_scope: vec!["**".into()],
+                // A root binding has no dispatch lane or requested file scope.
+                // Shepherd's documented root writes are root-level markdown
+                // files, so the native fallback names that exact boundary.
+                write_scope: vec![String::from("*.md")],
                 capabilities: None,
                 tool_call_id,
                 mode: Some(mode),
@@ -440,17 +460,20 @@ impl DispatchService {
     ) -> DispatchServiceResult<DispatchStart> {
         let lease_expires_at = lease_expires_at(request.lease_ms, now)?;
         let role = Role::from_carrier(&request.role_carrier)?;
+        let agent_id = AgentId::new(request.agent_id)?;
+        let lane = request.lane.map(LaneId::new).transpose()?;
+        let write_scope = bounded_write_scope(&request.write_scope)?;
         Ok(DispatchStart {
             project_id: self.project_id.clone(),
             run: run.clone(),
             harness: request.harness,
-            agent_id: AgentId::new(request.agent_id)?,
+            agent_id,
             agent_type: AgentType::new(request.agent_type)?,
             role,
-            lane: request.lane.map(LaneId::new).transpose()?,
+            lane,
             parent_agent_id: request.parent_agent_id.map(AgentId::new).transpose()?,
             session_id: SessionId::new(request.session_id)?,
-            write_scope: request.write_scope,
+            write_scope,
             model: request.model,
             capability_contract: role.dispatch_capability_contract()?,
             capability_probe: CapabilityProbe::new(
@@ -465,6 +488,25 @@ impl DispatchService {
             resumes_agent_id,
         })
     }
+}
+
+fn bounded_write_scope(requested: &[String]) -> DispatchServiceResult<Vec<String>> {
+    if requested.len() == 1 && requested[0] == "**" {
+        return Err(DispatchServiceError::InvalidRequest(
+            "dispatch must provide a bounded write_scope, not [\"**\"]".into(),
+        ));
+    }
+
+    Ok(requested.to_vec())
+}
+
+fn same_root_identity(existing: &RootSessionBinding, requested: &RootSessionBinding) -> bool {
+    existing.project_id == requested.project_id
+        && existing.run == requested.run
+        && existing.harness == requested.harness
+        && existing.session_id == requested.session_id
+        && existing.role == requested.role
+        && existing.mode == requested.mode
 }
 
 fn lease_expires_at(lease_ms: u64, now: i64) -> DispatchServiceResult<i64> {

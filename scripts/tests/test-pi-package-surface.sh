@@ -54,6 +54,12 @@ for field in ("extensions", "skills", "prompts"):
     if not isinstance(value, list) or not value:
         problems.append(f"pi.{field} must be a non-empty array")
 
+subagents = pi.get("subagents")
+if not isinstance(subagents, dict):
+    problems.append("pi.subagents must declare the Shepherd agent carrier")
+elif not isinstance(subagents.get("agents"), list) or not subagents["agents"]:
+    problems.append("pi.subagents.agents must be a non-empty array")
+
 # npm packs `files` verbatim. A `pi` key naming ./skills while `files` omits it
 # produces a tarball whose declared surface does not exist -- inert in exactly
 # the same way, and harder to see.
@@ -61,11 +67,12 @@ files = manifest.get("files")
 if not isinstance(files, list) or not files:
     problems.append("`files` must be declared so the generated carrier is packed")
 else:
-    for field in ("skills", "prompts"):
-        for entry in pi.get(field, []) or []:
-            top = entry.lstrip("./").split("/")[0]
-            if top and top not in files:
-                problems.append(f"pi.{field} names ./{top} but `files` does not pack it")
+    declared = [(field, entry) for field in ("skills", "prompts") for entry in (pi.get(field, []) or [])]
+    declared.extend(("subagents.agents", entry) for entry in ((pi.get("subagents") or {}).get("agents") or []))
+    for field, entry in declared:
+        top = entry.lstrip("./").split("/")[0]
+        if top and top not in files:
+            problems.append(f"pi.{field} names ./{top} but `files` does not pack it")
 
 if "pi-package" not in (manifest.get("keywords") or []):
     problems.append("keywords must include `pi-package` for discovery")
@@ -98,8 +105,8 @@ if [[ "${1:-}" == "--self-test" ]]; then
   # everything is indistinguishable from one that works.
   cat >"$scratch/good.json" <<'JSON'
 {"name":"x","keywords":["pi-package"],
- "pi":{"extensions":["./src/extension.mjs"],"skills":["./skills"],"prompts":["./prompts"]},
- "files":["src","skills","prompts","THIRD_PARTY_NOTICES.md","THIRD_PARTY_LICENSES"]}
+ "pi":{"extensions":["./src/extension.mjs"],"skills":["./skills"],"prompts":["./prompts"],"subagents":{"agents":["./agents"]}},
+ "files":["src","skills","prompts","agents","THIRD_PARTY_NOTICES.md","THIRD_PARTY_LICENSES"]}
 JSON
   if check_manifest "$scratch/good.json" >/dev/null 2>&1; then
     pass "self-test: a correct manifest is accepted"
@@ -117,16 +124,18 @@ JSON
     pass "self-test: a manifest with no pi key is rejected"
   fi
 
-  # Declared but unpacked: the subtler inert package.
-  cat >"$scratch/unpacked.json" <<'JSON'
+  # Declared but unpacked: the subtler inert package. Keep every other field
+  # valid so this fails only if pi.subagents.agents is absent from `files`.
+  cat >"$scratch/unpacked-agents.json" <<'JSON'
 {"name":"x","keywords":["pi-package"],
- "pi":{"extensions":["./src/extension.mjs"],"skills":["./skills"],"prompts":["./prompts"]},
- "files":["src"]}
+ "pi":{"extensions":["./src/extension.mjs"],"skills":["./skills"],"prompts":["./prompts"],"subagents":{"agents":["./agents"]}},
+ "files":["src","skills","prompts","THIRD_PARTY_NOTICES.md","THIRD_PARTY_LICENSES"]}
 JSON
-  if check_manifest "$scratch/unpacked.json" >/dev/null 2>&1; then
-    fail "self-test: pi.skills naming a directory `files` omits was accepted"
+  unpacked_agents_error="$(check_manifest "$scratch/unpacked-agents.json" 2>&1 || true)"
+  if [[ "$unpacked_agents_error" == *'pi.subagents.agents names ./agents but `files` does not pack it'* ]]; then
+    pass "self-test: pi.subagents.agents omitted from files is rejected specifically"
   else
-    pass "self-test: a declared-but-unpacked carrier is rejected"
+    fail "self-test: missing packed agents did not produce its specific rejection ($unpacked_agents_error)"
   fi
 
   # The regression that broke rust-wasm: a complete `pi` surface whose `files`
@@ -134,8 +143,8 @@ JSON
   # LICENSE automatically and nothing else, so this ships without notices.
   cat >"$scratch/nolegal.json" <<'JSON'
 {"name":"x","keywords":["pi-package"],
- "pi":{"extensions":["./src/extension.mjs"],"skills":["./skills"],"prompts":["./prompts"]},
- "files":["src","skills","prompts"]}
+ "pi":{"extensions":["./src/extension.mjs"],"skills":["./skills"],"prompts":["./prompts"],"subagents":{"agents":["./agents"]}},
+ "files":["src","skills","prompts","agents"]}
 JSON
   if check_manifest "$scratch/nolegal.json" >/dev/null 2>&1; then
     fail "self-test: a files allowlist omitting the legal material was accepted"
@@ -176,7 +185,7 @@ fi
 # The generated carrier must NOT be committed -- that is a separate, correct
 # gate (test-generated-carrier-authority.sh) and this one must not push against
 # it. Assert the absence here too, so the two cannot drift into contradiction.
-for generated in skills prompts; do
+for generated in skills prompts agents; do
   if [[ -e "$ROOT/packages/harness-pi/$generated" ]]; then
     fail "packages/harness-pi/$generated is committed; it must be staged at release time only"
   else

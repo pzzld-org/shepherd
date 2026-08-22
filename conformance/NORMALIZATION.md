@@ -12,9 +12,10 @@ rule below exists because a real field in the native CLI's output depends on it.
 
 ## Recording authority
 
-Every case is owned by the canonical Rust CLI and declares
-`authority: native-v6.4.5` (omitting it is equivalent). The runner rejects legacy
-authority values and has no Python recording or replay path. This prevents a retired
+Every case is owned by the canonical Rust CLI. Omitted authority means
+`native-v6.4.5`; cases promoted under the next native contract declare
+`authority: native-v6.4.6`. The runner accepts only those recorded native authorities,
+rejects legacy values, and has no Python recording or replay path. This prevents a retired
 implementation from restoring unsafe failure behavior.
 
 | Source | Where it appears | Rule |
@@ -23,6 +24,7 @@ implementation from restoring unsafe failure behavior.
 | **UUIDs** | Not currently emitted by any case in this corpus, but several `index_*`/`mem_entries` rows carry UUID primary keys the CLI could echo back | `harness.normalize()`'s `_UUID_RE`: RFC-4122 textual shape (`8-4-4-4-12` hex), case-insensitive, substituted with `<UUID>`. |
 | **Handoff calendar date** | The exact `| Date | YYYY-MM-DD |` row in a generated `handoff.md` | `harness.normalize()`'s `_HANDOFF_DATE_RE` matches that complete Markdown row and substitutes `| Date | <DATE> |`. Other date-shaped strings remain byte-significant. `TZ=UTC` still pins the source boundary. |
 | **Absolute paths** | Any `--json`/text output that embeds a scratch cwd or repo path (e.g. an error message naming a file) | `harness.normalize()`: the case's own scratch root and `REPO_ROOT` are replaced with `<SCRATCH>`/`<REPO_ROOT>` before comparison — the scratch root is unique per invocation (`tempfile.TemporaryDirectory`) by construction, so this substitution can never collide with real captured content. |
+| **Rust executable** | Doctor and nested `PATH` resolution | Prepend the exact `--rust-bin` parent to `PATH`; checkout paths then normalize through `<REPO_ROOT>`. |
 | **Hostname** | Not currently emitted by any case, but `socket.gethostname()` could leak into a future case's output (e.g. a lock-file owner field) | `harness.normalize()`: `socket.gethostname()` is looked up once and, if present in the text, replaced with `<HOSTNAME>`. |
 | **Locale** | Numeric alignment, sorting, and any locale-aware native or subprocess output | Pinned at the source, not scrubbed after: `harness._build_env()` sets `LC_ALL=C` for every invocation. |
 | **Timezone** | Any wall-clock-derived rendering | Pinned at the source: `harness._build_env()` sets `TZ=UTC`. Date and timestamp fields that remain nondeterministic are normalized only by the narrow rules above. |

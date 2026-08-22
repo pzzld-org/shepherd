@@ -557,18 +557,13 @@ pub struct ModelsConfig {
 impl Default for ModelsConfig {
     fn default() -> Self {
         Self {
-            // root and planter hold the reasoning tier: the sprint's expensive
-            // thinking is its seeding and its top-level orchestration, and that
-            // is where a fable-class model earns its cost.
+            // Root, planter, and both team leads hold the reasoning tier. A
+            // fresh engineer or conductor must carry concrete model effort
+            // rather than inheriting an ambient parent/default of unknown cost.
             root: "reasoning-high".into(),
             planter: "reasoning-high".into(),
-            // The team leads INHERIT the caller instead of pinning a tier. A
-            // sprint spawned at the reasoning tier gets leads at that tier; a
-            // sprint spawned cheaply gets cheap leads. Pinning them meant every
-            // lane lead cost the top tier regardless of what the run was worth.
-            // Override either in `[models]` in `.shepherd/shepherd.toml`.
-            engineer: "inherit-caller".into(),
-            conductor: "inherit-caller".into(),
+            engineer: "reasoning-high".into(),
+            conductor: "reasoning-high".into(),
             // The judgement roles hold standard: a critic that misses a
             // contradiction and an auditor that passes a bad wave both cost
             // more than the tier they saved, and a coder writes the diff.
@@ -584,6 +579,82 @@ impl Default for ModelsConfig {
             discovery: "economy".into(),
             worker: "standard".into(),
         }
+    }
+}
+
+/// Concrete Pi provider targets for the closed portable-hint vocabulary.
+#[derive(Clone, Debug, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(
+    feature = "serde",
+    serde(default, deny_unknown_fields, rename_all = "kebab-case")
+)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct PiModelTargetsConfig {
+    pub inherit_caller: String,
+    pub reasoning_high: String,
+    pub standard: String,
+    pub economy: String,
+}
+
+impl PiModelTargetsConfig {
+    #[must_use]
+    pub fn get(&self, hint: &str) -> Option<&str> {
+        let target = match hint {
+            "inherit-caller" => &self.inherit_caller,
+            "reasoning-high" => &self.reasoning_high,
+            "standard" => &self.standard,
+            "economy" => &self.economy,
+            _ => return None,
+        };
+        (!target.is_empty()).then_some(target)
+    }
+
+    fn validate(&self) -> Result {
+        if !self.inherit_caller.is_empty() && self.inherit_caller != "inherit" {
+            return Err(Error::config(
+                "model_targets.pi.inherit-caller: expected `inherit`",
+            ));
+        }
+        for (hint, target) in [
+            ("reasoning-high", self.reasoning_high.as_str()),
+            ("standard", self.standard.as_str()),
+            ("economy", self.economy.as_str()),
+        ] {
+            if target.is_empty() {
+                continue;
+            }
+            let Some((model, thinking)) = target.rsplit_once(':') else {
+                return Err(Error::config(format_args!(
+                    "model_targets.pi.{hint}: expected `provider/model:thinking`"
+                )));
+            };
+            let Some((provider, model_id)) = model.split_once('/') else {
+                return Err(Error::config(format_args!(
+                    "model_targets.pi.{hint}: expected `provider/model:thinking`"
+                )));
+            };
+            if provider.is_empty()
+                || model_id.is_empty()
+                || model.bytes().any(|byte| byte.is_ascii_whitespace())
+                || !matches!(
+                    thinking,
+                    "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max"
+                )
+            {
+                return Err(Error::config(format_args!(
+                    "model_targets.pi.{hint}: expected a concrete provider/model plus Pi thinking level off, minimal, low, medium, high, xhigh, or max"
+                )));
+            }
+        }
+        Ok(())
+    }
+}
+
+config_struct! {
+    /// Harness-specific concrete targets keyed by portable model hint.
+    pub struct ModelTargetsConfig {
+        pub pi: PiModelTargetsConfig,
     }
 }
 
@@ -701,6 +772,7 @@ pub struct ShepherdConfig {
     pub close: CloseConfig,
     pub eval: EvalConfig,
     pub models: ModelsConfig,
+    pub model_targets: ModelTargetsConfig,
     pub prune: PruneConfig,
     pub seed: SeedConfig,
     pub preflight: PreflightConfig,
@@ -710,6 +782,7 @@ pub struct ShepherdConfig {
 impl ShepherdConfig {
     /// Validate cross-field ranges and layout-v5 path containment.
     pub fn validate(&self) -> Result {
+        self.model_targets.pi.validate()?;
         for (key, value) in [
             ("dups.dups_threshold", self.dups.dups_threshold),
             ("dups.dups_block", self.dups.dups_block),

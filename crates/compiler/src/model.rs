@@ -68,8 +68,8 @@ pub struct CompileInput {
 /// Harness-native resolution for one authored `model_hint`.
 ///
 /// A Claude or Pi profile resolves to `model`; a Codex profile resolves to
-/// `profile` plus `reasoning_effort`. The root `inherit-caller` resolution may
-/// leave all three absent for targets that cannot rebind an active session.
+/// `profile` plus `reasoning_effort`. Concrete provider-specific Pi targets stay
+/// in runtime configuration, so only `inherit-caller` has a canonical Pi model.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct ModelResolution {
     pub model: Option<String>,
@@ -196,6 +196,7 @@ impl HarnessProfile {
             ("report-write".into(), vec!["write".into()]),
             ("search".into(), vec!["grep".into(), "find".into()]),
             ("shell".into(), vec!["bash".into()]),
+            ("dispatch".into(), vec!["subagent".into()]),
             ("write".into(), vec!["write".into(), "edit".into()]),
         ]);
         Self {
@@ -205,7 +206,6 @@ impl HarnessProfile {
             unsupported_capabilities: BTreeSet::from([
                 "ask-operator".into(),
                 "code-intelligence".into(),
-                "dispatch".into(),
                 "message-peer".into(),
                 "schedule-wakeup".into(),
                 "skill-load".into(),
@@ -213,29 +213,20 @@ impl HarnessProfile {
                 "tool-discovery".into(),
                 "web-research".into(),
             ]),
+            // Provider-specific Pi targets are project configuration, not
+            // compiler policy. Inheritance is the only provider-neutral launch
+            // instruction; every other portable hint remains unresolved here.
             model_by_hint: BTreeMap::from([
-                ("inherit-caller".into(), ModelResolution::default()),
                 (
-                    "reasoning-high".into(),
+                    "inherit-caller".into(),
                     ModelResolution {
-                        model: Some("opus".into()),
+                        model: Some("inherit".into()),
                         ..ModelResolution::default()
                     },
                 ),
-                (
-                    "standard".into(),
-                    ModelResolution {
-                        model: Some("sonnet".into()),
-                        ..ModelResolution::default()
-                    },
-                ),
-                (
-                    "economy".into(),
-                    ModelResolution {
-                        model: Some("haiku".into()),
-                        ..ModelResolution::default()
-                    },
-                ),
+                ("reasoning-high".into(), ModelResolution::default()),
+                ("standard".into(), ModelResolution::default()),
+                ("economy".into(), ModelResolution::default()),
             ]),
         }
     }
@@ -273,6 +264,7 @@ pub struct EmittedRole {
     pub role: String,
     pub carrier_path: String,
     pub description: String,
+    pub model_hint: String,
     pub model: Option<String>,
     pub profile: Option<String>,
     pub reasoning_effort: Option<String>,

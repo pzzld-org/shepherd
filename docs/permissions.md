@@ -52,11 +52,15 @@ not a reason to invoke Python, Bash, or Node.
 
 ## Pi
 
-Pi requires an explicit `SubagentProvider`-compatible extension. A provider
-must advertise `capabilities`, `spawn`, `resume`, and `stop`, and must report
-ready before mutation operations are allowed. `pi-subagents` is the intended
-class of provider. Without it, Shepherd reports blocked capability rather than
-silently running without identity or coordination.
+Pi requires a compatible registered subagent system. At root and child
+`session_start`, Shepherd uses Pi's public `pi.getAllTools()` API and requires a
+configured tool named exactly `subagent`; inactive registered tools count.
+Generated child carriers include that transport plus `maxSubagentDepth: 2`, but
+only Component-compiled canonical roles whose capabilities contain `dispatch` may
+execute it. Other managed children fail closed before provider execution. An
+absent or malformed inventory leaves reads available but blocks Write, Edit,
+and Bash with the exact `pi install npm:pi-subagents` and restart remediation.
+`pi-subagents` is the reference provider, not a Shepherd dependency.
 
 ## Component and filesystem safety
 
