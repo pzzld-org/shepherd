@@ -31,6 +31,8 @@ A scratch mutation returning one constant token made the Pi suite exit 1. The or
 - Deterministic eval gates: 4/4 passed; 7 periodic pairs complete; 9 rubrics valid.
 - Live `pi-tool-correlation` eval: good 96/100, bad 20/100, threshold 80, margin 76.
 
-## Remaining gate
+## Live Pi gate
 
-The running Pi session still uses the pre-fix extension and reproduced the same rejection on a live `Write` probe. Restart Pi from this checkout, then repeat the normal Write/Edit probe. #370 role registration remains untouched until that gate passes.
+A fresh headless Pi process loaded only the staged fixed extension. Its first real Write reached native guard policy and was correctly denied because `/tmp/v656-isolated-live-write.txt` escaped the repository. A second real Write created `.shepherd/runs/v656/lanes/pi-bootstrap/evidence/live-write-probe.txt` with the exact expected bytes. The pre-fix `unsafe session id call_*|fc_*` rejection did not recur.
+
+#368 is green. #370 role registration is now unblocked.
