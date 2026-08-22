@@ -114,6 +114,15 @@ fn binary_start_resolve_and_stop_use_the_primary_active_run() {
     let record: serde_json::Value = serde_json::from_slice(&start.stdout).expect("start response");
     assert_eq!(record["schema"], "shepherd.dispatch/3");
     assert_eq!(record["agent_id"], "claude-native-1");
+    assert_eq!(record["lane"], "l1-engine");
+    assert_eq!(
+        record["write_scope"],
+        serde_json::json!(["crates/core/src/dispatch/**"])
+    );
+    assert!(
+        !(record["lane"].is_null() && record["write_scope"] == serde_json::json!(["**"])),
+        "a named dispatch must not receive the root fallback facts: {record}"
+    );
     assert!(
         root.join(".shepherd/runs/v645/dispatch/claude-native-1.json")
             .is_file()
@@ -143,6 +152,15 @@ fn binary_start_resolve_and_stop_use_the_primary_active_run() {
         serde_json::from_slice(&resolve.stdout).expect("resolve response");
     assert_eq!(resolution["agent_id"], "claude-native-1");
     assert_eq!(resolution["role"], "coder");
+    assert_eq!(resolution["lane"], "l1-engine");
+    assert_eq!(
+        resolution["write_scope"],
+        serde_json::json!(["crates/core/src/dispatch/**"])
+    );
+    assert!(
+        !(resolution["lane"].is_null() && resolution["write_scope"] == serde_json::json!(["**"])),
+        "native resolution must not use the root fallback facts: {resolution}"
+    );
 
     let stop = run(
         &root,
@@ -168,6 +186,55 @@ fn binary_start_resolve_and_stop_use_the_primary_active_run() {
     let stopped: serde_json::Value = serde_json::from_slice(&stop.stdout).expect("stop response");
     assert_eq!(stopped["state"], "stopped");
     assert_eq!(stopped["revision"], 2);
+    std::fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn root_resolution_does_not_use_universal_fallback_scope() {
+    let root = repository("root-least-authority");
+    let session = run(
+        &root,
+        &["claude-hook"],
+        &serde_json::json!({
+            "hook_event_name": "SessionStart",
+            "session_id": "root-session"
+        }),
+    );
+    assert!(
+        session.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&session.stderr)
+    );
+
+    let resolve = run(
+        &root,
+        &["dispatch", "resolve"],
+        &serde_json::json!({
+            "schema": "shepherd.dispatch-request/1",
+            "run": "v645",
+            "harness": "claude",
+            "agent_id": null,
+            "agent_type": null,
+            "role_carrier": null,
+            "lane": null,
+            "session_id": "root-session",
+            "tool_call_id": "root-tool-id"
+        }),
+    );
+    assert!(
+        resolve.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&resolve.stderr)
+    );
+    let resolution: serde_json::Value =
+        serde_json::from_slice(&resolve.stdout).expect("root resolution response");
+    assert_eq!(resolution["role"], "shepherd");
+    assert!(resolution["lane"].is_null());
+    assert_eq!(
+        resolution["write_scope"],
+        serde_json::json!(["*.md"]),
+        "root resolution must use the root-level markdown scope: {resolution}"
+    );
     std::fs::remove_dir_all(root).expect("cleanup");
 }
 
@@ -390,4 +457,29 @@ fn dispatch_directory_identity_gets_the_identity_specific_not_a_regular_file_wor
         "stderr={stderr}"
     );
     std::fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn dispatch_start_rejects_universal_scope_with_or_without_a_lane() {
+    for lane in [Some("l1-engine"), None] {
+        let root = repository(if lane.is_some() {
+            "universal-named"
+        } else {
+            "universal-lane-less"
+        });
+        let mut request = start_request();
+        request["write_scope"] = serde_json::json!(["**"]);
+        request["lane"] = lane
+            .map(serde_json::Value::from)
+            .unwrap_or(serde_json::Value::Null);
+        let output = run(&root, &["dispatch", "start"], &request);
+        assert!(!output.status.success(), "lane={lane:?}");
+        assert!(
+            String::from_utf8_lossy(&output.stderr)
+                .contains("dispatch must provide a bounded write_scope"),
+            "lane={lane:?}, stderr={}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        std::fs::remove_dir_all(root).expect("cleanup");
+    }
 }

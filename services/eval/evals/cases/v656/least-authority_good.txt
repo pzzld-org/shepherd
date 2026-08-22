@@ -1,0 +1,15 @@
+# v656 Native least authority: good case
+
+Review the Native Rust least-authority contract for dispatch resolution and guard evaluation.
+
+A correct response requires all of the following:
+
+- Every dispatch with `write_scope: ["**"]` is rejected, with or without a lane. A host-only child start that declares no partition or scope remains attributable but carries an explicit empty scope, which means non-writable. It never receives an invented report path.
+- Root structured writes require complete root facts: null agent and lane, a non-empty mode, and the exact root-level `*.md` scope. Missing or malformed facts are unresolved. The suffix matcher does not make nested Markdown writable.
+- `report-write` is not general write authority. It requires one exact non-glob dispatch-declared output path and exactly one resolved write target equal to that path. A broad glob or multiple declared paths is unresolved.
+- Write, Edit/apply_patch, and Bash are equivalent effect carriers for authorization purposes. An out-of-scope structured write and an opaque Bash effect under a bounded or explicitly non-writable dispatch both fail closed.
+- Missing, null, non-string, and empty Bash `command` values produce unresolved or deny, never allow.
+- Unknown shell effects are denied without shell parsing, token scanning, path inference, command substring lists, or a second adapter-side policy. Existing git-custody rules continue to govern recognized git effects.
+- Genuine in-scope structured writes, including a root-level Markdown write with complete root facts, are negative controls that still allow. Complete identity alone does not authorize opaque Bash. Forbidden git writes remain denied.
+
+Use native dispatch facts as the policy input. The host adapter may translate a missing host scope into the explicit empty native scope, but it may not decide authorization or create a second role/scope map.

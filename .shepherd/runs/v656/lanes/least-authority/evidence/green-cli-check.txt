@@ -1,0 +1,6 @@
+[1m[92m    Checking[0m shepherd-core v6.5.6 (/Users/jo3/src/pzzld/shepherd/.worktrees/v656-least-authority/crates/core)
+[1m[92m    Checking[0m shepherd-render v6.5.6 (/Users/jo3/src/pzzld/shepherd/.worktrees/v656-least-authority/crates/render)
+[1m[92m    Checking[0m shepherd-registry v6.5.6 (/Users/jo3/src/pzzld/shepherd/.worktrees/v656-least-authority/crates/registry)
+[1m[92m    Checking[0m shepherd-sdk v6.5.6 (/Users/jo3/src/pzzld/shepherd/.worktrees/v656-least-authority/crates/sdk)
+[1m[92m    Checking[0m shepherd-cli v6.5.6 (/Users/jo3/src/pzzld/shepherd/.worktrees/v656-least-authority/crates/cli)
+[1m[92m    Finished[0m `dev` profile [optimized + debuginfo] target(s) in 1.47s

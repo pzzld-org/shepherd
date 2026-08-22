@@ -29,6 +29,55 @@ fn evaluate(engine: &GuardEngine, request: &GuardValue) -> Verdict {
         .expect("a well-typed request evaluates")
 }
 
+fn native_dispatch(
+    role: &str,
+    agent_id: Option<&str>,
+    lane: Option<&str>,
+    write_scope: &[&str],
+    write_paths: &[&str],
+    path_in_write_scope: bool,
+) -> GuardValue {
+    object([
+        ("schema", GuardValue::from("shepherd.identity-resolution/1")),
+        (
+            "agent_id",
+            agent_id.map(GuardValue::from).unwrap_or(GuardValue::Null),
+        ),
+        ("role", GuardValue::from(role)),
+        (
+            "mode",
+            if role == "shepherd" && agent_id.is_none() {
+                GuardValue::from("root")
+            } else {
+                GuardValue::Null
+            },
+        ),
+        (
+            "lane",
+            lane.map(GuardValue::from).unwrap_or(GuardValue::Null),
+        ),
+        (
+            "write_scope",
+            GuardValue::Array(
+                write_scope
+                    .iter()
+                    .map(|path| GuardValue::from(*path))
+                    .collect(),
+            ),
+        ),
+        (
+            "write_paths",
+            GuardValue::Array(
+                write_paths
+                    .iter()
+                    .map(|path| GuardValue::from(*path))
+                    .collect(),
+            ),
+        ),
+        ("path_in_write_scope", GuardValue::from(path_in_write_scope)),
+    ])
+}
+
 fn live_source_paths(content_dir: &Path, subdirectory: &str, extension: &str) -> Vec<PathBuf> {
     let mut paths: Vec<_> = std::fs::read_dir(content_dir.join(subdirectory))
         .expect("live content directory is readable")
@@ -900,7 +949,7 @@ const LIVE_EXPECTATIONS: &[ExpectedExample] = &[
         rule: Some("role-write-eligibility,path-in-declared-scope"),
         halt_code: Some("DISCOVERY-WRITE-PATH"),
         reason: Some(
-            "fs.write is denied outright when the role's content/roles/<role>.md declares write_eligible: false. / Even a write_eligible = true role's write is denied when the target path falls outside the write_scope this specific dispatch's brief declares (a general write grant is not a blanket grant — the brief's file scope narrows it per dispatch).",
+            "fs.write is denied unless native role facts grant structured write (write_eligible plus write) or the narrow report-write capability. / Even a write_eligible = true role's write is denied when the target path falls outside the write_scope this specific dispatch's brief declares (a general write grant is not a blanket grant — the brief's file scope narrows it per dispatch).",
         ),
     },
     ExpectedExample {
@@ -910,7 +959,7 @@ const LIVE_EXPECTATIONS: &[ExpectedExample] = &[
         rule: Some("role-write-eligibility,path-in-declared-scope"),
         halt_code: None,
         reason: Some(
-            "fs.write is denied outright when the role's content/roles/<role>.md declares write_eligible: false. / Even a write_eligible = true role's write is denied when the target path falls outside the write_scope this specific dispatch's brief declares (a general write grant is not a blanket grant — the brief's file scope narrows it per dispatch).",
+            "fs.write is denied unless native role facts grant structured write (write_eligible plus write) or the narrow report-write capability. / Even a write_eligible = true role's write is denied when the target path falls outside the write_scope this specific dispatch's brief declares (a general write grant is not a blanket grant — the brief's file scope narrows it per dispatch).",
         ),
     },
 ];
@@ -1322,6 +1371,12 @@ fn raw_write_and_dispatch_tool_mappings_match_the_oracle() {
                         ("schema", GuardValue::from("shepherd.identity-resolution/1")),
                         ("role", GuardValue::from(role)),
                         (
+                            "write_scope",
+                            GuardValue::Array(vec![GuardValue::from(
+                                "crates/core/src/dispatch/identity.rs",
+                            )]),
+                        ),
+                        (
                             "write_paths",
                             GuardValue::Array(vec![GuardValue::from(
                                 "crates/core/src/dispatch/identity.rs",
@@ -1390,7 +1445,7 @@ fn raw_write_and_dispatch_tool_mappings_match_the_oracle() {
 }
 
 #[test]
-fn malformed_raw_tool_calls_are_unresolved_but_empty_bash_allows() {
+fn malformed_raw_tool_calls_are_unresolved_and_bash_command_shapes_fail_closed() {
     let engine = live_engine();
 
     for request in [
@@ -1404,21 +1459,48 @@ fn malformed_raw_tool_calls_are_unresolved_but_empty_bash_allows() {
         assert_eq!(evaluate(&engine, &request).decision, Decision::Unresolved);
     }
 
-    for request in [
-        object([
-            ("tool_name", GuardValue::from("Bash")),
-            ("role", GuardValue::from("coder")),
-        ]),
-        object([
-            ("role", GuardValue::from("coder")),
-            ("tool_name", GuardValue::from("Bash")),
-            ("tool_input", object([("command", GuardValue::Integer(42))])),
-        ]),
-    ] {
-        assert_eq!(evaluate(&engine, &request).decision, Decision::Allow);
+    let bash_command_shapes = [
+        (
+            "missing command",
+            object([
+                ("role", GuardValue::from("coder")),
+                ("tool_name", GuardValue::from("Bash")),
+            ]),
+        ),
+        (
+            "null command",
+            object([
+                ("role", GuardValue::from("coder")),
+                ("tool_name", GuardValue::from("Bash")),
+                ("tool_input", object([("command", GuardValue::Null)])),
+            ]),
+        ),
+        (
+            "non-string command",
+            object([
+                ("role", GuardValue::from("coder")),
+                ("tool_name", GuardValue::from("Bash")),
+                ("tool_input", object([("command", GuardValue::Integer(42))])),
+            ]),
+        ),
+        (
+            "empty command",
+            object([
+                ("role", GuardValue::from("coder")),
+                ("tool_name", GuardValue::from("Bash")),
+                ("tool_input", object([("command", GuardValue::from(""))])),
+            ]),
+        ),
+    ];
+
+    for (name, request) in bash_command_shapes {
+        let verdict = evaluate(&engine, &request);
+        assert!(
+            matches!(verdict.decision, Decision::Deny | Decision::Unresolved),
+            "{name} must never allow: {verdict:?}"
+        );
     }
 }
-
 #[test]
 fn round_four_raw_shape_validation_precedes_role_consumption() {
     let engine = live_engine();
@@ -1446,26 +1528,77 @@ fn round_four_raw_shape_validation_precedes_role_consumption() {
 }
 
 #[test]
-fn round_four_safe_and_read_only_bash_allow_without_role() {
+fn round_four_safe_and_read_only_bash_fail_closed_for_bounded_dispatches() {
     let engine = live_engine();
+    let bounded_writer = native_dispatch(
+        "coder",
+        Some("coder-child"),
+        Some("l1-engine"),
+        &["crates/core/src/dispatch/**"],
+        &[],
+        false,
+    );
+    let read_only_auditor = native_dispatch(
+        "auditor",
+        Some("auditor-child"),
+        Some("l1-review"),
+        &[],
+        &[],
+        false,
+    );
+    let root_dispatch = native_dispatch("shepherd", None, None, &["*.md"], &[], false);
 
-    for request in [
-        r#"{"tool_name":"Bash","tool_input":{"command":"printf safe"}}"#,
-        r#"{"tool_name":"Bash","tool_input":{"command":"git status"}}"#,
-        r#"{"role":null,"tool_name":"Bash","tool_input":{"command":"git log"}}"#,
-        r#"{"role":false,"tool_name":"Bash","tool_input":{"command":""}}"#,
-    ] {
-        let verdict = engine
-            .evaluate_json(request)
-            .expect("role-free Bash classification produces a verdict");
-        assert_eq!(
-            verdict.to_wire_json(),
-            r#"{"decision": "allow"}"#,
-            "{request}"
-        );
+    let cases = [
+        (
+            "root opaque shell remains bounded by the root path",
+            object([
+                ("role", GuardValue::from("shepherd")),
+                ("tool_name", GuardValue::from("Bash")),
+                (
+                    "tool_input",
+                    object([("command", GuardValue::from("printf safe"))]),
+                ),
+                ("dispatch", root_dispatch),
+            ]),
+            false,
+        ),
+        (
+            "bounded writer safe-looking shell is not implicitly trusted",
+            object([
+                ("role", GuardValue::from("coder")),
+                ("tool_name", GuardValue::from("Bash")),
+                (
+                    "tool_input",
+                    object([("command", GuardValue::from("printf safe"))]),
+                ),
+                ("dispatch", bounded_writer),
+            ]),
+            false,
+        ),
+        (
+            "read-only auditor safe-looking shell is not implicitly trusted",
+            object([
+                ("role", GuardValue::from("auditor")),
+                ("tool_name", GuardValue::from("Bash")),
+                (
+                    "tool_input",
+                    object([("command", GuardValue::from("git status"))]),
+                ),
+                ("dispatch", read_only_auditor),
+            ]),
+            false,
+        ),
+    ];
+
+    for (name, request, should_allow) in cases {
+        let verdict = evaluate(&engine, &request);
+        if should_allow {
+            assert_eq!(verdict.decision, Decision::Allow, "{}: {:?}", name, verdict);
+        } else {
+            assert_ne!(verdict.decision, Decision::Allow, "{}: {:?}", name, verdict);
+        }
     }
 }
-
 #[test]
 fn round_four_raw_non_string_role_is_oracle_unresolved_for_role_consuming_tools() {
     let engine = live_engine();
@@ -2257,94 +2390,227 @@ fn conductor_cannot_dispatch_the_planter_or_the_root_orchestrator() {
     );
 }
 
-/// #320: `write-boundary` governs the TYPED write surface only, and that is
-/// deliberate, not a hole. `evaluate_tool_call`
-/// (`crates/core/src/guard/engine.rs:209-235`) routes `Write`/`Edit`/
-/// `apply_patch` to `evaluate_write_tool` (`:237-339`), which evaluates
-/// `write-boundary` under the `fs.write` action against the dispatch's
-/// resolved write scope. `Bash` routes instead to `evaluate_bash_tool`
-/// (`:341-383`), which parses the command ONLY for git subcommands via
-/// `extract_git_subcommands` and returns a bare `Verdict::allow()` for every
-/// command that yields none. `write-boundary` is therefore never consulted
-/// on the `Bash` path, for any command, git or not -- an opaque shell string
-/// (a redirect, `tee`, `cp`, `dd`, `sed -i`, ...) is not statically
-/// governable the way a typed tool's target path is.
-///
-/// The one-line reason this stays asymmetric: closing it would mean
-/// statically parsing arbitrary shell for filesystem effects and denying on
-/// the inference, which is a new subsystem (v6.5.1 plan global constraint
-/// G2) and the identical static-analysis arms race this project already
-/// declines on the `Workflow`-script side, for the identical reason, at
-/// `hooks/tests/test_native_cli_contract.sh:77-81`. The typed tool surface
-/// carries a typed target and is governed by `write-boundary`; the opaque
-/// shell string is governed by role tier through `git-custody` instead --
-/// the third assertion below proves `Bash` is not simply unguarded, which is
-/// the half a future reader will most doubt.
-///
-/// #320 closes citing this test
-/// (`.shepherd/runs/v651/lanes/l2-dispatch-scope/evidence/issue-320.md`). Do
-/// NOT "fix" this by teaching `evaluate_bash_tool` to infer filesystem
-/// writes from shell text, and do not narrow what `Bash` allows here without
-/// deliberately deleting this assertion and stating why in the commit that
-/// does it.
 #[test]
-fn write_boundary_governs_write_but_bash_performing_the_identical_write_allows() {
+fn write_boundary_denies_equivalent_write_carriers_under_truthful_dispatch() {
     let engine = live_engine();
-    let dispatch_out_of_scope = || {
-        object([
-            ("schema", GuardValue::from("shepherd.identity-resolution/1")),
-            ("role", GuardValue::from("auditor")),
-            (
-                "write_paths",
-                GuardValue::Array(vec![GuardValue::from(".shepherd/runs/v651/reports/a.md")]),
-            ),
-            ("path_in_write_scope", GuardValue::from(false)),
-        ])
-    };
-
-    // Half 1: the typed `Write` tool IS governed and denies -- same role,
-    // same destination path, a full valid dispatch resolution block.
-    let write_verdict = evaluate(
-        &engine,
-        &object([
-            ("role", GuardValue::from("auditor")),
-            ("tool_name", GuardValue::from("Write")),
-            (
-                "tool_input",
-                object([("file_path", GuardValue::from("/tmp/x/out.md"))]),
-            ),
-            ("dispatch", dispatch_out_of_scope()),
-        ]),
+    let writer_dispatch = native_dispatch(
+        "coder",
+        Some("coder-child"),
+        Some("l1-engine"),
+        &["crates/core/src/dispatch/**"],
+        &["crates/core/src/dispatch/identity.rs"],
+        true,
     );
-    assert_eq!(write_verdict.decision, Decision::Deny);
-    assert_eq!(write_verdict.predicate.as_deref(), Some("write-boundary"));
-    assert_eq!(
-        write_verdict.rule.as_deref(),
-        Some("role-write-eligibility,path-in-declared-scope")
+    let out_of_scope_writer_dispatch = native_dispatch(
+        "coder",
+        Some("coder-child"),
+        Some("l1-engine"),
+        &["crates/core/src/dispatch/**"],
+        &["crates/other/src/out.rs"],
+        false,
     );
-
-    // Half 2: the identical write, performed through `Bash`, allows. The
-    // identical dispatch block is attached to prove it changes nothing --
-    // `evaluate_bash_tool` never reads it.
-    let bash_verdict = evaluate(
-        &engine,
-        &object([
-            ("role", GuardValue::from("auditor")),
-            ("tool_name", GuardValue::from("Bash")),
-            (
-                "tool_input",
-                object([("command", GuardValue::from("echo hi > /tmp/x/out.md"))]),
-            ),
-            ("dispatch", dispatch_out_of_scope()),
-        ]),
+    let read_only_critic_dispatch = native_dispatch(
+        "critic",
+        Some("critic-child"),
+        Some("l1-review"),
+        &[],
+        &["crates/core/src/dispatch/identity.rs"],
+        true,
     );
-    assert_eq!(bash_verdict.decision, Decision::Allow);
+    let discovery_report_dispatch = native_dispatch(
+        "discovery",
+        Some("discovery-child"),
+        Some("l1-research"),
+        &[".shepherd/runs/v645/reports/discovery-d1-harness.md"],
+        &[".shepherd/runs/v645/reports/discovery-d1-harness.md"],
+        true,
+    );
+    let auditor_report_dispatch = native_dispatch(
+        "auditor",
+        Some("auditor-child"),
+        Some("l1-review"),
+        &[".shepherd/runs/v645/reports/auditor-a1-review.md"],
+        &[".shepherd/runs/v645/reports/auditor-a1-review.md"],
+        true,
+    );
+    let root_dispatch = native_dispatch("shepherd", None, None, &["*.md"], &[], false);
 
-    // Half 3: the negative control. `Bash` is not simply unguarded -- a git
-    // write verb from the same role still denies under `git-custody`, which
-    // IS reachable from `evaluate_bash_tool`. `Bash` skips `write-boundary`
-    // specifically; it does not skip enforcement generally.
-    let bash_git_verdict = evaluate(
+    struct Case {
+        name: &'static str,
+        request: GuardValue,
+        should_allow: bool,
+    }
+
+    let cases = [
+        Case {
+            name: "root opaque shell cannot bypass its markdown scope",
+            request: object([
+                ("role", GuardValue::from("shepherd")),
+                ("tool_name", GuardValue::from("Bash")),
+                (
+                    "tool_input",
+                    object([("command", GuardValue::from("printf safe"))]),
+                ),
+                ("dispatch", root_dispatch),
+            ]),
+            should_allow: false,
+        },
+        Case {
+            name: "bounded writer may use an authorized structured write",
+            request: object([
+                ("role", GuardValue::from("coder")),
+                ("tool_name", GuardValue::from("Write")),
+                (
+                    "tool_input",
+                    object([(
+                        "file_path",
+                        GuardValue::from("crates/core/src/dispatch/identity.rs"),
+                    )]),
+                ),
+                ("dispatch", writer_dispatch.clone()),
+            ]),
+            should_allow: true,
+        },
+        Case {
+            name: "discovery may use its resolved report-write path",
+            request: object([
+                ("role", GuardValue::from("discovery")),
+                ("tool_name", GuardValue::from("Write")),
+                (
+                    "tool_input",
+                    object([(
+                        "file_path",
+                        GuardValue::from(".shepherd/runs/v645/reports/discovery-d1-harness.md"),
+                    )]),
+                ),
+                ("dispatch", discovery_report_dispatch.clone()),
+            ]),
+            should_allow: true,
+        },
+        Case {
+            name: "auditor may use its resolved report-write path",
+            request: object([
+                ("role", GuardValue::from("auditor")),
+                ("tool_name", GuardValue::from("Write")),
+                (
+                    "tool_input",
+                    object([(
+                        "file_path",
+                        GuardValue::from(".shepherd/runs/v645/reports/auditor-a1-review.md"),
+                    )]),
+                ),
+                ("dispatch", auditor_report_dispatch.clone()),
+            ]),
+            should_allow: true,
+        },
+        Case {
+            name: "read-only critic cannot use a structured write",
+            request: object([
+                ("role", GuardValue::from("critic")),
+                ("tool_name", GuardValue::from("Write")),
+                (
+                    "tool_input",
+                    object([(
+                        "file_path",
+                        GuardValue::from("crates/core/src/dispatch/identity.rs"),
+                    )]),
+                ),
+                ("dispatch", read_only_critic_dispatch.clone()),
+            ]),
+            should_allow: false,
+        },
+        Case {
+            name: "a sibling partition cannot use an out-of-scope write",
+            request: object([
+                ("role", GuardValue::from("coder")),
+                ("tool_name", GuardValue::from("Write")),
+                (
+                    "tool_input",
+                    object([("file_path", GuardValue::from("crates/other/src/out.rs"))]),
+                ),
+                ("dispatch", out_of_scope_writer_dispatch.clone()),
+            ]),
+            should_allow: false,
+        },
+        Case {
+            name: "Edit uses the same bounded write decision",
+            request: object([
+                ("role", GuardValue::from("coder")),
+                ("tool_name", GuardValue::from("Edit")),
+                (
+                    "tool_input",
+                    object([("file_path", GuardValue::from("crates/other/src/out.rs"))]),
+                ),
+                ("dispatch", out_of_scope_writer_dispatch.clone()),
+            ]),
+            should_allow: false,
+        },
+        Case {
+            name: "apply_patch uses the same bounded write decision",
+            request: object([
+                ("role", GuardValue::from("coder")),
+                ("tool_name", GuardValue::from("apply_patch")),
+                (
+                    "tool_input",
+                    object([("path", GuardValue::from("crates/other/src/out.rs"))]),
+                ),
+                ("dispatch", out_of_scope_writer_dispatch),
+            ]),
+            should_allow: false,
+        },
+        Case {
+            name: "bounded writer cannot bypass scope through an equivalent Bash write",
+            request: object([
+                ("role", GuardValue::from("coder")),
+                ("tool_name", GuardValue::from("Bash")),
+                (
+                    "tool_input",
+                    object([(
+                        "command",
+                        GuardValue::from("echo hi > crates/other/src/out.rs"),
+                    )]),
+                ),
+                ("dispatch", writer_dispatch),
+            ]),
+            should_allow: false,
+        },
+        Case {
+            name: "read-only critic cannot bypass non-writable scope through Bash",
+            request: object([
+                ("role", GuardValue::from("critic")),
+                ("tool_name", GuardValue::from("Bash")),
+                (
+                    "tool_input",
+                    object([("command", GuardValue::from("git status"))]),
+                ),
+                ("dispatch", read_only_critic_dispatch),
+            ]),
+            should_allow: false,
+        },
+    ];
+
+    for case in cases {
+        let verdict = evaluate(&engine, &case.request);
+        if case.should_allow {
+            assert_eq!(
+                verdict.decision,
+                Decision::Allow,
+                "{}: {:?}",
+                case.name,
+                verdict
+            );
+        } else {
+            assert_ne!(
+                verdict.decision,
+                Decision::Allow,
+                "{}: {:?}",
+                case.name,
+                verdict
+            );
+        }
+    }
+
+    let git_custody = evaluate(
         &engine,
         &object([
             ("role", GuardValue::from("auditor")),
@@ -2355,14 +2621,103 @@ fn write_boundary_governs_write_but_bash_performing_the_identical_write_allows()
             ),
         ]),
     );
-    assert_eq!(bash_git_verdict.decision, Decision::Deny);
-    assert_eq!(bash_git_verdict.predicate.as_deref(), Some("git-custody"));
+    assert_eq!(git_custody.decision, Decision::Deny);
+    assert_eq!(git_custody.predicate.as_deref(), Some("git-custody"));
     assert_eq!(
-        bash_git_verdict.rule.as_deref(),
+        git_custody.rule.as_deref(),
         Some("implementer-never-writes-git")
     );
+    assert_eq!(git_custody.halt_code.as_deref(), Some("CODER-GIT-WRITE"));
+}
+
+#[test]
+fn report_write_requires_one_exact_dispatch_declared_path() {
+    let engine = live_engine();
+    let request = |dispatch| {
+        object([
+            ("role", GuardValue::from("discovery")),
+            ("tool_name", GuardValue::from("Write")),
+            (
+                "tool_input",
+                object([(
+                    "file_path",
+                    GuardValue::from(".shepherd/runs/v645/reports/discovery.md"),
+                )]),
+            ),
+            ("dispatch", dispatch),
+        ])
+    };
+
+    for (name, scope) in [
+        ("wildcard scope", vec![".shepherd/runs/v645/reports/**"]),
+        (
+            "multiple paths",
+            vec![
+                ".shepherd/runs/v645/reports/discovery.md",
+                ".shepherd/runs/v645/reports/other.md",
+            ],
+        ),
+    ] {
+        let verdict = evaluate(
+            &engine,
+            &request(native_dispatch(
+                "discovery",
+                Some("discovery-child"),
+                Some("l1-research"),
+                &scope,
+                &[".shepherd/runs/v645/reports/discovery.md"],
+                true,
+            )),
+        );
+        assert_eq!(
+            verdict.decision,
+            Decision::Unresolved,
+            "{name}: {verdict:?}"
+        );
+    }
+}
+
+#[test]
+fn opaque_bash_requires_complete_native_root_facts() {
+    let engine = live_engine();
+    let request = |dispatch| {
+        object([
+            ("role", GuardValue::from("shepherd")),
+            ("tool_name", GuardValue::from("Bash")),
+            (
+                "tool_input",
+                object([("command", GuardValue::from("printf safe"))]),
+            ),
+            ("dispatch", dispatch),
+        ])
+    };
+    let valid = native_dispatch("shepherd", None, None, &["*.md"], &[], false);
     assert_eq!(
-        bash_git_verdict.halt_code.as_deref(),
-        Some("CODER-GIT-WRITE")
+        evaluate(&engine, &request(valid.clone())).decision,
+        Decision::Deny,
+        "complete root facts do not authorize an opaque write carrier"
     );
+
+    for key in ["agent_id", "lane", "mode"] {
+        let GuardValue::Object(mut malformed) = valid.clone() else {
+            unreachable!();
+        };
+        malformed.remove(key);
+        let verdict = evaluate(&engine, &request(GuardValue::Object(malformed)));
+        assert_eq!(
+            verdict.decision,
+            Decision::Unresolved,
+            "missing {key}: {verdict:?}"
+        );
+    }
+
+    let GuardValue::Object(mut universal) = valid else {
+        unreachable!();
+    };
+    universal.insert(
+        String::from("write_scope"),
+        GuardValue::Array(vec![GuardValue::from("*")]),
+    );
+    let verdict = evaluate(&engine, &request(GuardValue::Object(universal)));
+    assert_eq!(verdict.decision, Decision::Unresolved, "{verdict:?}");
 }

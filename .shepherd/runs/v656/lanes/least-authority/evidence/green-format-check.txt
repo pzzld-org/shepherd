@@ -1,0 +1,53 @@
+Diff in /Users/jo3/src/pzzld/shepherd/.worktrees/v656-least-authority/crates/cli/tests/claude_hook_cli.rs:788:
+     let conductor_bash: serde_json::Value =
+         serde_json::from_str(&conductor_bash).expect("bounded Bash denial is JSON");
+     assert_eq!(
+[31m-        conductor_bash["hookSpecificOutput"]["permissionDecision"],
+(B[m[31m-        "deny",
+(B[m[32m+        conductor_bash["hookSpecificOutput"]["permissionDecision"], "deny",
+(B[m         "a synthesized conductor fallback must deny arbitrary Bash because no shell-text inference is attempted: {conductor_bash}"
+     );
+     assert!(
+Diff in /Users/jo3/src/pzzld/shepherd/.worktrees/v656-least-authority/crates/core/tests/guard.rs:41:
+         ("schema", GuardValue::from("shepherd.identity-resolution/1")),
+         (
+             "agent_id",
+[31m-            agent_id
+(B[m[31m-                .map(GuardValue::from)
+(B[m[31m-                .unwrap_or(GuardValue::Null),
+(B[m[32m+            agent_id.map(GuardValue::from).unwrap_or(GuardValue::Null),
+(B[m         ),
+         ("role", GuardValue::from(role)),
+         (
+Diff in /Users/jo3/src/pzzld/shepherd/.worktrees/v656-least-authority/crates/core/tests/guard.rs:50:
+             "lane",
+[31m-            lane.map(GuardValue::from)
+(B[m[31m-                .unwrap_or(GuardValue::Null),
+(B[m[32m+            lane.map(GuardValue::from).unwrap_or(GuardValue::Null),
+(B[m         ),
+         (
+             "write_scope",
+Diff in /Users/jo3/src/pzzld/shepherd/.worktrees/v656-least-authority/crates/core/tests/guard.rs:2467:
+                 ("tool_name", GuardValue::from("Write")),
+                 (
+                     "tool_input",
+[31m-                    object([("file_path", GuardValue::from(".shepherd/runs/v645/reports/discovery-d1-harness.md"))]),
+(B[m[32m+                    object([(
+(B[m[32m+                        "file_path",
+(B[m[32m+                        GuardValue::from(".shepherd/runs/v645/reports/discovery-d1-harness.md"),
+(B[m[32m+                    )]),
+(B[m                 ),
+                 ("dispatch", discovery_report_dispatch.clone()),
+             ]),
+Diff in /Users/jo3/src/pzzld/shepherd/.worktrees/v656-least-authority/crates/core/tests/guard.rs:2480:
+                 ("tool_name", GuardValue::from("Write")),
+                 (
+                     "tool_input",
+[31m-                    object([("file_path", GuardValue::from(".shepherd/runs/v645/reports/auditor-a1-review.md"))]),
+(B[m[32m+                    object([(
+(B[m[32m+                        "file_path",
+(B[m[32m+                        GuardValue::from(".shepherd/runs/v645/reports/auditor-a1-review.md"),
+(B[m[32m+                    )]),
+(B[m                 ),
+                 ("dispatch", auditor_report_dispatch.clone()),
+             ]),

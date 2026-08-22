@@ -33,7 +33,10 @@ pub(crate) fn validate_write_scope_pattern(scope: &str) -> DispatchResult<Vec<&s
         !part.is_empty()
             && *part != "."
             && *part != ".."
-            && (*part == "*" || (*part == "**" && index + 1 == parts.len()) || !part.contains('*'))
+            && (*part == "*"
+                || (*part == "**" && index + 1 == parts.len())
+                || (part.starts_with('*') && part.len() > 1 && part[1..].find('*').is_none())
+                || !part.contains('*'))
     });
     if valid {
         Ok(parts)
@@ -71,8 +74,11 @@ fn matches_scope(path: &[&str], scope: &[&str]) -> bool {
     if path.len() < fixed.len() || (!recursive && path.len() != fixed.len()) {
         return false;
     }
-    fixed
-        .iter()
-        .zip(path)
-        .all(|(expected, actual)| *expected == "*" || expected == actual)
+    fixed.iter().zip(path).all(|(expected, actual)| {
+        *expected == "*"
+            || expected == actual
+            || expected
+                .strip_prefix('*')
+                .is_some_and(|suffix| !suffix.is_empty() && actual.ends_with(suffix))
+    })
 }

@@ -1,0 +1,111 @@
+$ cargo fmt --all -- --check
+Diff in /Users/jo3/src/pzzld/shepherd/.worktrees/v656-least-authority/crates/cli/src/dispatch_service.rs:462:
+         let role = Role::from_carrier(&request.role_carrier)?;
+         let agent_id = AgentId::new(request.agent_id)?;
+         let lane = request.lane.map(LaneId::new).transpose()?;
+[31m-        let write_scope = bounded_fallback_scope(&request.write_scope, run, &agent_id, lane.as_ref())?;
+(B[m[32m+        let write_scope =
+(B[m[32m+            bounded_fallback_scope(&request.write_scope, run, &agent_id, lane.as_ref())?;
+(B[m         Ok(DispatchStart {
+             project_id: self.project_id.clone(),
+             run: run.clone(),
+Diff in /Users/jo3/src/pzzld/shepherd/.worktrees/v656-least-authority/crates/cli/src/dispatch_service.rs:510:
+     // one dispatch-specific report path rather than inventing a lane or
+     // granting repository access. RoleFact remains the authority for whether
+     // this path is usable.
+[31m-    Ok(vec![format!(
+(B[m[31m-        ".shepherd/runs/{run}/reports/{agent_id}.md"
+(B[m[31m-    )])
+(B[m[32m+    Ok(vec![format!(".shepherd/runs/{run}/reports/{agent_id}.md")])
+(B[m }
+
+ fn same_root_identity(existing: &RootSessionBinding, requested: &RootSessionBinding) -> bool {
+Diff in /Users/jo3/src/pzzld/shepherd/.worktrees/v656-least-authority/crates/cli/tests/claude_hook_cli.rs:742:
+             String::from_utf8_lossy(&started.stderr)
+         );
+         let record_path = root.join(format!(".shepherd/runs/v645/dispatch/{agent}.json"));
+[31m-        assert!(record_path.is_file(), "{agent_type} must be recorded in the dispatch ledger");
+(B[m[32m+        assert!(
+(B[m[32m+            record_path.is_file(),
+(B[m[32m+            "{agent_type} must be recorded in the dispatch ledger"
+(B[m[32m+        );
+(B[m         let record: serde_json::Value =
+             serde_json::from_slice(&fs::read(&record_path).expect("read dispatch record"))
+                 .expect("dispatch record is JSON");
+Diff in /Users/jo3/src/pzzld/shepherd/.worktrees/v656-least-authority/crates/cli/tests/claude_hook_cli.rs:749:
+         assert!(
+[31m-            !(record["lane"].is_null()
+(B[m[31m-                && record["write_scope"] == serde_json::json!(["**"])),
+(B[m[32m+            !(record["lane"].is_null() && record["write_scope"] == serde_json::json!(["**"])),
+(B[m             "{agent_type} must not inherit the universal root fallback: {record}"
+         );
+         if agent_type == "shepherd:critic" {
+Diff in /Users/jo3/src/pzzld/shepherd/.worktrees/v656-least-authority/crates/cli/tests/claude_hook_cli.rs:755:
+             assert_eq!(
+                 record["write_scope"],
+[31m-                serde_json::json!([format!(
+(B[m[31m-                    ".shepherd/runs/v645/reports/{agent}.md"
+(B[m[31m-                )]),
+(B[m[32m+                serde_json::json!([format!(".shepherd/runs/v645/reports/{agent}.md")]),
+(B[m                 "a fallback record must stay bounded even for a read-only role: {record}"
+             );
+             assert_eq!(record["role"], "critic");
+Diff in /Users/jo3/src/pzzld/shepherd/.worktrees/v656-least-authority/crates/cli/tests/dispatch_cli.rs:120:
+         serde_json::json!(["crates/core/src/dispatch/**"])
+     );
+     assert!(
+[31m-        !(record["lane"].is_null()
+(B[m[31m-            && record["write_scope"] == serde_json::json!(["**"])),
+(B[m[32m+        !(record["lane"].is_null() && record["write_scope"] == serde_json::json!(["**"])),
+(B[m         "a named dispatch must not receive the root fallback facts: {record}"
+     );
+     assert!(
+Diff in /Users/jo3/src/pzzld/shepherd/.worktrees/v656-least-authority/crates/cli/tests/dispatch_cli.rs:159:
+         serde_json::json!(["crates/core/src/dispatch/**"])
+     );
+     assert!(
+[31m-        !(resolution["lane"].is_null()
+(B[m[31m-            && resolution["write_scope"] == serde_json::json!(["**"])),
+(B[m[32m+        !(resolution["lane"].is_null() && resolution["write_scope"] == serde_json::json!(["**"])),
+(B[m         "native resolution must not use the root fallback facts: {resolution}"
+     );
+
+Diff in /Users/jo3/src/pzzld/shepherd/.worktrees/v656-least-authority/crates/core/tests/guard.rs:37:
+     path_in_write_scope: bool,
+ ) -> GuardValue {
+     object([
+[31m-        (
+(B[m[31m-            "schema",
+(B[m[31m-            GuardValue::from("shepherd.identity-resolution/1"),
+(B[m[31m-        ),
+(B[m[32m+        ("schema", GuardValue::from("shepherd.identity-resolution/1")),
+(B[m         ("role", GuardValue::from(role)),
+         (
+             "lane",
+Diff in /Users/jo3/src/pzzld/shepherd/.worktrees/v656-least-authority/crates/core/tests/guard.rs:65:
+                     .collect(),
+             ),
+         ),
+[31m-        (
+(B[m[31m-            "path_in_write_scope",
+(B[m[31m-            GuardValue::from(path_in_write_scope),
+(B[m[31m-        ),
+(B[m[32m+        ("path_in_write_scope", GuardValue::from(path_in_write_scope)),
+(B[m     ])
+ }
+
+Diff in /Users/jo3/src/pzzld/shepherd/.worktrees/v656-least-authority/crates/core/tests/guard.rs:1525:
+         &[],
+         false,
+     );
+[31m-    let read_only_auditor = native_dispatch(
+(B[m[31m-        "auditor",
+(B[m[31m-        Some("l1-review"),
+(B[m[31m-        &[],
+(B[m[31m-        &[],
+(B[m[31m-        false,
+(B[m[31m-    );
+(B[m[32m+    let read_only_auditor = native_dispatch("auditor", Some("l1-review"), &[], &[], false);
+(B[m
+     let cases = [
+         (

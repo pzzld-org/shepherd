@@ -1,40 +1,27 @@
 # write-boundary — governs whether a role may perform a filesystem write at all,
-# and if so, where. Interpreted identically by a Rust engine and Pi's TS guard layer
-# (skills/shepherd/references/flock.md §Write boundaries is the Claude-side enforcement
-# of this same predicate via PreToolUse hooks; this file is the harness-neutral source).
+# and if so, where. Interpreted identically by the Rust engine and the generated
+# harness carriers, this predicate is the native contract for typed Write,
+# Edit, and apply_patch calls.
 #
-# See content/RECONCILIATION.md §`write_eligible` — a hard fact, not a convention (Hazard 1):
-# a role with write_eligible = false has NO general write capability, full stop, regardless
-# of any narrow report-path exception it may hold — Codex's `explorer` primitive enforces
-# exactly this at the harness level, and this file's `role-write-eligibility` rule is the
-# input a compiler reads to select `explorer` vs `worker` for that role.
+# RoleFact.write_eligible together with the native `write` capability is the
+# role fact for general structured writes. A role may instead carry a narrow
+# report-write capability; that exception is evaluated only for a typed report
+# path and never turns an absent or fabricated dispatch scope into a general grant.
 #
-# Scope boundary (#320, measured in .shepherd/runs/v651/lanes/l2-dispatch-scope/evidence/
-# issue-320.md): this predicate governs the TYPED write surface only — `Write`, `Edit`, and
-# `apply_patch`, routed to it under the `fs.write` action by `evaluate_write_tool`
-# (crates/core/src/guard/engine.rs:237-339). A filesystem write performed through an opaque
-# `Bash` command (a shell redirect, `tee`, `cp`, `dd`, `sed -i`, ...) NEVER reaches this
-# predicate: `evaluate_tool_call` (`:209-235`) routes `Bash` to `evaluate_bash_tool`
-# (`:341-383`), which inspects the command only for git subcommands and returns a bare allow
-# for everything else — `write-boundary` is not consulted for `Bash`, under any command, git
-# or not. This is a deliberate boundary, not an oversight: statically inferring a filesystem
-# write target from arbitrary shell text is a new subsystem (global constraint G2 of the
-# current sprint plan) and the same static-analysis arms race this project already
-# declines on the `Workflow`-script side, for the identical reason, at
-# hooks/tests/test_native_cli_contract.sh:77-81. The typed tool surface carries a typed
-# target and is governed here; an opaque shell string is not statically governable and is
-# governed by role tier through `git-custody` instead. Both halves of this asymmetry, plus
-# the negative control proving `Bash` is not simply unguarded, are pinned in
-# crates/core/tests/guard.rs.
+# Bash is an opaque effect carrier. Missing or malformed command input is
+# unresolved, and arbitrary shell effects under a bounded or non-writable native
+# dispatch fail closed wholesale. The guard does not parse shell text, infer
+# redirect targets, or authorize command substrings. The separate closed
+# git-custody classifier remains responsible only for its known VCS action domain.
 
 [predicate]
 id = "write-boundary"
 version = 1
-description = "A filesystem write is denied unless the acting role is write_eligible AND the target path falls inside that role's declared write scope for the current dispatch."
+description = "A typed filesystem write is denied unless native role facts grant structured write or narrow report-write, and the target path falls inside the current dispatch scope."
 
 [[rule]]
 id = "role-write-eligibility"
-description = "fs.write is denied outright when the role's content/roles/<role>.md declares write_eligible: false."
+description = "fs.write is denied unless native role facts grant structured write (write_eligible plus write) or the narrow report-write capability."
 subject = "role.write_eligible"
 action = "fs.write"
 effect = "deny_if_false"

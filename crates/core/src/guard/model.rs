@@ -190,6 +190,19 @@ pub struct RoleFact {
     pub capabilities: Vec<String>,
 }
 
+impl RoleFact {
+    pub(crate) fn has_capability(&self, capability: &str) -> bool {
+        self.capabilities.iter().any(|item| item == capability)
+    }
+
+    /// Structured Write/Edit/apply_patch needs the explicit native `write`
+    /// capability. `write_eligible` alone also covers shell-mediated custody
+    /// roles such as conductor and is not a general Write/Edit grant.
+    pub(crate) fn permits_structured_write(&self) -> bool {
+        self.write_eligible && self.has_capability("write")
+    }
+}
+
 /// The three ordered guard outcomes.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum Decision {

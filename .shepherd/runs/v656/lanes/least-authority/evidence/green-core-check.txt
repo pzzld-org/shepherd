@@ -1,0 +1,2 @@
+[1m[92m    Checking[0m shepherd-core v6.5.6 (/Users/jo3/src/pzzld/shepherd/.worktrees/v656-least-authority/crates/core)
+[1m[92m    Finished[0m `dev` profile [optimized + debuginfo] target(s) in 0.46s

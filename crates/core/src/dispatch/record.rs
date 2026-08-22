@@ -339,9 +339,6 @@ fn validate_start(input: &DispatchStart) -> DispatchResult<()> {
     if input.resumes_agent_id.as_ref() == Some(&input.agent_id) {
         return Err(DispatchError::ReusedResumeIdentity);
     }
-    if input.write_scope.is_empty() {
-        return Err(DispatchError::InvalidWriteScope(String::new()));
-    }
     for scope in &input.write_scope {
         validate_write_scope_pattern(scope)?;
     }

@@ -18,11 +18,15 @@ fn write_scope_matching_is_segment_aware_and_fail_closed() {
     let scopes = vec![
         "crates/core/src/dispatch/**".to_owned(),
         "docs/*/report.md".to_owned(),
+        "*.md".to_owned(),
     ];
     assert!(path_in_write_scope("crates/core/src/dispatch/identity.rs", &scopes).unwrap());
     assert!(path_in_write_scope("docs/l1/report.md", &scopes).unwrap());
     assert!(!path_in_write_scope("crates/core/src/guard.rs", &scopes).unwrap());
     assert!(!path_in_write_scope("docs/l1/nested/report.md", &scopes).unwrap());
+    assert!(path_in_write_scope("notes.md", &scopes).unwrap());
+    assert!(!path_in_write_scope("notes.txt", &scopes).unwrap());
+    assert!(!path_in_write_scope("docs/notes.md", &["*.md".into()]).unwrap());
     for unsafe_path in [
         "/tmp/escape.rs",
         "../escape.rs",
@@ -289,6 +293,17 @@ fn start_builds_dispatch_v3_and_blocks_before_work_on_capability_failure() {
     assert_eq!(active.state, DispatchState::Active);
     assert_eq!(active.agent_id.as_str(), "claude-agent-1");
     assert_eq!(active.role, Role::Coder);
+
+    let mut explicitly_non_writable = start(
+        "claude-critic-read-only",
+        Harness::ClaudeCode,
+        Role::Critic,
+        "l1-review",
+    );
+    explicitly_non_writable.write_scope.clear();
+    let explicitly_non_writable = DispatchRecord::start(explicitly_non_writable)
+        .expect("an empty scope explicitly carries no write authority");
+    assert!(explicitly_non_writable.write_scope.is_empty());
 
     let mut blocked_start = start("pi-agent-1", Harness::Pi, Role::Coder, "l1-engine");
     blocked_start

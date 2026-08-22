@@ -65,7 +65,7 @@ fn hook(root: &Path, input: serde_json::Value) -> Output {
 }
 
 #[test]
-fn session_start_binds_root_and_safe_pretooluse_allows() {
+fn session_start_binds_root_and_opaque_bash_denies() {
     let root = repository("root-allow");
     let session = hook(
         &root,
@@ -105,7 +105,18 @@ fn session_start_binds_root_and_safe_pretooluse_allows() {
         "stderr={}",
         String::from_utf8_lossy(&safe.stderr)
     );
-    assert!(safe.stdout.is_empty(), "safe tool use must emit no denial");
+    let denial: serde_json::Value =
+        serde_json::from_slice(&safe.stdout).expect("opaque Bash denial is JSON");
+    assert_eq!(
+        denial["hookSpecificOutput"]["permissionDecision"], "deny",
+        "root shell capability must not bypass its structured Markdown scope: {denial}"
+    );
+    assert!(
+        denial["hookSpecificOutput"]["permissionDecisionReason"]
+            .as_str()
+            .is_some_and(|reason| reason.contains("opaque Bash effects")),
+        "denial must name the opaque effect boundary: {denial}"
+    );
     fs::remove_dir_all(root).expect("remove fixture directory");
 }
 
@@ -724,6 +735,7 @@ fn dispatched_agents_are_recorded_and_their_role_rules_enforce() {
     for (agent, agent_type) in [
         ("cond-1", "shepherd:conductor"),
         ("code-1", "shepherd:coder"),
+        ("critic-1", "shepherd:critic"),
     ] {
         let started = hook(
             &root,
@@ -735,12 +747,31 @@ fn dispatched_agents_are_recorded_and_their_role_rules_enforce() {
                 "model": "test-model"
             }),
         );
-        assert!(started.status.success());
         assert!(
-            root.join(format!(".shepherd/runs/v645/dispatch/{agent}.json"))
-                .is_file(),
+            started.status.success(),
+            "{agent_type} start failed: {}",
+            String::from_utf8_lossy(&started.stderr)
+        );
+        let record_path = root.join(format!(".shepherd/runs/v645/dispatch/{agent}.json"));
+        assert!(
+            record_path.is_file(),
             "{agent_type} must be recorded in the dispatch ledger"
         );
+        let record: serde_json::Value =
+            serde_json::from_slice(&fs::read(&record_path).expect("read dispatch record"))
+                .expect("dispatch record is JSON");
+        assert!(
+            !(record["lane"].is_null() && record["write_scope"] == serde_json::json!(["**"])),
+            "{agent_type} must not inherit the universal root fallback: {record}"
+        );
+        assert_eq!(
+            record["write_scope"],
+            serde_json::json!([]),
+            "a host-only start without a declared scope must stay non-writable: {record}"
+        );
+        if agent_type == "shepherd:critic" {
+            assert_eq!(record["role"], "critic");
+        }
     }
 
     // Tool calls carry agent_id only; the record supplies the type.
@@ -760,14 +791,22 @@ fn dispatched_agents_are_recorded_and_their_role_rules_enforce() {
         String::from_utf8_lossy(&out.stdout).into_owned()
     };
 
+    let conductor_bash = decision(
+        "cond-1",
+        "Bash",
+        serde_json::json!({"command": "printf hi"}),
+    );
+    let conductor_bash: serde_json::Value =
+        serde_json::from_str(&conductor_bash).expect("bounded Bash denial is JSON");
+    assert_eq!(
+        conductor_bash["hookSpecificOutput"]["permissionDecision"], "deny",
+        "a synthesized conductor fallback must deny arbitrary Bash because no shell-text inference is attempted: {conductor_bash}"
+    );
     assert!(
-        decision(
-            "cond-1",
-            "Bash",
-            serde_json::json!({"command": "printf hi"})
-        )
-        .is_empty(),
-        "a recorded conductor may run a safe shell command"
+        conductor_bash["hookSpecificOutput"]["permissionDecisionReason"]
+            .as_str()
+            .is_some_and(|reason| reason.contains("without shell-text inference")),
+        "the bounded Bash denial must explain its fail-closed shell policy: {conductor_bash}"
     );
     assert!(
         decision(
@@ -795,6 +834,16 @@ fn dispatched_agents_are_recorded_and_their_role_rules_enforce() {
         )
         .contains("deny"),
         "an implementer must not dispatch at all"
+    );
+
+    assert!(
+        decision(
+            "critic-1",
+            "Write",
+            serde_json::json!({"file_path": "crates/core/src/dispatch/identity.rs", "content": "no"})
+        )
+        .contains("deny"),
+        "native critic role facts must keep the fallback record non-writable"
     );
 
     // An agent shepherd never recorded is shepherd's own gap, not a claim by

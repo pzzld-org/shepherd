@@ -329,10 +329,10 @@ fn binding_for(
         // recorded -- on any harness. An empty ledger cannot attribute a tool
         // call to a role, so no role-scoped guard could fire either.
         //
-        // Synthesize the binding from what the host actually sends. The write
-        // scope is recorded as `**` because the host declared none: that is
-        // honest about being unnarrowed, where recording nothing at all left
-        // the agent unattributable. Narrowing still requires a declared scope.
+        // Synthesize identity from what the host actually sends, but never
+        // invent write authority. Without an explicit dispatch binding the
+        // truthful scope is empty: the role remains attributable and its
+        // non-write capabilities still work, while writes fail closed.
         if matches!(event, "SubagentStart" | "SubagentStop") {
             let Some(agent_type) = input.agent_type.as_deref() else {
                 return Ok(None);
@@ -356,7 +356,7 @@ fn binding_for(
                 Some(role),
                 None,
                 None,
-                vec!["**".into()],
+                Vec::new(),
                 input.model.clone(),
                 observed,
                 host.capability_source(),

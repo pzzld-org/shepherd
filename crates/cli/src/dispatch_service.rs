@@ -303,7 +303,10 @@ impl DispatchService {
                 role,
                 lane: None,
                 session_id,
-                write_scope: vec!["**".into()],
+                // A root binding has no dispatch lane or requested file scope.
+                // Shepherd's documented root writes are root-level markdown
+                // files, so the native fallback names that exact boundary.
+                write_scope: vec![String::from("*.md")],
                 capabilities: None,
                 tool_call_id,
                 mode: Some(mode),
@@ -457,17 +460,20 @@ impl DispatchService {
     ) -> DispatchServiceResult<DispatchStart> {
         let lease_expires_at = lease_expires_at(request.lease_ms, now)?;
         let role = Role::from_carrier(&request.role_carrier)?;
+        let agent_id = AgentId::new(request.agent_id)?;
+        let lane = request.lane.map(LaneId::new).transpose()?;
+        let write_scope = bounded_write_scope(&request.write_scope)?;
         Ok(DispatchStart {
             project_id: self.project_id.clone(),
             run: run.clone(),
             harness: request.harness,
-            agent_id: AgentId::new(request.agent_id)?,
+            agent_id,
             agent_type: AgentType::new(request.agent_type)?,
             role,
-            lane: request.lane.map(LaneId::new).transpose()?,
+            lane,
             parent_agent_id: request.parent_agent_id.map(AgentId::new).transpose()?,
             session_id: SessionId::new(request.session_id)?,
-            write_scope: request.write_scope,
+            write_scope,
             model: request.model,
             capability_contract: role.dispatch_capability_contract()?,
             capability_probe: CapabilityProbe::new(
@@ -482,6 +488,16 @@ impl DispatchService {
             resumes_agent_id,
         })
     }
+}
+
+fn bounded_write_scope(requested: &[String]) -> DispatchServiceResult<Vec<String>> {
+    if requested.len() == 1 && requested[0] == "**" {
+        return Err(DispatchServiceError::InvalidRequest(
+            "dispatch must provide a bounded write_scope, not [\"**\"]".into(),
+        ));
+    }
+
+    Ok(requested.to_vec())
 }
 
 fn same_root_identity(existing: &RootSessionBinding, requested: &RootSessionBinding) -> bool {

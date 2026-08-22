@@ -127,9 +127,9 @@ impl GuardEngine {
     /// Evaluate a normalized request or raw tool call.
     ///
     /// Raw calls validate and classify `tool_name` and `tool_input` before a
-    /// mapped operation consumes `role`. Consequently, safe or read-only Bash
-    /// calls can allow without a role, while missing, null, or non-string roles
-    /// on role-consuming operations produce unresolved verdicts.
+    /// mapped operation consumes `role`. Bash command shape is always required;
+    /// opaque effects under native dispatch facts fail closed without trying to
+    /// infer filesystem targets from shell text.
     ///
     /// # Errors
     ///
@@ -223,7 +223,7 @@ impl GuardEngine {
         if WRITE_TOOL_NAMES.contains(&tool_name) {
             self.evaluate_write_tool(role, tool_input, payload.get("dispatch"))
         } else if tool_name == "Bash" {
-            self.evaluate_bash_tool(role, tool_input)
+            self.evaluate_bash_tool(role, tool_input, payload.get("dispatch"))
         } else if DISPATCH_TOOL_NAMES.contains(&tool_name) {
             self.evaluate_dispatch_tool(role, tool_input, tool_name)
         } else {
@@ -255,12 +255,7 @@ impl GuardEngine {
                 &["role_facts"],
             );
         };
-        if !fact.write_eligible
-            && !fact
-                .capabilities
-                .iter()
-                .any(|capability| capability == "report-write")
-        {
+        if !fact.permits_structured_write() && !fact.has_capability("report-write") {
             return Verdict::deny(
                 "write-boundary",
                 "role-write-eligibility",
@@ -308,6 +303,31 @@ impl GuardEngine {
                 );
             }
         };
+        if !fact.permits_structured_write() && fact.has_capability("report-write") {
+            let report_path = match dispatch.get("write_scope") {
+                Some(GuardValue::Array(scope)) if scope.len() == 1 => {
+                    scope[0].as_str().filter(|path| {
+                        !path.is_empty()
+                            && !path
+                                .chars()
+                                .any(|character| matches!(character, '*' | '?' | '[' | ']'))
+                    })
+                }
+                _ => None,
+            };
+            let Some(report_path) = report_path else {
+                return Verdict::unresolved(
+                    "report-write requires one exact dispatch-declared output path",
+                    &["dispatch.write_scope"],
+                );
+            };
+            if write_paths.len() != 1 || write_paths[0].as_str() != Some(report_path) {
+                return Verdict::unresolved(
+                    "report-write target does not match its one declared output path",
+                    &["dispatch.write_scope", "dispatch.write_paths"],
+                );
+            }
+        }
         if let Some(path) = ["file_path", "path"]
             .into_iter()
             .find_map(|key| tool_input.get(key).and_then(GuardValue::as_str))
@@ -321,6 +341,8 @@ impl GuardEngine {
                 &["dispatch.write_paths"],
             );
         }
+        let effective_write_eligibility =
+            fact.permits_structured_write() || fact.has_capability("report-write");
         self.decide(
             "write-boundary",
             "fs.write",
@@ -328,7 +350,7 @@ impl GuardEngine {
             &BTreeMap::from([
                 (
                     String::from("write_eligible"),
-                    GuardValue::from(fact.write_eligible),
+                    GuardValue::from(effective_write_eligibility),
                 ),
                 (
                     String::from("path_in_dispatch_write_scope"),
@@ -338,48 +360,153 @@ impl GuardEngine {
         )
     }
 
-    fn evaluate_bash_tool(&self, role: Option<&GuardValue>, tool_input: &Context) -> Verdict {
+    fn evaluate_bash_tool(
+        &self,
+        role: Option<&GuardValue>,
+        tool_input: &Context,
+        dispatch: Option<&GuardValue>,
+    ) -> Verdict {
         let Some(command) = tool_input
             .get("command")
             .and_then(GuardValue::as_str)
             .filter(|command| !command.is_empty())
         else {
-            return Verdict::allow();
+            return Verdict::unresolved(
+                "missing or invalid Bash `command`",
+                &["tool_input.command"],
+            );
         };
+
+        let bounded_dispatch = match dispatch {
+            None | Some(GuardValue::Null) => false,
+            Some(GuardValue::Object(native)) => {
+                let Some(role) = role.filter(|value| !value.is_null()) else {
+                    return Verdict::unresolved(
+                        "missing `role` -- cannot identify the acting role",
+                        &["role"],
+                    );
+                };
+                let Some(role_name) = role.as_str() else {
+                    return Verdict::unresolved(
+                        format!("unknown role `{}`", compatibility_display(role)),
+                        &["role"],
+                    );
+                };
+                if native.get("schema").and_then(GuardValue::as_str)
+                    != Some("shepherd.identity-resolution/1")
+                    || native.get("role").and_then(GuardValue::as_str) != Some(role_name)
+                {
+                    return Verdict::unresolved(
+                        "native dispatch resolution does not match the acting role",
+                        &["dispatch.schema", "dispatch.role"],
+                    );
+                }
+                if !self.role_facts.contains_key(role_name) {
+                    return Verdict::unresolved(
+                        format!("unknown role `{role_name}`"),
+                        &["role_facts"],
+                    );
+                }
+                let has_child_agent_id = match native.get("agent_id") {
+                    Some(GuardValue::Null) => false,
+                    Some(GuardValue::String(value)) if !value.is_empty() => true,
+                    _ => {
+                        return Verdict::unresolved(
+                            "native dispatch `agent_id` must be null or a non-empty string",
+                            &["dispatch.agent_id"],
+                        );
+                    }
+                };
+                let has_named_lane = match native.get("lane") {
+                    Some(GuardValue::Null) => false,
+                    Some(GuardValue::String(value)) if !value.is_empty() => true,
+                    _ => {
+                        return Verdict::unresolved(
+                            "native dispatch `lane` must be null or a non-empty string",
+                            &["dispatch.lane"],
+                        );
+                    }
+                };
+                // Complete root facts validate identity; they do not make an
+                // opaque shell effect fit the root's structured `*.md` scope.
+                if !has_child_agent_id && !has_named_lane && role_name == "shepherd" {
+                    let root_mode = native
+                        .get("mode")
+                        .and_then(GuardValue::as_str)
+                        .is_some_and(|mode| !mode.is_empty());
+                    let root_scope = matches!(
+                        native.get("write_scope"),
+                        Some(GuardValue::Array(scope))
+                            if scope.len() == 1 && scope[0].as_str() == Some("*.md")
+                    );
+                    if !root_mode || !root_scope {
+                        return Verdict::unresolved(
+                            "native root dispatch resolution is incomplete",
+                            &["dispatch.mode", "dispatch.write_scope"],
+                        );
+                    }
+                }
+                true
+            }
+            Some(_) => {
+                return Verdict::unresolved(
+                    "native dispatch resolution must be a JSON object",
+                    &["dispatch"],
+                );
+            }
+        };
+
         let subcommands = extract_git_subcommands(command);
         let action = if subcommands
             .iter()
             .any(|subcommand| GIT_INTEGRATE_VERBS.contains(&subcommand.as_str()))
         {
-            "vcs.integrate"
+            Some("vcs.integrate")
         } else if subcommands.iter().any(|subcommand| {
             GIT_ALL_WRITE_VERBS.contains(&subcommand.as_str())
                 && !GIT_INTEGRATE_VERBS.contains(&subcommand.as_str())
         }) {
-            "vcs.write"
+            Some("vcs.write")
         } else {
-            return Verdict::allow();
+            None
         };
 
-        let Some(role) = role.filter(|value| !value.is_null()) else {
-            return Verdict::unresolved(
-                "missing `role` -- cannot identify the acting role",
-                &["role"],
+        if let Some(action) = action {
+            let Some(role) = role.filter(|value| !value.is_null()) else {
+                return Verdict::unresolved(
+                    "missing `role` -- cannot identify the acting role",
+                    &["role"],
+                );
+            };
+            let tier = role.as_str().and_then(role_tier);
+            let Some(tier) = tier else {
+                return Verdict::unresolved(
+                    format!("unknown role `{}`", compatibility_display(role)),
+                    &["role"],
+                );
+            };
+            return self.decide(
+                "git-custody",
+                action,
+                role,
+                &BTreeMap::from([(String::from("role_tier"), GuardValue::from(tier))]),
             );
-        };
-        let tier = role.as_str().and_then(role_tier);
-        let Some(tier) = tier else {
-            return Verdict::unresolved(
-                format!("unknown role `{}`", compatibility_display(role)),
-                &["role"],
+        }
+
+        let non_writable_role = role
+            .and_then(GuardValue::as_str)
+            .and_then(|role| self.role_facts.get(role))
+            .is_some_and(|fact| !fact.write_eligible);
+        if bounded_dispatch || non_writable_role {
+            return Verdict::deny(
+                "write-boundary",
+                "opaque-shell-effect",
+                None,
+                "opaque Bash effects require an unbounded native authorization; bounded or non-writable dispatch facts fail closed without shell-text inference",
             );
-        };
-        self.decide(
-            "git-custody",
-            action,
-            role,
-            &BTreeMap::from([(String::from("role_tier"), GuardValue::from(tier))]),
-        )
+        }
+
+        Verdict::allow()
     }
 
     fn evaluate_dispatch_tool(
@@ -487,12 +614,6 @@ target, so an undeclared target would let a refused dispatch through by payload 
         role: &GuardValue,
     ) -> Option<String> {
         if predicate_id == "write-boundary" {
-            if context
-                .get("write_eligible")
-                .is_some_and(GuardValue::is_true)
-            {
-                return Some(String::from("SCOPE OVERFLOW"));
-            }
             let fact = role.as_str().and_then(|role| self.role_facts.get(role));
             if fact.is_some_and(|fact| {
                 fact.capabilities
@@ -500,6 +621,12 @@ target, so an undeclared target would let a refused dispatch through by payload 
                     .any(|capability| capability == "report-write")
             }) {
                 return Some(String::from("DISCOVERY-WRITE-PATH"));
+            }
+            if context
+                .get("write_eligible")
+                .is_some_and(GuardValue::is_true)
+            {
+                return Some(String::from("SCOPE OVERFLOW"));
             }
             return None;
         }
