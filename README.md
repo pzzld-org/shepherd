@@ -1,7 +1,7 @@
 # Shepherd v6.5.6
 
-[![License](https://img.shields.io/github/license/FL03/shepherd?style=for-the-badge&logo=github)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/FL03/shepherd?style=for-the-badge&logo=github)](https://github.com/FL03/shepherd/releases)
+[![License](https://img.shields.io/github/license/pzzld-org/shepherd?style=for-the-badge&logo=github)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/pzzld-org/shepherd?style=for-the-badge&logo=github)](https://github.com/pzzld-org/shepherd/releases)
 
 Shepherd is a harness-neutral execution and governance engine for long-running
 agent work. The deterministic core and the canonical CLI are Rust. Claude Code,
@@ -86,7 +86,7 @@ macOS (arm64/x86_64) and GNU-libc Linux (arm64/x86_64):
 
 ```sh
 curl --fail --location \
-  https://raw.githubusercontent.com/FL03/shepherd/v6.5.6/scripts/install-shepherd.sh \
+  https://raw.githubusercontent.com/pzzld-org/shepherd/v6.5.6/scripts/install-shepherd.sh \
   --output /tmp/install-shepherd.sh
 SHEPHERD_VERSION=6.5.6 bash /tmp/install-shepherd.sh
 ```
@@ -96,7 +96,7 @@ Windows x86_64 PowerShell:
 ```powershell
 $installer = Join-Path $env:TEMP 'install-shepherd.ps1'
 Invoke-WebRequest `
-  https://raw.githubusercontent.com/FL03/shepherd/v6.5.6/scripts/install-shepherd.ps1 `
+  https://raw.githubusercontent.com/pzzld-org/shepherd/v6.5.6/scripts/install-shepherd.ps1 `
   -OutFile $installer
 $env:SHEPHERD_VERSION = '6.5.6'
 & $installer
@@ -110,7 +110,7 @@ harness adapters, not CLI installers.
 To build the same native CLI from a checkout:
 
 ```sh
-git clone https://github.com/FL03/shepherd.git
+git clone https://github.com/pzzld-org/shepherd.git
 cd shepherd
 scripts/setup.sh
 cargo build --locked --release -p shepherd-cli
@@ -324,7 +324,7 @@ For a persistent user installation, add the GitHub-hosted catalog and install
 the thin carrier:
 
 ```sh
-claude plugin marketplace add FL03/shepherd
+claude plugin marketplace add pzzld-org/shepherd
 claude plugin install shepherd@shepherd --scope user
 ```
 
@@ -339,7 +339,7 @@ the supported installation path.
 Codex installs the same repository source through its canonical marketplace:
 
 ```sh
-codex plugin marketplace add FL03/shepherd --ref v6.5.6
+codex plugin marketplace add pzzld-org/shepherd --ref v6.5.6
 codex plugin add shepherd@shepherd
 ```
 
@@ -378,6 +378,28 @@ The packed-plugin test uses installed tarballs in a temporary directory. It is
 the check that catches a package which passes from the repository but fails
 after publication.
 
+Release identity is checked as one contract:
+
+```sh
+python3 scripts/version-bump.py check --root . --version 6.5.6
+node scripts/check-deps.mjs
+```
+
+The first command emits one `compatibility-report` JSON object covering the
+native CLI, Component contract, all npm package manifests, and the staged
+Claude, Codex, and Pi carriers. It scans Git-tracked source, so ignored Pi
+runtime state cannot create false drift and future tracked `.pi` source cannot
+escape classification. The dependency command verifies the committed npm/Cargo
+measurement, lockfile-derived shipped closure, waiver expiry, update coverage,
+security policy, current organization URLs, and contributor-safe shared Claude
+settings without contacting a registry.
+
+The tracked `.claude/settings.json` only enables this repository's Shepherd
+marketplace entry. Host permissions, models, experimental features, memory,
+workflow automation, and UX preferences belong in user or other untracked local
+settings. The repository never requests bypass mode, unrestricted Bash, or
+suppression of a host safety prompt.
+
 ## Documentation map
 
 - [Quickstart](QUICKSTART.md): install, initialize, and run a first sprint.
@@ -391,6 +413,8 @@ after publication.
   prose memory.
 - [Permissions](docs/permissions.md): safe host permissions and fail-closed
   adapter behavior.
+- [Security policy](SECURITY.md): supported versions, private reporting,
+  coordinated disclosure, scope, and safe harbor.
 - [Component crate](crates/component/README.md): WIT and Node Component Model
   details.
 

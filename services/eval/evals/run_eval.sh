@@ -59,6 +59,7 @@ _pair content    content_good.txt    content_bad.txt
 _pair plugin-distribution plugin_distribution_good.txt plugin_distribution_bad.txt
 _pair cargo-native-distribution cargo_native_distribution_good.txt cargo_native_distribution_bad.txt
 _pair gate-provenance v656/gate-provenance_good.txt v656/gate-provenance_bad.txt
+_pair release-trust v656/release-trust_good.txt v656/release-trust_bad.txt
 
 if (( fails == 0 )); then
   echo "—— live eval lane PASSED (judge discriminates good from bad) ——"

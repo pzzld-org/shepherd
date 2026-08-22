@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "judge": "local-claude-code",
+  "model": "opus",
+  "measuredAt": "2026-08-22T19:55:40+00:00",
+  "inputs": {
+    "good": {
+      "path": "services/eval/evals/cases/v656/release-trust_good.txt",
+      "sha256": "83a106b406e72a83d503915a05cd66a06a5bd2b4c4d485515251ecaecf84e987"
+    },
+    "bad": {
+      "path": "services/eval/evals/cases/v656/release-trust_bad.txt",
+      "sha256": "52145fd587e0e96106bbaca990fdcde270c045f160e6d1aeb0c582a569a7116b"
+    },
+    "rubric": {
+      "path": "services/eval/rubrics/release-trust.rubric.json",
+      "sha256": "73ef34716d39960db15bd7b8b11425c55784631afbfeab7fdd8602960aa3ff1f"
+    }
+  },
+  "good": {
+    "kind": "release-trust",
+    "model": "opus",
+    "overall": 100,
+    "threshold": 80,
+    "passed": true,
+    "scale": 5,
+    "scores": {
+      "version_compatibility": 5,
+      "identity_and_settings": 5,
+      "dependency_ownership": 5,
+      "waiver_and_process": 5
+    },
+    "rationale": "Exact multi-carrier version report with tracked .pi guard; pzzld-org current URLs vs preserved history; lock-derived closure, no-waiver build-only critical; expiring waivers, honest cargo-deny."
+  },
+  "bad": {
+    "kind": "release-trust",
+    "model": "opus",
+    "overall": 20,
+    "threshold": 80,
+    "passed": false,
+    "scale": 5,
+    "scores": {
+      "version_compatibility": 1,
+      "identity_and_settings": 1,
+      "dependency_ownership": 1,
+      "waiver_and_process": 1
+    },
+    "rationale": "Deliberate anti-pattern: blanket .pi exclusion, kept FL03 URLs, bypassPermissions in shared settings, suppressed audit, permanent waivers, faked cargo-deny."
+  },
+  "goodExit": 0,
+  "badExit": 1
+}

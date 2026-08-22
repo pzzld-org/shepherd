@@ -19,7 +19,7 @@ be on `PATH`. Node.js and a plugin ZIP are not required.
 For persistent installation through Claude's marketplace catalog:
 
 ```sh
-claude plugin marketplace add FL03/shepherd
+claude plugin marketplace add pzzld-org/shepherd
 claude plugin install shepherd@shepherd --scope user
 ```
 

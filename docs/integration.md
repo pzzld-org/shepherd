@@ -55,7 +55,7 @@ Install the native `shepherd` executable on `PATH`, then install the plugin
 normally from the GitHub marketplace source:
 
 ```sh
-claude plugin marketplace add FL03/shepherd
+claude plugin marketplace add pzzld-org/shepherd
 claude plugin install shepherd@shepherd --scope user
 ```
 
@@ -77,7 +77,7 @@ Its `.codex-plugin/plugin.json` selects a byte-gated regular-file projection
 because Codex does not copy source symlinks. Install it with:
 
 ```sh
-codex plugin marketplace add FL03/shepherd --ref v6.5.6
+codex plugin marketplace add pzzld-org/shepherd --ref v6.5.6
 codex plugin add shepherd@shepherd
 ```
 

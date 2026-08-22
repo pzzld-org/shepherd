@@ -7,7 +7,7 @@
 # caller explicitly sets SHEPHERD_FORCE=1.
 set -euo pipefail
 
-readonly DEFAULT_RELEASE_BASE='https://github.com/FL03/shepherd/releases'
+readonly DEFAULT_RELEASE_BASE='https://github.com/pzzld-org/shepherd/releases'
 
 fail() {
   printf 'shepherd installer: %s\n' "$*" >&2
@@ -21,7 +21,7 @@ Usage: install-shepherd.sh [--print-asset|--print-url|--help]
 Environment:
   SHEPHERD_VERSION       Exact version without a leading v, or unset for latest.
   SHEPHERD_INSTALL_DIR   Destination directory, default: $HOME/.local/bin.
-  SHEPHERD_RELEASE_BASE  GitHub releases base, default: FL03/shepherd.
+  SHEPHERD_RELEASE_BASE  GitHub releases base, default: pzzld-org/shepherd.
   SHEPHERD_FORCE=1       Atomically replace an existing shepherd binary.
 
 The installer never modifies PATH. Add SHEPHERD_INSTALL_DIR to PATH yourself.

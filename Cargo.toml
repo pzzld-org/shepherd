@@ -18,11 +18,11 @@ authors = [
 categories = ["command-line-utilities", "development-tools"]
 description = "Sprint orchestration and governance for AI coding agents — the canonical engine and CLI behind the shepherd plugin."
 edition = "2024"
-homepage = "https://github.com/FL03/shepherd/wiki"
+homepage = "https://github.com/pzzld-org/shepherd/wiki"
 keywords = ["agent", "orchestration", "sprint", "cli", "plugin"]
 license = "Apache-2.0"
 readme = "README.md"
-repository = "https://github.com/FL03/shepherd.git"
+repository = "https://github.com/pzzld-org/shepherd.git"
 rust-version = "1.97.0"
 version = "6.5.6"
 

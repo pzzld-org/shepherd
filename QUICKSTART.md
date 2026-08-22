@@ -16,7 +16,7 @@ No Cargo Binstall? Use the checksum-verifying installer:
 
 ```sh
 curl --fail --location \
-  https://raw.githubusercontent.com/FL03/shepherd/v6.5.6/scripts/install-shepherd.sh \
+  https://raw.githubusercontent.com/pzzld-org/shepherd/v6.5.6/scripts/install-shepherd.sh \
   --output /tmp/install-shepherd.sh
 SHEPHERD_VERSION=6.5.6 bash /tmp/install-shepherd.sh
 ```
@@ -69,7 +69,7 @@ Pick the one you use. Each installs the same skills over the same binary.
 ### Claude Code
 
 ```sh
-claude plugin marketplace add FL03/shepherd
+claude plugin marketplace add pzzld-org/shepherd
 claude plugin install shepherd@shepherd --scope user
 ```
 
@@ -86,7 +86,7 @@ binary, or the reverse.
 ### Codex
 
 ```sh
-codex plugin marketplace add FL03/shepherd --ref v6.5.6
+codex plugin marketplace add pzzld-org/shepherd --ref v6.5.6
 codex plugin add shepherd@shepherd
 ```
 

@@ -5,10 +5,10 @@
   "author": {
     "name": "pzzld-org",
     "email": "joe@pzzld.org",
-    "url": "https://github.com/FL03"
+    "url": "https://github.com/pzzld-org"
   },
-  "homepage": "https://github.com/FL03/shepherd",
-  "repository": "https://github.com/FL03/shepherd",
+  "homepage": "https://github.com/pzzld-org/shepherd",
+  "repository": "https://github.com/pzzld-org/shepherd",
   "license": "Apache-2.0",
   "keywords": [
     "shepherd",

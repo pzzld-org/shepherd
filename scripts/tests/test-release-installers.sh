@@ -53,12 +53,12 @@ fi
 explicit_url=$(SHEPHERD_OS=Linux SHEPHERD_ARCH=x86_64 SHEPHERD_VERSION=6.5.6 \
   "$installer" --print-url)
 expect_eq "$explicit_url" \
-  'https://github.com/FL03/shepherd/releases/download/v6.5.6/shepherd-6.5.6-x86_64-unknown-linux-gnu.tar.gz' \
+  'https://github.com/pzzld-org/shepherd/releases/download/v6.5.6/shepherd-6.5.6-x86_64-unknown-linux-gnu.tar.gz' \
   'explicit version URL'
 
 latest_url=$(SHEPHERD_OS=Linux SHEPHERD_ARCH=x86_64 "$installer" --print-url)
 expect_eq "$latest_url" \
-  'https://github.com/FL03/shepherd/releases/latest/download/shepherd-x86_64-unknown-linux-gnu.tar.gz' \
+  'https://github.com/pzzld-org/shepherd/releases/latest/download/shepherd-x86_64-unknown-linux-gnu.tar.gz' \
   'latest URL'
 
 if SHEPHERD_OS=Plan9 SHEPHERD_ARCH=x86_64 "$installer" --print-asset >/dev/null 2>&1; then

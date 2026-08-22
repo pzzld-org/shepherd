@@ -14,6 +14,7 @@ import json
 import os
 import re
 import stat
+import subprocess
 import sys
 import tempfile
 import tomllib
@@ -198,7 +199,7 @@ def version_rules(current: SemVer, next_version: SemVer) -> tuple[TextRule, ...]
             "README.md",
             current,
             next_version,
-            "FL03/shepherd/v{version}/scripts/install-shepherd.sh",
+            "pzzld-org/shepherd/v{version}/scripts/install-shepherd.sh",
             "README Unix installer tag",
         ),
         _literal(
@@ -212,7 +213,7 @@ def version_rules(current: SemVer, next_version: SemVer) -> tuple[TextRule, ...]
             "README.md",
             current,
             next_version,
-            "FL03/shepherd/v{version}/scripts/install-shepherd.ps1",
+            "pzzld-org/shepherd/v{version}/scripts/install-shepherd.ps1",
             "README PowerShell installer tag",
         ),
         _literal(
@@ -226,7 +227,7 @@ def version_rules(current: SemVer, next_version: SemVer) -> tuple[TextRule, ...]
             "README.md",
             current,
             next_version,
-            "codex plugin marketplace add FL03/shepherd --ref v{version}",
+            "codex plugin marketplace add pzzld-org/shepherd --ref v{version}",
             "README Codex marketplace release ref",
         ),
         # The command-surface heading used to be updated by hand and was still
@@ -238,13 +239,20 @@ def version_rules(current: SemVer, next_version: SemVer) -> tuple[TextRule, ...]
             "owned by the Rust CLI in v{version}",
             "README native command surface version",
         ),
+        _literal(
+            "README.md",
+            current,
+            next_version,
+            "scripts/version-bump.py check --root . --version {version}",
+            "README compatibility-report version",
+        ),
         # QUICKSTART.md carries the same install surfaces as the README, so it
         # drifts the same way unless the bump rewrites it too.
         _literal(
             "QUICKSTART.md",
             current,
             next_version,
-            "FL03/shepherd/v{version}/scripts/install-shepherd.sh",
+            "pzzld-org/shepherd/v{version}/scripts/install-shepherd.sh",
             "QUICKSTART Unix installer tag",
         ),
         _literal(
@@ -258,7 +266,7 @@ def version_rules(current: SemVer, next_version: SemVer) -> tuple[TextRule, ...]
             "QUICKSTART.md",
             current,
             next_version,
-            "codex plugin marketplace add FL03/shepherd --ref v{version}",
+            "codex plugin marketplace add pzzld-org/shepherd --ref v{version}",
             "QUICKSTART Codex marketplace release ref",
         ),
         _whole("docs/configuration.md", current, next_version, 1),
@@ -708,13 +716,38 @@ def _is_historical(relative: str) -> bool:
     return len(parts) >= 3 and parts[0] == "crates" and "tests" in parts[2:]
 
 
-def _scan_unclassified_files(
-    root: Path,
-    contents: Mapping[str, str],
-    version: SemVer,
-    errors: list[str],
-) -> None:
-    authority = set(contents)
+def _git_tracked_paths(root: Path) -> tuple[str, ...] | None:
+    """Return the repository's tracked paths, or None outside a Git checkout.
+
+    Git identity, not a directory-name exclusion, decides what source can become
+    release authority. This is what lets ignored `.pi/tasks/` runtime state stay
+    invisible while a future force-tracked `.pi` extension remains subject to
+    the same unclassified-version check as every other tracked source file.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(root), "ls-files", "-z"],
+            check=False,
+            capture_output=True,
+        )
+    except OSError:
+        return None
+    if result.returncode != 0:
+        return None
+    tracked_scan_exclusions = SCAN_EXCLUDED_DIRECTORIES - {".pi"}
+    return tuple(
+        sorted(
+            path
+            for raw_path in result.stdout.split(b"\0")
+            if raw_path
+            for path in (os.fsdecode(raw_path),)
+            if not Path(path).parts or Path(path).parts[0] not in tracked_scan_exclusions
+        )
+    )
+
+
+def _walk_text_paths(root: Path) -> tuple[str, ...]:
+    paths: list[str] = []
     for directory, directory_names, file_names in os.walk(root, followlinks=False):
         directory_path = Path(directory)
         directory_names[:] = sorted(
@@ -724,18 +757,49 @@ def _scan_unclassified_files(
             and not (directory_path / name).is_symlink()
         )
         for file_name in sorted(file_names):
-            path = directory_path / file_name
-            if path.is_symlink() or path.suffix not in TEXT_SUFFIXES:
-                continue
-            relative = str(path.relative_to(root))
-            if relative in authority or _is_historical(relative):
-                continue
-            try:
-                text = path.read_text(encoding="utf-8")
-            except (OSError, UnicodeDecodeError):
-                continue
-            if str(version) in text:
-                errors.append(f"{relative}: unclassified {version} version surface")
+            paths.append(str((directory_path / file_name).relative_to(root)))
+    return tuple(paths)
+
+
+def _scan_unclassified_files(
+    root: Path,
+    contents: Mapping[str, str],
+    version: SemVer,
+    errors: list[str],
+) -> None:
+    authority = set(contents)
+    tracked = _git_tracked_paths(root)
+    candidates = tracked if tracked is not None else _walk_text_paths(root)
+    for relative in candidates:
+        path = root / relative
+        if path.is_symlink() or path.suffix not in TEXT_SUFFIXES:
+            continue
+        if relative in authority or _is_historical(relative):
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        if str(version) in text:
+            errors.append(f"{relative}: unclassified {version} version surface")
+
+
+def _compatibility_report(version: SemVer) -> str:
+    rendered = str(version)
+    report = {
+        "component": f"fl03:shepherd@{rendered}",
+        "native_cli": f"shepherd-cli@{rendered}",
+        "packages": {
+            name: rendered for name in sorted(NPM_PACKAGES.values())
+        },
+        "staged_carriers": {
+            "claude": rendered,
+            "codex": rendered,
+            "pi": rendered,
+        },
+        "version": rendered,
+    }
+    return json.dumps(report, sort_keys=True, separators=(",", ":"))
 
 
 def _validate_and_render(
@@ -865,6 +929,7 @@ def check(root: Path, version: SemVer) -> int:
     resolved = root.resolve(strict=True)
     snapshots = _read_snapshots(resolved, authority_paths(version))
     _validate_and_render(resolved, snapshots, version, version.successor())
+    print(f"compatibility-report: {_compatibility_report(version)}")
     print(
         f"version-bump: OK version={version} authorities={len(snapshots)} mode=check"
     )
@@ -882,6 +947,7 @@ def bump(root: Path, current: SemVer, next_version: SemVer) -> int:
     snapshots = _read_snapshots(resolved, authority_paths(current))
     rendered = _validate_and_render(resolved, snapshots, current, next_version)
     changed = _commit(snapshots, rendered)
+    print(f"compatibility-report: {_compatibility_report(next_version)}")
     print(
         f"version-bump: OK current={current} next={next_version} "
         f"updated={len(changed)}"

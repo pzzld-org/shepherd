@@ -313,8 +313,8 @@ call_ref_count=$(rg -Fc 'ref: ${{ github.sha }}' "$workflow")
     "$workflow" "$call_ref_count" >&2
   exit 1
 }
-if ! rg -Fq 'python3 scripts/version-bump.py check --root . --version "$current"' "$workflow"; then
-  printf '%s: release workflow must call version-bump.py check with the current version before proceeding\n' \
+if ! rg -Fq 'run: python3 scripts/version-bump.py check --root . --version "${{ steps.detect.outputs.current }}"' "$workflow"; then
+  printf '%s: release workflow must run version-bump.py check with the detected current output before proceeding\n' \
     "$workflow" >&2
   exit 1
 fi

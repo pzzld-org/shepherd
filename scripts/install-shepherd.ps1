@@ -10,7 +10,7 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-$DefaultReleaseBase = 'https://github.com/FL03/shepherd/releases'
+$DefaultReleaseBase = 'https://github.com/pzzld-org/shepherd/releases'
 
 function Fail([string]$Message) {
     throw "shepherd installer: $Message"
