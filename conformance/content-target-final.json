@@ -196,8 +196,8 @@
           "e4e3764dc21530feea2349a05ebec68fa88facc2112268899790108499cc9d3f"
         ],
         "agents/conductor.md": [
-          3721,
-          "8a1cce1eb884d111470b8762d0b0228181d453c40ce76b1f8e2e8d297998f2fa"
+          3924,
+          "cdefe3d17090611ca5921781ba1887dcd6016d4550dac8933385cbc41cba58d5"
         ],
         "agents/critic.md": [
           2134,
@@ -264,7 +264,7 @@
           "464768041f6f32bc14cec18ba0d428e0a60b86ba45f652e1cb0cd3956245bf81"
         ]
       },
-      "tree_digest": "9c784aacca73a2483336714f668bf8233966390778a5a5fbca2400268e67ba89"
+      "tree_digest": "fa696cd0cb6b781febb519d39ec6bb40fcb9b2e12bf5291301c1958c77c2b2ce"
     },
     "codex": {
       "files": {
@@ -322,8 +322,8 @@
           "20366f8a865db671ec533e0f2a457cbb8388e7df17ad2150268eebc778266800"
         ],
         "prompts/conductor.md": [
-          3664,
-          "388221da74216b0837617c35776003e7ad2b63f3b3cbf64ec19796cf2708b28f"
+          3867,
+          "596be6ed4354c9ede61338efe2028f84d66ce10553470044ff8ff266f8a8a670"
         ],
         "prompts/critic.md": [
           2115,
@@ -386,7 +386,7 @@
           "464768041f6f32bc14cec18ba0d428e0a60b86ba45f652e1cb0cd3956245bf81"
         ]
       },
-      "tree_digest": "e04974c51f67d5ffb4b0094dd7fe6b61093bd9168940cceb03b62b0d0ddb2f62"
+      "tree_digest": "bb2f6c16722bd9582d2d683bebda96ff359c8e83bedadc9483dc1b286397786d"
     }
   }
 }

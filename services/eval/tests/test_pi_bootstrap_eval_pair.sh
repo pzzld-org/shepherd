@@ -27,6 +27,10 @@ grep -Fq 'including reasoning-high engineer and conductor carriers' "$EVALS/case
   || { echo 'FAIL: good case does not require sentinels for project-neutral reasoning leads'; exit 1; }
 grep -Fq 'silently inherit the expensive parent/default' "$EVALS/cases/pi-bootstrap_bad.txt" \
   || { echo 'FAIL: bad case does not reject expensive silent inheritance'; exit 1; }
+grep -Fq 'omits requested acceptance' "$EVALS/cases/pi-bootstrap_good.txt" \
+  || { echo 'FAIL: good case does not require valid read-only audit acceptance semantics'; exit 1; }
+grep -Fq 'acceptance.level' "$EVALS/cases/pi-bootstrap_bad.txt" \
+  || { echo 'FAIL: bad case does not reject achieved acceptance as a request'; exit 1; }
 grep -Fqi 'hand-copy' "$EVALS/cases/pi-bootstrap_bad.txt" \
   || { echo 'FAIL: bad case does not cover duplicate generated role authority'; exit 1; }
 grep -Fq 'active tools' "$EVALS/cases/pi-bootstrap_bad.txt" \

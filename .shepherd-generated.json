@@ -1,7 +1,7 @@
 {
   "schema": "shepherd.compiled-tree/3",
   "target": "claude",
-  "tree_digest": "9c784aacca73a2483336714f668bf8233966390778a5a5fbca2400268e67ba89",
+  "tree_digest": "fa696cd0cb6b781febb519d39ec6bb40fcb9b2e12bf5291301c1958c77c2b2ce",
   "tokenizer_version": "shepherd-prompt-v1-uax29",
   "roles": [
     {
@@ -361,12 +361,12 @@
       "path": "agents/conductor.md",
       "kind": "role",
       "source_path": "content/roles/conductor.md",
-      "source_sha256": "475ec4250bd80078b984787e773b9decf537cd50db30c603427be4a733737826",
-      "content_sha256": "8a1cce1eb884d111470b8762d0b0228181d453c40ce76b1f8e2e8d297998f2fa",
-      "lines": 65,
-      "words": 560,
-      "utf8_bytes": 3721,
-      "prompt_tokens": 1130
+      "source_sha256": "eb4c4751949fdc2ac37ab3f546f3473ac6cc1f259eeb9cfd83a3c6c76e3c11c4",
+      "content_sha256": "cdefe3d17090611ca5921781ba1887dcd6016d4550dac8933385cbc41cba58d5",
+      "lines": 67,
+      "words": 575,
+      "utf8_bytes": 3924,
+      "prompt_tokens": 1199
     },
     {
       "path": "agents/critic.md",

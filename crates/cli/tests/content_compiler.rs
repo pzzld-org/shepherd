@@ -49,6 +49,24 @@ fn live_content_matches_the_frozen_target_final_oracle() {
     // changed, and bump. The oracle comparison below stays red until root
     // regenerates conformance/content-target-final.json under integration
     // custody -- that is expected, not a defect in this bump.
+    let conductor = input
+        .roles
+        .iter()
+        .find(|role| role.role == "conductor")
+        .expect("canonical conductor exists");
+    assert!(
+        conductor
+            .body
+            .contains("post-implementation `shepherd:auditor`")
+    );
+    assert!(conductor.body.contains("no requested acceptance"));
+    assert!(conductor.body.contains("`acceptance.level`"));
+    assert!(conductor.body.contains("output, never input"));
+    assert!(
+        !conductor
+            .body
+            .contains("never dispatches a plan-authoring or gating role directly")
+    );
     assert_eq!(input.skills.len(), 10);
     let oracle: serde_json::Value = serde_json::from_str(include_str!(
         "../../../conformance/content-target-final.json"
