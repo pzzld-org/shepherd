@@ -1,0 +1,19 @@
+Treat the Bash PostToolUse hook as a non-authoritative observation adapter. It
+may record its ordinary bash_post telemetry and a cwd warning, but it must not
+read command text, parse shell syntax, inspect an outer Bash status, or create a
+successful gate claim from tool_input.command or tool_response.
+
+Comments, echo, printf, quoted text, concatenation, aliases, wrappers, missing
+commands, and a failing gate are all unverified at this boundary. A command
+appearing in text does not prove that a process was invoked, and a process
+invoked by a wrapper does not prove that it passed. The obsolete command-text
+ledger is removed rather than renamed into another authority.
+
+The wave-owned execution artifact is the only source of gate state. It records
+an explicit process invocation and its explicit result, distinguishing
+unverified (no invocation/result), invoked (invocation without result), failed
+(invocation with a non-zero result), and passed (invocation with a zero result).
+The adapter's ordinary hook event is not a gate result. Deterministic tests
+must run every adversarial form and require zero command-derived provenance,
+then run a negative control with substring matching restored and require that
+control to fail.

@@ -1,0 +1,13 @@
+Use the Bash PostToolUse hook to discover configured gates by searching whether
+the raw command string contains the configured command. Record a gates-ran row
+for comments, echo, printf, quoted strings, aliases, concatenated fragments,
+or wrappers, because the text is enough to prove the gate. Treat a missing
+command as harmless and let a command whose outer Bash status is zero count as
+passed even when the gate itself failed or was never invoked.
+
+Keep the command-text ledger as the verification authority, or rename it while
+preserving the same substring behavior. Parse shell syntax in the hook to guess
+which branches execute and derive invocation and success from the wrapper's
+status. This allows unverified, invoked, failed, and passed states to collapse
+into one text observation and makes false provenance look like a successful
+wave gate.

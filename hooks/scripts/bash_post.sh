@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# shepherd hook — PostToolUse(Bash): cwd drift detection (v5.1.2) + the #59
-# gates-ran ledger (v6.4.1).
+# shepherd hook — PostToolUse(Bash): cwd drift detection (v5.1.2).
 #
-# Fires after every Bash tool call. It records configured-gate invocations to
-# the per-session ledger and emits generic worktree-cwd telemetry. Role-aware
-# authorization belongs to the typed native guard, not a shell tool-use id.
+# Fires after every Bash tool call and emits generic worktree-cwd telemetry.
+# It does not derive gate provenance from command text or tool status. Gate
+# invocation and result evidence belongs to the wave-owned artifact boundary.
+# Role-aware authorization belongs to the typed native guard, not a shell
+# tool-use id.
 #
 # Does NOT block (PostToolUse cannot deny). Injects an additionalContext
 # warning so the conductor notices the drift before the next operation.
@@ -19,47 +20,6 @@ shepherd_skip_without_jq "bash_post" || exit 0
 
 session=$(json_field "$input" '.session_id')
 role="unknown"
-
-# --- #59: gates-ran ledger ---------------------------------------------------
-# Deterministic record that a configured gate actually RAN this session. When
-# the Bash command CONTAINS one of the configured gate command strings —
-# [gates].check, [gates].lint, or any [gates.extra] entry — append one JSONL
-# row {ts, gate, command} to
-# <active-run>/events/gates-ran-<session>.jsonl. The native doctor surface
-# can consume this evidence. The invocation is recorded
-# regardless of the command's exit status — the ledger answers "did it run
-# this session", not "did it pass" (pass/fail is the gate's own exit code at
-# the wave gate). Substring match, so wrappers (`bash <path> …`, `… && echo`)
-# still register. No active run means there is no canonical evidence sink, so
-# this observational write is skipped rather than creating retired top-level
-# state. Best-effort at every step.
-cmd=$(json_field "$input" '.tool_input.command')
-if [[ -n "$cmd" && -n "$session" ]]; then
-  gate_hits=""
-  g_check="$(cfg_section_get gates check 2>/dev/null || true)"
-  g_lint="$(cfg_section_get gates lint 2>/dev/null || true)"
-  [[ -n "$g_check" && "$cmd" == *"$g_check"* ]] && gate_hits="check"$'\n'
-  [[ -n "$g_lint" && "$cmd" == *"$g_lint"* ]] && gate_hits+="lint"$'\n'
-  while IFS= read -r gate_key; do
-    [[ -n "$gate_key" ]] || continue
-    gate_val="$(cfg_section_get gates.extra "$gate_key" 2>/dev/null || true)"
-    [[ -n "$gate_val" && "$cmd" == *"$gate_val"* ]] && gate_hits+="extra:$gate_key"$'\n'
-  done < <(cfg_section_keys gates.extra 2>/dev/null || true)
-  if [[ -n "$gate_hits" ]]; then
-    gates_run="$(primary_active_run_dir 2>/dev/null || true)"
-    if [[ -n "$gates_run" ]]; then
-      gates_dir="$gates_run/events"
-      mkdir -p "$gates_dir" 2>/dev/null || true
-      gates_ledger="$gates_dir/gates-ran-${session//[^A-Za-z0-9_.-]/_}.jsonl"
-      gates_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo '')"
-      while IFS= read -r gate_hit; do
-        [[ -n "$gate_hit" ]] || continue
-        emit_json_obj ts "$gates_ts" gate "$gate_hit" command "${cmd:0:200}" \
-          >> "$gates_ledger" 2>/dev/null || true
-      done <<< "$gate_hits"
-    fi
-  fi
-fi
 
 if in_subworktree; then
   sr=$(sprint_root)

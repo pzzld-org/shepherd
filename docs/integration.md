@@ -167,6 +167,34 @@ only the bounded, validated context bundle returned by native Rust. Codex's
 regular marketplace carrier does not register subagent lifecycle hooks until
 the host exposes a trusted correlation contract.
 
+## Gate provenance
+
+The Bash `PostToolUse` carrier is telemetry, not gate authority. It may emit the
+normal `bash_post` hook event and a worktree-cwd warning, but it does not read
+`tool_input.command` or `tool_response` to claim that a configured gate ran. It
+also does not infer execution or success from the outer Bash status. There is no
+command-text gate ledger.
+
+Command text is an observation only. Comments, `echo`, `printf`, quoted text,
+concatenation, aliases, wrappers, missing commands, and failing gates remain
+unverified from this hook. The hook does not parse shell syntax. A wrapper can
+mention a command without invoking it, and a process can be invoked without
+passing.
+
+Gate state is distinguishable only from the wave-owned execution artifact.
+These states are mutually exclusive and ordered by explicit evidence, not by
+text observed by this hook:
+
+| State | Required artifact evidence |
+| --- | --- |
+| Unverified | No explicit wave-owned process invocation record exists |
+| Invoked | An explicit wave-owned process invocation record exists, but no result record exists |
+| Failed | An invocation record plus its explicit non-zero result |
+| Passed | An invocation record plus its explicit zero result |
+
+The ordinary `hooks-YYYY-MM-DD.jsonl` event proves only that the host adapter
+completed its own telemetry path. It is not evidence for any gate state.
+
 ## Host capability limits
 
 Adapters must report host limitations instead of guessing:
