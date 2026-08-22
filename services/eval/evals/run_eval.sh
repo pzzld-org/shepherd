@@ -51,6 +51,7 @@ _pair() { # kind  good-case  bad-case
 _pair reflection reflection_good.txt reflection_bad.txt
 _pair discovery  discovery_good.txt  discovery_bad.txt
 _pair dispatch   dispatch_good.txt   dispatch_bad.txt
+_pair pi-tool-correlation pi_tool_call_id_good.txt pi_tool_call_id_bad.txt
 _pair content    content_good.txt    content_bad.txt
 _pair plugin-distribution plugin_distribution_good.txt plugin_distribution_bad.txt
 _pair cargo-native-distribution cargo_native_distribution_good.txt cargo_native_distribution_bad.txt

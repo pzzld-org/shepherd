@@ -1,6 +1,8 @@
 // Pi host adapter. Identity, guard policy, and lifecycle planning are owned
 // by the generated fl03:shepherd@6.5.6 component.
 
+import { createHash } from "node:crypto";
+
 import {
   componentBinding,
   componentIdentityInput,
@@ -90,11 +92,12 @@ export default async function shepherdGuardExtension(pi, options = {}) {
       if (typeof sessionId !== "string" || sessionId.length === 0) {
         throw new Error("Pi tool context omitted the native session_id");
       }
+      const toolCallId = piToolCallId(event.toolCallId);
       const identity = normalizeWithComponent(component, componentIdentityInput({
         harness: "pi",
         event: "PreToolUse",
         sessionId,
-        toolUseId: event.toolCallId,
+        toolUseId: toolCallId,
       }));
       guardStep = "plan";
       const planned = planToNativeDispatch(planWithComponent(component, identity, componentBinding({
@@ -120,7 +123,7 @@ export default async function shepherdGuardExtension(pi, options = {}) {
       if (resolved.value.session_id !== sessionId) {
         throw new Error("native identity resolution returned another session");
       }
-      if (resolved.value.tool_use_id !== undefined && resolved.value.tool_use_id !== event.toolCallId) {
+      if (resolved.value.tool_use_id !== undefined && resolved.value.tool_use_id !== toolCallId) {
         throw new Error("native identity resolution returned another tool call");
       }
       if (typeof resolved.value.role !== "string" || resolved.value.role.length === 0) {
@@ -140,6 +143,13 @@ export default async function shepherdGuardExtension(pi, options = {}) {
     }
     return undefined;
   });
+}
+
+function piToolCallId(value) {
+  if (typeof value !== "string" || value.length === 0) {
+    throw new TypeError("Pi tool call omitted toolCallId");
+  }
+  return `pi-tool-${createHash("sha256").update(value).digest("hex")}`;
 }
 
 function nativeToolName(toolName) {
